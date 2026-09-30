@@ -173,7 +173,8 @@ test("a smartbook becomes a plan without a model", async () => {
     await page.getByRole("button", { name: "Indietro" }).click();
     await page.getByRole("button", { name: "Impostazioni" }).click();
     await page.getByRole("button", { name: "Copia di sicurezza" }).click();
-    await expect.poll(() => existsSync(backupZip) && statSync(backupZip).size > 0).toBe(true);
+    await expect(page.getByText("La copia è pronta.")).toBeVisible();
+    expect(existsSync(backupZip) && statSync(backupZip).size > 0).toBe(true);
     await expect(page.getByText("La copia non è riuscita.")).toHaveCount(0);
     await page.getByText("Esami", { exact: true }).click();
     await page.getByRole("button", { name: "Fisica" }).click();

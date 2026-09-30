@@ -96,30 +96,32 @@ export function Shell() {
         <div
           style={{ display: "flex", justifyContent: "center", width: "100%" }}
         >
+          <div
+            onClick={(event) => {
+              const item = (event.target as HTMLElement).closest(".ant-segmented-item");
+              const text = item?.textContent ?? "";
+              if (text.includes(t("doors.ask"))) navigate(last.ask);
+              else if (text.includes(t("doors.exams"))) navigate(last.exams);
+            }}
+          >
           <Segmented<Door>
             shape="round"
             className="px-doors"
             value={activeDoor}
-            onChange={(value) =>
-              navigate(value === "ask" ? last.ask : last.exams)
-            }
             options={[
               {
                 value: "ask",
-                label: (
-                  <span onClick={() => navigate(last.ask)}>{t("doors.ask")}</span>
-                ),
+                label: t("doors.ask"),
                 icon: <MessageCircle size={16} strokeWidth={1.75} />,
               },
               {
                 value: "exams",
-                label: (
-                  <span onClick={() => navigate(last.exams)}>{t("doors.exams")}</span>
-                ),
+                label: t("doors.exams"),
                 icon: <GraduationCap size={16} strokeWidth={1.75} />,
               },
             ]}
           />
+          </div>
         </div>
       )}
       actionsRender={() => [

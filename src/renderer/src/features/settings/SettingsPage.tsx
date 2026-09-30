@@ -132,7 +132,9 @@ export function SettingsPage() {
         <Button
           onClick={() => {
             setDataNote(null);
-            void window.pyxis.backupWorkspace().catch(() => {
+            void window.pyxis.backupWorkspace().then((status) => {
+              if (status === "saved") setDataNote(t("settings.backupSaved"));
+            }).catch(() => {
               setDataNote(t("settings.backupFailed"));
             });
           }}
