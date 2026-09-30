@@ -148,7 +148,7 @@ function connects(
   const chord = (prev.y + point.y) / 2;
   const scale = Math.max(1, Math.min(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid)));
   if (Math.abs(mid - chord) <= 0.25 * scale) return true;
-  if (depth >= 12) return false;
+  if (depth >= 16) return Math.abs(mid) <= 1e5;
   const middle = { x: (prev.x + point.x) / 2, y: mid };
   return connects(prev, middle, at, depth + 1) && connects(middle, point, at, depth + 1);
 }

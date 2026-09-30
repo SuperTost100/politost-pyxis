@@ -18,6 +18,7 @@ describe("plot", () => {
   it("keeps a steep curve in one stroke and breaks a pole", () => {
     const at = (source: string) => (x: number) => evalExpr(source, x);
     expect(splitSeries(sample("x^3", -8, 8), at("x^3"))).toHaveLength(1);
+    expect(splitSeries(sample("1/(1+1000000000000*x^2)", -8, 8), at("1/(1+1000000000000*x^2)"))).toHaveLength(1);
     expect(splitSeries(sample("sin(x)", -8, 8), at("sin(x)"))).toHaveLength(1);
     expect(splitSeries(sample("x+exp(-1000*x^2)", -8, 8), at("x+exp(-1000*x^2)"))).toHaveLength(1);
     expect(
