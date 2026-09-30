@@ -253,6 +253,11 @@ export function PlanPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.mastery", { planId: planId ?? "" }),
   });
+  const recommended = useQuery({
+    queryKey: ["recommend", planId],
+    enabled: Boolean(planId),
+    queryFn: () => invoke("plans.recommend", { planId: planId ?? "" }),
+  });
   const simulations = useQuery({
     queryKey: ["simulations", planId],
     enabled: Boolean(planId),
@@ -438,6 +443,51 @@ export function PlanPage() {
           </li>
         ))}
       </ol>
+      {recommended.data ? (
+        <Button
+          type="primary"
+          shape="round"
+          onClick={() => {
+            const node = plan.data?.nodes.find((item) => item.id === recommended.data?.nodeId);
+            if (!node || !planId) return;
+            if (node.kind === "diagnostic") {
+              navigate(`/plans/${planId}/diagnostic`);
+              return;
+            }
+            if (node.kind === "learn" && node.topicId) {
+              navigate(`/plans/${planId}/lesson/${node.topicId}`);
+              return;
+            }
+            if (node.kind === "practice" && node.topicId) {
+              navigate(`/plans/${planId}/practice/${node.topicId}`);
+              return;
+            }
+            if (node.kind === "cards" && node.topicId) {
+              navigate(`/plans/${planId}/cards/${node.topicId}`);
+              return;
+            }
+            if (node.kind === "simulation") {
+              navigate(`/plans/${planId}/simulation`);
+              return;
+            }
+            void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
+              void client.invalidateQueries({ queryKey: ["plan", planId] });
+              void client.invalidateQueries({ queryKey: ["recommend", planId] });
+            });
+          }}
+        >
+          {t("plans.recommended")}
+          {" · "}
+          {t(
+            recommended.data.reason === "due"
+              ? "plans.recommendDue"
+              : recommended.data.reason === "gaps"
+                ? "plans.recommendGaps"
+                : "plans.recommendNext",
+            { count: recommended.data.count },
+          )}
+        </Button>
+      ) : null}
       <Button
         type="text"
         danger

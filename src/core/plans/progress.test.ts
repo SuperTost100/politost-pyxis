@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
-import { listPlans } from "./create";
+import { listPlans, nextLesson } from "./create";
 import { planMastery, planSeries } from "./progress";
 import { listSimulations } from "../study/simulation";
 
@@ -60,6 +60,19 @@ describe("planMastery", () => {
     expect(listSimulations(db, planId)).toEqual([
       { id: "run", at: started + 30 * 60_000, score: 0.5, minutes: 30 },
     ]);
+  });
+
+  it("points the recommended lesson at the open step", () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Fisica', 'ready', 1, 1)`,
+    ).run();
+    db.prepare(
+      `INSERT INTO path_nodes (id, plan_id, kind, position, title, created_at)
+       VALUES ('intro', 'p', 'intro', 0, 'Introduzione', 1)`,
+    ).run();
+    expect(nextLesson(db, "missing")).toBeNull();
+    expect(nextLesson(db, "p")).toEqual({ nodeId: "intro", reason: "next", count: 0 });
   });
 
   it("stores an open gap from two misses in one quiz", () => {

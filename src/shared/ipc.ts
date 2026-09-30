@@ -479,6 +479,16 @@ export const requests = {
       z.object({ id: z.string(), title: z.string(), mastery: z.number() }),
     ),
   },
+  "plans.recommend": {
+    input: z.object({ planId: z.string() }),
+    output: z
+      .object({
+        nodeId: z.string(),
+        reason: z.enum(["due", "gaps", "next"]),
+        count: z.number(),
+      })
+      .nullable(),
+  },
   "plans.simulations": {
     input: z.object({ planId: z.string() }),
     output: z.array(

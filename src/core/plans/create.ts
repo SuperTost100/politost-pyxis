@@ -1,7 +1,8 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
-import { pathState, type Stage } from "./path";
+import { bestRecommendation, pathState, type Stage } from "./path";
+import { dueCards } from "../study/cards";
 import { planMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
 
@@ -296,6 +297,65 @@ export function listPlans(db: Database.Database, now = Date.now()) {
       mastery,
     };
   });
+}
+
+export function nextLesson(db: Database.Database, planId: string, now = Date.now()) {
+  const plan = readPlan(db, planId);
+  if (!plan) return null;
+  const meta = db
+    .prepare(`SELECT exam_at, target, style FROM plans WHERE id = ?`)
+    .get(planId) as { exam_at: number | null; target: number; style: string } | undefined;
+  if (!meta) return null;
+  const daysToExam = meta.exam_at == null ? 30 : Math.max(1, daysUntil(meta.exam_at, now));
+  const candidates = plan.nodes.flatMap((node) => {
+    if (node.state !== "current") return [];
+    const due = node.topicId ? dueCards(db, planId, now, node.topicId).length : 0;
+    const gaps = node.topicId
+      ? (db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM gaps
+             WHERE plan_id = ? AND topic_id = ? AND closed_at IS NULL`,
+          )
+          .get(planId, node.topicId) as { n: number })
+      : { n: 0 };
+    const mastery = node.topicId
+      ? (planMastery(db, planId, now).find((topic) => topic.id === node.topicId)?.mastery ?? 0)
+      : 0;
+    const last = node.topicId
+      ? (db
+          .prepare(
+            `SELECT MAX(created_at) AS at FROM learning_events WHERE plan_id = ? AND topic_id = ?`,
+          )
+          .get(planId, node.topicId) as { at: number | null })
+      : { at: null };
+    const daysIdle = last.at == null ? 0 : Math.max(0, -daysUntil(last.at, now));
+    const styleMatch =
+      (meta.style === "practice" && node.kind === "practice") ||
+      (meta.style === "read" && node.kind === "learn")
+        ? 1
+        : 0;
+    return [
+      {
+        id: node.id,
+        dueCards: due,
+        severeGaps: gaps.n,
+        topicMastery: mastery,
+        target: meta.target,
+        daysToExam,
+        daysIdle,
+        styleMatch,
+      },
+    ];
+  });
+  const best = bestRecommendation(candidates);
+  if (!best) return null;
+  const chosen = candidates.find((item) => item.id === best.id);
+  if (!chosen) return null;
+  if (chosen.dueCards > 0) return { nodeId: chosen.id, reason: "due" as const, count: chosen.dueCards };
+  if (chosen.severeGaps > 0) {
+    return { nodeId: chosen.id, reason: "gaps" as const, count: chosen.severeGaps };
+  }
+  return { nodeId: chosen.id, reason: "next" as const, count: 0 };
 }
 
 export function listSubjects(db: Database.Database) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { reachableTarget } from "../../shared/plan-file";
-import { pathState, recommend, type PathNode } from "./path";
+import { bestRecommendation, pathState, recommend, type PathNode } from "./path";
 
 const nodes: PathNode[] = [
   { id: "intro", stage: "intro", topicId: null, position: 0 },
@@ -40,7 +40,7 @@ describe("pathState", () => {
 
 describe("recommend", () => {
   it("ranks due cards above an idle topic", () => {
-    const due = recommend({
+    const dueInput = {
       dueCards: 3,
       severeGaps: 1,
       topicMastery: 0.4,
@@ -48,8 +48,8 @@ describe("recommend", () => {
       daysToExam: 10,
       daysIdle: 0,
       styleMatch: 0,
-    });
-    const idle = recommend({
+    };
+    const idleInput = {
       dueCards: 0,
       severeGaps: 0,
       topicMastery: 0.7,
@@ -57,9 +57,14 @@ describe("recommend", () => {
       daysToExam: 10,
       daysIdle: 2,
       styleMatch: 0,
-    });
+    };
+    const due = recommend(dueInput);
+    const idle = recommend(idleInput);
     expect(due.score).toBeGreaterThan(idle.score);
     expect(due.reason).toBe("3 cards due");
+    expect(bestRecommendation([{ id: "idle", ...idleInput }, { id: "due", ...dueInput }])?.id).toBe(
+      "due",
+    );
     expect(due.score).toBeCloseTo(3 * 3 + 4 * 1 + 2 * 0.4 * (1 + 2 / 10));
   });
 });

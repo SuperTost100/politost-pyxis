@@ -55,6 +55,7 @@ export const implemented = [
   "PLAN-06", // src/renderer/src/features/plans/PlanFrames.tsx
   "PLAN-21", // src/core/plans/create.ts
   "PLAN-22", // src/core/plans/path.ts
+  "PLAN-23", // src/core/plans/create.ts
   "PLAN-26", // src/renderer/src/features/plans/PlanFrames.tsx
   "PLAN-30", // src/renderer/src/features/home/HomePages.tsx
   "PLAN-31", // src/renderer/src/features/home/HomePages.tsx

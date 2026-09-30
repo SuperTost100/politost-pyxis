@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { completeNode, createPlan, deletePlan, listPlans, listSubjects, readPlan } from "./create";
+import { completeNode, createPlan, deletePlan, listPlans, listSubjects, nextLesson, readPlan } from "./create";
 import { exportPlan, importPlan } from "./file";
 import { planMastery, planSeries } from "./progress";
 import { planDiskUsage } from "../share/usage";
@@ -41,6 +41,9 @@ export function planHandlers(db: Database.Database, workspace = "") {
     },
     simulations(input: { planId: string }) {
       return listSimulations(db, input.planId);
+    },
+    recommend(input: { planId: string }) {
+      return nextLesson(db, input.planId);
     },
     complete(input: { planId: string; nodeId: string }) {
       completeNode(db, input.planId, input.nodeId);

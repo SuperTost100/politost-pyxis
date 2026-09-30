@@ -122,3 +122,16 @@ export function recommend(input: {
         : "next lesson";
   return { score, reason };
 }
+
+export function bestRecommendation(
+  candidates: Array<Parameters<typeof recommend>[0] & { id: string }>,
+): { id: string; reason: string } | null {
+  let best: { id: string; score: number; reason: string } | null = null;
+  for (const candidate of candidates) {
+    const scored = recommend(candidate);
+    if (!best || scored.score > best.score) {
+      best = { id: candidate.id, score: scored.score, reason: scored.reason };
+    }
+  }
+  return best ? { id: best.id, reason: best.reason } : null;
+}
