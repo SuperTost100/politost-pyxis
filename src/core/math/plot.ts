@@ -137,8 +137,11 @@ function connects(
   point: { x: number; y: number },
   at: ((x: number) => number) | undefined,
   depth = 0,
+  origin = 0,
 ): boolean {
   if (!at) return true;
+  const root =
+    depth === 0 ? Math.max(Math.abs(prev.y), Math.abs(point.y), 1e-12) : origin;
   let mid = Number.NaN;
   try {
     mid = at((prev.x + point.x) / 2);
@@ -150,9 +153,12 @@ function connects(
   const scale = Math.max(1e-9, Math.min(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid)));
   const span = Math.max(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid));
   if (Math.abs(mid - chord) <= 0.25 * scale && span <= 8 * scale) return true;
-  if (depth >= 16) return !unresolvedPole(prev, point, mid, at);
+  if (depth >= 16) return !unresolvedPole(prev, point, mid, at, root);
   const middle = { x: (prev.x + point.x) / 2, y: mid };
-  return connects(prev, middle, at, depth + 1) && connects(middle, point, at, depth + 1);
+  return (
+    connects(prev, middle, at, depth + 1, root) &&
+    connects(middle, point, at, depth + 1, root)
+  );
 }
 
 function unresolvedPole(
@@ -160,10 +166,13 @@ function unresolvedPole(
   point: { x: number; y: number },
   mid: number,
   at: (x: number) => number,
+  origin: number,
 ) {
   const bound = Math.max(Math.abs(prev.y), Math.abs(point.y), 1e-9);
-  if (prev.y * point.y < 0 && Math.min(Math.abs(prev.y), Math.abs(point.y)) > 1) return true;
-  if (Math.abs(mid) > 8 * bound) return true;
+  const ceiling = Math.max(origin, bound);
+  const here = Math.max(bound, Math.abs(mid));
+  if (prev.y * point.y < 0 && here > 8 * origin) return true;
+  if (Math.abs(mid) > 8 * ceiling) return true;
   for (const t of [0.2, 0.4, 0.6, 0.8]) {
     let probe = Number.NaN;
     try {
@@ -171,7 +180,7 @@ function unresolvedPole(
     } catch {
       return true;
     }
-    if (!Number.isFinite(probe) || Math.abs(probe) > 8 * bound) return true;
+    if (!Number.isFinite(probe) || Math.abs(probe) > 8 * ceiling) return true;
   }
   return false;
 }
