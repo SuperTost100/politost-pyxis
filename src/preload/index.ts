@@ -84,6 +84,7 @@ function handle(data: unknown): void {
   if (message.kind === "end") {
     pending.get(message.id)?.resolve(undefined);
     pending.delete(message.id);
+    canceled.delete(message.id);
     streams.delete(message.id);
     return;
   }
@@ -91,6 +92,7 @@ function handle(data: unknown): void {
   const item = pending.get(message.id);
   if (!item) return;
   pending.delete(message.id);
+  if (message.id) canceled.delete(message.id);
   if (message.ok) item.resolve(message.value);
   else item.reject(message.error);
 }
@@ -104,12 +106,14 @@ ipcRenderer.on("pyxis:port", (event) => {
   const next = event.ports[0];
   if (!next) return;
   const replay: unknown[] = [];
+  let droppedWrite = false;
   if (port) {
     for (const [id, item] of pending) {
       const message = item.message as { id?: string; name?: string };
       if (message.id && canceled.has(message.id)) {
         item.reject(aborted);
         pending.delete(id);
+        canceled.delete(id);
         streams.delete(id);
         continue;
       }
@@ -119,7 +123,9 @@ ipcRenderer.on("pyxis:port", (event) => {
       }
       item.reject(coreRestarted);
       pending.delete(id);
+      canceled.delete(id);
       streams.delete(id);
+      droppedWrite = true;
     }
   }
   port?.close();
@@ -129,6 +135,7 @@ ipcRenderer.on("pyxis:port", (event) => {
   for (const message of queued) port.postMessage(message);
   queued.length = 0;
   for (const message of replay) port.postMessage(message);
+  if (droppedWrite) restarted?.();
   for (const cb of portListeners) cb();
 });
 
