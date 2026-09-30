@@ -147,12 +147,13 @@ function placeRadial(nodes: MapNode[]): void {
     root.y = 0;
   }
   const children = nodes.filter((node) => node.parent != null);
+  const ring = Math.max(220, Math.ceil((children.length * 160) / (2 * Math.PI)));
   children.forEach((node, index) => {
     if (node.pinned) return;
     const angle = (index / Math.max(children.length, 1)) * Math.PI * 2 - Math.PI / 2;
-    const ring = node.parent === root.id ? 220 : 360;
-    node.x = Math.round(Math.cos(angle) * ring);
-    node.y = Math.round(Math.sin(angle) * ring);
+    const radius = node.parent === root.id ? ring : ring + 160;
+    node.x = Math.round(Math.cos(angle) * radius);
+    node.y = Math.round(Math.sin(angle) * radius);
   });
 }
 

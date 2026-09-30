@@ -38,6 +38,26 @@ describe("concept map", () => {
     const child = radial.nodes.find((node) => node.id === "a");
     expect(root).toMatchObject({ x: 0, y: 0 });
     expect(Math.hypot(child?.x ?? 0, child?.y ?? 0)).toBeGreaterThan(200);
+    const many = layoutGraph({
+      layout: "radial",
+      undo: null,
+      edges: [],
+      nodes: [
+        { id: "root", label: "Moti", parent: null, x: 0, y: 0, pinned: false },
+        ...Array.from({ length: 12 }, (_, index) => ({
+          id: `n${index}`,
+          label: `n${index}`,
+          parent: "root",
+          x: 0,
+          y: 0,
+          pinned: false,
+        })),
+      ],
+    });
+    const first = many.nodes.find((node) => node.id === "n0");
+    const second = many.nodes.find((node) => node.id === "n1");
+    const gap = Math.hypot((first?.x ?? 0) - (second?.x ?? 0), (first?.y ?? 0) - (second?.y ?? 0));
+    expect(gap).toBeGreaterThan(140);
   });
 
   it("applies one patch and undoes it", () => {

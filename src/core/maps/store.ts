@@ -37,16 +37,18 @@ export function openTopicMap(
     undo: null,
     nodes: [
       { id: "root", label: topic.title, parent: null, x: 0, y: 0, pinned: false },
-      ...passages
-        .map((row) => ({
+      ...passages.map((row) => {
+        const text = row.text.replace(/\s+/g, " ").trim().slice(0, 36);
+        const section = row.section_path?.trim();
+        return {
           id: row.id,
-          label: row.section_path?.trim() || row.text.replace(/\s+/g, " ").trim().slice(0, 42),
+          label: section && text ? `${section} · ${text}` : section || text,
           parent: "root" as string | null,
           x: 0,
           y: 0,
           pinned: false,
-        }))
-        .filter((node, index, all) => all.findIndex((item) => item.label === node.label) === index),
+        };
+      }),
     ],
     edges: [],
   });

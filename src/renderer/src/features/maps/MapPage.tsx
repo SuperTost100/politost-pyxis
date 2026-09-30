@@ -114,24 +114,26 @@ export function MapPage() {
             transform={`translate(${node.x} ${node.y})`}
             style={{ cursor: "grab" }}
             onPointerDown={(event) => {
-              const startX = event.clientX;
-              const startY = event.clientY;
-              const origin = { x: node.x, y: node.y };
+              const svg = event.currentTarget.ownerSVGElement;
               const target = event.currentTarget;
               target.setPointerCapture(event.pointerId);
-              const scale = bounds.width / Math.max(target.ownerSVGElement?.clientWidth ?? 1, 1);
+              const local = (ev: PointerEvent) => svgPoint(svg, ev.clientX, ev.clientY);
+              const originPointer = local(event.nativeEvent);
+              const origin = { x: node.x, y: node.y };
               const move = (ev: PointerEvent) => {
+                const point = local(ev);
                 setDrag({
                   id: node.id,
-                  x: Math.round(origin.x + (ev.clientX - startX) * scale),
-                  y: Math.round(origin.y + (ev.clientY - startY) * scale),
+                  x: Math.round(origin.x + point.x - originPointer.x),
+                  y: Math.round(origin.y + point.y - originPointer.y),
                 });
               };
               const up = (ev: PointerEvent) => {
                 target.removeEventListener("pointermove", move);
                 target.removeEventListener("pointerup", up);
-                const x = Math.round(origin.x + (ev.clientX - startX) * scale);
-                const y = Math.round(origin.y + (ev.clientY - startY) * scale);
+                const point = local(ev);
+                const x = Math.round(origin.x + point.x - originPointer.x);
+                const y = Math.round(origin.y + point.y - originPointer.y);
                 setDrag(null);
                 void invoke("maps.move", {
                   planId: planId ?? "",
@@ -154,6 +156,17 @@ export function MapPage() {
       </svg>
     </CanvasLayout>
   );
+}
+
+function svgPoint(svg: SVGSVGElement | null, clientX: number, clientY: number) {
+  if (!svg) return { x: 0, y: 0 };
+  const point = svg.createSVGPoint();
+  point.x = clientX;
+  point.y = clientY;
+  const matrix = svg.getScreenCTM();
+  if (!matrix) return { x: 0, y: 0 };
+  const local = point.matrixTransform(matrix.inverse());
+  return { x: local.x, y: local.y };
 }
 
 function boundsOf(nodes: Array<{ x: number; y: number }>) {
@@ -183,6 +196,7 @@ function downloadPng(
   const px = (x: number) => (x - bounds.minX) * sx;
   const py = (y: number) => (y - bounds.minY) * sy;
   ctx.strokeStyle = "#d7dbe6";
+  ctx.lineWidth = 2;
   for (const edge of edges) {
     const from = nodes.find((node) => node.id === edge.from);
     const to = nodes.find((node) => node.id === edge.to);
@@ -192,10 +206,23 @@ function downloadPng(
     ctx.lineTo(px(to.x), py(to.y));
     ctx.stroke();
   }
-  ctx.fillStyle = "#e8ebf2";
-  ctx.font = "16px sans-serif";
   ctx.textAlign = "center";
-  for (const node of nodes) ctx.fillText(node.label.slice(0, 22), px(node.x), py(node.y));
+  ctx.textBaseline = "middle";
+  ctx.font = "16px sans-serif";
+  for (const node of nodes) {
+    const x = px(node.x);
+    const y = py(node.y);
+    const w = 140 * sx;
+    const h = 44 * sy;
+    ctx.fillStyle = "#1c2230";
+    ctx.strokeStyle = "#d7dbe6";
+    ctx.beginPath();
+    ctx.roundRect(x - w / 2, y - h / 2, w, h, 12);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#e8ebf2";
+    ctx.fillText(node.label.slice(0, 22), x, y);
+  }
   const link = document.createElement("a");
   link.href = canvas.toDataURL("image/png");
   link.download = "map.png";
