@@ -2,7 +2,8 @@ import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { importSmartbook } from "../sources/smartbook";
-import { completeNode, createPlan, deletePlan } from "./create";
+import { completeNode, createPlan, deletePlan, readPlan } from "./create";
+import { uuidv7 } from "../../shared/ids";
 import { pathState } from "./path";
 
 function pack(files: Record<string, string>): Uint8Array {
@@ -142,5 +143,48 @@ describe("createPlan", () => {
       states.find((item) => item.id === rows.find((row) => row.kind === kind)?.id)?.state;
     expect(stateOf("practice")).toBe("current");
     expect(stateOf("learn")).toBe("locked");
+  });
+
+  it("keeps the final check locked after a failed simulation", () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Fisica",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore.\n",
+      }),
+    );
+    const plan = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [imported.sourceId],
+      target: 0.8,
+    });
+    const nodes = db
+      .prepare(`SELECT id, kind, topic_id FROM path_nodes WHERE plan_id = ?`)
+      .all(plan.planId) as Array<{ id: string; kind: string; topic_id: string | null }>;
+    let at = Date.now();
+    for (const node of nodes) {
+      if (node.kind === "final") continue;
+      db.prepare(
+        `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+         VALUES (?, 'lesson_completed', ?, NULL, ?, ?)`,
+      ).run(uuidv7(at), plan.planId, JSON.stringify({ nodeId: node.id }), at);
+      at += 1;
+    }
+    for (const topicId of new Set(nodes.flatMap((node) => (node.topic_id ? [node.topic_id] : [])))) {
+      db.prepare(
+        `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+         VALUES (?, 'answer_given', ?, ?, ?, ?)`,
+      ).run(uuidv7(at), plan.planId, topicId, JSON.stringify({ score: 0, scores: [0] }), at);
+      at += 1;
+    }
+    const view = readPlan(db, plan.planId);
+    expect(view?.nodes.find((node) => node.kind === "simulation")?.state).toBe("done");
+    expect(view?.nodes.find((node) => node.kind === "final")?.state).toBe("locked");
   });
 });

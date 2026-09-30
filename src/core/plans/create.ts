@@ -206,7 +206,7 @@ export function readPlan(db: Database.Database, planId: string) {
   );
   const mastery: Record<string, number> = {};
   for (const topic of planMastery(db, planId)) {
-    mastery[topic.id] = simulationDone ? Math.max(topic.mastery, 0.8) : Math.min(topic.mastery, 0.5);
+    mastery[topic.id] = simulationDone ? topic.mastery : Math.min(topic.mastery, 0.5);
   }
   const states = pathState(
     rows.map((row) => ({
