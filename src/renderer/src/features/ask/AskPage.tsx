@@ -28,6 +28,7 @@ export function AskPage() {
     queryFn: () => invoke("chats.list", {}),
   });
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState<Record<string, string>>({});
   const sources = useQuery({
     queryKey: ["sources"],
@@ -38,6 +39,14 @@ export function AskPage() {
     enabled: Boolean(chatId),
     queryFn: () => invoke("chats.read", { chatId: chatId ?? "" }),
   });
+  useEffect(() => {
+    if (chatId) return;
+    setPicked([]);
+    setUncovered(null);
+    setHistoryOpen(false);
+    loadedFor.current = undefined;
+  }, [chatId]);
+
   useEffect(() => {
     if (!chatId || !thread.data) return;
     if (loadedFor.current === chatId) return;
@@ -138,11 +147,16 @@ export function AskPage() {
   return (
     <div className="ask-home">
       {chatId ? (
-        <Button type="text" onClick={() => navigate("/ask")}>
-          {t("ask.new")}
-        </Button>
+        <div className="gallery-row">
+          <Button type="text" onClick={() => navigate("/ask")}>
+            {t("ask.new")}
+          </Button>
+          <Button type="text" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
+            {t("ask.history")}
+          </Button>
+        </div>
       ) : null}
-      {historyList}
+      {chatId ? (historyOpen ? historyList : null) : historyList}
       {messages.length === 0 ? (
         <div className="ask-greeting">
           <h1 className="display">{t("ask.greeting")}</h1>
