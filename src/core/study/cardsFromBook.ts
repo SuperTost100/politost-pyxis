@@ -12,8 +12,10 @@ export function ensureTopicCards(db: Database.Database, planId: string, topicId:
        LIMIT 20`,
     )
     .all(topicId) as Array<{ text: string; section_path: string | null }>;
-  const pairs = passages.map((row) => ({
-    front: row.text.replace(/\s+/g, " ").trim().slice(0, 120),
+  const pairs = passages.map((row, index) => ({
+    front: row.section_path?.trim()
+      ? `${row.section_path.trim()} · ${index + 1}`
+      : row.text.replace(/\s+/g, " ").trim().slice(0, 48),
     back: row.text.slice(0, 600),
   }));
   for (const exercise of topicExercises(db, topicId).slice(0, 20)) {

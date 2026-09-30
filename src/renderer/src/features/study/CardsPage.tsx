@@ -27,7 +27,7 @@ export function CardsPage() {
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
   const node = (plan.data?.nodes ?? []).find(
-    (item) => item.kind === "cards" && item.topicId === topicId && item.state !== "done",
+    (item) => item.kind === "cards" && item.topicId === topicId && item.state === "current",
   );
   const card = cards.data?.[0];
 

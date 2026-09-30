@@ -2,7 +2,7 @@ import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { importSmartbook } from "../sources/smartbook";
-import { createPlan, deletePlan } from "./create";
+import { completeNode, createPlan, deletePlan } from "./create";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -46,6 +46,10 @@ describe("createPlan", () => {
       )
       .get(plan.planId) as { n: number };
     expect(linked.n).toBe(2);
+    const practice = db
+      .prepare(`SELECT id FROM path_nodes WHERE plan_id = ? AND kind = 'practice' LIMIT 1`)
+      .get(plan.planId) as { id: string };
+    expect(() => completeNode(db, plan.planId, practice.id)).toThrow(/node-locked/);
     deletePlan(db, plan.planId);
     const left = db.prepare(`SELECT COUNT(*) AS n FROM plans`).get() as { n: number };
     expect(left.n).toBe(0);

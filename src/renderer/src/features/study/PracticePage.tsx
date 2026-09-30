@@ -19,7 +19,7 @@ export function PracticePage() {
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
   const node = (plan.data?.nodes ?? []).find(
-    (item) => item.kind === "practice" && item.topicId === topicId && item.state !== "done",
+    (item) => item.kind === "practice" && item.topicId === topicId && item.state === "current",
   );
   const exercises = useQuery({
     queryKey: ["exercises", topicId],

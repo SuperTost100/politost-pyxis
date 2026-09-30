@@ -22,7 +22,7 @@ export function LessonPage() {
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
   const node = (plan.data?.nodes ?? []).find(
-    (item) => item.kind === "learn" && item.topicId === topicId,
+    (item) => item.kind === "learn" && item.topicId === topicId && item.state === "current",
   );
 
   return (
@@ -37,7 +37,7 @@ export function LessonPage() {
       <article className="passage">
         <MarkdownView>{lesson.data?.markdown ?? ""}</MarkdownView>
       </article>
-      {node && node.state !== "done" ? (
+      {node ? (
         <Button
           type="primary"
           shape="round"

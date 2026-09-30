@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { pathState, type Stage } from "./path";
+import { planMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
 
 export type CreatedPlan = {
@@ -118,6 +119,8 @@ export function completeNode(
     .prepare(`SELECT id, topic_id FROM path_nodes WHERE id = ? AND plan_id = ?`)
     .get(nodeId, planId) as { id: string; topic_id: string | null } | undefined;
   if (!node) throw new Error("node-missing");
+  const open = readPlan(db, planId)?.nodes.find((item) => item.id === nodeId);
+  if (open?.state !== "current") throw new Error("node-locked");
   db.prepare(
     `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
      VALUES (?, 'lesson_completed', ?, ?, ?, ?)`,
@@ -153,17 +156,12 @@ export function readPlan(db: Database.Database, planId: string) {
     const payload = JSON.parse(event.payload_json) as { nodeId?: string };
     return payload.nodeId ? [payload.nodeId] : [];
   });
-  const mastery: Record<string, number> = {};
-  for (const event of events) {
-    if (event.topic_id) mastery[event.topic_id] = 0.5;
-  }
   const simulationDone = rows.some(
     (row) => row.kind === "simulation" && doneIds.includes(row.id),
   );
-  if (simulationDone) {
-    for (const row of rows) {
-      if (row.topic_id) mastery[row.topic_id] = 0.8;
-    }
+  const mastery: Record<string, number> = {};
+  for (const topic of planMastery(db, planId)) {
+    mastery[topic.id] = simulationDone ? Math.max(topic.mastery, 0.8) : Math.min(topic.mastery, 0.5);
   }
   const states = pathState(
     rows.map((row) => ({
