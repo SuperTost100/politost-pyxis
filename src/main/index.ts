@@ -225,7 +225,13 @@ function createWindow(): void {
   });
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
-  mainWindow.webContents.on("did-finish-load", () => connectRenderer());
+  mainWindow.webContents.on("did-start-loading", () => {
+    pageReady = false;
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    pageReady = true;
+    connectRenderer();
+  });
 
   const saveBounds = (): void => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -263,6 +269,8 @@ function storedKeys(): { anthropic?: string; openai?: string } {
 }
 
 let keysChain: Promise<void> = Promise.resolve();
+let pageReady = false;
+let keysReadyFor: UtilityProcess | null = null;
 
 function pushKeys(): Promise<void> {
   const run = keysChain.then(() => deliverKeys());
@@ -290,7 +298,9 @@ function deliverKeys(): Promise<void> {
 }
 
 function connectRenderer(): void {
-  if (!coreChild || !mainWindow || mainWindow.isDestroyed()) return;
+  if (!pageReady || !coreChild || keysReadyFor !== coreChild || !mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
   const { port1, port2 } = new MessageChannelMain();
   coreChild.postMessage({ type: "renderer-port" }, [port1]);
   mainWindow.webContents.postMessage("pyxis:port", null, [port2]);
@@ -302,6 +312,7 @@ function startCore(): void {
     stdio: "inherit",
   });
   coreChild = child;
+  keysReadyFor = null;
   child.postMessage({
     type: "bootstrap",
     workspacePath,
@@ -322,7 +333,9 @@ function startCore(): void {
       );
     })
     .finally(() => {
-      if (coreChild === child) connectRenderer();
+      if (coreChild !== child) return;
+      keysReadyFor = child;
+      connectRenderer();
     });
 }
 
