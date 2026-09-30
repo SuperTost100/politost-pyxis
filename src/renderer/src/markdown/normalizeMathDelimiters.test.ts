@@ -38,5 +38,8 @@ describe("normalizeMathDelimiters", () => {
     expect(normalizeMathDelimiters(tilde)).toBe(tilde);
     const wider = "````\n[P1]\n````";
     expect(normalizeMathDelimiters(wider)).toBe(wider);
+    const longerClose = "```\n[P1]\n````\n\\(x\\)";
+    expect(normalizeMathDelimiters(longerClose)).toContain("$x$");
+    expect(normalizeMathDelimiters(longerClose)).toContain("```\n[P1]\n````");
   });
 });

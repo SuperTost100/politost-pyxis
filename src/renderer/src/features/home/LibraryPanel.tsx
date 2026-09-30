@@ -3,6 +3,7 @@ import { Button } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 
@@ -188,13 +189,13 @@ export function LibraryPanel() {
       </div>
       <div className="reading-column">
         {(page.data ?? []).map((row) => (
-          <p
+          <div
             key={row.id}
             id={row.current ? "passage-current" : undefined}
             className={row.current ? "passage is-current" : "passage"}
           >
-            {row.text}
-          </p>
+            <MarkdownView>{row.text}</MarkdownView>
+          </div>
         ))}
       </div>
     </div>

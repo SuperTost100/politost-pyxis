@@ -35,7 +35,17 @@ export function importSmartbook(
   if (isEncrypted(bytes)) {
     throw new Error("encrypted-smartbook");
   }
-  const entries = unzipSync(bytes);
+  if (bytes.length > 80 * 1024 * 1024) throw new Error("archive-too-large");
+  // ponytail: refuse a member whose declared size blows the cap before inflate. A header that lies about originalSize can still expand; switch to a streaming unzip that counts output bytes.
+  let declared = 0;
+  const maxExpanded = 256 * 1024 * 1024;
+  const entries = unzipSync(bytes, {
+    filter(file) {
+      declared += file.originalSize;
+      return declared <= maxExpanded;
+    },
+  });
+  if (declared > maxExpanded) throw new Error("archive-too-large");
   const configKey = Object.keys(entries).find(
     (key) => key.endsWith("smartbook.json") && !key.includes("__MACOSX"),
   );
@@ -76,10 +86,10 @@ export function importSmartbook(
     for (const chapter of config.chapters) {
       const fileKey = `${prefix}chapters/${chapter.file}`;
       const raw = entries[fileKey];
-      if (!raw) continue;
+      if (!raw) throw new Error("chapter-missing");
       const parsed = parseChapterMarkdown(strFromU8(raw), chapter.number);
       for (const paragraph of parsed.paragraphs) {
-        const text = `${paragraph.title}\n${paragraph.content}`.trim();
+        const text = withFormulas(paragraph.content, parsed.formulas);
         if (!text) continue;
         insertPassage.run(
           uuidv7(now + passages + 3),
@@ -121,6 +131,20 @@ export function importSmartbook(
     passages,
     exercises,
   };
+}
+
+function withFormulas(
+  content: string,
+  formulas: Array<{ id: string; latex: string }>,
+): string {
+  let text = content;
+  for (const formula of formulas) {
+    text = text.replaceAll(
+      `<!--FORMULA:${formula.id}-->`,
+      `\n$$\n${formula.latex}\n$$\n`,
+    );
+  }
+  return text.trim();
 }
 
 function isEncrypted(bytes: Uint8Array): boolean {

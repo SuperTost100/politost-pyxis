@@ -1,12 +1,16 @@
 function fenceClose(input: string, from: number, tick: string, width: number): number {
-  const marker = tick.repeat(width);
   let at = from;
   while (at < input.length) {
     const line = input.indexOf("\n", at);
     const start = line === -1 ? input.length : line + 1;
-    if (input.startsWith(marker, start) && input[start + width] !== tick) {
-      const end = input.indexOf("\n", start);
-      return end === -1 ? input.length : end + 1;
+    let widthHere = 0;
+    while (input[start + widthHere] === tick) widthHere += 1;
+    if (widthHere >= width) {
+      let cursor = start + widthHere;
+      while (input[cursor] === " " || input[cursor] === "\t") cursor += 1;
+      if (input[cursor] === "\n" || input[cursor] === undefined) {
+        return input[cursor] === "\n" ? cursor + 1 : input.length;
+      }
     }
     if (line === -1) return -1;
     at = line + 1;

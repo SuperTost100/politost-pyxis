@@ -206,6 +206,28 @@ export function onePagePdf(label: string): Uint8Array {
   return pdfBytes(objects);
 }
 
+export function manyPagePdf(count: number, label: string): Uint8Array {
+  const safe = label.replace(/[()\\]/g, "");
+  const fontId = count + 3;
+  const kids = Array.from({ length: count }, (_, index) => `${index + 3} 0 R`).join(" ");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Count ${count} /Kids [${kids}] >>`,
+  ];
+  for (let page = 1; page <= count; page += 1) {
+    const contentId = fontId + page;
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents ${contentId} 0 R /Resources << /Font << /F1 ${fontId} 0 R >> >> >>`,
+    );
+  }
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  for (let page = 1; page <= count; page += 1) {
+    const stream = `BT /F1 12 Tf 20 100 Td (${safe} ${page}) Tj ET`;
+    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  }
+  return pdfBytes(objects);
+}
+
 export function blankPdf(): Uint8Array {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",

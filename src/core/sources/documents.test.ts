@@ -10,6 +10,7 @@ import {
   extractPlain,
   extractPptx,
   importDocumentFile,
+  manyPagePdf,
   onePagePdf,
 } from "./documents";
 import { listSources } from "./smartbook";
@@ -60,5 +61,14 @@ describe("document extract", () => {
     const imported = await importDocumentFile(db, dir, file);
     expect(imported.passages).toBe(0);
     expect(listSources(db)[0]?.status).toBe("needs-ocr");
+  });
+
+  it("indexes a 600-page PDF", async () => {
+    const extracted = await extractPdf(
+      manyPagePdf(600, "energia interna del sistema termodinamico"),
+    );
+    expect(extracted.scanned).toBe(false);
+    expect(extracted.pages).toHaveLength(600);
+    expect(extracted.pages[599]?.text).toContain("600");
   });
 });
