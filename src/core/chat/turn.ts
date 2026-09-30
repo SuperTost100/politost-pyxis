@@ -48,6 +48,23 @@ type AskInput = {
   run?: Parameters<typeof generate>[0]["run"];
 };
 
+function profileContext(db: Database.Database): string {
+  const row = db
+    .prepare(
+      `SELECT display_name, education_level, course, content_language FROM profile LIMIT 1`,
+    )
+    .get() as
+    | {
+        display_name: string | null;
+        education_level: string | null;
+        course: string | null;
+        content_language: string | null;
+      }
+    | undefined;
+  if (!row) return "";
+  return `Student: ${row.display_name ?? ""}. Level: ${row.education_level ?? ""}. Course: ${row.course ?? ""}. Write all output in ${row.content_language ?? "the student's language"}.`;
+}
+
 function splitFollowups(text: string): { body: string; followups: string[] } {
   const match = text.match(/<followups>([\s\S]*?)<\/followups>/i);
   if (!match?.[1]) return { body: text.trim(), followups: [] };
@@ -114,11 +131,13 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
   const passageBlock = citations
     .map((cite, index) => `[P${cite.index}] ${cite.label}\n${found.hits[index]?.text ?? ""}`)
     .join("\n\n");
-  const system = input.allowGeneral
-    ? generalPrompt
-    : input.mode === "socratic"
-      ? socraticPrompt
-      : solverPrompt;
+  const system = `${
+    input.allowGeneral
+      ? generalPrompt
+      : input.mode === "socratic"
+        ? socraticPrompt
+        : solverPrompt
+  }\n${profileContext(db)}`;
   const prompt = `${passageBlock}\n\nEarlier turns:\n${historyText(db, chatId)}\n\nQuestion:\n${input.text}`;
   let result;
   try {

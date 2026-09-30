@@ -91,6 +91,42 @@ describe("askTurn", () => {
     expect(result.message?.citations).toHaveLength(0);
   });
 
+  it("puts the profile into the tutor prompt", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO profile
+        (id, display_name, education_level, course, content_language, created_at, updated_at)
+       VALUES ('p', 'Ada', 'university', 'Fisica 1', 'Italian', 1, 1)`,
+    ).run();
+    let system = "";
+    await askTurn(db, {
+      text: "ciao",
+      allowGeneral: true,
+      run: async (input) => {
+        system = input.system ?? "";
+        return reply;
+      },
+    });
+    expect(system).toContain("Ada");
+    expect(system).toContain("Fisica 1");
+    expect(system).toContain("Italian");
+  });
+
+  it("uses the chat engine selected for that turn", async () => {
+    const db = openDatabase(":memory:");
+    const seen: string[] = [];
+    const run = async (input: { selection: { model: string } }) => {
+      seen.push(input.selection.model);
+      return { ...reply, model: input.selection.model };
+    };
+    await askTurn(db, { text: "prima", allowGeneral: true, run });
+    db.prepare(
+      `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
+    ).run(JSON.stringify({ provider: "codex", model: "gpt-6.1-sol" }));
+    await askTurn(db, { text: "dopo", allowGeneral: true, run });
+    expect(seen).toEqual(["claude-sonnet-4-6", "gpt-6.1-sol"]);
+  });
+
   it("does not store a reply when the turn is aborted", async () => {
     const db = openDatabase(":memory:");
     const controller = new AbortController();
