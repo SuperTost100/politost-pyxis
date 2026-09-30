@@ -106,44 +106,46 @@ export function sample(source: string, a: number, b: number, n = 240): Array<{ x
   return points;
 }
 
-export function splitSeries(points: Array<{ x: number; y: number }>) {
-  const slopes: number[] = [];
+export function splitSeries(
+  points: Array<{ x: number; y: number }>,
+  at?: (x: number) => number,
+) {
   const gaps: number[] = [];
   for (let index = 1; index < points.length; index++) {
-    const prev = points[index - 1];
-    const point = points[index];
-    if (!prev || !point) continue;
-    const dx = point.x - prev.x;
-    if (dx <= 0) continue;
-    gaps.push(dx);
-    slopes.push((point.y - prev.y) / dx);
+    const dx = (points[index]?.x ?? 0) - (points[index - 1]?.x ?? 0);
+    if (dx > 0) gaps.push(dx);
   }
   gaps.sort((a, b) => a - b);
   const step = gaps[0] ?? Number.POSITIVE_INFINITY;
-  const magnitudes = slopes.map((slope) => Math.abs(slope)).sort((a, b) => a - b);
-  const typical = magnitudes[Math.floor(magnitudes.length / 2)] ?? 0;
   const groups: Array<Array<{ x: number; y: number }>> = [];
   let current: Array<{ x: number; y: number }> = [];
-  points.forEach((point, index) => {
+  for (const point of points) {
     const prev = current[current.length - 1];
-    const slope = slopes[index - 1];
-    const left = slopes[index - 2];
-    const right = slopes[index];
-    const pole =
-      slope != null &&
-      left != null &&
-      right != null &&
-      left * right > 0 &&
-      slope * left < 0 &&
-      Math.abs(slope) > 8 * Math.max(typical, 1e-9);
-    if (prev && (point.x - prev.x > step * 1.5 || pole)) {
+    if (prev && (point.x - prev.x > step * 1.5 || crossesPole(prev, point, at))) {
       groups.push(current);
       current = [];
     }
     current.push(point);
-  });
+  }
   if (current.length > 0) groups.push(current);
   return groups;
+}
+
+function crossesPole(
+  prev: { x: number; y: number },
+  point: { x: number; y: number },
+  at?: (x: number) => number,
+) {
+  if (!at) return false;
+  let mid = Number.NaN;
+  try {
+    mid = at((prev.x + point.x) / 2);
+  } catch {
+    mid = Number.NaN;
+  }
+  const chord = (prev.y + point.y) / 2;
+  const scale = Math.max(1, Math.abs(prev.y), Math.abs(point.y), Math.abs(chord));
+  return !Number.isFinite(mid) || Math.abs(mid - chord) > 4 * scale;
 }
 
 function applyFn(name: string, arg: number): number {

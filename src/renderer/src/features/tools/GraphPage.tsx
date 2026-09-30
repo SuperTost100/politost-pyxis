@@ -2,7 +2,14 @@ import { Button, Input } from "antd";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
-import { derivative, sample, secondDerivative, simpson, splitSeries } from "../../../../core/math/plot";
+import {
+  derivative,
+  evalExpr,
+  sample,
+  secondDerivative,
+  simpson,
+  splitSeries,
+} from "../../../../core/math/plot";
 
 const A = -8;
 const B = 8;
@@ -42,7 +49,14 @@ export function GraphPage() {
         </span>
       </div>
       {series.error ? <p className="small">{series.error}</p> : null}
-      <Curve f={series.f} d1={series.d1} d2={series.d2} />
+      <Curve
+        f={series.f}
+        d1={series.d1}
+        d2={series.d2}
+        fAt={(x) => evalExpr(expr, x)}
+        d1At={(x) => derivative(expr, x)}
+        d2At={(x) => secondDerivative(expr, x)}
+      />
       <p className="small">{t("graph.legend")}</p>
     </CanvasLayout>
   );
@@ -63,6 +77,9 @@ function Curve(props: {
   f: Array<{ x: number; y: number }>;
   d1: Array<{ x: number; y: number }>;
   d2: Array<{ x: number; y: number }>;
+  fAt: (x: number) => number;
+  d1At: (x: number) => number;
+  d2At: (x: number) => number;
 }) {
   const w = 960;
   const h = 420;
@@ -74,13 +91,13 @@ function Curve(props: {
   return (
     <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label="f" style={{ width: "100%", height: "60vh" }}>
       <line x1={20} y1={Y(0)} x2={w - 20} y2={Y(0)} stroke="currentColor" strokeWidth={1} />
-      {splitSeries(props.f).map((part, index) => (
+      {splitSeries(props.f, props.fAt).map((part, index) => (
         <polyline key={`f${index}`} fill="none" stroke="var(--mastery, #3dbe8b)" strokeWidth={2} points={path(part, X, Y)} />
       ))}
-      {splitSeries(props.d1).map((part, index) => (
+      {splitSeries(props.d1, props.d1At).map((part, index) => (
         <polyline key={`d${index}`} fill="none" stroke="var(--primary, #3262db)" strokeWidth={1.5} points={path(part, X, Y)} />
       ))}
-      {splitSeries(props.d2).map((part, index) => (
+      {splitSeries(props.d2, props.d2At).map((part, index) => (
         <polyline key={`s${index}`} fill="none" stroke="currentColor" strokeWidth={1} strokeDasharray="4 4" points={path(part, X, Y)} />
       ))}
     </svg>
