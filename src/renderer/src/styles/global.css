@@ -75,6 +75,10 @@ body {
   background: var(--bg);
 }
 
+.ant-pro-global-header-logo h1:empty {
+  display: none;
+}
+
 .ant-pro-global-header,
 .ant-layout-header {
   -webkit-app-region: drag;

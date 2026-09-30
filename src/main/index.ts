@@ -27,6 +27,8 @@ import {
 } from "../shared/bridge";
 
 const isDev = !!process.env["ELECTRON_RENDERER_URL"];
+const userDataOverride = process.env["PYXIS_USER_DATA"];
+if (userDataOverride) app.setPath("userData", userDataOverride);
 
 protocol.registerSchemesAsPrivileged([
   {
