@@ -29,19 +29,24 @@ export function FocusLayout(props: {
   primary?: ReactNode;
   secondary?: ReactNode;
   progress?: number;
+  closable?: boolean;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <div className="focus">
       <header className="focus-bar">
-        <Button
-          shape="circle"
-          type="text"
-          aria-label={t("nav.close")}
-          icon={<X size={18} strokeWidth={1.75} />}
-          onClick={() => navigate("/exams")}
-        />
+        {props.closable === false ? (
+          <span />
+        ) : (
+          <Button
+            shape="circle"
+            type="text"
+            aria-label={t("nav.close")}
+            icon={<X size={18} strokeWidth={1.75} />}
+            onClick={() => navigate("/exams")}
+          />
+        )}
         <div>
           <h1 className="title-3 focus-title">{props.title}</h1>
           {props.meta ? (

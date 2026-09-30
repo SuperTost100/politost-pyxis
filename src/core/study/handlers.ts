@@ -5,6 +5,7 @@ import { ensureTopicCards } from "./cardsFromBook";
 import { topicExercises } from "./exercises";
 import { openLesson } from "./openLesson";
 import type { Rating } from "./schedule";
+import { syncGaps } from "../plans/progress";
 import { openSimulation, readSimulation, startSimulation } from "./simulation";
 import { startTopicQuiz, submitAttempt } from "./topicQuiz";
 
@@ -32,7 +33,17 @@ export function studyHandlers(db: Database.Database) {
         db.prepare(
           `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
            VALUES (?, 'answer_given', ?, ?, ?, ?)`,
-        ).run(uuidv7(now), row.plan_id, row.topic_id, JSON.stringify({ score: scored.score }), now);
+        ).run(
+          uuidv7(now),
+          row.plan_id,
+          row.topic_id,
+          JSON.stringify({
+            score: scored.score,
+            scores: scored.results.map((result) => result.score),
+          }),
+          now,
+        );
+        syncGaps(db, row.plan_id, now);
       }
       return scored;
     },

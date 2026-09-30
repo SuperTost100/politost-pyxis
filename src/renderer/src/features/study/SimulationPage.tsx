@@ -30,10 +30,13 @@ export function SimulationPage() {
     <FocusLayout
       title={t("simulation.title")}
       meta={run ? t("simulation.left", { minutes }) : undefined}
+      closable={!(run && !run.submitted)}
       secondary={
-        <Button type="text" shape="round" onClick={() => navigate(`/plans/${planId ?? ""}`)}>
-          {t("nav.back")}
-        </Button>
+        run && !run.submitted ? undefined : (
+          <Button type="text" shape="round" onClick={() => navigate(`/plans/${planId ?? ""}`)}>
+            {t("nav.back")}
+          </Button>
+        )
       }
     >
       {!run ? (
@@ -78,6 +81,19 @@ export function SimulationPage() {
         >
           {t("quiz.submit")}
         </Button>
+      ) : null}
+      {run?.submitted ? (
+        <section>
+          <p className="small">{t("simulation.localGrade")}</p>
+          <h2 className="body-strong">{t("simulation.byTopic")}</h2>
+          <ul className="choice-list">
+            {run.topics.map((topic) => (
+              <li key={topic.id} className="small">
+                {topic.title} · {Math.round(topic.score * 100)}
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
       {open.error ? <p className="small">{t("simulation.empty")}</p> : null}
     </FocusLayout>

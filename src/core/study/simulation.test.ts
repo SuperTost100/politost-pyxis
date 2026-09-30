@@ -38,5 +38,7 @@ describe("simulation", () => {
     const ended = readSimulation(db, opened.attemptId, start + 31 * 60_000);
     expect(ended.submitted).toBe(true);
     expect(ended.leftMs).toBe(0);
+    expect(ended.topics[0]?.title).toContain("Moti");
+    expect(ended.topics[0]?.score).toBe(0);
   });
 });

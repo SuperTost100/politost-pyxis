@@ -5,8 +5,44 @@ import { topicExercises } from "./exercises";
 
 type Stored = {
   minutes: number;
-  questions: Array<{ id: string; stem: string; answer: { kind: "completion"; accepted: string[][] } }>;
+  questions: Array<{
+    id: string;
+    topicId?: string;
+    stem: string;
+    answer: { kind: "completion"; accepted: string[][] };
+  }>;
 };
+
+function topicScores(db: Database.Database, stored: Stored, attemptId: string, submitted: boolean) {
+  if (!submitted) return [];
+  const answer = db
+    .prepare(
+      `SELECT payload_json FROM attempt_answers WHERE attempt_id = ? ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(attemptId) as { payload_json: string } | undefined;
+  if (!answer) return [];
+  const payload = JSON.parse(answer.payload_json) as {
+    results?: Array<{ id: string; score: number }>;
+  };
+  const scores = new Map((payload.results ?? []).map((row) => [row.id, row.score]));
+  const byTopic = new Map<string, number[]>();
+  for (const question of stored.questions) {
+    if (!question.topicId) continue;
+    const list = byTopic.get(question.topicId) ?? [];
+    list.push(scores.get(question.id) ?? 0);
+    byTopic.set(question.topicId, list);
+  }
+  return [...byTopic].map(([id, list]) => {
+    const title = db.prepare(`SELECT title FROM topics WHERE id = ?`).get(id) as
+      | { title: string }
+      | undefined;
+    return {
+      id,
+      title: title?.title ?? id,
+      score: list.reduce((sum, score) => sum + score, 0) / list.length,
+    };
+  });
+}
 
 export function startSimulation(
   db: Database.Database,
@@ -18,14 +54,17 @@ export function startSimulation(
     .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
     .all(planId) as Array<{ id: string }>;
   const questions = topics
-    .flatMap((topic) => topicExercises(db, topic.id))
-    .filter((row) => row.answer && row.answer.trim())
-    .slice(0, 20)
-    .map((row) => ({
-      id: row.id,
-      stem: row.prompt,
-      answer: { kind: "completion" as const, accepted: [[row.answer ?? ""]] },
-    }));
+    .flatMap((topic) =>
+      topicExercises(db, topic.id)
+        .filter((row) => row.answer && row.answer.trim())
+        .map((row) => ({
+          id: row.id,
+          topicId: topic.id,
+          stem: row.prompt,
+          answer: { kind: "completion" as const, accepted: [[row.answer ?? ""]] },
+        })),
+    )
+    .slice(0, 20);
   if (questions.length === 0) throw new Error("simulation-empty");
   const body: Stored = { minutes, questions };
   const itemId = uuidv7(now);
@@ -69,6 +108,7 @@ export function readSimulation(db: Database.Database, attemptId: string, now = D
     leftMs: submitted.submitted_at == null ? Math.max(0, deadline - now) : 0,
     submitted: submitted.submitted_at != null,
     questions: stored.questions.map((question) => ({ id: question.id, stem: question.stem })),
+    topics: topicScores(db, stored, attemptId, submitted.submitted_at != null),
   };
 }
 

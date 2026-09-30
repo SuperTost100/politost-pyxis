@@ -85,7 +85,9 @@
     "title": "Simulation",
     "start": "Start the 30 minutes",
     "left": "{{minutes}} minutes",
-    "empty": "The book has no exercises for a simulation."
+    "empty": "The book has no exercises for a simulation.",
+    "localGrade": "Scored on this computer, without a model.",
+    "byTopic": "By topic"
   },
   "quiz": {
     "title": "Quiz from the book",
@@ -116,6 +118,17 @@
     "gaps": "Gaps",
     "simulation": "Simulation",
     "final": "Final check"
+  },
+  "progress": {
+    "title": "Progress",
+    "chart": "Last 14 days",
+    "onTrack": "{{ready}} of {{total}} topics on track",
+    "lessons": "{{count}} lessons finished",
+    "gaps": "Gaps",
+    "noGaps": "No open gap.",
+    "week": "Events this week: {{count}}",
+    "peak": "Most active day: {{count}}",
+    "idle": "idle"
   },
   "wizard": {
     "title": "New plan",

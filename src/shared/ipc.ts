@@ -241,6 +241,7 @@ export const requests = {
         leftMs: z.number(),
         submitted: z.boolean(),
         questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+        topics: z.array(z.object({ id: z.string(), title: z.string(), score: z.number() })),
       })
       .nullable(),
   },
@@ -261,6 +262,7 @@ export const requests = {
       leftMs: z.number(),
       submitted: z.boolean(),
       questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+      topics: z.array(z.object({ id: z.string(), title: z.string(), score: z.number() })),
     }),
   },
   "study.cards": {
@@ -387,6 +389,25 @@ export const requests = {
     output: z.array(
       z.object({ id: z.string(), title: z.string(), mastery: z.number() }),
     ),
+  },
+  "plans.series": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({
+      chart: z.array(z.object({ day: z.number(), count: z.number(), mastery: z.number() })),
+      weeks: z.array(z.number()),
+      counts: z.record(z.string(), z.array(z.number())),
+      gaps: z.array(z.object({ topicId: z.string(), openedAt: z.number() })),
+      pace: z.object({ week: z.number(), peakDay: z.number(), peakCount: z.number() }),
+      lessons: z.number(),
+      topics: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          mastery: z.number(),
+          idle: z.boolean(),
+        }),
+      ),
+    }),
   },
   "plans.complete": {
     input: z.object({ planId: z.string(), nodeId: z.string() }),

@@ -91,6 +91,23 @@ export function PlanPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.mastery", { planId: planId ?? "" }),
   });
+  const series = useQuery({
+    queryKey: ["series", planId],
+    enabled: Boolean(planId),
+    queryFn: () => invoke("plans.series", { planId: planId ?? "" }),
+  });
+  const progress = series.data;
+  const onTrack = (progress?.topics ?? []).filter((topic) => topic.mastery >= 0.8).length;
+  const chart = progress?.chart ?? [];
+  const chartWidth = 280;
+  const chartHeight = 72;
+  const chartStep = chart.length > 1 ? chartWidth / (chart.length - 1) : chartWidth;
+  const chartPath = chart
+    .map((point, index) => {
+      const command = index === 0 ? "M" : "L";
+      return `${command} ${index * chartStep} ${chartHeight - point.mastery * chartHeight}`;
+    })
+    .join(" ");
   return (
     <FocusLayout
       title={plan.data?.title ?? t("wizard.title")}
@@ -118,6 +135,48 @@ export function PlanPage() {
         </Button>
       }
     >
+      {progress ? (
+        <section>
+          <h2 className="title-3">{t("progress.title")}</h2>
+          <p className="small">
+            {t("progress.onTrack", { ready: onTrack, total: progress.topics.length })}
+          </p>
+          <p className="small">{t("progress.lessons", { count: progress.lessons })}</p>
+          <p className="small">{t("progress.chart")}</p>
+          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} width="100%" height={chartHeight} role="img">
+            <path d={chartPath} fill="none" stroke="currentColor" strokeWidth="2" />
+          </svg>
+          <p className="small">{t("progress.week", { count: progress.pace.week })}</p>
+          <p className="small">{t("progress.peak", { count: progress.pace.peakCount })}</p>
+          <h3 className="body-strong">{t("progress.gaps")}</h3>
+          {progress.gaps.length === 0 ? (
+            <p className="small">{t("progress.noGaps")}</p>
+          ) : (
+            <ul className="choice-list">
+              {progress.gaps.map((gap) => (
+                <li key={gap.topicId} className="small">
+                  {progress.topics.find((topic) => topic.id === gap.topicId)?.title ?? gap.topicId}
+                </li>
+              ))}
+            </ul>
+          )}
+          <table>
+            <tbody>
+              {progress.topics.map((topic) => (
+                <tr key={topic.id}>
+                  <th scope="row">
+                    {topic.title}
+                    {topic.idle ? ` · ${t("progress.idle")}` : ""}
+                  </th>
+                  {(progress.counts[topic.id] ?? []).map((count, index) => (
+                    <td key={progress.weeks[index] ?? index}>{count}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
       {(mastery.data ?? []).length > 0 ? (
         <ul className="choice-list">
           {(mastery.data ?? []).map((topic) => (

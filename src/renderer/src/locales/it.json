@@ -85,7 +85,9 @@
     "title": "Simulazione",
     "start": "Inizia i 30 minuti",
     "left": "{{minutes}} minuti",
-    "empty": "Il libro non ha esercizi per una simulazione."
+    "empty": "Il libro non ha esercizi per una simulazione.",
+    "localGrade": "Voto calcolato in locale, senza un modello.",
+    "byTopic": "Per argomento"
   },
   "quiz": {
     "title": "Quiz dal libro",
@@ -116,6 +118,17 @@
     "gaps": "Lacune",
     "simulation": "Simulazione",
     "final": "Verifica finale"
+  },
+  "progress": {
+    "title": "Progressi",
+    "chart": "Ultimi 14 giorni",
+    "onTrack": "{{ready}} su {{total}} argomenti in linea",
+    "lessons": "{{count}} lezioni completate",
+    "gaps": "Lacune",
+    "noGaps": "Nessuna lacuna aperta.",
+    "week": "Eventi questa settimana: {{count}}",
+    "peak": "Giorno più attivo: {{count}}",
+    "idle": "fermo"
   },
   "wizard": {
     "title": "Nuovo piano",
