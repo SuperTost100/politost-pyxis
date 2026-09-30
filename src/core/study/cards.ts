@@ -34,7 +34,12 @@ export function seedCards(
   return ids;
 }
 
-export function dueCards(db: Database.Database, planId: string, now: number): DueCard[] {
+export function dueCards(
+  db: Database.Database,
+  planId: string,
+  now: number,
+  topicId?: string,
+): DueCard[] {
   const rows = db
     .prepare(
       `SELECT c.id, c.front, c.back, c.topic_id,
@@ -50,6 +55,7 @@ export function dueCards(db: Database.Database, planId: string, now: number): Du
         ) AS due_at
        FROM cards c
        WHERE c.plan_id = ?
+         AND (? IS NULL OR c.topic_id = ?)
          AND COALESCE(
            CAST(json_extract(
              (SELECT cr.state_json FROM card_reviews cr
@@ -61,7 +67,7 @@ export function dueCards(db: Database.Database, planId: string, now: number): Du
        ORDER BY due_at ASC
        LIMIT 20`,
     )
-    .all(now, planId, now, now) as Array<{
+    .all(now, planId, topicId ?? null, topicId ?? null, now, now) as Array<{
     id: string;
     front: string;
     back: string;

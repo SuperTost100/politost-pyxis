@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,7 +11,16 @@ export function PracticePage() {
   const { t } = useTranslation();
   const { planId, topicId } = useParams();
   const navigate = useNavigate();
+  const client = useQueryClient();
   const [open, setOpen] = useState<string | null>(null);
+  const plan = useQuery({
+    queryKey: ["plan", planId],
+    enabled: Boolean(planId),
+    queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
+  });
+  const node = (plan.data?.nodes ?? []).find(
+    (item) => item.kind === "practice" && item.topicId === topicId && item.state !== "done",
+  );
   const exercises = useQuery({
     queryKey: ["exercises", topicId],
     enabled: Boolean(topicId),
@@ -33,6 +42,21 @@ export function PracticePage() {
       >
         {t("quiz.title")}
       </Button>
+      {node ? (
+        <Button
+          type="primary"
+          shape="round"
+          onClick={() => {
+            if (!planId) return;
+            void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
+              void client.invalidateQueries({ queryKey: ["plan", planId] });
+              navigate(`/plans/${planId}`);
+            });
+          }}
+        >
+          {t("lesson.done")}
+        </Button>
+      ) : null}
       {(exercises.data ?? []).length === 0 ? (
         <p className="body">{t("practice.empty")}</p>
       ) : (

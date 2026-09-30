@@ -21,6 +21,14 @@ export function CardsPage() {
     enabled: Boolean(planId && topicId),
     queryFn: () => invoke("study.cards", { planId: planId ?? "", topicId: topicId ?? "" }),
   });
+  const plan = useQuery({
+    queryKey: ["plan", planId],
+    enabled: Boolean(planId),
+    queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
+  });
+  const node = (plan.data?.nodes ?? []).find(
+    (item) => item.kind === "cards" && item.topicId === topicId && item.state !== "done",
+  );
   const card = cards.data?.[0];
 
   return (
@@ -32,6 +40,20 @@ export function CardsPage() {
         </Button>
       }
     >
+      {node ? (
+        <Button
+          shape="round"
+          onClick={() => {
+            if (!planId) return;
+            void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
+              void client.invalidateQueries({ queryKey: ["plan", planId] });
+              navigate(`/plans/${planId}`);
+            });
+          }}
+        >
+          {t("lesson.done")}
+        </Button>
+      ) : null}
       {!card ? (
         <p className="body">{t("cards.empty")}</p>
       ) : (

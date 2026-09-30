@@ -13,7 +13,7 @@ export function ensureTopicCards(db: Database.Database, planId: string, topicId:
     )
     .all(topicId) as Array<{ text: string; section_path: string | null }>;
   const pairs = passages.map((row) => ({
-    front: row.section_path?.trim() || row.text.slice(0, 80),
+    front: row.text.replace(/\s+/g, " ").trim().slice(0, 120),
     back: row.text.slice(0, 600),
   }));
   for (const exercise of topicExercises(db, topicId).slice(0, 20)) {

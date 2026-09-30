@@ -31,6 +31,15 @@ describe("attempts", () => {
     expect(JSON.stringify(started.questions)).not.toContain("correct");
     const scored = submitAttempt(db, started.attemptId, { q1: 1, q2: false });
     expect(scored.score).toBe(1);
+    const typed = saveQuiz(db, planId, [
+      {
+        id: "q3",
+        stem: "Unita?",
+        grade: { kind: "completion", answers: [], accepted: [["newton"]] },
+      },
+    ]);
+    const typedAttempt = startAttempt(db, planId, typed);
+    expect(submitAttempt(db, typedAttempt.attemptId, { q3: "Newton" }).score).toBe(1);
     expect(() => submitAttempt(db, started.attemptId, { q1: 1 })).toThrow(/attempt-closed/);
   });
 });

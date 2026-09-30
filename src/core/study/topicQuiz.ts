@@ -14,6 +14,7 @@ export function startTopicQuiz(db: Database.Database, planId: string, topicId: s
       grade: { kind: "completion" as const, answers: [], accepted: [[row.answer ?? ""]] },
     })),
   );
+  db.prepare(`UPDATE items SET topic_id = ? WHERE id = ?`).run(topicId, itemId);
   return startAttempt(db, planId, itemId);
 }
 

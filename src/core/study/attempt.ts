@@ -102,6 +102,10 @@ function answerOf(expected: Grade, pick: unknown): Grade {
     const pairs = Array.isArray(pick) ? (pick as Array<[string, string]>) : [];
     return { kind: "matching", pairs, correct: expected.correct };
   }
-  const answers = Array.isArray(pick) ? (pick as string[]) : [];
+  const answers = Array.isArray(pick)
+    ? (pick as string[])
+    : typeof pick === "string"
+      ? [pick]
+      : [];
   return { kind: "completion", answers, accepted: expected.accepted };
 }
