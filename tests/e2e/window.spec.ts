@@ -18,6 +18,9 @@ function writeBook(dir: string): string {
         }),
       ),
       "chapters/01.md": strToU8("## p1 | Energia\nIl vettore posizione descrive il punto.\n"),
+      "esercizi.md": strToU8(
+        ':::exercise{id="e1" chapter="1"}\nQuanto vale il lavoro?\n:::solution\nW = F s.\n:::\n:::\n',
+      ),
     }),
   );
   return path;
@@ -78,6 +81,21 @@ test("a smartbook becomes a plan without a model", async () => {
     await page.getByRole("button", { name: "Crea il piano" }).click();
     await page.getByRole("button", { name: "Apri il piano" }).click();
     await expect(page.locator("h1", { hasText: "Fisica" })).toBeVisible();
+    await page.getByRole("button", { name: /Introduzione/ }).click();
+    const diagnosis = page.getByRole("button", { name: /Diagnosi/ });
+    await expect(diagnosis).toBeEnabled();
+    await diagnosis.click();
+    const study = page.getByRole("button", { name: /Studio/ });
+    await expect(study).toBeEnabled();
+    await study.click();
+    await expect(page.getByText("vettore posizione")).toBeVisible();
+    await page.getByRole("button", { name: "Ho letto" }).click();
+    const practice = page.getByRole("button", { name: /Esercizi/ });
+    await expect(practice).toBeEnabled();
+    await practice.click();
+    await expect(page.getByText("Quanto vale il lavoro?")).toBeVisible();
+    await page.getByRole("button", { name: "Mostra la soluzione" }).click();
+    await expect(page.getByText("W = F s.")).toBeVisible();
   } finally {
     await app?.close();
     rmSync(userData, { recursive: true, force: true });
