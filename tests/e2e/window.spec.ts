@@ -117,23 +117,31 @@ test("a smartbook becomes a plan without a model", async () => {
     await page.getByRole("button", { name: "Indietro" }).click();
     await expect(page.getByRole("heading", { name: "Progressi" })).toBeVisible();
     const dest = join(userData, "Fisica.pyxis.json");
-    const pending = app.evaluate(({ BrowserWindow }, file) => {
-      const win = BrowserWindow.getAllWindows()[0];
-      if (!win) return Promise.reject(new Error("no-window"));
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("no-download")), 8000);
-        win.webContents.session.once("will-download", (_event, item) => {
-          item.setSavePath(file);
-          item.once("done", (_done, state) => {
-            clearTimeout(timer);
-            if (state === "completed") resolve(item.getFilename());
-            else reject(new Error(String(state)));
+    expect(
+      await app.evaluate(({ BrowserWindow }, file) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        if (!win) throw new Error("no-window");
+        const pending = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("no-download")), 8000);
+          win.webContents.session.once("will-download", (_event, item) => {
+            item.setSavePath(file);
+            item.once("done", (_done, state) => {
+              clearTimeout(timer);
+              if (state === "completed") resolve(item.getFilename());
+              else reject(new Error(String(state)));
+            });
           });
         });
-      });
-    }, dest);
+        (globalThis as { pyxisDownload?: Promise<unknown> }).pyxisDownload = pending;
+        return "listening";
+      }, dest),
+    ).toBe("listening");
     await page.getByRole("button", { name: "Esporta" }).click();
-    expect(await pending).toBe("Fisica.pyxis.json");
+    expect(
+      await app.evaluate(
+        () => (globalThis as { pyxisDownload: Promise<string> }).pyxisDownload,
+      ),
+    ).toBe("Fisica.pyxis.json");
     const file = JSON.parse(readFileSync(dest, "utf8")) as {
       title: string;
       topics: Array<{ title: string }>;
