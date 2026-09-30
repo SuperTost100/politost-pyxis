@@ -36,7 +36,12 @@
     "placeholder": "Write a question",
     "sources": "Sources in use",
     "notCovered": "Your material does not cover this question.",
-    "answerGeneral": "Answer from general knowledge"
+    "answerGeneral": "Answer from general knowledge",
+    "history": "Chats",
+    "untitled": "Untitled",
+    "rename": "Rename",
+    "delete": "Delete",
+    "deleteConfirm": "Delete forever"
   },
   "exams": {
     "plans": "Plans",

@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Input } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
@@ -22,6 +23,12 @@ export function AskPage() {
   const [error, setError] = useState<string | null>(null);
   const stop = useRef<(() => void) | null>(null);
 
+  const history = useQuery({
+    queryKey: ["chats"],
+    queryFn: () => invoke("chats.list", {}),
+  });
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [titleDraft, setTitleDraft] = useState<Record<string, string>>({});
   const sources = useQuery({
     queryKey: ["sources"],
     queryFn: () => invoke("sources.list", {}),
@@ -65,6 +72,7 @@ export function AskPage() {
       sessionStorage.removeItem("pyxis-draft");
       setUncovered(result.covered ? null : trimmed);
       void client.invalidateQueries({ queryKey: ["chat", result.chatId] });
+      void client.invalidateQueries({ queryKey: ["chats"] });
       if (result.chatId !== chatId) navigate(`/ask/${result.chatId}`);
     } catch (err) {
       const key =
@@ -92,6 +100,47 @@ export function AskPage() {
           <p className="body">
             {picked.length === 0 ? t("ask.scopeEmpty") : t("ask.scopeReady")}
           </p>
+          {(history.data ?? []).length > 0 ? (
+            <ul className="choice-list" aria-label={t("ask.history")}>
+              {(history.data ?? []).map((chat) => (
+                <li key={chat.id}>
+                  <Button type="text" onClick={() => navigate(`/ask/${chat.id}`)}>
+                    {chat.title?.trim() || t("ask.untitled")}
+                  </Button>
+                  <Input
+                    aria-label={t("ask.rename")}
+                    value={titleDraft[chat.id] ?? chat.title ?? ""}
+                    onChange={(event) =>
+                      setTitleDraft((current) => ({ ...current, [chat.id]: event.target.value }))
+                    }
+                    onBlur={() => {
+                      const title = (titleDraft[chat.id] ?? chat.title ?? "").trim();
+                      if (!title || title === chat.title) return;
+                      void invoke("chats.rename", { chatId: chat.id, title }).then(() =>
+                        client.invalidateQueries({ queryKey: ["chats"] }),
+                      );
+                    }}
+                  />
+                  <Button
+                    type="text"
+                    danger={confirmDelete === chat.id}
+                    onClick={() => {
+                      if (confirmDelete !== chat.id) {
+                        setConfirmDelete(chat.id);
+                        return;
+                      }
+                      void invoke("chats.delete", { chatId: chat.id }).then(() => {
+                        setConfirmDelete(null);
+                        void client.invalidateQueries({ queryKey: ["chats"] });
+                      });
+                    }}
+                  >
+                    {confirmDelete === chat.id ? t("ask.deleteConfirm") : t("ask.delete")}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : (
         <div className="reading-column">

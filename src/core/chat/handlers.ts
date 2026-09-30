@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { askTurn, chatScope, listChats, rateMessage, readChat } from "./turn";
+import { askTurn, chatScope, deleteChat, listChats, rateMessage, readChat, renameChat } from "./turn";
 
 export function chatHandlers(db: Database.Database, fixtureReply?: string) {
   return {
@@ -15,6 +15,14 @@ export function chatHandlers(db: Database.Database, fixtureReply?: string) {
     },
     rate(input: { messageId: string; reaction: "up" | "down" }) {
       return { reaction: rateMessage(db, input.messageId, input.reaction) };
+    },
+    rename(input: { chatId: string; title: string }) {
+      renameChat(db, input.chatId, input.title);
+      return { ok: true as const };
+    },
+    remove(input: { chatId: string }) {
+      deleteChat(db, input.chatId);
+      return { ok: true as const };
     },
     ask(input: {
       chatId?: string;

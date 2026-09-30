@@ -36,7 +36,12 @@
     "placeholder": "Scrivi una domanda",
     "sources": "Fonti in uso",
     "notCovered": "Il materiale non copre questa domanda.",
-    "answerGeneral": "Rispondi con le conoscenze generali"
+    "answerGeneral": "Rispondi con le conoscenze generali",
+    "history": "Chat",
+    "untitled": "Senza titolo",
+    "rename": "Rinomina",
+    "delete": "Elimina",
+    "deleteConfirm": "Elimina per sempre"
   },
   "exams": {
     "plans": "Piani",

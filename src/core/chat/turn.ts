@@ -330,6 +330,20 @@ export function rateMessage(
   return next;
 }
 
+export function renameChat(db: Database.Database, chatId: string, title: string, now = Date.now()) {
+  const trimmed = title.trim();
+  if (!trimmed) throw new Error("chat-title");
+  const info = db
+    .prepare(`UPDATE chats SET title = ?, updated_at = ? WHERE id = ?`)
+    .run(trimmed, now, chatId);
+  if (info.changes === 0) throw new Error("chat-missing");
+}
+
+export function deleteChat(db: Database.Database, chatId: string) {
+  const info = db.prepare(`DELETE FROM chats WHERE id = ?`).run(chatId);
+  if (info.changes === 0) throw new Error("chat-missing");
+}
+
 export function listChats(db: Database.Database) {
   return db
     .prepare(`SELECT id, title, updated_at FROM chats ORDER BY updated_at DESC`)

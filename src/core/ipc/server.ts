@@ -220,6 +220,10 @@ async function dispatch(
       return chats?.read(requests["chats.read"].input.parse(input));
     case "chats.rate":
       return chats?.rate(requests["chats.rate"].input.parse(input));
+    case "chats.rename":
+      return chats?.rename(requests["chats.rename"].input.parse(input));
+    case "chats.delete":
+      return chats?.remove(requests["chats.delete"].input.parse(input));
     case "chats.ask":
       return chats?.ask({
         ...requests["chats.ask"].input.parse(input),

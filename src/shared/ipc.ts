@@ -593,6 +593,14 @@ export const requests = {
       })
       .nullable(),
   },
+  "chats.rename": {
+    input: z.object({ chatId: z.string(), title: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "chats.delete": {
+    input: z.object({ chatId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "chats.rate": {
     input: z.object({
       messageId: z.string(),
