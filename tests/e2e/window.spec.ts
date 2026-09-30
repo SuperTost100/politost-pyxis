@@ -13,6 +13,8 @@ test("a fresh window opens on onboarding", async () => {
     const page = await app.firstWindow();
     await expect(page.locator("main h1")).toHaveText("Iniziamo");
     await expect(page.locator("header h1:visible")).toHaveCount(0);
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page.locator("main h2")).toHaveText("Nessun piano ancora");
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
