@@ -110,7 +110,10 @@ test("a smartbook becomes a plan without a model", async () => {
     await expect(page.getByText("1. Moti · 1")).toBeVisible();
     await page.getByRole("button", { name: "Gira" }).click();
     await page.getByRole("button", { name: "Bene" }).click();
-    await expect(page.getByText("Prossima tra 1 giorni")).toBeVisible();
+    await page.getByRole("button", { name: "Indietro" }).click();
+    await page.getByRole("button", { name: /Carte/ }).click();
+    await expect(page.getByText("Quanto vale il lavoro?")).toBeVisible();
+    await expect(page.getByText("1. Moti · 1")).toHaveCount(0);
   } finally {
     await app?.close();
     rmSync(userData, { recursive: true, force: true });
