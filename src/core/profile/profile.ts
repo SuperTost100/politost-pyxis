@@ -27,6 +27,7 @@ export type Profile = {
   interestsOn: boolean;
   dyslexia: boolean;
   textSize: TextSize;
+  crashReports: boolean;
 };
 
 const empty: Profile = {
@@ -40,6 +41,7 @@ const empty: Profile = {
   interestsOn: true,
   dyslexia: false,
   textSize: "md",
+  crashReports: false,
 };
 
 function setting(db: Database.Database, key: string): unknown {
@@ -79,6 +81,7 @@ export function readProfile(db: Database.Database): Profile | null {
   const reading = setting(db, "reading") as
     | { dyslexia?: boolean; textSize?: string }
     | undefined;
+  const privacy = setting(db, "privacy") as { crashReports?: boolean } | undefined;
   const level = educationLevels.find((item) => item === row.education_level) ?? "university";
   const size = textSizes.find((item) => item === reading?.textSize) ?? "md";
   return {
@@ -92,6 +95,7 @@ export function readProfile(db: Database.Database): Profile | null {
     interestsOn: interests?.on !== false,
     dyslexia: reading?.dyslexia === true,
     textSize: size,
+    crashReports: privacy?.crashReports === true,
   };
 }
 
@@ -134,5 +138,6 @@ export function saveProfile(db: Database.Database, input: Partial<Profile>, now 
   }
   putSetting(db, "interests", { on: next.interestsOn, items: next.interests }, now);
   putSetting(db, "reading", { dyslexia: next.dyslexia, textSize: next.textSize }, now);
+  putSetting(db, "privacy", { crashReports: next.crashReports }, now);
   return next;
 }

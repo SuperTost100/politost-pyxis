@@ -86,6 +86,11 @@ export function PlanPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
+  const mastery = useQuery({
+    queryKey: ["mastery", planId],
+    enabled: Boolean(planId),
+    queryFn: () => invoke("plans.mastery", { planId: planId ?? "" }),
+  });
   return (
     <FocusLayout
       title={plan.data?.title ?? t("wizard.title")}
@@ -95,6 +100,15 @@ export function PlanPage() {
         </Button>
       }
     >
+      {(mastery.data ?? []).length > 0 ? (
+        <ul className="choice-list">
+          {(mastery.data ?? []).map((topic) => (
+            <li key={topic.id} className="small">
+              {topic.title} · {Math.round(topic.mastery * 100)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <ol className="choice-list">
         {(plan.data?.nodes ?? []).map((node) => (
           <li key={node.id}>
@@ -118,6 +132,7 @@ export function PlanPage() {
                 }
                 void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
                   void client.invalidateQueries({ queryKey: ["plan", planId] });
+                  void client.invalidateQueries({ queryKey: ["mastery", planId] });
                 });
               }}
             >

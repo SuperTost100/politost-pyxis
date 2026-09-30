@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "antd";
+import { Button, Input } from "antd";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAppState } from "../../app/app-state";
@@ -19,7 +20,16 @@ export function SettingsPage() {
     queryFn: () => invoke("profile.get", {}),
   });
 
-  async function patch(input: { dyslexia?: boolean; textSize?: "sm" | "md" | "lg" }) {
+  const [draftInterests, setDraftInterests] = useState<string | null>(null);
+
+  async function patch(input: {
+    dyslexia?: boolean;
+    textSize?: "sm" | "md" | "lg";
+    tutorMode?: "solver" | "socratic";
+    interests?: string[];
+    interestsOn?: boolean;
+    crashReports?: boolean;
+  }) {
     const saved = await invoke("profile.save", input);
     client.setQueryData(["profile"], saved);
     document.documentElement.dataset.dyslexia = saved.dyslexia ? "on" : "off";
@@ -57,6 +67,49 @@ export function SettingsPage() {
           </Button>
         </div>
       ) : null}
+      <div className="label section-label">{t("settings.tutor")}</div>
+      <div className="choice-list">
+        <Choice
+          label={t("settings.solver")}
+          selected={(profile.data?.tutorMode ?? "solver") === "solver"}
+          onClick={() => void patch({ tutorMode: "solver" })}
+        />
+        <Choice
+          label={t("settings.socratic")}
+          selected={profile.data?.tutorMode === "socratic"}
+          onClick={() => void patch({ tutorMode: "socratic" })}
+        />
+      </div>
+      <div className="label section-label">{t("settings.interests")}</div>
+      <div className="choice-list">
+        <Choice
+          label={t("settings.interestsOn")}
+          selected={profile.data?.interestsOn !== false}
+          onClick={() => void patch({ interestsOn: profile.data?.interestsOn === false })}
+        />
+      </div>
+      <Input
+        aria-label={t("settings.interests")}
+        value={draftInterests ?? (profile.data?.interests ?? []).join(", ")}
+        onChange={(event) => setDraftInterests(event.target.value)}
+        onBlur={() => {
+          const items = (draftInterests ?? "")
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+          void patch({ interests: items });
+          setDraftInterests(null);
+        }}
+      />
+      <div className="label section-label">{t("settings.privacy")}</div>
+      <div className="choice-list">
+        <Choice
+          label={t("settings.crashReports")}
+          selected={profile.data?.crashReports === true}
+          onClick={() => void patch({ crashReports: profile.data?.crashReports !== true })}
+        />
+      </div>
+      <p className="small section-hint">{t("settings.crashHint")}</p>
       <div className="label section-label">{t("settings.reading")}</div>
       <div className="choice-list">
         <Choice

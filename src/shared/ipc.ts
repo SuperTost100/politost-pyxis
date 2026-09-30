@@ -264,6 +264,12 @@ export const requests = {
       })
       .nullable(),
   },
+  "plans.mastery": {
+    input: z.object({ planId: z.string() }),
+    output: z.array(
+      z.object({ id: z.string(), title: z.string(), mastery: z.number() }),
+    ),
+  },
   "plans.complete": {
     input: z.object({ planId: z.string(), nodeId: z.string() }),
     output: z.object({ ok: z.boolean() }),
@@ -298,6 +304,7 @@ export const requests = {
         interestsOn: z.boolean(),
         dyslexia: z.boolean(),
         textSize: z.enum(["sm", "md", "lg"]),
+        crashReports: z.boolean(),
       })
       .nullable(),
   },
@@ -323,6 +330,7 @@ export const requests = {
       interestsOn: z.boolean().optional(),
       dyslexia: z.boolean().optional(),
       textSize: z.enum(["sm", "md", "lg"]).optional(),
+      crashReports: z.boolean().optional(),
     }),
     output: z.object({
       displayName: z.string(),
@@ -335,6 +343,7 @@ export const requests = {
       interestsOn: z.boolean(),
       dyslexia: z.boolean(),
       textSize: z.enum(["sm", "md", "lg"]),
+      crashReports: z.boolean(),
     }),
   },
   "sources.list": {

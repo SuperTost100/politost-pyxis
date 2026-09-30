@@ -20,5 +20,8 @@ describe("profile", () => {
     expect(again?.dyslexia).toBe(true);
     expect(again?.textSize).toBe("lg");
     expect(again?.interests).toEqual(["bicicletta"]);
+    expect(again?.crashReports).toBe(false);
+    const opted = saveProfile(db, { crashReports: true });
+    expect(opted.crashReports).toBe(true);
   });
 });
