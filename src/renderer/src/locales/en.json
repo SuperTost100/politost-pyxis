@@ -60,7 +60,9 @@
   },
   "wizard": {
     "title": "New plan",
-    "body": "Subject, exam date and material."
+    "body": "A smartbook chapter becomes a topic, without a model call.",
+    "planTitle": "Title",
+    "create": "Create the plan"
   },
   "shared": {
     "title": "Open a shared plan",

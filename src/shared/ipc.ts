@@ -171,6 +171,39 @@ export const requests = {
     input: z.object({ provider: z.string(), code: z.string() }),
     output: z.object({}),
   },
+  "plans.list": {
+    input: z.object({}),
+    output: z.array(
+      z.object({ id: z.string(), title: z.string(), status: z.string() }),
+    ),
+  },
+  "plans.read": {
+    input: z.object({ planId: z.string() }),
+    output: z
+      .object({
+        id: z.string(),
+        title: z.string(),
+        status: z.string(),
+        topics: z.array(z.object({ id: z.string(), title: z.string(), position: z.number() })),
+        nodes: z.array(
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            kind: z.string(),
+            position: z.number(),
+          }),
+        ),
+      })
+      .nullable(),
+  },
+  "plans.create": {
+    input: z.object({ title: z.string(), sourceIds: z.array(z.string()) }),
+    output: z.object({
+      planId: z.string(),
+      topics: z.number(),
+      pathNodes: z.number(),
+    }),
+  },
   "profile.get": {
     input: z.object({}),
     output: z

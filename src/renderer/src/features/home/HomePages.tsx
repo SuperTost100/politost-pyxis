@@ -1,13 +1,19 @@
+import { useQuery } from "@tanstack/react-query";
 import { Button, Segmented } from "antd";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { invoke } from "../../lib/ipc";
 import { LibraryPanel } from "./LibraryPanel";
 
 export function ExamsHome() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  const plans = useQuery({
+    queryKey: ["plans"],
+    queryFn: () => invoke("plans.list", {}),
+  });
   const tab = location.pathname.startsWith("/exams/library")
     ? "sources"
     : "plans";
@@ -27,7 +33,30 @@ export function ExamsHome() {
           ]}
         />
       </div>
-      {tab === "plans" ? (
+      {tab === "sources" ? (
+        <LibraryPanel />
+      ) : (plans.data?.length ?? 0) > 0 ? (
+        <div>
+          <div className="gallery-row">
+            <Button type="primary" shape="round" onClick={() => navigate("/plans/new")}>
+              {t("exams.newPlan")}
+            </Button>
+          </div>
+          <ul className="choice-list">
+            {(plans.data ?? []).map((plan) => (
+              <li key={plan.id}>
+                <button
+                  type="button"
+                  className="choice"
+                  onClick={() => navigate(`/plans/${plan.id}`)}
+                >
+                  <span className="body-strong">{plan.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
         <EmptyState
           title={t("exams.emptyTitle")}
           body={t("exams.emptyBody")}
@@ -52,8 +81,6 @@ export function ExamsHome() {
             </Button>
           }
         />
-      ) : (
-        <LibraryPanel />
       )}
     </div>
   );

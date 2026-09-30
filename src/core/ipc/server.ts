@@ -6,6 +6,7 @@ import {
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
+import { planHandlers } from "../plans/handlers";
 import { profileHandlers } from "../profile/handlers";
 import { sourceHandlers } from "../sources/handlers";
 import type { ProviderId } from "../engine/funnel";
@@ -26,6 +27,7 @@ let engines: ReturnType<typeof engineHandlers> | null = null;
 let sources: ReturnType<typeof sourceHandlers> | null = null;
 let chats: ReturnType<typeof chatHandlers> | null = null;
 let profile: ReturnType<typeof profileHandlers> | null = null;
+let plans: ReturnType<typeof planHandlers> | null = null;
 let port: CorePort | null = null;
 const inflight = new Map<string, AbortController>();
 
@@ -139,6 +141,13 @@ async function dispatch(
         code: parsed.code,
       });
     }
+    case "plans.list":
+      requests["plans.list"].input.parse(input);
+      return plans?.list() ?? [];
+    case "plans.read":
+      return plans?.read(requests["plans.read"].input.parse(input)) ?? null;
+    case "plans.create":
+      return plans?.create(requests["plans.create"].input.parse(input));
     case "profile.get":
       requests["profile.get"].input.parse(input);
       return profile?.get() ?? null;
@@ -178,6 +187,10 @@ export function bindRunner(runner: Runner, dev: boolean): void {
 
 export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
   engines = engineHandlers(db, (event) => broadcast("engine.login", event));
+}
+
+export function bindPlans(db: Parameters<typeof planHandlers>[0]): void {
+  plans = planHandlers(db);
 }
 
 export function bindProfile(db: Parameters<typeof profileHandlers>[0]): void {

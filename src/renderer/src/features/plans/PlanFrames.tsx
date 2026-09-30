@@ -1,11 +1,32 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
+import { invoke } from "../../lib/ipc";
 
 export function WizardFrame() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const client = useQueryClient();
+  const sources = useQuery({
+    queryKey: ["sources"],
+    queryFn: () => invoke("sources.list", {}),
+  });
+  const [title, setTitle] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  async function create() {
+    const name = title.trim();
+    if (!name || picked.length === 0 || busy) return;
+    setBusy(true);
+    await invoke("plans.create", { title: name, sourceIds: picked });
+    await client.invalidateQueries({ queryKey: ["plans"] });
+    navigate("/exams");
+  }
+
   return (
     <FocusLayout
       title={t("wizard.title")}
@@ -16,6 +37,72 @@ export function WizardFrame() {
       }
     >
       <p className="body ink-muted">{t("wizard.body")}</p>
+      <label className="label" htmlFor="plan-title">
+        {t("wizard.planTitle")}
+      </label>
+      <input
+        id="plan-title"
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+      />
+      <div className="choice-list">
+        {(sources.data ?? []).map((source) => (
+          <button
+            key={source.id}
+            type="button"
+            className={picked.includes(source.id) ? "choice is-selected" : "choice"}
+            aria-pressed={picked.includes(source.id)}
+            onClick={() =>
+              setPicked((current) =>
+                current.includes(source.id)
+                  ? current.filter((id) => id !== source.id)
+                  : [...current, source.id],
+              )
+            }
+          >
+            {source.title}
+          </button>
+        ))}
+      </div>
+      <Button
+        type="primary"
+        shape="round"
+        disabled={busy || title.trim() === "" || picked.length === 0}
+        onClick={() => void create()}
+      >
+        {t("wizard.create")}
+      </Button>
+    </FocusLayout>
+  );
+}
+
+export function PlanPage() {
+  const { t } = useTranslation();
+  const { planId } = useParams();
+  const navigate = useNavigate();
+  const plan = useQuery({
+    queryKey: ["plan", planId],
+    enabled: Boolean(planId),
+    queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
+  });
+  return (
+    <FocusLayout
+      title={plan.data?.title ?? t("wizard.title")}
+      secondary={
+        <Button type="text" shape="round" onClick={() => navigate("/exams")}>
+          {t("nav.back")}
+        </Button>
+      }
+    >
+      <ol className="choice-list">
+        {(plan.data?.nodes ?? []).map((node) => (
+          <li key={node.id}>
+            <div className="choice">
+              <span className="body-strong">{node.title}</span>
+            </div>
+          </li>
+        ))}
+      </ol>
     </FocusLayout>
   );
 }

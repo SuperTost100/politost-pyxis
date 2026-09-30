@@ -3,6 +3,7 @@ import { OnboardingPage } from "../features/onboarding/OnboardingPage";
 import { AskPage } from "../features/ask/AskPage";
 import { ExamsHome } from "../features/home/HomePages";
 import {
+  PlanPage,
   SharedPlanPage,
   WhiteboardFrame,
   WizardFrame,
@@ -29,5 +30,6 @@ export const router = createHashRouter([
     ],
   },
   { path: "/plans/new", element: <WizardFrame /> },
+  { path: "/plans/:planId", element: <PlanPage /> },
   { path: "/tools/whiteboard", element: <WhiteboardFrame /> },
 ]);

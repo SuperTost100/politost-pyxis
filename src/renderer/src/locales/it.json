@@ -60,7 +60,9 @@
   },
   "wizard": {
     "title": "Nuovo piano",
-    "body": "Materia, data dell'esame e materiale."
+    "body": "Un capitolo dello smartbook diventa un argomento, senza chiamare un modello.",
+    "planTitle": "Titolo",
+    "create": "Crea il piano"
   },
   "shared": {
     "title": "Apri un piano condiviso",
