@@ -122,6 +122,12 @@ async function dispatch(
         model: parsed.model,
       });
     }
+    case "engines.clearFeature":
+      return (
+        engines?.clearFeature(requests["engines.clearFeature"].input.parse(input)) ?? {
+          ok: true as const,
+        }
+      );
     case "engines.setFeature": {
       const parsed = requests["engines.setFeature"].input.parse(input);
       return engines?.setFeature({

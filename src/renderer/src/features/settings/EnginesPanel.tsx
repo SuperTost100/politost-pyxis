@@ -103,7 +103,11 @@ export function EnginesPanel() {
 
   function useOpenAiForChat(model: string) {
     const name = model.trim();
-    if (!name) return;
+    const known = (openAiModels.data ?? []).some((item) => item.id === name);
+    if (!known) {
+      setResult(t("engines.modelUnknown"));
+      return;
+    }
     void invoke("engines.setFeature", {
       feature: "chat",
       provider: "openai-api",
@@ -266,6 +270,19 @@ export function EnginesPanel() {
       </form>
 
       <div className="label section-label">{t("engines.chat")}</div>
+      {chat ? (
+        <button
+          type="button"
+          className="choice"
+          onClick={() => {
+            void invoke("engines.clearFeature", { feature: "chat" }).then(() =>
+              client.invalidateQueries({ queryKey: ["engine-features"] }),
+            );
+          }}
+        >
+          {t("engines.restoreChat")}
+        </button>
+      ) : null}
       <div className="choice-list">
         {(openAiModels.data ?? []).map((model) => (
           <button

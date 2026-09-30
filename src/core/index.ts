@@ -80,6 +80,7 @@ if (!parent) {
     }
     if (data?.type === "keys") {
       setApiKeys({ anthropic: data.anthropic, openai: data.openai });
+      process.parentPort.postMessage({ type: "keys-applied" });
     }
     if (data?.type === "shutdown") process.exit(0);
     const rendererPort = event.ports[0];

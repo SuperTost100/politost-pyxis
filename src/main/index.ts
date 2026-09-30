@@ -262,9 +262,31 @@ function storedKeys(): { anthropic?: string; openai?: string } {
   return out;
 }
 
-function pushKeys(): void {
-  const keys = storedKeys();
-  coreChild?.postMessage({ type: "keys", ...keys });
+let keysChain: Promise<void> = Promise.resolve();
+
+function pushKeys(): Promise<void> {
+  const run = keysChain.then(() => deliverKeys());
+  keysChain = run.catch(() => undefined);
+  return run;
+}
+
+function deliverKeys(): Promise<void> {
+  const child = coreChild;
+  if (!child) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.off("message", onMessage);
+      reject(new Error("core-busy"));
+    }, 3000);
+    const onMessage = (data: { type?: string }) => {
+      if (data?.type !== "keys-applied") return;
+      clearTimeout(timer);
+      child.off("message", onMessage);
+      resolve();
+    };
+    child.on("message", onMessage);
+    child.postMessage({ type: "keys", ...storedKeys() });
+  });
 }
 
 function connectRenderer(): void {
@@ -410,7 +432,7 @@ function registerIpc(): void {
   });
   ipcMain.handle(
     mainChannels.keysSet,
-    (_event, provider: string, key: string) => {
+    async (_event, provider: string, key: string) => {
       if (provider !== "anthropic" && provider !== "openai") {
         throw new Error("unknown-provider");
       }
@@ -424,7 +446,7 @@ function registerIpc(): void {
       const stored = readJson<Record<string, string>>(userFile("keys.json")) ?? {};
       stored[provider] = safeStorage.encryptString(key).toString("base64");
       writeFileSync(userFile("keys.json"), JSON.stringify(stored));
-      pushKeys();
+      await pushKeys();
     },
   );
   ipcMain.handle(mainChannels.planFetch, async (_event, raw: string) => {

@@ -434,6 +434,8 @@
     "openaiKey": "OpenAI key",
     "chat": "Chat engine",
     "useForChat": "Use for chat",
+    "restoreChat": "Use the default engine",
+    "modelUnknown": "That model is not in the list.",
     "keyFailed": "The key was not saved.",
     "saveKey": "Save key",
     "keySaved": "Key saved",

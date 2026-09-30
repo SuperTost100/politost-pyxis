@@ -106,6 +106,10 @@ export function engineHandlers(
       ).run(input.feature, JSON.stringify({ provider: input.provider, model: input.model }), now);
       return { warning };
     },
+    clearFeature(input: { feature: "chat" }) {
+      db.prepare(`DELETE FROM feature_engines WHERE feature = ?`).run(input.feature);
+      return { ok: true as const };
+    },
     capability(input: { model: string; need: Need }) {
       return { warning: capabilityWarning(input.model, input.need) };
     },

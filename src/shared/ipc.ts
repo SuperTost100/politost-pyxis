@@ -171,6 +171,10 @@ export const requests = {
       inputTokens: z.number(),
     }),
   },
+  "engines.clearFeature": {
+    input: z.object({ feature: z.literal("chat") }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "engines.setFeature": {
     input: z.object({
       feature: z.enum(["default", "chat", "plan", "lesson", "grading", "map", "vision"]),

@@ -434,6 +434,8 @@
     "openaiKey": "Chiave OpenAI",
     "chat": "Motore per le domande",
     "useForChat": "Usa per le domande",
+    "restoreChat": "Usa il motore predefinito",
+    "modelUnknown": "Questo modello non è nell'elenco.",
     "keyFailed": "La chiave non è stata salvata.",
     "saveKey": "Salva la chiave",
     "keySaved": "Chiave salvata",
