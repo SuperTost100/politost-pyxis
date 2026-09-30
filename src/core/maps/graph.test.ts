@@ -70,6 +70,10 @@ describe("concept map", () => {
     const back = undoGraph(next);
     expect(back.nodes.map((node) => node.id).sort()).toEqual(["a", "b", "root"]);
     expect(back.undo).toBeNull();
+    const old = sample();
+    old.layout = "radial";
+    old.undo = { nodes: old.nodes.map((node) => ({ ...node })), edges: old.edges.map((edge) => ({ ...edge })) };
+    expect(undoGraph(old).layout).toBe("radial");
     expect(() => applyOps(sample(), [{ op: "rename", id: "missing", label: "x" }])).toThrow(
       /map-missing/,
     );
