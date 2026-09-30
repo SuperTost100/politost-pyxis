@@ -100,6 +100,7 @@ describe("importSmartbook", () => {
           title: "Demo",
           authors: ["Ada"],
           version: "0.3",
+          specVersion: "1.1",
           access: "public",
           chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
         }),
@@ -110,7 +111,7 @@ describe("importSmartbook", () => {
       title: "Demo",
       authors: ["Ada"],
       version: "0.3",
-      specVersion: null,
+      specVersion: "1.1",
       knownSpec: true,
     });
     const unknown = importSmartbook(

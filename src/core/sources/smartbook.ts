@@ -310,7 +310,7 @@ export function passagesAround(db: Database.Database, passageId: string) {
   }));
 }
 
-const knownSpecs = new Set(["1"]);
+const knownSpecs = new Set(["1.1"]);
 
 export function smartbookMeta(db: Database.Database, sourceId: string) {
   const row = db
