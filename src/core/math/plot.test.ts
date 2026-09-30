@@ -38,6 +38,7 @@ describe("plot", () => {
     expect(splitSeries(sample("1/x", -2, 2), at("1/x")).length).toBeGreaterThan(1);
     expect(splitSeries(sample("tan(x)", -8, 8), at("tan(x)")).length).toBeGreaterThan(1);
     expect(splitSeries(sample("1/(x-0.03)^2", -8, 8), at("1/(x-0.03)^2")).length).toBeGreaterThan(1);
+    expect(splitSeries(sample("1/(x-0.001)", -8, 8), at("1/(x-0.001)")).length).toBeGreaterThan(1);
     const cubic = "1000000000000*(x-0.02500025)*(x-0.02500125)*(x-0.02500225)";
     expect(splitSeries(sample(cubic, -8, 8), at(cubic))).toHaveLength(1);
   });

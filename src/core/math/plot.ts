@@ -225,7 +225,25 @@ function keepsClimbing(
     const right = magnitude(x + h);
     if (!Number.isFinite(left) || !Number.isFinite(right)) return true;
     const next = Math.max(left, right);
-    if (next <= mag) return false;
+    if (next <= mag) {
+      let hh = h;
+      let bounded = true;
+      for (let j = 0; j < 16; j++) {
+        hh /= 2;
+        if (x + hh === x) break;
+        const nearer = Math.max(magnitude(x - hh), magnitude(x + hh));
+        if (!Number.isFinite(nearer)) return true;
+        if (nearer > mag) {
+          bounded = false;
+          mag = nearer;
+          x = magnitude(x - hh) >= magnitude(x + hh) ? x - hh : x + hh;
+          h = hh;
+          break;
+        }
+      }
+      if (bounded) return false;
+      continue;
+    }
     mag = next;
     x = left >= right ? x - h : x + h;
   }
