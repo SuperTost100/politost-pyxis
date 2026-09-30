@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { activeMinutes, chartPoints, openGaps, paceFacts, weeklyCounts } from "./series";
 
@@ -38,10 +40,13 @@ describe("study series", () => {
     expect(minutes.bars[13]?.seconds).toBe(90);
   });
 
-  it("keeps a Sunday study in its week when local midnight was skipped", () => {
-    const at = Date.parse("2026-09-06T04:30:00Z");
-    const grid = weeklyCounts([{ topicId: "a", at, score: 1, kind: "quiz" }], ["a"], at);
-    expect(grid.counts.a?.reduce((sum, count) => sum + count, 0)).toBe(1);
+  it("keeps a Sunday study when America/Santiago skips midnight", () => {
+    execFileSync(join(import.meta.dirname, "../../../node_modules/.bin/tsx"), [
+      join(import.meta.dirname, "series.santiago.ts"),
+    ], {
+      env: { ...process.env, TZ: "America/Santiago" },
+      stdio: "pipe",
+    });
   });
 
   it("opens a gap on two misses and closes it after two clean days", () => {

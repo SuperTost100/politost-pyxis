@@ -14,6 +14,7 @@ export function MapPage() {
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const keyPos = useRef(new Map<string, { x: number; y: number }>());
   const keyChain = useRef(new Map<string, Promise<unknown>>());
+  const moveGen = useRef(new Map<string, number>());
   const map = useQuery({
     queryKey: ["map", planId, topicId],
     enabled: Boolean(planId && topicId),
@@ -58,7 +59,16 @@ export function MapPage() {
         >
           {t("map.radial")}
         </Button>
-        <Button shape="round" disabled={!graph?.undo} onClick={() => void invoke("maps.undo", { planId: planId ?? "", topicId: topicId ?? "" }).then(refresh)}>
+        <Button shape="round" disabled={!graph?.undo} onClick={() => {
+          const pending = [...keyChain.current.values()];
+          for (const id of keyChain.current.keys()) {
+            moveGen.current.set(id, (moveGen.current.get(id) ?? 0) + 1);
+          }
+          keyPos.current.clear();
+          void Promise.all(pending.map((job) => job.catch(() => undefined))).then(() =>
+            invoke("maps.undo", { planId: planId ?? "", topicId: topicId ?? "" }).then(refresh),
+          );
+        }}>
           {t("map.undo")}
         </Button>
         <Button shape="round" onClick={() => downloadPng(nodes, graph?.edges ?? [])}>
@@ -130,20 +140,25 @@ export function MapPage() {
               const x = current.x + dx;
               const y = current.y + dy;
               keyPos.current.set(node.id, { x, y });
+              const gen = moveGen.current.get(node.id) ?? 0;
               const prev = keyChain.current.get(node.id) ?? Promise.resolve();
-              const job = prev.catch(() => undefined).then(() =>
-                invoke("maps.move", { planId, topicId, nodeId: node.id, x, y }).then(refresh),
-              );
+              const job = prev.catch(() => undefined).then(() => {
+                if ((moveGen.current.get(node.id) ?? 0) !== gen) return;
+                return invoke("maps.move", { planId, topicId, nodeId: node.id, x, y }).then(refresh);
+              });
               keyChain.current.set(node.id, job);
             }}
             onPointerDown={(event) => {
+              const origin = keyPos.current.get(node.id) ?? { x: node.x, y: node.y };
+              const gen = (moveGen.current.get(node.id) ?? 0) + 1;
+              moveGen.current.set(node.id, gen);
               keyPos.current.delete(node.id);
+              const pending = keyChain.current.get(node.id) ?? Promise.resolve();
               const svg = event.currentTarget.ownerSVGElement;
               const target = event.currentTarget;
               target.setPointerCapture(event.pointerId);
               const local = (ev: PointerEvent) => svgPoint(svg, ev.clientX, ev.clientY);
               const originPointer = local(event.nativeEvent);
-              const origin = { x: node.x, y: node.y };
               const move = (ev: PointerEvent) => {
                 const point = local(ev);
                 setDrag({
@@ -159,13 +174,17 @@ export function MapPage() {
                 const x = Math.round(origin.x + point.x - originPointer.x);
                 const y = Math.round(origin.y + point.y - originPointer.y);
                 setDrag(null);
-                void invoke("maps.move", {
-                  planId: planId ?? "",
-                  topicId: topicId ?? "",
-                  nodeId: node.id,
-                  x,
-                  y,
-                }).then(refresh);
+                const job = pending.catch(() => undefined).then(() => {
+                  if ((moveGen.current.get(node.id) ?? 0) !== gen) return;
+                  return invoke("maps.move", {
+                    planId: planId ?? "",
+                    topicId: topicId ?? "",
+                    nodeId: node.id,
+                    x,
+                    y,
+                  }).then(refresh);
+                });
+                keyChain.current.set(node.id, job);
               };
               target.addEventListener("pointermove", move);
               target.addEventListener("pointerup", up);
