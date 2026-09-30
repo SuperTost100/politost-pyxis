@@ -307,7 +307,6 @@ function startCore(): void {
     workspacePath,
     dev: e2eSeam(),
   });
-  pushKeys();
   child.on("exit", (code) => {
     if (quitting || holdCore || coreChild !== child) return;
     console.error(`pyxis-core exited (${code ?? "null"})`);
@@ -315,7 +314,16 @@ function startCore(): void {
       if (!quitting && !holdCore && coreChild === child) startCore();
     }, 200);
   });
-  connectRenderer();
+  void pushKeys()
+    .catch((err: unknown) => {
+      console.error(
+        "pyxis-core: keys were not applied",
+        err instanceof Error ? err.message : "unknown",
+      );
+    })
+    .finally(() => {
+      if (coreChild === child) connectRenderer();
+    });
 }
 
 function pauseCore(): Promise<void> {
