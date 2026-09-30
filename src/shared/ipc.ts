@@ -306,6 +306,7 @@ export const requests = {
       stdout: z.string(),
       stderr: z.string(),
       timedOut: z.boolean(),
+      truncated: z.boolean(),
     }),
   },
   "maps.open": {

@@ -26,8 +26,12 @@ export function PythonPage() {
           setBusy(true);
           void invoke("tools.python", { code })
             .then((result) => {
-              setOut(result.timedOut ? t("python.timeout") : result.stdout || result.stderr);
+              if (result.timedOut) setOut(t("python.timeout"));
+              else if (result.stderr === "python-missing" || result.stderr === "python-sandbox-missing") {
+                setOut(t("python.missing"));
+              } else setOut(result.stdout || result.stderr);
             })
+            .catch(() => setOut(t("python.missing")))
             .finally(() => setBusy(false));
         }}
       >

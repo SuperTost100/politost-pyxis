@@ -4,6 +4,8 @@ import { derivative, evalExpr, sample, secondDerivative, simpson } from "./plot"
 describe("plot", () => {
   it("evaluates sin(x)/x and its derivatives", () => {
     expect(evalExpr("sin(x)/x", 1)).toBeCloseTo(Math.sin(1), 6);
+    expect(evalExpr("-x^2", 3)).toBe(-9);
+    expect(evalExpr("2^3^2", 0)).toBe(512);
     expect(derivative("x^2", 3)).toBeCloseTo(6, 3);
     expect(secondDerivative("x^2", 3)).toBeCloseTo(2, 2);
     const curve = sample("sin(x)/x", -8, 8);

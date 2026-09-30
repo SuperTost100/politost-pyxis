@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
 
@@ -8,7 +8,14 @@ type Stroke = { width: number; points: Point[] };
 
 export function WhiteboardPage() {
   const { t } = useTranslation();
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [strokes, setStrokes] = useState<Stroke[]>(() => {
+    try {
+      const saved = sessionStorage.getItem("pyxis-board");
+      return saved ? (JSON.parse(saved) as Stroke[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [width, setWidth] = useState(4);
   const current = useRef<Stroke | null>(null);
   const board = useRef<HTMLCanvasElement>(null);
@@ -41,6 +48,16 @@ export function WhiteboardPage() {
     };
   }
 
+  useEffect(() => {
+    paint(strokes);
+  }, []);
+
+  function remember(next: Stroke[]) {
+    setStrokes(next);
+    sessionStorage.setItem("pyxis-board", JSON.stringify(next));
+    paint(next);
+  }
+
   return (
     <CanvasLayout title={t("tools.whiteboardTitle")} closeTo="/ask">
       <div className="gallery-row">
@@ -56,13 +73,25 @@ export function WhiteboardPage() {
         ))}
         <Button
           shape="round"
-          onClick={() => {
-            const next = strokes.slice(0, -1);
-            setStrokes(next);
-            paint(next);
-          }}
+          onClick={() => remember(strokes.slice(0, -1))}
         >
           {t("map.undo")}
+        </Button>
+        <Button
+          type="primary"
+          shape="round"
+          onClick={() => {
+            sessionStorage.setItem("pyxis-board", JSON.stringify(strokes));
+            const url = board.current?.toDataURL("image/png");
+            if (!url) return;
+            sessionStorage.setItem("pyxis-board-png", url);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "whiteboard.png";
+            link.click();
+          }}
+        >
+          {t("tools.save")}
         </Button>
       </div>
       <canvas
@@ -84,8 +113,7 @@ export function WhiteboardPage() {
           if (!current.current) return;
           const next = [...strokes, current.current];
           current.current = null;
-          setStrokes(next);
-          paint(next);
+          remember(next);
         }}
       />
     </CanvasLayout>

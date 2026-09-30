@@ -26,28 +26,28 @@ export function evalExpr(source: string, x: number): number {
     return left;
   }
   function parseTerm(): number {
-    let left = parsePow();
+    let left = parseUnary();
     while (peek()?.kind === "op" && (peek()?.value === "*" || peek()?.value === "/")) {
       const op = eat().value;
-      const right = parsePow();
+      const right = parseUnary();
       left = op === "*" ? left * right : left / right;
     }
     return left;
   }
-  function parsePow(): number {
-    const base = parseUnary();
-    if (peek()?.kind === "op" && peek()?.value === "^") {
-      eat("^");
-      return base ** parseUnary();
-    }
-    return base;
-  }
   function parseUnary(): number {
     if (peek()?.kind === "op" && peek()?.value === "-") {
       eat("-");
-      return -parseUnary();
+      return -parsePow();
     }
-    return parsePrimary();
+    return parsePow();
+  }
+  function parsePow(): number {
+    const base = parsePrimary();
+    if (peek()?.kind === "op" && peek()?.value === "^") {
+      eat("^");
+      return base ** parsePow();
+    }
+    return base;
   }
   function parsePrimary(): number {
     const tok = peek();

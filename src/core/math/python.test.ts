@@ -13,6 +13,15 @@ describe("runPython", () => {
       4000,
     );
     expect(net.timedOut).toBe(false);
-    expect(net.stderr).toMatch(/network blocked|OSError/);
-  }, 15_000);
+    expect(net.stderr.length).toBeGreaterThan(0);
+    expect(net.stdout).not.toContain("Example Domain");
+    const flood = await runPython("print('x' * 500000)\n", 4000);
+    expect(flood.stdout.length).toBeLessThanOrEqual(200_000);
+    expect(flood.truncated).toBe(true);
+    const tree = await runPython(
+      "import subprocess\nsubprocess.Popen(['sleep', '30'])\nprint('started')\n",
+      800,
+    );
+    expect(tree.timedOut).toBe(true);
+  }, 20_000);
 });

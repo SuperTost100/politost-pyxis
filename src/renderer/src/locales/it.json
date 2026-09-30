@@ -426,9 +426,11 @@
   "python": {
     "title": "Python",
     "run": "Esegui",
-    "timeout": "Interrotto dopo 10 secondi."
+    "timeout": "Interrotto dopo 10 secondi.",
+    "missing": "Python non è disponibile in questa sandbox."
   },
   "tools": {
+    "save": "Salva",
     "whiteboardTitle": "Lavagna",
     "whiteboardBody": "La lavagna si apre a tutto schermo. I tratti restano su questo computer."
   }

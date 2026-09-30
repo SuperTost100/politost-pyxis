@@ -426,9 +426,11 @@
   "python": {
     "title": "Python",
     "run": "Run",
-    "timeout": "Stopped after 10 seconds."
+    "timeout": "Stopped after 10 seconds.",
+    "missing": "Python is not available in this sandbox."
   },
   "tools": {
+    "save": "Save",
     "whiteboardTitle": "Whiteboard",
     "whiteboardBody": "The whiteboard fills the window. Strokes stay on this computer."
   }

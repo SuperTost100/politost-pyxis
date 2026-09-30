@@ -74,11 +74,33 @@ function Curve(props: {
   return (
     <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label="f" style={{ width: "100%", height: "60vh" }}>
       <line x1={20} y1={Y(0)} x2={w - 20} y2={Y(0)} stroke="currentColor" strokeWidth={1} />
-      <polyline fill="none" stroke="var(--mastery, #3dbe8b)" strokeWidth={2} points={path(props.f, X, Y)} />
-      <polyline fill="none" stroke="var(--primary, #3262db)" strokeWidth={1.5} points={path(props.d1, X, Y)} />
-      <polyline fill="none" stroke="currentColor" strokeWidth={1} strokeDasharray="4 4" points={path(props.d2, X, Y)} />
+      {segments(props.f).map((part, index) => (
+        <polyline key={`f${index}`} fill="none" stroke="var(--mastery, #3dbe8b)" strokeWidth={2} points={path(part, X, Y)} />
+      ))}
+      {segments(props.d1).map((part, index) => (
+        <polyline key={`d${index}`} fill="none" stroke="var(--primary, #3262db)" strokeWidth={1.5} points={path(part, X, Y)} />
+      ))}
+      {segments(props.d2).map((part, index) => (
+        <polyline key={`s${index}`} fill="none" stroke="currentColor" strokeWidth={1} strokeDasharray="4 4" points={path(part, X, Y)} />
+      ))}
     </svg>
   );
+}
+
+function segments(points: Array<{ x: number; y: number }>) {
+  const groups: Array<Array<{ x: number; y: number }>> = [];
+  let current: Array<{ x: number; y: number }> = [];
+  for (const point of points) {
+    const prev = current[current.length - 1];
+    const jump = prev != null && (point.x - prev.x > 0.2 || Math.abs(point.y - prev.y) > 8);
+    if (jump) {
+      if (current.length > 0) groups.push(current);
+      current = [];
+    }
+    current.push(point);
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
 }
 
 function path(

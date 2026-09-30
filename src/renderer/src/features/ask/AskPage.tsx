@@ -13,7 +13,7 @@ export function AskPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() => sessionStorage.getItem("pyxis-draft") ?? "");
   const [mode, setMode] = useState<"solver" | "socratic">("solver");
   const [picked, setPicked] = useState<string[]>([]);
   const loadedFor = useRef<string | undefined>(undefined);
@@ -62,6 +62,7 @@ export function AskPage() {
       >;
       if (!result) return;
       setDraft("");
+      sessionStorage.removeItem("pyxis-draft");
       setUncovered(result.covered ? null : trimmed);
       void client.invalidateQueries({ queryKey: ["chat", result.chatId] });
       if (result.chatId !== chatId) navigate(`/ask/${result.chatId}`);
@@ -162,9 +163,19 @@ export function AskPage() {
           </button>
         ))}
       </div>
+      {sessionStorage.getItem("pyxis-board-png") ? (
+        <img
+          alt={t("tools.whiteboardTitle")}
+          src={sessionStorage.getItem("pyxis-board-png") ?? ""}
+          style={{ maxWidth: 280 }}
+        />
+      ) : null}
       <Composer
         value={draft}
-        onValueChange={setDraft}
+        onValueChange={(next) => {
+          setDraft(next);
+          sessionStorage.setItem("pyxis-draft", next);
+        }}
         onModeChange={setMode}
         sources={titles}
         streaming={busy}
