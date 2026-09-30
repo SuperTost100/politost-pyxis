@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
+import { BuildingMark } from "../../components/BuildingMark";
 import { invoke } from "../../lib/ipc";
 
 export function WizardFrame() {
@@ -17,14 +18,55 @@ export function WizardFrame() {
   const [title, setTitle] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [built, setBuilt] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   async function create() {
     const name = title.trim();
     if (!name || picked.length === 0 || busy) return;
     setBusy(true);
-    await invoke("plans.create", { title: name, sourceIds: picked });
-    await client.invalidateQueries({ queryKey: ["plans"] });
-    navigate("/exams");
+    setFailed(false);
+    try {
+      const result = await invoke("plans.create", { title: name, sourceIds: picked });
+      await client.invalidateQueries({ queryKey: ["plans"] });
+      setBuilt(result.planId);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (busy || built || failed) {
+    const name = title.trim();
+    return (
+      <FocusLayout title={t("wizard.preparing", { title: name })} closable={!busy}>
+        <BuildingMark
+          inner={busy ? 0.45 : 1}
+          middle={built ? 1 : 0}
+          outer={built ? 1 : 0}
+          done={Boolean(built)}
+          failedTrail={failed ? 0 : undefined}
+        />
+        <p className="title-2">{t("wizard.preparing", { title: name })}</p>
+        <ul className="choice-list">
+          <li className="small">{t("wizard.stepSources")}</li>
+          <li className="small">{t("wizard.stepTopics")}</li>
+          <li className="small">{t("wizard.stepPath")}</li>
+        </ul>
+        {failed ? <p className="small">{t("wizard.failed")}</p> : null}
+        {built ? (
+          <Button type="primary" shape="round" onClick={() => navigate(`/plans/${built}`)}>
+            {t("wizard.open")}
+          </Button>
+        ) : null}
+        {failed ? (
+          <Button shape="round" onClick={() => void create()}>
+            {t("wizard.retry")}
+          </Button>
+        ) : null}
+      </FocusLayout>
+    );
   }
 
   return (

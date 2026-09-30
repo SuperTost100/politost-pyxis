@@ -134,7 +134,14 @@
     "title": "Nuovo piano",
     "body": "Un capitolo dello smartbook diventa un argomento, senza chiamare un modello.",
     "planTitle": "Titolo",
-    "create": "Crea il piano"
+    "create": "Crea il piano",
+    "preparing": "Sto preparando {{title}}",
+    "open": "Apri il piano",
+    "stepSources": "Leggo le fonti",
+    "stepTopics": "Creo gli argomenti",
+    "stepPath": "Costruisco il percorso",
+    "failed": "Non riesco a preparare il piano.",
+    "retry": "Riprova"
   },
   "shared": {
     "title": "Apri un piano condiviso",

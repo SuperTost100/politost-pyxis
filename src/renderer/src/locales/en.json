@@ -134,7 +134,14 @@
     "title": "New plan",
     "body": "A smartbook chapter becomes a topic, without a model call.",
     "planTitle": "Title",
-    "create": "Create the plan"
+    "create": "Create the plan",
+    "preparing": "Preparing {{title}}",
+    "open": "Open the plan",
+    "stepSources": "Reading the sources",
+    "stepTopics": "Creating the topics",
+    "stepPath": "Building the path",
+    "failed": "The plan could not be prepared.",
+    "retry": "Try again"
   },
   "shared": {
     "title": "Open a shared plan",
