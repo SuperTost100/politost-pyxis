@@ -19,6 +19,7 @@ export function chatHandlers(db: Database.Database) {
       sourceIds?: string[];
       mode?: "solver" | "socratic";
       allowGeneral?: boolean;
+      signal?: AbortSignal;
     }) {
       return askTurn(db, input);
     },

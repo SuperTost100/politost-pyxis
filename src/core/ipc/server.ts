@@ -25,6 +25,7 @@ let engines: ReturnType<typeof engineHandlers> | null = null;
 let sources: ReturnType<typeof sourceHandlers> | null = null;
 let chats: ReturnType<typeof chatHandlers> | null = null;
 let port: CorePort | null = null;
+const inflight = new Map<string, AbortController>();
 
 export function setJobHandlers(next: HandlerMap): void {
   handlers = next;
@@ -50,10 +51,15 @@ export function attachRendererPort(next: CorePort): void {
 async function onRendererMessage(from: CorePort, data: unknown): Promise<void> {
   if (!data || typeof data !== "object" || !("kind" in data)) return;
   const message = data as PortMessage;
-  if (message.kind === "cancel") return;
+  if (message.kind === "cancel") {
+    inflight.get(message.id)?.abort();
+    return;
+  }
   if (message.kind !== "req") return;
+  const controller = new AbortController();
+  inflight.set(message.id, controller);
   try {
-    const value = await dispatch(message.name, message.input);
+    const value = await dispatch(message.name, message.input, controller.signal);
     from.postMessage({
       kind: "res",
       id: message.id,
@@ -67,10 +73,16 @@ async function onRendererMessage(from: CorePort, data: unknown): Promise<void> {
       ok: false,
       error: toIpcError(err),
     } satisfies PortMessage);
+  } finally {
+    inflight.delete(message.id);
   }
 }
 
-async function dispatch(name: string, input: unknown): Promise<unknown> {
+async function dispatch(
+  name: string,
+  input: unknown,
+  signal?: AbortSignal,
+): Promise<unknown> {
   if (!handlers) throw new IpcError("not-ready", "errors.notReady");
   switch (name) {
     case "jobs.list":
@@ -131,7 +143,10 @@ async function dispatch(name: string, input: unknown): Promise<unknown> {
     case "chats.read":
       return chats?.read(requests["chats.read"].input.parse(input));
     case "chats.ask":
-      return chats?.ask(requests["chats.ask"].input.parse(input));
+      return chats?.ask({
+        ...requests["chats.ask"].input.parse(input),
+        signal,
+      });
     case "sources.list":
       requests["sources.list"].input.parse(input);
       return sources?.list();

@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ChatMessage } from "../../components/ChatMessage";
@@ -17,6 +17,9 @@ export function AskPage() {
   const [mode, setMode] = useState<"solver" | "socratic">("solver");
   const [picked, setPicked] = useState<string[]>([]);
   const [uncovered, setUncovered] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const stop = useRef<(() => void) | null>(null);
 
   const sources = useQuery({
     queryKey: ["sources"],
@@ -27,27 +30,42 @@ export function AskPage() {
     enabled: Boolean(chatId),
     queryFn: () => invoke("chats.read", { chatId: chatId ?? "" }),
   });
-  const ask = useMutation({
-    mutationFn: (input: { text: string; allowGeneral?: boolean }) =>
-      invoke("chats.ask", {
+  async function send(text: string, allowGeneral?: boolean) {
+    const trimmed = text.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    const handle = window.pyxis.stream(
+      "chats.ask",
+      {
         chatId,
-        text: input.text,
+        text: trimmed,
         sourceIds: picked,
         mode,
-        allowGeneral: input.allowGeneral === true || picked.length === 0,
-      }),
-    onSuccess: (result, variables) => {
+        allowGeneral: allowGeneral === true || picked.length === 0,
+      },
+      () => undefined,
+    );
+    stop.current = handle.cancel;
+    try {
+      const result = (await handle.result) as Awaited<
+        ReturnType<typeof invoke<"chats.ask">>
+      >;
+      if (!result) return;
       setDraft("");
-      setUncovered(result.covered ? null : variables.text);
+      setUncovered(result.covered ? null : trimmed);
       void client.invalidateQueries({ queryKey: ["chat", result.chatId] });
       if (result.chatId !== chatId) navigate(`/ask/${result.chatId}`);
-    },
-  });
-
-  function send(text: string, allowGeneral?: boolean) {
-    const trimmed = text.trim();
-    if (!trimmed || ask.isPending) return;
-    ask.mutate({ text: trimmed, allowGeneral });
+    } catch (err) {
+      const key =
+        err && typeof err === "object" && "messageKey" in err
+          ? String((err as { messageKey: unknown }).messageKey)
+          : "errors.internal";
+      if (key !== "errors.aborted") setError(key);
+    } finally {
+      stop.current = null;
+      setBusy(false);
+    }
   }
 
   const messages = thread.data ?? [];
@@ -102,6 +120,7 @@ export function AskPage() {
           )}
         </div>
       )}
+      {error ? <Notice tone="danger">{t(error)}</Notice> : null}
       {uncovered ? (
         <Notice tone="warning">
           {t("ask.notCovered")}{" "}
@@ -134,7 +153,9 @@ export function AskPage() {
         onValueChange={setDraft}
         onModeChange={setMode}
         sources={titles}
-        onSend={() => send(draft)}
+        streaming={busy}
+        onStop={() => stop.current?.()}
+        onSend={() => void send(draft)}
       />
     </div>
   );

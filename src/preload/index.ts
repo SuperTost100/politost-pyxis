@@ -121,12 +121,15 @@ const bridge: PyxisBridge = {
   stream(name, input, onEvent) {
     const id = crypto.randomUUID();
     streams.set(id, onEvent);
-    pending.set(id, { resolve: () => {}, reject: () => {} });
+    const result = new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+    });
     post({ kind: "req", id, name, input });
-    return () => {
-      streams.delete(id);
-      pending.delete(id);
-      post({ kind: "cancel", id });
+    return {
+      result,
+      cancel() {
+        post({ kind: "cancel", id });
+      },
     };
   },
   on(name, cb) {

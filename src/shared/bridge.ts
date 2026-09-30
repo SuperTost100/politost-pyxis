@@ -43,7 +43,7 @@ export interface PyxisBridge {
     name: string,
     input: unknown,
     onEvent: (event: unknown) => void,
-  ): () => void;
+  ): { result: Promise<unknown>; cancel: () => void };
   on(name: string, cb: (value: unknown) => void): () => void;
   onPort(cb: () => void): () => void;
   onCoreRestarted(cb: () => void): () => void;
