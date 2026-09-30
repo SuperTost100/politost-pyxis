@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { _electron as electron, type Page } from "playwright";
+import { _electron as electron, type ElectronApplication, type Page } from "playwright";
 
 const require = createRequire(import.meta.url);
 const electronPath = require("electron") as string;
@@ -26,11 +26,7 @@ const errors: string[] = [];
 
 mkdirSync(shots, { recursive: true });
 
-const app = await electron.launch({
-  executablePath: electronPath,
-  args: [join(root, "out/main/index.js")],
-  env: { ...process.env, PYXIS_USER_DATA: userData },
-});
+let app: ElectronApplication | undefined;
 
 async function setTheme(page: Page, source: "dark" | "light"): Promise<void> {
   await page.evaluate((value) => {
@@ -59,6 +55,11 @@ async function openRoute(page: Page, hash: string): Promise<void> {
 }
 
 try {
+  app = await electron.launch({
+    executablePath: electronPath,
+    args: [join(root, "out/main/index.js")],
+    env: { ...process.env, PYXIS_USER_DATA: userData },
+  });
   const page = await app.firstWindow();
   page.on("console", (msg) => {
     if (msg.type() === "error" || msg.type() === "warning") errors.push(msg.text());
@@ -110,7 +111,7 @@ try {
     await page.screenshot({ path: join(shots, "jobs-running-it-dark-1280.png") });
   }
 } finally {
-  await app.close();
+  await app?.close();
   rmSync(userData, { recursive: true, force: true });
 }
 
