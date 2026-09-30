@@ -40,6 +40,10 @@ describe("plan file", () => {
       `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, created_at)
        VALUES ('card-1', ?, (SELECT id FROM topics WHERE plan_id = ?), 'fronte', 'retro', 'sources', 1)`,
     ).run(plan.planId, plan.planId);
+    db.prepare(
+      `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, removed, created_at)
+       VALUES ('card-gone', ?, (SELECT id FROM topics WHERE plan_id = ?), 'tolta', 'via', 'sources', 1, 2)`,
+    ).run(plan.planId, plan.planId);
     const file = exportPlan(db, plan.planId);
     const copyId = importPlan(db, file, 50_000);
     expect(copyId).not.toBe(plan.planId);
@@ -51,11 +55,11 @@ describe("plan file", () => {
       .prepare(`SELECT COUNT(*) AS n FROM path_nodes WHERE plan_id = ?`)
       .get(copyId) as { n: number };
     expect(nodes.n).toBe(plan.pathNodes);
-    const card = db.prepare(`SELECT front, back FROM cards WHERE plan_id = ?`).get(copyId) as {
+    const cards = db.prepare(`SELECT front, back FROM cards WHERE plan_id = ?`).all(copyId) as Array<{
       front: string;
       back: string;
-    };
-    expect(card).toEqual({ front: "fronte", back: "retro" });
+    }>;
+    expect(cards).toEqual([{ front: "fronte", back: "retro" }]);
     const stored = db
       .prepare(`SELECT exam_at, target, content_language, style FROM plans WHERE id = ?`)
       .get(copyId) as {

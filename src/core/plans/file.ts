@@ -37,7 +37,9 @@ export function exportPlan(db: Database.Database, planId: string): PlanFile {
     topic_id: string | null;
   }>;
   const cards = db
-    .prepare(`SELECT front, back, topic_id FROM cards WHERE plan_id = ? ORDER BY created_at`)
+    .prepare(
+      `SELECT front, back, topic_id FROM cards WHERE plan_id = ? AND removed = 0 ORDER BY created_at`,
+    )
     .all(planId) as Array<{ front: string; back: string; topic_id: string | null }>;
   return {
     version: 1,
