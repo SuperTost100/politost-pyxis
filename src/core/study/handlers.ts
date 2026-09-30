@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
-import { dueCards, rateCard } from "./cards";
+import { deleteCard, dueCards, queueCounts, rateCard, saveCard, setSuspended } from "./cards";
 import { ensureTopicCards } from "./cardsFromBook";
 import { topicExercises } from "./exercises";
 import { openLesson } from "./openLesson";
@@ -100,6 +100,21 @@ export function studyHandlers(db: Database.Database) {
     cards(input: { planId: string; topicId: string }) {
       ensureTopicCards(db, input.planId, input.topicId);
       return dueCards(db, input.planId, Date.now(), input.topicId);
+    },
+    queue(input: { planId: string; topicId: string }) {
+      ensureTopicCards(db, input.planId, input.topicId);
+      return queueCounts(db, input.planId, input.topicId);
+    },
+    save(input: { planId: string; topicId: string; cardId?: string; front: string; back: string }) {
+      return saveCard(db, input);
+    },
+    remove(input: { cardId: string }) {
+      deleteCard(db, input.cardId);
+      return { ok: true as const };
+    },
+    suspend(input: { cardId: string; suspended: boolean }) {
+      setSuspended(db, input.cardId, input.suspended);
+      return { ok: true as const };
     },
     simulationOpen(input: { planId: string }) {
       return openSimulation(db, input.planId);

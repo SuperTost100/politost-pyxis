@@ -19,10 +19,22 @@ export function CardsPage() {
   const client = useQueryClient();
   const [showBack, setShowBack] = useState(false);
   const [intervalDays, setIntervalDays] = useState<number | null>(null);
+  const [seen, setSeen] = useState<Array<(typeof RATINGS)[number]>>([]);
+  const [editing, setEditing] = useState(false);
+  const [draftFront, setDraftFront] = useState("");
+  const [draftBack, setDraftBack] = useState("");
+  const [addingFront, setAddingFront] = useState("");
+  const [addingBack, setAddingBack] = useState("");
+  const [armedDelete, setArmedDelete] = useState(false);
   const cards = useQuery({
     queryKey: ["cards", planId, topicId],
     enabled: Boolean(planId && topicId),
     queryFn: () => invoke("study.cards", { planId: planId ?? "", topicId: topicId ?? "" }),
+  });
+  const queue = useQuery({
+    queryKey: ["card-queue", planId, topicId],
+    enabled: Boolean(planId && topicId),
+    queryFn: () => invoke("study.queue", { planId: planId ?? "", topicId: topicId ?? "" }),
   });
   const plan = useQuery({
     queryKey: ["plan", planId],
@@ -33,6 +45,13 @@ export function CardsPage() {
     (item) => item.kind === "cards" && item.topicId === topicId && item.state === "current",
   );
   const card = cards.data?.[0];
+  const counts = { again: 0, hard: 0, good: 0, easy: 0 };
+  for (const rating of seen) counts[rating] += 1;
+
+  function refresh() {
+    void client.invalidateQueries({ queryKey: ["cards", planId, topicId] });
+    void client.invalidateQueries({ queryKey: ["card-queue", planId, topicId] });
+  }
 
   return (
     <FocusLayout
@@ -43,6 +62,15 @@ export function CardsPage() {
         </Button>
       }
     >
+      {queue.data ? (
+        <p className="small">
+          {t("cards.fresh", { count: queue.data.fresh })}
+          {" · "}
+          {t("cards.learning", { count: queue.data.learning })}
+          {" · "}
+          {t("cards.mastered", { count: queue.data.mastered })}
+        </p>
+      ) : null}
       {node ? (
         <Button
           shape="round"
@@ -61,9 +89,41 @@ export function CardsPage() {
         <p className="body">{t("cards.empty")}</p>
       ) : (
         <article className="passage">
-          <MarkdownView>{card.front}</MarkdownView>
-          {showBack ? <MarkdownView>{card.back}</MarkdownView> : null}
-          {showBack && card.sectionPath && card.passageId && card.sourceId ? (
+          {editing ? (
+            <>
+              <label className="label" htmlFor="card-front">
+                {t("cards.front")}
+              </label>
+              <input id="card-front" value={draftFront} onChange={(event) => setDraftFront(event.target.value)} />
+              <label className="label" htmlFor="card-back">
+                {t("cards.back")}
+              </label>
+              <input id="card-back" value={draftBack} onChange={(event) => setDraftBack(event.target.value)} />
+              <Button
+                type="primary"
+                shape="round"
+                onClick={() => {
+                  if (!planId || !topicId) return;
+                  void invoke("study.save", {
+                    planId,
+                    topicId,
+                    cardId: card.id,
+                    front: draftFront,
+                    back: draftBack,
+                  }).then(() => {
+                    setEditing(false);
+                    refresh();
+                  });
+                }}
+              >
+                {t("cards.save")}
+              </Button>
+            </>
+          ) : (
+            <MarkdownView>{card.front}</MarkdownView>
+          )}
+          {showBack && !editing ? <MarkdownView>{card.back}</MarkdownView> : null}
+          {showBack && !editing && card.sectionPath && card.passageId && card.sourceId ? (
             <CitationChip
               onClick={() => {
                 const params = new URLSearchParams({
@@ -80,11 +140,12 @@ export function CardsPage() {
           {intervalDays != null ? (
             <p className="small">{t("cards.next", { days: intervalDays })}</p>
           ) : null}
-          {!showBack ? (
+          {!showBack && !editing ? (
             <Button type="primary" shape="round" onClick={() => setShowBack(true)}>
               {t("cards.flip")}
             </Button>
-          ) : (
+          ) : null}
+          {showBack && !editing ? (
             <div>
               {RATINGS.map((rating) => (
                 <Button
@@ -95,17 +156,89 @@ export function CardsPage() {
                     void invoke("study.rate", { cardId: card.id, rating }).then((state) => {
                       setIntervalDays(state.intervalDays);
                       setShowBack(false);
-                      void client.invalidateQueries({ queryKey: ["cards", planId, topicId] });
+                      setSeen((current) => [...current, rating]);
+                      refresh();
                     });
                   }}
                 >
                   {t(`cards.${rating}`)}
                 </Button>
               ))}
+              <Button
+                shape="round"
+                onClick={() => {
+                  setDraftFront(card.front);
+                  setDraftBack(card.back);
+                  setEditing(true);
+                }}
+              >
+                {t("cards.edit")}
+              </Button>
+              <Button
+                shape="round"
+                onClick={() => {
+                  void invoke("study.suspend", { cardId: card.id, suspended: true }).then(() => {
+                    setShowBack(false);
+                    refresh();
+                  });
+                }}
+              >
+                {t("cards.suspend")}
+              </Button>
+              <Button
+                shape="round"
+                onClick={() => {
+                  if (!armedDelete) {
+                    setArmedDelete(true);
+                    return;
+                  }
+                  void invoke("study.remove", { cardId: card.id }).then(() => {
+                    setArmedDelete(false);
+                    setShowBack(false);
+                    refresh();
+                  });
+                }}
+              >
+                {armedDelete ? t("cards.deleteConfirm") : t("cards.delete")}
+              </Button>
             </div>
-          )}
+          ) : null}
         </article>
       )}
+      {seen.length > 0 && !card ? (
+        <p className="body">
+          {t("cards.summary", {
+            seen: seen.length,
+            again: counts.again,
+            hard: counts.hard,
+            good: counts.good,
+            easy: counts.easy,
+          })}
+        </p>
+      ) : null}
+      <label className="label" htmlFor="new-front">
+        {t("cards.add")}
+      </label>
+      <input id="new-front" value={addingFront} onChange={(event) => setAddingFront(event.target.value)} placeholder={t("cards.front")} />
+      <input value={addingBack} onChange={(event) => setAddingBack(event.target.value)} placeholder={t("cards.back")} aria-label={t("cards.back")} />
+      <Button
+        shape="round"
+        onClick={() => {
+          if (!planId || !topicId) return;
+          void invoke("study.save", {
+            planId,
+            topicId,
+            front: addingFront,
+            back: addingBack,
+          }).then(() => {
+            setAddingFront("");
+            setAddingBack("");
+            refresh();
+          });
+        }}
+      >
+        {t("cards.save")}
+      </Button>
     </FocusLayout>
   );
 }

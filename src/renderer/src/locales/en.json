@@ -54,7 +54,13 @@
     "openShared": "Open a shared plan",
     "sourcesEmptyTitle": "No sources yet",
     "sourcesEmptyBody": "PDFs, notes and smartbooks stay here. You attach them to a plan.",
-    "addSources": "Add sources"
+    "addSources": "Add sources",
+    "search": "Search plans",
+    "subject": "Subject",
+    "allSubjects": "All subjects",
+    "days": "{{days}} days",
+    "mastery": "{{percent}}%",
+    "noMatch": "No plan matches this filter."
   },
   "sources": {
     "search": "Search passages",
@@ -76,7 +82,19 @@
     "hard": "Hard",
     "good": "Good",
     "easy": "Easy",
-    "next": "Next in {{days}} days"
+    "next": "Next in {{days}} days",
+    "fresh": "New {{count}}",
+    "learning": "Learning {{count}}",
+    "mastered": "Mastered {{count}}",
+    "summary": "Seen {{seen}}. Again {{again}}, hard {{hard}}, good {{good}}, easy {{easy}}.",
+    "add": "Add a card",
+    "front": "Front",
+    "back": "Back",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteConfirm": "Delete forever",
+    "suspend": "Suspend"
   },
   "map": {
     "title": "Map",
@@ -144,6 +162,7 @@
     "title": "New plan",
     "body": "A smartbook chapter becomes a topic, without a model call.",
     "planTitle": "Title",
+    "subject": "Subject",
     "create": "Create the plan",
     "preparing": "Preparing {{title}}",
     "open": "Open the plan",

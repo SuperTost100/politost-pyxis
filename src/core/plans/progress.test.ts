@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
+import { listPlans } from "./create";
 import { planMastery, planSeries } from "./progress";
 
 describe("planMastery", () => {
@@ -20,6 +21,22 @@ describe("planMastery", () => {
     ).run(uuidv7(3), planId, topicId, Date.now());
     const rows = planMastery(db, planId);
     expect(rows).toEqual([{ id: topicId, title: "Moti", mastery: 1 }]);
+  });
+
+  it("lists a plan with its subject, days and mastery", () => {
+    const db = openDatabase(":memory:");
+    const subjectId = uuidv7(4);
+    const planId = uuidv7(1);
+    const now = Date.UTC(2026, 0, 10, 12);
+    db.prepare(`INSERT INTO subjects (id, name, created_at) VALUES (?, 'Fisica', 1)`).run(subjectId);
+    db.prepare(
+      `INSERT INTO plans (id, title, status, subject_id, exam_at, created_at, updated_at)
+       VALUES (?, 'Meccanica', 'ready', ?, ?, 1, 1)`,
+    ).run(planId, subjectId, now + 2 * 86_400_000);
+    const [row] = listPlans(db, now);
+    expect(row?.subject).toBe("Fisica");
+    expect(row?.daysToExam).toBe(2);
+    expect(row?.mastery).toBe(0);
   });
 
   it("stores an open gap from two misses in one quiz", () => {

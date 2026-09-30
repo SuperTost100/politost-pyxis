@@ -21,6 +21,10 @@ ALTER TABLE plans ADD COLUMN style TEXT NOT NULL DEFAULT 'decide';`,
     version: 5,
     sql: `ALTER TABLE messages ADD COLUMN reaction TEXT`,
   },
+  {
+    version: 6,
+    sql: `ALTER TABLE cards ADD COLUMN suspended INTEGER NOT NULL DEFAULT 0`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

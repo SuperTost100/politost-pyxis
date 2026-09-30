@@ -38,6 +38,8 @@ const replayable = new Set([
   "study.lesson",
   "study.exercises",
   "plans.list",
+  "subjects.list",
+  "study.queue",
   "plans.usage",
   "plans.read",
   "plans.export",

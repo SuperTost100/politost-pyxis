@@ -13,6 +13,8 @@
  */
 
 // ponytail: fixed multipliers only — no FSRS stability/retrievability; swap to `ts-fsrs` for production scheduling.
+/** A card counts as mastered once its interval reaches this many days. */
+export const masteredAfterDays = 21;
 
 export type Rating = "again" | "hard" | "good" | "easy";
 

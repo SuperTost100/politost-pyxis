@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../../shared/ids";
 import { openDatabase } from "../db/connection";
-import { dueCards, rateCard, seedCards } from "./cards";
+import { deleteCard, dueCards, queueCounts, rateCard, saveCard, seedCards, setSuspended } from "./cards";
 
 const MS_PER_DAY = 86_400_000;
 const T0 = Date.UTC(2026, 2, 15, 10, 0, 0);
@@ -174,5 +174,33 @@ describe("cards", () => {
       .get() as { topic_id: string; payload_json: string };
     expect(event.topic_id).toBe(topicId);
     expect(JSON.parse(event.payload_json)).toEqual({ score: 1 });
+  });
+
+  it("counts new, learning and mastered cards, and skips a suspended one", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const [freshId, learningId] = seedCards(db, {
+      planId,
+      topicId,
+      pairs: [
+        { front: "Nuova", back: "A" },
+        { front: "In corso", back: "B" },
+      ],
+    });
+    rateCard(db, learningId!, "good", T0);
+    const mastered = saveCard(db, { planId, topicId, front: "Lunga", back: "C" }, T0);
+    db.prepare(
+      `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at)
+       VALUES (?, ?, 'easy', ?, ?)`,
+    ).run(uuidv7(T0), mastered.id, JSON.stringify({ intervalDays: 21, ease: 2.5, dueAt: T0 }), T0);
+    const parked = saveCard(db, { planId, topicId, front: "Sospesa", back: "D" }, T0 + 1);
+    setSuspended(db, parked.id, true);
+    expect(queueCounts(db, planId, topicId)).toEqual({ fresh: 1, learning: 1, mastered: 1 });
+    expect(dueCards(db, planId, T0).some((card) => card.id === parked.id)).toBe(false);
+    expect(dueCards(db, planId, T0).some((card) => card.id === freshId)).toBe(true);
+    saveCard(db, { planId, topicId, cardId: freshId, front: "Nuova", back: "Aggiornata" });
+    expect(dueCards(db, planId, T0).find((card) => card.id === freshId)?.back).toBe("Aggiornata");
+    deleteCard(db, freshId!);
+    expect(queueCounts(db, planId, topicId).fresh).toBe(0);
   });
 });

@@ -20,6 +20,7 @@ export function createPlan(
     target?: number;
     language?: string;
     style?: "read" | "practice" | "decide";
+    subject?: string;
   },
   now = Date.now(),
 ): CreatedPlan {
@@ -45,12 +46,28 @@ export function createPlan(
   const topicIds: string[] = [];
 
   const run = db.transaction(() => {
+    const subjectName = input.subject?.trim() ?? "";
+    let subjectId: string | null = null;
+    if (subjectName) {
+      const existing = db.prepare(`SELECT id FROM subjects WHERE name = ?`).get(subjectName) as
+        | { id: string }
+        | undefined;
+      subjectId = existing?.id ?? uuidv7(now);
+      if (!existing) {
+        db.prepare(`INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`).run(
+          subjectId,
+          subjectName,
+          now,
+        );
+      }
+    }
     db.prepare(
-      `INSERT INTO plans (id, title, status, content_language, exam_at, target, style, created_at, updated_at)
-       VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO plans (id, title, status, subject_id, content_language, exam_at, target, style, created_at, updated_at)
+       VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       planId,
       input.title,
+      subjectId,
       input.language ?? null,
       input.examAt ?? null,
       input.target ?? 0.75,
@@ -230,10 +247,60 @@ export function readPlan(db: Database.Database, planId: string) {
   return { ...plan, topics, nodes };
 }
 
-export function listPlans(db: Database.Database) {
-  return db
+function daysUntil(examAt: number, now: number): number {
+  const exam = new Date(examAt);
+  exam.setHours(0, 0, 0, 0);
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  return Math.round((exam.getTime() - today.getTime()) / 86_400_000);
+}
+
+export function listPlans(db: Database.Database, now = Date.now()) {
+  const rows = db
     .prepare(
-      `SELECT id, title, status FROM plans ORDER BY updated_at DESC`,
+      `SELECT p.id, p.title, p.status, p.exam_at, s.name AS subject
+       FROM plans p
+       LEFT JOIN subjects s ON s.id = p.subject_id
+       ORDER BY p.updated_at DESC`,
     )
-    .all() as Array<{ id: string; title: string; status: string }>;
+    .all() as Array<{
+    id: string;
+    title: string;
+    status: string;
+    exam_at: number | null;
+    subject: string | null;
+  }>;
+  return rows.map((row) => {
+    const topics = planMastery(db, row.id, now);
+    const simulationDone = db
+      .prepare(
+        `SELECT 1 AS ok FROM path_nodes n
+         WHERE n.plan_id = ? AND n.kind = 'simulation'
+           AND EXISTS (
+             SELECT 1 FROM learning_events e
+             WHERE e.plan_id = n.plan_id AND e.kind = 'lesson_completed'
+               AND json_extract(e.payload_json, '$.nodeId') = n.id
+           )`,
+      )
+      .get(row.id);
+    const levels = topics.map((topic) =>
+      simulationDone ? topic.mastery : Math.min(topic.mastery, 0.5),
+    );
+    const mastery = levels.length === 0 ? 0 : levels.reduce((sum, level) => sum + level, 0) / levels.length;
+    return {
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      subject: row.subject,
+      daysToExam: row.exam_at == null ? null : daysUntil(row.exam_at, now),
+      mastery,
+    };
+  });
+}
+
+export function listSubjects(db: Database.Database) {
+  return db.prepare(`SELECT id, name FROM subjects ORDER BY name`).all() as Array<{
+    id: string;
+    name: string;
+  }>;
 }

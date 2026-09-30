@@ -54,7 +54,13 @@
     "openShared": "Apri un piano condiviso",
     "sourcesEmptyTitle": "Nessuna fonte ancora",
     "sourcesEmptyBody": "PDF, appunti e smartbook restano qui. Poi li colleghi a un piano.",
-    "addSources": "Aggiungi fonti"
+    "addSources": "Aggiungi fonti",
+    "search": "Cerca un piano",
+    "subject": "Materia",
+    "allSubjects": "Tutte le materie",
+    "days": "{{days}} giorni",
+    "mastery": "{{percent}}%",
+    "noMatch": "Nessun piano con questo filtro."
   },
   "sources": {
     "search": "Cerca nei brani",
@@ -76,7 +82,19 @@
     "hard": "Difficile",
     "good": "Bene",
     "easy": "Facile",
-    "next": "Prossima tra {{days}} giorni"
+    "next": "Prossima tra {{days}} giorni",
+    "fresh": "Nuove {{count}}",
+    "learning": "In corso {{count}}",
+    "mastered": "Imparate {{count}}",
+    "summary": "Viste {{seen}}. Di nuovo {{again}}, difficile {{hard}}, bene {{good}}, facile {{easy}}.",
+    "add": "Aggiungi una scheda",
+    "front": "Davanti",
+    "back": "Dietro",
+    "save": "Salva",
+    "edit": "Modifica",
+    "delete": "Elimina",
+    "deleteConfirm": "Elimina per sempre",
+    "suspend": "Sospendi"
   },
   "map": {
     "title": "Mappa",
@@ -144,6 +162,7 @@
     "title": "Nuovo piano",
     "body": "Un capitolo dello smartbook diventa un argomento, senza chiamare un modello.",
     "planTitle": "Titolo",
+    "subject": "Materia",
     "create": "Crea il piano",
     "preparing": "Sto preparando {{title}}",
     "open": "Apri il piano",

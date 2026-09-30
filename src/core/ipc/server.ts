@@ -171,6 +171,14 @@ async function dispatch(
       return study?.simulationDraft(requests["study.simulationDraft"].input.parse(input));
     case "study.cards":
       return study?.cards(requests["study.cards"].input.parse(input)) ?? [];
+    case "study.queue":
+      return study?.queue(requests["study.queue"].input.parse(input));
+    case "study.save":
+      return study?.save(requests["study.save"].input.parse(input));
+    case "study.remove":
+      return study?.remove(requests["study.remove"].input.parse(input));
+    case "study.suspend":
+      return study?.suspend(requests["study.suspend"].input.parse(input));
     case "study.rate":
       return study?.rate(requests["study.rate"].input.parse(input));
     case "study.active":
@@ -192,6 +200,9 @@ async function dispatch(
     case "plans.list":
       requests["plans.list"].input.parse(input);
       return plans?.list() ?? [];
+    case "subjects.list":
+      requests["subjects.list"].input.parse(input);
+      return plans?.subjects() ?? [];
     case "plans.usage":
       requests["plans.usage"].input.parse(input);
       return plans?.usage() ?? [];

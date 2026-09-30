@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { completeNode, createPlan, deletePlan, listPlans, readPlan } from "./create";
+import { completeNode, createPlan, deletePlan, listPlans, listSubjects, readPlan } from "./create";
 import { exportPlan, importPlan } from "./file";
 import { planMastery, planSeries } from "./progress";
 import { planDiskUsage } from "../share/usage";
@@ -9,6 +9,9 @@ export function planHandlers(db: Database.Database, workspace = "") {
   return {
     list() {
       return listPlans(db);
+    },
+    subjects() {
+      return listSubjects(db);
     },
     usage() {
       return planDiskUsage(db, workspace);

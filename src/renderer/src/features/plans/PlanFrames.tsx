@@ -16,7 +16,12 @@ export function WizardFrame() {
     queryKey: ["sources"],
     queryFn: () => invoke("sources.list", {}),
   });
+  const subjects = useQuery({
+    queryKey: ["subjects"],
+    queryFn: () => invoke("subjects.list", {}),
+  });
   const [title, setTitle] = useState("");
+  const [subject, setSubject] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [examChoice, setExamChoice] = useState<"1" | "2" | "3" | "10">("10");
   const [date, setDate] = useState("");
@@ -37,6 +42,7 @@ export function WizardFrame() {
       const fromDate = date ? new Date(`${date}T12:00:00`).getTime() : examInstant(days);
       const result = await invoke("plans.create", {
         title: name,
+        subject: subject.trim() || undefined,
         sourceIds: picked,
         examAt: Number.isFinite(fromDate) ? fromDate : null,
         target: target / 100,
@@ -102,6 +108,20 @@ export function WizardFrame() {
         value={title}
         onChange={(event) => setTitle(event.target.value)}
       />
+      <label className="label" htmlFor="plan-subject">
+        {t("wizard.subject")}
+      </label>
+      <input
+        id="plan-subject"
+        list="plan-subjects"
+        value={subject}
+        onChange={(event) => setSubject(event.target.value)}
+      />
+      <datalist id="plan-subjects">
+        {(subjects.data ?? []).map((item) => (
+          <option key={item.id} value={item.name} />
+        ))}
+      </datalist>
       <div className="choice-list">
         {(sources.data ?? []).map((source) => (
           <button

@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
-import { newCard, review, type Rating, type ScheduleState } from "./schedule";
+import { masteredAfterDays, newCard, review, type Rating, type ScheduleState } from "./schedule";
 
 export type DueCard = {
   id: string;
@@ -78,6 +78,7 @@ export function dueCards(
         ) AS due_at
        FROM cards c
        WHERE c.plan_id = ?
+         AND c.suspended = 0
          AND (? IS NULL OR c.topic_id = ?)
          AND COALESCE(
            CAST(json_extract(
@@ -148,4 +149,66 @@ export function rateCard(
   }
 
   return next;
+}
+
+export function queueCounts(
+  db: Database.Database,
+  planId: string,
+  topicId: string,
+): { fresh: number; learning: number; mastered: number } {
+  const rows = db
+    .prepare(
+      `SELECT
+        (SELECT cr.state_json FROM card_reviews cr
+         WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1) AS state_json
+       FROM cards c
+       WHERE c.plan_id = ? AND c.topic_id = ? AND c.suspended = 0`,
+    )
+    .all(planId, topicId) as Array<{ state_json: string | null }>;
+  let fresh = 0;
+  let learning = 0;
+  let mastered = 0;
+  for (const row of rows) {
+    if (!row.state_json) {
+      fresh += 1;
+      continue;
+    }
+    const state = JSON.parse(row.state_json) as ScheduleState;
+    if (state.intervalDays >= masteredAfterDays) mastered += 1;
+    else learning += 1;
+  }
+  return { fresh, learning, mastered };
+}
+
+export function saveCard(
+  db: Database.Database,
+  input: { planId: string; topicId: string; cardId?: string; front: string; back: string },
+  now = Date.now(),
+): { id: string } {
+  const front = input.front.trim();
+  const back = input.back.trim();
+  if (!front || !back) throw new Error("card-blank");
+  if (input.cardId) {
+    const result = db
+      .prepare(`UPDATE cards SET front = ?, back = ? WHERE id = ? AND plan_id = ?`)
+      .run(front, back, input.cardId, input.planId);
+    if (result.changes === 0) throw new Error("card-missing");
+    return { id: input.cardId };
+  }
+  const id = uuidv7(now);
+  db.prepare(
+    `INSERT INTO cards (id, plan_id, topic_id, front, back, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, input.planId, input.topicId, front, back, now);
+  return { id };
+}
+
+export function deleteCard(db: Database.Database, cardId: string): void {
+  const result = db.prepare(`DELETE FROM cards WHERE id = ?`).run(cardId);
+  if (result.changes === 0) throw new Error("card-missing");
+}
+
+export function setSuspended(db: Database.Database, cardId: string, suspended: boolean): void {
+  const result = db.prepare(`UPDATE cards SET suspended = ? WHERE id = ?`).run(suspended ? 1 : 0, cardId);
+  if (result.changes === 0) throw new Error("card-missing");
 }

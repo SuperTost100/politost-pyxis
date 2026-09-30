@@ -22,6 +22,9 @@ export const implemented = [
   "ENG-32", // src/core/engine/generate.ts
   "EXP-05", // src/core/share/backup.ts
   "FC-02", // src/renderer/src/features/study/CardsPage.tsx
+  "FC-03", // src/core/study/cards.ts
+  "FC-04", // src/renderer/src/features/study/CardsPage.tsx
+  "FC-06", // src/core/study/cards.ts
   "FC-05", // src/core/study/schedule.ts
   "FC-07", // src/renderer/src/features/study/CardsPage.tsx
   "LES-10", // src/core/study/exercises.ts
@@ -43,6 +46,7 @@ export const implemented = [
   "PER-03", // src/renderer/src/features/settings/SettingsPage.tsx
   "PER-05", // src/renderer/src/features/settings/SettingsPage.tsx
   "PER-06", // src/renderer/src/features/onboarding/OnboardingPage.tsx
+  "PLAN-01", // src/renderer/src/features/plans/PlanFrames.tsx
   "PLAN-02", // src/renderer/src/features/plans/PlanFrames.tsx
   "PLAN-03", // src/renderer/src/features/plans/PlanFrames.tsx
   "PLAN-04", // src/renderer/src/features/plans/PlanFrames.tsx
@@ -51,6 +55,8 @@ export const implemented = [
   "PLAN-21", // src/core/plans/create.ts
   "PLAN-22", // src/core/plans/path.ts
   "PLAN-26", // src/renderer/src/features/plans/PlanFrames.tsx
+  "PLAN-30", // src/renderer/src/features/home/HomePages.tsx
+  "PLAN-31", // src/renderer/src/features/home/HomePages.tsx
   "PRO-01", // src/core/plans/progress.ts
   "PRO-02", // src/core/study/series.ts
   "PRO-03", // src/core/plans/progress.ts

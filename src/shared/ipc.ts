@@ -328,6 +328,28 @@ export const requests = {
       }),
     ),
   },
+  "study.queue": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({ fresh: z.number(), learning: z.number(), mastered: z.number() }),
+  },
+  "study.save": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      cardId: z.string().optional(),
+      front: z.string(),
+      back: z.string(),
+    }),
+    output: z.object({ id: z.string() }),
+  },
+  "study.remove": {
+    input: z.object({ cardId: z.string() }),
+    output: z.object({ ok: z.boolean() }),
+  },
+  "study.suspend": {
+    input: z.object({ cardId: z.string(), suspended: z.boolean() }),
+    output: z.object({ ok: z.boolean() }),
+  },
   "study.rate": {
     input: z.object({
       cardId: z.string(),
@@ -395,8 +417,19 @@ export const requests = {
   "plans.list": {
     input: z.object({}),
     output: z.array(
-      z.object({ id: z.string(), title: z.string(), status: z.string() }),
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        status: z.string(),
+        subject: z.string().nullable(),
+        daysToExam: z.number().nullable(),
+        mastery: z.number(),
+      }),
     ),
+  },
+  "subjects.list": {
+    input: z.object({}),
+    output: z.array(z.object({ id: z.string(), name: z.string() })),
   },
   "plans.usage": {
     input: z.object({}),
@@ -469,6 +502,7 @@ export const requests = {
   "plans.create": {
     input: z.object({
       title: z.string(),
+      subject: z.string().optional(),
       sourceIds: z.array(z.string()),
       examAt: z.number().nullable().optional(),
       target: z.number().min(0.5).max(1).optional(),
