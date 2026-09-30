@@ -574,7 +574,10 @@ function registerIpc(): void {
         }
         throw err;
       } finally {
-        if (!existsSync(join(workspacePath, ".wipe"))) await resumeCore();
+        if (!existsSync(join(workspacePath, ".wipe"))) {
+          ensureWorkspaceDirs(workspacePath);
+          await resumeCore();
+        }
       }
     } finally {
       release();

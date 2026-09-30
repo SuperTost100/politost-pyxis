@@ -68,9 +68,23 @@ describe("plan disk usage", () => {
     mkdirSync(holding);
     writeFileSync(join(holding, "INCOMPLETE"), "1");
     writeFileSync(join(holding, "pyxis.db"), "short");
+    writeFileSync(join(holding, "pyxis.db-wal"), "stale");
     writeFileSync(join(dir, "pyxis.db"), "original-full");
     recoverInterruptedWipe(dir);
     expect(readFileSync(join(dir, "pyxis.db"), "utf8")).toBe("original-full");
+    expect(existsSync(join(dir, "pyxis.db-wal"))).toBe(false);
     expect(existsSync(holding)).toBe(false);
+  });
+
+  it("restores the database and its wal together", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-wal-"));
+    const holding = join(dir, ".wipe");
+    mkdirSync(holding);
+    writeFileSync(join(holding, "INCOMPLETE"), "1");
+    writeFileSync(join(holding, "pyxis.db"), "kept");
+    writeFileSync(join(holding, "pyxis.db-wal"), "pages");
+    recoverInterruptedWipe(dir);
+    expect(readFileSync(join(dir, "pyxis.db"), "utf8")).toBe("kept");
+    expect(readFileSync(join(dir, "pyxis.db-wal"), "utf8")).toBe("pages");
   });
 });

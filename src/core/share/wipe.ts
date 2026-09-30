@@ -35,7 +35,14 @@ export function recoverInterruptedWipe(workspace: string): void {
     rmSync(holding, { recursive: true, force: true });
     return;
   }
-  for (const name of names) restoreEntry(join(holding, name), join(workspace, name));
+  const dbNames = ["pyxis.db", "pyxis.db-wal", "pyxis.db-shm"];
+  if (!existsSync(join(workspace, "pyxis.db"))) {
+    for (const name of dbNames) restoreEntry(join(holding, name), join(workspace, name));
+  }
+  for (const name of names) {
+    if (dbNames.includes(name)) continue;
+    restoreEntry(join(holding, name), join(workspace, name));
+  }
   rmSync(holding, { recursive: true, force: true });
 }
 
