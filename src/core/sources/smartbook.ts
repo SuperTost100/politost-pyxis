@@ -207,6 +207,37 @@ export function listSources(db: Database.Database) {
   }>;
 }
 
+function mapPassages(
+  rows: Array<{
+    id: string;
+    text: string;
+    section_path: string | null;
+    locator_json: string;
+  }>,
+) {
+  return rows.map((row) => ({
+    id: row.id,
+    text: row.text,
+    sectionPath: row.section_path,
+    locator: JSON.parse(row.locator_json) as { chapter: number; paragraph: string },
+  }));
+}
+
+export function sourcePassages(db: Database.Database, sourceId: string) {
+  const rows = db
+    .prepare(
+      `SELECT id, text, section_path, locator_json FROM passages
+       WHERE source_id = ? ORDER BY rowid`,
+    )
+    .all(sourceId) as Array<{
+    id: string;
+    text: string;
+    section_path: string | null;
+    locator_json: string;
+  }>;
+  return mapPassages(rows);
+}
+
 export function chapterPassages(
   db: Database.Database,
   sourceId: string,
@@ -224,12 +255,7 @@ export function chapterPassages(
     section_path: string | null;
     locator_json: string;
   }>;
-  return rows.map((row) => ({
-    id: row.id,
-    text: row.text,
-    sectionPath: row.section_path,
-    locator: JSON.parse(row.locator_json) as { chapter: number; paragraph: string },
-  }));
+  return mapPassages(rows);
 }
 
 export function passagesAround(db: Database.Database, passageId: string) {

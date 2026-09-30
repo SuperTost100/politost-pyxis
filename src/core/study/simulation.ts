@@ -2,7 +2,9 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { syncGaps } from "../plans/progress";
 import { submitAttempt } from "./attempt";
+import { completeCurrentStage } from "../plans/create";
 import { topicExercises } from "./exercises";
+import { acrossTopics } from "./topicQuiz";
 
 type Stored = {
   minutes: number;
@@ -54,8 +56,8 @@ export function startSimulation(
   const topics = db
     .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
     .all(planId) as Array<{ id: string }>;
-  const questions = topics
-    .flatMap((topic) =>
+  const questions = acrossTopics(
+    topics.map((topic) =>
       topicExercises(db, topic.id)
         .filter((row) => row.answer && row.answer.trim())
         .map((row) => ({
@@ -64,8 +66,9 @@ export function startSimulation(
           stem: row.prompt,
           answer: { kind: "completion" as const, accepted: [[row.answer ?? ""]] },
         })),
-    )
-    .slice(0, 20);
+    ),
+    20,
+  );
   if (questions.length === 0) throw new Error("simulation-empty");
   const body: Stored = { minutes, questions };
   const itemId = uuidv7(now);
@@ -100,6 +103,7 @@ export function readSimulation(db: Database.Database, attemptId: string, now = D
     const scored = submitAttempt(db, attemptId, {}, now);
     recordTopicScores(db, row.plan_id, stored.questions, scored.results, now);
     syncGaps(db, row.plan_id, now);
+    completeCurrentStage(db, row.plan_id, "simulation", now + 1);
   }
   const submitted = db
     .prepare(`SELECT submitted_at FROM attempts WHERE id = ?`)

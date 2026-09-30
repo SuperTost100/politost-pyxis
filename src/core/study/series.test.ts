@@ -53,5 +53,13 @@ describe("study series", () => {
         { topicId: "a", at: openedAt + DAY, score: 0, scores: [0], kind: "quiz" },
       ]),
     ).toEqual([{ topicId: "a", openedAt }]);
+    expect(
+      openGaps([
+        miss,
+        { topicId: "a", at: openedAt + DAY, score: 1, scores: [1], kind: "quiz" },
+        { topicId: "a", at: openedAt + 2 * DAY, score: 1, scores: [1], kind: "quiz" },
+        { topicId: "a", at: openedAt + 3 * DAY, score: 0, scores: [0], kind: "quiz" },
+      ]),
+    ).toEqual([]);
   });
 });

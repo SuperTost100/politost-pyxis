@@ -3,7 +3,7 @@ import { completeNode } from "../plans/create";
 import { saveQuiz, startAttempt, submitAttempt } from "./attempt";
 import { topicExercises } from "./exercises";
 
-function acrossTopics<T>(buckets: T[][], limit: number): T[] {
+export function acrossTopics<T>(buckets: T[][], limit: number): T[] {
   const picked: T[] = [];
   for (let round = 0; picked.length < limit; round += 1) {
     let added = false;

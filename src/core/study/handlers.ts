@@ -5,7 +5,7 @@ import { ensureTopicCards } from "./cardsFromBook";
 import { topicExercises } from "./exercises";
 import { openLesson } from "./openLesson";
 import type { Rating } from "./schedule";
-import { completeNode, readPlan } from "../plans/create";
+import { completeCurrentStage } from "../plans/create";
 import { syncGaps } from "../plans/progress";
 import { openSimulation, readSimulation, recordTopicScores, startSimulation } from "./simulation";
 import { startDiagnostic, startTopicQuiz, submitAttempt } from "./topicQuiz";
@@ -62,15 +62,7 @@ export function studyHandlers(db: Database.Database) {
           };
           recordTopicScores(db, row.plan_id, stored.questions ?? [], scored.results, now);
           syncGaps(db, row.plan_id, now);
-          if (row.kind === "diagnostic") {
-            const node = db
-              .prepare(`SELECT id FROM path_nodes WHERE plan_id = ? AND kind = 'diagnostic'`)
-              .get(row.plan_id) as { id: string } | undefined;
-            const open = node
-              ? readPlan(db, row.plan_id)?.nodes.find((item) => item.id === node.id)
-              : undefined;
-            if (node && open?.state === "current") completeNode(db, row.plan_id, node.id, now + 1);
-          }
+          completeCurrentStage(db, row.plan_id, row.kind, now + 1);
         }
       }
       return scored;

@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
-import type Database from "better-sqlite3";
+import Database from "better-sqlite3";
 import { zipSync, unzipSync } from "fflate";
 import { openDatabase } from "../db/connection";
 
@@ -19,6 +19,31 @@ const CORRUPT = "backup-corrupt";
 
 function corrupt(): never {
   throw new Error(CORRUPT);
+}
+
+function isPyxisBackup(file: string): boolean {
+  let db: Database.Database;
+  try {
+    db = new Database(file, { readonly: true, fileMustExist: true });
+  } catch {
+    return false;
+  }
+  try {
+    const version = Number(db.pragma("user_version", { simple: true }));
+    if (!Number.isFinite(version) || version < 1) return false;
+    const names = new Set(
+      (
+        db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as Array<{
+          name: string;
+        }>
+      ).map((row) => row.name),
+    );
+    return names.has("plans") && names.has("profile") && names.has("path_nodes");
+  } catch {
+    return false;
+  } finally {
+    db.close();
+  }
 }
 
 function isZipPathUnsafe(name: string): boolean {
@@ -106,21 +131,10 @@ export function restoreWorkspace(zipPath: string, workspace: string): void {
     writeFileSync(dest, data);
   }
 
-  let db: Database.Database;
-  try {
-    db = openDatabase(join(staging, "pyxis.db"));
-  } catch {
+  if (!isPyxisBackup(join(staging, "pyxis.db"))) {
     removeTree(staging);
     corrupt();
   }
-  try {
-    db.pragma("user_version");
-  } catch {
-    db.close();
-    removeTree(staging);
-    corrupt();
-  }
-  db.close();
 
   const oldPath = `${workspace}.old`;
   removeTree(oldPath);

@@ -40,7 +40,7 @@ export function LibraryPanel() {
   });
   const page = useQuery({
     queryKey: ["source-chapter", sourceId, chapter, paragraph],
-    enabled: sourceId != null && chapter != null,
+    enabled: sourceId != null && (chapter != null || chapters.data?.length === 0),
     queryFn: () =>
       invoke("sources.chapter", {
         sourceId: sourceId ?? "",

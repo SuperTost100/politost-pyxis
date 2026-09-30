@@ -137,21 +137,44 @@ export function completeNode(
   now = Date.now(),
 ): void {
   const node = db
-    .prepare(`SELECT id, topic_id FROM path_nodes WHERE id = ? AND plan_id = ?`)
-    .get(nodeId, planId) as { id: string; topic_id: string | null } | undefined;
+    .prepare(`SELECT id, topic_id, kind FROM path_nodes WHERE id = ? AND plan_id = ?`)
+    .get(nodeId, planId) as { id: string; topic_id: string | null; kind: string } | undefined;
   if (!node) throw new Error("node-missing");
   const open = readPlan(db, planId)?.nodes.find((item) => item.id === nodeId);
   if (open?.state !== "current") throw new Error("node-locked");
   db.prepare(
     `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
      VALUES (?, 'lesson_completed', ?, ?, ?, ?)`,
-  ).run(uuidv7(now), planId, node.topic_id, JSON.stringify({ nodeId }), now);
+  ).run(
+    uuidv7(now),
+    planId,
+    node.kind === "learn" ? node.topic_id : null,
+    JSON.stringify({ nodeId }),
+    now,
+  );
+}
+
+export function completeCurrentStage(
+  db: Database.Database,
+  planId: string,
+  kind: string,
+  now = Date.now(),
+): void {
+  const node = db
+    .prepare(`SELECT id FROM path_nodes WHERE plan_id = ? AND kind = ?`)
+    .get(planId, kind) as { id: string } | undefined;
+  if (!node) return;
+  try {
+    completeNode(db, planId, node.id, now);
+  } catch (err) {
+    if (!(err instanceof Error) || err.message !== "node-locked") throw err;
+  }
 }
 
 export function readPlan(db: Database.Database, planId: string) {
   const plan = db
-    .prepare(`SELECT id, title, status FROM plans WHERE id = ?`)
-    .get(planId) as { id: string; title: string; status: string } | undefined;
+    .prepare(`SELECT id, title, status, target FROM plans WHERE id = ?`)
+    .get(planId) as { id: string; title: string; status: string; target: number } | undefined;
   if (!plan) return null;
   const topics = db
     .prepare(`SELECT id, title, position FROM topics WHERE plan_id = ? ORDER BY position`)
@@ -193,6 +216,7 @@ export function readPlan(db: Database.Database, planId: string) {
     })),
     doneIds,
     mastery,
+    plan.target,
   );
   const nodes = rows.map((row) => ({
     id: row.id,

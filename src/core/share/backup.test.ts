@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
+import { zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
@@ -48,6 +50,20 @@ describe("backupWorkspace / restoreWorkspace", () => {
         .get(planId) as { title: string };
       afterCorrupt.close();
       expect(still.title).toBe(originalTitle);
+
+      const alien = join(root, "alien.db");
+      const raw = new Database(alien);
+      raw.exec(`CREATE TABLE notes (id INTEGER PRIMARY KEY)`);
+      raw.close();
+      const alienZip = join(root, "alien.zip");
+      writeFileSync(alienZip, zipSync({ "pyxis.db": new Uint8Array(readFileSync(alien)) }));
+      expect(() => restoreWorkspace(alienZip, workspace)).toThrow(/backup-corrupt/);
+      const kept = openDatabase(join(workspace, "pyxis.db"));
+      const title = kept.prepare(`SELECT title FROM plans WHERE id = ?`).get(planId) as {
+        title: string;
+      };
+      kept.close();
+      expect(title.title).toBe(originalTitle);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

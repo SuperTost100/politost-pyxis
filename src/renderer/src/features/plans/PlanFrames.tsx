@@ -239,7 +239,9 @@ export function PlanPage() {
     queryFn: () => invoke("plans.series", { planId: planId ?? "" }),
   });
   const progress = series.data;
-  const onTrack = (progress?.topics ?? []).filter((topic) => topic.mastery >= 0.8).length;
+  const onTrack = (progress?.topics ?? []).filter(
+    (topic) => topic.mastery >= (plan.data?.target ?? 0.8),
+  ).length;
   const chart = progress?.chart ?? [];
   const chartWidth = 280;
   const chartHeight = 72;

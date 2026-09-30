@@ -387,6 +387,7 @@ export const requests = {
         id: z.string(),
         title: z.string(),
         status: z.string(),
+        target: z.number(),
         topics: z.array(z.object({ id: z.string(), title: z.string(), position: z.number() })),
         nodes: z.array(
           z.object({

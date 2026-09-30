@@ -1,7 +1,8 @@
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { createPlan } from "../plans/create";
+import { createPlan, readPlan } from "../plans/create";
+import { uuidv7 } from "../../shared/ids";
 import { importSmartbook } from "../sources/smartbook";
 import { studyHandlers } from "./handlers";
 import { readSimulation, recordTopicScores, startSimulation } from "./simulation";
@@ -103,5 +104,59 @@ describe("simulation", () => {
       )
       .get(plan.planId) as { payload_json: string };
     expect(JSON.parse(event.payload_json).score).toBe(1);
+  });
+
+  it("draws a question from a later topic and finishes the simulation node", () => {
+    const db = openDatabase(":memory:");
+    const many = Array.from({ length: 20 }, (_, index) =>
+      `:::exercise{id="a${index}" chapter="1"}\nA${index}\n:::solution\n1\n:::\n:::\n`,
+    ).join("\n");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Fisica",
+          access: "public",
+          chapters: [
+            { id: "c1", number: 1, title: "Moti", file: "01.md" },
+            { id: "c2", number: 2, title: "Forze", file: "02.md" },
+          ],
+        }),
+        "chapters/01.md": "## p1 | Energia\nUno.\n",
+        "chapters/02.md": "## p1 | Forze\nDue.\n",
+        "esercizi.md": `${many}\n:::exercise{id="b1" chapter="2"}\nFROM2\n:::solution\n2\n:::\n:::\n`,
+      }),
+    );
+    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
+    const nodes = db
+      .prepare(`SELECT id, kind, topic_id FROM path_nodes WHERE plan_id = ? ORDER BY position`)
+      .all(plan.planId) as Array<{ id: string; kind: string; topic_id: string | null }>;
+    let at = Date.now();
+    for (const node of nodes) {
+      if (node.kind === "simulation" || node.kind === "final") continue;
+      db.prepare(
+        `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+         VALUES (?, 'lesson_completed', ?, NULL, ?, ?)`,
+      ).run(uuidv7(at), plan.planId, JSON.stringify({ nodeId: node.id }), at);
+      at += 1;
+    }
+    for (const topicId of new Set(nodes.flatMap((node) => (node.topic_id ? [node.topic_id] : [])))) {
+      db.prepare(
+        `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+         VALUES (?, 'answer_given', ?, ?, ?, ?)`,
+      ).run(uuidv7(at), plan.planId, topicId, JSON.stringify({ score: 1, scores: [1] }), at);
+      at += 1;
+    }
+    const opened = startSimulation(db, plan.planId, 30, at);
+    expect(opened.questions.map((question) => question.stem)).toContain("FROM2");
+    const question = opened.questions[0];
+    studyHandlers(db).quizSubmit({
+      attemptId: opened.attemptId,
+      picks: { [question!.id]: "1" },
+    });
+    expect(readPlan(db, plan.planId)?.nodes.find((node) => node.kind === "simulation")?.state).toBe(
+      "done",
+    );
   });
 });

@@ -94,7 +94,8 @@ export function SettingsPage() {
         value={draftInterests ?? (profile.data?.interests ?? []).join(", ")}
         onChange={(event) => setDraftInterests(event.target.value)}
         onBlur={() => {
-          const items = (draftInterests ?? "")
+          if (draftInterests == null) return;
+          const items = draftInterests
             .split(",")
             .map((item) => item.trim())
             .filter(Boolean);

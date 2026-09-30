@@ -118,7 +118,7 @@ export function openGaps(events: SeriesEvent[]): OpenGap[] {
     for (let index = 0; index < attempts.length; index++) {
       const attempt = attempts[index];
       if (!attempt) continue;
-      if (gap && shouldClose(gap, attempts.slice(index))) gap = null;
+      if (gap && shouldClose(gap, attempts.slice(0, index + 1))) gap = null;
       if (!gap && shouldOpen(attempt, false)) gap = { topicId, openedAt: attempt.at };
     }
     if (gap && shouldClose(gap, attempts)) gap = null;

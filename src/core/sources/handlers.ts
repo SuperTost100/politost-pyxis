@@ -10,6 +10,7 @@ import {
   passagesAround,
   searchPassages,
   smartbookChapters,
+  sourcePassages,
 } from "./smartbook";
 
 export function sourceHandlers(db: Database.Database, workspace: string) {
@@ -44,7 +45,11 @@ export function sourceHandlers(db: Database.Database, workspace: string) {
       return passagesAround(db, input.passageId);
     },
     chapter(input: { sourceId: string; chapter: number; paragraph?: string }) {
-      return chapterPassages(db, input.sourceId, input.chapter).map((row) => ({
+      const rows =
+        smartbookChapters(db, input.sourceId).length === 0
+          ? sourcePassages(db, input.sourceId)
+          : chapterPassages(db, input.sourceId, input.chapter);
+      return rows.map((row) => ({
         ...row,
         current: input.paragraph
           ? row.locator.paragraph === input.paragraph
