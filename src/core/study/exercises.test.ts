@@ -46,4 +46,51 @@ describe("topicExercises", () => {
     expect(first[0]?.passageId).toBe(passage.id);
     expect(second.map((row) => row.prompt)).toEqual(["Quanto vale la forza?"]);
   });
+
+  it("does not cite another book's chapter with the same number", () => {
+    const db = openDatabase(":memory:");
+    const first = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "a",
+          title: "A",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nLibro A.\n",
+        "esercizi.md":
+          ':::exercise{id="e1" chapter="1"}\nDomanda A?\n:::solution\nRisposta A.\n:::\n:::\n',
+      }),
+    );
+    const second = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "b",
+          title: "B",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nLibro B.\n",
+        "esercizi.md":
+          ':::exercise{id="e1" chapter="1"}\nDomanda B?\n:::solution\nRisposta B.\n:::\n:::\n',
+      }),
+    );
+    const plan = createPlan(db, {
+      title: "Due libri",
+      sourceIds: [first.sourceId, second.sourceId],
+    });
+    const topic = db
+      .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position LIMIT 1`)
+      .get(plan.planId) as { id: string };
+    const rows = topicExercises(db, topic.id);
+    const other = rows.find((row) => row.prompt.startsWith("Domanda B"));
+    const own = rows.find((row) => row.prompt.startsWith("Domanda A"));
+    const ownPassage = db
+      .prepare(`SELECT id FROM passages WHERE source_id = ?`)
+      .get(first.sourceId) as { id: string };
+    expect(own?.passageId).toBe(ownPassage.id);
+    expect(other?.passageId).toBeNull();
+  });
 });

@@ -113,6 +113,32 @@ describe("cards", () => {
     expect(count.n).toBe(1);
   });
 
+  it("leaves the passage empty when the stored answer differs", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const sourceId = uuidv7();
+    const passageId = uuidv7();
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES (?, 'smartbook', 'Demo', 'ready', 1, 1)`,
+    ).run(sourceId);
+    db.prepare(
+      `INSERT INTO passages (id, source_id, text, section_path, created_at)
+       VALUES (?, ?, 'Altro.', '2. Forze', 1)`,
+    ).run(passageId, sourceId);
+    seedCards(db, {
+      planId,
+      topicId,
+      pairs: [{ front: "1. Moti · 1", back: "Il vettore." }],
+    });
+    seedCards(db, {
+      planId,
+      topicId,
+      pairs: [{ front: "1. Moti · 1", back: "Altro.", passageId }],
+    });
+    expect(dueCards(db, planId, T0)[0]?.passageId).toBeNull();
+  });
+
   it("after a good rating the card is not due until dueAt", () => {
     const db = openDatabase(":memory:");
     const { planId, topicId } = planWithTopic(db);

@@ -18,6 +18,7 @@ export function topicExercises(db: Database.Database, topicId: string) {
           SELECT p.id FROM passages p
           JOIN topic_passages tp ON tp.passage_id = p.id
           WHERE tp.topic_id = t.id
+            AND p.source_id = sb.source_id
             AND json_extract(p.locator_json, '$.chapter') = json_extract(e.locator_json, '$.chapter')
           ORDER BY p.created_at
           LIMIT 1
