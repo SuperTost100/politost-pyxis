@@ -1,9 +1,10 @@
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { runPython } from "./python";
 
 describe("runPython", () => {
   it("stops an infinite loop and blocks the network", async () => {
-    if (process.platform !== "darwin") {
+    if (process.platform !== "darwin" || !existsSync("/usr/bin/sandbox-exec")) {
       const blocked = await runPython("print(1)\n", 1000);
       expect(blocked.stderr).toBe("python-sandbox-missing");
       expect(blocked.stdout).toBe("");

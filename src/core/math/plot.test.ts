@@ -17,7 +17,9 @@ describe("plot", () => {
 
   it("keeps a steep curve in one stroke and breaks a pole", () => {
     expect(splitSeries(sample("x^3", -8, 8))).toHaveLength(1);
+    expect(splitSeries(sample("sin(x)", -8, 8))).toHaveLength(1);
     expect(splitSeries(sample("1/x", -2, 2)).length).toBeGreaterThan(1);
+    expect(splitSeries(sample("tan(x)", -8, 8)).length).toBeGreaterThan(1);
   });
 
   it("integrates sin(x) from 0 to pi", () => {

@@ -107,23 +107,41 @@ export function sample(source: string, a: number, b: number, n = 240): Array<{ x
 }
 
 export function splitSeries(points: Array<{ x: number; y: number }>) {
+  const slopes: number[] = [];
   const gaps: number[] = [];
   for (let index = 1; index < points.length; index++) {
-    const dx = (points[index]?.x ?? 0) - (points[index - 1]?.x ?? 0);
-    if (dx > 0) gaps.push(dx);
+    const prev = points[index - 1];
+    const point = points[index];
+    if (!prev || !point) continue;
+    const dx = point.x - prev.x;
+    if (dx <= 0) continue;
+    gaps.push(dx);
+    slopes.push((point.y - prev.y) / dx);
   }
   gaps.sort((a, b) => a - b);
   const step = gaps[0] ?? Number.POSITIVE_INFINITY;
+  const magnitudes = slopes.map((slope) => Math.abs(slope)).sort((a, b) => a - b);
+  const typical = magnitudes[Math.floor(magnitudes.length / 2)] ?? 0;
   const groups: Array<Array<{ x: number; y: number }>> = [];
   let current: Array<{ x: number; y: number }> = [];
-  for (const point of points) {
+  points.forEach((point, index) => {
     const prev = current[current.length - 1];
-    if (prev && point.x - prev.x > step * 1.5) {
+    const slope = slopes[index - 1];
+    const left = slopes[index - 2];
+    const right = slopes[index];
+    const pole =
+      slope != null &&
+      left != null &&
+      right != null &&
+      left * right > 0 &&
+      slope * left < 0 &&
+      Math.abs(slope) > 8 * Math.max(typical, 1e-9);
+    if (prev && (point.x - prev.x > step * 1.5 || pole)) {
       groups.push(current);
       current = [];
     }
     current.push(point);
-  }
+  });
   if (current.length > 0) groups.push(current);
   return groups;
 }
