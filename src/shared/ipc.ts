@@ -281,6 +281,7 @@ export const requests = {
         front: z.string(),
         back: z.string(),
         topicId: z.string().nullable(),
+        sectionPath: z.string().nullable(),
         state: z.object({
           intervalDays: z.number(),
           ease: z.number(),

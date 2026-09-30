@@ -13,7 +13,7 @@ export function topicExercises(db: Database.Database, topicId: string) {
   const marks = chapters.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT e.id, e.prompt, e.answer
+      `SELECT e.id, e.prompt, e.answer, e.passage_id
        FROM exercises e
        JOIN smartbooks sb ON sb.id = e.smartbook_id
        JOIN plan_sources ps ON ps.source_id = sb.source_id
@@ -26,6 +26,12 @@ export function topicExercises(db: Database.Database, topicId: string) {
     id: string;
     prompt: string;
     answer: string | null;
+    passage_id: string | null;
   }>;
-  return rows;
+  return rows.map((row) => ({
+    id: row.id,
+    prompt: row.prompt,
+    answer: row.answer,
+    passageId: row.passage_id,
+  }));
 }

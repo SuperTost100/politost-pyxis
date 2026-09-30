@@ -25,7 +25,7 @@ One SQLite file, `pyxis.db`, in the workspace. WAL and foreign keys are on. `000
 | path_nodes       | One step on a plan's path.                                               |
 | items            | A generated lesson, question, or explanation.                            |
 | item_passages    | Passages cited by an item. Deleting a passage is restricted.             |
-| cards            | A flashcard.                                                             |
+| cards            | A flashcard. `passage_id` is the source passage shown on the back.       |
 | card_reviews     | One rating of a card.                                                    |
 | attempts         | A quiz or exercise attempt.                                              |
 | attempt_answers  | One answer inside an attempt.                                            |

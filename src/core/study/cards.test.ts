@@ -54,6 +54,28 @@ describe("cards", () => {
     const due = dueCards(db, planId, T0);
     expect(due).toHaveLength(1);
     expect(due[0]?.state.dueAt).toBe(T0);
+    expect(due[0]?.sectionPath).toBeNull();
+  });
+
+  it("keeps the passage title on a seeded card", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const sourceId = uuidv7();
+    const passageId = uuidv7();
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES (?, 'smartbook', 'Demo', 'ready', 1, 1)`,
+    ).run(sourceId);
+    db.prepare(
+      `INSERT INTO passages (id, source_id, text, section_path, created_at)
+       VALUES (?, ?, 'Il vettore.', '1. Moti', 1)`,
+    ).run(passageId, sourceId);
+    seedCards(db, {
+      planId,
+      topicId,
+      pairs: [{ front: "1. Moti · 1", back: "Il vettore.", passageId }],
+    });
+    expect(dueCards(db, planId, T0)[0]?.sectionPath).toBe("1. Moti");
   });
 
   it("after a good rating the card is not due until dueAt", () => {

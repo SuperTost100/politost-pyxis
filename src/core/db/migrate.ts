@@ -7,6 +7,10 @@ const steps = [
     version: 2,
     sql: `ALTER TABLE chats ADD COLUMN scope_json TEXT NOT NULL DEFAULT '[]'`,
   },
+  {
+    version: 3,
+    sql: `ALTER TABLE cards ADD COLUMN passage_id TEXT REFERENCES passages(id) ON DELETE SET NULL`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

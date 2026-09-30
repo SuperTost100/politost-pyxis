@@ -7,19 +7,24 @@ export type DueCard = {
   front: string;
   back: string;
   topicId: string | null;
+  sectionPath: string | null;
   state: ScheduleState;
 };
 
 export function seedCards(
   db: Database.Database,
-  input: { planId: string; topicId: string; pairs: Array<{ front: string; back: string }> },
+  input: {
+    planId: string;
+    topicId: string;
+    pairs: Array<{ front: string; back: string; passageId?: string }>;
+  },
 ): string[] {
   const exists = db.prepare(
     `SELECT 1 FROM cards WHERE plan_id = ? AND TRIM(front) = ? LIMIT 1`,
   );
   const insert = db.prepare(
-    `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, created_at)
-     VALUES (?, ?, ?, ?, ?, 'sources', ?)`,
+    `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, passage_id, created_at)
+     VALUES (?, ?, ?, ?, ?, 'sources', ?, ?)`,
   );
   const ids: string[] = [];
   for (const pair of input.pairs) {
@@ -28,7 +33,7 @@ export function seedCards(
     if (exists.get(input.planId, front)) continue;
     const now = Date.now();
     const id = uuidv7(now);
-    insert.run(id, input.planId, input.topicId, front, back, now);
+    insert.run(id, input.planId, input.topicId, front, back, pair.passageId ?? null, now);
     ids.push(id);
   }
   return ids;
@@ -43,6 +48,7 @@ export function dueCards(
   const rows = db
     .prepare(
       `SELECT c.id, c.front, c.back, c.topic_id,
+        (SELECT p.section_path FROM passages p WHERE p.id = c.passage_id) AS section_path,
         (SELECT cr.state_json FROM card_reviews cr
          WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1) AS state_json,
         COALESCE(
@@ -72,6 +78,7 @@ export function dueCards(
     front: string;
     back: string;
     topic_id: string | null;
+    section_path: string | null;
     state_json: string | null;
   }>;
 
@@ -80,6 +87,7 @@ export function dueCards(
     front: row.front,
     back: row.back,
     topicId: row.topic_id,
+    sectionPath: row.section_path,
     state: row.state_json ? (JSON.parse(row.state_json) as ScheduleState) : newCard(now),
   }));
 }

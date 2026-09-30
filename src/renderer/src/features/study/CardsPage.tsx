@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { CitationChip } from "../../components/CitationChip";
 import { MarkdownView } from "../../components/MarkdownView";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
@@ -62,6 +63,7 @@ export function CardsPage() {
         <article className="passage">
           <MarkdownView>{card.front}</MarkdownView>
           {showBack ? <MarkdownView>{card.back}</MarkdownView> : null}
+          {showBack && card.sectionPath ? <CitationChip>{card.sectionPath}</CitationChip> : null}
           {intervalDays != null ? (
             <p className="small">{t("cards.next", { days: intervalDays })}</p>
           ) : null}
