@@ -20,6 +20,13 @@ describe("plot", () => {
     expect(splitSeries(sample("x^3", -8, 8), at("x^3"))).toHaveLength(1);
     expect(splitSeries(sample("sin(x)", -8, 8), at("sin(x)"))).toHaveLength(1);
     expect(splitSeries(sample("x+exp(-1000*x^2)", -8, 8), at("x+exp(-1000*x^2)"))).toHaveLength(1);
+    expect(
+      splitSeries(
+        sample("100*exp(-10000*(x-0.0333333333333333)^2)", -8, 8),
+        at("100*exp(-10000*(x-0.0333333333333333)^2)"),
+      ),
+    ).toHaveLength(1);
+    expect(splitSeries(sample("1/(x-0.02)", -8, 8), at("1/(x-0.02)")).length).toBeGreaterThan(1);
     expect(splitSeries(sample("1/x", -2, 2), at("1/x")).length).toBeGreaterThan(1);
     expect(splitSeries(sample("tan(x)", -8, 8), at("tan(x)")).length).toBeGreaterThan(1);
     expect(splitSeries(sample("1/(x-0.03)^2", -8, 8), at("1/(x-0.03)^2")).length).toBeGreaterThan(1);

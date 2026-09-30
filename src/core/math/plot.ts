@@ -121,7 +121,7 @@ export function splitSeries(
   let current: Array<{ x: number; y: number }> = [];
   for (const point of points) {
     const prev = current[current.length - 1];
-    if (prev && (point.x - prev.x > step * 1.5 || crossesPole(prev, point, at))) {
+    if (prev && (point.x - prev.x > step * 1.5 || !connects(prev, point, at))) {
       groups.push(current);
       current = [];
     }
@@ -131,21 +131,26 @@ export function splitSeries(
   return groups;
 }
 
-function crossesPole(
+function connects(
   prev: { x: number; y: number },
   point: { x: number; y: number },
-  at?: (x: number) => number,
-) {
-  if (!at) return false;
+  at: ((x: number) => number) | undefined,
+  depth = 0,
+): boolean {
+  if (!at) return true;
   let mid = Number.NaN;
   try {
     mid = at((prev.x + point.x) / 2);
   } catch {
-    mid = Number.NaN;
+    return false;
   }
+  if (!Number.isFinite(mid)) return false;
   const chord = (prev.y + point.y) / 2;
-  const scale = Math.max(1, Math.abs(prev.y), Math.abs(point.y), Math.abs(chord));
-  return !Number.isFinite(mid) || Math.abs(mid - chord) > 4 * scale;
+  const scale = Math.max(1, Math.min(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid)));
+  if (Math.abs(mid - chord) <= 0.25 * scale) return true;
+  if (depth >= 12) return false;
+  const middle = { x: (prev.x + point.x) / 2, y: mid };
+  return connects(prev, middle, at, depth + 1) && connects(middle, point, at, depth + 1);
 }
 
 function applyFn(name: string, arg: number): number {
