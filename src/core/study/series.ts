@@ -1,8 +1,6 @@
 import { shouldClose, shouldOpen, type OpenGap } from "./gaps";
 import { masteryFor, type MasteryEvent } from "./mastery";
 
-const DAY = 86_400_000;
-
 export type SeriesEvent = {
   topicId: string;
   at: number;
@@ -15,6 +13,12 @@ export type SeriesEvent = {
 function dayStart(at: number): number {
   const date = new Date(at);
   date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function addDays(at: number, days: number): number {
+  const date = new Date(at);
+  date.setDate(date.getDate() + days);
   return date.getTime();
 }
 
@@ -35,8 +39,8 @@ export function chartPoints(events: SeriesEvent[], now: number, days = 14) {
   const end = dayStart(now);
   const points = [];
   for (let i = days - 1; i >= 0; i--) {
-    const day = end - i * DAY;
-    const until = day + DAY;
+    const day = addDays(end, -i);
+    const until = addDays(day, 1);
     const studied = events.filter(isStudied);
     const counted = studied.filter((event) => event.at >= day && event.at < until).length;
     const masteryEvents: MasteryEvent[] = studied
@@ -62,7 +66,7 @@ export function weeklyCounts(
   weeks = 5,
 ) {
   const end = weekStart(now);
-  const starts = Array.from({ length: weeks }, (_, index) => end - (weeks - 1 - index) * 7 * DAY);
+  const starts = Array.from({ length: weeks }, (_, index) => addDays(end, (index - (weeks - 1)) * 7));
   const counts: Record<string, number[]> = {};
   for (const id of topicIds) counts[id] = Array(weeks).fill(0);
   for (const event of events) {
@@ -96,8 +100,8 @@ export function activeMinutes(events: SeriesEvent[], now: number, days = 14) {
   const end = dayStart(now);
   const bars = [];
   for (let i = days - 1; i >= 0; i--) {
-    const day = end - i * DAY;
-    const until = day + DAY;
+    const day = addDays(end, -i);
+    const until = addDays(day, 1);
     const seconds = events
       .filter((event) => event.kind === "active" && event.at >= day && event.at < until)
       .reduce((sum, event) => sum + (event.seconds ?? 0), 0);

@@ -33,7 +33,7 @@ export function LibraryPanel() {
     enabled: sourceId != null,
     queryFn: () => invoke("sources.chapters", { sourceId: sourceId ?? "" }),
   });
-  const passageId = params.get("passage") ?? pickedPassage;
+  const passageId = pickedPassage ?? params.get("passage");
   const opened = useQuery({
     queryKey: ["source-passage", passageId],
     enabled: Boolean(passageId),
