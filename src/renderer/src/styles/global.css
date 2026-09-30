@@ -108,6 +108,28 @@ html[data-platform="darwin"] .ant-layout-header {
   text-transform: uppercase;
 }
 
+.px-doors .ant-segmented-item,
+.px-doors .ant-segmented-item-selected {
+  border-radius: var(--radius-pill);
+}
+
+/* antd paints the selection on a sibling thumb, which leaves the label transparent. */
+.px-doors .ant-segmented-thumb {
+  display: none !important;
+}
+
+.px-doors .ant-segmented-item-selected,
+.px-doors .ant-segmented-item-selected-text {
+  background: var(--ink) !important;
+  color: var(--on-ink) !important;
+}
+
+.px-doors .ant-segmented-item-selected .ant-segmented-item-label,
+.px-doors .ant-segmented-item-selected-text .ant-segmented-item-label {
+  color: var(--on-ink) !important;
+  background: var(--ink) !important;
+}
+
 .shell-page {
   padding-bottom: var(--space-16);
 }

@@ -1,7 +1,7 @@
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { completeNode, createPlan, readPlan } from "../plans/create";
+import { completeNode, createPlan, deletePlan, readPlan } from "../plans/create";
 import { importSmartbook } from "../sources/smartbook";
 import { studyHandlers } from "./handlers";
 
@@ -46,5 +46,7 @@ describe("diagnostic", () => {
       .get() as { topic_id: string; payload_json: string };
     expect(event.topic_id).toBeTruthy();
     expect(JSON.parse(event.payload_json).score).toBe(1);
+    expect(() => deletePlan(db, plan.planId)).not.toThrow();
+    expect(readPlan(db, plan.planId)).toBeNull();
   });
 });

@@ -11,13 +11,7 @@ import {
 type Pending = {
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
-};
-
-const coreRestarted = {
-  code: "core-restarted",
-  messageKey: "errors.coreRestarted",
-  params: {},
-  detail: "",
+  message: unknown;
 };
 
 let port: MessagePort | null = null;
@@ -70,19 +64,14 @@ function post(message: unknown): void {
 ipcRenderer.on("pyxis:port", (event) => {
   const next = event.ports[0];
   if (!next) return;
-  const lost = pending.size > 0;
-  if (lost) {
-    for (const item of pending.values()) item.reject(coreRestarted);
-    pending.clear();
-    streams.clear();
-  }
+  const replay = port ? [...pending.values()].map((item) => item.message) : [];
   port?.close();
   port = next;
   port.onmessage = (ev: MessageEvent) => handle(ev.data);
   port.start();
   for (const message of queued) port.postMessage(message);
   queued.length = 0;
-  if (lost && port) restarted?.();
+  for (const message of replay) port.postMessage(message);
   for (const cb of portListeners) cb();
 });
 
@@ -112,19 +101,21 @@ const bridge: PyxisBridge = {
   },
   invoke(name, input) {
     const id = crypto.randomUUID();
+    const message = { kind: "req", id, name, input };
     const result = new Promise((resolve, reject) => {
-      pending.set(id, { resolve, reject });
+      pending.set(id, { resolve, reject, message });
     });
-    post({ kind: "req", id, name, input });
+    post(message);
     return result;
   },
   stream(name, input, onEvent) {
     const id = crypto.randomUUID();
     streams.set(id, onEvent);
+    const message = { kind: "req", id, name, input };
     const result = new Promise((resolve, reject) => {
-      pending.set(id, { resolve, reject });
+      pending.set(id, { resolve, reject, message });
     });
-    post({ kind: "req", id, name, input });
+    post(message);
     return {
       result,
       cancel() {

@@ -200,9 +200,7 @@ test("a smartbook becomes a plan without a model", async () => {
     await expect(page.getByText("La copia non è riuscita.")).toHaveCount(0);
     await page.getByText("Esami", { exact: true }).click();
     await page.getByRole("button", { name: "Fisica" }).click();
-    page.once("dialog", (dialog) => {
-      void dialog.accept();
-    });
+    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Elimina il piano" }).click();
     await expect(page.locator("main h2")).toHaveText("Nessun piano ancora");
     await page.getByRole("button", { name: "Impostazioni" }).click();

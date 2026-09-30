@@ -1,7 +1,7 @@
 import { Button, Segmented } from "antd";
 import { PageContainer, ProLayout } from "@ant-design/pro-components";
 import { GraduationCap, MessageCircle, Settings } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router";
@@ -38,6 +38,7 @@ export function Shell() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  const client = useQueryClient();
   const { appearance } = useAppState();
   const mode = appearance.resolved;
   const [last, setLast] = useState(readLast);
@@ -48,6 +49,8 @@ export function Shell() {
   const profile = useQuery({
     queryKey: ["profile"],
     queryFn: () => invoke("profile.get", {}),
+    retry: 10,
+    retryDelay: 300,
   });
 
   useEffect(() => {
@@ -57,6 +60,13 @@ export function Shell() {
       }
     }
   });
+
+  useEffect(() => {
+    if (profile.isSuccess) return;
+    return window.pyxis.onPort(() => {
+      void client.invalidateQueries({ queryKey: ["profile"] });
+    });
+  }, [client, profile.isSuccess]);
 
   useEffect(() => {
     const reading = profile.data;

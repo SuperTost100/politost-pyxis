@@ -225,11 +225,9 @@ function createWindow(): void {
   });
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
-  mainWindow.webContents.on("did-start-loading", () => {
-    pageReady = false;
-  });
   mainWindow.webContents.on("did-finish-load", () => {
     pageReady = true;
+    rendererPortFor = null;
     connectRenderer();
   });
 
@@ -271,6 +269,7 @@ function storedKeys(): { anthropic?: string; openai?: string } {
 let keysChain: Promise<void> = Promise.resolve();
 let pageReady = false;
 let keysReadyFor: UtilityProcess | null = null;
+let rendererPortFor: UtilityProcess | null = null;
 
 function pushKeys(): Promise<void> {
   const run = keysChain.then(() => deliverKeys());
@@ -298,21 +297,30 @@ function deliverKeys(): Promise<void> {
 }
 
 function connectRenderer(): void {
-  if (!pageReady || !coreChild || keysReadyFor !== coreChild || !mainWindow || mainWindow.isDestroyed()) {
+  if (
+    !pageReady ||
+    !coreChild ||
+    keysReadyFor !== coreChild ||
+    rendererPortFor === coreChild ||
+    !mainWindow ||
+    mainWindow.isDestroyed()
+  ) {
     return;
   }
+  rendererPortFor = coreChild;
   const { port1, port2 } = new MessageChannelMain();
   coreChild.postMessage({ type: "renderer-port" }, [port1]);
   mainWindow.webContents.postMessage("pyxis:port", null, [port2]);
 }
 
-function startCore(): void {
+function startCore(): Promise<void> {
   const child = utilityProcess.fork(join(import.meta.dirname, "core.js"), [], {
     serviceName: "pyxis-core",
     stdio: "inherit",
   });
   coreChild = child;
   keysReadyFor = null;
+  rendererPortFor = null;
   child.postMessage({
     type: "bootstrap",
     workspacePath,
@@ -325,7 +333,7 @@ function startCore(): void {
       if (!quitting && !holdCore && coreChild === child) startCore();
     }, 200);
   });
-  void pushKeys()
+  return pushKeys()
     .catch((err: unknown) => {
       console.error(
         "pyxis-core: keys were not applied",
@@ -386,9 +394,10 @@ function runArchive(op: "backup" | "restore", zip: string): Promise<void> {
   });
 }
 
-function resumeCore(): void {
-  startCore();
+function resumeCore(): Promise<void> {
+  const ready = startCore();
   holdCore = false;
+  return ready;
 }
 
 const zipFilter = [{ name: "Zip", extensions: ["zip"] }];
@@ -512,7 +521,7 @@ function registerIpc(): void {
         await runArchive("backup", filePath);
         return "saved";
       } finally {
-        resumeCore();
+        await resumeCore();
       }
     } finally {
       release();
@@ -542,7 +551,7 @@ function registerIpc(): void {
         ensureWorkspaceDirs(workspacePath);
         return "restored";
       } finally {
-        resumeCore();
+        await resumeCore();
       }
     } finally {
       release();
