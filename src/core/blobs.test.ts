@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -18,6 +18,9 @@ describe("blobs", () => {
     expect(statSync(join(folder, first)).size).toBe(bytes.byteLength);
     expect(readBlob(workspace, first).mime).toBe("text/plain");
     putBlob(workspace, bytes, "application/pdf", "pdf");
+    expect(readBlob(workspace, first).mime).toBe("text/plain");
+    rmSync(join(workspace, "blobs", first.slice(0, 2), `${first}.json`));
+    putBlob(workspace, bytes, "text/plain", "txt");
     expect(readBlob(workspace, first).mime).toBe("text/plain");
   });
 

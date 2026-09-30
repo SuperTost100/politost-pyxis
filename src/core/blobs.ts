@@ -29,10 +29,8 @@ export function putBlob(
   const sha = createHash("sha256").update(bytes).digest("hex");
   const { file, meta } = location(workspace, sha);
   mkdirSync(join(file, ".."), { recursive: true });
-  if (!existsSync(file)) {
-    writeFileSync(file, bytes);
-    writeFileSync(meta, JSON.stringify({ mime, ext }));
-  }
+  if (!existsSync(file)) writeFileSync(file, bytes);
+  if (!existsSync(meta)) writeFileSync(meta, JSON.stringify({ mime, ext }));
   return sha;
 }
 
