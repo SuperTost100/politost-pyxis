@@ -58,6 +58,22 @@
     "offerOcr": "Run OCR",
     "ocrQueued": "OCR is queued on this computer."
   },
+  "plans": {
+    "unlocksAfterIntro": "Unlocks after the introduction",
+    "unlocksAfterDiagnostic": "Unlocks after the diagnostic",
+    "unlocksAtHalf": "Unlocks at 50%",
+    "unlocksAtTarget": "Unlocks at the target",
+    "unlocksAfterCurrent": "Unlocks after the current step",
+    "current": "Now",
+    "intro": "Introduction",
+    "diagnostic": "Diagnostic",
+    "learn": "Study",
+    "practice": "Practice",
+    "cards": "Cards",
+    "gaps": "Gaps",
+    "simulation": "Simulation",
+    "final": "Final check"
+  },
   "wizard": {
     "title": "New plan",
     "body": "A smartbook chapter becomes a topic, without a model call.",

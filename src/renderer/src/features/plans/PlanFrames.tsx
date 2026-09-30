@@ -99,6 +99,9 @@ export function PlanPage() {
           <li key={node.id}>
             <div className="choice">
               <span className="body-strong">{node.title}</span>
+              <span className="small">
+                {node.state === "current" ? t("plans.current") : t(`plans.${node.kind}`)}
+              </span>
             </div>
           </li>
         ))}

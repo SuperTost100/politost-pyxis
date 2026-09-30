@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { pathState, type Stage } from "./path";
 import { smartbookChapters } from "../sources/smartbook";
 
 export type CreatedPlan = {
@@ -28,7 +29,7 @@ export function createPlan(
   );
   const insertNode = db.prepare(
     `INSERT INTO path_nodes (id, plan_id, topic_id, kind, position, title, created_at)
-     VALUES (?, ?, ?, 'lesson', ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
   let topics = 0;
   let pathNodes = 0;
@@ -63,13 +64,40 @@ export function createPlan(
         topics += 1;
       }
     }
-    for (const [index, topicId] of topicIds.entries()) {
-      const topic = db.prepare(`SELECT title FROM topics WHERE id = ?`).get(topicId) as {
-        title: string;
-      };
-      insertNode.run(uuidv7(now + 1000 + index), planId, topicId, index, topic.title, now);
-      pathNodes += 1;
+    const titles = new Map(
+      (
+        db.prepare(`SELECT id, title FROM topics WHERE plan_id = ?`).all(planId) as Array<{
+          id: string;
+          title: string;
+        }>
+      ).map((row) => [row.id, row.title]),
+    );
+    const sequence: Array<{ stage: Stage; topicId: string | null; title: string }> = [
+      { stage: "intro", topicId: null, title: input.title },
+      { stage: "diagnostic", topicId: null, title: input.title },
+    ];
+    for (const topicId of topicIds) {
+      const title = titles.get(topicId) ?? input.title;
+      for (const stage of ["learn", "practice", "cards", "gaps"] as const) {
+        sequence.push({ stage, topicId, title });
+      }
     }
+    sequence.push(
+      { stage: "simulation", topicId: null, title: input.title },
+      { stage: "final", topicId: null, title: input.title },
+    );
+    sequence.forEach((node, index) => {
+      insertNode.run(
+        uuidv7(now + 1000 + index),
+        planId,
+        node.topicId,
+        node.stage,
+        index,
+        node.title,
+        now,
+      );
+      pathNodes += 1;
+    });
   });
   run();
   return { planId, topics, pathNodes };
@@ -83,11 +111,34 @@ export function readPlan(db: Database.Database, planId: string) {
   const topics = db
     .prepare(`SELECT id, title, position FROM topics WHERE plan_id = ? ORDER BY position`)
     .all(planId) as Array<{ id: string; title: string; position: number }>;
-  const nodes = db
+  const rows = db
     .prepare(
-      `SELECT id, title, kind, position FROM path_nodes WHERE plan_id = ? ORDER BY position`,
+      `SELECT id, title, kind, topic_id, position FROM path_nodes WHERE plan_id = ? ORDER BY position`,
     )
-    .all(planId) as Array<{ id: string; title: string; kind: string; position: number }>;
+    .all(planId) as Array<{
+    id: string;
+    title: string;
+    kind: string;
+    topic_id: string | null;
+    position: number;
+  }>;
+  const states = pathState(
+    rows.map((row) => ({
+      id: row.id,
+      stage: row.kind as Stage,
+      topicId: row.topic_id,
+      position: row.position,
+    })),
+    [],
+    {},
+  );
+  const nodes = rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    kind: row.kind,
+    position: row.position,
+    state: states.find((item) => item.id === row.id)?.state ?? "locked",
+  }));
   return { ...plan, topics, nodes };
 }
 

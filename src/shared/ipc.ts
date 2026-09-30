@@ -191,6 +191,7 @@ export const requests = {
             title: z.string(),
             kind: z.string(),
             position: z.number(),
+            state: z.enum(["locked", "current", "done"]),
           }),
         ),
       })

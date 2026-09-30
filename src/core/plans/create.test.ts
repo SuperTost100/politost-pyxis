@@ -34,7 +34,11 @@ describe("createPlan", () => {
       sourceIds: [imported.sourceId],
     });
     expect(plan.topics).toBe(2);
-    expect(plan.pathNodes).toBe(2);
+    expect(plan.pathNodes).toBe(12);
+    const kinds = db
+      .prepare(`SELECT kind FROM path_nodes WHERE plan_id = ? ORDER BY position`)
+      .all(plan.planId) as Array<{ kind: string }>;
+    expect(kinds.slice(0, 2).map((row) => row.kind)).toEqual(["intro", "diagnostic"]);
     const linked = db
       .prepare(
         `SELECT COUNT(*) AS n FROM topic_passages tp

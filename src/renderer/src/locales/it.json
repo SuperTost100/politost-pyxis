@@ -58,6 +58,22 @@
     "offerOcr": "Fai l'OCR",
     "ocrQueued": "OCR in coda su questo computer."
   },
+  "plans": {
+    "unlocksAfterIntro": "Si sblocca dopo l'introduzione",
+    "unlocksAfterDiagnostic": "Si sblocca dopo la diagnosi",
+    "unlocksAtHalf": "Si sblocca al 50 %",
+    "unlocksAtTarget": "Si sblocca al traguardo",
+    "unlocksAfterCurrent": "Si sblocca dopo il passo corrente",
+    "current": "Adesso",
+    "intro": "Introduzione",
+    "diagnostic": "Diagnosi",
+    "learn": "Studio",
+    "practice": "Esercizi",
+    "cards": "Carte",
+    "gaps": "Lacune",
+    "simulation": "Simulazione",
+    "final": "Verifica finale"
+  },
   "wizard": {
     "title": "Nuovo piano",
     "body": "Un capitolo dello smartbook diventa un argomento, senza chiamare un modello.",
