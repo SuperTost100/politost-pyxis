@@ -4,6 +4,11 @@ import { planFileSchema, type PlanFile } from "../../shared/plan-file";
 
 export type { PlanFile };
 
+function clampTarget(value: number): number {
+  if (!Number.isFinite(value)) return 0.75;
+  return Math.min(1, Math.max(0.5, value));
+}
+
 export function exportPlan(db: Database.Database, planId: string): PlanFile {
   const plan = db.prepare(
     `SELECT title, exam_at, target, content_language, style FROM plans WHERE id = ?`,
@@ -50,7 +55,7 @@ export function exportPlan(db: Database.Database, planId: string): PlanFile {
       topic: card.topic_id == null ? null : (index.get(card.topic_id) ?? null),
     })),
     examAt: plan.exam_at,
-    target: plan.target,
+    target: clampTarget(plan.target),
     language:
       plan.content_language === "it" || plan.content_language === "en"
         ? plan.content_language

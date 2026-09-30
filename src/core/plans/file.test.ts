@@ -70,6 +70,10 @@ describe("plan file", () => {
       content_language: "en",
       style: "read",
     });
+    db.prepare(`UPDATE plans SET target = 2 WHERE id = ?`).run(plan.planId);
+    const clamped = exportPlan(db, plan.planId);
+    expect(clamped.target).toBe(1);
+    expect(importPlan(db, clamped, 60_000)).not.toBe(plan.planId);
   });
 
   it("accepts only an http plan link", () => {
