@@ -75,7 +75,8 @@ body {
   background: var(--bg);
 }
 
-.ant-pro-global-header-logo h1:empty {
+.ant-pro-global-header-logo h1:empty,
+.ant-pro-top-nav-header-logo h1:empty {
   display: none;
 }
 
