@@ -21,6 +21,7 @@ export function LibraryPanel() {
     Awaited<ReturnType<typeof invoke<"sources.search">>>
   >([]);
   const [error, setError] = useState<string | null>(null);
+  const [ocrFor, setOcrFor] = useState<string | null>(null);
 
   const chapters = useQuery({
     queryKey: ["source-chapters", sourceId],
@@ -46,7 +47,12 @@ export function LibraryPanel() {
     mutationFn: async () => {
       const picked = await window.pyxis.showOpenDialog({
         properties: ["openFile"],
-        filters: [{ name: "Smartbook", extensions: ["ptsb"] }],
+        filters: [
+          {
+            name: "Fonti",
+            extensions: ["ptsb", "pdf", "docx", "pptx", "txt", "md"],
+          },
+        ],
       });
       const path = picked?.[0];
       if (!path) return null;
@@ -99,6 +105,20 @@ export function LibraryPanel() {
         </Button>
       </div>
       {error ? <Notice tone="danger">{t(error)}</Notice> : null}
+      {sources
+        .filter((source) => source.status === "needs-ocr")
+        .map((source) => (
+          <Notice key={source.id} tone="warning">
+            {t("sources.scanned", { title: source.title })}{" "}
+            {ocrFor === source.id ? (
+              t("sources.ocrQueued")
+            ) : (
+              <button type="button" onClick={() => setOcrFor(source.id)}>
+                {t("sources.offerOcr")}
+              </button>
+            )}
+          </Notice>
+        ))}
       <form
         className="engine-key"
         onSubmit={(event) => {

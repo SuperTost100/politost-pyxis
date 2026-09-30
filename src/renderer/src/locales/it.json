@@ -28,7 +28,10 @@
     "search": "Cerca nei brani",
     "searchGo": "Cerca",
     "encrypted": "Questo smartbook è protetto. Pyxis apre solo i pacchetti in chiaro.",
-    "importFailed": "Non riesco a leggere questo file."
+    "importFailed": "Non riesco a leggere questo file.",
+    "scanned": "{{title}} non ha testo. È una scansione.",
+    "offerOcr": "Fai l'OCR",
+    "ocrQueued": "OCR in coda su questo computer."
   },
   "wizard": {
     "title": "Nuovo piano",

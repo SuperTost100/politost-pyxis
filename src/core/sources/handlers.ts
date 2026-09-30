@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
+import { extname } from "node:path";
 import { IpcError } from "../../shared/ipc";
+import { importDocumentFile } from "./documents";
 import {
   chapterPassages,
   importSmartbookFile,
@@ -13,9 +15,11 @@ export function sourceHandlers(db: Database.Database, workspace: string) {
     list() {
       return listSources(db);
     },
-    importFile(input: { path: string }) {
+    async importFile(input: { path: string }) {
       try {
-        return importSmartbookFile(db, workspace, input.path);
+        const ext = extname(input.path).toLowerCase();
+        if (ext === ".ptsb") return importSmartbookFile(db, workspace, input.path);
+        return await importDocumentFile(db, workspace, input.path);
       } catch (err) {
         const message = err instanceof Error ? err.message : "";
         if (message === "encrypted-smartbook" || message === "licensed-smartbook") {

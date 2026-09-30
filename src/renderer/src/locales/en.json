@@ -28,7 +28,10 @@
     "search": "Search passages",
     "searchGo": "Search",
     "encrypted": "This smartbook is protected. Pyxis opens plain packages only.",
-    "importFailed": "This file could not be read."
+    "importFailed": "This file could not be read.",
+    "scanned": "{{title}} has no text. It is a scan.",
+    "offerOcr": "Run OCR",
+    "ocrQueued": "OCR is queued on this computer."
   },
   "wizard": {
     "title": "New plan",
