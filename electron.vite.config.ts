@@ -32,6 +32,7 @@ export default defineConfig({
         input: {
           index: resolve(root, "src/main/index.ts"),
           core: resolve(root, "src/core/index.ts"),
+          "archive-worker": resolve(root, "src/main/archive-worker.ts"),
         },
       },
     },

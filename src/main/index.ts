@@ -15,9 +15,9 @@ import {
 } from "electron";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { backupWorkspace, restoreWorkspace } from "../core/share/backup";
+import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
-import { ensureWorkspace } from "./workspace";
+import { ensureWorkspace, ensureWorkspaceDirs } from "./workspace";
 import {
   mainChannels,
   type Appearance,
@@ -138,6 +138,7 @@ function installNavigationGuards(): void {
 let mainWindow: BrowserWindow | null = null;
 let coreChild: UtilityProcess | null = null;
 let holdCore = false;
+let workspaceBusy = false;
 let quitting = false;
 let workspacePath = "";
 
@@ -277,13 +278,46 @@ function pauseCore(): Promise<void> {
   holdCore = true;
   const child = coreChild;
   if (!child) return Promise.resolve();
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, 3000);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      holdCore = false;
+      reject(new Error("core-busy"));
+    }, 3000);
     child.once("exit", () => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve();
     });
     child.kill();
+  });
+}
+
+function runArchive(op: "backup" | "restore", zip: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve();
+    };
+    const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
+      workerData: { op, workspace: workspacePath, zip },
+    });
+    worker.once("message", (message: { ok?: boolean; message?: string }) => {
+      if (message.ok) finish();
+      else finish(new Error(message.message || "backup-failed"));
+    });
+    worker.once("error", (err) => {
+      finish(err instanceof Error ? err : new Error("backup-failed"));
+    });
+    worker.once("exit", (code) => {
+      if (code !== 0) finish(new Error("backup-failed"));
+    });
   });
 }
 
@@ -370,45 +404,58 @@ function registerIpc(): void {
     },
   );
   ipcMain.handle(mainChannels.workspaceBackup, async () => {
-    const result = mainWindow
-      ? await dialog.showSaveDialog(mainWindow, {
-          defaultPath: "pyxis-backup.zip",
-          filters: zipFilter,
-        })
-      : await dialog.showSaveDialog({
-          defaultPath: "pyxis-backup.zip",
-          filters: zipFilter,
-        });
-    if (result.canceled || !result.filePath) return "cancelled";
-    await pauseCore();
+    if (workspaceBusy) throw new Error("workspace-busy");
+    workspaceBusy = true;
     try {
-      backupWorkspace(workspacePath, result.filePath);
-      return "saved";
+      const result = mainWindow
+        ? await dialog.showSaveDialog(mainWindow, {
+            defaultPath: "pyxis-backup.zip",
+            filters: zipFilter,
+          })
+        : await dialog.showSaveDialog({
+            defaultPath: "pyxis-backup.zip",
+            filters: zipFilter,
+          });
+      if (result.canceled || !result.filePath) return "cancelled";
+      await pauseCore();
+      try {
+        await runArchive("backup", result.filePath);
+        return "saved";
+      } finally {
+        resumeCore();
+      }
     } finally {
-      resumeCore();
+      workspaceBusy = false;
     }
   });
   ipcMain.handle(mainChannels.workspaceRestore, async () => {
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, {
-          properties: ["openFile"],
-          filters: zipFilter,
-        })
-      : await dialog.showOpenDialog({
-          properties: ["openFile"],
-          filters: zipFilter,
-        });
-    const filePath = result.filePaths[0];
-    if (result.canceled || !filePath) return "cancelled";
-    await pauseCore();
-    let restored = false;
+    if (workspaceBusy) throw new Error("workspace-busy");
+    workspaceBusy = true;
     try {
-      restoreWorkspace(filePath, workspacePath);
-      restored = true;
-      return "restored";
+      const result = mainWindow
+        ? await dialog.showOpenDialog(mainWindow, {
+            properties: ["openFile"],
+            filters: zipFilter,
+          })
+        : await dialog.showOpenDialog({
+            properties: ["openFile"],
+            filters: zipFilter,
+          });
+      const filePath = result.filePaths[0];
+      if (result.canceled || !filePath) return "cancelled";
+      await pauseCore();
+      let restored = false;
+      try {
+        await runArchive("restore", filePath);
+        ensureWorkspaceDirs(workspacePath);
+        restored = true;
+        return "restored";
+      } finally {
+        resumeCore();
+        if (restored) mainWindow?.webContents.reload();
+      }
     } finally {
-      resumeCore();
-      if (restored) mainWindow?.webContents.reload();
+      workspaceBusy = false;
     }
   });
 }

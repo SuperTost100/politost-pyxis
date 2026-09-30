@@ -8,6 +8,12 @@ function userFile(name: string): string {
   return join(app.getPath("userData"), name);
 }
 
+export function ensureWorkspaceDirs(workspace: string): void {
+  for (const dir of ["blobs", "runtimes", "models", "scratch", "exports"]) {
+    mkdirSync(join(workspace, dir), { recursive: true });
+  }
+}
+
 export function ensureWorkspace(): string {
   const cfgPath = userFile("config.json");
   let saved: ConfigFile | null = null;
@@ -20,9 +26,7 @@ export function ensureWorkspace(): string {
     saved?.workspacePath && isAbsolute(saved.workspacePath)
       ? saved.workspacePath
       : join(app.getPath("userData"), "workspace");
-  for (const dir of ["blobs", "runtimes", "models", "scratch", "exports"]) {
-    mkdirSync(join(workspace, dir), { recursive: true });
-  }
+  ensureWorkspaceDirs(workspace);
   if (saved?.workspacePath !== workspace) {
     writeFileSync(
       cfgPath,
