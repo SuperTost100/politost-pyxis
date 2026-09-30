@@ -19,9 +19,9 @@ function idsFromFeaturesDoc(text: string): Set<string> {
 }
 
 describe("requirements registry", () => {
-  // ponytail: the features doc lives outside this repo. A standalone clone still runs the duplicate checks.
-  const doc = existsSync(featuresPath) ? readFileSync(featuresPath, "utf8") : "";
-  const documented = idsFromFeaturesDoc(doc);
+  // ponytail: the features doc lives outside this repo. A standalone clone still runs the duplicate checks. An empty file still fails.
+  const doc = existsSync(featuresPath) ? readFileSync(featuresPath, "utf8") : null;
+  const documented = doc == null ? new Set<string>() : idsFromFeaturesDoc(doc);
   const all = [...implemented, ...omitted];
 
   it("has no duplicate IDs across implemented and omitted", () => {
@@ -29,14 +29,14 @@ describe("requirements registry", () => {
   });
 
   it("lists only IDs that appear in the features doc", () => {
-    if (!doc) return;
+    if (doc == null) return;
     for (const id of all) {
       expect(documented.has(id), id).toBe(true);
     }
   });
 
   it("never lists an ID from a Later line", () => {
-    if (!doc) return;
+    if (doc == null) return;
     const later = new Set<string>();
     for (const line of doc.split("\n")) {
       if (!/\bLater\b/.test(line)) continue;
