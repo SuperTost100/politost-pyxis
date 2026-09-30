@@ -172,7 +172,13 @@
       "sm": "Testo piccolo",
       "md": "Testo normale",
       "lg": "Testo grande"
-    }
+    },
+    "data": "Dati",
+    "backup": "Copia di sicurezza",
+    "restore": "Ripristina",
+    "dataHint": "Il file resta su questo computer. Un ripristino ricarica Pyxis.",
+    "backupFailed": "La copia non è riuscita.",
+    "restoreFailed": "Il file non è una copia valida."
   },
   "jobs": {
     "label": "{{count}} lavori in corso",

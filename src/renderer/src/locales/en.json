@@ -172,7 +172,13 @@
       "sm": "Small text",
       "md": "Normal text",
       "lg": "Large text"
-    }
+    },
+    "data": "Data",
+    "backup": "Back up",
+    "restore": "Restore",
+    "dataHint": "The file stays on this computer. A restore reloads Pyxis.",
+    "backupFailed": "The backup did not finish.",
+    "restoreFailed": "That file is not a valid backup."
   },
   "jobs": {
     "label": "{{count}} jobs running",

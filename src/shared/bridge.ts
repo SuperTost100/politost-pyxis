@@ -48,6 +48,8 @@ export interface PyxisBridge {
   onPort(cb: () => void): () => void;
   onCoreRestarted(cb: () => void): () => void;
   killCore(): Promise<void>;
+  backupWorkspace(): Promise<"saved" | "cancelled">;
+  restoreWorkspace(): Promise<"restored" | "cancelled">;
 }
 
 export const mainChannels = {
@@ -59,4 +61,6 @@ export const mainChannels = {
   saveDialog: "dialog:save",
   keysSet: "keys:set",
   keysStatus: "keys:status",
+  workspaceBackup: "workspace:backup",
+  workspaceRestore: "workspace:restore",
 } as const;

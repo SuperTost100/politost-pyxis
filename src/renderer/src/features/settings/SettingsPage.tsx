@@ -21,6 +21,7 @@ export function SettingsPage() {
   });
 
   const [draftInterests, setDraftInterests] = useState<string | null>(null);
+  const [dataNote, setDataNote] = useState<string | null>(null);
 
   async function patch(input: {
     dyslexia?: boolean;
@@ -126,6 +127,30 @@ export function SettingsPage() {
           />
         ))}
       </div>
+      <div className="label section-label">{t("settings.data")}</div>
+      <div className="choice-list">
+        <Button
+          onClick={() => {
+            setDataNote(null);
+            void window.pyxis.backupWorkspace().catch(() => {
+              setDataNote(t("settings.backupFailed"));
+            });
+          }}
+        >
+          {t("settings.backup")}
+        </Button>
+        <Button
+          onClick={() => {
+            setDataNote(null);
+            void window.pyxis.restoreWorkspace().catch(() => {
+              setDataNote(t("settings.restoreFailed"));
+            });
+          }}
+        >
+          {t("settings.restore")}
+        </Button>
+      </div>
+      <p className="small section-hint">{dataNote ?? t("settings.dataHint")}</p>
       <div className="label section-label">{t("settings.language")}</div>
       <div className="choice-list">
         <Choice

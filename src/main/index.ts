@@ -15,6 +15,7 @@ import {
 } from "electron";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { backupWorkspace, restoreWorkspace } from "../core/share/backup";
 import { registerBlobProtocol } from "./blob-protocol";
 import { ensureWorkspace } from "./workspace";
 import {
@@ -136,6 +137,7 @@ function installNavigationGuards(): void {
 
 let mainWindow: BrowserWindow | null = null;
 let coreChild: UtilityProcess | null = null;
+let holdCore = false;
 let quitting = false;
 let workspacePath = "";
 
@@ -262,14 +264,35 @@ function startCore(): void {
   });
   pushKeys();
   child.on("exit", (code) => {
-    if (quitting || coreChild !== child) return;
+    if (quitting || holdCore || coreChild !== child) return;
     console.error(`pyxis-core exited (${code ?? "null"})`);
     setTimeout(() => {
-      if (!quitting && coreChild === child) startCore();
+      if (!quitting && !holdCore && coreChild === child) startCore();
     }, 200);
   });
   connectRenderer();
 }
+
+function pauseCore(): Promise<void> {
+  holdCore = true;
+  const child = coreChild;
+  if (!child) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 3000);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.kill();
+  });
+}
+
+function resumeCore(): void {
+  startCore();
+  holdCore = false;
+}
+
+const zipFilter = [{ name: "Zip", extensions: ["zip"] }];
 
 function registerIpc(): void {
   ipcMain.handle(mainChannels.appearanceGet, () => appearance());
@@ -346,6 +369,48 @@ function registerIpc(): void {
       pushKeys();
     },
   );
+  ipcMain.handle(mainChannels.workspaceBackup, async () => {
+    const result = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, {
+          defaultPath: "pyxis-backup.zip",
+          filters: zipFilter,
+        })
+      : await dialog.showSaveDialog({
+          defaultPath: "pyxis-backup.zip",
+          filters: zipFilter,
+        });
+    if (result.canceled || !result.filePath) return "cancelled";
+    await pauseCore();
+    try {
+      backupWorkspace(workspacePath, result.filePath);
+      return "saved";
+    } finally {
+      resumeCore();
+    }
+  });
+  ipcMain.handle(mainChannels.workspaceRestore, async () => {
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, {
+          properties: ["openFile"],
+          filters: zipFilter,
+        })
+      : await dialog.showOpenDialog({
+          properties: ["openFile"],
+          filters: zipFilter,
+        });
+    const filePath = result.filePaths[0];
+    if (result.canceled || !filePath) return "cancelled";
+    await pauseCore();
+    let restored = false;
+    try {
+      restoreWorkspace(filePath, workspacePath);
+      restored = true;
+      return "restored";
+    } finally {
+      resumeCore();
+      if (restored) mainWindow?.webContents.reload();
+    }
+  });
 }
 
 function registerProtocols(): void {

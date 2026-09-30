@@ -149,6 +149,8 @@ const bridge: PyxisBridge = {
     };
   },
   killCore: () => ipcRenderer.invoke("dev:killCore"),
+  backupWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceBackup),
+  restoreWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceRestore),
 };
 
 contextBridge.exposeInMainWorld("pyxis", bridge);
