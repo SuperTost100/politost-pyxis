@@ -19,6 +19,7 @@ function dayStart(at: number): number {
 function addDays(at: number, days: number): number {
   const date = new Date(at);
   date.setDate(date.getDate() + days);
+  date.setHours(0, 0, 0, 0);
   return date.getTime();
 }
 

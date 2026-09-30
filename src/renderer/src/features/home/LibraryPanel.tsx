@@ -26,6 +26,7 @@ export function LibraryPanel() {
   const [error, setError] = useState<string | null>(null);
   const [ocrFor, setOcrFor] = useState<string | null>(null);
   const [pickedPassage, setPickedPassage] = useState<string | null>(null);
+  const [searchPicked, setSearchPicked] = useState(false);
   const [preferOpened, setPreferOpened] = useState(Boolean(params.get("passage")));
 
   const chapters = useQuery({
@@ -33,7 +34,7 @@ export function LibraryPanel() {
     enabled: sourceId != null,
     queryFn: () => invoke("sources.chapters", { sourceId: sourceId ?? "" }),
   });
-  const passageId = pickedPassage ?? params.get("passage");
+  const passageId = searchPicked ? pickedPassage : params.get("passage");
   const opened = useQuery({
     queryKey: ["source-passage", passageId],
     enabled: Boolean(passageId),
@@ -173,6 +174,7 @@ export function LibraryPanel() {
                 type="button"
                 className="choice"
                 onClick={() => {
+                  setSearchPicked(true);
                   setSourceId(hit.sourceId);
                   if (hit.locator.chapter == null) {
                     setPreferOpened(true);

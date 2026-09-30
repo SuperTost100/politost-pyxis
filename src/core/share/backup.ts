@@ -112,7 +112,16 @@ export function restoreWorkspace(zipPath: string, workspace: string): void {
 
   let entries: Record<string, Uint8Array>;
   try {
-    entries = unzipSync(bytes);
+    // ponytail: 2 GiB covers a real workspace and still stops a huge declared bomb. A header that lies about originalSize can still expand; switch to a streaming unzip.
+    let declared = 0;
+    const maxExpanded = 2 * 1024 * 1024 * 1024;
+    entries = unzipSync(bytes, {
+      filter(file) {
+        declared += file.originalSize;
+        return declared <= maxExpanded;
+      },
+    });
+    if (declared > maxExpanded) corrupt();
   } catch {
     corrupt();
   }
