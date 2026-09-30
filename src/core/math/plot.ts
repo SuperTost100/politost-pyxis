@@ -169,11 +169,9 @@ function unresolvedPole(
   origin: number,
 ) {
   const bound = Math.max(Math.abs(prev.y), Math.abs(point.y), 1e-9);
-  const ceiling = Math.max(origin, bound, 1);
-  const here = Math.max(bound, Math.abs(mid));
-  if (prev.y * point.y < 0 && bound > 1e6) return true;
-  if (prev.y * point.y < 0 && here > 8 * origin && here > 1e3) return true;
-  if (Math.abs(mid) > 8 * ceiling && Math.abs(mid) > 1e3) return true;
+  const ceiling = Math.max(origin, bound);
+  if (prev.y * point.y < 0 && Math.abs(mid) > bound) return true;
+  if (Math.abs(mid) > 8 * ceiling) return true;
   for (const t of [0.2, 0.4, 0.6, 0.8]) {
     let probe = Number.NaN;
     try {
@@ -181,7 +179,7 @@ function unresolvedPole(
     } catch {
       return true;
     }
-    if (!Number.isFinite(probe) || (Math.abs(probe) > 8 * ceiling && Math.abs(probe) > 1e3)) return true;
+    if (!Number.isFinite(probe) || Math.abs(probe) > 8 * ceiling) return true;
   }
   return false;
 }
