@@ -114,6 +114,39 @@ test("a smartbook becomes a plan without a model", async () => {
     await page.getByRole("button", { name: /Carte/ }).click();
     await expect(page.getByText("Quanto vale il lavoro?")).toBeVisible();
     await expect(page.getByText("1. Moti · 1")).toHaveCount(0);
+    await page.getByRole("button", { name: "Indietro" }).click();
+    await expect(page.getByRole("heading", { name: "Progressi" })).toBeVisible();
+    await page.evaluate(() => {
+      const create = document.createElement.bind(document);
+      document.createElement = ((tag: string, options?: ElementCreationOptions) => {
+        const element = create(tag, options);
+        if (tag.toLowerCase() !== "a") return element;
+        const anchor = element as HTMLAnchorElement;
+        const click = anchor.click.bind(anchor);
+        anchor.click = () => {
+          (window as unknown as { pyxisExportName?: string }).pyxisExportName = anchor.download;
+          click();
+        };
+        return element;
+      }) as typeof document.createElement;
+    });
+    await page.getByRole("button", { name: "Esporta" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as unknown as { pyxisExportName?: string }).pyxisExportName ?? "",
+        ),
+      )
+      .toBe("Fisica.pyxis.json");
+    const planId = new URL(page.url()).hash.split("/plans/")[1]?.split("/")[0] ?? "";
+    const file = await page.evaluate(async (id) => {
+      return window.pyxis.invoke("plans.export", { planId: id }) as Promise<{
+        title: string;
+        topics: Array<{ title: string }>;
+      }>;
+    }, planId);
+    expect(file.title).toBe("Fisica");
+    expect(file.topics.some((topic) => topic.title.includes("Moti"))).toBe(true);
   } finally {
     await app?.close();
     rmSync(userData, { recursive: true, force: true });

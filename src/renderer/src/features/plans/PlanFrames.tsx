@@ -168,7 +168,9 @@ export function PlanPage() {
               const link = document.createElement("a");
               link.href = URL.createObjectURL(blob);
               link.download = `${file.title}.pyxis.json`;
+              document.body.append(link);
               link.click();
+              link.remove();
               URL.revokeObjectURL(link.href);
             });
           }}
