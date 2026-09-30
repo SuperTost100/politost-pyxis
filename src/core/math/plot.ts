@@ -45,7 +45,7 @@ export function evalExpr(source: string, x: number): number {
     const base = parsePrimary();
     if (peek()?.kind === "op" && peek()?.value === "^") {
       eat("^");
-      return base ** parsePow();
+      return base ** parseUnary();
     }
     return base;
   }
@@ -104,6 +104,28 @@ export function sample(source: string, a: number, b: number, n = 240): Array<{ x
     if (Number.isFinite(y)) points.push({ x, y });
   }
   return points;
+}
+
+export function splitSeries(points: Array<{ x: number; y: number }>) {
+  const gaps: number[] = [];
+  for (let index = 1; index < points.length; index++) {
+    const dx = (points[index]?.x ?? 0) - (points[index - 1]?.x ?? 0);
+    if (dx > 0) gaps.push(dx);
+  }
+  gaps.sort((a, b) => a - b);
+  const step = gaps[0] ?? Number.POSITIVE_INFINITY;
+  const groups: Array<Array<{ x: number; y: number }>> = [];
+  let current: Array<{ x: number; y: number }> = [];
+  for (const point of points) {
+    const prev = current[current.length - 1];
+    if (prev && point.x - prev.x > step * 1.5) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(point);
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
 }
 
 function applyFn(name: string, arg: number): number {

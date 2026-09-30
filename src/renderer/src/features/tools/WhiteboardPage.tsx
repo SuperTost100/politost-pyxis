@@ -26,6 +26,8 @@ export function WhiteboardPage() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#101218";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.lineCap = "round";
     ctx.strokeStyle = "#e8ebf2";
     for (const stroke of next) {

@@ -29,8 +29,7 @@ export type PythonRun = {
 };
 
 export function runPython(code: string, timeoutMs = 10_000): Promise<PythonRun> {
-  const sandbox = process.platform === "darwin" && existsSync("/usr/bin/sandbox-exec");
-  if (!sandbox && process.platform !== "darwin") {
+  if (process.platform !== "darwin" || !existsSync("/usr/bin/sandbox-exec")) {
     return Promise.resolve({
       stdout: "",
       stderr: "python-sandbox-missing",
@@ -38,11 +37,12 @@ export function runPython(code: string, timeoutMs = 10_000): Promise<PythonRun> 
       truncated: false,
     });
   }
-  const py = ["python3", "-I", "-c", code];
-  const cmd = sandbox ? "/usr/bin/sandbox-exec" : "python3";
-  const args = sandbox ? ["-p", PROFILE, ...py] : ["-I", "-c", code];
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(
+      "/usr/bin/sandbox-exec",
+      ["-p", PROFILE, "python3", "-I", "-c", code],
+      { detached: true, stdio: ["ignore", "pipe", "pipe"] },
+    );
     let stdout = "";
     let stderr = "";
     let timedOut = false;

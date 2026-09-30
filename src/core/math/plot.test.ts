@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { derivative, evalExpr, sample, secondDerivative, simpson } from "./plot";
+import { derivative, evalExpr, sample, secondDerivative, simpson, splitSeries } from "./plot";
 
 describe("plot", () => {
   it("evaluates sin(x)/x and its derivatives", () => {
     expect(evalExpr("sin(x)/x", 1)).toBeCloseTo(Math.sin(1), 6);
     expect(evalExpr("-x^2", 3)).toBe(-9);
     expect(evalExpr("2^3^2", 0)).toBe(512);
+    expect(evalExpr("2^-3", 0)).toBeCloseTo(0.125);
+    expect(evalExpr("x^-2", 2)).toBeCloseTo(0.25);
     expect(derivative("x^2", 3)).toBeCloseTo(6, 3);
     expect(secondDerivative("x^2", 3)).toBeCloseTo(2, 2);
     const curve = sample("sin(x)/x", -8, 8);
     expect(curve.length).toBeGreaterThan(100);
     expect(curve.some((point) => Math.abs(point.x) < 0.1 && Math.abs(point.y) > 0.9)).toBe(true);
+  });
+
+  it("keeps a steep curve in one stroke and breaks a pole", () => {
+    expect(splitSeries(sample("x^3", -8, 8))).toHaveLength(1);
+    expect(splitSeries(sample("1/x", -2, 2)).length).toBeGreaterThan(1);
   });
 
   it("integrates sin(x) from 0 to pi", () => {
