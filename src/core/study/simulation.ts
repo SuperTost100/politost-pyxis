@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { syncGaps } from "../plans/progress";
 import { submitAttempt } from "./attempt";
 import { topicExercises } from "./exercises";
 
@@ -96,7 +97,9 @@ export function readSimulation(db: Database.Database, attemptId: string, now = D
   const stored = JSON.parse(row.body_json) as Stored;
   const deadline = row.started_at + stored.minutes * 60_000;
   if (row.submitted_at == null && now >= deadline) {
-    submitAttempt(db, attemptId, {}, now);
+    const scored = submitAttempt(db, attemptId, {}, now);
+    recordTopicScores(db, row.plan_id, stored.questions, scored.results, now);
+    syncGaps(db, row.plan_id, now);
   }
   const submitted = db
     .prepare(`SELECT submitted_at FROM attempts WHERE id = ?`)
@@ -110,6 +113,33 @@ export function readSimulation(db: Database.Database, attemptId: string, now = D
     questions: stored.questions.map((question) => ({ id: question.id, stem: question.stem })),
     topics: topicScores(db, stored, attemptId, submitted.submitted_at != null),
   };
+}
+
+export function recordTopicScores(
+  db: Database.Database,
+  planId: string,
+  questions: Array<{ topicId?: string }>,
+  results: Array<{ score: number }>,
+  now: number,
+): void {
+  const byTopic = new Map<string, number[]>();
+  questions.forEach((question, index) => {
+    const topicId = question.topicId;
+    const score = results[index]?.score;
+    if (!topicId || score == null) return;
+    const list = byTopic.get(topicId) ?? [];
+    list.push(score);
+    byTopic.set(topicId, list);
+  });
+  let at = now;
+  for (const [topicId, scores] of byTopic) {
+    const score = scores.reduce((sum, item) => sum + item, 0) / scores.length;
+    db.prepare(
+      `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+       VALUES (?, 'answer_given', ?, ?, ?, ?)`,
+    ).run(uuidv7(at), planId, topicId, JSON.stringify({ score, scores }), at);
+    at += 1;
+  }
 }
 
 export function openSimulation(db: Database.Database, planId: string, now = Date.now()) {

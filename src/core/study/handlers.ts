@@ -6,7 +6,7 @@ import { topicExercises } from "./exercises";
 import { openLesson } from "./openLesson";
 import type { Rating } from "./schedule";
 import { syncGaps } from "../plans/progress";
-import { openSimulation, readSimulation, startSimulation } from "./simulation";
+import { openSimulation, readSimulation, recordTopicScores, startSimulation } from "./simulation";
 import { startTopicQuiz, submitAttempt } from "./topicQuiz";
 
 export function studyHandlers(db: Database.Database) {
@@ -51,26 +51,14 @@ export function studyHandlers(db: Database.Database) {
             scored.results.map((result) => result.score),
             now,
           );
+          syncGaps(db, row.plan_id, now);
         } else if (row.kind === "simulation") {
           const stored = JSON.parse(row.body_json) as {
-            questions?: Array<{ id: string; topicId?: string }>;
+            questions?: Array<{ topicId?: string }>;
           };
-          const byTopic = new Map<string, number[]>();
-          for (const result of scored.results) {
-            const topicId = stored.questions?.find((question) => question.id === result.id)?.topicId;
-            if (!topicId) continue;
-            const list = byTopic.get(topicId) ?? [];
-            list.push(result.score);
-            byTopic.set(topicId, list);
-          }
-          let at = now;
-          for (const [topicId, scores] of byTopic) {
-            const score = scores.reduce((sum, item) => sum + item, 0) / scores.length;
-            record(topicId, score, scores, at);
-            at += 1;
-          }
+          recordTopicScores(db, row.plan_id, stored.questions ?? [], scored.results, now);
+          syncGaps(db, row.plan_id, now);
         }
-        syncGaps(db, row.plan_id, now);
       }
       return scored;
     },

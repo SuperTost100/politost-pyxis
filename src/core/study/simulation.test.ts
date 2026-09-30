@@ -4,7 +4,7 @@ import { openDatabase } from "../db/connection";
 import { createPlan } from "../plans/create";
 import { importSmartbook } from "../sources/smartbook";
 import { studyHandlers } from "./handlers";
-import { readSimulation, startSimulation } from "./simulation";
+import { readSimulation, recordTopicScores, startSimulation } from "./simulation";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -41,6 +41,36 @@ describe("simulation", () => {
     expect(ended.leftMs).toBe(0);
     expect(ended.topics[0]?.title).toContain("Moti");
     expect(ended.topics[0]?.score).toBe(0);
+    const event = db
+      .prepare(
+        `SELECT payload_json FROM learning_events WHERE plan_id = ? AND kind = 'answer_given'`,
+      )
+      .get(plan.planId) as { payload_json: string };
+    expect(JSON.parse(event.payload_json).score).toBe(0);
+  });
+
+  it("keeps each repeated question on its own topic", () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('plan', 'Fisica', 'ready', 1, 1)`,
+    ).run();
+    db.prepare(
+      `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('a', 'plan', 'A', 0, 1), ('b', 'plan', 'B', 1, 1)`,
+    ).run();
+    recordTopicScores(
+      db,
+      "plan",
+      [{ topicId: "a" }, { topicId: "b" }],
+      [{ score: 1 }, { score: 0 }],
+      1,
+    );
+    const rows = db
+      .prepare(`SELECT topic_id, payload_json FROM learning_events ORDER BY topic_id`)
+      .all() as Array<{ topic_id: string; payload_json: string }>;
+    expect(rows.map((row) => [row.topic_id, JSON.parse(row.payload_json).score])).toEqual([
+      ["a", 1],
+      ["b", 0],
+    ]);
   });
 
   it("stores a per-topic score when the simulation is graded", () => {
