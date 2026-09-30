@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { importSmartbook, searchPassages } from "./smartbook";
+import { importSmartbook, passagesAround, searchPassages } from "./smartbook";
+import { uuidv7 } from "../../shared/ids";
 
 const book = "/Users/tost1/Documents/Personal/Vibecode/PoliTost/books/ptt-fisica1.ptsb";
 
@@ -45,6 +46,25 @@ describe("importSmartbook", () => {
     expect(hit.text, hit.text).toMatch(/\$\$[\s\S]*W = F[\s\S]*\$\$/);
     expect(JSON.parse(hit.locator_json)).toEqual({ chapter: 1, paragraph: "p1" });
     expect(searchPassages(db, "vettore")).toHaveLength(1);
+  });
+
+  it("opens every passage on the cited page", () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES ('s', 'pdf', 'Note', 'ready', 1, 1)`,
+    ).run();
+    const cited = uuidv7();
+    const sibling = uuidv7();
+    const insert = db.prepare(
+      `INSERT INTO passages (id, source_id, text, locator_json, created_at) VALUES (?, 's', ?, ?, 1)`,
+    );
+    insert.run(cited, "prima pagina", JSON.stringify({ page: 4 }));
+    insert.run(sibling, "ancora pagina", JSON.stringify({ page: 4 }));
+    insert.run(uuidv7(), "altra", JSON.stringify({ page: 5 }));
+    const rows = passagesAround(db, cited);
+    expect(rows.map((row) => row.id).sort()).toEqual([cited, sibling].sort());
+    expect(rows.find((row) => row.id === cited)?.current).toBe(true);
   });
 
   it("refuses an encrypted package", () => {

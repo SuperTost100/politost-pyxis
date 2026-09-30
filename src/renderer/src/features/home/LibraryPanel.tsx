@@ -31,6 +31,12 @@ export function LibraryPanel() {
     enabled: sourceId != null,
     queryFn: () => invoke("sources.chapters", { sourceId: sourceId ?? "" }),
   });
+  const passageId = params.get("passage");
+  const opened = useQuery({
+    queryKey: ["source-passage", passageId],
+    enabled: Boolean(passageId),
+    queryFn: () => invoke("sources.passage", { passageId: passageId ?? "" }),
+  });
   const page = useQuery({
     queryKey: ["source-chapter", sourceId, chapter, paragraph],
     enabled: sourceId != null && chapter != null,
@@ -49,7 +55,9 @@ export function LibraryPanel() {
     if (source) setSourceId(source);
     if (chapterParam) setChapter(Number(chapterParam));
     if (paragraphParam) setParagraph(paragraphParam);
-  }, [params]);
+    const openedSource = opened.data?.[0]?.sourceId;
+    if (openedSource) setSourceId(openedSource);
+  }, [params, opened.data]);
 
   useEffect(() => {
     document.getElementById("passage-current")?.scrollIntoView({ block: "center" });
@@ -199,7 +207,7 @@ export function LibraryPanel() {
         ))}
       </div>
       <div className="reading-column">
-        {(page.data ?? []).map((row) => (
+        {(opened.data ?? page.data ?? []).map((row) => (
           <div
             key={row.id}
             id={row.current ? "passage-current" : undefined}

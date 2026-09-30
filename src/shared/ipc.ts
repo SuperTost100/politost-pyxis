@@ -223,7 +223,9 @@ export const requests = {
   },
   "chats.read": {
     input: z.object({ chatId: z.string() }),
-    output: z.array(
+    output: z.object({
+      sourceIds: z.array(z.string()),
+      messages: z.array(
       z.object({
         id: z.string(),
         role: z.enum(["user", "assistant"]),
@@ -247,7 +249,8 @@ export const requests = {
           }),
         ),
       }),
-    ),
+      ),
+    }),
   },
   "chats.ask": {
     input: z.object({
@@ -286,6 +289,24 @@ export const requests = {
         })
         .nullable(),
     }),
+  },
+  "sources.passage": {
+    input: z.object({ passageId: z.string() }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        sourceId: z.string(),
+        text: z.string(),
+        sectionPath: z.string().nullable(),
+        locator: z.object({
+          chapter: z.number().optional(),
+          paragraph: z.string().optional(),
+          page: z.number().optional(),
+          slide: z.number().optional(),
+        }),
+        current: z.boolean(),
+      }),
+    ),
   },
   "sources.chapter": {
     input: z.object({

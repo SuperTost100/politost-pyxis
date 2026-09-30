@@ -4,7 +4,7 @@ import { isAbort } from "../../shared/ipc";
 import { generate } from "../engine/generate";
 import { selectionFor } from "../engine/selection";
 import type { Embedder, PassageHit } from "../sources/retrieve";
-import { retrieve } from "../sources/retrieve";
+import { contentWords, retrieve } from "../sources/retrieve";
 import {
   CHAT_PROMPT_VERSION,
   generalPrompt,
@@ -89,6 +89,63 @@ function historyText(db: Database.Database, chatId: string): string {
     .slice(-6000);
 }
 
+const FOLLOW = new Set([
+  "esempio",
+  "example",
+  "ancora",
+  "spiega",
+  "explain",
+  "altro",
+  "another",
+  "dettaglio",
+  "detail",
+  "continua",
+  "continue",
+]);
+
+function isFollowUp(text: string): boolean {
+  const words = contentWords(text).map((word) => word.toLocaleLowerCase("it"));
+  return words.length === 0 || words.every((word) => FOLLOW.has(word));
+}
+
+export function chatScope(db: Database.Database, chatId: string): string[] {
+  const row = db.prepare(`SELECT scope_json FROM chats WHERE id = ?`).get(chatId) as
+    | { scope_json: string }
+    | undefined;
+  if (!row) return [];
+  const parsed = JSON.parse(row.scope_json) as unknown;
+  return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+}
+
+function priorPassages(db: Database.Database, chatId: string): PassageHit[] {
+  const rows = db
+    .prepare(
+      `SELECT p.id, p.source_id, p.text, p.section_path, p.locator_json
+       FROM message_passages mp
+       JOIN messages m ON m.id = mp.message_id
+       JOIN passages p ON p.id = mp.passage_id
+       WHERE m.chat_id = ?
+       ORDER BY m.created_at DESC
+       LIMIT 8`,
+    )
+    .all(chatId) as Array<{
+    id: string;
+    source_id: string | null;
+    text: string;
+    section_path: string | null;
+    locator_json: string | null;
+  }>;
+  return rows.map((row) => ({
+    id: row.id,
+    sourceId: row.source_id ?? "",
+    text: row.text,
+    sectionPath: row.section_path,
+    locator: row.locator_json
+      ? (JSON.parse(row.locator_json) as PassageHit["locator"])
+      : {},
+  }));
+}
+
 function ensureChat(db: Database.Database, chatId: string | undefined, title: string, now: number) {
   if (chatId) {
     const existing = db.prepare(`SELECT id FROM chats WHERE id = ?`).get(chatId) as
@@ -103,19 +160,57 @@ function ensureChat(db: Database.Database, chatId: string | undefined, title: st
   return id;
 }
 
+function gather(
+  db: Database.Database,
+  chatId: string,
+  text: string,
+  sourceIds: string[],
+  embed: AskInput["embed"],
+) {
+  const options = { sourceIds, embed };
+  const found = retrieve(db, text, options);
+  if (found.covered || !isFollowUp(text)) return found;
+  const earlier = db
+    .prepare(
+      `SELECT body FROM messages WHERE chat_id = ? AND role = 'user' AND body != ?
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(chatId, text) as { body: string } | undefined;
+  if (earlier) {
+    const wider = retrieve(db, `${earlier.body} ${text}`, options);
+    if (wider.covered) return wider;
+  }
+  const prior = priorPassages(db, chatId);
+  if (prior.length > 0) return { hits: prior, covered: true, usedVectors: false };
+  return found;
+}
+
 export async function askTurn(db: Database.Database, input: AskInput): Promise<AskResult> {
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
   const now = Date.now();
   const chatId = ensureChat(db, input.chatId, input.text, now);
-  const userId = uuidv7(now + 1);
-  db.prepare(
-    `INSERT INTO messages (id, chat_id, role, body, created_at) VALUES (?, ?, 'user', ?, ?)`,
-  ).run(userId, chatId, input.text, now);
+  const sourceIds = input.sourceIds ?? chatScope(db, chatId);
+  if (input.sourceIds) {
+    db.prepare(`UPDATE chats SET scope_json = ? WHERE id = ?`).run(
+      JSON.stringify(input.sourceIds),
+      chatId,
+    );
+  }
+  const pending = db
+    .prepare(
+      `SELECT role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(chatId) as { role: string; body: string } | undefined;
+  if (!(pending?.role === "user" && pending.body === input.text)) {
+    db.prepare(
+      `INSERT INTO messages (id, chat_id, role, body, created_at) VALUES (?, ?, 'user', ?, ?)`,
+    ).run(uuidv7(now + 1), chatId, input.text, now);
+  }
   db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
 
   const found = input.allowGeneral
     ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
-    : retrieve(db, input.text, { sourceIds: input.sourceIds, embed: input.embed });
+    : gather(db, chatId, input.text, sourceIds, input.embed);
   if (!input.allowGeneral && !found.covered) {
     return { chatId, covered: false, message: null };
   }
@@ -184,8 +279,12 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
   const used = new Set(
     [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
   );
-  for (const cite of citations) {
-    if (!used.has(cite.index)) continue;
+  const linked = citations.filter((cite) => used.has(cite.index));
+  if (!input.allowGeneral && linked.length === 0) {
+    db.prepare(`DELETE FROM messages WHERE id = ?`).run(messageId);
+    return { chatId, covered: false, message: null };
+  }
+  for (const cite of linked) {
     link.run(messageId, cite.passageId, `P${cite.index}`);
   }
   return {
@@ -198,7 +297,7 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
       modelId: result.model,
       grounding,
       followups: parsed.followups,
-      citations: citations.filter((cite) => used.has(cite.index)),
+      citations: linked,
     },
   };
 }

@@ -3,7 +3,7 @@ import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { importSmartbook } from "../sources/smartbook";
 import { strToU8, zipSync } from "fflate";
-import { askTurn, readChat } from "./turn";
+import { askTurn, chatScope, readChat } from "./turn";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -48,6 +48,81 @@ describe("askTurn", () => {
       chapter: 1,
       paragraph: "p1",
     });
+    expect(chatScope(db, result.chatId)).toEqual([imported.sourceId]);
+  });
+
+  it("keeps a short follow-up on the passage already cited", async () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Demo",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+      }),
+    );
+    const first = await askTurn(db, {
+      text: "Che cos'è il vettore?",
+      sourceIds: [imported.sourceId],
+      run: async () => reply,
+    });
+    let prompt = "";
+    const second = await askTurn(db, {
+      chatId: first.chatId,
+      text: "un esempio",
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(second.covered).toBe(true);
+    expect(prompt).toContain("vettore");
+  });
+
+  it("does not keep a source answer that cites nothing", async () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Demo",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+      }),
+    );
+    const result = await askTurn(db, {
+      text: "vettore",
+      sourceIds: [imported.sourceId],
+      run: async () => ({ ...reply, text: "Senza un rimando." }),
+    });
+    expect(result.covered).toBe(false);
+    expect(readChat(db, result.chatId).some((row) => row.role === "assistant")).toBe(false);
+  });
+
+  it("reuses the pending question for a general answer", async () => {
+    const db = openDatabase(":memory:");
+    const first = await askTurn(db, {
+      text: "fotosintesi delle banane",
+      run: async () => reply,
+    });
+    await askTurn(db, {
+      chatId: first.chatId,
+      text: "fotosintesi delle banane",
+      allowGeneral: true,
+      run: async () => ({
+        ...reply,
+        text: "Dalle conoscenze generali.\n<followups>\nA\nB\nC\n</followups>",
+      }),
+    });
+    const users = readChat(db, first.chatId).filter((row) => row.role === "user");
+    expect(users).toHaveLength(1);
   });
 
   it("skips the model when the material does not cover the question", async () => {

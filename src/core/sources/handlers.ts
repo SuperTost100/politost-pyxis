@@ -6,6 +6,7 @@ import {
   chapterPassages,
   importSmartbookFile,
   listSources,
+  passagesAround,
   searchPassages,
   smartbookChapters,
 } from "./smartbook";
@@ -33,6 +34,9 @@ export function sourceHandlers(db: Database.Database, workspace: string) {
     },
     chapters(input: { sourceId: string }) {
       return smartbookChapters(db, input.sourceId);
+    },
+    passage(input: { passageId: string }) {
+      return passagesAround(db, input.passageId);
     },
     chapter(input: { sourceId: string; chapter: number; paragraph?: string }) {
       return chapterPassages(db, input.sourceId, input.chapter).map((row) => ({

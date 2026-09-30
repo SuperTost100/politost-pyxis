@@ -232,6 +232,58 @@ export function chapterPassages(
   }));
 }
 
+export function passagesAround(db: Database.Database, passageId: string) {
+  const row = db
+    .prepare(
+      `SELECT id, source_id, locator_json FROM passages WHERE id = ?`,
+    )
+    .get(passageId) as
+    | { id: string; source_id: string | null; locator_json: string | null }
+    | undefined;
+  if (!row?.source_id) return [];
+  const locator = row.locator_json
+    ? (JSON.parse(row.locator_json) as PassageHit["locator"])
+    : {};
+  const filter =
+    locator.chapter != null
+      ? { sql: `json_extract(locator_json, '$.chapter') = ?`, value: locator.chapter }
+      : locator.page != null
+        ? { sql: `json_extract(locator_json, '$.page') = ?`, value: locator.page }
+        : locator.slide != null
+          ? { sql: `json_extract(locator_json, '$.slide') = ?`, value: locator.slide }
+          : null;
+  const rows = (
+    filter
+      ? db
+          .prepare(
+            `SELECT id, text, section_path, locator_json FROM passages
+             WHERE source_id = ? AND ${filter.sql}
+             ORDER BY rowid`,
+          )
+          .all(row.source_id, filter.value)
+      : db
+          .prepare(
+            `SELECT id, text, section_path, locator_json FROM passages WHERE id = ?`,
+          )
+          .all(passageId)
+  ) as Array<{
+    id: string;
+    text: string;
+    section_path: string | null;
+    locator_json: string | null;
+  }>;
+  return rows.map((item) => ({
+    id: item.id,
+    sourceId: row.source_id ?? "",
+    text: item.text,
+    sectionPath: item.section_path,
+    locator: item.locator_json
+      ? (JSON.parse(item.locator_json) as PassageHit["locator"])
+      : {},
+    current: item.id === passageId,
+  }));
+}
+
 export function smartbookChapters(db: Database.Database, sourceId: string) {
   const row = db
     .prepare(`SELECT meta_json FROM smartbooks WHERE source_id = ?`)

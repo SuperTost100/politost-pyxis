@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { askTurn, listChats, readChat } from "./turn";
+import { askTurn, chatScope, listChats, readChat } from "./turn";
 
 export function chatHandlers(db: Database.Database) {
   return {
@@ -11,7 +11,7 @@ export function chatHandlers(db: Database.Database) {
       }));
     },
     read(input: { chatId: string }) {
-      return readChat(db, input.chatId);
+      return { sourceIds: chatScope(db, input.chatId), messages: readChat(db, input.chatId) };
     },
     ask(input: {
       chatId?: string;

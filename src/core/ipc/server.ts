@@ -156,6 +156,8 @@ async function dispatch(
       return sources?.search(requests["sources.search"].input.parse(input));
     case "sources.chapters":
       return sources?.chapters(requests["sources.chapters"].input.parse(input));
+    case "sources.passage":
+      return sources?.passage(requests["sources.passage"].input.parse(input));
     case "sources.chapter":
       return sources?.chapter(requests["sources.chapter"].input.parse(input));
     default:

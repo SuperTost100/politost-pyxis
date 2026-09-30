@@ -41,6 +41,7 @@ describe("retrieve", () => {
     expect(found.covered).toBe(true);
     expect(found.hits[0]?.id).toBe(id);
     expect(retrieve(db, "fotosintesi delle banane").covered).toBe(false);
+    expect(retrieve(db, "definizione della velocità").hits[0]?.id).toBe(id);
   });
 
   it("finds a nearby passage when the embedding model is present", () => {

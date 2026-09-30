@@ -78,7 +78,7 @@ const STOP = new Set([
   "non",
 ]);
 
-function wordsOf(query: string): string[] {
+export function contentWords(query: string): string[] {
   const words = query.match(/\p{L}[\p{L}\p{N}]*/gu) ?? [];
   const kept = words.filter((word) => word.length >= 3 && !STOP.has(word.toLocaleLowerCase("it")));
   return (kept.length > 0 ? kept : words).slice(0, 8);
@@ -97,9 +97,9 @@ function hitOf(row: Row): PassageHit {
 }
 
 function lexical(db: Database.Database, query: string, sourceIds?: string[]): Row[] {
-  const words = wordsOf(query);
+  const words = contentWords(query);
   if (words.length === 0) return [];
-  const match = words.map((word) => `"${word.replaceAll('"', "")}"`).join(" ");
+  const match = words.map((word) => `"${word.replaceAll('"', "")}"`).join(" OR ");
   const scope =
     sourceIds && sourceIds.length > 0
       ? ` AND p.source_id IN (${sourceIds.map(() => "?").join(", ")})`

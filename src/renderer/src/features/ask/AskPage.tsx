@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ChatMessage } from "../../components/ChatMessage";
@@ -16,6 +16,7 @@ export function AskPage() {
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<"solver" | "socratic">("solver");
   const [picked, setPicked] = useState<string[]>([]);
+  const loadedFor = useRef<string | undefined>(undefined);
   const [uncovered, setUncovered] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,9 +31,17 @@ export function AskPage() {
     enabled: Boolean(chatId),
     queryFn: () => invoke("chats.read", { chatId: chatId ?? "" }),
   });
+  useEffect(() => {
+    if (!chatId || !thread.data) return;
+    if (loadedFor.current === chatId) return;
+    loadedFor.current = chatId;
+    setPicked(thread.data.sourceIds);
+  }, [chatId, thread.data]);
+
   async function send(text: string, allowGeneral?: boolean) {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
+    if (chatId && loadedFor.current !== chatId) return;
     setBusy(true);
     setError(null);
     const handle = window.pyxis.stream(
@@ -68,7 +77,7 @@ export function AskPage() {
     }
   }
 
-  const messages = thread.data ?? [];
+  const messages = thread.data?.messages ?? [];
   const lastTutor = [...messages].reverse().find((row) => row.role === "assistant");
   const titles = (sources.data ?? [])
     .filter((source) => picked.includes(source.id))
@@ -105,11 +114,16 @@ export function AskPage() {
                   onCitationClick={(index) => {
                     const cite = row.citations.find((item) => item.index === index);
                     if (!cite) return;
-                    const params = new URLSearchParams({ source: cite.sourceId });
+                    const params = new URLSearchParams({
+                      source: cite.sourceId,
+                      passage: cite.passageId,
+                    });
                     if (cite.locator.chapter != null) {
                       params.set("chapter", String(cite.locator.chapter));
                     }
                     if (cite.locator.paragraph) params.set("paragraph", cite.locator.paragraph);
+                    if (cite.locator.page != null) params.set("page", String(cite.locator.page));
+                    if (cite.locator.slide != null) params.set("slide", String(cite.locator.slide));
                     navigate(`/exams/library?${params.toString()}`);
                   }}
                 >
