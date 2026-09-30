@@ -155,6 +155,8 @@ async function dispatch(
     }
     case "study.lesson":
       return study?.lesson(requests["study.lesson"].input.parse(input));
+    case "study.diagnosticStart":
+      return study?.diagnosticStart(requests["study.diagnosticStart"].input.parse(input));
     case "study.quizStart":
       return study?.quizStart(requests["study.quizStart"].input.parse(input));
     case "study.quizSubmit":

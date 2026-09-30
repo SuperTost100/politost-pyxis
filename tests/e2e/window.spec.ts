@@ -107,6 +107,11 @@ test("a smartbook becomes a plan without a model", async () => {
     const diagnosis = page.getByRole("button", { name: /Diagnosi/ });
     await expect(diagnosis).toBeEnabled();
     await diagnosis.click();
+    await page.getByRole("button", { name: "Inizia" }).click();
+    await page.getByRole("textbox", { name: "Correggi" }).fill("W = F s.");
+    await page.getByRole("button", { name: "Correggi" }).click();
+    await expect(page.getByText("100 su 100")).toBeVisible();
+    await page.getByRole("button", { name: "Indietro" }).click();
     const study = page.getByRole("button", { name: /Studio/ });
     await expect(study).toBeEnabled();
     await study.click();

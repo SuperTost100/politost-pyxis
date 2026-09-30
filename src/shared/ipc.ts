@@ -210,6 +210,19 @@ export const requests = {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.object({ markdown: z.string(), passageIds: z.array(z.string()) }),
   },
+  "study.diagnosticStart": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({
+      attemptId: z.string(),
+      questions: z.array(
+        z.object({
+          id: z.string(),
+          stem: z.string(),
+          grade: z.object({ kind: z.string() }),
+        }),
+      ),
+    }),
+  },
   "study.quizStart": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.object({

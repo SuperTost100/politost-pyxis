@@ -15,7 +15,10 @@ export function QuizPage() {
   const navigate = useNavigate();
   const [picks, setPicks] = useState<Record<string, string>>({});
   const start = useMutation({
-    mutationFn: () => invoke("study.quizStart", { planId: planId ?? "", topicId: topicId ?? "" }),
+    mutationFn: () =>
+      topicId
+        ? invoke("study.quizStart", { planId: planId ?? "", topicId })
+        : invoke("study.diagnosticStart", { planId: planId ?? "" }),
   });
   const submit = useMutation({
     mutationFn: () =>

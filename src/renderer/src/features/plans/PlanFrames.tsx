@@ -346,6 +346,10 @@ export function PlanPage() {
               disabled={node.state === "locked"}
               onClick={() => {
                 if (!planId) return;
+                if (node.kind === "diagnostic") {
+                  navigate(`/plans/${planId}/diagnostic`);
+                  return;
+                }
                 if (node.kind === "learn" && node.topicId) {
                   navigate(`/plans/${planId}/lesson/${node.topicId}`);
                   return;

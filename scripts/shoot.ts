@@ -89,6 +89,10 @@ async function shootStudy(page: Page): Promise<void> {
   const plan = await hashOf(page);
   await page.getByRole("button", { name: /Introduzione/ }).click();
   await page.getByRole("button", { name: /Diagnosi/ }).click();
+  await page.getByRole("button", { name: "Inizia" }).click();
+  await page.getByRole("textbox", { name: "Correggi" }).fill("W = F s.");
+  await page.getByRole("button", { name: "Correggi" }).click();
+  await page.getByRole("button", { name: "Indietro" }).click();
   await page.getByRole("button", { name: /Studio/ }).click();
   await page.getByText("vettore posizione").waitFor();
   const lesson = await hashOf(page);
