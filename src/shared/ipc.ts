@@ -171,6 +171,62 @@ export const requests = {
     input: z.object({ provider: z.string(), code: z.string() }),
     output: z.object({}),
   },
+  "study.lesson": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({ markdown: z.string(), passageIds: z.array(z.string()) }),
+  },
+  "study.quizStart": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({
+      attemptId: z.string(),
+      questions: z.array(
+        z.object({
+          id: z.string(),
+          stem: z.string(),
+          grade: z.object({ kind: z.string() }),
+        }),
+      ),
+    }),
+  },
+  "study.quizSubmit": {
+    input: z.object({
+      attemptId: z.string(),
+      picks: z.record(z.string(), z.string()),
+    }),
+    output: z.object({
+      score: z.number(),
+      results: z.array(
+        z.object({ id: z.string(), score: z.number(), expected: z.string() }),
+      ),
+    }),
+  },
+  "study.cards": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        front: z.string(),
+        back: z.string(),
+        topicId: z.string().nullable(),
+        state: z.object({
+          intervalDays: z.number(),
+          ease: z.number(),
+          dueAt: z.number(),
+        }),
+      }),
+    ),
+  },
+  "study.rate": {
+    input: z.object({
+      cardId: z.string(),
+      rating: z.enum(["again", "hard", "good", "easy"]),
+    }),
+    output: z.object({
+      intervalDays: z.number(),
+      ease: z.number(),
+      dueAt: z.number(),
+    }),
+  },
   "study.exercises": {
     input: z.object({ topicId: z.string() }),
     output: z.array(

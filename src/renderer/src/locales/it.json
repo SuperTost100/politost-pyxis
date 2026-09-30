@@ -58,6 +58,27 @@
     "offerOcr": "Fai l'OCR",
     "ocrQueued": "OCR in coda su questo computer."
   },
+  "cards": {
+    "title": "Schede",
+    "empty": "Nessuna scheda in scadenza.",
+    "flip": "Gira",
+    "again": "Di nuovo",
+    "hard": "Difficile",
+    "good": "Bene",
+    "easy": "Facile",
+    "next": "Prossima tra {{days}} giorni"
+  },
+  "lesson": {
+    "title": "Lezione dal libro",
+    "done": "Ho letto"
+  },
+  "quiz": {
+    "title": "Quiz dal libro",
+    "start": "Inizia",
+    "submit": "Correggi",
+    "score": "{{score}} su 100",
+    "empty": "Questo argomento non ha soluzioni da correggere."
+  },
   "practice": {
     "title": "Esercizi del libro",
     "empty": "Questo argomento non ha esercizi nel libro.",

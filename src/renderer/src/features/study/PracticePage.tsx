@@ -27,6 +27,12 @@ export function PracticePage() {
         </Button>
       }
     >
+      <Button
+        shape="round"
+        onClick={() => navigate(`/plans/${planId ?? ""}/quiz/${topicId ?? ""}`)}
+      >
+        {t("quiz.title")}
+      </Button>
       {(exercises.data ?? []).length === 0 ? (
         <p className="body">{t("practice.empty")}</p>
       ) : (

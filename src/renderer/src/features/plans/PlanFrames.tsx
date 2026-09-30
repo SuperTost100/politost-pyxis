@@ -104,11 +104,20 @@ export function PlanPage() {
               disabled={node.state === "locked"}
               onClick={() => {
                 if (!planId) return;
+                if (node.kind === "learn" && node.topicId) {
+                  navigate(`/plans/${planId}/lesson/${node.topicId}`);
+                  return;
+                }
+                if (node.kind === "practice" && node.topicId) {
+                  navigate(`/plans/${planId}/practice/${node.topicId}`);
+                  return;
+                }
+                if (node.kind === "cards" && node.topicId) {
+                  navigate(`/plans/${planId}/cards/${node.topicId}`);
+                  return;
+                }
                 void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
                   void client.invalidateQueries({ queryKey: ["plan", planId] });
-                  if (node.kind === "practice" && node.topicId) {
-                    navigate(`/plans/${planId}/practice/${node.topicId}`);
-                  }
                 });
               }}
             >

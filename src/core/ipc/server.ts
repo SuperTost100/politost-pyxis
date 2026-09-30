@@ -143,6 +143,16 @@ async function dispatch(
         code: parsed.code,
       });
     }
+    case "study.lesson":
+      return study?.lesson(requests["study.lesson"].input.parse(input));
+    case "study.quizStart":
+      return study?.quizStart(requests["study.quizStart"].input.parse(input));
+    case "study.quizSubmit":
+      return study?.quizSubmit(requests["study.quizSubmit"].input.parse(input));
+    case "study.cards":
+      return study?.cards(requests["study.cards"].input.parse(input)) ?? [];
+    case "study.rate":
+      return study?.rate(requests["study.rate"].input.parse(input));
     case "study.exercises":
       return study?.exercises(requests["study.exercises"].input.parse(input)) ?? [];
     case "plans.list":

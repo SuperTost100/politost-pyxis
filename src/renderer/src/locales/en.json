@@ -58,6 +58,27 @@
     "offerOcr": "Run OCR",
     "ocrQueued": "OCR is queued on this computer."
   },
+  "cards": {
+    "title": "Cards",
+    "empty": "No cards are due.",
+    "flip": "Flip",
+    "again": "Again",
+    "hard": "Hard",
+    "good": "Good",
+    "easy": "Easy",
+    "next": "Next in {{days}} days"
+  },
+  "lesson": {
+    "title": "Lesson from the book",
+    "done": "I've read it"
+  },
+  "quiz": {
+    "title": "Quiz from the book",
+    "start": "Start",
+    "submit": "Check",
+    "score": "{{score}} out of 100",
+    "empty": "This topic has no solutions to check."
+  },
   "practice": {
     "title": "Book exercises",
     "empty": "This topic has no exercises in the book.",

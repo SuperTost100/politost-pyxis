@@ -77,6 +77,8 @@ export function submitAttempt(
   const results = stored.questions.map((question) => ({
     id: question.id,
     score: gradeAnswer(answerOf(question.answer, picks[question.id])),
+    expected:
+      question.answer.kind === "completion" ? (question.answer.accepted[0]?.[0] ?? "") : "",
   }));
   const score =
     results.length === 0
