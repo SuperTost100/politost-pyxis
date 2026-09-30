@@ -42,7 +42,7 @@ async function setLocale(page: Page, locale: "it" | "en"): Promise<void> {
     page.waitForEvent("load"),
     page.evaluate((lng) => {
       localStorage.setItem("pyxis.lang", lng);
-      location.reload();
+      (globalThis as unknown as { location: { reload: () => void } }).location.reload();
     }, locale),
   ]);
 }

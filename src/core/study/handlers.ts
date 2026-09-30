@@ -24,25 +24,52 @@ export function studyHandlers(db: Database.Database) {
       const scored = submitAttempt(db, input.attemptId, input.picks);
       const row = db
         .prepare(
-          `SELECT a.plan_id, i.topic_id FROM attempts a
+          `SELECT a.plan_id, i.topic_id, i.kind, i.body_json FROM attempts a
            JOIN items i ON i.id = a.item_id WHERE a.id = ?`,
         )
-        .get(input.attemptId) as { plan_id: string; topic_id: string | null } | undefined;
-      if (row?.topic_id) {
+        .get(input.attemptId) as
+        | { plan_id: string; topic_id: string | null; kind: string; body_json: string }
+        | undefined;
+      if (row) {
         const now = Date.now();
-        db.prepare(
-          `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
-           VALUES (?, 'answer_given', ?, ?, ?, ?)`,
-        ).run(
-          uuidv7(now),
-          row.plan_id,
-          row.topic_id,
-          JSON.stringify({
-            score: scored.score,
-            scores: scored.results.map((result) => result.score),
-          }),
-          now,
-        );
+        const record = (topicId: string | null, score: number, scores: number[], at: number) => {
+          db.prepare(
+            `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+             VALUES (?, 'answer_given', ?, ?, ?, ?)`,
+          ).run(
+            uuidv7(at),
+            row.plan_id,
+            topicId,
+            JSON.stringify({ score, scores }),
+            at,
+          );
+        };
+        if (row.topic_id) {
+          record(
+            row.topic_id,
+            scored.score,
+            scored.results.map((result) => result.score),
+            now,
+          );
+        } else if (row.kind === "simulation") {
+          const stored = JSON.parse(row.body_json) as {
+            questions?: Array<{ id: string; topicId?: string }>;
+          };
+          const byTopic = new Map<string, number[]>();
+          for (const result of scored.results) {
+            const topicId = stored.questions?.find((question) => question.id === result.id)?.topicId;
+            if (!topicId) continue;
+            const list = byTopic.get(topicId) ?? [];
+            list.push(result.score);
+            byTopic.set(topicId, list);
+          }
+          let at = now;
+          for (const [topicId, scores] of byTopic) {
+            const score = scores.reduce((sum, item) => sum + item, 0) / scores.length;
+            record(topicId, score, scores, at);
+            at += 1;
+          }
+        }
         syncGaps(db, row.plan_id, now);
       }
       return scored;

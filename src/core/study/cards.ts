@@ -105,6 +105,16 @@ export function rateCard(
     `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at)
      VALUES (?, ?, ?, ?, ?)`,
   ).run(uuidv7(now), cardId, rating, JSON.stringify(next), now);
+  const card = db
+    .prepare(`SELECT plan_id, topic_id FROM cards WHERE id = ?`)
+    .get(cardId) as { plan_id: string; topic_id: string | null } | undefined;
+  if (card) {
+    const score = rating === "again" ? 0 : rating === "hard" ? 0.5 : 1;
+    db.prepare(
+      `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+       VALUES (?, 'card_rated', ?, ?, ?, ?)`,
+    ).run(uuidv7(now + 1), card.plan_id, card.topic_id, JSON.stringify({ score }), now);
+  }
 
   return next;
 }

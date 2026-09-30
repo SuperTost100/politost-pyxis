@@ -68,5 +68,10 @@ describe("cards", () => {
     expect(next.dueAt).toBe(T0 + MS_PER_DAY);
     expect(dueCards(db, planId, T0)).toHaveLength(0);
     expect(dueCards(db, planId, T0 + MS_PER_DAY)).toHaveLength(1);
+    const event = db
+      .prepare(`SELECT topic_id, payload_json FROM learning_events WHERE kind = 'card_rated'`)
+      .get() as { topic_id: string; payload_json: string };
+    expect(event.topic_id).toBe(topicId);
+    expect(JSON.parse(event.payload_json)).toEqual({ score: 1 });
   });
 });

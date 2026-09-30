@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan } from "../plans/create";
 import { importSmartbook } from "../sources/smartbook";
+import { studyHandlers } from "./handlers";
 import { readSimulation, startSimulation } from "./simulation";
 
 function pack(files: Record<string, string>): Uint8Array {
@@ -40,5 +41,37 @@ describe("simulation", () => {
     expect(ended.leftMs).toBe(0);
     expect(ended.topics[0]?.title).toContain("Moti");
     expect(ended.topics[0]?.score).toBe(0);
+  });
+
+  it("stores a per-topic score when the simulation is graded", () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Fisica",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore.\n",
+        "esercizi.md":
+          ':::exercise{id="e1" chapter="1"}\nQuanto vale?\n:::solution\n10 N\n:::\n:::\n',
+      }),
+    );
+    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
+    const opened = startSimulation(db, plan.planId, 30, 1_700_000_000_000);
+    const question = opened.questions[0];
+    expect(question).toBeTruthy();
+    studyHandlers(db).quizSubmit({
+      attemptId: opened.attemptId,
+      picks: { [question!.id]: "10 N" },
+    });
+    const event = db
+      .prepare(
+        `SELECT payload_json FROM learning_events WHERE plan_id = ? AND kind = 'answer_given'`,
+      )
+      .get(plan.planId) as { payload_json: string };
+    expect(JSON.parse(event.payload_json).score).toBe(1);
   });
 });
