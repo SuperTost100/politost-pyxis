@@ -416,6 +416,18 @@
       "quota": "Limite di utilizzo raggiunto. Riprova più tardi o scegli un altro motore."
     }
   },
+  "graph": {
+    "title": "Grafico",
+    "plot": "Disegna",
+    "integral": "Integrale da 0.05 a 8: {{value}}",
+    "legend": "Verde è f, cobalto è f', il tratteggio è f''.",
+    "invalid": "Non riesco a leggere questa formula."
+  },
+  "python": {
+    "title": "Python",
+    "run": "Esegui",
+    "timeout": "Interrotto dopo 10 secondi."
+  },
   "tools": {
     "whiteboardTitle": "Lavagna",
     "whiteboardBody": "La lavagna si apre a tutto schermo. I tratti restano su questo computer."

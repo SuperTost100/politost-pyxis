@@ -416,6 +416,18 @@
       "quota": "Usage limit reached. Try again later or pick another engine."
     }
   },
+  "graph": {
+    "title": "Graph",
+    "plot": "Plot",
+    "integral": "Integral from 0.05 to 8: {{value}}",
+    "legend": "Green is f, cobalt is f', the dashed line is f''.",
+    "invalid": "This formula could not be read."
+  },
+  "python": {
+    "title": "Python",
+    "run": "Run",
+    "timeout": "Stopped after 10 seconds."
+  },
   "tools": {
     "whiteboardTitle": "Whiteboard",
     "whiteboardBody": "The whiteboard fills the window. Strokes stay on this computer."

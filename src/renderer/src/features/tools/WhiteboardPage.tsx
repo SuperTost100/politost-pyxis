@@ -1,0 +1,93 @@
+import { Button } from "antd";
+import { useRef, useState, type PointerEvent } from "react";
+import { useTranslation } from "react-i18next";
+import { CanvasLayout } from "../../app/layouts/TaskLayouts";
+
+type Point = { x: number; y: number };
+type Stroke = { width: number; points: Point[] };
+
+export function WhiteboardPage() {
+  const { t } = useTranslation();
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [width, setWidth] = useState(4);
+  const current = useRef<Stroke | null>(null);
+  const board = useRef<HTMLCanvasElement>(null);
+
+  function paint(next: Stroke[]) {
+    const canvas = board.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#e8ebf2";
+    for (const stroke of next) {
+      ctx.lineWidth = stroke.width;
+      ctx.beginPath();
+      stroke.points.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+    }
+  }
+
+  function point(event: PointerEvent<HTMLCanvasElement>): Point {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const canvas = event.currentTarget;
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  }
+
+  return (
+    <CanvasLayout title={t("tools.whiteboardTitle")} closeTo="/ask">
+      <div className="gallery-row">
+        {[2, 4, 8].map((size) => (
+          <Button
+            key={size}
+            shape="round"
+            type={width === size ? "primary" : "default"}
+            onClick={() => setWidth(size)}
+          >
+            {size}
+          </Button>
+        ))}
+        <Button
+          shape="round"
+          onClick={() => {
+            const next = strokes.slice(0, -1);
+            setStrokes(next);
+            paint(next);
+          }}
+        >
+          {t("map.undo")}
+        </Button>
+      </div>
+      <canvas
+        ref={board}
+        width={1200}
+        height={700}
+        aria-label={t("tools.whiteboardTitle")}
+        style={{ width: "100%", height: "70vh", touchAction: "none", background: "#101218" }}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          current.current = { width, points: [point(event)] };
+        }}
+        onPointerMove={(event) => {
+          if (!current.current) return;
+          current.current.points.push(point(event));
+          paint([...strokes, current.current]);
+        }}
+        onPointerUp={() => {
+          if (!current.current) return;
+          const next = [...strokes, current.current];
+          current.current = null;
+          setStrokes(next);
+          paint(next);
+        }}
+      />
+    </CanvasLayout>
+  );
+}

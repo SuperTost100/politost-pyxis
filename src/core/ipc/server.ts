@@ -6,6 +6,7 @@ import {
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
+import { toolHandlers } from "../math/handlers";
 import { mapHandlers } from "../maps/handlers";
 import { planHandlers } from "../plans/handlers";
 import { studyHandlers } from "../study/handlers";
@@ -32,6 +33,7 @@ let profile: ReturnType<typeof profileHandlers> | null = null;
 let plans: ReturnType<typeof planHandlers> | null = null;
 let study: ReturnType<typeof studyHandlers> | null = null;
 let maps: ReturnType<typeof mapHandlers> | null = null;
+let tools: ReturnType<typeof toolHandlers> | null = null;
 let port: CorePort | null = null;
 const inflight = new Map<string, AbortController>();
 
@@ -163,6 +165,8 @@ async function dispatch(
       return study?.rate(requests["study.rate"].input.parse(input));
     case "study.exercises":
       return study?.exercises(requests["study.exercises"].input.parse(input)) ?? [];
+    case "tools.python":
+      return tools?.python(requests["tools.python"].input.parse(input));
     case "maps.open":
       return maps?.open(requests["maps.open"].input.parse(input));
     case "maps.layout":
@@ -235,6 +239,10 @@ export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
 
 export function bindStudy(db: Parameters<typeof studyHandlers>[0]): void {
   study = studyHandlers(db);
+}
+
+export function bindTools(): void {
+  tools = toolHandlers();
 }
 
 export function bindMaps(db: Parameters<typeof mapHandlers>[0]): void {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
 import { Tag } from "./Tag";
@@ -29,6 +30,7 @@ export function Composer({
   onModeChange?: (mode: "solver" | "socratic") => void;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [mode, setMode] = useState(initialMode);
   const [draft, setDraft] = useState("");
   const text = value ?? draft;
@@ -72,12 +74,14 @@ export function Composer({
           label={t("components.composer.whiteboard")}
           variant="ghost"
           size="sm"
+          onClick={() => navigate("/tools/whiteboard")}
         />
         <IconButton
           icon="sigma"
           label={t("components.composer.formula")}
           variant="ghost"
           size="sm"
+          onClick={() => navigate("/tools/graph")}
         />
         <div className="px-mode" role="group" aria-label={t("components.composer.modeLabel")}>
           <button

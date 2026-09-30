@@ -8,12 +8,10 @@ import { QuizPage } from "../features/study/QuizPage";
 import { OnboardingPage } from "../features/onboarding/OnboardingPage";
 import { AskPage } from "../features/ask/AskPage";
 import { ExamsHome } from "../features/home/HomePages";
-import {
-  PlanPage,
-  SharedPlanPage,
-  WhiteboardFrame,
-  WizardFrame,
-} from "../features/plans/PlanFrames";
+import { PlanPage, SharedPlanPage, WizardFrame } from "../features/plans/PlanFrames";
+import { GraphPage } from "../features/tools/GraphPage";
+import { PythonPage } from "../features/tools/PythonPage";
+import { WhiteboardPage } from "../features/tools/WhiteboardPage";
 import { DevGallery } from "../features/jobs/DevGallery";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { Shell } from "./layouts/Shell";
@@ -43,5 +41,7 @@ export const router = createHashRouter([
   { path: "/plans/:planId/cards/:topicId", element: <CardsPage /> },
   { path: "/plans/:planId/simulation", element: <SimulationPage /> },
   { path: "/plans/:planId/map/:topicId", element: <MapPage /> },
-  { path: "/tools/whiteboard", element: <WhiteboardFrame /> },
+  { path: "/tools/whiteboard", element: <WhiteboardPage /> },
+  { path: "/tools/graph", element: <GraphPage /> },
+  { path: "/tools/python", element: <PythonPage /> },
 ]);

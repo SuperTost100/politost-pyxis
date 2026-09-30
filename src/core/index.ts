@@ -6,6 +6,7 @@ import {
   bindEngines,
   bindRunner,
   bindChat,
+  bindTools,
   bindMaps,
   bindPlans,
   bindStudy,
@@ -61,6 +62,7 @@ if (!parent) {
       bindProfile(db);
       bindPlans(db);
       bindMaps(db);
+      bindTools();
       bindStudy(db);
       const runner = createRunner(db, (job) => broadcast("job.updated", job));
       runner.register("demo", demoJob);

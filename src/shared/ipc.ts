@@ -300,6 +300,14 @@ export const requests = {
       }),
     ),
   },
+  "tools.python": {
+    input: z.object({ code: z.string().max(8000) }),
+    output: z.object({
+      stdout: z.string(),
+      stderr: z.string(),
+      timedOut: z.boolean(),
+    }),
+  },
   "maps.open": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: conceptGraph,
