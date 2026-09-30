@@ -107,7 +107,8 @@ export function Shell() {
           <div
             onClick={(event) => {
               const item = (event.target as HTMLElement).closest(".ant-segmented-item");
-              const text = item?.textContent ?? "";
+              if (!item?.classList.contains("ant-segmented-item-selected")) return;
+              const text = item.textContent ?? "";
               if (text.includes(t("doors.ask"))) navigate(last.ask);
               else if (text.includes(t("doors.exams"))) navigate(last.exams);
             }}
@@ -116,6 +117,7 @@ export function Shell() {
             shape="round"
             className="px-doors"
             value={activeDoor}
+            onChange={(value) => navigate(value === "ask" ? last.ask : last.exams)}
             options={[
               {
                 value: "ask",
