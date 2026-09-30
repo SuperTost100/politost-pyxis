@@ -96,7 +96,11 @@ export function createPlan(
     ];
     for (const topicId of topicIds) {
       const title = titles.get(topicId) ?? input.title;
-      for (const stage of ["learn", "practice", "cards", "gaps"] as const) {
+      const middle =
+        input.style === "practice"
+          ? (["practice", "learn", "cards", "gaps"] as const)
+          : (["learn", "practice", "cards", "gaps"] as const);
+      for (const stage of middle) {
         sequence.push({ stage, topicId, title });
       }
     }

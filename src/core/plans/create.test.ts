@@ -106,5 +106,18 @@ describe("createPlan", () => {
       content_language: "en",
       style: "read",
     });
+    const reading = db
+      .prepare(`SELECT kind FROM path_nodes WHERE plan_id = ? AND topic_id IS NOT NULL ORDER BY position`)
+      .all(plan.planId) as Array<{ kind: string }>;
+    expect(reading.slice(0, 2).map((row) => row.kind)).toEqual(["learn", "practice"]);
+    const practicePlan = createPlan(db, {
+      title: "Esercizi",
+      sourceIds: [imported.sourceId],
+      style: "practice",
+    });
+    const practicing = db
+      .prepare(`SELECT kind FROM path_nodes WHERE plan_id = ? AND topic_id IS NOT NULL ORDER BY position`)
+      .all(practicePlan.planId) as Array<{ kind: string }>;
+    expect(practicing.slice(0, 2).map((row) => row.kind)).toEqual(["practice", "learn"]);
   });
 });
