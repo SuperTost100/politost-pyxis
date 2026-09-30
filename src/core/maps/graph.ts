@@ -14,7 +14,7 @@ export type ConceptGraph = {
   layout: "tree" | "radial";
   nodes: MapNode[];
   edges: MapEdge[];
-  undo: { nodes: MapNode[]; edges: MapEdge[] } | null;
+  undo: { nodes: MapNode[]; edges: MapEdge[]; layout: ConceptGraph["layout"] } | null;
 };
 
 export type MapOp =
@@ -39,6 +39,7 @@ export function applyOps(graph: ConceptGraph, ops: MapOp[]): ConceptGraph {
   const undo = {
     nodes: graph.nodes.map((node) => ({ ...node })),
     edges: graph.edges.map((edge) => ({ ...edge })),
+    layout: graph.layout,
   };
   let nodes = undo.nodes.map((node) => ({ ...node }));
   let edges = undo.edges.map((edge) => ({ ...edge }));
@@ -54,6 +55,7 @@ export function undoGraph(graph: ConceptGraph): ConceptGraph {
   if (!graph.undo) return graph;
   return layoutGraph({
     ...graph,
+    layout: graph.undo.layout,
     nodes: graph.undo.nodes.map((node) => ({ ...node })),
     edges: graph.undo.edges.map((edge) => ({ ...edge })),
     undo: null,

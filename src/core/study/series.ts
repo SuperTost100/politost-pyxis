@@ -79,8 +79,9 @@ export function paceFacts(
 ) {
   const start = weekStart(now);
   const week = bars.filter((bar) => bar.day >= start).reduce((sum, bar) => sum + bar.count, 0);
+  const timed = active.some((bar) => bar.seconds > 0);
   const peakBars = active.map((bar) => ({ day: bar.day, count: bar.seconds }));
-  const source = peakBars.length > 0 ? peakBars : bars;
+  const source = timed ? peakBars : bars;
   const peak = source.reduce(
     (best, bar) => (bar.count > best.count ? bar : best),
     source[0] ?? { day: dayStart(now), count: 0 },

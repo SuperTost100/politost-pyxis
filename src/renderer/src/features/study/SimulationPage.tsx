@@ -80,7 +80,7 @@ export function SimulationPage() {
           type="primary"
           shape="round"
           onClick={() => {
-            void invoke("study.quizSubmit", { attemptId: run.attemptId, picks }).then(() => {
+            void invoke("study.quizSubmit", { attemptId: run.attemptId, picks: shown }).then(() => {
               void client.invalidateQueries({ queryKey: ["simulation", planId] });
             });
           }}

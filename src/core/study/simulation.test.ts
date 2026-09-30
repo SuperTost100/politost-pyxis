@@ -185,10 +185,7 @@ describe("simulation", () => {
       Date.now() - 31 * 60_000,
       opened.attemptId,
     );
-    studyHandlers(db).quizSubmit({
-      attemptId: opened.attemptId,
-      picks: { [question!.id]: "late" },
-    });
+    saveSimulationDraft(db, opened.attemptId, { [question!.id]: "late" });
     const saved = db
       .prepare(`SELECT payload_json FROM attempt_answers WHERE attempt_id = ?`)
       .get(opened.attemptId) as { payload_json: string };

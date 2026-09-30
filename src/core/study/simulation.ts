@@ -128,15 +128,16 @@ export function saveSimulationDraft(
 ) {
   const row = db
     .prepare(
-      `SELECT a.submitted_at, i.id AS item_id, i.body_json
+      `SELECT a.started_at, a.submitted_at, i.id AS item_id, i.body_json
        FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ?`,
     )
     .get(attemptId) as
-    | { submitted_at: number | null; item_id: string; body_json: string }
+    | { started_at: number; submitted_at: number | null; item_id: string; body_json: string }
     | undefined;
   if (!row) throw new Error("attempt-missing");
-  if (row.submitted_at == null) {
-    const stored = JSON.parse(row.body_json) as Stored;
+  const stored = JSON.parse(row.body_json) as Stored;
+  const open = row.submitted_at == null && Date.now() < row.started_at + stored.minutes * 60_000;
+  if (open) {
     stored.picks = picks;
     db.prepare(`UPDATE items SET body_json = ? WHERE id = ?`).run(JSON.stringify(stored), row.item_id);
   }

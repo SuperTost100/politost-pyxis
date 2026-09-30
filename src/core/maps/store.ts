@@ -100,6 +100,7 @@ function snapshot(graph: ConceptGraph): NonNullable<ConceptGraph["undo"]> {
   return {
     nodes: graph.nodes.map((node) => ({ ...node })),
     edges: graph.edges.map((edge) => ({ ...edge })),
+    layout: graph.layout,
   };
 }
 

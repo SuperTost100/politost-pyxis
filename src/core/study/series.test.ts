@@ -28,6 +28,8 @@ describe("study series", () => {
     );
     expect(facts.week).toBe(1);
     expect(facts.peakCount).toBe(1);
+    const quiet = activeMinutes([], now).bars;
+    expect(paceFacts(chartPoints([{ topicId: "a", at: now, score: 1, kind: "lesson" }], now), now, quiet).peakCount).toBe(1);
     const minutes = activeMinutes(
       [{ topicId: "", at: now, score: 0, kind: "active", seconds: 90 }],
       now,

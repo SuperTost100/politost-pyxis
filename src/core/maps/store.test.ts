@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan } from "../plans/create";
 import { importSmartbook } from "../sources/smartbook";
-import { openTopicMap, patchTopicMap, undoTopicMap } from "./store";
+import { openTopicMap, patchTopicMap, setTopicLayout, undoTopicMap } from "./store";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -40,5 +40,8 @@ describe("openTopicMap", () => {
     expect(patched.nodes.some((node) => node.label === "Regola della catena")).toBe(true);
     const undone = undoTopicMap(db, plan.planId, topic.id);
     expect(undone.nodes.some((node) => node.id === "chain")).toBe(false);
+    const radial = setTopicLayout(db, plan.planId, topic.id, "radial");
+    expect(radial.layout).toBe("radial");
+    expect(undoTopicMap(db, plan.planId, topic.id).layout).toBe("tree");
   });
 });
