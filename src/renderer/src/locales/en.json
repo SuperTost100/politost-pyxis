@@ -128,7 +128,7 @@
     "noGaps": "No open gap.",
     "week": "Events this week: {{count}}",
     "minutes": "{{count}} minutes of study this week",
-    "peak": "Most active day: {{count}}",
+    "peak": "Most active day: {{day}}",
     "idle": "idle"
   },
   "wizard": {

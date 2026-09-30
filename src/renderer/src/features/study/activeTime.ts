@@ -4,7 +4,7 @@ import { invoke } from "../../lib/ipc";
 export function useActiveTime(planId: string | undefined, topicId: string | null) {
   useEffect(() => {
     if (!planId) return;
-    let lastInput = 0;
+    let lastInput = Date.now();
     let seconds = 0;
     const mark = () => {
       lastInput = Date.now();

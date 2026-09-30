@@ -7,7 +7,13 @@ import { openLesson } from "./openLesson";
 import type { Rating } from "./schedule";
 import { completeCurrentStage } from "../plans/create";
 import { syncGaps } from "../plans/progress";
-import { openSimulation, readSimulation, recordTopicScores, startSimulation } from "./simulation";
+import {
+  openSimulation,
+  readSimulation,
+  recordTopicScores,
+  saveSimulationDraft,
+  startSimulation,
+} from "./simulation";
 import { startDiagnostic, startTopicQuiz, submitAttempt } from "./topicQuiz";
 
 export function studyHandlers(db: Database.Database) {
@@ -25,6 +31,30 @@ export function studyHandlers(db: Database.Database) {
       return startDiagnostic(db, input.planId);
     },
     quizSubmit(input: { attemptId: string; picks: Record<string, string> }) {
+      const gate = db
+        .prepare(
+          `SELECT a.started_at, a.submitted_at, i.kind, i.body_json
+           FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ?`,
+        )
+        .get(input.attemptId) as
+        | { started_at: number; submitted_at: number | null; kind: string; body_json: string }
+        | undefined;
+      if (gate?.kind === "simulation" && gate.submitted_at == null) {
+        const stored = JSON.parse(gate.body_json) as { minutes?: number };
+        const minutes = stored.minutes ?? 30;
+        if (Date.now() >= gate.started_at + minutes * 60_000) {
+          readSimulation(db, input.attemptId);
+          const answer = db
+            .prepare(
+              `SELECT payload_json FROM attempt_answers WHERE attempt_id = ? ORDER BY created_at DESC LIMIT 1`,
+            )
+            .get(input.attemptId) as { payload_json: string };
+          return JSON.parse(answer.payload_json) as {
+            score: number;
+            results: Array<{ id: string; score: number; expected: string }>;
+          };
+        }
+      }
       const scored = submitAttempt(db, input.attemptId, input.picks);
       const row = db
         .prepare(
@@ -76,6 +106,9 @@ export function studyHandlers(db: Database.Database) {
     },
     simulationStart(input: { planId: string }) {
       return startSimulation(db, input.planId, 30);
+    },
+    simulationDraft(input: { attemptId: string; picks: Record<string, string> }) {
+      return saveSimulationDraft(db, input.attemptId, input.picks);
     },
     simulationRead(input: { attemptId: string }) {
       return readSimulation(db, input.attemptId);

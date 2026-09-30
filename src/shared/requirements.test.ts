@@ -13,7 +13,8 @@ function idsFromFeaturesDoc(text: string): Set<string> {
   for (const line of text.split("\n")) {
     if (/\bLater\b/.test(line)) continue;
     const match = line.match(/\b([A-Z]{2,4}-\d{2})\b/);
-    if (match) ids.add(match[1]);
+    const id = match?.[1];
+    if (id) ids.add(id);
   }
   return ids;
 }
@@ -41,7 +42,8 @@ describe("requirements registry", () => {
     for (const line of doc.split("\n")) {
       if (!/\bLater\b/.test(line)) continue;
       const match = line.match(/\b([A-Z]{2,4}-\d{2})\b/);
-      if (match) later.add(match[1]);
+      const id = match?.[1];
+      if (id) later.add(id);
     }
     for (const id of all) {
       expect(later.has(id), id).toBe(false);
@@ -49,7 +51,7 @@ describe("requirements registry", () => {
   });
 
   it("keeps implemented and omitted disjoint", () => {
-    const omit = new Set(omitted);
+    const omit = new Set<string>(omitted);
     for (const id of implemented) {
       expect(omit.has(id), id).toBe(false);
     }

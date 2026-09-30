@@ -43,6 +43,24 @@ describe("cards", () => {
     expect(count.n).toBe(2);
   });
 
+  it("keeps the same front on two topics", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const other = uuidv7();
+    db.prepare(
+      `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, ?, 'Intro', 1, 1)`,
+    ).run(other, planId);
+    seedCards(db, { planId, topicId, pairs: [{ front: "1. Introduction · 1", back: "A" }] });
+    const second = seedCards(db, {
+      planId,
+      topicId: other,
+      pairs: [{ front: "1. Introduction · 1", back: "B" }],
+    });
+    expect(second).toHaveLength(1);
+    const due = dueCards(db, planId, T0, other);
+    expect(due.map((card) => card.back)).toEqual(["B"]);
+  });
+
   it("treats a new card as due now", () => {
     const db = openDatabase(":memory:");
     const { planId, topicId } = planWithTopic(db);

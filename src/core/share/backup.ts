@@ -89,15 +89,17 @@ export function backupWorkspace(workspace: string, destZip: string): void {
   const dbPath = join(workspace, "pyxis.db");
   const db = openDatabase(dbPath);
   const tempDb = join(dirname(destZip), `${basename(destZip)}.vacuum.tmp`);
-  vacuumInto(db, tempDb);
-  db.close();
-
-  const zipEntries: Record<string, Uint8Array> = {
-    "pyxis.db": new Uint8Array(readFileSync(tempDb)),
-    ...collectBlobEntries(workspace),
-  };
-  writeFileSync(destZip, zipSync(zipEntries));
-  removeTree(tempDb);
+  try {
+    vacuumInto(db, tempDb);
+    const zipEntries: Record<string, Uint8Array> = {
+      "pyxis.db": new Uint8Array(readFileSync(tempDb)),
+      ...collectBlobEntries(workspace),
+    };
+    writeFileSync(destZip, zipSync(zipEntries));
+  } finally {
+    db.close();
+    removeTree(tempDb);
+  }
 }
 
 export function restoreWorkspace(zipPath: string, workspace: string): void {

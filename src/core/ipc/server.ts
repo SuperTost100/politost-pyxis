@@ -167,6 +167,8 @@ async function dispatch(
       return study?.simulationStart(requests["study.simulationStart"].input.parse(input));
     case "study.simulationRead":
       return study?.simulationRead(requests["study.simulationRead"].input.parse(input));
+    case "study.simulationDraft":
+      return study?.simulationDraft(requests["study.simulationDraft"].input.parse(input));
     case "study.cards":
       return study?.cards(requests["study.cards"].input.parse(input)) ?? [];
     case "study.rate":

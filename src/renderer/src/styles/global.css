@@ -402,3 +402,7 @@ html[data-platform="darwin"] .canvas-bar {
     transition-duration: 0.01ms !important;
   }
 }
+
+.px-map g:focus {
+  outline: 2px solid var(--focus-ring);
+}

@@ -23,7 +23,7 @@ export function seedCards(
   },
 ): string[] {
   const exists = db.prepare(
-    `SELECT id, passage_id, back FROM cards WHERE plan_id = ? AND TRIM(front) = ? LIMIT 1`,
+    `SELECT id, passage_id, back FROM cards WHERE plan_id = ? AND topic_id = ? AND TRIM(front) = ? LIMIT 1`,
   );
   const link = db.prepare(
     `UPDATE cards SET passage_id = ? WHERE id = ? AND passage_id IS NULL`,
@@ -36,7 +36,7 @@ export function seedCards(
   for (const pair of input.pairs) {
     const front = pair.front.trim();
     const back = pair.back.trim();
-    const prior = exists.get(input.planId, front) as
+    const prior = exists.get(input.planId, input.topicId, front) as
       | { id: string; passage_id: string | null; back: string }
       | undefined;
     if (prior) {

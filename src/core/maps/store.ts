@@ -83,7 +83,7 @@ export function moveTopicNode(
     node.id === nodeId ? { ...node, x, y, pinned: true } : node,
   );
   if (!nodes.some((node) => node.id === nodeId)) throw new Error("map-missing");
-  return saveTopicMap(db, planId, topicId, { ...graph, nodes });
+  return saveTopicMap(db, planId, topicId, { ...graph, nodes, undo: snapshot(graph) });
 }
 
 export function setTopicLayout(
@@ -93,7 +93,14 @@ export function setTopicLayout(
   layout: ConceptGraph["layout"],
 ): ConceptGraph {
   const graph = openTopicMap(db, planId, topicId);
-  return saveTopicMap(db, planId, topicId, { ...graph, layout });
+  return saveTopicMap(db, planId, topicId, { ...graph, layout, undo: snapshot(graph) });
+}
+
+function snapshot(graph: ConceptGraph): NonNullable<ConceptGraph["undo"]> {
+  return {
+    nodes: graph.nodes.map((node) => ({ ...node })),
+    edges: graph.edges.map((edge) => ({ ...edge })),
+  };
 }
 
 export function patchTopicMap(

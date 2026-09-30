@@ -5,7 +5,7 @@ import { createPlan, readPlan } from "../plans/create";
 import { uuidv7 } from "../../shared/ids";
 import { importSmartbook } from "../sources/smartbook";
 import { studyHandlers } from "./handlers";
-import { readSimulation, recordTopicScores, startSimulation } from "./simulation";
+import { readSimulation, recordTopicScores, saveSimulationDraft, startSimulation } from "./simulation";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -91,7 +91,7 @@ describe("simulation", () => {
       }),
     );
     const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
-    const opened = startSimulation(db, plan.planId, 30, 1_700_000_000_000);
+    const opened = startSimulation(db, plan.planId, 30, Date.now());
     const question = opened.questions[0];
     expect(question).toBeTruthy();
     studyHandlers(db).quizSubmit({
@@ -158,5 +158,40 @@ describe("simulation", () => {
     expect(readPlan(db, plan.planId)?.nodes.find((node) => node.kind === "simulation")?.state).toBe(
       "done",
     );
+  });
+
+  it("restores a draft and ignores a late answer", () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Fisica",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore.\n",
+        "esercizi.md":
+          ':::exercise{id="e1" chapter="1"}\nQuanto vale?\n:::solution\n10 N\n:::\n:::\n',
+      }),
+    );
+    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
+    const opened = startSimulation(db, plan.planId, 30, Date.now());
+    const question = opened.questions[0];
+    saveSimulationDraft(db, opened.attemptId, { [question!.id]: "10 N" });
+    expect(readSimulation(db, opened.attemptId).picks[question!.id]).toBe("10 N");
+    db.prepare(`UPDATE attempts SET started_at = ? WHERE id = ?`).run(
+      Date.now() - 31 * 60_000,
+      opened.attemptId,
+    );
+    studyHandlers(db).quizSubmit({
+      attemptId: opened.attemptId,
+      picks: { [question!.id]: "late" },
+    });
+    const saved = db
+      .prepare(`SELECT payload_json FROM attempt_answers WHERE attempt_id = ?`)
+      .get(opened.attemptId) as { payload_json: string };
+    expect(JSON.parse(saved.payload_json).picks[question!.id]).toBe("10 N");
   });
 });

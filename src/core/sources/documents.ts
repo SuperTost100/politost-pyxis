@@ -53,14 +53,25 @@ export async function extractDocx(bytes: Uint8Array): Promise<ExtractedDocument>
   return textSections(result.value, "heading");
 }
 
+function decodeXml(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, value: string) => String.fromCodePoint(Number(value)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, value: string) => String.fromCodePoint(parseInt(value, 16)))
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
 export function extractPptx(bytes: Uint8Array): ExtractedDocument {
   const entries = unzipSync(bytes);
   const presentation = textOf(entries, "ppt/presentation.xml");
   const rels = textOf(entries, "ppt/_rels/presentation.xml.rels");
   const targets = new Map<string, string>();
-  for (const match of rels.matchAll(/Id="([^"]+)"[^>]*Target="([^"]+)"/g)) {
-    const id = match[1];
-    const target = match[2];
+  for (const tag of rels.matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = /\bId="([^"]+)"/.exec(tag[0])?.[1];
+    const target = /\bTarget="([^"]+)"/.exec(tag[0])?.[1];
     if (id && target) targets.set(id, target);
   }
   const pages: ExtractedPage[] = [];
@@ -75,7 +86,7 @@ export function extractPptx(bytes: Uint8Array): ExtractedDocument {
       : `ppt/${target.replace(/^\.\//, "")}`;
     const xml = textOf(entries, key);
     const text = [...xml.matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g)]
-      .map((part) => part[1] ?? "")
+      .map((part) => decodeXml(part[1] ?? ""))
       .join(" ")
       .trim();
     pages.push({ text, locator: { slide }, section: `slide ${slide}` });

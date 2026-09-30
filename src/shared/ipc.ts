@@ -258,6 +258,7 @@ export const requests = {
         leftMs: z.number(),
         submitted: z.boolean(),
         questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+        picks: z.record(z.string(), z.string()),
         topics: z.array(z.object({ id: z.string(), title: z.string(), score: z.number() })),
       })
       .nullable(),
@@ -279,6 +280,23 @@ export const requests = {
       leftMs: z.number(),
       submitted: z.boolean(),
       questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+      picks: z.record(z.string(), z.string()),
+      topics: z.array(z.object({ id: z.string(), title: z.string(), score: z.number() })),
+    }),
+  },
+  "study.simulationDraft": {
+    input: z.object({
+      attemptId: z.string(),
+      picks: z.record(z.string(), z.string()),
+    }),
+    output: z.object({
+      attemptId: z.string(),
+      planId: z.string(),
+      deadline: z.number(),
+      leftMs: z.number(),
+      submitted: z.boolean(),
+      questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+      picks: z.record(z.string(), z.string()),
       topics: z.array(z.object({ id: z.string(), title: z.string(), score: z.number() })),
     }),
   },

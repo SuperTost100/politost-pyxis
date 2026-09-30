@@ -36,5 +36,12 @@ describe("gradeAnswer", () => {
         accepted: [["10"]],
       }),
     ).toBe(0);
+    expect(
+      gradeAnswer({
+        kind: "completion",
+        answers: [""],
+        accepted: [["0"]],
+      }),
+    ).toBe(0);
   });
 });

@@ -26,6 +26,7 @@ export function SimulationPage() {
         : invoke("study.simulationOpen", { planId: planId ?? "" }),
   });
   const run = open.data;
+  const shown = { ...(run && "picks" in run ? run.picks : {}), ...picks };
   const minutes = run ? Math.ceil(run.leftMs / 60_000) : 30;
 
   return (
@@ -62,10 +63,13 @@ export function SimulationPage() {
               <input
                 aria-label={t("quiz.submit")}
                 disabled={run.submitted}
-                value={picks[question.id] ?? ""}
-                onChange={(event) =>
-                  setPicks((current) => ({ ...current, [question.id]: event.target.value }))
-                }
+                value={shown[question.id] ?? ""}
+                onChange={(event) => {
+                  const next = { ...shown, [question.id]: event.target.value };
+                  setPicks(next);
+                  if (!run || !("attemptId" in run)) return;
+                  void invoke("study.simulationDraft", { attemptId: run.attemptId, picks: next });
+                }}
               />
             </li>
           ))}

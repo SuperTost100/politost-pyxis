@@ -300,7 +300,15 @@ export function PlanPage() {
           </svg>
           <p className="small">{t("progress.week", { count: progress.pace.week })}</p>
           <p className="small">{t("progress.minutes", { count: progress.minutes })}</p>
-          <p className="small">{t("progress.peak", { count: progress.pace.peakCount })}</p>
+          <p className="small">
+            {t("progress.peak", {
+              day: new Date(progress.pace.peakDay).toLocaleDateString(undefined, {
+                weekday: "long",
+                day: "numeric",
+                month: "short",
+              }),
+            })}
+          </p>
           <h3 className="body-strong">{t("progress.gaps")}</h3>
           {progress.gaps.length === 0 ? (
             <p className="small">{t("progress.noGaps")}</p>

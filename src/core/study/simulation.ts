@@ -8,6 +8,7 @@ import { acrossTopics } from "./topicQuiz";
 
 type Stored = {
   minutes: number;
+  picks?: Record<string, string>;
   questions: Array<{
     id: string;
     topicId?: string;
@@ -100,7 +101,7 @@ export function readSimulation(db: Database.Database, attemptId: string, now = D
   const stored = JSON.parse(row.body_json) as Stored;
   const deadline = row.started_at + stored.minutes * 60_000;
   if (row.submitted_at == null && now >= deadline) {
-    const scored = submitAttempt(db, attemptId, {}, now);
+    const scored = submitAttempt(db, attemptId, stored.picks ?? {}, now);
     completeCurrentStage(db, row.plan_id, "simulation", now + 1);
     recordTopicScores(db, row.plan_id, stored.questions, scored.results, now);
     syncGaps(db, row.plan_id, now);
@@ -115,8 +116,31 @@ export function readSimulation(db: Database.Database, attemptId: string, now = D
     leftMs: submitted.submitted_at == null ? Math.max(0, deadline - now) : 0,
     submitted: submitted.submitted_at != null,
     questions: stored.questions.map((question) => ({ id: question.id, stem: question.stem })),
+    picks: stored.picks ?? {},
     topics: topicScores(db, stored, attemptId, submitted.submitted_at != null),
   };
+}
+
+export function saveSimulationDraft(
+  db: Database.Database,
+  attemptId: string,
+  picks: Record<string, string>,
+) {
+  const row = db
+    .prepare(
+      `SELECT a.submitted_at, i.id AS item_id, i.body_json
+       FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ?`,
+    )
+    .get(attemptId) as
+    | { submitted_at: number | null; item_id: string; body_json: string }
+    | undefined;
+  if (!row) throw new Error("attempt-missing");
+  if (row.submitted_at == null) {
+    const stored = JSON.parse(row.body_json) as Stored;
+    stored.picks = picks;
+    db.prepare(`UPDATE items SET body_json = ? WHERE id = ?`).run(JSON.stringify(stored), row.item_id);
+  }
+  return readSimulation(db, attemptId);
 }
 
 export function recordTopicScores(

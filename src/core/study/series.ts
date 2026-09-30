@@ -72,12 +72,18 @@ export function weeklyCounts(
   return { weeks: starts, counts };
 }
 
-export function paceFacts(bars: Array<{ day: number; count: number }>, now: number) {
+export function paceFacts(
+  bars: Array<{ day: number; count: number }>,
+  now: number,
+  active: Array<{ day: number; seconds: number }> = [],
+) {
   const start = weekStart(now);
   const week = bars.filter((bar) => bar.day >= start).reduce((sum, bar) => sum + bar.count, 0);
-  const peak = bars.reduce(
+  const peakBars = active.map((bar) => ({ day: bar.day, count: bar.seconds }));
+  const source = peakBars.length > 0 ? peakBars : bars;
+  const peak = source.reduce(
     (best, bar) => (bar.count > best.count ? bar : best),
-    bars[0] ?? { day: dayStart(now), count: 0 },
+    source[0] ?? { day: dayStart(now), count: 0 },
   );
   return { week, peakDay: peak.day, peakCount: peak.count };
 }

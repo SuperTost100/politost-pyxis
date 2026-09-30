@@ -136,6 +136,7 @@ export function planSeries(db: Database.Database, planId: string, now = Date.now
     ),
   );
   const chart = chartPoints(events, now);
+  const activity = activeMinutes(events, now);
   const weeks = weeklyCounts(
     events,
     topics.map((topic) => topic.id),
@@ -152,8 +153,8 @@ export function planSeries(db: Database.Database, planId: string, now = Date.now
     weeks: weeks.weeks,
     counts: weeks.counts,
     gaps,
-    pace: paceFacts(chart, now),
-    minutes: Math.round(activeMinutes(events, now).weekSeconds / 60),
+    pace: paceFacts(chart, now, activity.bars),
+    minutes: Math.round(activity.weekSeconds / 60),
     lessons: studied.filter((event) => event.kind === "lesson").length,
     topics: topics.map((topic) => ({ ...topic, idle: idle.has(topic.id) })),
   };

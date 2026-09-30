@@ -13,6 +13,7 @@ function fold(value: string): string {
 }
 
 function numbersClose(left: string, right: string): boolean {
+  if (left.trim() === "" || right.trim() === "") return false;
   const a = Number(left.replace(",", "."));
   const b = Number(right.replace(",", "."));
   if (!Number.isFinite(a) || !Number.isFinite(b)) return false;

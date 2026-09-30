@@ -45,6 +45,18 @@ describe("document extract", () => {
     const extracted = extractPptx(bytes);
     expect(extracted.pages[0]?.text).toBe("forza");
     expect(extracted.pages[0]?.locator.slide).toBe(1);
+    const reversed = extractPptx(
+      zipSync({
+        "ppt/presentation.xml": strToU8(
+          `<p:presentation><p:sldIdLst><p:sldId r:id="rId1"/></p:sldIdLst></p:presentation>`,
+        ),
+        "ppt/_rels/presentation.xml.rels": strToU8(
+          `<Relationships><Relationship Target="slides/slide1.xml" Id="rId1"/></Relationships>`,
+        ),
+        "ppt/slides/slide1.xml": strToU8(`<p:sld><a:t>R&amp;D</a:t></p:sld>`),
+      }),
+    );
+    expect(reversed.pages[0]?.text).toBe("R&D");
   });
 
   it("splits markdown on headings", () => {

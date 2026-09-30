@@ -87,7 +87,8 @@ export function MapPage() {
         </Button>
       </div>
       <svg
-        role="img"
+        className="px-map"
+        role="group"
         aria-label={t("map.title")}
         viewBox={`${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`}
         style={{ width: "100%", height: "70vh", background: "transparent" }}
@@ -111,8 +112,26 @@ export function MapPage() {
         {nodes.map((node) => (
           <g
             key={node.id}
+            tabIndex={0}
+            role="button"
+            aria-label={node.label}
             transform={`translate(${node.x} ${node.y})`}
             style={{ cursor: "grab" }}
+            onKeyDown={(event) => {
+              const step = event.shiftKey ? 48 : 16;
+              const dx =
+                event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+              const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+              if ((dx === 0 && dy === 0) || !planId || !topicId) return;
+              event.preventDefault();
+              void invoke("maps.move", {
+                planId,
+                topicId,
+                nodeId: node.id,
+                x: node.x + dx,
+                y: node.y + dy,
+              }).then(refresh);
+            }}
             onPointerDown={(event) => {
               const svg = event.currentTarget.ownerSVGElement;
               const target = event.currentTarget;
