@@ -4,6 +4,16 @@ One SQLite file, `pyxis.db`, in the workspace. WAL and foreign keys are on. `000
 
 `passages.rowid` is an integer. `passages_vec` stores that integer, because sqlite-vec primary keys are integers and must be bound as BigInt from JavaScript. Passage text is mirrored into `passages_fts`.
 
+Migrations after the initial schema, applied in one transaction by `src/core/db/migrate.ts`:
+
+| `user_version` | Change |
+| --- | --- |
+| 2 | `chats.scope_json` |
+| 3 | `cards.passage_id` |
+| 4 | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`) |
+
+Current version is 4. A restored backup is migrated on a staging copy before it replaces the workspace.
+
 | Table            | A row is                                                                 |
 | ---------------- | ------------------------------------------------------------------------ |
 | profile          | The student's profile. The renderer writes it.                           |

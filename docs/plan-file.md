@@ -18,4 +18,6 @@ Version 1 is a JSON document, checked by `planFileSchema` in `src/shared/plan-fi
 
 `examAt`, `target`, `language` and `style` travel with the file. An older file without them imports with no exam date, a target of 0.75, no language, and style `decide`. `topic` on a node or a card is an index into `topics`, or null when the step is the introduction, the diagnostic, the simulation or the final check. Import creates a new plan id and new topic ids, so importing the same file twice yields two plans. The shared-plan screen reads a file in the window, or asks the main process for an http or https link, then calls `plans.import`.
 
-The file does not carry passages, lessons or citations. Those stay in the workspace that owns the sources. A backup of the whole workspace is a separate zip: a vacuumed `pyxis.db` plus the `blobs/` tree. See `src/core/share/backup.ts`.
+A stored target outside 0.5–1 is clamped to the nearest bound on export. On the path, a target of 1 opens at 0.99 (`reachableTarget` in `src/shared/plan-file.ts`).
+
+The file does not carry passages, lessons or citations. Those stay in the workspace that owns the sources. A backup of the whole workspace is a separate zip: a vacuumed `pyxis.db` plus the `blobs/` tree. Restore checks that the staged database already has `user_version` of at least 1 and the tables `plans`, `profile` and `path_nodes`, then runs migrations on that copy. If the check or the migration fails, the zip is refused and the live workspace stays. See `src/core/share/backup.ts`.
