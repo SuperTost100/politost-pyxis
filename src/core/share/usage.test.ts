@@ -49,4 +49,16 @@ describe("plan disk usage", () => {
     expect(readFileSync(join(dir, "pyxis.db"), "utf8")).toBe("kept");
     expect(existsSync(holding)).toBe(false);
   });
+
+  it("puts files back into a folder that was recreated empty", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-merge-"));
+    const holding = join(dir, ".wipe");
+    mkdirSync(join(holding, "blobs"), { recursive: true });
+    writeFileSync(join(holding, "INCOMPLETE"), "1");
+    writeFileSync(join(holding, "blobs", "note.txt"), "nota");
+    mkdirSync(join(dir, "blobs"));
+    recoverInterruptedWipe(dir);
+    expect(readFileSync(join(dir, "blobs", "note.txt"), "utf8")).toBe("nota");
+    expect(existsSync(holding)).toBe(false);
+  });
 });

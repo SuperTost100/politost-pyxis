@@ -13,7 +13,7 @@ import {
   utilityProcess,
   type UtilityProcess,
 } from "electron";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
@@ -566,6 +566,9 @@ function registerIpc(): void {
       try {
         wipeWorkspace(workspacePath);
         return "wiped" as const;
+      } catch (err) {
+        recoverInterruptedWipe(workspacePath);
+        throw err;
       } finally {
         await resumeCore();
       }
@@ -589,7 +592,14 @@ app.whenReady().then(() => {
   try {
     recoverInterruptedWipe(workspacePath);
   } catch (err) {
-    console.error("pyxis: an unfinished wipe could not be cleared", err instanceof Error ? err.message : "unknown");
+    console.error("pyxis: an unfinished wipe could not be restored", err instanceof Error ? err.message : "unknown");
+    app.exit(1);
+    return;
+  }
+  if (existsSync(join(workspacePath, ".wipe"))) {
+    console.error("pyxis: saved data is still in .wipe");
+    app.exit(1);
+    return;
   }
   applyAppearance(readAppearanceSource());
   installCsp();

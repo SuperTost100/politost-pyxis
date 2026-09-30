@@ -1,4 +1,12 @@
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 const names = ["pyxis.db", "pyxis.db-wal", "pyxis.db-shm", "blobs", "runtimes", "models", "scratch", "exports"];
@@ -8,19 +16,29 @@ function holdingDir(workspace: string): string {
   return join(workspace, ".wipe");
 }
 
-/** Puts an unfinished wipe back. A finished wipe only drops the extra copy. */
+function restoreEntry(from: string, to: string): void {
+  if (!existsSync(from)) return;
+  if (!existsSync(to)) {
+    renameSync(from, to);
+    return;
+  }
+  if (statSync(from).isDirectory() && statSync(to).isDirectory()) {
+    for (const child of readdirSync(from)) restoreEntry(join(from, child), join(to, child));
+    return;
+  }
+  rmSync(to, { recursive: true, force: true });
+  renameSync(from, to);
+}
+
+/** Puts an unfinished wipe back, including files inside a folder startup already recreated. */
 export function recoverInterruptedWipe(workspace: string): void {
   const holding = holdingDir(workspace);
   if (!existsSync(holding)) return;
-  const unfinished = existsSync(join(holding, "INCOMPLETE"));
-  if (unfinished) {
-    for (const name of names) {
-      const from = join(holding, name);
-      const to = join(workspace, name);
-      if (!existsSync(from) || existsSync(to)) continue;
-      cpSync(from, to, { recursive: true });
-    }
+  if (!existsSync(join(holding, "INCOMPLETE"))) {
+    rmSync(holding, { recursive: true, force: true });
+    return;
   }
+  for (const name of names) restoreEntry(join(holding, name), join(workspace, name));
   rmSync(holding, { recursive: true, force: true });
 }
 
@@ -32,18 +50,23 @@ export function wipeWorkspace(workspace: string): void {
   const holding = holdingDir(workspace);
   mkdirSync(holding);
   writeFileSync(join(holding, "INCOMPLETE"), "1");
-  for (const name of names) {
-    const from = join(workspace, name);
-    if (!existsSync(from)) continue;
-    cpSync(from, join(holding, name), { recursive: true });
-  }
+  const moved: string[] = [];
   try {
-    for (const name of names) rmSync(join(workspace, name), { recursive: true, force: true });
+    for (const name of names) {
+      const from = join(workspace, name);
+      if (!existsSync(from)) continue;
+      renameSync(from, join(holding, name));
+      moved.push(name);
+    }
+    rmSync(join(holding, "INCOMPLETE"), { force: true });
+    rmSync(holding, { recursive: true, force: true });
   } catch (err) {
-    recoverInterruptedWipe(workspace);
+    if (existsSync(holding)) {
+      writeFileSync(join(holding, "INCOMPLETE"), "1");
+      for (const name of [...moved].reverse()) restoreEntry(join(holding, name), join(workspace, name));
+      rmSync(holding, { recursive: true, force: true });
+    }
     throw err instanceof Error ? err : new Error("wipe-failed");
   }
-  rmSync(join(holding, "INCOMPLETE"), { force: true });
-  rmSync(holding, { recursive: true, force: true });
   for (const dir of dirs) mkdirSync(join(workspace, dir), { recursive: true });
 }
