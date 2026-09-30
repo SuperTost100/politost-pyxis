@@ -41,10 +41,11 @@ describe("study series", () => {
   });
 
   it("keeps a Sunday study when America/Santiago skips midnight", () => {
-    execFileSync(join(import.meta.dirname, "../../../node_modules/.bin/tsx"), [
+    execFileSync(process.execPath, [
+      join(import.meta.dirname, "../../../node_modules/tsx/dist/cli.mjs"),
       join(import.meta.dirname, "series.santiago.ts"),
     ], {
-      env: { ...process.env, TZ: "America/Santiago" },
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", TZ: "America/Santiago" },
       stdio: "pipe",
     });
   });

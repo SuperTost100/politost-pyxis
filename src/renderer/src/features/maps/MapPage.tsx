@@ -149,7 +149,7 @@ export function MapPage() {
               keyChain.current.set(node.id, job);
             }}
             onPointerDown={(event) => {
-              const origin = keyPos.current.get(node.id) ?? { x: node.x, y: node.y };
+              const origin = { x: node.x, y: node.y };
               const gen = (moveGen.current.get(node.id) ?? 0) + 1;
               moveGen.current.set(node.id, gen);
               keyPos.current.delete(node.id);
