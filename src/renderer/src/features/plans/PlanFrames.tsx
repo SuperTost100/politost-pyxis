@@ -80,6 +80,7 @@ export function PlanPage() {
   const { t } = useTranslation();
   const { planId } = useParams();
   const navigate = useNavigate();
+  const client = useQueryClient();
   const plan = useQuery({
     queryKey: ["plan", planId],
     enabled: Boolean(planId),
@@ -97,12 +98,26 @@ export function PlanPage() {
       <ol className="choice-list">
         {(plan.data?.nodes ?? []).map((node) => (
           <li key={node.id}>
-            <div className="choice">
+            <button
+              type="button"
+              className="choice"
+              disabled={node.state === "locked"}
+              onClick={() => {
+                if (!planId) return;
+                void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
+                  void client.invalidateQueries({ queryKey: ["plan", planId] });
+                  if (node.kind === "practice" && node.topicId) {
+                    navigate(`/plans/${planId}/practice/${node.topicId}`);
+                  }
+                });
+              }}
+            >
               <span className="body-strong">{node.title}</span>
               <span className="small">
-                {node.state === "current" ? t("plans.current") : t(`plans.${node.kind}`)}
+                {t(`plans.${node.kind}`)}
+                {node.state === "current" ? ` · ${t("plans.current")}` : ""}
               </span>
-            </div>
+            </button>
           </li>
         ))}
       </ol>

@@ -135,7 +135,15 @@ export function LibraryPanel() {
             {ocrFor === source.id ? (
               t("sources.ocrQueued")
             ) : (
-              <button type="button" onClick={() => setOcrFor(source.id)}>
+              <button
+                type="button"
+                onClick={() => {
+                  setOcrFor(source.id);
+                  void invoke("sources.ocr", { sourceId: source.id }).then(() =>
+                    client.invalidateQueries({ queryKey: ["sources"] }),
+                  );
+                }}
+              >
                 {t("sources.offerOcr")}
               </button>
             )}

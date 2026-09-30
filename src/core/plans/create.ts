@@ -103,6 +103,22 @@ export function createPlan(
   return { planId, topics, pathNodes };
 }
 
+export function completeNode(
+  db: Database.Database,
+  planId: string,
+  nodeId: string,
+  now = Date.now(),
+): void {
+  const node = db
+    .prepare(`SELECT id, topic_id FROM path_nodes WHERE id = ? AND plan_id = ?`)
+    .get(nodeId, planId) as { id: string; topic_id: string | null } | undefined;
+  if (!node) throw new Error("node-missing");
+  db.prepare(
+    `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+     VALUES (?, 'lesson_completed', ?, ?, ?, ?)`,
+  ).run(uuidv7(now), planId, node.topic_id, JSON.stringify({ nodeId }), now);
+}
+
 export function readPlan(db: Database.Database, planId: string) {
   const plan = db
     .prepare(`SELECT id, title, status FROM plans WHERE id = ?`)
@@ -122,6 +138,28 @@ export function readPlan(db: Database.Database, planId: string) {
     topic_id: string | null;
     position: number;
   }>;
+  const events = db
+    .prepare(
+      `SELECT payload_json, topic_id FROM learning_events
+       WHERE plan_id = ? AND kind = 'lesson_completed'`,
+    )
+    .all(planId) as Array<{ payload_json: string; topic_id: string | null }>;
+  const doneIds = events.flatMap((event) => {
+    const payload = JSON.parse(event.payload_json) as { nodeId?: string };
+    return payload.nodeId ? [payload.nodeId] : [];
+  });
+  const mastery: Record<string, number> = {};
+  for (const event of events) {
+    if (event.topic_id) mastery[event.topic_id] = 0.5;
+  }
+  const simulationDone = rows.some(
+    (row) => row.kind === "simulation" && doneIds.includes(row.id),
+  );
+  if (simulationDone) {
+    for (const row of rows) {
+      if (row.topic_id) mastery[row.topic_id] = 0.8;
+    }
+  }
   const states = pathState(
     rows.map((row) => ({
       id: row.id,
@@ -129,13 +167,14 @@ export function readPlan(db: Database.Database, planId: string) {
       topicId: row.topic_id,
       position: row.position,
     })),
-    [],
-    {},
+    doneIds,
+    mastery,
   );
   const nodes = rows.map((row) => ({
     id: row.id,
     title: row.title,
     kind: row.kind,
+    topicId: row.topic_id,
     position: row.position,
     state: states.find((item) => item.id === row.id)?.state ?? "locked",
   }));

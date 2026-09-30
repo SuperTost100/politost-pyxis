@@ -58,6 +58,11 @@
     "offerOcr": "Fai l'OCR",
     "ocrQueued": "OCR in coda su questo computer."
   },
+  "practice": {
+    "title": "Esercizi del libro",
+    "empty": "Questo argomento non ha esercizi nel libro.",
+    "reveal": "Mostra la soluzione"
+  },
   "plans": {
     "unlocksAfterIntro": "Si sblocca dopo l'introduzione",
     "unlocksAfterDiagnostic": "Si sblocca dopo la diagnosi",

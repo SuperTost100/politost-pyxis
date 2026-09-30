@@ -171,6 +171,16 @@ export const requests = {
     input: z.object({ provider: z.string(), code: z.string() }),
     output: z.object({}),
   },
+  "study.exercises": {
+    input: z.object({ topicId: z.string() }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        prompt: z.string(),
+        answer: z.string().nullable(),
+      }),
+    ),
+  },
   "plans.list": {
     input: z.object({}),
     output: z.array(
@@ -190,12 +200,17 @@ export const requests = {
             id: z.string(),
             title: z.string(),
             kind: z.string(),
+            topicId: z.string().nullable(),
             position: z.number(),
             state: z.enum(["locked", "current", "done"]),
           }),
         ),
       })
       .nullable(),
+  },
+  "plans.complete": {
+    input: z.object({ planId: z.string(), nodeId: z.string() }),
+    output: z.object({ ok: z.boolean() }),
   },
   "plans.create": {
     input: z.object({ title: z.string(), sourceIds: z.array(z.string()) }),
@@ -384,6 +399,10 @@ export const requests = {
         })
         .nullable(),
     }),
+  },
+  "sources.ocr": {
+    input: z.object({ sourceId: z.string() }),
+    output: z.object({ status: z.literal("ocr-queued") }),
   },
   "sources.passage": {
     input: z.object({ passageId: z.string() }),

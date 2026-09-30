@@ -1,4 +1,5 @@
 import { createHashRouter, Navigate } from "react-router";
+import { PracticePage } from "../features/study/PracticePage";
 import { OnboardingPage } from "../features/onboarding/OnboardingPage";
 import { AskPage } from "../features/ask/AskPage";
 import { ExamsHome } from "../features/home/HomePages";
@@ -31,5 +32,6 @@ export const router = createHashRouter([
   },
   { path: "/plans/new", element: <WizardFrame /> },
   { path: "/plans/:planId", element: <PlanPage /> },
+  { path: "/plans/:planId/practice/:topicId", element: <PracticePage /> },
   { path: "/tools/whiteboard", element: <WhiteboardFrame /> },
 ]);

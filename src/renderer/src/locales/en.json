@@ -58,6 +58,11 @@
     "offerOcr": "Run OCR",
     "ocrQueued": "OCR is queued on this computer."
   },
+  "practice": {
+    "title": "Book exercises",
+    "empty": "This topic has no exercises in the book.",
+    "reveal": "Show the solution"
+  },
   "plans": {
     "unlocksAfterIntro": "Unlocks after the introduction",
     "unlocksAfterDiagnostic": "Unlocks after the diagnostic",

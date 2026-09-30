@@ -7,6 +7,7 @@ import {
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
 import { planHandlers } from "../plans/handlers";
+import { studyHandlers } from "../study/handlers";
 import { profileHandlers } from "../profile/handlers";
 import { sourceHandlers } from "../sources/handlers";
 import type { ProviderId } from "../engine/funnel";
@@ -28,6 +29,7 @@ let sources: ReturnType<typeof sourceHandlers> | null = null;
 let chats: ReturnType<typeof chatHandlers> | null = null;
 let profile: ReturnType<typeof profileHandlers> | null = null;
 let plans: ReturnType<typeof planHandlers> | null = null;
+let study: ReturnType<typeof studyHandlers> | null = null;
 let port: CorePort | null = null;
 const inflight = new Map<string, AbortController>();
 
@@ -141,9 +143,13 @@ async function dispatch(
         code: parsed.code,
       });
     }
+    case "study.exercises":
+      return study?.exercises(requests["study.exercises"].input.parse(input)) ?? [];
     case "plans.list":
       requests["plans.list"].input.parse(input);
       return plans?.list() ?? [];
+    case "plans.complete":
+      return plans?.complete(requests["plans.complete"].input.parse(input));
     case "plans.read":
       return plans?.read(requests["plans.read"].input.parse(input)) ?? null;
     case "plans.create":
@@ -172,6 +178,8 @@ async function dispatch(
       return sources?.search(requests["sources.search"].input.parse(input));
     case "sources.chapters":
       return sources?.chapters(requests["sources.chapters"].input.parse(input));
+    case "sources.ocr":
+      return sources?.ocr(requests["sources.ocr"].input.parse(input));
     case "sources.passage":
       return sources?.passage(requests["sources.passage"].input.parse(input));
     case "sources.chapter":
@@ -187,6 +195,10 @@ export function bindRunner(runner: Runner, dev: boolean): void {
 
 export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
   engines = engineHandlers(db, (event) => broadcast("engine.login", event));
+}
+
+export function bindStudy(db: Parameters<typeof studyHandlers>[0]): void {
+  study = studyHandlers(db);
 }
 
 export function bindPlans(db: Parameters<typeof planHandlers>[0]): void {

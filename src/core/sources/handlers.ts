@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { extname } from "node:path";
 import { IpcError } from "../../shared/ipc";
 import { importDocumentFile } from "./documents";
+import { requestOcr } from "./ocr";
 import {
   chapterPassages,
   importSmartbookFile,
@@ -34,6 +35,10 @@ export function sourceHandlers(db: Database.Database, workspace: string) {
     },
     chapters(input: { sourceId: string }) {
       return smartbookChapters(db, input.sourceId);
+    },
+    ocr(input: { sourceId: string }) {
+      requestOcr(db, input.sourceId);
+      return { status: "ocr-queued" as const };
     },
     passage(input: { passageId: string }) {
       return passagesAround(db, input.passageId);
