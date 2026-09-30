@@ -40,6 +40,10 @@ export function AskPage() {
     queryFn: () => invoke("chats.read", { chatId: chatId ?? "" }),
   });
   useEffect(() => {
+    setHistoryOpen(false);
+  }, [chatId]);
+
+  useEffect(() => {
     if (chatId) return;
     setPicked([]);
     setUncovered(null);
@@ -105,7 +109,13 @@ export function AskPage() {
     <ul className="choice-list" aria-label={t("ask.history")}>
       {(history.data ?? []).map((chat) => (
         <li key={chat.id}>
-          <Button type="text" onClick={() => navigate(`/ask/${chat.id}`)}>
+          <Button
+            type="text"
+            onClick={() => {
+              setHistoryOpen(false);
+              navigate(`/ask/${chat.id}`);
+            }}
+          >
             {chat.title?.trim() || t("ask.untitled")}
           </Button>
           <Input
