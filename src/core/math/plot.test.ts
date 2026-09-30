@@ -28,6 +28,7 @@ describe("plot", () => {
       ),
     ).toHaveLength(1);
     expect(splitSeries(sample("1/(x-0.02)", -8, 8), at("1/(x-0.02)")).length).toBeGreaterThan(1);
+    expect(splitSeries(sample("0.001/(x-0.03)", -8, 8), at("0.001/(x-0.03)")).length).toBeGreaterThan(1);
     expect(splitSeries(sample("1/x", -2, 2), at("1/x")).length).toBeGreaterThan(1);
     expect(splitSeries(sample("tan(x)", -8, 8), at("tan(x)")).length).toBeGreaterThan(1);
     expect(splitSeries(sample("1/(x-0.03)^2", -8, 8), at("1/(x-0.03)^2")).length).toBeGreaterThan(1);

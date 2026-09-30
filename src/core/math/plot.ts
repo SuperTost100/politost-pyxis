@@ -131,6 +131,7 @@ export function splitSeries(
   return groups;
 }
 
+// ponytail: bisection plus a few probes, not a symbolic pole test. Upgrade path is a denser sample or a CAS when a spike narrower than the last probe still matters.
 function connects(
   prev: { x: number; y: number },
   point: { x: number; y: number },
@@ -146,11 +147,33 @@ function connects(
   }
   if (!Number.isFinite(mid)) return false;
   const chord = (prev.y + point.y) / 2;
-  const scale = Math.max(1, Math.min(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid)));
-  if (Math.abs(mid - chord) <= 0.25 * scale) return true;
-  if (depth >= 16) return Math.abs(mid) <= 1e5;
+  const scale = Math.max(1e-9, Math.min(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid)));
+  const span = Math.max(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid));
+  if (Math.abs(mid - chord) <= 0.25 * scale && span <= 8 * scale) return true;
+  if (depth >= 16) return !unresolvedPole(prev, point, mid, at);
   const middle = { x: (prev.x + point.x) / 2, y: mid };
   return connects(prev, middle, at, depth + 1) && connects(middle, point, at, depth + 1);
+}
+
+function unresolvedPole(
+  prev: { x: number; y: number },
+  point: { x: number; y: number },
+  mid: number,
+  at: (x: number) => number,
+) {
+  const bound = Math.max(Math.abs(prev.y), Math.abs(point.y), 1e-9);
+  if (prev.y * point.y < 0 && Math.min(Math.abs(prev.y), Math.abs(point.y)) > 1e-6) return true;
+  if (Math.abs(mid) > 8 * bound) return true;
+  for (const t of [0.2, 0.4, 0.6, 0.8]) {
+    let probe = Number.NaN;
+    try {
+      probe = at(prev.x + (point.x - prev.x) * t);
+    } catch {
+      return true;
+    }
+    if (!Number.isFinite(probe) || Math.abs(probe) > 8 * bound) return true;
+  }
+  return false;
 }
 
 function applyFn(name: string, arg: number): number {
