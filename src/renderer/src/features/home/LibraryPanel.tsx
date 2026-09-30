@@ -52,6 +52,7 @@ export function LibraryPanel() {
   });
 
   useEffect(() => {
+    setSearchPicked(false);
     const source = params.get("source");
     const chapterParam = params.get("chapter");
     const paragraphParam = params.get("paragraph");
@@ -59,9 +60,13 @@ export function LibraryPanel() {
     if (chapterParam) setChapter(Number(chapterParam));
     if (paragraphParam) setParagraph(paragraphParam);
     if (params.get("passage")) setPreferOpened(true);
+  }, [params]);
+
+  useEffect(() => {
+    if (searchPicked) return;
     const openedSource = opened.data?.[0]?.sourceId;
     if (openedSource) setSourceId(openedSource);
-  }, [params, opened.data]);
+  }, [opened.data, searchPicked]);
 
   useEffect(() => {
     document.getElementById("passage-current")?.scrollIntoView({ block: "center" });
