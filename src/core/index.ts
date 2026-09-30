@@ -5,6 +5,7 @@ import {
   attachRendererPort,
   bindEngines,
   bindRunner,
+  bindChat,
   bindSources,
   broadcast,
 } from "./ipc/server";
@@ -52,6 +53,7 @@ if (!parent) {
       setScratch(join(data.workspacePath, "scratch"));
       bindEngines(db);
       bindSources(db, data.workspacePath);
+      bindChat(db);
       const runner = createRunner(db, (job) => broadcast("job.updated", job));
       runner.register("demo", demoJob);
       bindRunner(runner, data.dev === true);

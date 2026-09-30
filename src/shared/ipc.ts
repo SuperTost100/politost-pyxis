@@ -211,6 +211,82 @@ export const requests = {
     input: z.object({ sourceId: z.string() }),
     output: z.array(z.object({ number: z.number(), title: z.string() })),
   },
+  "chats.list": {
+    input: z.object({}),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string().nullable(),
+        updatedAt: z.number(),
+      }),
+    ),
+  },
+  "chats.read": {
+    input: z.object({ chatId: z.string() }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        role: z.enum(["user", "assistant"]),
+        body: z.string(),
+        modelId: z.string().nullable(),
+        grounding: z.enum(["sources", "general"]).nullable(),
+        followups: z.array(z.string()),
+        citations: z.array(
+          z.object({
+            label: z.string(),
+            index: z.number(),
+            passageId: z.string(),
+            sourceId: z.string(),
+            sectionPath: z.string().nullable(),
+            locator: z.object({
+              chapter: z.number().optional(),
+              paragraph: z.string().optional(),
+              page: z.number().optional(),
+              slide: z.number().optional(),
+            }),
+          }),
+        ),
+      }),
+    ),
+  },
+  "chats.ask": {
+    input: z.object({
+      chatId: z.string().optional(),
+      text: z.string(),
+      sourceIds: z.array(z.string()).optional(),
+      mode: z.enum(["solver", "socratic"]).optional(),
+      allowGeneral: z.boolean().optional(),
+    }),
+    output: z.object({
+      chatId: z.string(),
+      covered: z.boolean(),
+      message: z
+        .object({
+          id: z.string(),
+          role: z.enum(["user", "assistant"]),
+          body: z.string(),
+          modelId: z.string().nullable(),
+          grounding: z.enum(["sources", "general"]).nullable(),
+          followups: z.array(z.string()),
+          citations: z.array(
+            z.object({
+              label: z.string(),
+              index: z.number(),
+              passageId: z.string(),
+              sourceId: z.string(),
+              sectionPath: z.string().nullable(),
+              locator: z.object({
+                chapter: z.number().optional(),
+                paragraph: z.string().optional(),
+                page: z.number().optional(),
+                slide: z.number().optional(),
+              }),
+            }),
+          ),
+        })
+        .nullable(),
+    }),
+  },
   "sources.chapter": {
     input: z.object({
       sourceId: z.string(),

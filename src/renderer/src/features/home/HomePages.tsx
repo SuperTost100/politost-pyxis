@@ -4,33 +4,6 @@ import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { LibraryPanel } from "./LibraryPanel";
 
-export function AskHome() {
-  const { t } = useTranslation();
-  return (
-    <div className="ask-home">
-      <div className="ask-greeting">
-        <h1 className="display">{t("ask.greeting")}</h1>
-        <p className="body">{t("ask.scopeEmpty")}</p>
-      </div>
-      <form
-        className="composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-        }}
-      >
-        <label className="visually-hidden" htmlFor="ask-composer">
-          {t("ask.placeholder")}
-        </label>
-        <textarea
-          id="ask-composer"
-          rows={2}
-          placeholder={t("ask.placeholder")}
-        />
-      </form>
-    </div>
-  );
-}
-
 export function ExamsHome() {
   const { t } = useTranslation();
   const navigate = useNavigate();

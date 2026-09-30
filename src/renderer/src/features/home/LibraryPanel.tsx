@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
@@ -10,6 +11,7 @@ import { invoke } from "../../lib/ipc";
 export function LibraryPanel() {
   const { t } = useTranslation();
   const client = useQueryClient();
+  const [params] = useSearchParams();
   const list = useQuery({
     queryKey: ["sources"],
     queryFn: () => invoke("sources.list", {}),
@@ -39,6 +41,15 @@ export function LibraryPanel() {
         paragraph,
       }),
   });
+
+  useEffect(() => {
+    const source = params.get("source");
+    const chapterParam = params.get("chapter");
+    const paragraphParam = params.get("paragraph");
+    if (source) setSourceId(source);
+    if (chapterParam) setChapter(Number(chapterParam));
+    if (paragraphParam) setParagraph(paragraphParam);
+  }, [params]);
 
   useEffect(() => {
     document.getElementById("passage-current")?.scrollIntoView({ block: "center" });

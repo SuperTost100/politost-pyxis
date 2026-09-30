@@ -8,6 +8,7 @@ import {
 } from "@politost/smartbook-parser";
 import { putBlob } from "../blobs";
 import { uuidv7 } from "../../shared/ids";
+import { retrieve, type PassageHit } from "./retrieve";
 
 type ChapterMeta = { id: string; number: number; title: string; file: string };
 
@@ -133,15 +134,21 @@ export function importSmartbook(
   };
 }
 
+function displayLatex(latex: string): string {
+  let body = latex.trim();
+  if (body.startsWith("$$") && body.endsWith("$$")) body = body.slice(2, -2).trim();
+  else if (body.startsWith("\\[") && body.endsWith("\\]")) body = body.slice(2, -2).trim();
+  return `\n$$\n${body}\n$$\n`;
+}
+
 function withFormulas(
   content: string,
   formulas: Array<{ id: string; latex: string }>,
 ): string {
   let text = content;
   for (const formula of formulas) {
-    text = text.replaceAll(
-      `<!--FORMULA:${formula.id}-->`,
-      `\n$$\n${formula.latex}\n$$\n`,
+    text = text.replaceAll(`<!--FORMULA:${formula.id}-->`, () =>
+      displayLatex(formula.latex),
     );
   }
   return text.trim();
@@ -177,46 +184,14 @@ export function importSmartbookFile(
   return imported;
 }
 
-export type PassageHit = {
-  id: string;
-  sourceId: string;
-  text: string;
-  sectionPath: string | null;
-  locator: { chapter?: number; paragraph?: string };
-};
+export type { PassageHit };
 
 export function searchPassages(
   db: Database.Database,
   query: string,
   limit = 8,
 ): PassageHit[] {
-  const words = query.match(/\p{L}[\p{L}\p{N}]*/gu)?.slice(0, 8) ?? [];
-  if (words.length === 0) return [];
-  const match = words.map((word) => `"${word}"`).join(" ");
-  const rows = db
-    .prepare(
-      `SELECT p.id, p.source_id, p.text, p.section_path, p.locator_json
-       FROM passages_fts
-       JOIN passages p ON p.rowid = passages_fts.rowid
-       WHERE passages_fts MATCH ?
-       LIMIT ?`,
-    )
-    .all(match, limit) as Array<{
-    id: string;
-    source_id: string;
-    text: string;
-    section_path: string | null;
-    locator_json: string | null;
-  }>;
-  return rows.map((row) => ({
-    id: row.id,
-    sourceId: row.source_id,
-    text: row.text,
-    sectionPath: row.section_path,
-    locator: row.locator_json
-      ? (JSON.parse(row.locator_json) as PassageHit["locator"])
-      : {},
-  }));
+  return retrieve(db, query, { limit }).hits;
 }
 
 export function listSources(db: Database.Database) {

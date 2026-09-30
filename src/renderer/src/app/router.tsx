@@ -1,5 +1,6 @@
 import { createHashRouter, Navigate } from "react-router";
-import { AskHome, ExamsHome } from "../features/home/HomePages";
+import { AskPage } from "../features/ask/AskPage";
+import { ExamsHome } from "../features/home/HomePages";
 import {
   SharedPlanPage,
   WhiteboardFrame,
@@ -15,8 +16,8 @@ export const router = createHashRouter([
     element: <Shell />,
     children: [
       { index: true, element: <Navigate to="/exams" replace /> },
-      { path: "ask", element: <AskHome /> },
-      { path: "ask/:chatId", element: <AskHome /> },
+      { path: "ask", element: <AskPage /> },
+      { path: "ask/:chatId", element: <AskPage /> },
       { path: "exams", element: <ExamsHome /> },
       { path: "exams/library", element: <ExamsHome /> },
       { path: "exams/get", element: <SharedPlanPage /> },

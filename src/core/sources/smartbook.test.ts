@@ -25,7 +25,7 @@ describe("importSmartbook", () => {
           chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
         }),
         "chapters/01.md":
-          "## p1 | Energia\nIl vettore posizione descrive il punto.\n\n:::formula{id=\"1.1\" label=\"lavoro\"}\nW = F \\\\cdot s\n:::\n",
+          "## p1 | Energia\nIl vettore posizione descrive il punto.\n\n:::formula{id=\"1.1\" label=\"lavoro\"}\n$$\nW = F \\\\cdot s\n$$\n:::\n",
         "esercizi.md":
           ':::exercise{id="e1" chapter="1"}\nQuanto vale?\n:::solution\nDue.\n:::\n:::\n',
       }),
@@ -42,6 +42,7 @@ describe("importSmartbook", () => {
     expect(hit.text).toContain("vettore");
     expect(hit.text.startsWith("Energia\nEnergia")).toBe(false);
     expect(hit.text).toContain("W = F");
+    expect(hit.text, hit.text).toMatch(/\$\$[\s\S]*W = F[\s\S]*\$\$/);
     expect(JSON.parse(hit.locator_json)).toEqual({ chapter: 1, paragraph: "p1" });
     expect(searchPassages(db, "vettore")).toHaveLength(1);
   });

@@ -11,7 +11,11 @@
   "ask": {
     "greeting": "Hello",
     "scopeEmpty": "No source selected. I answer from general knowledge",
-    "placeholder": "Write a question"
+    "scopeReady": "I answer only from the selected material.",
+    "placeholder": "Write a question",
+    "sources": "Sources in use",
+    "notCovered": "Your material does not cover this question.",
+    "answerGeneral": "Answer from general knowledge"
   },
   "exams": {
     "plans": "Plans",

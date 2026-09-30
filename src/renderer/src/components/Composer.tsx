@@ -11,15 +11,31 @@ export function Composer({
   mode: initialMode = "solver",
   placeholder,
   streaming,
+  value,
+  onValueChange,
+  onSend,
+  onStop,
+  onModeChange,
 }: {
   subject?: string;
   sources?: string[];
   mode?: "solver" | "socratic";
   placeholder?: string;
   streaming?: boolean;
+  value?: string;
+  onValueChange?: (value: string) => void;
+  onSend?: () => void;
+  onStop?: () => void;
+  onModeChange?: (mode: "solver" | "socratic") => void;
 }) {
   const { t } = useTranslation();
   const [mode, setMode] = useState(initialMode);
+  const [draft, setDraft] = useState("");
+  const text = value ?? draft;
+  function setText(next: string) {
+    onValueChange?.(next);
+    if (value === undefined) setDraft(next);
+  }
   return (
     <div className="px-composer">
       <div className="px-composer-top">
@@ -35,6 +51,14 @@ export function Composer({
         placeholder={placeholder ?? t("ask.placeholder")}
         rows={2}
         aria-label={t("components.composer.messageLabel")}
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            onSend?.();
+          }
+        }}
       />
       <div className="px-composer-bar">
         <IconButton
@@ -59,14 +83,20 @@ export function Composer({
           <button
             type="button"
             aria-pressed={mode === "solver"}
-            onClick={() => setMode("solver")}
+            onClick={() => {
+              setMode("solver");
+              onModeChange?.("solver");
+            }}
           >
             {t("components.composer.solver")}
           </button>
           <button
             type="button"
             aria-pressed={mode === "socratic"}
-            onClick={() => setMode("socratic")}
+            onClick={() => {
+              setMode("socratic");
+              onModeChange?.("socratic");
+            }}
           >
             {t("components.composer.socratic")}
           </button>
@@ -78,6 +108,7 @@ export function Composer({
             label={t("components.composer.stop")}
             variant="secondary"
             size="sm"
+            onClick={onStop}
           />
         ) : (
           <IconButton
@@ -85,6 +116,7 @@ export function Composer({
             label={t("components.composer.send")}
             variant="primary"
             size="sm"
+            onClick={onSend}
           />
         )}
       </div>

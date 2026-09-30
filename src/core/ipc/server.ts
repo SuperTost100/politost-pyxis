@@ -5,6 +5,7 @@ import {
   type PortMessage,
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
+import { chatHandlers } from "../chat/handlers";
 import { sourceHandlers } from "../sources/handlers";
 import type { ProviderId } from "../engine/funnel";
 import { jobHandlers } from "../jobs/handlers";
@@ -22,6 +23,7 @@ type HandlerMap = ReturnType<typeof jobHandlers>;
 let handlers: HandlerMap | null = null;
 let engines: ReturnType<typeof engineHandlers> | null = null;
 let sources: ReturnType<typeof sourceHandlers> | null = null;
+let chats: ReturnType<typeof chatHandlers> | null = null;
 let port: CorePort | null = null;
 
 export function setJobHandlers(next: HandlerMap): void {
@@ -123,6 +125,13 @@ async function dispatch(name: string, input: unknown): Promise<unknown> {
         code: parsed.code,
       });
     }
+    case "chats.list":
+      requests["chats.list"].input.parse(input);
+      return chats?.list();
+    case "chats.read":
+      return chats?.read(requests["chats.read"].input.parse(input));
+    case "chats.ask":
+      return chats?.ask(requests["chats.ask"].input.parse(input));
     case "sources.list":
       requests["sources.list"].input.parse(input);
       return sources?.list();
@@ -145,6 +154,10 @@ export function bindRunner(runner: Runner, dev: boolean): void {
 
 export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
   engines = engineHandlers(db, (event) => broadcast("engine.login", event));
+}
+
+export function bindChat(db: Parameters<typeof chatHandlers>[0]): void {
+  chats = chatHandlers(db);
 }
 
 export function bindSources(

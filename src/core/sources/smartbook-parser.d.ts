@@ -4,6 +4,7 @@ declare module "@politost/smartbook-parser" {
     chapterNumber: number,
   ): {
     paragraphs: Array<{ id: string; title: string; content: string }>;
+    formulas: Array<{ id: string; latex: string }>;
   };
 
   export function parseExercises(

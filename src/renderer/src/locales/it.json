@@ -11,7 +11,11 @@
   "ask": {
     "greeting": "Ciao",
     "scopeEmpty": "Nessuna fonte selezionata: rispondo con le mie conoscenze",
-    "placeholder": "Scrivi una domanda"
+    "scopeReady": "Rispondo solo dal materiale selezionato.",
+    "placeholder": "Scrivi una domanda",
+    "sources": "Fonti in uso",
+    "notCovered": "Il materiale non copre questa domanda.",
+    "answerGeneral": "Rispondi con le conoscenze generali"
   },
   "exams": {
     "plans": "Piani",

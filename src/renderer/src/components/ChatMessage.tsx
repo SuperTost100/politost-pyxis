@@ -11,12 +11,14 @@ export function ChatMessage({
   children,
   engine,
   suggestions,
+  onSuggest,
   general,
 }: {
   role?: "user" | "tutor";
   children: ReactNode;
   engine?: string;
   suggestions?: string[];
+  onSuggest?: (text: string) => void;
   general?: boolean;
 }) {
   const { t } = useTranslation();
@@ -38,7 +40,7 @@ export function ChatMessage({
             <Tag tone="general">{t("components.chat.generalTag")}</Tag>
           </div>
         ) : null}
-        <p className="px-msg-text">{children}</p>
+        <div className="px-msg-text">{children}</div>
         <div className="px-msg-foot">
           <IconButton icon="copy" label={t("components.chat.copy")} variant="ghost" size="sm" />
           <IconButton icon="thumbs-up" label={t("components.chat.helpful")} variant="ghost" size="sm" />
@@ -49,7 +51,9 @@ export function ChatMessage({
         {suggestions ? (
           <div className="px-msg-chips">
             {suggestions.map((s) => (
-              <Chip key={s}>{s}</Chip>
+              <Chip key={s} onClick={() => onSuggest?.(s)}>
+                {s}
+              </Chip>
             ))}
           </div>
         ) : null}
