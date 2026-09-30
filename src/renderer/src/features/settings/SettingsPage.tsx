@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useAppState } from "../../app/app-state";
 import { i18n, setLanguage, type Locale } from "../../locales/i18n";
+import { EnginesPanel } from "./EnginesPanel";
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -30,6 +31,7 @@ export function SettingsPage() {
       {appearance.source === "system" ? (
         <p className="small section-hint">{t("settings.themeHint")}</p>
       ) : null}
+      <EnginesPanel />
       <div className="label section-label">{t("settings.language")}</div>
       <div className="choice-list">
         <Choice

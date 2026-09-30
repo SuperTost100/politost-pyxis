@@ -69,7 +69,8 @@
     "notReady": "Pyxis is still starting",
     "notAvailable": "This action is not available",
     "unknownRequest": "Unknown request",
-    "aborted": "Cancelled"
+    "aborted": "Cancelled",
+    "invalidOutput": "The answer was not in the expected shape"
   },
   "dev": {
     "kicker": "Gallery",
@@ -234,6 +235,11 @@
       "stat2": "lessons"
     },
     "path": {
+      "state": {
+        "locked": "locked",
+        "done": "done",
+        "current": "current"
+      },
       "intro": "Introduction",
       "exercises": "Exercises",
       "review": "Review",
@@ -264,6 +270,38 @@
       "path": "Building the path",
       "lessons": "Preparing intro and initial check",
       "metaRead": "3 sources · 212 passages"
+    }
+  },
+  "engines": {
+    "title": "Engines",
+    "terms": "A test sends one short sentence to the provider you pick.",
+    "disclosure": "The text, the retrieved passages and the attachments leave this computer and go to that engine's vendor.",
+    "acknowledge": "I understand",
+    "loading": "Looking for installed engines.",
+    "loadFailed": "The engine list did not load.",
+    "disabled": "Unavailable: text-only mode is not ready yet.",
+    "test": "Test",
+    "signIn": "Sign in",
+    "tested": "{{ms}} ms, {{model}}, {{tokens}} input tokens",
+    "testFailed": "The test did not succeed.",
+    "details": "Details",
+    "grading": "Grading engine",
+    "vision": "Image engine",
+    "capabilityWarning": "This model cannot read images. Pick another one on the Engines page.",
+    "anthropicKey": "Anthropic key",
+    "saveKey": "Save key",
+    "keySaved": "Key saved",
+    "code": "Sign-in code",
+    "sendCode": "Send",
+    "errors": {
+      "not-installed": "The program is not installed.",
+      "not-logged-in": "Sign-in required.",
+      "unsupported": "This engine is not available.",
+      "invalid-selection": "That choice is not valid.",
+      "cli-failed": "The engine returned an error.",
+      "aborted": "Cancelled.",
+      "refused": "The key was refused. Check it.",
+      "quota": "Usage limit reached. Try again later or pick another engine."
     }
   },
   "tools": {

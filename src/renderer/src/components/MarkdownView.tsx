@@ -2,24 +2,29 @@ import { Button } from "antd";
 import type { ComponentPropsWithoutRef } from "react";
 import { isValidElement, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import "katex/contrib/mhchem";
-import { normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
+import {
+  mapOutsideCode,
+  normalizeMathDelimiters,
+} from "../markdown/normalizeMathDelimiters";
 import { CitationChip } from "./CitationChip";
 import "./MarkdownView.css";
 
 export type CitationResolver = (passageId: number) => string | undefined;
 
 function linkCitations(markdown: string, resolver?: CitationResolver): string {
-  return markdown.replace(/\[P(\d+)\]/g, (_, raw: string) => {
-    const id = Number(raw);
-    const label = resolver?.(id) ?? `P${id}`;
-    return `[${label}](cite:p${id})`;
-  });
+  return mapOutsideCode(markdown, (text) =>
+    text.replace(/\[P(\d+)\]/g, (_, raw: string) => {
+      const id = Number(raw);
+      const label = resolver?.(id) ?? `P${id}`;
+      return `[${label}](cite:p${id})`;
+    }),
+  );
 }
 
 export function MarkdownView({
@@ -47,6 +52,9 @@ export function MarkdownView({
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         skipHtml
+        urlTransform={(url) =>
+          /^cite:p\d+$/.test(url) ? url : defaultUrlTransform(url)
+        }
         components={{
           a: ({ href, children: linkChildren, ...rest }) => {
             const match = href?.match(/^cite:p(\d+)$/);

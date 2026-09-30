@@ -110,6 +110,60 @@ export const requests = {
     input: z.object({ jobId: z.string() }),
     output: z.object({}),
   },
+  "engines.overview": {
+    input: z.object({}),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        kind: z.enum(["cli", "api"]),
+        installed: z.boolean(),
+        loggedIn: z.boolean(),
+        disabled: z.boolean(),
+        version: z.string(),
+      }),
+    ),
+  },
+  "engines.models": {
+    input: z.object({ provider: z.string() }),
+    output: z.array(z.object({ id: z.string(), name: z.string() })),
+  },
+  "engines.test": {
+    input: z.object({
+      provider: z.string(),
+      model: z.string().optional(),
+    }),
+    output: z.object({
+      ok: z.literal(true),
+      latencyMs: z.number(),
+      model: z.string(),
+      inputTokens: z.number(),
+    }),
+  },
+  "engines.setFeature": {
+    input: z.object({
+      feature: z.enum(["default", "chat", "plan", "lesson", "grading", "map", "vision"]),
+      provider: z.string(),
+      model: z.string(),
+    }),
+    output: z.object({ warning: z.string().nullable() }),
+  },
+  "engines.features": {
+    input: z.object({}),
+    output: z.record(z.string(), z.object({ provider: z.string(), model: z.string() })),
+  },
+  "engines.login": {
+    input: z.object({ provider: z.string() }),
+    output: z.object({
+      type: z.string(),
+      url: z.string().optional(),
+      message: z.string().optional(),
+    }),
+  },
+  "engines.sendCode": {
+    input: z.object({ provider: z.string(), code: z.string() }),
+    output: z.object({}),
+  },
 } as const;
 
 export const streams = {} as const;

@@ -225,6 +225,23 @@ function createWindow(): void {
   }
 }
 
+function storedKeys(): { anthropic?: string; openai?: string } {
+  const stored = readJson<Record<string, string>>(userFile("keys.json")) ?? {};
+  const out: { anthropic?: string; openai?: string } = {};
+  if (!safeStorage.isEncryptionAvailable()) return out;
+  for (const id of ["anthropic", "openai"] as const) {
+    const cipher = stored[id];
+    if (!cipher) continue;
+    out[id] = safeStorage.decryptString(Buffer.from(cipher, "base64"));
+  }
+  return out;
+}
+
+function pushKeys(): void {
+  const keys = storedKeys();
+  coreChild?.postMessage({ type: "keys", ...keys });
+}
+
 function connectRenderer(): void {
   if (!coreChild || !mainWindow || mainWindow.isDestroyed()) return;
   const { port1, port2 } = new MessageChannelMain();
@@ -243,6 +260,7 @@ function startCore(): void {
     workspacePath,
     dev: !app.isPackaged,
   });
+  pushKeys();
   child.on("exit", (code) => {
     if (quitting || coreChild !== child) return;
     console.error(`pyxis-core exited (${code ?? "null"})`);
@@ -309,15 +327,25 @@ function registerIpc(): void {
     if (app.isPackaged) return;
     coreChild?.kill();
   });
-  ipcMain.handle(mainChannels.keysSet, () => {
-    const backend = safeStorage.getSelectedStorageBackend();
-    if (process.platform === "linux" && backend === "basic_text") {
-      throw new Error("keyring-unavailable");
-    }
-    if (!safeStorage.isEncryptionAvailable())
-      throw new Error("encryption-unavailable");
-    throw new Error("not-ready");
-  });
+  ipcMain.handle(
+    mainChannels.keysSet,
+    (_event, provider: string, key: string) => {
+      if (provider !== "anthropic" && provider !== "openai") {
+        throw new Error("unknown-provider");
+      }
+      const backend = safeStorage.getSelectedStorageBackend();
+      if (process.platform === "linux" && backend === "basic_text") {
+        throw new Error("keyring-unavailable");
+      }
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error("encryption-unavailable");
+      }
+      const stored = readJson<Record<string, string>>(userFile("keys.json")) ?? {};
+      stored[provider] = safeStorage.encryptString(key).toString("base64");
+      writeFileSync(userFile("keys.json"), JSON.stringify(stored));
+      pushKeys();
+    },
+  );
 }
 
 function registerProtocols(): void {

@@ -1,0 +1,20 @@
+[
+  {
+    "pattern": "^claude-",
+    "vision": true,
+    "structured": true,
+    "contextTokens": 200000
+  },
+  {
+    "pattern": "^gpt-",
+    "vision": true,
+    "structured": true,
+    "contextTokens": 128000
+  },
+  {
+    "pattern": "^text-only",
+    "vision": false,
+    "structured": true,
+    "contextTokens": 8000
+  }
+]

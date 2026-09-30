@@ -69,7 +69,8 @@
     "notReady": "Pyxis si sta ancora avviando",
     "notAvailable": "Questa azione non è disponibile",
     "unknownRequest": "Richiesta sconosciuta",
-    "aborted": "Annullato"
+    "aborted": "Annullato",
+    "invalidOutput": "La risposta non ha la forma attesa"
   },
   "dev": {
     "kicker": "Galleria",
@@ -234,6 +235,11 @@
       "stat2": "lezioni"
     },
     "path": {
+      "state": {
+        "locked": "bloccato",
+        "done": "completato",
+        "current": "attuale"
+      },
       "intro": "Introduzione",
       "exercises": "Esercizi",
       "review": "Ripasso",
@@ -264,6 +270,38 @@
       "path": "Costruisco il percorso",
       "lessons": "Preparo introduzione e verifica iniziale",
       "metaRead": "3 fonti · 212 passaggi"
+    }
+  },
+  "engines": {
+    "title": "Motori",
+    "terms": "Una prova invia una frase corta al fornitore scelto.",
+    "disclosure": "Il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore del motore.",
+    "acknowledge": "Ho capito",
+    "loading": "Cerco i motori installati.",
+    "loadFailed": "Non riesco a leggere i motori.",
+    "disabled": "Non disponibile: manca ancora la modalità senza strumenti.",
+    "test": "Prova",
+    "signIn": "Accedi",
+    "tested": "{{ms}} ms, {{model}}, {{tokens}} token in ingresso",
+    "testFailed": "La prova non è riuscita.",
+    "details": "Dettagli",
+    "grading": "Motore per la correzione",
+    "vision": "Motore per le immagini",
+    "capabilityWarning": "Questo modello non legge le immagini. Scegline un altro nella pagina Motori.",
+    "anthropicKey": "Chiave Anthropic",
+    "saveKey": "Salva la chiave",
+    "keySaved": "Chiave salvata",
+    "code": "Codice di accesso",
+    "sendCode": "Invia",
+    "errors": {
+      "not-installed": "Il programma non è installato.",
+      "not-logged-in": "Accesso richiesto.",
+      "unsupported": "Questo motore non è disponibile.",
+      "invalid-selection": "La scelta non è valida.",
+      "cli-failed": "Il motore ha risposto con un errore.",
+      "aborted": "Annullato.",
+      "refused": "La chiave è stata rifiutata. Controllala.",
+      "quota": "Limite di utilizzo raggiunto. Riprova più tardi o scegli un altro motore."
     }
   },
   "tools": {

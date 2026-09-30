@@ -19,6 +19,9 @@ export function EngineRow({
   status = "idle",
   statusText,
   isDefault,
+  onAction,
+  actionLabel,
+  actionDisabled,
 }: {
   kind: "cli" | "api" | "local" | "remote";
   name: string;
@@ -26,6 +29,9 @@ export function EngineRow({
   status?: "ok" | "warn" | "error" | "idle";
   statusText?: string;
   isDefault?: boolean;
+  onAction?: () => void;
+  actionLabel?: string;
+  actionDisabled?: boolean;
 }) {
   const { t } = useTranslation();
   const statusLabels = {
@@ -54,10 +60,16 @@ export function EngineRow({
         <i />
         {statusText ?? statusLabels[status]}
       </span>
-      <Button size="sm" variant="secondary">
-        {status === "warn"
-          ? t("components.engine.signIn")
-          : t("components.engine.test")}
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={actionDisabled}
+        onClick={onAction}
+      >
+        {actionLabel ??
+          (status === "warn"
+            ? t("components.engine.signIn")
+            : t("components.engine.test"))}
       </Button>
     </div>
   );

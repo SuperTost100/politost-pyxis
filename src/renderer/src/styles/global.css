@@ -260,6 +260,27 @@ html[data-platform="darwin"] .canvas-bar {
   margin-bottom: var(--space-6);
 }
 
+.engine-gap {
+  margin-top: var(--space-3);
+}
+
+.engine-key {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.engine-key input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 8px 12px;
+  font: inherit;
+}
+
 .jobs-trigger {
   display: inline-flex;
   align-items: center;

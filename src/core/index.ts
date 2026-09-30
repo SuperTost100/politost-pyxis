@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { openDatabase } from "./db/connection";
-import { attachRendererPort, bindRunner, broadcast } from "./ipc/server";
+import { getFunnel, setApiKeys, setScratch } from "./engine/funnel";
+import { attachRendererPort, bindEngines, bindRunner, broadcast } from "./ipc/server";
 import { demoJob } from "./jobs/demo";
 import { createRunner } from "./jobs/runner";
 
@@ -12,7 +13,13 @@ type CorePort = {
 };
 
 type ParentEvent = {
-  data?: { type?: string; workspacePath?: string; dev?: boolean };
+  data?: {
+    type?: string;
+    workspacePath?: string;
+    dev?: boolean;
+    anthropic?: string;
+    openai?: string;
+  };
   ports: CorePort[];
 };
 
@@ -36,10 +43,23 @@ if (!parent) {
       }
       booted = true;
       const db = openDatabase(join(data.workspacePath, "pyxis.db"));
+      setScratch(join(data.workspacePath, "scratch"));
+      bindEngines(db);
       const runner = createRunner(db, (job) => broadcast("job.updated", job));
       runner.register("demo", demoJob);
       bindRunner(runner, data.dev === true);
+      void getFunnel()
+        .overview()
+        .catch((err: unknown) => {
+          console.error(
+            "pyxis-core: overview failed",
+            err instanceof Error ? err.message : "unknown",
+          );
+        });
       console.log("pyxis-core ready");
+    }
+    if (data?.type === "keys") {
+      setApiKeys({ anthropic: data.anthropic, openai: data.openai });
     }
     if (data?.type === "shutdown") process.exit(0);
     const rendererPort = event.ports[0];

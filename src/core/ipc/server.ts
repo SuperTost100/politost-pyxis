@@ -4,6 +4,8 @@ import {
   toIpcError,
   type PortMessage,
 } from "../../shared/ipc";
+import { engineHandlers } from "../engine/handlers";
+import type { ProviderId } from "../engine/funnel";
 import { jobHandlers } from "../jobs/handlers";
 import type { Runner } from "../jobs/runner";
 
@@ -17,6 +19,7 @@ type CorePort = {
 type HandlerMap = ReturnType<typeof jobHandlers>;
 
 let handlers: HandlerMap | null = null;
+let engines: ReturnType<typeof engineHandlers> | null = null;
 let port: CorePort | null = null;
 
 export function setJobHandlers(next: HandlerMap): void {
@@ -79,6 +82,41 @@ async function dispatch(name: string, input: unknown): Promise<unknown> {
       return handlers.resume(requests["jobs.resume"].input.parse(input));
     case "jobs.dismiss":
       return handlers.dismiss(requests["jobs.dismiss"].input.parse(input));
+    case "engines.overview":
+      requests["engines.overview"].input.parse(input);
+      return engines?.overview();
+    case "engines.models": {
+      const parsed = requests["engines.models"].input.parse(input);
+      return engines?.models({ provider: parsed.provider as ProviderId });
+    }
+    case "engines.test": {
+      const parsed = requests["engines.test"].input.parse(input);
+      return engines?.test({
+        provider: parsed.provider as ProviderId,
+        model: parsed.model,
+      });
+    }
+    case "engines.setFeature": {
+      const parsed = requests["engines.setFeature"].input.parse(input);
+      return engines?.setFeature({
+        ...parsed,
+        provider: parsed.provider as ProviderId,
+      });
+    }
+    case "engines.features":
+      requests["engines.features"].input.parse(input);
+      return engines?.features();
+    case "engines.login": {
+      const parsed = requests["engines.login"].input.parse(input);
+      return engines?.login({ provider: parsed.provider as ProviderId });
+    }
+    case "engines.sendCode": {
+      const parsed = requests["engines.sendCode"].input.parse(input);
+      return engines?.sendCode({
+        provider: parsed.provider as ProviderId,
+        code: parsed.code,
+      });
+    }
     default:
       throw new IpcError("unknown-request", "errors.unknownRequest");
   }
@@ -86,4 +124,8 @@ async function dispatch(name: string, input: unknown): Promise<unknown> {
 
 export function bindRunner(runner: Runner, dev: boolean): void {
   setJobHandlers(jobHandlers(runner, dev));
+}
+
+export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
+  engines = engineHandlers(db);
 }

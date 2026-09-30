@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { IconName } from "./Icon";
 import { Icon } from "./Icon";
 import "./PathNode.css";
@@ -15,14 +16,12 @@ export function PathNode({
   unlockHint?: string;
   onClick?: () => void;
 }) {
-  const stateLabel =
-    state === "locked"
-      ? " (bloccato)"
-      : state === "done"
-        ? " (completato)"
-        : state === "current"
-          ? " (attuale)"
-          : "";
+  const { t } = useTranslation();
+  const stateKey =
+    state === "locked" || state === "done" || state === "current"
+      ? `components.path.state.${state}`
+      : "";
+  const stateLabel = stateKey ? ` (${t(stateKey)})` : "";
   return (
     <div className="px-node-wrap">
       <button
