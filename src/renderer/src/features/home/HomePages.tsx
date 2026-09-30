@@ -48,6 +48,9 @@ export function ExamsHome() {
               label={t("exams.importPlan")}
               onImported={() => void client.invalidateQueries({ queryKey: ["plans"] })}
             />
+            <Button type="text" shape="round" onClick={() => navigate("/exams/get")}>
+              {t("exams.openShared")}
+            </Button>
           </div>
           <ul className="choice-list">
             {(plans.data ?? []).map((plan) => (

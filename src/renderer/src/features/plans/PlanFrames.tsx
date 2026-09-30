@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
@@ -302,6 +302,21 @@ export function SharedPlanPage() {
   const client = useQueryClient();
   const [url, setUrl] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function take(): boolean {
+    if (pending.current) return false;
+    pending.current = true;
+    setBusy(true);
+    return true;
+  }
+
+  function drop(): void {
+    pending.current = false;
+    setBusy(false);
+  }
 
   async function openText(text: string) {
     let parsed: ReturnType<typeof planFileSchema.safeParse>;
@@ -324,29 +339,35 @@ export function SharedPlanPage() {
     <div>
       <h1 className="title-1">{t("shared.title")}</h1>
       <p className="body ink-muted">{t("shared.body")}</p>
-      <label className="choice">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/json,.json"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file || !take()) return;
+          void file
+            .text()
+            .then(openText)
+            .catch(() => setNote(t("shared.bad")))
+            .finally(drop);
+        }}
+      />
+      <Button shape="round" disabled={busy} onClick={() => fileRef.current?.click()}>
         {t("shared.file")}
-        <input
-          type="file"
-          accept="application/json,.json"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            if (!file) return;
-            void file.text().then(openText).catch(() => setNote(t("shared.bad")));
-          }}
-        />
-      </label>
+      </Button>
       <form
         onSubmit={(event) => {
           event.preventDefault();
           const link = url.trim();
-          if (!link) return;
+          if (!link || !take()) return;
           void window.pyxis
             .fetchPlan(link)
             .then(openText)
-            .catch(() => setNote(t("shared.bad")));
+            .catch(() => setNote(t("shared.bad")))
+            .finally(drop);
         }}
       >
         <label className="label" htmlFor="plan-url">
@@ -357,7 +378,7 @@ export function SharedPlanPage() {
           value={url}
           onChange={(event) => setUrl(event.target.value)}
         />
-        <Button htmlType="submit" shape="round" type="primary">
+        <Button htmlType="submit" shape="round" type="primary" disabled={busy}>
           {t("shared.open")}
         </Button>
       </form>

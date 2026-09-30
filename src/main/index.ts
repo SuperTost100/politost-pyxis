@@ -430,10 +430,21 @@ function registerIpc(): void {
   ipcMain.handle(mainChannels.planFetch, async (_event, raw: string) => {
     const url = httpPlanUrl(raw);
     const response = await fetch(url, { redirect: "error" });
-    if (!response.ok) throw new Error("plan-url");
-    const text = await response.text();
-    if (text.length > 1_000_000) throw new Error("plan-url");
-    return text;
+    if (!response.ok || !response.body) throw new Error("plan-url");
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const step = await reader.read();
+      if (step.done) break;
+      size += step.value.byteLength;
+      if (size > 1_000_000) {
+        await reader.cancel();
+        throw new Error("plan-url");
+      }
+      chunks.push(step.value);
+    }
+    return new TextDecoder().decode(Buffer.concat(chunks));
   });
   ipcMain.handle(mainChannels.workspaceBackup, async () => {
     const release = occupyWorkspace();
