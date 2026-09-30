@@ -36,6 +36,11 @@ export function EnginesPanel() {
     queryKey: ["engine-models", "claude"],
     queryFn: () => invoke("engines.models", { provider: "claude" }),
   });
+  const openAiModels = useQuery({
+    queryKey: ["engine-models", "openai-api"],
+    retry: false,
+    queryFn: () => invoke("engines.models", { provider: "openai-api" }),
+  });
   const features = useQuery({
     queryKey: ["engine-features"],
     queryFn: () => invoke("engines.features", {}),
@@ -46,6 +51,7 @@ export function EnginesPanel() {
   const [code, setCode] = useState("");
   const [keyValue, setKeyValue] = useState("");
   const [openAiKey, setOpenAiKey] = useState("");
+  const [chatModel, setChatModel] = useState("");
   const [probe, setProbe] = useState("");
   useEffect(
     () =>
@@ -79,6 +85,31 @@ export function EnginesPanel() {
 
   const grading = features.data?.grading;
   const vision = features.data?.vision;
+  const chat = features.data?.chat;
+
+  function saveKey(provider: "anthropic" | "openai", value: string, clear: () => void) {
+    void window.pyxis.keys
+      .set(provider, value)
+      .then(() => {
+        clear();
+        setResult(t("engines.keySaved"));
+        void client.invalidateQueries({ queryKey: ["engines"] });
+        if (provider === "openai") {
+          void client.invalidateQueries({ queryKey: ["engine-models", "openai-api"] });
+        }
+      })
+      .catch(() => setResult(t("engines.keyFailed")));
+  }
+
+  function useOpenAiForChat(model: string) {
+    const name = model.trim();
+    if (!name) return;
+    void invoke("engines.setFeature", {
+      feature: "chat",
+      provider: "openai-api",
+      model: name,
+    }).then(() => client.invalidateQueries({ queryKey: ["engine-features"] }));
+  }
   const gradingChoices = [
     codexModels.data?.[0],
     claudeModels.data?.find((model) => model.id.startsWith("claude-sonnet")) ??
@@ -234,16 +265,44 @@ export function EnginesPanel() {
         <button type="submit">{t("engines.check")}</button>
       </form>
 
+      <div className="label section-label">{t("engines.chat")}</div>
+      <div className="choice-list">
+        {(openAiModels.data ?? []).map((model) => (
+          <button
+            key={model.id}
+            type="button"
+            className={
+              chat?.provider === "openai-api" && chat.model === model.id
+                ? "choice is-selected"
+                : "choice"
+            }
+            onClick={() => useOpenAiForChat(model.id)}
+          >
+            <span className="body-strong">{model.name}</span>
+          </button>
+        ))}
+      </div>
+      <form
+        className="engine-key"
+        onSubmit={(event) => {
+          event.preventDefault();
+          useOpenAiForChat(chatModel);
+        }}
+      >
+        <input
+          value={chatModel}
+          aria-label={t("engines.chat")}
+          onChange={(event) => setChatModel(event.target.value)}
+        />
+        <button type="submit">{t("engines.useForChat")}</button>
+      </form>
+
       <div className="label section-label">{t("engines.anthropicKey")}</div>
       <form
         className="engine-key"
         onSubmit={(event) => {
           event.preventDefault();
-          void window.pyxis.keys.set("anthropic", keyValue).then(() => {
-            setKeyValue("");
-            setResult(t("engines.keySaved"));
-            void client.invalidateQueries({ queryKey: ["engines"] });
-          });
+          saveKey("anthropic", keyValue, () => setKeyValue(""));
         }}
       >
         <input
@@ -260,11 +319,7 @@ export function EnginesPanel() {
         className="engine-key"
         onSubmit={(event) => {
           event.preventDefault();
-          void window.pyxis.keys.set("openai", openAiKey).then(() => {
-            setOpenAiKey("");
-            setResult(t("engines.keySaved"));
-            void client.invalidateQueries({ queryKey: ["engines"] });
-          });
+          saveKey("openai", openAiKey, () => setOpenAiKey(""));
         }}
       >
         <input
