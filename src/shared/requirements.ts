@@ -1,0 +1,101 @@
+/** IDs whose behavior exists in this repo. The comment is the file that implements it. */
+export const implemented = [
+  "ASK-02", // src/core/chat/turn.ts
+  "ASK-05", // src/renderer/src/features/tools/WhiteboardPage.tsx
+  "ASK-07", // src/renderer/src/features/ask/AskPage.tsx
+  "ASK-09", // src/core/chat/turn.ts
+  "ASK-10", // src/renderer/src/features/ask/AskPage.tsx
+  "ENG-01", // src/core/engine/handlers.ts
+  "ENG-02", // src/main/index.ts
+  "ENG-03", // src/core/engine/handlers.ts
+  "ENG-10", // src/core/engine/handlers.ts
+  "ENG-11", // src/core/engine/handlers.ts
+  "ENG-12", // src/core/engine/handlers.ts
+  "ENG-14", // src/core/engine/selection.ts
+  "ENG-15", // src/core/engine/handlers.ts
+  "ENG-16", // src/core/engine/handlers.ts
+  "ENG-17", // src/core/engine/handlers.ts
+  "ENG-18", // src/main/index.ts
+  "ENG-20", // src/core/engine/funnel.ts
+  "ENG-21", // src/renderer/src/features/settings/EnginesPanel.tsx
+  "ENG-22", // src/renderer/src/features/settings/EnginesPanel.tsx
+  "ENG-30", // src/core/engine/capabilities.ts
+  "ENG-31", // src/core/engine/capabilities.ts
+  "ENG-32", // src/core/engine/generate.ts
+  "EXP-05", // src/core/share/backup.ts
+  "FC-02", // src/renderer/src/features/study/CardsPage.tsx
+  "FC-05", // src/core/study/schedule.ts
+  "FC-07", // src/renderer/src/features/study/CardsPage.tsx
+  "LES-10", // src/core/study/exercises.ts
+  "LES-20", // src/core/study/simulation.ts
+  "LES-21", // src/core/study/grade.ts
+  "LES-22", // src/core/study/simulation.ts
+  "MAP-01", // src/core/maps/store.ts
+  "MAP-02", // src/core/maps/graph.ts
+  "MAP-03", // src/core/maps/graph.ts
+  "MAP-06", // src/renderer/src/features/maps/MapPage.tsx
+  "MAP-07", // src/core/maps/store.ts
+  "MATH-01", // src/renderer/src/components/MarkdownView.tsx
+  "MATH-03", // src/core/math/python.ts
+  "MATH-04", // src/core/math/plot.ts
+  "MATH-06", // src/core/math/python.ts
+  "MATH-07", // src/core/math/plot.ts
+  "NFR-04", // src/core/jobs/runner.ts
+  "NFR-05", // src/core/engine/errors.ts
+  "NFR-08", // src/core/study/lesson.ts
+  "NFR-10", // docs/engines.md
+  "PER-01", // src/core/profile/profile.ts
+  "PER-02", // src/core/profile/profile.ts
+  "PER-03", // src/renderer/src/features/settings/SettingsPage.tsx
+  "PER-04", // src/renderer/src/features/settings/SettingsPage.tsx
+  "PER-05", // src/renderer/src/features/settings/SettingsPage.tsx
+  "PER-06", // src/renderer/src/features/onboarding/OnboardingPage.tsx
+  "PLAN-02", // src/renderer/src/features/plans/PlanFrames.tsx
+  "PLAN-03", // src/renderer/src/features/plans/PlanFrames.tsx
+  "PLAN-04", // src/renderer/src/features/plans/PlanFrames.tsx
+  "PLAN-05", // src/renderer/src/features/plans/PlanFrames.tsx
+  "PLAN-06", // src/renderer/src/features/plans/PlanFrames.tsx
+  "PLAN-20", // src/core/plans/create.ts
+  "PLAN-21", // src/core/plans/create.ts
+  "PLAN-22", // src/core/plans/path.ts
+  "PLAN-26", // src/renderer/src/features/plans/PlanFrames.tsx
+  "PRO-01", // src/core/plans/progress.ts
+  "PRO-02", // src/core/study/series.ts
+  "PRO-03", // src/core/plans/progress.ts
+  "PRO-04", // src/core/study/series.ts
+  "PRO-06", // src/renderer/src/features/study/activeTime.ts
+  "PRO-07", // src/core/study/mastery.ts
+  "PRO-08", // src/core/study/gaps.ts
+  "SB-01", // src/core/sources/smartbook.ts
+  "SB-02", // src/core/sources/smartbook.ts
+  "SB-03", // src/core/study/exercises.ts
+  "SB-04", // src/core/sources/smartbook.ts
+  "SB-05", // src/core/chat/turn.ts
+  "SB-07", // src/core/sources/smartbook.ts
+  "SB-08", // src/core/sources/smartbook.ts
+  "SET-01", // src/renderer/src/features/settings/SettingsPage.tsx
+  "SET-02", // src/renderer/src/features/settings/EnginesPanel.tsx
+  "SET-03", // src/renderer/src/features/settings/SettingsPage.tsx
+  "SET-04", // src/renderer/src/features/settings/SettingsPage.tsx
+  "SET-07", // src/core/profile/profile.ts
+  "SHR-04", // src/main/index.ts
+  "SHR-05", // src/shared/plan-file.ts
+  "SHR-06", // docs/plan-file.md
+  "SHR-07", // src/renderer/src/features/plans/PlanFrames.tsx
+  "SRC-01", // src/core/sources/smartbook.ts
+  "SRC-02", // src/core/sources/documents.ts
+  "SRC-03", // src/core/sources/documents.ts
+  "SRC-10", // src/core/sources/smartbook.ts
+  "SRC-11", // src/core/sources/smartbook.ts
+  "SRC-13", // src/core/sources/documents.ts
+  "SRC-20", // src/core/sources/retrieve.ts
+  "SRC-22", // src/core/study/lesson.ts
+  "SRC-23", // src/core/chat/turn.ts
+] as const;
+
+/** Explicitly out of v1 in the features doc. The product omits them on purpose. */
+export const omitted = [
+  "MATH-05", // features: a unit converter is not in v1
+  "PER-07", // features: Algor needs profile not copied
+  "PRO-10", // features: general activity dashboard not in v1
+] as const;
