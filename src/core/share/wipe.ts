@@ -24,10 +24,7 @@ function restoreEntry(from: string, to: string): void {
   }
   if (statSync(from).isDirectory() && statSync(to).isDirectory()) {
     for (const child of readdirSync(from)) restoreEntry(join(from, child), join(to, child));
-    return;
   }
-  rmSync(to, { recursive: true, force: true });
-  renameSync(from, to);
 }
 
 /** Puts an unfinished wipe back, including files inside a folder startup already recreated. */
@@ -58,8 +55,6 @@ export function wipeWorkspace(workspace: string): void {
       renameSync(from, join(holding, name));
       moved.push(name);
     }
-    rmSync(join(holding, "INCOMPLETE"), { force: true });
-    rmSync(holding, { recursive: true, force: true });
   } catch (err) {
     if (existsSync(holding)) {
       writeFileSync(join(holding, "INCOMPLETE"), "1");
@@ -68,5 +63,7 @@ export function wipeWorkspace(workspace: string): void {
     }
     throw err instanceof Error ? err : new Error("wipe-failed");
   }
+  rmSync(join(holding, "INCOMPLETE"), { force: true });
+  rmSync(holding, { recursive: true, force: true });
   for (const dir of dirs) mkdirSync(join(workspace, dir), { recursive: true });
 }

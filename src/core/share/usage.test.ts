@@ -61,4 +61,16 @@ describe("plan disk usage", () => {
     expect(readFileSync(join(dir, "blobs", "note.txt"), "utf8")).toBe("nota");
     expect(existsSync(holding)).toBe(false);
   });
+
+  it("keeps a live file when an older wipe left a shorter copy", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-keep-"));
+    const holding = join(dir, ".wipe");
+    mkdirSync(holding);
+    writeFileSync(join(holding, "INCOMPLETE"), "1");
+    writeFileSync(join(holding, "pyxis.db"), "short");
+    writeFileSync(join(dir, "pyxis.db"), "original-full");
+    recoverInterruptedWipe(dir);
+    expect(readFileSync(join(dir, "pyxis.db"), "utf8")).toBe("original-full");
+    expect(existsSync(holding)).toBe(false);
+  });
 });

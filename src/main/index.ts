@@ -567,10 +567,14 @@ function registerIpc(): void {
         wipeWorkspace(workspacePath);
         return "wiped" as const;
       } catch (err) {
-        recoverInterruptedWipe(workspacePath);
+        try {
+          recoverInterruptedWipe(workspacePath);
+        } catch {
+          // The copy is still in .wipe. Core stays stopped until a later launch can finish.
+        }
         throw err;
       } finally {
-        await resumeCore();
+        if (!existsSync(join(workspacePath, ".wipe"))) await resumeCore();
       }
     } finally {
       release();
