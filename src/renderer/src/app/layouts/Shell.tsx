@@ -51,6 +51,14 @@ export function Shell() {
   });
 
   useEffect(() => {
+    for (const header of document.querySelectorAll("header.ant-layout-header")) {
+      if (header instanceof HTMLElement && header.childElementCount === 0) {
+        header.setAttribute("role", "presentation");
+      }
+    }
+  });
+
+  useEffect(() => {
     const reading = profile.data;
     document.documentElement.dataset.dyslexia = reading?.dyslexia ? "on" : "off";
     document.documentElement.dataset.text = reading?.textSize ?? "md";

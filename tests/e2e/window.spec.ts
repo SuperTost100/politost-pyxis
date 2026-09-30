@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -26,6 +27,11 @@ function writeBook(dir: string): string {
   return path;
 }
 
+async function expectClean(page: Page): Promise<void> {
+  const results = await new AxeBuilder({ page }).setLegacyMode(true).analyze();
+  expect(results.violations).toEqual([]);
+}
+
 async function launchFresh(extra: Record<string, string> = {}): Promise<{
   app: ElectronApplication;
   page: Page;
@@ -52,7 +58,9 @@ test("a fresh window opens on onboarding", async () => {
   try {
     await expect(page.locator("main h1")).toHaveText("Iniziamo");
     await expect(page.locator("header h1:visible")).toHaveCount(0);
-    await page.getByRole("button", { name: "Salta" }).click();
+    await expectClean(page);
+    await page.getByRole("button", { name: "Salta" }).focus();
+    await page.keyboard.press("Enter");
     await expect(page.locator("main h2")).toHaveText("Nessun piano ancora");
   } finally {
     await app.close();
@@ -78,10 +86,12 @@ test("a smartbook becomes a plan without a model", async () => {
       },
     });
     const page = await app.firstWindow();
-    await page.getByRole("button", { name: "Salta" }).click();
+    await page.getByRole("button", { name: "Salta" }).focus();
+    await page.keyboard.press("Enter");
     await page.getByText("Fonti", { exact: true }).click();
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     await expect(page.getByRole("button", { name: "Demo" })).toBeVisible();
+    await expectClean(page);
     await page.getByText("Piani", { exact: true }).click();
     await page.getByRole("button", { name: "Nuovo piano" }).click();
     await page.locator("#plan-title").fill("Fisica");
@@ -89,6 +99,7 @@ test("a smartbook becomes a plan without a model", async () => {
     await page.getByRole("button", { name: "Crea il piano" }).click();
     await page.getByRole("button", { name: "Apri il piano" }).click();
     await expect(page.locator("h1", { hasText: "Fisica" })).toBeVisible();
+    await expectClean(page);
     await page.getByRole("button", { name: /Introduzione/ }).click();
     const diagnosis = page.getByRole("button", { name: /Diagnosi/ });
     await expect(diagnosis).toBeEnabled();
@@ -109,6 +120,7 @@ test("a smartbook becomes a plan without a model", async () => {
     await page.getByRole("textbox", { name: "Correggi" }).fill("W = F s.");
     await page.getByRole("button", { name: "Correggi" }).click();
     await expect(page.getByText("100 su 100")).toBeVisible();
+    await expectClean(page);
     await page.getByRole("button", { name: "Indietro" }).click();
     await page.getByRole("button", { name: /Esercizi/ }).click();
     await page.getByRole("button", { name: "Ho letto" }).click();
@@ -169,11 +181,13 @@ test("a smartbook becomes a plan without a model", async () => {
     await page.getByRole("textbox", { name: "Correggi" }).fill("W = F s.");
     await page.getByRole("button", { name: "Correggi" }).click();
     await expect(page.getByText("1. Moti · 100")).toBeVisible();
+    await expectClean(page);
     await page.getByRole("button", { name: "Indietro" }).click();
     await page.getByRole("button", { name: "Indietro" }).click();
     await page.getByRole("button", { name: "Impostazioni" }).click();
     await page.getByRole("button", { name: "Copia di sicurezza" }).click();
     await expect(page.getByText("La copia è pronta.")).toBeVisible();
+    await expectClean(page);
     expect(existsSync(backupZip) && statSync(backupZip).size > 0).toBe(true);
     await expect(page.getByText("La copia non è riuscita.")).toHaveCount(0);
     await page.getByText("Esami", { exact: true }).click();
@@ -195,6 +209,7 @@ test("a smartbook becomes a plan without a model", async () => {
     await page.getByRole("textbox", { name: "Messaggio" }).fill("Che cos'è il vettore?");
     await page.getByRole("button", { name: "Invia" }).click();
     await expect(page.getByText("Il vettore descrive il punto")).toBeVisible();
+    await expectClean(page);
     await page.getByRole("button", { name: "1. Moti" }).click();
     await expect(page.getByText("Il vettore posizione descrive il punto.")).toBeVisible();
   } finally {

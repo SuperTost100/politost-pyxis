@@ -187,7 +187,13 @@ export function PlanPage() {
           </p>
           <p className="small">{t("progress.lessons", { count: progress.lessons })}</p>
           <p className="small">{t("progress.chart")}</p>
-          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} width="100%" height={chartHeight} role="img">
+          <svg
+            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+            width="100%"
+            height={chartHeight}
+            role="img"
+            aria-label={t("progress.chart")}
+          >
             <path d={chartPath} fill="none" stroke="currentColor" strokeWidth="2" />
           </svg>
           <p className="small">{t("progress.week", { count: progress.pace.week })}</p>

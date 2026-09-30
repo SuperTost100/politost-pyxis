@@ -95,6 +95,7 @@ export function AskPage() {
         </div>
       ) : (
         <div className="reading-column">
+          <h1 className="visually-hidden">{t("doors.ask")}</h1>
           {messages.map((row) =>
             row.role === "user" ? (
               <ChatMessage key={row.id} role="user">

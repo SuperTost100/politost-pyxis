@@ -21,6 +21,7 @@ export function ExamsHome() {
     : "plans";
   return (
     <div>
+      <h1 className="title-1">{t("doors.exams")}</h1>
       <div className="tabs-row">
         <Segmented
           shape="round"
