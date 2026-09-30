@@ -1,6 +1,6 @@
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -116,35 +116,28 @@ test("a smartbook becomes a plan without a model", async () => {
     await expect(page.getByText("1. Moti · 1")).toHaveCount(0);
     await page.getByRole("button", { name: "Indietro" }).click();
     await expect(page.getByRole("heading", { name: "Progressi" })).toBeVisible();
-    await page.evaluate(() => {
-      const create = document.createElement.bind(document);
-      document.createElement = ((tag: string, options?: ElementCreationOptions) => {
-        const element = create(tag, options);
-        if (tag.toLowerCase() !== "a") return element;
-        const anchor = element as HTMLAnchorElement;
-        const click = anchor.click.bind(anchor);
-        anchor.click = () => {
-          (window as unknown as { pyxisExportName?: string }).pyxisExportName = anchor.download;
-          click();
-        };
-        return element;
-      }) as typeof document.createElement;
-    });
+    const dest = join(userData, "Fisica.pyxis.json");
+    const pending = app.evaluate(({ BrowserWindow }, file) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) return Promise.reject(new Error("no-window"));
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("no-download")), 8000);
+        win.webContents.session.once("will-download", (_event, item) => {
+          item.setSavePath(file);
+          item.once("done", (_done, state) => {
+            clearTimeout(timer);
+            if (state === "completed") resolve(item.getFilename());
+            else reject(new Error(String(state)));
+          });
+        });
+      });
+    }, dest);
     await page.getByRole("button", { name: "Esporta" }).click();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () => (window as unknown as { pyxisExportName?: string }).pyxisExportName ?? "",
-        ),
-      )
-      .toBe("Fisica.pyxis.json");
-    const planId = new URL(page.url()).hash.split("/plans/")[1]?.split("/")[0] ?? "";
-    const file = await page.evaluate(async (id) => {
-      return window.pyxis.invoke("plans.export", { planId: id }) as Promise<{
-        title: string;
-        topics: Array<{ title: string }>;
-      }>;
-    }, planId);
+    expect(await pending).toBe("Fisica.pyxis.json");
+    const file = JSON.parse(readFileSync(dest, "utf8")) as {
+      title: string;
+      topics: Array<{ title: string }>;
+    };
     expect(file.title).toBe("Fisica");
     expect(file.topics.some((topic) => topic.title.includes("Moti"))).toBe(true);
   } finally {
