@@ -8,7 +8,7 @@ const electronPath = require("electron") as string;
 const root = join(import.meta.dirname, "..");
 const shots = join(root, ".shots");
 
-const routes = ["#/exams", "#/ask", "#/settings"];
+const routes = ["#/exams", "#/ask", "#/settings", "#/dev/gallery"];
 const errors: string[] = [];
 
 mkdirSync(shots, { recursive: true });
@@ -57,6 +57,21 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(200);
 await page.screenshot({ path: join(shots, "exams-dark-960.png") });
+
+await page.setViewportSize({ width: 1280, height: 832 });
+await page.evaluate(() => {
+  (globalThis as unknown as { location: { hash: string } }).location.hash =
+    "#/dev/gallery";
+});
+const start = page.getByRole("button", { name: "Avvia" });
+if ((await start.count()) > 0) {
+  await start.click();
+  const jobs = page.getByRole("button", { name: /lavori in corso/i });
+  await jobs.waitFor({ timeout: 3000 });
+  await jobs.click();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: join(shots, "jobs-running-dark-1280.png") });
+}
 
 await app.close();
 

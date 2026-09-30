@@ -43,6 +43,42 @@
     "english": "English",
     "themeHint": "Finché non scegli, Pyxis segue il tema del sistema."
   },
+  "jobs": {
+    "label": "{{count}} lavori in corso",
+    "cancel": "Annulla",
+    "retry": "Riprova",
+    "resume": "Riprendi",
+    "dismiss": "Chiudi",
+    "demoFailed": "Il secondo passo non è riuscito.",
+    "demo": {
+      "one": "Preparo il primo passo",
+      "two": "Preparo il secondo passo",
+      "three": "Preparo il terzo passo"
+    },
+    "state": {
+      "queued": "In coda",
+      "running": "In corso",
+      "failed": "Non riuscito",
+      "interrupted": "Interrotto"
+    }
+  },
+  "errors": {
+    "coreRestarted": "Il motore interno si è riavviato",
+    "retry": "Riprova",
+    "internal": "Qualcosa non ha funzionato",
+    "notReady": "Pyxis si sta ancora avviando",
+    "notAvailable": "Questa azione non è disponibile",
+    "unknownRequest": "Richiesta sconosciuta",
+    "aborted": "Annullato"
+  },
+  "dev": {
+    "kicker": "Galleria",
+    "title": "Lavoro di prova",
+    "body": "Tre passi. Puoi annullarlo, farlo fallire al secondo e riprenderlo da lì.",
+    "start": "Avvia",
+    "fail": "Fallisci al passo 2",
+    "kill": "Chiudi il motore"
+  },
   "tools": {
     "whiteboardTitle": "Lavagna",
     "whiteboardBody": "La lavagna si apre a tutto schermo. I tratti restano su questo computer."

@@ -260,6 +260,77 @@ html[data-platform="darwin"] .canvas-bar {
   margin-bottom: var(--space-6);
 }
 
+.jobs-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.jobs-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.job-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: min(320px, 70vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.job-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.job-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.job-error {
+  margin: 4px 0 0;
+  color: var(--danger);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.notice p {
+  margin: 0;
+  flex: 1;
+}
+
+.core-notice {
+  position: fixed;
+  z-index: 20;
+  top: 72px;
+  left: 50%;
+  width: min(480px, calc(100% - 48px));
+  transform: translateX(-50%);
+}
+
+@keyframes px-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .px-spin {
+    animation: px-spin 1.6s linear infinite;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

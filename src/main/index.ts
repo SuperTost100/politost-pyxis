@@ -3,15 +3,19 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  MessageChannelMain,
   nativeTheme,
   protocol,
   safeStorage,
   session,
   shell,
   utilityProcess,
+  type UtilityProcess,
 } from "electron";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { registerBlobProtocol } from "./blob-protocol";
+import { ensureWorkspace } from "./workspace";
 import {
   mainChannels,
   type Appearance,
@@ -130,6 +134,9 @@ function installNavigationGuards(): void {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let coreChild: UtilityProcess | null = null;
+let quitting = false;
+let workspacePath = "";
 
 function broadcastAppearance(): void {
   const value = appearance();
@@ -172,6 +179,7 @@ function createWindow(): void {
   });
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.webContents.on("did-finish-load", () => connectRenderer());
 
   const saveBounds = (): void => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -196,14 +204,32 @@ function createWindow(): void {
   }
 }
 
+function connectRenderer(): void {
+  if (!coreChild || !mainWindow || mainWindow.isDestroyed()) return;
+  const { port1, port2 } = new MessageChannelMain();
+  coreChild.postMessage({ type: "renderer-port" }, [port1]);
+  mainWindow.webContents.postMessage("pyxis:port", null, [port2]);
+}
+
 function startCore(): void {
   const child = utilityProcess.fork(join(import.meta.dirname, "core.js"), [], {
     serviceName: "pyxis-core",
     stdio: "inherit",
   });
-  child.on("exit", (code) => {
-    if (code !== 0) console.error(`pyxis-core exited (${code ?? "null"})`);
+  coreChild = child;
+  child.postMessage({
+    type: "bootstrap",
+    workspacePath,
+    dev: !app.isPackaged,
   });
+  child.on("exit", (code) => {
+    if (quitting || coreChild !== child) return;
+    console.error(`pyxis-core exited (${code ?? "null"})`);
+    setTimeout(() => {
+      if (!quitting && coreChild === child) startCore();
+    }, 200);
+  });
+  connectRenderer();
 }
 
 function registerIpc(): void {
@@ -255,6 +281,13 @@ function registerIpc(): void {
     const canSave = process.platform !== "linux" || backend !== "basic_text";
     return { backend, canSave };
   });
+  ipcMain.on("app:dev", (event) => {
+    event.returnValue = !app.isPackaged;
+  });
+  ipcMain.handle("dev:killCore", () => {
+    if (app.isPackaged) return;
+    coreChild?.kill();
+  });
   ipcMain.handle(mainChannels.keysSet, () => {
     const backend = safeStorage.getSelectedStorageBackend();
     if (process.platform === "linux" && backend === "basic_text") {
@@ -267,15 +300,16 @@ function registerIpc(): void {
 }
 
 function registerProtocols(): void {
-  const miss = (scheme: string) => {
-    protocol.handle(scheme, () => new Response("not found", { status: 404 }));
-  };
-  miss("pyxis-blob");
-  miss("pyxis-runtime");
+  registerBlobProtocol(workspacePath);
+  protocol.handle(
+    "pyxis-runtime",
+    () => new Response("not found", { status: 404 }),
+  );
 }
 
 app.whenReady().then(() => {
   mkdirSync(app.getPath("userData"), { recursive: true });
+  workspacePath = ensureWorkspace();
   applyAppearance(readAppearanceSource());
   installCsp();
   installNavigationGuards();
@@ -287,6 +321,11 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on("before-quit", () => {
+  quitting = true;
+  coreChild?.postMessage({ type: "shutdown" });
 });
 
 app.on("window-all-closed", () => {

@@ -5,6 +5,7 @@ import {
   WhiteboardFrame,
   WizardFrame,
 } from "../features/plans/PlanFrames";
+import { DevGallery } from "../features/jobs/DevGallery";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { Shell } from "./layouts/Shell";
 
@@ -21,6 +22,7 @@ export const router = createHashRouter([
       { path: "exams/get", element: <SharedPlanPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "settings/:section", element: <SettingsPage /> },
+      { path: "dev/gallery", element: <DevGallery /> },
     ],
   },
   { path: "/plans/new", element: <WizardFrame /> },

@@ -27,6 +27,7 @@ export type KeyStatus = {
 
 export interface PyxisBridge {
   platform: string;
+  dev: boolean;
   getAppearance(): Promise<Appearance>;
   setAppearance(source: ThemeSource): Promise<Appearance>;
   onAppearance(cb: (appearance: Appearance) => void): () => void;
@@ -37,6 +38,16 @@ export interface PyxisBridge {
     set(provider: string, key: string): Promise<void>;
     status(): Promise<KeyStatus>;
   };
+  invoke(name: string, input: unknown): Promise<unknown>;
+  stream(
+    name: string,
+    input: unknown,
+    onEvent: (event: unknown) => void,
+  ): () => void;
+  on(name: string, cb: (value: unknown) => void): () => void;
+  onPort(cb: () => void): () => void;
+  onCoreRestarted(cb: () => void): () => void;
+  killCore(): Promise<void>;
 }
 
 export const mainChannels = {

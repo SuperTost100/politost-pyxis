@@ -8,6 +8,8 @@ import { RouterProvider } from "react-router";
 import type { Appearance, ThemeSource } from "@shared/bridge";
 import { pyxisTheme } from "../design-system/theme/pyxis-theme";
 import { i18n, type Locale } from "../locales/i18n";
+import { CoreNotice } from "./CoreNotice";
+import { JobsSync } from "../features/jobs/queries";
 import { AppStateContext } from "./app-state";
 import { router } from "./router";
 
@@ -56,6 +58,8 @@ export function App() {
       >
         <ProConfigProvider dark={appearance.resolved === "dark"} hashed={false}>
           <AntApp>
+            <JobsSync />
+            <CoreNotice />
             <RouterProvider router={router} />
           </AntApp>
         </ProConfigProvider>

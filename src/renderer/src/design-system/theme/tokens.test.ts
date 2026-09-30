@@ -25,21 +25,22 @@ function camelToKebab(value: string): string {
 
 function cssValue(block: string, name: string): string | undefined {
   const match = block.match(new RegExp(`--${name}:\\s*([^;]+);`));
-  return match?.[1]?.trim();
+  return match?.[1]?.trim().replace(/(\.\d*?)0+(?=\D|$)/g, "$1");
 }
 
 const darkBlock = css.slice(
-  css.indexOf(':root, [data-theme="dark"]'),
-  css.indexOf('[data-theme="light"]'),
+  css.search(/:root,\s*\[data-theme="dark"\]/),
+  css.search(/\[data-theme="light"\]/),
 );
 const lightBlock = css.slice(
-  css.indexOf('[data-theme="light"]'),
-  css.indexOf(":root {"),
+  css.search(/\[data-theme="light"\]/),
+  css.search(/:root\s*\{/),
 );
 
 function expectedCss(value: string): string {
   const ref = value.match(/^\{([a-z0-9-]+)\}$/);
-  return ref?.[1] ? `var(--${ref[1]})` : value;
+  const raw = ref?.[1] ? `var(--${ref[1]})` : value;
+  return raw.replace(/(\.\d*?)0+(?=\D|$)/g, "$1");
 }
 
 describe("design tokens stay in sync", () => {

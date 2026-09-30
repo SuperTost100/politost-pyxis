@@ -43,6 +43,42 @@
     "english": "English",
     "themeHint": "Until you choose, Pyxis follows the system theme."
   },
+  "jobs": {
+    "label": "{{count}} jobs running",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "resume": "Resume",
+    "dismiss": "Dismiss",
+    "demoFailed": "Step two failed.",
+    "demo": {
+      "one": "Preparing step one",
+      "two": "Preparing step two",
+      "three": "Preparing step three"
+    },
+    "state": {
+      "queued": "Queued",
+      "running": "Running",
+      "failed": "Failed",
+      "interrupted": "Interrupted"
+    }
+  },
+  "errors": {
+    "coreRestarted": "The internal engine restarted",
+    "retry": "Retry",
+    "internal": "Something went wrong",
+    "notReady": "Pyxis is still starting",
+    "notAvailable": "This action is not available",
+    "unknownRequest": "Unknown request",
+    "aborted": "Cancelled"
+  },
+  "dev": {
+    "kicker": "Gallery",
+    "title": "Demo job",
+    "body": "Three steps. You can cancel it, fail it at step two, and resume from there.",
+    "start": "Start",
+    "fail": "Fail at step 2",
+    "kill": "Stop the engine"
+  },
   "tools": {
     "whiteboardTitle": "Whiteboard",
     "whiteboardBody": "The whiteboard fills the window. Strokes stay on this computer."

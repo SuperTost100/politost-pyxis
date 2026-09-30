@@ -7,6 +7,7 @@ import { Outlet, useLocation, useNavigate } from "react-router";
 import logoDark from "../../design-system/logo/pyxis-lockup-dark.svg";
 import logoLight from "../../design-system/logo/pyxis-lockup-light.svg";
 import { pyxisProLayoutToken } from "../../design-system/theme/pyxis-theme";
+import { JobsButton } from "../../features/jobs/JobsButton";
 import { useAppState } from "../app-state";
 
 type Door = "ask" | "exams";
@@ -100,6 +101,7 @@ export function Shell() {
         </div>
       )}
       actionsRender={() => [
+        <JobsButton key="jobs" />,
         <Button
           key="settings"
           shape="circle"
