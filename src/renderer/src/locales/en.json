@@ -24,6 +24,12 @@
     "sourcesEmptyBody": "PDFs, notes and smartbooks stay here. You attach them to a plan.",
     "addSources": "Add sources"
   },
+  "sources": {
+    "search": "Search passages",
+    "searchGo": "Search",
+    "encrypted": "This smartbook is protected. Pyxis opens plain packages only.",
+    "importFailed": "This file could not be read."
+  },
   "wizard": {
     "title": "New plan",
     "body": "Subject, exam date and material."
@@ -291,6 +297,8 @@
     "anthropicKey": "Anthropic key",
     "saveKey": "Save key",
     "keySaved": "Key saved",
+    "capabilityCheck": "Check a model id",
+    "check": "Check",
     "code": "Sign-in code",
     "sendCode": "Send",
     "errors": {

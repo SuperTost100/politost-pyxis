@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EngineRow } from "../../components/EngineRow";
 import { Notice } from "../../components/Notice";
-import { invoke } from "../../lib/ipc";
+import { invoke, onBroadcast } from "../../lib/ipc";
 
 function messageKey(err: unknown): string {
   if (err && typeof err === "object" && "messageKey" in err) {
@@ -20,8 +20,6 @@ function detailOf(err: unknown): string {
   }
   return "";
 }
-
-const visionProbe = { provider: "text-only", model: "text-only-small" };
 
 export function EnginesPanel() {
   const { t } = useTranslation();
@@ -47,6 +45,20 @@ export function EnginesPanel() {
   const [codeFor, setCodeFor] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [keyValue, setKeyValue] = useState("");
+  const [probe, setProbe] = useState("");
+  useEffect(
+    () =>
+      onBroadcast("engine.login", (event) => {
+        if (event.type === "open-url" && event.url) {
+          void window.pyxis.openExternal(event.url);
+        }
+        if (event.type === "code-prompt") setCodeFor(event.provider);
+        if (event.type === "done") {
+          void client.invalidateQueries({ queryKey: ["engines"] });
+        }
+      }),
+    [client],
+  );
   const [acked, setAcked] = useState(
     () => localStorage.getItem("pyxis.engineDisclosure") === "1",
   );
@@ -182,7 +194,7 @@ export function EnginesPanel() {
 
       <div className="label section-label">{t("engines.vision")}</div>
       <div className="choice-list">
-        {[...gradingChoices, visionProbe].map((item) => (
+        {gradingChoices.map((item) => (
           <button
             key={item.model}
             type="button"
@@ -203,6 +215,23 @@ export function EnginesPanel() {
         ))}
       </div>
       {warning ? <Notice tone="warning">{t(warning)}</Notice> : null}
+      <form
+        className="engine-key"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void invoke("engines.capability", { model: probe, need: "vision" }).then(
+            (value) => setWarning(value.warning),
+          );
+        }}
+      >
+        <input
+          value={probe}
+          aria-label={t("engines.capabilityCheck")}
+          placeholder={t("engines.capabilityCheck")}
+          onChange={(event) => setProbe(event.target.value)}
+        />
+        <button type="submit">{t("engines.check")}</button>
+      </form>
 
       <div className="label section-label">{t("engines.anthropicKey")}</div>
       <form
@@ -212,6 +241,7 @@ export function EnginesPanel() {
           void window.pyxis.keys.set("anthropic", keyValue).then(() => {
             setKeyValue("");
             setResult(t("engines.keySaved"));
+            void client.invalidateQueries({ queryKey: ["engines"] });
           });
         }}
       >

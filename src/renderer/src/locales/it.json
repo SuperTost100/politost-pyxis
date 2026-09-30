@@ -24,6 +24,12 @@
     "sourcesEmptyBody": "PDF, appunti e smartbook restano qui. Poi li colleghi a un piano.",
     "addSources": "Aggiungi fonti"
   },
+  "sources": {
+    "search": "Cerca nei brani",
+    "searchGo": "Cerca",
+    "encrypted": "Questo smartbook è protetto. Pyxis apre solo i pacchetti in chiaro.",
+    "importFailed": "Non riesco a leggere questo file."
+  },
   "wizard": {
     "title": "Nuovo piano",
     "body": "Materia, data dell'esame e materiale."
@@ -291,6 +297,8 @@
     "anthropicKey": "Chiave Anthropic",
     "saveKey": "Salva la chiave",
     "keySaved": "Chiave salvata",
+    "capabilityCheck": "Controlla un id modello",
+    "check": "Controlla",
     "code": "Codice di accesso",
     "sendCode": "Invia",
     "errors": {

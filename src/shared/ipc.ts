@@ -160,9 +160,72 @@ export const requests = {
       message: z.string().optional(),
     }),
   },
+  "engines.capability": {
+    input: z.object({
+      model: z.string(),
+      need: z.enum(["vision", "structured"]),
+    }),
+    output: z.object({ warning: z.string().nullable() }),
+  },
   "engines.sendCode": {
     input: z.object({ provider: z.string(), code: z.string() }),
     output: z.object({}),
+  },
+  "sources.list": {
+    input: z.object({}),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        kind: z.string(),
+        status: z.string(),
+      }),
+    ),
+  },
+  "sources.import": {
+    input: z.object({ path: z.string() }),
+    output: z.object({
+      sourceId: z.string(),
+      title: z.string(),
+      chapters: z.number(),
+      passages: z.number(),
+      exercises: z.number(),
+    }),
+  },
+  "sources.search": {
+    input: z.object({ query: z.string() }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        sourceId: z.string(),
+        text: z.string(),
+        sectionPath: z.string().nullable(),
+        locator: z.object({
+          chapter: z.number().optional(),
+          paragraph: z.string().optional(),
+        }),
+      }),
+    ),
+  },
+  "sources.chapters": {
+    input: z.object({ sourceId: z.string() }),
+    output: z.array(z.object({ number: z.number(), title: z.string() })),
+  },
+  "sources.chapter": {
+    input: z.object({
+      sourceId: z.string(),
+      chapter: z.number(),
+      paragraph: z.string().optional(),
+    }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        text: z.string(),
+        sectionPath: z.string().nullable(),
+        locator: z.object({ chapter: z.number(), paragraph: z.string() }),
+        current: z.boolean(),
+      }),
+    ),
   },
 } as const;
 
@@ -170,6 +233,13 @@ export const streams = {} as const;
 
 export const broadcasts = {
   "job.updated": JobView,
+  "engine.login": z.object({
+    provider: z.string(),
+    type: z.string(),
+    url: z.string().optional(),
+    message: z.string().optional(),
+    command: z.array(z.string()).optional(),
+  }),
 } as const;
 
 export type RequestName = keyof typeof requests;

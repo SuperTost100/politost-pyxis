@@ -1,7 +1,13 @@
 import { join } from "node:path";
 import { openDatabase } from "./db/connection";
 import { getFunnel, setApiKeys, setScratch } from "./engine/funnel";
-import { attachRendererPort, bindEngines, bindRunner, broadcast } from "./ipc/server";
+import {
+  attachRendererPort,
+  bindEngines,
+  bindRunner,
+  bindSources,
+  broadcast,
+} from "./ipc/server";
 import { demoJob } from "./jobs/demo";
 import { createRunner } from "./jobs/runner";
 
@@ -45,6 +51,7 @@ if (!parent) {
       const db = openDatabase(join(data.workspacePath, "pyxis.db"));
       setScratch(join(data.workspacePath, "scratch"));
       bindEngines(db);
+      bindSources(db, data.workspacePath);
       const runner = createRunner(db, (job) => broadcast("job.updated", job));
       runner.register("demo", demoJob);
       bindRunner(runner, data.dev === true);

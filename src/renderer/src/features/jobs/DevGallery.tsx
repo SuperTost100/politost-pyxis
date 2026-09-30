@@ -1,5 +1,6 @@
 import { Button } from "antd";
 import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router";
 import type { Locale } from "../../locales/i18n";
@@ -14,11 +15,12 @@ import "./DevGallery.css";
 export function DevGallery() {
   const { t } = useTranslation();
   const { appearance, setTheme } = useAppState();
-  if (!window.pyxis.dev) return <Navigate to="/exams" replace />;
-
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<string[]>([]);
   const start = useMutation({
     mutationFn: (failOnce: boolean) => invoke("jobs.startDemo", { failOnce }),
   });
+  if (!window.pyxis.dev) return <Navigate to="/exams" replace />;
 
   const themeValue =
     appearance.source === "system" ? "system" : appearance.resolved;
@@ -66,6 +68,31 @@ export function DevGallery() {
             {t("dev.kill")}
           </Button>
         </div>
+      </section>
+
+      <section className="gallery-demo-job">
+        <h2 className="title-2">{t("sources.search")}</h2>
+        <form
+          className="engine-key"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void invoke("sources.search", { query }).then((rows) =>
+              setHits(rows.map((row) => `${row.sectionPath ?? ""}: ${row.text.slice(0, 80)}`)),
+            );
+          }}
+        >
+          <input
+            value={query}
+            aria-label={t("sources.search")}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <button type="submit">{t("sources.searchGo")}</button>
+        </form>
+        {hits.map((hit) => (
+          <p key={hit} className="small">
+            {hit}
+          </p>
+        ))}
       </section>
 
       <ComponentGallery />

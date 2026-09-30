@@ -64,7 +64,7 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
       result.text;
     result = await run({
       selection: input.selection,
-      prompt: `The previous answer failed validation.\n${issues}\nReturn corrected JSON only.`,
+      prompt: `${input.prompt}\n\nThe previous answer failed validation.\n${result.text}\n${issues}\nReturn corrected JSON only.`,
       system: input.system,
       responseSchema,
       signal: input.signal,

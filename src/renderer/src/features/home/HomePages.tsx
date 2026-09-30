@@ -2,6 +2,7 @@ import { Button, Segmented } from "antd";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { LibraryPanel } from "./LibraryPanel";
 
 export function AskHome() {
   const { t } = useTranslation();
@@ -79,10 +80,7 @@ export function ExamsHome() {
           }
         />
       ) : (
-        <EmptyState
-          title={t("exams.sourcesEmptyTitle")}
-          body={t("exams.sourcesEmptyBody")}
-        />
+        <LibraryPanel />
       )}
     </div>
   );

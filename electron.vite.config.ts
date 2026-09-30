@@ -5,6 +5,10 @@ import react from "@vitejs/plugin-react";
 import type { Plugin } from "vite";
 
 const root = import.meta.dirname;
+const parser = resolve(
+  root,
+  "node_modules/@politost/content-core/src/parser.ts",
+);
 
 function copySandboxPage(): Plugin {
   return {
@@ -22,6 +26,7 @@ function copySandboxPage(): Plugin {
 
 export default defineConfig({
   main: {
+    resolve: { alias: { "@politost/smartbook-parser": parser } },
     build: {
       rollupOptions: {
         input: {

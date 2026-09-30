@@ -1,11 +1,40 @@
 import type Database from "better-sqlite3";
 import { IpcError } from "../../shared/ipc";
-import { capabilityWarning } from "./capabilities";
+import { capabilityWarning, type Need } from "./capabilities";
 import { translateEngineError } from "./errors";
 import { getFunnel, runTurn, type ProviderId } from "./funnel";
 
 const features = ["default", "chat", "plan", "lesson", "grading", "map", "vision"] as const;
 const disabled = new Set<ProviderId>(["agent", "antigravity"]);
+const providers = new Set<string>([
+  "claude",
+  "codex",
+  "agent",
+  "antigravity",
+  "anthropic-api",
+  "openai-api",
+]);
+
+export type LoginNotice = {
+  provider: string;
+  type: string;
+  url?: string;
+  message?: string;
+  command?: string[];
+};
+
+function notice(
+  provider: string,
+  event: { type: string; url?: string; message?: string; command?: string[] },
+): LoginNotice {
+  return {
+    provider,
+    type: event.type,
+    url: "url" in event ? event.url : undefined,
+    message: "message" in event ? event.message : undefined,
+    command: "command" in event ? event.command : undefined,
+  };
+}
 
 const loginSessions = new Map<string, { sendCode: (code: string) => void; cancel: () => void }>();
 
@@ -13,7 +42,10 @@ function kindOf(id: string): "cli" | "api" {
   return id.endsWith("-api") ? "api" : "cli";
 }
 
-export function engineHandlers(db: Database.Database) {
+export function engineHandlers(
+  db: Database.Database,
+  emit: (event: LoginNotice) => void,
+) {
   return {
     async overview() {
       const rows = await getFunnel().overview();
@@ -61,6 +93,9 @@ export function engineHandlers(db: Database.Database) {
       }
     },
     setFeature(input: { feature: (typeof features)[number]; provider: ProviderId; model: string }) {
+      if (!providers.has(input.provider)) {
+        throw new IpcError("invalid-selection", "engines.errors.invalid-selection");
+      }
       const warning =
         input.feature === "vision" ? capabilityWarning(input.model, "vision") : null;
       const now = Date.now();
@@ -70,6 +105,9 @@ export function engineHandlers(db: Database.Database) {
          ON CONFLICT(feature) DO UPDATE SET selection_json = excluded.selection_json, updated_at = excluded.updated_at`,
       ).run(input.feature, JSON.stringify({ provider: input.provider, model: input.model }), now);
       return { warning };
+    },
+    capability(input: { model: string; need: Need }) {
+      return { warning: capabilityWarning(input.model, input.need) };
     },
     features() {
       const rows = db
@@ -84,10 +122,12 @@ export function engineHandlers(db: Database.Database) {
       const iterator = session[Symbol.asyncIterator]();
       let step = await iterator.next();
       while (!step.done && step.value.type === "log") step = await iterator.next();
-      // ponytail: the rest of the login stream is drained so the CLI can finish. A later code prompt that arrives after the first event is missed until login is started again.
       void (async () => {
-        let next = step;
-        while (!next.done) next = await iterator.next();
+        let next = await iterator.next();
+        while (!next.done) {
+          if (next.value.type !== "log") emit(notice(input.provider, next.value));
+          next = await iterator.next();
+        }
       })();
       return step.value ?? { type: "error" as const, message: "no-event" };
     },

@@ -260,6 +260,17 @@ html[data-platform="darwin"] .canvas-bar {
   margin-bottom: var(--space-6);
 }
 
+.passage {
+  margin: var(--space-4) 0;
+  white-space: pre-wrap;
+}
+
+.passage.is-current {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
 .engine-gap {
   margin-top: var(--space-3);
 }

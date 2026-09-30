@@ -29,6 +29,8 @@ describe("generate", () => {
       },
     });
     expect(calls).toHaveLength(2);
+    expect(calls[1]).toContain("name a colour");
+    expect(calls[1]).toContain("blue");
     expect(output.data).toEqual({ colour: "blue" });
   });
 

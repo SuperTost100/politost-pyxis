@@ -5,6 +5,7 @@ import {
   type PortMessage,
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
+import { sourceHandlers } from "../sources/handlers";
 import type { ProviderId } from "../engine/funnel";
 import { jobHandlers } from "../jobs/handlers";
 import type { Runner } from "../jobs/runner";
@@ -20,6 +21,7 @@ type HandlerMap = ReturnType<typeof jobHandlers>;
 
 let handlers: HandlerMap | null = null;
 let engines: ReturnType<typeof engineHandlers> | null = null;
+let sources: ReturnType<typeof sourceHandlers> | null = null;
 let port: CorePort | null = null;
 
 export function setJobHandlers(next: HandlerMap): void {
@@ -110,6 +112,10 @@ async function dispatch(name: string, input: unknown): Promise<unknown> {
       const parsed = requests["engines.login"].input.parse(input);
       return engines?.login({ provider: parsed.provider as ProviderId });
     }
+    case "engines.capability":
+      return engines?.capability(
+        requests["engines.capability"].input.parse(input),
+      );
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({
@@ -117,6 +123,17 @@ async function dispatch(name: string, input: unknown): Promise<unknown> {
         code: parsed.code,
       });
     }
+    case "sources.list":
+      requests["sources.list"].input.parse(input);
+      return sources?.list();
+    case "sources.import":
+      return sources?.importFile(requests["sources.import"].input.parse(input));
+    case "sources.search":
+      return sources?.search(requests["sources.search"].input.parse(input));
+    case "sources.chapters":
+      return sources?.chapters(requests["sources.chapters"].input.parse(input));
+    case "sources.chapter":
+      return sources?.chapter(requests["sources.chapter"].input.parse(input));
     default:
       throw new IpcError("unknown-request", "errors.unknownRequest");
   }
@@ -127,5 +144,12 @@ export function bindRunner(runner: Runner, dev: boolean): void {
 }
 
 export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
-  engines = engineHandlers(db);
+  engines = engineHandlers(db, (event) => broadcast("engine.login", event));
+}
+
+export function bindSources(
+  db: Parameters<typeof sourceHandlers>[0],
+  workspace: string,
+): void {
+  sources = sourceHandlers(db, workspace);
 }

@@ -34,5 +34,9 @@ describe("normalizeMathDelimiters", () => {
   it("leaves delimiters inside code alone", () => {
     const fenced = "```python\nprint('[P1]')\nprint(r'\\[x\\]')\n```";
     expect(normalizeMathDelimiters(fenced)).toBe(fenced);
+    const tilde = "~~~\n[P1]\n\\[x\\]\n~~~";
+    expect(normalizeMathDelimiters(tilde)).toBe(tilde);
+    const wider = "````\n[P1]\n````";
+    expect(normalizeMathDelimiters(wider)).toBe(wider);
   });
 });
