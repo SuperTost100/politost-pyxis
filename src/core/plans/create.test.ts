@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { importSmartbook } from "../sources/smartbook";
 import { completeNode, createPlan, deletePlan } from "./create";
+import { pathState } from "./path";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -119,5 +120,27 @@ describe("createPlan", () => {
       .prepare(`SELECT kind FROM path_nodes WHERE plan_id = ? AND topic_id IS NOT NULL ORDER BY position`)
       .all(practicePlan.planId) as Array<{ kind: string }>;
     expect(practicing.slice(0, 2).map((row) => row.kind)).toEqual(["practice", "learn"]);
+    const rows = db
+      .prepare(`SELECT id, kind, topic_id, position FROM path_nodes WHERE plan_id = ?`)
+      .all(practicePlan.planId) as Array<{
+      id: string;
+      kind: "intro" | "diagnostic" | "learn" | "practice" | "cards" | "gaps" | "simulation" | "final";
+      topic_id: string | null;
+      position: number;
+    }>;
+    const states = pathState(
+      rows.map((row) => ({
+        id: row.id,
+        stage: row.kind,
+        topicId: row.topic_id,
+        position: row.position,
+      })),
+      rows.filter((row) => row.kind === "intro" || row.kind === "diagnostic").map((row) => row.id),
+      {},
+    );
+    const stateOf = (kind: string) =>
+      states.find((item) => item.id === rows.find((row) => row.kind === kind)?.id)?.state;
+    expect(stateOf("practice")).toBe("current");
+    expect(stateOf("learn")).toBe("locked");
   });
 });

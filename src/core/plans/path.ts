@@ -77,6 +77,16 @@ function lockReason(
     if (previous && (mastery[previous] ?? 0) < middle) return "plans.unlocksAtHalf";
     return "";
   }
+  if (node.stage === "practice" && node.topicId) {
+    const learn = nodes.find((item) => item.stage === "learn" && item.topicId === node.topicId);
+    if (learn && node.position < learn.position) {
+      if (!finished("diagnostic")) return "plans.unlocksAfterDiagnostic";
+      const index = topicOrder.indexOf(node.topicId);
+      const previous = index > 0 ? topicOrder[index - 1] : null;
+      if (previous && (mastery[previous] ?? 0) < middle) return "plans.unlocksAtHalf";
+      return "";
+    }
+  }
   if ((node.stage === "practice" || node.stage === "cards" || node.stage === "gaps") && node.topicId) {
     const level = mastery[node.topicId] ?? 0;
     return level >= middle ? "" : "plans.unlocksAtHalf";
