@@ -204,7 +204,7 @@
     "backup": "Copia di sicurezza",
     "restore": "Ripristina",
     "dataHint": "Il file resta su questo computer. Un ripristino ricarica Pyxis.",
-    "planSize": "{{title}}: {{size}}",
+    "planSize": "{{title}}: {{size}} di file",
     "wipe": "Cancella tutti i dati",
     "wipeConfirm": "Cancella per sempre",
     "wipeHint": "Cancella piani, fonti e chat su questo computer. Le chiavi dei motori restano.",
