@@ -20,4 +20,8 @@ Version 1 is a JSON document, checked by `planFileSchema` in `src/shared/plan-fi
 
 A stored target outside 0.5–1 is clamped to the nearest bound on export. On the path, a target of 1 opens at 0.99 (`reachableTarget` in `src/shared/plan-file.ts`).
 
-The file does not carry passages, lessons or citations. Those stay in the workspace that owns the sources. A backup of the whole workspace is a separate zip: a vacuumed `pyxis.db` plus the `blobs/` tree. Restore checks that the staged database already has `user_version` of at least 1 and the tables `plans`, `profile` and `path_nodes`, then runs migrations on that copy. If the check or the migration fails, the zip is refused and the live workspace stays. See `src/core/share/backup.ts`.
+A node or a card whose topic index is not null and falls outside `topics` is refused with `plan-file`. The import rolls back, so a bad file leaves no plan.
+
+A shared link must be http or https. The fetch follows no redirects, aborts after 15 seconds, and stops reading past 1,000,000 bytes.
+
+The file does not carry passages, lessons or citations. Those stay in the workspace that owns the sources. A backup of the whole workspace is a separate zip: a vacuumed `pyxis.db` plus the `blobs/` tree. Restore checks that the staged database already has `user_version` of at least 1 and the tables `plans`, `profile` and `path_nodes`, then runs migrations on that copy. A zip whose declared uncompressed size is over 2 GiB is refused. There is no compressed-size cap, so a backup this app can write still restores. A header that lies about uncompressed size can still expand. If the check or the migration fails, the zip is refused and the live workspace stays. See `src/core/share/backup.ts`.

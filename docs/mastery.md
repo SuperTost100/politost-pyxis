@@ -4,7 +4,9 @@
 
 This is not the plan's shrunk prior (`a = 3` pseudo-observations). That formula is the upgrade if a single perfect quiz should not jump a topic to 1.
 
-The path uses those scores with a cap. Until the simulation node is finished, each topic counts as at most 0.5, so a perfect quiz unlocks the next practice step and the final check stays locked. After the simulation, the same scores count in full. Finishing the simulation does not raise a topic.
+The path uses those scores with a cap. Until the simulation node is finished, each topic counts as at most 0.5, so a perfect quiz unlocks the next practice step and the final check stays locked. After the simulation, the same scores count in full. Finishing the simulation does not raise a topic, and a failed simulation does not get a floor.
+
+While time remains, the simulation stores the current picks on the attempt. When the clock runs out, those saved picks are graded. A submit after the deadline does not replace them. The simulation step is marked done before the scores are written, so a low score cannot lock a step the student already finished.
 
 Unlock thresholds in `pathState`:
 
