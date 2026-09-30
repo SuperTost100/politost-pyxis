@@ -1,6 +1,6 @@
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -63,11 +63,18 @@ test("a fresh window opens on onboarding", async () => {
 test("a smartbook becomes a plan without a model", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-e2e-"));
   const book = writeBook(userData);
+  const backupZip = join(userData, "pyxis-backup.zip");
   let app: ElectronApplication | undefined;
   try {
     app = await electron.launch({
       args: [join(process.cwd(), "out/main/index.js")],
-      env: { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E_FILE: book },
+      env: {
+        ...process.env,
+        PYXIS_USER_DATA: userData,
+        PYXIS_E2E_FILE: book,
+        PYXIS_E2E_SAVE: backupZip,
+        PYXIS_E2E_ZIP: backupZip,
+      },
     });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -132,6 +139,7 @@ test("a smartbook becomes a plan without a model", async () => {
             });
           });
         });
+        pending.catch(() => undefined);
         (globalThis as { pyxisDownload?: Promise<unknown> }).pyxisDownload = pending;
         return "listening";
       }, dest),
@@ -148,6 +156,38 @@ test("a smartbook becomes a plan without a model", async () => {
     };
     expect(file.title).toBe("Fisica");
     expect(file.topics.some((topic) => topic.title.includes("Moti"))).toBe(true);
+    await page.getByRole("button", { name: /Carte/ }).click();
+    await page.getByRole("button", { name: "Ho letto" }).click();
+    const gaps = page.getByRole("button", { name: /Lacune/ });
+    await expect(gaps).toBeEnabled();
+    await gaps.click();
+    const simulation = page.getByRole("button", { name: /Simulazione/ });
+    await expect(simulation).toBeEnabled();
+    await simulation.click();
+    await page.getByRole("button", { name: "Inizia i 30 minuti" }).click();
+    await page.getByRole("textbox", { name: "Correggi" }).fill("W = F s.");
+    await page.getByRole("button", { name: "Correggi" }).click();
+    await expect(page.getByText("1. Moti · 100")).toBeVisible();
+    await page.getByRole("button", { name: "Indietro" }).click();
+    await page.getByRole("button", { name: "Indietro" }).click();
+    await page.getByRole("button", { name: "Impostazioni" }).click();
+    await page.getByRole("button", { name: "Copia di sicurezza" }).click();
+    await expect.poll(() => existsSync(backupZip) && statSync(backupZip).size > 0).toBe(true);
+    await expect(page.getByText("La copia non è riuscita.")).toHaveCount(0);
+    await page.getByText("Esami", { exact: true }).click();
+    await page.getByRole("button", { name: "Fisica" }).click();
+    page.once("dialog", (dialog) => {
+      void dialog.accept();
+    });
+    await page.getByRole("button", { name: "Elimina il piano" }).click();
+    await expect(page.locator("main h2")).toHaveText("Nessun piano ancora");
+    await page.getByRole("button", { name: "Impostazioni" }).click();
+    await Promise.all([
+      page.waitForEvent("load"),
+      page.getByRole("button", { name: "Ripristina" }).click(),
+    ]);
+    await page.getByText("Esami", { exact: true }).click();
+    await expect(page.getByRole("button", { name: "Fisica" })).toBeVisible();
   } finally {
     await app?.close();
     rmSync(userData, { recursive: true, force: true });

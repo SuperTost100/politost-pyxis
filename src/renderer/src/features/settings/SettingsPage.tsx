@@ -142,7 +142,9 @@ export function SettingsPage() {
         <Button
           onClick={() => {
             setDataNote(null);
-            void window.pyxis.restoreWorkspace().catch(() => {
+            void window.pyxis.restoreWorkspace().then((status) => {
+              if (status === "restored") window.location.reload();
+            }).catch(() => {
               setDataNote(t("settings.restoreFailed"));
             });
           }}

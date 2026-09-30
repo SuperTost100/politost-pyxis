@@ -106,12 +106,16 @@ export function Shell() {
             options={[
               {
                 value: "ask",
-                label: t("doors.ask"),
+                label: (
+                  <span onClick={() => navigate(last.ask)}>{t("doors.ask")}</span>
+                ),
                 icon: <MessageCircle size={16} strokeWidth={1.75} />,
               },
               {
                 value: "exams",
-                label: t("doors.exams"),
+                label: (
+                  <span onClick={() => navigate(last.exams)}>{t("doors.exams")}</span>
+                ),
                 icon: <GraduationCap size={16} strokeWidth={1.75} />,
               },
             ]}

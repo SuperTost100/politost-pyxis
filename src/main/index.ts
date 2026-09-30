@@ -424,19 +424,24 @@ function registerIpc(): void {
   ipcMain.handle(mainChannels.workspaceBackup, async () => {
     const release = occupyWorkspace();
     try {
-      const result = mainWindow
-        ? await dialog.showSaveDialog(mainWindow, {
-            defaultPath: "pyxis-backup.zip",
-            filters: zipFilter,
-          })
-        : await dialog.showSaveDialog({
-            defaultPath: "pyxis-backup.zip",
-            filters: zipFilter,
-          });
-      if (result.canceled || !result.filePath) return "cancelled";
+      const forced = !app.isPackaged ? process.env["PYXIS_E2E_SAVE"] : undefined;
+      let filePath = forced;
+      if (!filePath) {
+        const result = mainWindow
+          ? await dialog.showSaveDialog(mainWindow, {
+              defaultPath: "pyxis-backup.zip",
+              filters: zipFilter,
+            })
+          : await dialog.showSaveDialog({
+              defaultPath: "pyxis-backup.zip",
+              filters: zipFilter,
+            });
+        if (result.canceled || !result.filePath) return "cancelled";
+        filePath = result.filePath;
+      }
       await pauseCore();
       try {
-        await runArchive("backup", result.filePath);
+        await runArchive("backup", filePath);
         return "saved";
       } finally {
         resumeCore();
@@ -448,27 +453,28 @@ function registerIpc(): void {
   ipcMain.handle(mainChannels.workspaceRestore, async () => {
     const release = occupyWorkspace();
     try {
-      const result = mainWindow
-        ? await dialog.showOpenDialog(mainWindow, {
-            properties: ["openFile"],
-            filters: zipFilter,
-          })
-        : await dialog.showOpenDialog({
-            properties: ["openFile"],
-            filters: zipFilter,
-          });
-      const filePath = result.filePaths[0];
-      if (result.canceled || !filePath) return "cancelled";
+      const forced = !app.isPackaged ? process.env["PYXIS_E2E_ZIP"] : undefined;
+      let filePath = forced;
+      if (!filePath) {
+        const result = mainWindow
+          ? await dialog.showOpenDialog(mainWindow, {
+              properties: ["openFile"],
+              filters: zipFilter,
+            })
+          : await dialog.showOpenDialog({
+              properties: ["openFile"],
+              filters: zipFilter,
+            });
+        filePath = result.filePaths[0];
+        if (result.canceled || !filePath) return "cancelled";
+      }
       await pauseCore();
-      let restored = false;
       try {
         await runArchive("restore", filePath);
         ensureWorkspaceDirs(workspacePath);
-        restored = true;
         return "restored";
       } finally {
         resumeCore();
-        if (restored) mainWindow?.webContents.reload();
       }
     } finally {
       release();
