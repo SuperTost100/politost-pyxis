@@ -35,7 +35,9 @@ export function QuizPage() {
         </Button>
       }
     >
-      {questions.length === 0 ? (
+      {start.isSuccess && questions.length === 0 ? (
+        <p className="small">{t("quiz.empty")}</p>
+      ) : questions.length === 0 ? (
         <Button type="primary" shape="round" loading={start.isPending} onClick={() => start.mutate()}>
           {t("quiz.start")}
         </Button>

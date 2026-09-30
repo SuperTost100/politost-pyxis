@@ -28,6 +28,11 @@ export function topicExercises(db: Database.Database, topicId: string) {
        JOIN plan_sources ps ON ps.source_id = sb.source_id
        JOIN topics t ON t.plan_id = ps.plan_id
        WHERE t.id = ?
+         AND sb.source_id IN (
+           SELECT p.source_id FROM passages p
+           JOIN topic_passages src ON src.passage_id = p.id
+           WHERE src.topic_id = t.id
+         )
          AND json_extract(e.locator_json, '$.chapter') IN (${marks})
        ORDER BY e.created_at`,
     )

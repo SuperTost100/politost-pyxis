@@ -1,13 +1,30 @@
 import type Database from "better-sqlite3";
+import { completeNode } from "../plans/create";
 import { saveQuiz, startAttempt, submitAttempt } from "./attempt";
 import { topicExercises } from "./exercises";
+
+function acrossTopics<T>(buckets: T[][], limit: number): T[] {
+  const picked: T[] = [];
+  for (let round = 0; picked.length < limit; round += 1) {
+    let added = false;
+    for (const bucket of buckets) {
+      const row = bucket[round];
+      if (!row) continue;
+      picked.push(row);
+      added = true;
+      if (picked.length === limit) break;
+    }
+    if (!added) break;
+  }
+  return picked;
+}
 
 export function startDiagnostic(db: Database.Database, planId: string) {
   const topics = db
     .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
     .all(planId) as Array<{ id: string }>;
-  const questions = topics
-    .flatMap((topic) =>
+  const questions = acrossTopics(
+    topics.map((topic) =>
       topicExercises(db, topic.id)
         .filter((row) => row.answer && row.answer.trim())
         .map((row) => ({
@@ -16,9 +33,22 @@ export function startDiagnostic(db: Database.Database, planId: string) {
           stem: row.prompt,
           grade: { kind: "completion" as const, answers: [], accepted: [[row.answer ?? ""]] },
         })),
-    )
-    .slice(0, 20);
-  if (questions.length === 0) throw new Error("quiz-empty");
+    ),
+    20,
+  );
+  if (questions.length === 0) {
+    const node = db
+      .prepare(`SELECT id FROM path_nodes WHERE plan_id = ? AND kind = 'diagnostic'`)
+      .get(planId) as { id: string } | undefined;
+    if (node) {
+      try {
+        completeNode(db, planId, node.id);
+      } catch (err) {
+        if (!(err instanceof Error) || err.message !== "node-locked") throw err;
+      }
+    }
+    return { attemptId: "", questions: [] };
+  }
   const itemId = saveQuiz(
     db,
     planId,

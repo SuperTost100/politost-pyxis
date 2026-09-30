@@ -85,12 +85,11 @@ describe("topicExercises", () => {
       .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position LIMIT 1`)
       .get(plan.planId) as { id: string };
     const rows = topicExercises(db, topic.id);
-    const other = rows.find((row) => row.prompt.startsWith("Domanda B"));
     const own = rows.find((row) => row.prompt.startsWith("Domanda A"));
     const ownPassage = db
       .prepare(`SELECT id FROM passages WHERE source_id = ?`)
       .get(first.sourceId) as { id: string };
     expect(own?.passageId).toBe(ownPassage.id);
-    expect(other?.passageId).toBeNull();
+    expect(rows.some((row) => row.prompt.startsWith("Domanda B"))).toBe(false);
   });
 });
