@@ -11,6 +11,8 @@ npm install
 npm run dev
 ```
 
-`npm run typecheck` and `npm test` should pass before a change lands.
+`npm run typecheck` and `npm test` should pass before a change lands. See `CONTRIBUTING.md`.
+
+Nothing in the workspace is uploaded. Crash reports are off until you opt in, and that switch does not send a report yet. Details are in `SECURITY.md`. The card ladder, mastery formula and plan file are described in `docs/`.
 
 Screenshots for both themes go to `.shots/` with `npm run shoot`.

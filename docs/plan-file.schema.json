@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://politost.dev/pyxis/plan-file.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "title", "topics", "nodes", "cards"],
+  "properties": {
+    "version": { "const": 1 },
+    "title": { "type": "string" },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "position"],
+        "properties": {
+          "title": { "type": "string" },
+          "position": { "type": "number" }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "kind", "position", "topic"],
+        "properties": {
+          "title": { "type": "string" },
+          "kind": { "type": "string" },
+          "position": { "type": "number" },
+          "topic": { "type": ["number", "null"] }
+        }
+      }
+    },
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["front", "back", "topic"],
+        "properties": {
+          "front": { "type": "string" },
+          "back": { "type": "string" },
+          "topic": { "type": ["number", "null"] }
+        }
+      }
+    }
+  }
+}
