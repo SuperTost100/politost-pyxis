@@ -35,8 +35,9 @@ export function recoverInterruptedWipe(workspace: string): void {
     rmSync(holding, { recursive: true, force: true });
     return;
   }
-  const dbNames = ["pyxis.db", "pyxis.db-wal", "pyxis.db-shm"];
+  const dbNames = ["pyxis.db-wal", "pyxis.db-shm", "pyxis.db"];
   if (!existsSync(join(workspace, "pyxis.db"))) {
+    // Sidecars move first. A stop before the database lands still has no live database, so the next launch finishes them.
     for (const name of dbNames) restoreEntry(join(holding, name), join(workspace, name));
   }
   for (const name of names) {
