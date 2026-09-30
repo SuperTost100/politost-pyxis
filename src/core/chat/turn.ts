@@ -26,6 +26,7 @@ export type ChatMessageView = {
   role: "user" | "assistant";
   body: string;
   modelId: string | null;
+  provider: string | null;
   grounding: "sources" | "general" | null;
   followups: string[];
   citations: ChatCitation[];
@@ -308,6 +309,7 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
       role: "assistant",
       body: parsed.body,
       modelId: result.model,
+      provider: result.provider,
       grounding,
       followups: parsed.followups,
       citations: linked,
@@ -353,7 +355,7 @@ export function listChats(db: Database.Database) {
 export function readChat(db: Database.Database, chatId: string): ChatMessageView[] {
   const rows = db
     .prepare(
-      `SELECT id, role, body, model_id, grounding, reaction FROM messages
+      `SELECT id, role, body, model_id, engine_provider, grounding, reaction FROM messages
        WHERE chat_id = ? ORDER BY created_at`,
     )
     .all(chatId) as Array<{
@@ -361,6 +363,7 @@ export function readChat(db: Database.Database, chatId: string): ChatMessageView
     role: "user" | "assistant";
     body: string;
     model_id: string | null;
+    engine_provider: string | null;
     grounding: "sources" | "general" | null;
     reaction: string | null;
   }>;
@@ -393,6 +396,7 @@ export function readChat(db: Database.Database, chatId: string): ChatMessageView
       role: row.role,
       body: parsed.body,
       modelId: row.model_id,
+      provider: row.engine_provider,
       grounding: row.grounding,
       followups: parsed.followups,
       citations,

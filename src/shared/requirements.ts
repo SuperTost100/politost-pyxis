@@ -3,6 +3,7 @@ export const implemented = [
   "ASK-02", // src/core/chat/turn.ts
   "ASK-06", // src/renderer/src/components/ChatMessage.tsx
   "ASK-08", // src/core/chat/turn.ts
+  "ASK-10", // src/renderer/src/features/ask/AskPage.tsx
   "ENG-01", // src/core/engine/handlers.ts
   "ENG-02", // src/main/index.ts
   "ENG-03", // src/core/engine/handlers.ts

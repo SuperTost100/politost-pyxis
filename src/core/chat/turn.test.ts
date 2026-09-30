@@ -40,6 +40,8 @@ describe("askTurn", () => {
     });
     expect(result.covered).toBe(true);
     expect(result.message?.modelId).toBe("gpt-6.1-sol");
+    expect(result.message?.provider).toBe("codex");
+    expect(readChat(db, result.chatId).at(-1)?.provider).toBe("codex");
     expect(result.message?.followups).toHaveLength(3);
     expect(result.message?.citations).toHaveLength(1);
     expect(result.message?.body).toContain("[P1]");

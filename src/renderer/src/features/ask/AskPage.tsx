@@ -185,7 +185,11 @@ export function AskPage() {
             ) : (
               <ChatMessage
                 key={row.id}
-                engine={row.modelId ?? undefined}
+                engine={
+                  row.provider && row.modelId
+                    ? `${row.provider} · ${row.modelId}`
+                    : (row.modelId ?? row.provider ?? undefined)
+                }
                 general={row.grounding === "general"}
                 text={row.body}
                 reaction={row.reaction}

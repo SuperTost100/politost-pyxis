@@ -681,6 +681,7 @@ export const requests = {
         role: z.enum(["user", "assistant"]),
         body: z.string(),
         modelId: z.string().nullable(),
+        provider: z.string().nullable(),
         grounding: z.enum(["sources", "general"]).nullable(),
         followups: z.array(z.string()),
         reaction: z.enum(["up", "down"]).nullable(),
@@ -720,6 +721,7 @@ export const requests = {
           role: z.enum(["user", "assistant"]),
           body: z.string(),
           modelId: z.string().nullable(),
+          provider: z.string().nullable(),
           grounding: z.enum(["sources", "general"]).nullable(),
           followups: z.array(z.string()),
           citations: z.array(
