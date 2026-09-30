@@ -361,6 +361,8 @@ function registerIpc(): void {
   ipcMain.handle(
     mainChannels.openDialog,
     async (_event, options: OpenDialogOptions) => {
+      const forced = process.env["PYXIS_E2E_FILE"];
+      if (forced && !app.isPackaged) return [forced];
       const dialogOptions = {
         title: options.title,
         properties: options.properties,
