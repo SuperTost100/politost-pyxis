@@ -162,7 +162,7 @@ function unresolvedPole(
   at: (x: number) => number,
 ) {
   const bound = Math.max(Math.abs(prev.y), Math.abs(point.y), 1e-9);
-  if (prev.y * point.y < 0 && Math.min(Math.abs(prev.y), Math.abs(point.y)) > 1e-6) return true;
+  if (prev.y * point.y < 0 && Math.min(Math.abs(prev.y), Math.abs(point.y)) > 1) return true;
   if (Math.abs(mid) > 8 * bound) return true;
   for (const t of [0.2, 0.4, 0.6, 0.8]) {
     let probe = Number.NaN;
