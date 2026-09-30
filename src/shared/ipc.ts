@@ -265,6 +265,14 @@ export const requests = {
       topics: z.array(z.object({ id: z.string(), title: z.string(), score: z.number() })),
     }),
   },
+  "study.active": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string().nullable(),
+      seconds: z.number().int().min(1).max(120),
+    }),
+    output: z.object({ ok: z.boolean() }),
+  },
   "study.cards": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.array(
@@ -398,6 +406,7 @@ export const requests = {
       counts: z.record(z.string(), z.array(z.number())),
       gaps: z.array(z.object({ topicId: z.string(), openedAt: z.number() })),
       pace: z.object({ week: z.number(), peakDay: z.number(), peakCount: z.number() }),
+      minutes: z.number(),
       lessons: z.number(),
       topics: z.array(
         z.object({

@@ -1,7 +1,14 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { idleTopics, masteryFor, type MasteryEvent } from "../study/mastery";
-import { chartPoints, openGaps, paceFacts, weeklyCounts, type SeriesEvent } from "../study/series";
+import {
+  activeMinutes,
+  chartPoints,
+  openGaps,
+  paceFacts,
+  weeklyCounts,
+  type SeriesEvent,
+} from "../study/series";
 
 export function planMastery(db: Database.Database, planId: string, now = Date.now()) {
   const topics = db
@@ -18,9 +25,12 @@ export function planMastery(db: Database.Database, planId: string, now = Date.no
     payload_json: string;
     created_at: number;
   }>;
-  const events: MasteryEvent[] = rows.map((row) => {
+  const events: MasteryEvent[] = rows.flatMap((row) => {
+    if (row.kind === "active_time" || row.kind === "gap_opened" || row.kind === "gap_closed") {
+      return [];
+    }
     const payload = JSON.parse(row.payload_json) as { score?: number };
-    return {
+    return [{
       topicId: row.topic_id,
       kind: row.kind === "card_rated" ? "card" : row.kind === "answer_given" ? "quiz" : "lesson",
       score:
@@ -30,7 +40,7 @@ export function planMastery(db: Database.Database, planId: string, now = Date.no
             ? 1
             : 0.5,
       at: row.created_at,
-    };
+    }];
   });
   const scores = masteryFor(events, now);
   return topics.map((topic) => ({
@@ -44,27 +54,46 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   const rows = db
     .prepare(
       `SELECT topic_id, kind, payload_json, created_at FROM learning_events
-       WHERE plan_id = ? AND topic_id IS NOT NULL`,
+       WHERE plan_id = ?`,
     )
     .all(planId) as Array<{
-    topic_id: string;
+    topic_id: string | null;
     kind: string;
     payload_json: string;
     created_at: number;
   }>;
-  return rows.map((row) => {
-    const payload = JSON.parse(row.payload_json) as { score?: number; scores?: number[] };
-    const kind = row.kind === "card_rated" ? "card" : row.kind === "answer_given" ? "quiz" : "lesson";
-    return {
-      topicId: row.topic_id,
-      at: row.created_at,
-      kind,
-      score:
-        typeof payload.score === "number" ? payload.score : row.kind === "lesson_completed" ? 1 : 0.5,
-      scores: Array.isArray(payload.scores)
-        ? payload.scores.filter((score) => typeof score === "number")
-        : undefined,
+  return rows.flatMap((row): SeriesEvent[] => {
+    if (row.kind === "gap_opened" || row.kind === "gap_closed") return [];
+    const payload = JSON.parse(row.payload_json) as {
+      score?: number;
+      scores?: number[];
+      seconds?: number;
     };
+    if (row.kind === "active_time") {
+      return [
+        {
+          topicId: row.topic_id ?? "",
+          at: row.created_at,
+          kind: "active" as const,
+          score: 0,
+          seconds: typeof payload.seconds === "number" ? payload.seconds : 0,
+        },
+      ];
+    }
+    if (!row.topic_id) return [];
+    const kind = row.kind === "card_rated" ? "card" : row.kind === "answer_given" ? "quiz" : "lesson";
+    return [
+      {
+        topicId: row.topic_id,
+        at: row.created_at,
+        kind,
+        score:
+          typeof payload.score === "number" ? payload.score : row.kind === "lesson_completed" ? 1 : 0.5,
+        scores: Array.isArray(payload.scores)
+          ? payload.scores.filter((score) => typeof score === "number")
+          : undefined,
+      },
+    ];
   });
 }
 
@@ -92,9 +121,12 @@ export function planSeries(db: Database.Database, planId: string, now = Date.now
   syncGaps(db, planId, now);
   const topics = planMastery(db, planId, now);
   const events = readSeries(db, planId);
+  const studied = events.filter(
+    (event): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } => event.kind !== "active",
+  );
   const idle = new Set(
     idleTopics(
-      events.map((event) => ({
+      studied.map((event) => ({
         topicId: event.topicId,
         kind: event.kind,
         score: event.score,
@@ -121,7 +153,8 @@ export function planSeries(db: Database.Database, planId: string, now = Date.now
     counts: weeks.counts,
     gaps,
     pace: paceFacts(chart, now),
-    lessons: events.filter((event) => event.kind === "lesson").length,
+    minutes: Math.round(activeMinutes(events, now).weekSeconds / 60),
+    lessons: studied.filter((event) => event.kind === "lesson").length,
     topics: topics.map((topic) => ({ ...topic, idle: idle.has(topic.id) })),
   };
 }

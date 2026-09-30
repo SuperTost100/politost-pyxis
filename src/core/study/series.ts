@@ -8,7 +8,8 @@ export type SeriesEvent = {
   at: number;
   score: number;
   scores?: number[];
-  kind: "quiz" | "card" | "lesson";
+  kind: "quiz" | "card" | "lesson" | "active";
+  seconds?: number;
 };
 
 function dayStart(at: number): number {
@@ -21,14 +22,21 @@ function weekStart(at: number): number {
   return day - ((weekday + 6) % 7) * DAY;
 }
 
+function isStudied(
+  event: SeriesEvent,
+): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } {
+  return event.kind !== "active";
+}
+
 export function chartPoints(events: SeriesEvent[], now: number, days = 14) {
   const end = dayStart(now);
   const points = [];
   for (let i = days - 1; i >= 0; i--) {
     const day = end - i * DAY;
     const until = day + DAY;
-    const counted = events.filter((event) => event.at >= day && event.at < until).length;
-    const masteryEvents: MasteryEvent[] = events
+    const studied = events.filter(isStudied);
+    const counted = studied.filter((event) => event.at >= day && event.at < until).length;
+    const masteryEvents: MasteryEvent[] = studied
       .filter((event) => event.at < until)
       .map((event) => ({
         topicId: event.topicId,
@@ -55,6 +63,7 @@ export function weeklyCounts(
   const counts: Record<string, number[]> = {};
   for (const id of topicIds) counts[id] = Array(weeks).fill(0);
   for (const event of events) {
+    if (event.kind === "active") continue;
     const row = counts[event.topicId];
     if (!row) continue;
     const index = starts.indexOf(weekStart(event.at));
@@ -71,6 +80,22 @@ export function paceFacts(bars: Array<{ day: number; count: number }>, now: numb
     bars[0] ?? { day: dayStart(now), count: 0 },
   );
   return { week, peakDay: peak.day, peakCount: peak.count };
+}
+
+export function activeMinutes(events: SeriesEvent[], now: number, days = 14) {
+  const end = dayStart(now);
+  const bars = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = end - i * DAY;
+    const until = day + DAY;
+    const seconds = events
+      .filter((event) => event.kind === "active" && event.at >= day && event.at < until)
+      .reduce((sum, event) => sum + (event.seconds ?? 0), 0);
+    bars.push({ day, seconds });
+  }
+  const start = weekStart(now);
+  const week = bars.filter((bar) => bar.day >= start).reduce((sum, bar) => sum + bar.seconds, 0);
+  return { bars, weekSeconds: week };
 }
 
 export function openGaps(events: SeriesEvent[]): OpenGap[] {

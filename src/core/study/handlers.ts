@@ -63,5 +63,19 @@ export function studyHandlers(db: Database.Database) {
     rate(input: { cardId: string; rating: Rating }) {
       return rateCard(db, input.cardId, input.rating, Date.now());
     },
+    active(input: { planId: string; topicId: string | null; seconds: number }) {
+      const now = Date.now();
+      db.prepare(
+        `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+         VALUES (?, 'active_time', ?, ?, ?, ?)`,
+      ).run(
+        uuidv7(now),
+        input.planId,
+        input.topicId,
+        JSON.stringify({ seconds: input.seconds }),
+        now,
+      );
+      return { ok: true as const };
+    },
   };
 }

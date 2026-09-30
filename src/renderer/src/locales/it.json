@@ -127,6 +127,7 @@
     "gaps": "Lacune",
     "noGaps": "Nessuna lacuna aperta.",
     "week": "Eventi questa settimana: {{count}}",
+    "minutes": "{{count}} minuti di studio questa settimana",
     "peak": "Giorno più attivo: {{count}}",
     "idle": "fermo"
   },

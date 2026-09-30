@@ -45,4 +45,28 @@ describe("planMastery", () => {
     const again = planSeries(db, planId, now);
     expect(again.gaps).toHaveLength(1);
   });
+
+  it("keeps mastery when the only extra row is active time", () => {
+    const db = openDatabase(":memory:");
+    const planId = uuidv7(1);
+    const topicId = uuidv7(2);
+    const now = Date.UTC(2026, 0, 14, 12);
+    db.prepare(
+      `INSERT INTO plans (id, title, status, created_at, updated_at) VALUES (?, 'Fisica', 'ready', 1, 1)`,
+    ).run(planId);
+    db.prepare(
+      `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, ?, 'Moti', 0, 1)`,
+    ).run(topicId, planId);
+    db.prepare(
+      `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+       VALUES (?, 'lesson_completed', ?, ?, '{}', ?)`,
+    ).run(uuidv7(3), planId, topicId, now);
+    db.prepare(
+      `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+       VALUES (?, 'active_time', ?, NULL, ?, ?)`,
+    ).run(uuidv7(4), planId, JSON.stringify({ seconds: 120 }), now);
+    const series = planSeries(db, planId, now);
+    expect(series.topics[0]?.mastery).toBe(1);
+    expect(series.minutes).toBe(2);
+  });
 });

@@ -163,6 +163,8 @@ async function dispatch(
       return study?.cards(requests["study.cards"].input.parse(input)) ?? [];
     case "study.rate":
       return study?.rate(requests["study.rate"].input.parse(input));
+    case "study.active":
+      return study?.active(requests["study.active"].input.parse(input));
     case "study.exercises":
       return study?.exercises(requests["study.exercises"].input.parse(input)) ?? [];
     case "tools.python":

@@ -6,12 +6,14 @@ import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
 import { invoke } from "../../lib/ipc";
+import { useActiveTime } from "./activeTime";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
 
 export function CardsPage() {
   const { t } = useTranslation();
   const { planId, topicId } = useParams();
+  useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
   const client = useQueryClient();
   const [showBack, setShowBack] = useState(false);

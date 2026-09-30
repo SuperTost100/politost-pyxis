@@ -5,10 +5,12 @@ import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
 import { invoke } from "../../lib/ipc";
+import { useActiveTime } from "./activeTime";
 
 export function LessonPage() {
   const { t } = useTranslation();
   const { planId, topicId } = useParams();
+  useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
   const client = useQueryClient();
   const lesson = useQuery({

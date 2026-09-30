@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chartPoints, openGaps, paceFacts, weeklyCounts } from "./series";
+import { activeMinutes, chartPoints, openGaps, paceFacts, weeklyCounts } from "./series";
 
 const DAY = 86_400_000;
 
@@ -28,6 +28,12 @@ describe("study series", () => {
     );
     expect(facts.week).toBe(1);
     expect(facts.peakCount).toBe(1);
+    const minutes = activeMinutes(
+      [{ topicId: "", at: now, score: 0, kind: "active", seconds: 90 }],
+      now,
+    );
+    expect(minutes.weekSeconds).toBe(90);
+    expect(minutes.bars[13]?.seconds).toBe(90);
   });
 
   it("opens a gap on two misses and closes it after two clean days", () => {

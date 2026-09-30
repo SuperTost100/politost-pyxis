@@ -6,10 +6,12 @@ import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
 import { invoke } from "../../lib/ipc";
+import { useActiveTime } from "./activeTime";
 
 export function QuizPage() {
   const { t } = useTranslation();
   const { planId, topicId } = useParams();
+  useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
   const [picks, setPicks] = useState<Record<string, string>>({});
   const start = useMutation({

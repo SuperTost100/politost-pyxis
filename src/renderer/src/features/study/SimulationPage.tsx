@@ -6,10 +6,12 @@ import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
 import { invoke } from "../../lib/ipc";
+import { useActiveTime } from "./activeTime";
 
 export function SimulationPage() {
   const { t } = useTranslation();
   const { planId } = useParams();
+  useActiveTime(planId, null);
   const navigate = useNavigate();
   const client = useQueryClient();
   const [started, setStarted] = useState<string | null>(null);

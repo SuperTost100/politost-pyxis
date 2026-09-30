@@ -189,6 +189,7 @@ export function PlanPage() {
             <path d={chartPath} fill="none" stroke="currentColor" strokeWidth="2" />
           </svg>
           <p className="small">{t("progress.week", { count: progress.pace.week })}</p>
+          <p className="small">{t("progress.minutes", { count: progress.minutes })}</p>
           <p className="small">{t("progress.peak", { count: progress.pace.peakCount })}</p>
           <h3 className="body-strong">{t("progress.gaps")}</h3>
           {progress.gaps.length === 0 ? (
