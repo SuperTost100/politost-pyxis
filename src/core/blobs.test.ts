@@ -17,6 +17,8 @@ describe("blobs", () => {
     expect(files).toEqual([first, `${first}.json`]);
     expect(statSync(join(folder, first)).size).toBe(bytes.byteLength);
     expect(readBlob(workspace, first).mime).toBe("text/plain");
+    putBlob(workspace, bytes, "application/pdf", "pdf");
+    expect(readBlob(workspace, first).mime).toBe("text/plain");
   });
 
   it("rejects a hash that is not 64 hex characters", () => {

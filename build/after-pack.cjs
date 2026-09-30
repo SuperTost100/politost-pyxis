@@ -7,6 +7,7 @@ const { join } = require('node:path')
 // detritus and refuses the bundle in place. A copy made with ditto --norsrc
 // in /tmp signs cleanly, and that signed bundle is what we put back.
 module.exports = async function afterPack(context) {
+  if (context.electronPlatformName !== "darwin") return;
   const name = `${context.packager.appInfo.productFilename}.app`
   const app = join(context.appOutDir, name)
   const clean = join(tmpdir(), `pyxis-sign-${process.pid}.app`)

@@ -193,4 +193,21 @@ describe("job runner", () => {
     expect(view?.state).toBe("interrupted");
     expect(view?.steps[0]?.state).toBe("pending");
   });
+
+  it("drops a dismissed job from listeners", () => {
+    const database = db();
+    const seen: string[] = [];
+    const runner = createRunner(database, (job) => seen.push(job.state));
+    const jobId = uuidv7();
+    const now = Date.now();
+    database
+      .prepare(
+        `INSERT INTO jobs (id, kind, params_json, state, progress, error, created_at, updated_at)
+         VALUES (?, 'demo', '{}', 'failed', 0.3, 'boom', ?, ?)`,
+      )
+      .run(jobId, now, now);
+    runner.dismiss(jobId);
+    expect(seen).toEqual(["cancelled"]);
+    expect(runner.list().some((job) => job.id === jobId)).toBe(false);
+  });
 });

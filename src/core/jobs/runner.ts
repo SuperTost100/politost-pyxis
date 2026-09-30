@@ -301,9 +301,13 @@ export function createRunner(
     },
     dismiss(jobId) {
       if (active.has(jobId)) return;
-      db.prepare(
-        `DELETE FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled', 'succeeded')`,
-      ).run(jobId);
+      const view = viewOf(jobId);
+      const changed = db
+        .prepare(
+          `DELETE FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled', 'succeeded')`,
+        )
+        .run(jobId);
+      if (changed.changes > 0 && view) onUpdate({ ...view, state: "cancelled" });
     },
     list() {
       const rows = db

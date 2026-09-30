@@ -7,6 +7,7 @@ import {
   nativeTheme,
   protocol,
   safeStorage,
+  screen,
   session,
   shell,
   utilityProcess,
@@ -145,19 +146,39 @@ function broadcastAppearance(): void {
   }
 }
 
-function createWindow(): void {
+function savedWindowBounds(): {
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+} {
   const saved = readJson<{
     width?: number;
     height?: number;
     x?: number;
     y?: number;
   }>(userFile("window.json"));
+  const width = saved?.width ?? 1280;
+  const height = saved?.height ?? 832;
+  const x = saved?.x;
+  const y = saved?.y;
+  if (x == null || y == null) return { width, height };
+  const visible = screen.getAllDisplays().some((display) => {
+    const area = display.workArea;
+    const overlapW =
+      Math.min(x + width, area.x + area.width) - Math.max(x, area.x);
+    const overlapH =
+      Math.min(y + height, area.y + area.height) - Math.max(y, area.y);
+    return overlapW > 80 && overlapH > 80;
+  });
+  return visible ? { width, height, x, y } : { width, height };
+}
+
+function createWindow(): void {
+  const bounds = savedWindowBounds();
   const theme = resolvedTheme();
   mainWindow = new BrowserWindow({
-    width: saved?.width ?? 1280,
-    height: saved?.height ?? 832,
-    x: saved?.x,
-    y: saved?.y,
+    ...bounds,
     minWidth: 960,
     minHeight: 640,
     show: false,
