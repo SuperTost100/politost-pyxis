@@ -179,6 +179,8 @@ async function dispatch(
       return study?.remove(requests["study.remove"].input.parse(input));
     case "study.suspend":
       return study?.suspend(requests["study.suspend"].input.parse(input));
+    case "study.suspended":
+      return study?.suspended(requests["study.suspended"].input.parse(input)) ?? [];
     case "study.rate":
       return study?.rate(requests["study.rate"].input.parse(input));
     case "study.active":

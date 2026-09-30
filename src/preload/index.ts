@@ -40,6 +40,7 @@ const replayable = new Set([
   "plans.list",
   "subjects.list",
   "study.queue",
+  "study.suspended",
   "plans.usage",
   "plans.read",
   "plans.export",

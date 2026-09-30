@@ -23,20 +23,22 @@ export function seedCards(
   },
 ): string[] {
   const exists = db.prepare(
-    `SELECT id, passage_id, back FROM cards WHERE plan_id = ? AND topic_id = ? AND TRIM(front) = ? LIMIT 1`,
+    `SELECT id, passage_id, back FROM cards
+     WHERE plan_id = ? AND topic_id = ? AND (seed_key = ? OR (seed_key IS NULL AND TRIM(front) = ?))
+     LIMIT 1`,
   );
   const link = db.prepare(
     `UPDATE cards SET passage_id = ? WHERE id = ? AND passage_id IS NULL`,
   );
   const insert = db.prepare(
-    `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, passage_id, created_at)
-     VALUES (?, ?, ?, ?, ?, 'sources', ?, ?)`,
+    `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, passage_id, seed_key, created_at)
+     VALUES (?, ?, ?, ?, ?, 'sources', ?, ?, ?)`,
   );
   const ids: string[] = [];
   for (const pair of input.pairs) {
     const front = pair.front.trim();
     const back = pair.back.trim();
-    const prior = exists.get(input.planId, input.topicId, front) as
+    const prior = exists.get(input.planId, input.topicId, front, front) as
       | { id: string; passage_id: string | null; back: string }
       | undefined;
     if (prior) {
@@ -47,7 +49,7 @@ export function seedCards(
     }
     const now = Date.now();
     const id = uuidv7(now);
-    insert.run(id, input.planId, input.topicId, front, back, pair.passageId ?? null, now);
+    insert.run(id, input.planId, input.topicId, front, back, pair.passageId ?? null, front, now);
     ids.push(id);
   }
   return ids;
@@ -79,6 +81,7 @@ export function dueCards(
        FROM cards c
        WHERE c.plan_id = ?
          AND c.suspended = 0
+         AND c.removed = 0
          AND (? IS NULL OR c.topic_id = ?)
          AND COALESCE(
            CAST(json_extract(
@@ -162,7 +165,7 @@ export function queueCounts(
         (SELECT cr.state_json FROM card_reviews cr
          WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1) AS state_json
        FROM cards c
-       WHERE c.plan_id = ? AND c.topic_id = ? AND c.suspended = 0`,
+       WHERE c.plan_id = ? AND c.topic_id = ? AND c.suspended = 0 AND c.removed = 0`,
     )
     .all(planId, topicId) as Array<{ state_json: string | null }>;
   let fresh = 0;
@@ -204,8 +207,29 @@ export function saveCard(
 }
 
 export function deleteCard(db: Database.Database, cardId: string): void {
-  const result = db.prepare(`DELETE FROM cards WHERE id = ?`).run(cardId);
-  if (result.changes === 0) throw new Error("card-missing");
+  const row = db.prepare(`SELECT seed_key FROM cards WHERE id = ?`).get(cardId) as
+    | { seed_key: string | null }
+    | undefined;
+  if (!row) throw new Error("card-missing");
+  if (row.seed_key) {
+    db.prepare(`UPDATE cards SET removed = 1 WHERE id = ?`).run(cardId);
+    return;
+  }
+  db.prepare(`DELETE FROM cards WHERE id = ?`).run(cardId);
+}
+
+export function suspendedCards(
+  db: Database.Database,
+  planId: string,
+  topicId: string,
+): Array<{ id: string; front: string }> {
+  return db
+    .prepare(
+      `SELECT id, front FROM cards
+       WHERE plan_id = ? AND topic_id = ? AND suspended = 1 AND removed = 0
+       ORDER BY created_at`,
+    )
+    .all(planId, topicId) as Array<{ id: string; front: string }>;
 }
 
 export function setSuspended(db: Database.Database, cardId: string, suspended: boolean): void {

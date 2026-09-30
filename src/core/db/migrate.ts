@@ -25,6 +25,12 @@ ALTER TABLE plans ADD COLUMN style TEXT NOT NULL DEFAULT 'decide';`,
     version: 6,
     sql: `ALTER TABLE cards ADD COLUMN suspended INTEGER NOT NULL DEFAULT 0`,
   },
+  {
+    version: 7,
+    sql: `ALTER TABLE cards ADD COLUMN seed_key TEXT;
+ALTER TABLE cards ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;
+UPDATE cards SET seed_key = TRIM(front) WHERE seed_key IS NULL AND grounding = 'sources';`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

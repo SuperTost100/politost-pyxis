@@ -94,7 +94,8 @@
     "edit": "Edit",
     "delete": "Delete",
     "deleteConfirm": "Delete forever",
-    "suspend": "Suspend"
+    "suspend": "Suspend",
+    "resume": "Resume"
   },
   "map": {
     "title": "Map",

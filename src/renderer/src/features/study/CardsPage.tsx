@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
@@ -31,6 +31,11 @@ export function CardsPage() {
     enabled: Boolean(planId && topicId),
     queryFn: () => invoke("study.cards", { planId: planId ?? "", topicId: topicId ?? "" }),
   });
+  const parked = useQuery({
+    queryKey: ["card-suspended", planId, topicId],
+    enabled: Boolean(planId && topicId),
+    queryFn: () => invoke("study.suspended", { planId: planId ?? "", topicId: topicId ?? "" }),
+  });
   const queue = useQuery({
     queryKey: ["card-queue", planId, topicId],
     enabled: Boolean(planId && topicId),
@@ -45,12 +50,17 @@ export function CardsPage() {
     (item) => item.kind === "cards" && item.topicId === topicId && item.state === "current",
   );
   const card = cards.data?.[0];
+  useEffect(() => {
+    setArmedDelete(false);
+    setEditing(false);
+  }, [card?.id]);
   const counts = { again: 0, hard: 0, good: 0, easy: 0 };
   for (const rating of seen) counts[rating] += 1;
 
   function refresh() {
     void client.invalidateQueries({ queryKey: ["cards", planId, topicId] });
     void client.invalidateQueries({ queryKey: ["card-queue", planId, topicId] });
+    void client.invalidateQueries({ queryKey: ["card-suspended", planId, topicId] });
   }
 
   return (
@@ -115,6 +125,7 @@ export function CardsPage() {
                     refresh();
                   });
                 }}
+                disabled={!draftFront.trim() || !draftBack.trim()}
               >
                 {t("cards.save")}
               </Button>
@@ -205,6 +216,19 @@ export function CardsPage() {
           ) : null}
         </article>
       )}
+      {(parked.data ?? []).map((item) => (
+        <p key={item.id} className="small">
+          {item.front}{" "}
+          <Button
+            shape="round"
+            onClick={() => {
+              void invoke("study.suspend", { cardId: item.id, suspended: false }).then(() => refresh());
+            }}
+          >
+            {t("cards.resume")}
+          </Button>
+        </p>
+      ))}
       {seen.length > 0 && !card ? (
         <p className="body">
           {t("cards.summary", {
@@ -236,6 +260,7 @@ export function CardsPage() {
             refresh();
           });
         }}
+        disabled={!addingFront.trim() || !addingBack.trim()}
       >
         {t("cards.save")}
       </Button>

@@ -13,8 +13,9 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 4 | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`) |
 | 5 | `messages.reaction` (`up`, `down`, or empty) |
 | 6 | `cards.suspended` (`0` or `1`). A suspended card stays out of the due queue |
+| 7 | `cards.seed_key` and `cards.removed`. A removed generated card is not created again |
 
-Current version is 6. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Current version is 7. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table            | A row is                                                                 |
 | ---------------- | ------------------------------------------------------------------------ |

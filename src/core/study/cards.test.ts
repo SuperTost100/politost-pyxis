@@ -203,4 +203,22 @@ describe("cards", () => {
     deleteCard(db, freshId!);
     expect(queueCounts(db, planId, topicId).fresh).toBe(0);
   });
+
+  it("keeps a generated card gone after its front changes or it is deleted", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const pair = { front: "Forza", back: "F = ma" };
+    const [id] = seedCards(db, { planId, topicId, pairs: [pair] });
+    saveCard(db, { planId, topicId, cardId: id, front: "Forza netta", back: "F = ma" });
+    seedCards(db, { planId, topicId, pairs: [pair] });
+    const rows = db.prepare(`SELECT front, removed FROM cards WHERE plan_id = ?`).all(planId) as Array<{
+      front: string;
+      removed: number;
+    }>;
+    expect(rows).toEqual([{ front: "Forza netta", removed: 0 }]);
+    deleteCard(db, id!);
+    seedCards(db, { planId, topicId, pairs: [pair] });
+    expect(dueCards(db, planId, T0)).toHaveLength(0);
+    expect(queueCounts(db, planId, topicId)).toEqual({ fresh: 0, learning: 0, mastered: 0 });
+  });
 });

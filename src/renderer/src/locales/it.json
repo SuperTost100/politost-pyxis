@@ -94,7 +94,8 @@
     "edit": "Modifica",
     "delete": "Elimina",
     "deleteConfirm": "Elimina per sempre",
-    "suspend": "Sospendi"
+    "suspend": "Sospendi",
+    "resume": "Riprendi"
   },
   "map": {
     "title": "Mappa",

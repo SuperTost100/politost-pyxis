@@ -350,6 +350,10 @@ export const requests = {
     input: z.object({ cardId: z.string(), suspended: z.boolean() }),
     output: z.object({ ok: z.boolean() }),
   },
+  "study.suspended": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.array(z.object({ id: z.string(), front: z.string() })),
+  },
   "study.rate": {
     input: z.object({
       cardId: z.string(),
