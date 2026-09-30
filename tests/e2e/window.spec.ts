@@ -1,9 +1,27 @@
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { strToU8, zipSync } from "fflate";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const book = "/Users/tost1/Documents/Personal/Vibecode/PoliTost/books/ptt-fisica1.ptsb";
+function writeBook(dir: string): string {
+  const path = join(dir, "demo.ptsb");
+  writeFileSync(
+    path,
+    zipSync({
+      "smartbook.json": strToU8(
+        JSON.stringify({
+          id: "demo",
+          title: "Demo",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+      ),
+      "chapters/01.md": strToU8("## p1 | Energia\nIl vettore posizione descrive il punto.\n"),
+    }),
+  );
+  return path;
+}
 
 async function launchFresh(extra: Record<string, string> = {}): Promise<{
   app: ElectronApplication;
@@ -11,12 +29,19 @@ async function launchFresh(extra: Record<string, string> = {}): Promise<{
   userData: string;
 }> {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-e2e-"));
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env: { ...process.env, PYXIS_USER_DATA: userData, ...extra },
-  });
-  const page = await app.firstWindow();
-  return { app, page, userData };
+  let app: ElectronApplication | undefined;
+  try {
+    app = await electron.launch({
+      args: [join(process.cwd(), "out/main/index.js")],
+      env: { ...process.env, PYXIS_USER_DATA: userData, ...extra },
+    });
+    const page = await app.firstWindow();
+    return { app, page, userData };
+  } catch (error) {
+    await app?.close();
+    rmSync(userData, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 test("a fresh window opens on onboarding", async () => {
@@ -33,22 +58,28 @@ test("a fresh window opens on onboarding", async () => {
 });
 
 test("a smartbook becomes a plan without a model", async () => {
-  test.skip(!existsSync(book), "ptt-fisica1.ptsb is not on this machine");
-  const { app, page, userData } = await launchFresh({ PYXIS_E2E_FILE: book });
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-e2e-"));
+  const book = writeBook(userData);
+  let app: ElectronApplication | undefined;
   try {
+    app = await electron.launch({
+      args: [join(process.cwd(), "out/main/index.js")],
+      env: { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E_FILE: book },
+    });
+    const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await page.getByText("Fonti", { exact: true }).click();
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
-    await expect(page.getByRole("button", { name: "POLITO: Fisica 1" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Demo" })).toBeVisible();
     await page.getByText("Piani", { exact: true }).click();
     await page.getByRole("button", { name: "Nuovo piano" }).click();
     await page.locator("#plan-title").fill("Fisica");
-    await page.getByRole("button", { name: "POLITO: Fisica 1" }).click();
+    await page.getByRole("button", { name: "Demo" }).click();
     await page.getByRole("button", { name: "Crea il piano" }).click();
     await page.getByRole("button", { name: "Apri il piano" }).click();
     await expect(page.locator("h1", { hasText: "Fisica" })).toBeVisible();
   } finally {
-    await app.close();
+    await app?.close();
     rmSync(userData, { recursive: true, force: true });
   }
 });
