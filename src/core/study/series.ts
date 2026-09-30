@@ -27,6 +27,7 @@ function weekStart(at: number): number {
   const date = new Date(dayStart(at));
   const weekday = date.getDay();
   date.setDate(date.getDate() - ((weekday + 6) % 7));
+  date.setHours(0, 0, 0, 0);
   return date.getTime();
 }
 

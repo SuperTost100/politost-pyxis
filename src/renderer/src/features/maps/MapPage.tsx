@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "antd";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
@@ -12,6 +12,8 @@ export function MapPage() {
   const client = useQueryClient();
   const [label, setLabel] = useState("");
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
+  const keyPos = useRef(new Map<string, { x: number; y: number }>());
+  const keyChain = useRef(new Map<string, Promise<unknown>>());
   const map = useQuery({
     queryKey: ["map", planId, topicId],
     enabled: Boolean(planId && topicId),
@@ -124,15 +126,18 @@ export function MapPage() {
               const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
               if ((dx === 0 && dy === 0) || !planId || !topicId) return;
               event.preventDefault();
-              void invoke("maps.move", {
-                planId,
-                topicId,
-                nodeId: node.id,
-                x: node.x + dx,
-                y: node.y + dy,
-              }).then(refresh);
+              const current = keyPos.current.get(node.id) ?? { x: node.x, y: node.y };
+              const x = current.x + dx;
+              const y = current.y + dy;
+              keyPos.current.set(node.id, { x, y });
+              const prev = keyChain.current.get(node.id) ?? Promise.resolve();
+              const job = prev.catch(() => undefined).then(() =>
+                invoke("maps.move", { planId, topicId, nodeId: node.id, x, y }).then(refresh),
+              );
+              keyChain.current.set(node.id, job);
             }}
             onPointerDown={(event) => {
+              keyPos.current.delete(node.id);
               const svg = event.currentTarget.ownerSVGElement;
               const target = event.currentTarget;
               target.setPointerCapture(event.pointerId);

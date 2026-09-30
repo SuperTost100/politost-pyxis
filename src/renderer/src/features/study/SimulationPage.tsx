@@ -26,7 +26,8 @@ export function SimulationPage() {
         : invoke("study.simulationOpen", { planId: planId ?? "" }),
   });
   const run = open.data;
-  const shown = { ...(run && "picks" in run ? run.picks : {}), ...picks };
+  const saved = run && "picks" in run ? run.picks : {};
+  const shown = run?.submitted ? saved : { ...saved, ...picks };
   const minutes = run ? Math.ceil(run.leftMs / 60_000) : 30;
 
   return (

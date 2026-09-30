@@ -38,6 +38,12 @@ describe("study series", () => {
     expect(minutes.bars[13]?.seconds).toBe(90);
   });
 
+  it("keeps a Sunday study in its week when local midnight was skipped", () => {
+    const at = Date.parse("2026-09-06T04:30:00Z");
+    const grid = weeklyCounts([{ topicId: "a", at, score: 1, kind: "quiz" }], ["a"], at);
+    expect(grid.counts.a?.reduce((sum, count) => sum + count, 0)).toBe(1);
+  });
+
   it("opens a gap on two misses and closes it after two clean days", () => {
     const openedAt = Date.UTC(2026, 0, 1, 12);
     const miss = { topicId: "a", at: openedAt, score: 0, scores: [0, 0], kind: "quiz" as const };
