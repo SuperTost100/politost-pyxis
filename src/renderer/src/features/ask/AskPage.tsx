@@ -92,55 +92,63 @@ export function AskPage() {
     .filter((source) => picked.includes(source.id))
     .map((source) => source.title);
 
+  const historyList = (history.data ?? []).length > 0 ? (
+    <ul className="choice-list" aria-label={t("ask.history")}>
+      {(history.data ?? []).map((chat) => (
+        <li key={chat.id}>
+          <Button type="text" onClick={() => navigate(`/ask/${chat.id}`)}>
+            {chat.title?.trim() || t("ask.untitled")}
+          </Button>
+          <Input
+            aria-label={t("ask.rename")}
+            value={titleDraft[chat.id] ?? chat.title ?? ""}
+            onChange={(event) =>
+              setTitleDraft((current) => ({ ...current, [chat.id]: event.target.value }))
+            }
+            onBlur={() => {
+              const title = (titleDraft[chat.id] ?? chat.title ?? "").trim();
+              if (!title || title === chat.title) return;
+              void invoke("chats.rename", { chatId: chat.id, title }).then(() =>
+                client.invalidateQueries({ queryKey: ["chats"] }),
+              );
+            }}
+          />
+          <Button
+            type="text"
+            danger={confirmDelete === chat.id}
+            onClick={() => {
+              if (confirmDelete !== chat.id) {
+                setConfirmDelete(chat.id);
+                return;
+              }
+              void invoke("chats.delete", { chatId: chat.id }).then(() => {
+                setConfirmDelete(null);
+                void client.invalidateQueries({ queryKey: ["chats"] });
+                if (chat.id === chatId) navigate("/ask");
+              });
+            }}
+          >
+            {confirmDelete === chat.id ? t("ask.deleteConfirm") : t("ask.delete")}
+          </Button>
+        </li>
+      ))}
+    </ul>
+  ) : null;
+
   return (
     <div className="ask-home">
+      {chatId ? (
+        <Button type="text" onClick={() => navigate("/ask")}>
+          {t("ask.new")}
+        </Button>
+      ) : null}
+      {historyList}
       {messages.length === 0 ? (
         <div className="ask-greeting">
           <h1 className="display">{t("ask.greeting")}</h1>
           <p className="body">
             {picked.length === 0 ? t("ask.scopeEmpty") : t("ask.scopeReady")}
           </p>
-          {(history.data ?? []).length > 0 ? (
-            <ul className="choice-list" aria-label={t("ask.history")}>
-              {(history.data ?? []).map((chat) => (
-                <li key={chat.id}>
-                  <Button type="text" onClick={() => navigate(`/ask/${chat.id}`)}>
-                    {chat.title?.trim() || t("ask.untitled")}
-                  </Button>
-                  <Input
-                    aria-label={t("ask.rename")}
-                    value={titleDraft[chat.id] ?? chat.title ?? ""}
-                    onChange={(event) =>
-                      setTitleDraft((current) => ({ ...current, [chat.id]: event.target.value }))
-                    }
-                    onBlur={() => {
-                      const title = (titleDraft[chat.id] ?? chat.title ?? "").trim();
-                      if (!title || title === chat.title) return;
-                      void invoke("chats.rename", { chatId: chat.id, title }).then(() =>
-                        client.invalidateQueries({ queryKey: ["chats"] }),
-                      );
-                    }}
-                  />
-                  <Button
-                    type="text"
-                    danger={confirmDelete === chat.id}
-                    onClick={() => {
-                      if (confirmDelete !== chat.id) {
-                        setConfirmDelete(chat.id);
-                        return;
-                      }
-                      void invoke("chats.delete", { chatId: chat.id }).then(() => {
-                        setConfirmDelete(null);
-                        void client.invalidateQueries({ queryKey: ["chats"] });
-                      });
-                    }}
-                  >
-                    {confirmDelete === chat.id ? t("ask.deleteConfirm") : t("ask.delete")}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
         </div>
       ) : (
         <div className="reading-column">

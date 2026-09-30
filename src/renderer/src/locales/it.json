@@ -41,7 +41,8 @@
     "untitled": "Senza titolo",
     "rename": "Rinomina",
     "delete": "Elimina",
-    "deleteConfirm": "Elimina per sempre"
+    "deleteConfirm": "Elimina per sempre",
+    "new": "Nuova chat"
   },
   "exams": {
     "plans": "Piani",
