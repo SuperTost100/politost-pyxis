@@ -149,7 +149,7 @@ async function waitStudy(page: Page, name: string): Promise<void> {
   } else if (name === "simulation") {
     await page.getByRole("button", { name: /Inizia i 30 minuti|Start the 30 minutes/ }).waitFor();
   } else if (name === "map") {
-    await page.locator("svg").first().waitFor();
+    await page.locator("svg text").first().waitFor();
   }
 }
 
