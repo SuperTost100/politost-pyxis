@@ -58,7 +58,8 @@ if (!parent) {
       setScratch(join(data.workspacePath, "scratch"));
       bindEngines(db);
       bindSources(db, data.workspacePath);
-      bindChat(db);
+      // ponytail: unpackaged tests pass a recorded reply; a packaged app never reads it. Upgrade path is the engine fixture files in plan section 12.
+      bindChat(db, data.dev === true ? process.env["PYXIS_E2E_REPLY"] : undefined);
       bindProfile(db);
       bindPlans(db);
       bindMaps(db);

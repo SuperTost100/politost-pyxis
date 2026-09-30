@@ -74,6 +74,7 @@ test("a smartbook becomes a plan without a model", async () => {
         PYXIS_E2E_FILE: book,
         PYXIS_E2E_SAVE: backupZip,
         PYXIS_E2E_ZIP: backupZip,
+        PYXIS_E2E_REPLY: "Il vettore descrive il punto [P1].",
       },
     });
     const page = await app.firstWindow();
@@ -188,6 +189,13 @@ test("a smartbook becomes a plan without a model", async () => {
     ]);
     await page.getByText("Esami", { exact: true }).click();
     await expect(page.getByRole("button", { name: "Fisica" })).toBeVisible();
+    await page.getByText("Chiedi", { exact: true }).click();
+    await page.getByRole("button", { name: "Demo" }).click();
+    await page.getByRole("textbox", { name: "Messaggio" }).fill("Che cos'è il vettore?");
+    await page.getByRole("button", { name: "Invia" }).click();
+    await expect(page.getByText("Il vettore descrive il punto")).toBeVisible();
+    await page.getByRole("button", { name: "1. Moti" }).click();
+    await expect(page.getByText("Il vettore posizione descrive il punto.")).toBeVisible();
   } finally {
     await app?.close();
     rmSync(userData, { recursive: true, force: true });

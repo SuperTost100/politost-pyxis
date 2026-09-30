@@ -261,8 +261,11 @@ export function bindProfile(db: Parameters<typeof profileHandlers>[0]): void {
   profile = profileHandlers(db);
 }
 
-export function bindChat(db: Parameters<typeof chatHandlers>[0]): void {
-  chats = chatHandlers(db);
+export function bindChat(
+  db: Parameters<typeof chatHandlers>[0],
+  fixtureReply?: string,
+): void {
+  chats = chatHandlers(db, fixtureReply);
 }
 
 export function bindSources(
