@@ -124,9 +124,28 @@ async function shootStudy(page: Page): Promise<void> {
       await setTheme(page, theme);
       for (const [name, hash] of studyRoutes) {
         await openRoute(page, hash);
+        await waitStudy(page, name);
         await page.screenshot({ path: join(shots, `${name}-${locale}-${theme}-1280.png`) });
       }
     }
+  }
+}
+
+async function waitStudy(page: Page, name: string): Promise<void> {
+  if (name === "plan") {
+    await page.getByRole("heading", { name: /Progressi|Progress/ }).waitFor();
+  } else if (name === "lesson") {
+    await page.getByText("vettore posizione").waitFor();
+  } else if (name === "practice") {
+    await page.getByText("Quanto vale il lavoro?").waitFor();
+  } else if (name === "quiz") {
+    await page.getByRole("button", { name: /^(Inizia|Start)$/ }).waitFor();
+  } else if (name === "cards") {
+    await page.getByRole("button", { name: /^(Gira|Flip)$/ }).waitFor();
+  } else if (name === "simulation") {
+    await page.getByRole("button", { name: /Inizia i 30 minuti|Start the 30 minutes/ }).waitFor();
+  } else if (name === "map") {
+    await page.locator("svg").first().waitFor();
   }
 }
 
