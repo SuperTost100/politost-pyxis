@@ -1,0 +1,10 @@
+node_modules
+out
+dist
+.shots
+.reviews
+*.log
+.DS_Store
+coverage
+playwright-report
+test-results

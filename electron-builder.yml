@@ -1,0 +1,36 @@
+appId: com.politost.pyxis
+productName: PoliTost Pyxis
+copyright: Copyright © 2026 PoliTost
+directories:
+  output: dist
+  buildResources: build
+afterPack: build/after-pack.cjs
+files:
+  - out/**/*
+  - package.json
+asar: true
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+  - "**/node_modules/sqlite-vec/**"
+  - "**/node_modules/onnxruntime-node/**"
+mac:
+  # Signed in build/after-pack.cjs. electron-builder's own codesign rejects
+  # Finder metadata that macOS 27 leaves on the unpacked app.
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  category: public.app-category.education
+  icon: build/icon.png
+  target:
+    - dmg
+    - zip
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Education

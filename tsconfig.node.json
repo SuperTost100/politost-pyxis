@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "moduleResolution": "bundler"
+  },
+  "include": [
+    "src/main",
+    "src/preload",
+    "src/core",
+    "src/shared",
+    "src/renderer/src/**/*.test.ts",
+    "scripts",
+    "electron.vite.config.ts",
+    "vitest.config.ts"
+  ]
+}

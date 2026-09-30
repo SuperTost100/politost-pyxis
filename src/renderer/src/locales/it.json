@@ -1,0 +1,50 @@
+{
+  "doors": {
+    "ask": "Chiedi",
+    "exams": "Esami"
+  },
+  "nav": {
+    "settings": "Impostazioni",
+    "close": "Chiudi",
+    "back": "Indietro"
+  },
+  "ask": {
+    "greeting": "Ciao",
+    "scopeEmpty": "Nessuna fonte selezionata: rispondo con le mie conoscenze",
+    "placeholder": "Scrivi una domanda"
+  },
+  "exams": {
+    "plans": "Piani",
+    "sources": "Fonti",
+    "emptyTitle": "Nessun piano ancora",
+    "emptyBody": "Un piano parte dal materiale del corso e da una data d'esame.",
+    "newPlan": "Nuovo piano",
+    "openShared": "Apri un piano condiviso",
+    "sourcesEmptyTitle": "Nessuna fonte ancora",
+    "sourcesEmptyBody": "PDF, appunti e smartbook restano qui. Poi li colleghi a un piano.",
+    "addSources": "Aggiungi fonti"
+  },
+  "wizard": {
+    "title": "Nuovo piano",
+    "body": "Materia, data dell'esame e materiale."
+  },
+  "shared": {
+    "title": "Apri un piano condiviso",
+    "body": "Puoi aprire un file .pyxis o incollare un link."
+  },
+  "settings": {
+    "title": "Impostazioni",
+    "appearance": "Aspetto",
+    "language": "Lingua",
+    "system": "Sistema",
+    "dark": "Scuro",
+    "light": "Chiaro",
+    "italian": "Italiano",
+    "english": "English",
+    "themeHint": "Finché non scegli, Pyxis segue il tema del sistema."
+  },
+  "tools": {
+    "whiteboardTitle": "Lavagna",
+    "whiteboardBody": "La lavagna si apre a tutto schermo. I tratti restano su questo computer."
+  }
+}

@@ -1,0 +1,192 @@
+/* PoliTost Pyxis tokens — generated from tokens.json. Set <html data-theme="dark|light">. */
+@font-face {
+  font-family: "Figtree";
+  src: url("../fonts/Figtree-Variable.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Figtree";
+  src: url("../fonts/Figtree-Variable-Italic.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+:root,
+[data-theme="dark"] {
+  --bg: #0d1015;
+  --surface: #151920;
+  --surface-raised: #1c212a;
+  --surface-overlay: #232935;
+  --border: #262c37;
+  --border-control: #6b7385;
+  --ink: #eceef3;
+  --ink-muted: #a4abb8;
+  --ink-subtle: #8a91a0;
+  --on-ink: #0d1015;
+  --primary: #3262db;
+  --primary-hover: #3a6ae4;
+  --primary-active: #2854c4;
+  --on-primary: #ffffff;
+  --primary-text: #7ea2ff;
+  --primary-soft: #1b2744;
+  --star: #f4b942;
+  --star-text: #f4b942;
+  --on-star: #1a1206;
+  --star-soft: #2d2412;
+  --mastery: #4fd1a1;
+  --mastery-text: #4fd1a1;
+  --mastery-soft: #12291f;
+  --danger: #f26d6d;
+  --danger-soft: #2e1618;
+  --focus-ring: #f4b942;
+  --scrim: rgba(5, 7, 10, 0.72);
+  --warning: var(--star-text);
+  --info: var(--primary-text);
+  --shadow-overlay: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --shadow-card: none;
+  --glow-star: 0 0 0 1px #f4b942, 0 0 24px rgba(244, 185, 66, 0.35);
+}
+[data-theme="light"] {
+  --bg: #f6f5f1;
+  --surface: #ffffff;
+  --surface-raised: #efede7;
+  --surface-overlay: #ffffff;
+  --border: #e4e2db;
+  --border-control: #7e8492;
+  --ink: #15181e;
+  --ink-muted: #50576a;
+  --ink-subtle: #5f6675;
+  --on-ink: #ffffff;
+  --primary: #3262db;
+  --primary-hover: #2a56c8;
+  --primary-active: #2249b0;
+  --on-primary: #ffffff;
+  --primary-text: #2451c7;
+  --primary-soft: #e5ecfc;
+  --star: #b7790c;
+  --star-text: #8a5a00;
+  --on-star: #1a1206;
+  --star-soft: #fbf0d6;
+  --mastery: #1a9165;
+  --mastery-text: #0f7a55;
+  --mastery-soft: #dcf3e9;
+  --danger: #c0343c;
+  --danger-soft: #fbe3e3;
+  --focus-ring: #2451c7;
+  --scrim: rgba(21, 24, 30, 0.4);
+  --warning: var(--star-text);
+  --info: var(--primary-text);
+  --shadow-overlay: 0 12px 32px rgba(21, 24, 30, 0.14);
+  --shadow-card: 0 1px 2px rgba(21, 24, 30, 0.06);
+  --glow-star: 0 0 0 1px #b7790c, 0 0 18px rgba(183, 121, 12, 0.25);
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+  --control-sm: 32px;
+  --control-md: 40px;
+  --control-lg: 48px;
+  --path-node: 80px;
+  --content-width: 768px;
+  --font-sans: Figtree, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.stat {
+  font-family: var(--font-sans);
+  font-size: 56px;
+  line-height: 56px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.display {
+  font-family: var(--font-sans);
+  font-size: 40px;
+  line-height: 44px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.title-1 {
+  font-family: var(--font-sans);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.title-2 {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 600;
+}
+.title-3 {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.reading {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 28px;
+  font-weight: 400;
+}
+.body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 400;
+}
+.body-strong {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+}
+.small {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+}
+.label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}
+.code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+}

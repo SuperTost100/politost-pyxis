@@ -1,0 +1,50 @@
+{
+  "doors": {
+    "ask": "Ask",
+    "exams": "Exams"
+  },
+  "nav": {
+    "settings": "Settings",
+    "close": "Close",
+    "back": "Back"
+  },
+  "ask": {
+    "greeting": "Hello",
+    "scopeEmpty": "No source selected. I answer from general knowledge",
+    "placeholder": "Write a question"
+  },
+  "exams": {
+    "plans": "Plans",
+    "sources": "Sources",
+    "emptyTitle": "No plans yet",
+    "emptyBody": "A plan starts from course material and an exam date.",
+    "newPlan": "New plan",
+    "openShared": "Open a shared plan",
+    "sourcesEmptyTitle": "No sources yet",
+    "sourcesEmptyBody": "PDFs, notes and smartbooks stay here. You attach them to a plan.",
+    "addSources": "Add sources"
+  },
+  "wizard": {
+    "title": "New plan",
+    "body": "Subject, exam date and material."
+  },
+  "shared": {
+    "title": "Open a shared plan",
+    "body": "You can open a .pyxis file or paste a link."
+  },
+  "settings": {
+    "title": "Settings",
+    "appearance": "Appearance",
+    "language": "Language",
+    "system": "System",
+    "dark": "Dark",
+    "light": "Light",
+    "italian": "Italiano",
+    "english": "English",
+    "themeHint": "Until you choose, Pyxis follows the system theme."
+  },
+  "tools": {
+    "whiteboardTitle": "Whiteboard",
+    "whiteboardBody": "The whiteboard fills the window. Strokes stay on this computer."
+  }
+}
