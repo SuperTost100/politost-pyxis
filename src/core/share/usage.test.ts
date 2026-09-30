@@ -1,11 +1,11 @@
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { putBlob } from "../blobs";
 import { openDatabase } from "../db/connection";
 import { planDiskUsage } from "./usage";
-import { wipeWorkspace } from "./wipe";
+import { recoverInterruptedWipe, wipeWorkspace } from "./wipe";
 
 describe("plan disk usage", () => {
   it("counts each source file on the plans that use it", () => {
@@ -37,5 +37,16 @@ describe("plan disk usage", () => {
     expect(existsSync(join(dir, "pyxis.db"))).toBe(false);
     expect(existsSync(join(dir, "blobs"))).toBe(true);
     expect(() => wipeWorkspace("/")).toThrow(/workspace-path/);
+  });
+
+  it("restores a wipe that stopped before the files were removed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-hold-"));
+    const holding = join(dir, ".wipe");
+    mkdirSync(holding);
+    writeFileSync(join(holding, "INCOMPLETE"), "1");
+    writeFileSync(join(holding, "pyxis.db"), "kept");
+    recoverInterruptedWipe(dir);
+    expect(readFileSync(join(dir, "pyxis.db"), "utf8")).toBe("kept");
+    expect(existsSync(holding)).toBe(false);
   });
 });

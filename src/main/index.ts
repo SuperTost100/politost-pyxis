@@ -17,7 +17,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
-import { wipeWorkspace } from "../core/share/wipe";
+import { recoverInterruptedWipe, wipeWorkspace } from "../core/share/wipe";
 import { ensureWorkspace, ensureWorkspaceDirs } from "./workspace";
 import {
   mainChannels,
@@ -586,6 +586,11 @@ function registerProtocols(): void {
 app.whenReady().then(() => {
   mkdirSync(app.getPath("userData"), { recursive: true });
   workspacePath = ensureWorkspace();
+  try {
+    recoverInterruptedWipe(workspacePath);
+  } catch (err) {
+    console.error("pyxis: an unfinished wipe could not be cleared", err instanceof Error ? err.message : "unknown");
+  }
   applyAppearance(readAppearanceSource());
   installCsp();
   installNavigationGuards();
