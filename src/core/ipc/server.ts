@@ -6,6 +6,7 @@ import {
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
+import { profileHandlers } from "../profile/handlers";
 import { sourceHandlers } from "../sources/handlers";
 import type { ProviderId } from "../engine/funnel";
 import { jobHandlers } from "../jobs/handlers";
@@ -24,6 +25,7 @@ let handlers: HandlerMap | null = null;
 let engines: ReturnType<typeof engineHandlers> | null = null;
 let sources: ReturnType<typeof sourceHandlers> | null = null;
 let chats: ReturnType<typeof chatHandlers> | null = null;
+let profile: ReturnType<typeof profileHandlers> | null = null;
 let port: CorePort | null = null;
 const inflight = new Map<string, AbortController>();
 
@@ -137,6 +139,11 @@ async function dispatch(
         code: parsed.code,
       });
     }
+    case "profile.get":
+      requests["profile.get"].input.parse(input);
+      return profile?.get() ?? null;
+    case "profile.save":
+      return profile?.save(requests["profile.save"].input.parse(input));
     case "chats.list":
       requests["chats.list"].input.parse(input);
       return chats?.list();
@@ -171,6 +178,10 @@ export function bindRunner(runner: Runner, dev: boolean): void {
 
 export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
   engines = engineHandlers(db, (event) => broadcast("engine.login", event));
+}
+
+export function bindProfile(db: Parameters<typeof profileHandlers>[0]): void {
+  profile = profileHandlers(db);
 }
 
 export function bindChat(db: Parameters<typeof chatHandlers>[0]): void {

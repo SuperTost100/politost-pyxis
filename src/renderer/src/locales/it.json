@@ -8,6 +8,27 @@
     "close": "Chiudi",
     "back": "Indietro"
   },
+  "onboarding": {
+    "title": "Iniziamo",
+    "body": "Nome, scuola e corso restano su questo computer. Poi scegli un motore.",
+    "name": "Nome",
+    "level": "Livello",
+    "school": "Scuola",
+    "course": "Corso",
+    "continue": "Continua",
+    "skip": "Salta",
+    "done": "Vai agli esami",
+    "contentLanguage": "Italian",
+    "levels": {
+      "primary": "Primaria",
+      "lower-secondary": "Media",
+      "upper-secondary": "Superiore",
+      "technical": "Tecnico",
+      "vocational": "Professionale",
+      "university": "Università",
+      "other": "Altro"
+    }
+  },
   "ask": {
     "greeting": "Ciao",
     "scopeEmpty": "Nessuna fonte selezionata: rispondo con le mie conoscenze",
@@ -54,7 +75,14 @@
     "light": "Chiaro",
     "italian": "Italiano",
     "english": "English",
-    "themeHint": "Finché non scegli, Pyxis segue il tema del sistema."
+    "themeHint": "Finché non scegli, Pyxis segue il tema del sistema.",
+    "reading": "Lettura",
+    "dyslexia": "Spaziatura per la dislessia",
+    "text": {
+      "sm": "Testo piccolo",
+      "md": "Testo normale",
+      "lg": "Testo grande"
+    }
   },
   "jobs": {
     "label": "{{count}} lavori in corso",

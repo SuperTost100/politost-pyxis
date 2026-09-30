@@ -9,6 +9,22 @@ html[data-theme="light"] {
   color-scheme: light;
 }
 
+html[data-text="sm"] {
+  --text-scale: 0.94;
+}
+
+html[data-text="lg"] {
+  --text-scale: 1.12;
+}
+
+html[data-dyslexia="on"] .px-msg-text,
+html[data-dyslexia="on"] .px-markdown,
+html[data-dyslexia="on"] .passage {
+  letter-spacing: 0.05em;
+  word-spacing: 0.16em;
+  line-height: 1.8;
+}
+
 html,
 body,
 #root {
@@ -18,6 +34,7 @@ body,
 
 body {
   font-family: var(--font-sans);
+  font-size: calc(16px * var(--text-scale));
   background: var(--bg);
   color: var(--ink);
 }

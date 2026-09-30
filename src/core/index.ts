@@ -6,6 +6,7 @@ import {
   bindEngines,
   bindRunner,
   bindChat,
+  bindProfile,
   bindSources,
   broadcast,
 } from "./ipc/server";
@@ -54,6 +55,7 @@ if (!parent) {
       bindEngines(db);
       bindSources(db, data.workspacePath);
       bindChat(db);
+      bindProfile(db);
       const runner = createRunner(db, (job) => broadcast("job.updated", job));
       runner.register("demo", demoJob);
       bindRunner(runner, data.dev === true);

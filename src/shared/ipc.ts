@@ -171,6 +171,67 @@ export const requests = {
     input: z.object({ provider: z.string(), code: z.string() }),
     output: z.object({}),
   },
+  "profile.get": {
+    input: z.object({}),
+    output: z
+      .object({
+        displayName: z.string(),
+        educationLevel: z.enum([
+          "primary",
+          "lower-secondary",
+          "upper-secondary",
+          "technical",
+          "vocational",
+          "university",
+          "other",
+        ]),
+        school: z.string(),
+        course: z.string(),
+        tutorMode: z.enum(["solver", "socratic"]),
+        contentLanguage: z.string(),
+        interests: z.array(z.string()),
+        interestsOn: z.boolean(),
+        dyslexia: z.boolean(),
+        textSize: z.enum(["sm", "md", "lg"]),
+      })
+      .nullable(),
+  },
+  "profile.save": {
+    input: z.object({
+      displayName: z.string().optional(),
+      educationLevel: z
+        .enum([
+          "primary",
+          "lower-secondary",
+          "upper-secondary",
+          "technical",
+          "vocational",
+          "university",
+          "other",
+        ])
+        .optional(),
+      school: z.string().optional(),
+      course: z.string().optional(),
+      tutorMode: z.enum(["solver", "socratic"]).optional(),
+      contentLanguage: z.string().optional(),
+      interests: z.array(z.string()).optional(),
+      interestsOn: z.boolean().optional(),
+      dyslexia: z.boolean().optional(),
+      textSize: z.enum(["sm", "md", "lg"]).optional(),
+    }),
+    output: z.object({
+      displayName: z.string(),
+      educationLevel: z.string(),
+      school: z.string(),
+      course: z.string(),
+      tutorMode: z.enum(["solver", "socratic"]),
+      contentLanguage: z.string(),
+      interests: z.array(z.string()),
+      interestsOn: z.boolean(),
+      dyslexia: z.boolean(),
+      textSize: z.enum(["sm", "md", "lg"]),
+    }),
+  },
   "sources.list": {
     input: z.object({}),
     output: z.array(

@@ -1,4 +1,5 @@
 import { createHashRouter, Navigate } from "react-router";
+import { OnboardingPage } from "../features/onboarding/OnboardingPage";
 import { AskPage } from "../features/ask/AskPage";
 import { ExamsHome } from "../features/home/HomePages";
 import {
@@ -16,6 +17,7 @@ export const router = createHashRouter([
     element: <Shell />,
     children: [
       { index: true, element: <Navigate to="/exams" replace /> },
+      { path: "onboarding", element: <OnboardingPage /> },
       { path: "ask", element: <AskPage /> },
       { path: "ask/:chatId", element: <AskPage /> },
       { path: "exams", element: <ExamsHome /> },

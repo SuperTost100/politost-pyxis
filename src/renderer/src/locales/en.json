@@ -8,6 +8,27 @@
     "close": "Close",
     "back": "Back"
   },
+  "onboarding": {
+    "title": "Let's start",
+    "body": "Name, school and course stay on this computer. Then pick an engine.",
+    "name": "Name",
+    "level": "Level",
+    "school": "School",
+    "course": "Course",
+    "continue": "Continue",
+    "skip": "Skip",
+    "done": "Go to exams",
+    "contentLanguage": "English",
+    "levels": {
+      "primary": "Primary",
+      "lower-secondary": "Lower secondary",
+      "upper-secondary": "Upper secondary",
+      "technical": "Technical",
+      "vocational": "Vocational",
+      "university": "University",
+      "other": "Other"
+    }
+  },
   "ask": {
     "greeting": "Hello",
     "scopeEmpty": "No source selected. I answer from general knowledge",
@@ -54,7 +75,14 @@
     "light": "Light",
     "italian": "Italiano",
     "english": "English",
-    "themeHint": "Until you choose, Pyxis follows the system theme."
+    "themeHint": "Until you choose, Pyxis follows the system theme.",
+    "reading": "Reading",
+    "dyslexia": "Dyslexia spacing",
+    "text": {
+      "sm": "Small text",
+      "md": "Normal text",
+      "lg": "Large text"
+    }
   },
   "jobs": {
     "label": "{{count}} jobs running",

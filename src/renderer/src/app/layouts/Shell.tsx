@@ -1,6 +1,7 @@
 import { Button, Segmented } from "antd";
 import { PageContainer, ProLayout } from "@ant-design/pro-components";
 import { GraduationCap, MessageCircle, Settings } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router";
@@ -8,6 +9,7 @@ import logoDark from "../../design-system/logo/pyxis-lockup-dark.svg";
 import logoLight from "../../design-system/logo/pyxis-lockup-light.svg";
 import { pyxisProLayoutToken } from "../../design-system/theme/pyxis-theme";
 import { JobsButton } from "../../features/jobs/JobsButton";
+import { invoke } from "../../lib/ipc";
 import { useAppState } from "../app-state";
 
 type Door = "ask" | "exams";
@@ -43,6 +45,22 @@ export function Shell() {
     sessionStorage.getItem(DOOR_KEY) === "ask" ? "ask" : "exams",
   );
   const activeDoor = doorForPath(location.pathname, storedDoor);
+  const profile = useQuery({
+    queryKey: ["profile"],
+    queryFn: () => invoke("profile.get", {}),
+  });
+
+  useEffect(() => {
+    const reading = profile.data;
+    document.documentElement.dataset.dyslexia = reading?.dyslexia ? "on" : "off";
+    document.documentElement.dataset.text = reading?.textSize ?? "md";
+  }, [profile.data]);
+
+  useEffect(() => {
+    if (!profile.isSuccess || profile.data) return;
+    if (location.pathname.startsWith("/onboarding")) return;
+    navigate("/onboarding");
+  }, [profile.isSuccess, profile.data, location.pathname, navigate]);
 
   useEffect(() => {
     const door = doorForPath(location.pathname, storedDoor);
