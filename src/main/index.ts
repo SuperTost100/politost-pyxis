@@ -139,6 +139,20 @@ let mainWindow: BrowserWindow | null = null;
 let coreChild: UtilityProcess | null = null;
 let holdCore = false;
 let workspaceBusy = false;
+let archiveSettled = Promise.resolve();
+let releaseArchive = () => {};
+
+function occupyWorkspace(): () => void {
+  if (workspaceBusy) throw new Error("workspace-busy");
+  workspaceBusy = true;
+  archiveSettled = new Promise((resolve) => {
+    releaseArchive = resolve;
+  });
+  return () => {
+    workspaceBusy = false;
+    releaseArchive();
+  };
+}
 let quitting = false;
 let workspacePath = "";
 
@@ -404,8 +418,7 @@ function registerIpc(): void {
     },
   );
   ipcMain.handle(mainChannels.workspaceBackup, async () => {
-    if (workspaceBusy) throw new Error("workspace-busy");
-    workspaceBusy = true;
+    const release = occupyWorkspace();
     try {
       const result = mainWindow
         ? await dialog.showSaveDialog(mainWindow, {
@@ -425,12 +438,11 @@ function registerIpc(): void {
         resumeCore();
       }
     } finally {
-      workspaceBusy = false;
+      release();
     }
   });
   ipcMain.handle(mainChannels.workspaceRestore, async () => {
-    if (workspaceBusy) throw new Error("workspace-busy");
-    workspaceBusy = true;
+    const release = occupyWorkspace();
     try {
       const result = mainWindow
         ? await dialog.showOpenDialog(mainWindow, {
@@ -455,7 +467,7 @@ function registerIpc(): void {
         if (restored) mainWindow?.webContents.reload();
       }
     } finally {
-      workspaceBusy = false;
+      release();
     }
   });
 }
@@ -484,7 +496,17 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("before-quit", () => {
+let quitAfterArchive = false;
+
+app.on("before-quit", (event) => {
+  if (workspaceBusy) {
+    event.preventDefault();
+    if (!quitAfterArchive) {
+      quitAfterArchive = true;
+      void archiveSettled.then(() => app.quit());
+    }
+    return;
+  }
   quitting = true;
   coreChild?.postMessage({ type: "shutdown" });
 });
