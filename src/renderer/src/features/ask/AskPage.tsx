@@ -106,8 +106,15 @@ export function AskPage() {
                 key={row.id}
                 engine={row.modelId ?? undefined}
                 general={row.grounding === "general"}
+                text={row.body}
+                reaction={row.reaction}
                 suggestions={row.id === lastTutor?.id ? row.followups : undefined}
                 onSuggest={(text) => send(text)}
+                onReact={(reaction) => {
+                  void invoke("chats.rate", { messageId: row.id, reaction }).then(() =>
+                    client.invalidateQueries({ queryKey: ["chat", chatId] }),
+                  );
+                }}
               >
                 <MarkdownView
                   citationResolver={(index) =>

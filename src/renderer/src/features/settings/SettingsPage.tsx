@@ -169,6 +169,9 @@ export function SettingsPage() {
           onClick={() => setLanguage("en")}
         />
       </div>
+      <div className="label section-label">{t("settings.about")}</div>
+      <p className="small section-hint">{t("settings.aboutBody")}</p>
+      <p className="small section-hint">{t("settings.notices")}</p>
     </div>
   );
 }

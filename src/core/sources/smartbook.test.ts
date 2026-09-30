@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { importSmartbook, passagesAround, searchPassages } from "./smartbook";
+import { importSmartbook, passagesAround, searchPassages, smartbookMeta } from "./smartbook";
 import { uuidv7 } from "../../shared/ids";
 
 const book = "/Users/tost1/Documents/Personal/Vibecode/PoliTost/books/ptt-fisica1.ptsb";
@@ -88,6 +88,45 @@ describe("importSmartbook", () => {
         }),
       ),
     ).toThrow(/chapter-missing/);
+  });
+
+  it("shows authors and version, and warns on an unknown spec", () => {
+    const db = openDatabase(":memory:");
+    const known = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Demo",
+          authors: ["Ada"],
+          version: "0.3",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nTesto.\n",
+      }),
+    );
+    expect(smartbookMeta(db, known.sourceId)).toMatchObject({
+      title: "Demo",
+      authors: ["Ada"],
+      version: "0.3",
+      specVersion: null,
+      knownSpec: true,
+    });
+    const unknown = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "next",
+          title: "Dopo",
+          specVersion: "9",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nTesto.\n",
+      }),
+    );
+    expect(smartbookMeta(db, unknown.sourceId)?.knownSpec).toBe(false);
   });
 
   it("reads the owner's Fisica 1 book when it is on disk", () => {

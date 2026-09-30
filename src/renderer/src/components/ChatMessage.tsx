@@ -13,6 +13,9 @@ export function ChatMessage({
   suggestions,
   onSuggest,
   general,
+  text,
+  reaction,
+  onReact,
 }: {
   role?: "user" | "tutor";
   children: ReactNode;
@@ -20,6 +23,9 @@ export function ChatMessage({
   suggestions?: string[];
   onSuggest?: (text: string) => void;
   general?: boolean;
+  text?: string;
+  reaction?: "up" | "down" | null;
+  onReact?: (reaction: "up" | "down") => void;
 }) {
   const { t } = useTranslation();
   if (role === "user") {
@@ -42,9 +48,31 @@ export function ChatMessage({
         ) : null}
         <div className="px-msg-text">{children}</div>
         <div className="px-msg-foot">
-          <IconButton icon="copy" label={t("components.chat.copy")} variant="ghost" size="sm" />
-          <IconButton icon="thumbs-up" label={t("components.chat.helpful")} variant="ghost" size="sm" />
-          <IconButton icon="thumbs-down" label={t("components.chat.notHelpful")} variant="ghost" size="sm" />
+          <IconButton
+            icon="copy"
+            label={t("components.chat.copy")}
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (text) void navigator.clipboard.writeText(text);
+            }}
+          />
+          <IconButton
+            icon="thumbs-up"
+            label={t("components.chat.helpful")}
+            variant="ghost"
+            size="sm"
+            pressed={reaction === "up"}
+            onClick={() => onReact?.("up")}
+          />
+          <IconButton
+            icon="thumbs-down"
+            label={t("components.chat.notHelpful")}
+            variant="ghost"
+            size="sm"
+            pressed={reaction === "down"}
+            onClick={() => onReact?.("down")}
+          />
           <IconButton icon="refresh-cw" label={t("components.chat.regenerate")} variant="ghost" size="sm" />
           {engine ? <span className="px-msg-engine">{engine}</span> : null}
         </div>

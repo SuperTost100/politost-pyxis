@@ -29,6 +29,11 @@ export function LibraryPanel() {
   const [searchPicked, setSearchPicked] = useState(false);
   const [preferOpened, setPreferOpened] = useState(Boolean(params.get("passage")));
 
+  const meta = useQuery({
+    queryKey: ["source-meta", sourceId],
+    enabled: sourceId != null,
+    queryFn: () => invoke("sources.meta", { sourceId: sourceId ?? "" }),
+  });
   const chapters = useQuery({
     queryKey: ["source-chapters", sourceId],
     enabled: sourceId != null,
@@ -200,6 +205,21 @@ export function LibraryPanel() {
             </li>
           ))}
         </ul>
+      ) : null}
+      {meta.data &&
+      (meta.data.authors.length > 0 || meta.data.version || meta.data.specVersion) ? (
+        <p className="small section-hint">
+          {[
+            meta.data.authors.join(", "),
+            meta.data.version ? t("sources.version", { version: meta.data.version }) : "",
+            meta.data.specVersion ? t("sources.spec", { spec: meta.data.specVersion }) : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      ) : null}
+      {meta.data && !meta.data.knownSpec ? (
+        <Notice tone="warning">{t("sources.specUnknown")}</Notice>
       ) : null}
       <ul className="choice-list">
         {sources.map((source) => (

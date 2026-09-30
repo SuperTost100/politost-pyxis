@@ -218,6 +218,8 @@ async function dispatch(
       return chats?.list();
     case "chats.read":
       return chats?.read(requests["chats.read"].input.parse(input));
+    case "chats.rate":
+      return chats?.rate(requests["chats.rate"].input.parse(input));
     case "chats.ask":
       return chats?.ask({
         ...requests["chats.ask"].input.parse(input),
@@ -232,6 +234,8 @@ async function dispatch(
       return sources?.search(requests["sources.search"].input.parse(input));
     case "sources.chapters":
       return sources?.chapters(requests["sources.chapters"].input.parse(input));
+    case "sources.meta":
+      return sources?.meta(requests["sources.meta"].input.parse(input));
     case "sources.ocr":
       return sources?.ocr(requests["sources.ocr"].input.parse(input));
     case "sources.passage":

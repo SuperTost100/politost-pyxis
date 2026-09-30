@@ -581,6 +581,25 @@ export const requests = {
     input: z.object({ sourceId: z.string() }),
     output: z.array(z.object({ number: z.number(), title: z.string() })),
   },
+  "sources.meta": {
+    input: z.object({ sourceId: z.string() }),
+    output: z
+      .object({
+        title: z.string(),
+        authors: z.array(z.string()),
+        version: z.string().nullable(),
+        specVersion: z.string().nullable(),
+        knownSpec: z.boolean(),
+      })
+      .nullable(),
+  },
+  "chats.rate": {
+    input: z.object({
+      messageId: z.string(),
+      reaction: z.enum(["up", "down"]),
+    }),
+    output: z.object({ reaction: z.enum(["up", "down"]).nullable() }),
+  },
   "chats.list": {
     input: z.object({}),
     output: z.array(
@@ -603,6 +622,7 @@ export const requests = {
         modelId: z.string().nullable(),
         grounding: z.enum(["sources", "general"]).nullable(),
         followups: z.array(z.string()),
+        reaction: z.enum(["up", "down"]).nullable(),
         citations: z.array(
           z.object({
             label: z.string(),

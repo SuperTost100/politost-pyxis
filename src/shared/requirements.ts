@@ -1,6 +1,7 @@
 /** IDs whose behavior exists in this repo. The comment is the file that implements it. */
 export const implemented = [
   "ASK-02", // src/core/chat/turn.ts
+  "ASK-06", // src/renderer/src/components/ChatMessage.tsx
   "ENG-01", // src/core/engine/handlers.ts
   "ENG-02", // src/main/index.ts
   "ENG-03", // src/core/engine/handlers.ts
@@ -61,12 +62,14 @@ export const implemented = [
   "SB-03", // src/core/study/exercises.ts
   "SB-04", // src/core/sources/smartbook.ts
   "SB-05", // src/core/chat/turn.ts
+  "SB-06", // src/core/sources/smartbook.ts
   "SB-07", // src/core/sources/smartbook.ts
   "SB-08", // src/core/sources/smartbook.ts
   "SET-01", // src/renderer/src/features/settings/SettingsPage.tsx
   "SET-02", // src/renderer/src/features/settings/EnginesPanel.tsx
   "SET-03", // src/renderer/src/features/settings/SettingsPage.tsx
   "SET-04", // src/renderer/src/features/settings/SettingsPage.tsx
+  "SET-08", // src/renderer/src/features/settings/SettingsPage.tsx
   "SET-07", // src/core/profile/profile.ts
   "SHR-04", // src/main/index.ts
   "SHR-05", // src/shared/plan-file.ts

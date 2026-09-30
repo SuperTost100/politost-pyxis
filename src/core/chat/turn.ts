@@ -29,6 +29,7 @@ export type ChatMessageView = {
   grounding: "sources" | "general" | null;
   followups: string[];
   citations: ChatCitation[];
+  reaction: "up" | "down" | null;
 };
 
 export type AskResult = {
@@ -310,8 +311,23 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
       grounding,
       followups: parsed.followups,
       citations: linked,
+      reaction: null,
     },
   };
+}
+
+export function rateMessage(
+  db: Database.Database,
+  messageId: string,
+  reaction: "up" | "down",
+): "up" | "down" | null {
+  const row = db
+    .prepare(`SELECT reaction FROM messages WHERE id = ?`)
+    .get(messageId) as { reaction: string | null } | undefined;
+  if (!row) throw new Error("message-missing");
+  const next = row.reaction === reaction ? null : reaction;
+  db.prepare(`UPDATE messages SET reaction = ? WHERE id = ?`).run(next, messageId);
+  return next;
 }
 
 export function listChats(db: Database.Database) {
@@ -323,7 +339,7 @@ export function listChats(db: Database.Database) {
 export function readChat(db: Database.Database, chatId: string): ChatMessageView[] {
   const rows = db
     .prepare(
-      `SELECT id, role, body, model_id, grounding FROM messages
+      `SELECT id, role, body, model_id, grounding, reaction FROM messages
        WHERE chat_id = ? ORDER BY created_at`,
     )
     .all(chatId) as Array<{
@@ -332,6 +348,7 @@ export function readChat(db: Database.Database, chatId: string): ChatMessageView
     body: string;
     model_id: string | null;
     grounding: "sources" | "general" | null;
+    reaction: string | null;
   }>;
   const links = db.prepare(
     `SELECT mp.label, mp.passage_id, p.source_id, p.section_path, p.locator_json
@@ -365,6 +382,7 @@ export function readChat(db: Database.Database, chatId: string): ChatMessageView
       grounding: row.grounding,
       followups: parsed.followups,
       citations,
+      reaction: row.reaction === "up" || row.reaction === "down" ? row.reaction : null,
     };
   });
 }

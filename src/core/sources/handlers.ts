@@ -10,6 +10,7 @@ import {
   passagesAround,
   searchPassages,
   smartbookChapters,
+  smartbookMeta,
   sourcePassages,
 } from "./smartbook";
 
@@ -36,6 +37,9 @@ export function sourceHandlers(db: Database.Database, workspace: string) {
     },
     chapters(input: { sourceId: string }) {
       return smartbookChapters(db, input.sourceId);
+    },
+    meta(input: { sourceId: string }) {
+      return smartbookMeta(db, input.sourceId);
     },
     ocr(input: { sourceId: string }) {
       requestOcr(db, input.sourceId);

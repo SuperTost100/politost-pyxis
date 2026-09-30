@@ -17,6 +17,10 @@ const steps = [
 ALTER TABLE plans ADD COLUMN target REAL NOT NULL DEFAULT 0.75;
 ALTER TABLE plans ADD COLUMN style TEXT NOT NULL DEFAULT 'decide';`,
   },
+  {
+    version: 5,
+    sql: `ALTER TABLE messages ADD COLUMN reaction TEXT`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

@@ -310,6 +310,34 @@ export function passagesAround(db: Database.Database, passageId: string) {
   }));
 }
 
+const knownSpecs = new Set(["1"]);
+
+export function smartbookMeta(db: Database.Database, sourceId: string) {
+  const row = db
+    .prepare(`SELECT meta_json FROM smartbooks WHERE source_id = ?`)
+    .get(sourceId) as { meta_json: string } | undefined;
+  if (!row) return null;
+  const meta = JSON.parse(row.meta_json) as SmartbookConfig & {
+    authors?: unknown;
+    author?: unknown;
+    version?: unknown;
+    specVersion?: unknown;
+  };
+  const authors = Array.isArray(meta.authors)
+    ? meta.authors.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    : typeof meta.author === "string" && meta.author.trim() !== ""
+      ? [meta.author]
+      : [];
+  const spec = meta.specVersion == null || meta.specVersion === "" ? null : String(meta.specVersion);
+  return {
+    title: meta.title,
+    authors,
+    version: meta.version == null || meta.version === "" ? null : String(meta.version),
+    specVersion: spec,
+    knownSpec: spec == null || knownSpecs.has(spec),
+  };
+}
+
 export function smartbookChapters(db: Database.Database, sourceId: string) {
   const row = db
     .prepare(`SELECT meta_json FROM smartbooks WHERE source_id = ?`)

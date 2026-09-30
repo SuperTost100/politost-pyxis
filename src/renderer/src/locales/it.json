@@ -57,7 +57,10 @@
     "importFailed": "Non riesco a leggere questo file.",
     "scanned": "{{title}} non ha testo. È una scansione.",
     "offerOcr": "Fai l'OCR",
-    "ocrQueued": "OCR in coda su questo computer."
+    "ocrQueued": "OCR in coda su questo computer.",
+    "version": "versione {{version}}",
+    "spec": "spec {{spec}}",
+    "specUnknown": "Questa versione dello smartbook non è riconosciuta. Il file è stato aperto lo stesso."
   },
   "cards": {
     "title": "Schede",
@@ -197,7 +200,10 @@
     "dataHint": "Il file resta su questo computer. Un ripristino ricarica Pyxis.",
     "backupSaved": "La copia è pronta.",
     "backupFailed": "La copia non è riuscita.",
-    "restoreFailed": "Il file non è una copia valida."
+    "restoreFailed": "Il file non è una copia valida.",
+    "about": "Informazioni",
+    "aboutBody": "PoliTost Pyxis 0.1.0. Copyright PoliTost. Licenza MIT.",
+    "notices": "Include Electron, React, Ant Design e SQLite."
   },
   "jobs": {
     "label": "{{count}} lavori in corso",

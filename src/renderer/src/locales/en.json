@@ -57,7 +57,10 @@
     "importFailed": "This file could not be read.",
     "scanned": "{{title}} has no text. It is a scan.",
     "offerOcr": "Run OCR",
-    "ocrQueued": "OCR is queued on this computer."
+    "ocrQueued": "OCR is queued on this computer.",
+    "version": "version {{version}}",
+    "spec": "spec {{spec}}",
+    "specUnknown": "This smartbook spec is not recognized. The file was still opened."
   },
   "cards": {
     "title": "Cards",
@@ -197,7 +200,10 @@
     "dataHint": "The file stays on this computer. A restore reloads Pyxis.",
     "backupSaved": "The backup is ready.",
     "backupFailed": "The backup did not finish.",
-    "restoreFailed": "That file is not a valid backup."
+    "restoreFailed": "That file is not a valid backup.",
+    "about": "About",
+    "aboutBody": "PoliTost Pyxis 0.1.0. Copyright PoliTost. MIT license.",
+    "notices": "Includes Electron, React, Ant Design, and SQLite."
   },
   "jobs": {
     "label": "{{count}} jobs running",

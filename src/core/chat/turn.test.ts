@@ -3,7 +3,7 @@ import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { importSmartbook } from "../sources/smartbook";
 import { strToU8, zipSync } from "fflate";
-import { askTurn, chatScope, readChat } from "./turn";
+import { askTurn, chatScope, rateMessage, readChat } from "./turn";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -49,6 +49,11 @@ describe("askTurn", () => {
       paragraph: "p1",
     });
     expect(chatScope(db, result.chatId)).toEqual([imported.sourceId]);
+    const messageId = result.message?.id ?? "";
+    expect(rateMessage(db, messageId, "up")).toBe("up");
+    expect(readChat(db, result.chatId).at(-1)?.reaction).toBe("up");
+    expect(rateMessage(db, messageId, "up")).toBe(null);
+    expect(rateMessage(db, messageId, "down")).toBe("down");
   });
 
   it("keeps a short follow-up on the passage already cited", async () => {

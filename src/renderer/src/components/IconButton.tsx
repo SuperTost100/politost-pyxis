@@ -9,6 +9,7 @@ export function IconButton({
   size = "md",
   onClick,
   disabled,
+  pressed,
 }: {
   icon: IconName;
   label: string;
@@ -16,6 +17,7 @@ export function IconButton({
   size?: "sm" | "md";
   onClick?: () => void;
   disabled?: boolean;
+  pressed?: boolean;
 }) {
   const antType =
     variant === "primary"
@@ -38,6 +40,7 @@ export function IconButton({
         .filter(Boolean)
         .join(" ")}
       aria-label={label}
+      aria-pressed={pressed}
       title={label}
       onClick={onClick}
       disabled={disabled}

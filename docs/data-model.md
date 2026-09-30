@@ -11,8 +11,9 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 2 | `chats.scope_json` |
 | 3 | `cards.passage_id` |
 | 4 | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`) |
+| 5 | `messages.reaction` (`up`, `down`, or empty) |
 
-Current version is 4. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Current version is 5. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table            | A row is                                                                 |
 | ---------------- | ------------------------------------------------------------------------ |
