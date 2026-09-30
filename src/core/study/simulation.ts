@@ -101,9 +101,9 @@ export function readSimulation(db: Database.Database, attemptId: string, now = D
   const deadline = row.started_at + stored.minutes * 60_000;
   if (row.submitted_at == null && now >= deadline) {
     const scored = submitAttempt(db, attemptId, {}, now);
+    completeCurrentStage(db, row.plan_id, "simulation", now + 1);
     recordTopicScores(db, row.plan_id, stored.questions, scored.results, now);
     syncGaps(db, row.plan_id, now);
-    completeCurrentStage(db, row.plan_id, "simulation", now + 1);
   }
   const submitted = db
     .prepare(`SELECT submitted_at FROM attempts WHERE id = ?`)

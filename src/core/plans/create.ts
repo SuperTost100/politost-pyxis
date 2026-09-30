@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { reachableTarget } from "../../shared/plan-file";
 import { pathState, type Stage } from "./path";
 import { planMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
@@ -216,7 +217,7 @@ export function readPlan(db: Database.Database, planId: string) {
     })),
     doneIds,
     mastery,
-    plan.target,
+    reachableTarget(plan.target),
   );
   const nodes = rows.map((row) => ({
     id: row.id,

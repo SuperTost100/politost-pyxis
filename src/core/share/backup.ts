@@ -131,7 +131,15 @@ export function restoreWorkspace(zipPath: string, workspace: string): void {
     writeFileSync(dest, data);
   }
 
-  if (!isPyxisBackup(join(staging, "pyxis.db"))) {
+  const stagedDb = join(staging, "pyxis.db");
+  if (!isPyxisBackup(stagedDb)) {
+    removeTree(staging);
+    corrupt();
+  }
+  try {
+    const db = openDatabase(stagedDb);
+    db.close();
+  } catch {
     removeTree(staging);
     corrupt();
   }

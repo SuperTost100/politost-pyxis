@@ -153,7 +153,7 @@ describe("simulation", () => {
     const question = opened.questions[0];
     studyHandlers(db).quizSubmit({
       attemptId: opened.attemptId,
-      picks: { [question!.id]: "1" },
+      picks: { [question!.id]: "nope" },
     });
     expect(readPlan(db, plan.planId)?.nodes.find((node) => node.kind === "simulation")?.state).toBe(
       "done",

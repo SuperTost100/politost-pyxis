@@ -60,9 +60,9 @@ export function studyHandlers(db: Database.Database) {
           const stored = JSON.parse(row.body_json) as {
             questions?: Array<{ topicId?: string }>;
           };
+          completeCurrentStage(db, row.plan_id, row.kind, now + 1);
           recordTopicScores(db, row.plan_id, stored.questions ?? [], scored.results, now);
           syncGaps(db, row.plan_id, now);
-          completeCurrentStage(db, row.plan_id, row.kind, now + 1);
         }
       }
       return scored;

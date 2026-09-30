@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { reachableTarget } from "../../shared/plan-file";
 import { pathState, recommend, type PathNode } from "./path";
 
 const nodes: PathNode[] = [
@@ -23,6 +24,17 @@ describe("pathState", () => {
     expect(states.find((item) => item.id === "learn-b")?.state).toBe("locked");
     const opened = pathState(nodes, ["intro", "diag", "learn-a"], { a: 0.6, b: 0.2 });
     expect(opened.find((item) => item.id === "learn-b")?.state).toBe("current");
+  });
+
+  it("lets a 100% target open after a miss", () => {
+    const done = ["intro", "diag", "learn-a", "learn-b"];
+    const mastery = { a: 0.99, b: 0.99 };
+    expect(pathState(nodes, done, mastery, 1).find((item) => item.id === "final")?.state).toBe(
+      "locked",
+    );
+    expect(
+      pathState(nodes, done, mastery, reachableTarget(1)).find((item) => item.id === "final")?.state,
+    ).toBe("current");
   });
 });
 

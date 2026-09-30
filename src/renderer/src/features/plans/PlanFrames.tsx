@@ -6,7 +6,7 @@ import { useNavigate, useParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
 import { invoke } from "../../lib/ipc";
-import { examInstant, planFileSchema } from "@shared/plan-file";
+import { examInstant, planFileSchema, reachableTarget } from "@shared/plan-file";
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();
@@ -240,7 +240,7 @@ export function PlanPage() {
   });
   const progress = series.data;
   const onTrack = (progress?.topics ?? []).filter(
-    (topic) => topic.mastery >= (plan.data?.target ?? 0.8),
+    (topic) => topic.mastery >= reachableTarget(plan.data?.target ?? 0.8),
   ).length;
   const chart = progress?.chart ?? [];
   const chartWidth = 280;

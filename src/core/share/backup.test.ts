@@ -58,6 +58,19 @@ describe("backupWorkspace / restoreWorkspace", () => {
       const alienZip = join(root, "alien.zip");
       writeFileSync(alienZip, zipSync({ "pyxis.db": new Uint8Array(readFileSync(alien)) }));
       expect(() => restoreWorkspace(alienZip, workspace)).toThrow(/backup-corrupt/);
+
+      const old = join(root, "old.db");
+      const rawOld = new Database(old);
+      rawOld.exec(
+        `CREATE TABLE plans (id TEXT PRIMARY KEY);
+         CREATE TABLE profile (id TEXT PRIMARY KEY);
+         CREATE TABLE path_nodes (id TEXT PRIMARY KEY)`,
+      );
+      rawOld.pragma("user_version = 1");
+      rawOld.close();
+      const oldZip = join(root, "old.zip");
+      writeFileSync(oldZip, zipSync({ "pyxis.db": new Uint8Array(readFileSync(old)) }));
+      expect(() => restoreWorkspace(oldZip, workspace)).toThrow(/backup-corrupt/);
       const kept = openDatabase(join(workspace, "pyxis.db"));
       const title = kept.prepare(`SELECT title FROM plans WHERE id = ?`).get(planId) as {
         title: string;

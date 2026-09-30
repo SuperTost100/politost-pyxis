@@ -34,6 +34,11 @@ export function examInstant(days: number, now = new Date()): number {
   return date.getTime();
 }
 
+export function reachableTarget(target: number): number {
+  // ponytail: a weighted average never returns to 1 after a miss. 100% means 0.99. Upgrade path is the mastery formula in the plan.
+  return target >= 1 ? 0.99 : target;
+}
+
 export function httpPlanUrl(raw: string): string {
   const parsed = new URL(raw);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
