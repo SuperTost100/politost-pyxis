@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan } from "./create";
 import { exportPlan, importPlan } from "./file";
-import { examInstant, httpPlanUrl } from "../../shared/plan-file";
+import { examInstant, httpPlanUrl, planFileSchema } from "../../shared/plan-file";
 import { importSmartbook } from "../sources/smartbook";
 
 function pack(files: Record<string, string>): Uint8Array {
@@ -85,5 +85,18 @@ describe("plan file", () => {
     expect(at.getMonth()).toBe(2);
     expect(at.getDate()).toBe(29);
     expect(at.getHours()).toBe(12);
+  });
+
+  it("rejects a target outside the wizard range", () => {
+    expect(() =>
+      planFileSchema.parse({
+        version: 1,
+        title: "Fisica",
+        topics: [],
+        nodes: [],
+        cards: [],
+        target: 2,
+      }),
+    ).toThrow();
   });
 });

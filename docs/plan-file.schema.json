@@ -45,6 +45,10 @@
           "topic": { "type": ["number", "null"] }
         }
       }
-    }
+    },
+    "examAt": { "type": ["number", "null"] },
+    "target": { "type": "number", "minimum": 0.5, "maximum": 1 },
+    "language": { "type": ["string", "null"], "enum": ["it", "en", null] },
+    "style": { "type": "string", "enum": ["read", "practice", "decide"] }
   }
 }
