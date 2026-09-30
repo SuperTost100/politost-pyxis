@@ -1,0 +1,2 @@
+/* Logo */
+.px-logo { display: inline-flex; align-items: center; gap: .3em; font-family: var(--font-sans); font-weight: 700; letter-spacing: -0.02em; color: var(--ink); line-height: 1; }

@@ -1,0 +1,38 @@
+.px-steplines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 480px;
+}
+
+.px-stepline {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.px-stepline-icon.is-done {
+  color: var(--mastery-text);
+}
+
+.px-stepline-icon.is-failed {
+  color: var(--danger);
+}
+
+.px-stepline-label {
+  font: 400 15px/22px var(--font-sans);
+}
+
+.px-stepline-meta {
+  color: var(--ink-muted);
+  text-align: right;
+}
+
+.px-stepline.is-pending .px-stepline-label {
+  color: var(--ink-muted);
+}

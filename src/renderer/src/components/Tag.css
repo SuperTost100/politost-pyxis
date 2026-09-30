@@ -1,0 +1,40 @@
+.px-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  font: 400 12px/16px var(--font-mono);
+  white-space: nowrap;
+}
+.px-tag-neutral {
+  background: var(--surface-raised);
+  color: var(--ink-muted);
+}
+.px-tag-smartbook {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+.px-tag-general {
+  background: var(--star-soft);
+  color: var(--star-text);
+}
+.px-tag-mastered {
+  background: var(--mastery-soft);
+  color: var(--mastery-text);
+}
+.px-tag-severe {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.px-tag-recommended {
+  height: 20px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--star);
+  background: var(--star-soft);
+  color: var(--star-text);
+  font: 500 10px/14px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

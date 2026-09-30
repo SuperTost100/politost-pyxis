@@ -73,11 +73,198 @@
   },
   "dev": {
     "kicker": "Gallery",
-    "title": "Demo job",
-    "body": "Three steps. You can cancel it, fail it at step two, and resume from there.",
+    "title": "Pyxis components",
+    "intro": "Every custom component, in every state from the spec.",
+    "themeLabel": "Theme",
+    "languageLabel": "Language",
+    "demoJobTitle": "Demo job",
+    "demoJobBody": "Three steps. You can cancel it, fail it at step two, and resume from there.",
     "start": "Start",
     "fail": "Fail at step 2",
     "kill": "Stop the engine"
+  },
+  "gallery": {
+    "sections": {
+      "foundations": "Foundations",
+      "actions": "Actions",
+      "navigation": "Navigation",
+      "forms": "Forms",
+      "status": "Status",
+      "progress": "Progress",
+      "content": "Content",
+      "studyPath": "Study path",
+      "ask": "Ask",
+      "practice": "Practice",
+      "engine": "Engine",
+      "layout": "Layout",
+      "rendering": "Rendering"
+    },
+    "markdownSample": "Four LaTeX styles: \\(a^2\\), \\[\\int_0^1 x\\,dx\\], $b^2$ and $$c^2$$.\n\nChemistry with mhchem: $\\ce{H2O}$.\n\nInline citations [P1] and [P2].\n\n| Column | Value |\n| --- | --- |\n| k | 1 |\n\n```python\nprint(1 + 1)\n```",
+    "buildingTitle": "Building Analysis 1",
+    "dockEyebrow": "Recommended lesson",
+    "dockTitle": "Flashcard review",
+    "dockReason": "3 cards due and one severe gap in collisions",
+    "dockContinue": "Continue",
+    "dockAnother": "Another suggestion",
+    "focusTitle": "Thermodynamics quiz",
+    "focusMeta": "Question 3 of 10",
+    "noticeInfo": "Indexing can take a few minutes.",
+    "noticeWarn": "This source looks off syllabus.",
+    "noticeDanger": "I cannot read the file.",
+    "noticeFix": "Retry",
+    "noticeDetails": "ENOENT: missing file",
+    "contextExcerpt": "The change in internal energy equals heat absorbed minus work done.",
+    "checkVerified": "Verified",
+    "checkFailed": "Not verified",
+    "checkReason": "The result does not match the expected value",
+    "tabs": {
+      "path": "Path",
+      "topics": "Topics",
+      "progress": "Progress"
+    },
+    "lessonQuiz": "Quiz",
+    "trueFalse": "True / false"
+  },
+  "components": {
+    "citation": {
+      "open": "Open source"
+    },
+    "composer": {
+      "noSubject": "No subject",
+      "messageLabel": "Message",
+      "attach": "Attach file or image",
+      "whiteboard": "Whiteboard",
+      "formula": "Insert formula",
+      "modeLabel": "Tutor mode",
+      "solver": "Solver",
+      "socratic": "Socratic",
+      "stop": "Stop",
+      "send": "Send"
+    },
+    "chat": {
+      "generalTag": "General knowledge, not from your sources",
+      "copy": "Copy",
+      "helpful": "Helpful",
+      "notHelpful": "Not helpful",
+      "regenerate": "Regenerate"
+    },
+    "quiz": {
+      "correct": "Correct",
+      "wrong": "Wrong"
+    },
+    "flashcard": {
+      "new": "{{count}} new",
+      "learning": "{{count}} learning",
+      "mastered": "{{count}} mastered",
+      "flipHint": "Click or space to flip",
+      "answer": "Answer",
+      "rate1": "Again",
+      "rate2": "Hard",
+      "rate3": "Easy",
+      "rate4": "Very easy"
+    },
+    "engine": {
+      "statusOk": "Ready",
+      "statusWarn": "Sign-in required",
+      "statusError": "Unreachable",
+      "statusIdle": "Not tested",
+      "default": "default",
+      "signIn": "Sign in",
+      "test": "Test"
+    },
+    "notice": {
+      "details": "Details"
+    },
+    "markdown": {
+      "run": "Run"
+    },
+    "lesson": {
+      "recommended": "Recommended"
+    },
+    "plan": {
+      "continue": "Continue"
+    },
+    "gap": {
+      "severe": "severe",
+      "minor": "minor",
+      "fill": "Fill"
+    },
+    "buttons": {
+      "continue": "Continue",
+      "newPlan": "New plan",
+      "cancel": "Cancel",
+      "deletePlan": "Delete plan",
+      "generatePath": "Generate path",
+      "disabled": "Disabled"
+    },
+    "tags": {
+      "smartbook": "smartbook",
+      "ai": "AI generated",
+      "general": "general knowledge",
+      "mastered": "mastered",
+      "severe": "severe gap",
+      "recommended": "Recommended"
+    },
+    "chips": {
+      "q1": "How do you use it with the emperor?",
+      "q2": "I did not follow the etymology",
+      "q3": "Show me the derivation"
+    },
+    "chatSamples": {
+      "user": "What does the first law of thermodynamics say?",
+      "tutor": "The change in a system's internal energy equals heat absorbed minus work done: ΔU = Q − W.",
+      "cite": "Physics 1 · ch. 4.2",
+      "s1": "Give me an ideal gas example",
+      "s2": "I do not follow the work sign"
+    },
+    "citationSamples": {
+      "sb": "Physics 1 · ch. 4.2",
+      "pdf": "thermo-slides.pdf · p. 12",
+      "sentence": "Internal energy depends only on the state of the system"
+    },
+    "planCards": {
+      "meta1": "18 days to exam · 0 of 9 topics",
+      "meta2": "4 days to exam · 5 of 11 topics"
+    },
+    "stat": {
+      "label": "Preparation level",
+      "pill1": "no change this week",
+      "pill2": "target 80%",
+      "stat1": "topics on track",
+      "stat2": "lessons"
+    },
+    "path": {
+      "intro": "Introduction",
+      "exercises": "Exercises",
+      "review": "Review",
+      "sim": "Simulation",
+      "unlock": "Reach 75% to unlock"
+    },
+    "gapSamples": {
+      "severe": "You mix up heat and work in the energy balance sign.",
+      "minor": "You forget to convert angular velocity to rad/s.",
+      "topic1": "Thermodynamics · First law",
+      "topic2": "Kinematics · Circular motion"
+    },
+    "quizSamples": {
+      "a": "Heat is a state function",
+      "b": "Internal energy is a state function",
+      "c": "ΔU = Q − W for a closed system",
+      "d": "Work does not depend on path"
+    },
+    "flashcardSample": {
+      "front": "What is a state function?",
+      "back": "A quantity that depends only on the system's state, not the path taken to reach it.",
+      "source": "Physics 1 · ch. 4.1"
+    },
+    "steps": {
+      "read": "Reading sources",
+      "topics": "Building topics",
+      "link": "Linking passages to topics",
+      "path": "Building the path",
+      "lessons": "Preparing intro and initial check",
+      "metaRead": "3 sources · 212 passages"
+    }
   },
   "tools": {
     "whiteboardTitle": "Whiteboard",

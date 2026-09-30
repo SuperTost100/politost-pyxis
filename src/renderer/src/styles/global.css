@@ -297,19 +297,6 @@ html[data-platform="darwin"] .canvas-bar {
   color: var(--danger);
 }
 
-.notice {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-}
-
-.notice p {
-  margin: 0;
-  flex: 1;
-}
-
 .core-notice {
   position: fixed;
   z-index: 20;

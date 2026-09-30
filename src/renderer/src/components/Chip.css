@@ -1,0 +1,18 @@
+.px-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-sm);
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-control);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 400 15px/20px var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+}
+.px-chip:hover {
+  color: var(--ink);
+  background: var(--surface-raised);
+}

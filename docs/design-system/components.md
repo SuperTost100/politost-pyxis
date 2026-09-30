@@ -215,3 +215,71 @@ An engine in the Engine for AI settings (ENG-10…ENG-17): kind, name, versioned
 - Status is always a dot and a word. Local engines say that nothing leaves the machine (ENG-21).
 - Errors read as the fix: "Accesso richiesto" with an Accedi button, not a stack trace (NFR-05).
 - antd: `<List.Item>` with `avatar`, `title`, `description` and `extra`.
+
+## FocusBar
+
+The 56px bar of the Focus and Canvas layouts.
+
+**Consumer provides** a title, optional meta, close and back labels, up to three icon actions, and an optional progress value.
+
+- Close or back is the left control. The title is centered. Actions sit on the right.
+- The progress line is optional and uses the primary colour.
+
+## Dock
+
+The recommended-lesson panel, pinned at the bottom of a path.
+
+**Consumer provides** an eyebrow, a title, a reason, and the two action labels.
+
+- One primary action. The second action is ghost.
+- Width 560px, radius-xl, surface.
+
+## Notice
+
+An inline message with an icon, a sentence, an optional action and optional details.
+
+**Consumer provides** `tone` (`info` | `warning` | `danger`), the sentence, an optional action, and optional details.
+
+- `warning` uses star text on star-soft. `danger` uses danger on danger-soft. Each tone has its own icon.
+- Details stay collapsed until the student opens them.
+
+## StepLines
+
+A vertical list of job steps.
+
+**Consumer provides** steps with a label, a state (`pending` | `running` | `done` | `failed`) and an optional meta fact.
+
+- Pending is a circle, running is a loader, done is a check in mastery, failed is a cross in danger.
+
+## BuildingMark
+
+The plan-building mark. Three trails draw themselves as work finishes, around a star that stays still.
+
+**Consumer provides** `inner`, `middle` and `outer` from 0 to 1, and a `done` flag.
+
+- The star is always gold. Trails use ink. Reduced motion shows the final frame.
+
+## MarkdownView
+
+The one renderer for model output.
+
+**Consumer provides** markdown text, `variant` (`reading` | `body`), and an optional citation resolver.
+
+- Raw HTML stays off. `[P3]` becomes a citation chip. KaTeX, including mhchem, is bundled.
+- `\( \)` and `\[ \]` are normalized to dollar math before rendering.
+
+## CheckBadge
+
+The result of a SymPy check next to a step.
+
+**Consumer provides** `state` (`verified` | `failed` | `none`) and, when failed, a reason.
+
+- Verified uses mastery text. Failed uses danger, with the reason on hover and focus. `none` renders nothing.
+
+## ContextBlock
+
+The quoted card above the composer.
+
+**Consumer provides** an excerpt and a remove label.
+
+- Two lines at most. The remove control is an icon button.

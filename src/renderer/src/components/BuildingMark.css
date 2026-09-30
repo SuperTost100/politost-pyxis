@@ -1,0 +1,13 @@
+.px-building-mark .px-building-trail {
+  transition: stroke-dashoffset 200ms ease-out;
+}
+
+.px-building-mark.is-done .px-building-star {
+  filter: drop-shadow(0 0 12px var(--star));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-building-mark .px-building-trail {
+    transition: none;
+  }
+}

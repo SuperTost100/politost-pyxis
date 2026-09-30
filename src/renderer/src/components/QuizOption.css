@@ -1,0 +1,12 @@
+/* QuizOption */
+.px-opt { display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--border-control); background: var(--surface); color: var(--ink); font: 400 15px/22px var(--font-sans); text-align: left; cursor: pointer; }
+.px-opt:hover { background: var(--surface-raised); }
+.px-opt-key { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--surface-raised); font: 500 12px/16px var(--font-mono); color: var(--ink-muted); }
+.px-opt-text { flex: 1; }
+.px-opt.is-selected { border-color: var(--primary-text); background: var(--primary-soft); }
+.px-opt.is-selected .px-opt-key { background: var(--primary); color: var(--on-primary); }
+.px-opt.is-correct { border-color: var(--mastery); background: var(--mastery-soft); }
+.px-opt.is-correct .px-opt-key, .px-opt.is-correct .px-opt-state { color: var(--mastery-text); }
+.px-opt.is-wrong { border-color: var(--danger); background: var(--danger-soft); }
+.px-opt.is-wrong .px-opt-key, .px-opt.is-wrong .px-opt-state { color: var(--danger); }
+.px-opt-state { display: inline-flex; align-items: center; gap: var(--space-1); font: 500 12px/16px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }

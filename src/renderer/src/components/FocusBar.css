@@ -1,0 +1,51 @@
+.px-focusbar {
+  position: relative;
+  height: 56px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+
+html[data-platform="darwin"] .px-focusbar {
+  padding-left: 80px;
+}
+
+.px-focusbar button {
+  -webkit-app-region: no-drag;
+}
+
+.px-focusbar-center {
+  min-width: 0;
+}
+
+.px-focusbar-title {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.px-focusbar-meta {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.px-focusbar-actions {
+  display: flex;
+  gap: var(--space-1);
+  -webkit-app-region: no-drag;
+}
+
+.px-focusbar-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--primary);
+  max-width: 100%;
+}

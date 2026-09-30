@@ -1,0 +1,40 @@
+.px-markdown.is-reading {
+  font: 400 17px/28px var(--font-sans);
+  max-width: 68ch;
+}
+
+.px-markdown.is-body {
+  font: 400 15px/22px var(--font-sans);
+}
+
+.px-markdown :where(p, ul, ol, blockquote) {
+  margin: 0 0 var(--space-3);
+}
+
+.px-markdown :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 var(--space-4);
+}
+
+.px-markdown :where(th, td) {
+  border: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+}
+
+.px-code-block {
+  position: relative;
+  margin: 0 0 var(--space-4);
+}
+
+.px-code-pre {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  overflow-x: auto;
+}
+
+.px-code-run {
+  margin-top: var(--space-2);
+}

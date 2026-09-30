@@ -73,11 +73,198 @@
   },
   "dev": {
     "kicker": "Galleria",
-    "title": "Lavoro di prova",
-    "body": "Tre passi. Puoi annullarlo, farlo fallire al secondo e riprenderlo da lì.",
+    "title": "Componenti Pyxis",
+    "intro": "Ogni componente personalizzato, in tutti gli stati previsti dalla specifica.",
+    "themeLabel": "Tema",
+    "languageLabel": "Lingua",
+    "demoJobTitle": "Lavoro di prova",
+    "demoJobBody": "Tre passi. Puoi annullarlo, farlo fallire al secondo e riprenderlo da lì.",
     "start": "Avvia",
     "fail": "Fallisci al passo 2",
     "kill": "Chiudi il motore"
+  },
+  "gallery": {
+    "sections": {
+      "foundations": "Fondamenta",
+      "actions": "Azioni",
+      "navigation": "Navigazione",
+      "forms": "Moduli",
+      "status": "Stato",
+      "progress": "Progressi",
+      "content": "Contenuti",
+      "studyPath": "Percorso di studio",
+      "ask": "Chiedi",
+      "practice": "Esercitazione",
+      "engine": "Motore",
+      "layout": "Layout",
+      "rendering": "Rendering"
+    },
+    "markdownSample": "Quattro stili LaTeX: \\(a^2\\), \\[\\int_0^1 x\\,dx\\], $b^2$ e $$c^2$$.\n\nChimica con mhchem: $\\ce{H2O}$.\n\nCitazione inline [P1] e [P2].\n\n| Colonna | Valore |\n| --- | --- |\n| k | 1 |\n\n```python\nprint(1 + 1)\n```",
+    "buildingTitle": "Sto preparando Analisi 1",
+    "dockEyebrow": "Lezione consigliata",
+    "dockTitle": "Ripasso flashcard",
+    "dockReason": "3 carte da ripassare e una lacuna grave in collisioni",
+    "dockContinue": "Continua",
+    "dockAnother": "Un'altra proposta",
+    "focusTitle": "Quiz termodinamica",
+    "focusMeta": "Domanda 3 di 10",
+    "noticeInfo": "L'indicizzazione può richiedere alcuni minuti.",
+    "noticeWarn": "Questa fonte sembra fuori programma.",
+    "noticeDanger": "Non riesco a leggere il file.",
+    "noticeFix": "Riprova",
+    "noticeDetails": "ENOENT: file mancante",
+    "contextExcerpt": "La variazione di energia interna è uguale al calore assorbito meno il lavoro compiuto.",
+    "checkVerified": "Verificato",
+    "checkFailed": "Non verificato",
+    "checkReason": "Il risultato non coincide con il valore atteso",
+    "tabs": {
+      "path": "Percorso",
+      "topics": "Argomenti",
+      "progress": "Progressi"
+    },
+    "lessonQuiz": "Quiz",
+    "trueFalse": "Vero / falso"
+  },
+  "components": {
+    "citation": {
+      "open": "Apri la fonte"
+    },
+    "composer": {
+      "noSubject": "Nessuna materia",
+      "messageLabel": "Messaggio",
+      "attach": "Allega file o immagine",
+      "whiteboard": "Lavagna",
+      "formula": "Inserisci formula",
+      "modeLabel": "Modalità tutor",
+      "solver": "Risolutore",
+      "socratic": "Socratico",
+      "stop": "Interrompi",
+      "send": "Invia"
+    },
+    "chat": {
+      "generalTag": "Conoscenza generale, non dalle tue fonti",
+      "copy": "Copia",
+      "helpful": "Utile",
+      "notHelpful": "Non utile",
+      "regenerate": "Rigenera"
+    },
+    "quiz": {
+      "correct": "Corretta",
+      "wrong": "Sbagliata"
+    },
+    "flashcard": {
+      "new": "{{count}} nuove",
+      "learning": "{{count}} in apprendimento",
+      "mastered": "{{count}} padroneggiate",
+      "flipHint": "Clic o spazio per girare",
+      "answer": "Risposta",
+      "rate1": "Impossibile",
+      "rate2": "Difficile",
+      "rate3": "Facile",
+      "rate4": "Facilissima"
+    },
+    "engine": {
+      "statusOk": "Pronto",
+      "statusWarn": "Accesso richiesto",
+      "statusError": "Non raggiungibile",
+      "statusIdle": "Non testato",
+      "default": "predefinito",
+      "signIn": "Accedi",
+      "test": "Testa"
+    },
+    "notice": {
+      "details": "Dettagli"
+    },
+    "markdown": {
+      "run": "Esegui"
+    },
+    "lesson": {
+      "recommended": "Consigliato"
+    },
+    "plan": {
+      "continue": "Continua"
+    },
+    "gap": {
+      "severe": "grave",
+      "minor": "lieve",
+      "fill": "Colma"
+    },
+    "buttons": {
+      "continue": "Continua",
+      "newPlan": "Nuovo piano",
+      "cancel": "Annulla",
+      "deletePlan": "Elimina piano",
+      "generatePath": "Genera percorso",
+      "disabled": "Disattivato"
+    },
+    "tags": {
+      "smartbook": "smartbook",
+      "ai": "generato da AI",
+      "general": "conoscenza generale",
+      "mastered": "padroneggiato",
+      "severe": "lacuna grave",
+      "recommended": "Consigliato"
+    },
+    "chips": {
+      "q1": "Come si usa con l'imperatore?",
+      "q2": "Non ho capito l'etimologia",
+      "q3": "Mostrami la derivazione"
+    },
+    "chatSamples": {
+      "user": "Che cosa afferma il primo principio della termodinamica?",
+      "tutor": "La variazione di energia interna di un sistema è uguale al calore assorbito meno il lavoro compiuto: ΔU = Q − L.",
+      "cite": "Fisica 1 · cap. 4.2",
+      "s1": "Fammi un esempio con un gas ideale",
+      "s2": "Non ho capito il segno del lavoro"
+    },
+    "citationSamples": {
+      "sb": "Fisica 1 · cap. 4.2",
+      "pdf": "slide-termo.pdf · p. 12",
+      "sentence": "L'energia interna dipende solo dallo stato del sistema"
+    },
+    "planCards": {
+      "meta1": "18 giorni all'esame · 0 su 9 argomenti",
+      "meta2": "4 giorni all'esame · 5 su 11 argomenti"
+    },
+    "stat": {
+      "label": "Livello di preparazione",
+      "pill1": "nessun cambiamento questa settimana",
+      "pill2": "obiettivo 80 %",
+      "stat1": "argomenti in linea con l'obiettivo",
+      "stat2": "lezioni"
+    },
+    "path": {
+      "intro": "Introduzione",
+      "exercises": "Esercizi",
+      "review": "Ripasso",
+      "sim": "Simulazione",
+      "unlock": "Raggiungi il 75% per sbloccare"
+    },
+    "gapSamples": {
+      "severe": "Confondi calore e lavoro nel segno del bilancio energetico.",
+      "minor": "Dimentichi di convertire la velocità angolare in rad/s.",
+      "topic1": "Termodinamica · Primo principio",
+      "topic2": "Cinematica · Moto circolare"
+    },
+    "quizSamples": {
+      "a": "Il calore è una funzione di stato",
+      "b": "L'energia interna è una funzione di stato",
+      "c": "ΔU = Q − L per un sistema chiuso",
+      "d": "Il lavoro non dipende dal percorso"
+    },
+    "flashcardSample": {
+      "front": "Che cos'è una funzione di stato?",
+      "back": "Una grandezza che dipende solo dallo stato del sistema, non dal percorso per raggiungerlo.",
+      "source": "Fisica 1 · cap. 4.1"
+    },
+    "steps": {
+      "read": "Leggo le fonti",
+      "topics": "Creo gli argomenti",
+      "link": "Collego i passaggi agli argomenti",
+      "path": "Costruisco il percorso",
+      "lessons": "Preparo introduzione e verifica iniziale",
+      "metaRead": "3 fonti · 212 passaggi"
+    }
   },
   "tools": {
     "whiteboardTitle": "Lavagna",

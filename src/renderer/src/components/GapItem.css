@@ -1,0 +1,8 @@
+/* GapItem */
+.px-gap { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); }
+.px-gap-dot { flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; }
+.px-gap-dot.is-severe { background: var(--danger); }
+.px-gap-dot.is-minor { background: var(--star); }
+.px-gap-body { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); }
+.px-gap-text { margin: 0; }
+.px-gap-topic { font-size: 13px; line-height: 18px; color: var(--ink-muted); }
