@@ -157,7 +157,11 @@
     "week": "Events this week: {{count}}",
     "minutes": "{{count}} minutes of study this week",
     "peak": "Most active day: {{day}}",
-    "idle": "idle"
+    "idle": "idle",
+    "simulations": "Simulations",
+    "noSimulations": "No simulation yet.",
+    "startSimulation": "Start a simulation",
+    "simulationRow": "{{score}} out of 100 · {{minutes}} min"
   },
   "wizard": {
     "title": "New plan",

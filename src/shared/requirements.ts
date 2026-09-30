@@ -61,6 +61,7 @@ export const implemented = [
   "PRO-02", // src/core/study/series.ts
   "PRO-03", // src/core/plans/progress.ts
   "PRO-04", // src/core/study/series.ts
+  "PRO-05", // src/core/study/simulation.ts
   "PRO-06", // src/renderer/src/features/study/activeTime.ts
   "PRO-07", // src/core/study/mastery.ts
   "PRO-08", // src/core/study/gaps.ts

@@ -479,6 +479,17 @@ export const requests = {
       z.object({ id: z.string(), title: z.string(), mastery: z.number() }),
     ),
   },
+  "plans.simulations": {
+    input: z.object({ planId: z.string() }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        at: z.number(),
+        score: z.number(),
+        minutes: z.number(),
+      }),
+    ),
+  },
   "plans.series": {
     input: z.object({ planId: z.string() }),
     output: z.object({

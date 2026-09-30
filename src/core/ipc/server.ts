@@ -218,6 +218,8 @@ async function dispatch(
       return plans?.mastery(requests["plans.mastery"].input.parse(input)) ?? [];
     case "plans.series":
       return plans?.series(requests["plans.series"].input.parse(input));
+    case "plans.simulations":
+      return plans?.simulations(requests["plans.simulations"].input.parse(input)) ?? [];
     case "plans.complete":
       return plans?.complete(requests["plans.complete"].input.parse(input));
     case "plans.read":

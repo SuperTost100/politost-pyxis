@@ -157,7 +157,11 @@
     "week": "Eventi questa settimana: {{count}}",
     "minutes": "{{count}} minuti di studio questa settimana",
     "peak": "Giorno più attivo: {{day}}",
-    "idle": "fermo"
+    "idle": "fermo",
+    "simulations": "Simulazioni",
+    "noSimulations": "Nessuna simulazione ancora.",
+    "startSimulation": "Inizia una simulazione",
+    "simulationRow": "{{score}} su 100 · {{minutes}} min"
   },
   "wizard": {
     "title": "Nuovo piano",

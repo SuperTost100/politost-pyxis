@@ -183,3 +183,33 @@ export function openSimulation(db: Database.Database, planId: string, now = Date
   if (!row) return null;
   return readSimulation(db, row.id, now);
 }
+
+export function listSimulations(db: Database.Database, planId: string) {
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.started_at, a.submitted_at
+       FROM attempts a
+       JOIN items i ON i.id = a.item_id
+       WHERE a.plan_id = ? AND i.kind = 'simulation' AND a.submitted_at IS NOT NULL
+       ORDER BY a.submitted_at DESC`,
+    )
+    .all(planId) as Array<{ id: string; started_at: number; submitted_at: number }>;
+  return rows.map((row) => {
+    const answer = db
+      .prepare(
+        `SELECT payload_json FROM attempt_answers WHERE attempt_id = ? ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(row.id) as { payload_json: string } | undefined;
+    const payload = answer
+      ? (JSON.parse(answer.payload_json) as { results?: Array<{ score: number }> })
+      : {};
+    const scores = (payload.results ?? []).map((item) => item.score);
+    const score = scores.length === 0 ? 0 : scores.reduce((sum, item) => sum + item, 0) / scores.length;
+    return {
+      id: row.id,
+      at: row.submitted_at,
+      score,
+      minutes: Math.max(0, Math.round((row.submitted_at - row.started_at) / 60_000)),
+    };
+  });
+}

@@ -253,6 +253,11 @@ export function PlanPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.mastery", { planId: planId ?? "" }),
   });
+  const simulations = useQuery({
+    queryKey: ["simulations", planId],
+    enabled: Boolean(planId),
+    queryFn: () => invoke("plans.simulations", { planId: planId ?? "" }),
+  });
   const series = useQuery({
     queryKey: ["series", planId],
     enabled: Boolean(planId),
@@ -329,6 +334,28 @@ export function PlanPage() {
               }),
             })}
           </p>
+          <h3 className="body-strong">{t("progress.simulations")}</h3>
+          {(simulations.data ?? []).length === 0 ? (
+            <>
+              <p className="small">{t("progress.noSimulations")}</p>
+              <Button shape="round" onClick={() => navigate(`/plans/${planId ?? ""}/simulation`)}>
+                {t("progress.startSimulation")}
+              </Button>
+            </>
+          ) : (
+            <ul className="choice-list">
+              {(simulations.data ?? []).map((run) => (
+                <li key={run.id} className="small">
+                  {new Date(run.at).toLocaleDateString()}
+                  {" · "}
+                  {t("progress.simulationRow", {
+                    score: Math.round(run.score * 100),
+                    minutes: run.minutes,
+                  })}
+                </li>
+              ))}
+            </ul>
+          )}
           <h3 className="body-strong">{t("progress.gaps")}</h3>
           {progress.gaps.length === 0 ? (
             <p className="small">{t("progress.noGaps")}</p>

@@ -3,6 +3,7 @@ import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
 import { listPlans } from "./create";
 import { planMastery, planSeries } from "./progress";
+import { listSimulations } from "../study/simulation";
 
 describe("planMastery", () => {
   it("reads a finished lesson as full mastery for that topic", () => {
@@ -37,6 +38,28 @@ describe("planMastery", () => {
     expect(row?.subject).toBe("Fisica");
     expect(row?.daysToExam).toBe(2);
     expect(row?.mastery).toBe(0);
+  });
+
+  it("lists a finished simulation with its score and minutes", () => {
+    const db = openDatabase(":memory:");
+    const planId = uuidv7(1);
+    const started = Date.UTC(2026, 0, 10, 12);
+    db.prepare(
+      `INSERT INTO plans (id, title, status, created_at, updated_at) VALUES (?, 'Fisica', 'ready', 1, 1)`,
+    ).run(planId);
+    db.prepare(
+      `INSERT INTO items (id, plan_id, kind, body_json, created_at) VALUES ('item', ?, 'simulation', '{}', 1)`,
+    ).run(planId);
+    db.prepare(
+      `INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES ('run', ?, 'item', ?, ?)`,
+    ).run(planId, started, started + 30 * 60_000);
+    db.prepare(
+      `INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at)
+       VALUES ('ans', 'run', ?, ?)`,
+    ).run(JSON.stringify({ results: [{ id: "q", score: 1 }, { id: "q2", score: 0 }] }), started);
+    expect(listSimulations(db, planId)).toEqual([
+      { id: "run", at: started + 30 * 60_000, score: 0.5, minutes: 30 },
+    ]);
   });
 
   it("stores an open gap from two misses in one quiz", () => {

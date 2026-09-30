@@ -3,6 +3,7 @@ import { completeNode, createPlan, deletePlan, listPlans, listSubjects, readPlan
 import { exportPlan, importPlan } from "./file";
 import { planMastery, planSeries } from "./progress";
 import { planDiskUsage } from "../share/usage";
+import { listSimulations } from "../study/simulation";
 import type { PlanFile } from "../../shared/plan-file";
 
 export function planHandlers(db: Database.Database, workspace = "") {
@@ -37,6 +38,9 @@ export function planHandlers(db: Database.Database, workspace = "") {
     },
     series(input: { planId: string }) {
       return planSeries(db, input.planId);
+    },
+    simulations(input: { planId: string }) {
+      return listSimulations(db, input.planId);
     },
     complete(input: { planId: string; nodeId: string }) {
       completeNode(db, input.planId, input.nodeId);

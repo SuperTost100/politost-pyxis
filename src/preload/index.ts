@@ -46,6 +46,7 @@ const replayable = new Set([
   "plans.export",
   "plans.mastery",
   "plans.series",
+  "plans.simulations",
   "profile.get",
   "sources.list",
   "sources.search",
