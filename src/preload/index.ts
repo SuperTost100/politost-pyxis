@@ -14,9 +14,48 @@ type Pending = {
   message: unknown;
 };
 
+const coreRestarted = {
+  code: "core-restarted",
+  messageKey: "errors.coreRestarted",
+  params: {},
+  detail: "",
+};
+
+const aborted = {
+  code: "aborted",
+  messageKey: "errors.aborted",
+  params: {},
+  detail: "",
+};
+
+// ponytail: a replacement port replays reads only. A write that died with the core is rejected so it cannot run twice. Upgrade path is a request id stored in the core.
+const replayable = new Set([
+  "jobs.list",
+  "engines.overview",
+  "engines.models",
+  "engines.features",
+  "engines.capability",
+  "study.lesson",
+  "study.exercises",
+  "plans.list",
+  "plans.read",
+  "plans.export",
+  "plans.mastery",
+  "plans.series",
+  "profile.get",
+  "sources.list",
+  "sources.search",
+  "sources.chapters",
+  "sources.passage",
+  "sources.chapter",
+  "chats.list",
+  "chats.read",
+]);
+
 let port: MessagePort | null = null;
 const pending = new Map<string, Pending>();
 const queued: unknown[] = [];
+const canceled = new Set<string>();
 const broadcasts = new Map<string, Set<(value: unknown) => void>>();
 const streams = new Map<string, (event: unknown) => void>();
 const portListeners = new Set<() => void>();
@@ -64,7 +103,25 @@ function post(message: unknown): void {
 ipcRenderer.on("pyxis:port", (event) => {
   const next = event.ports[0];
   if (!next) return;
-  const replay = port ? [...pending.values()].map((item) => item.message) : [];
+  const replay: unknown[] = [];
+  if (port) {
+    for (const [id, item] of pending) {
+      const message = item.message as { id?: string; name?: string };
+      if (message.id && canceled.has(message.id)) {
+        item.reject(aborted);
+        pending.delete(id);
+        streams.delete(id);
+        continue;
+      }
+      if (message.name && replayable.has(message.name)) {
+        replay.push(item.message);
+        continue;
+      }
+      item.reject(coreRestarted);
+      pending.delete(id);
+      streams.delete(id);
+    }
+  }
   port?.close();
   port = next;
   port.onmessage = (ev: MessageEvent) => handle(ev.data);
@@ -119,6 +176,7 @@ const bridge: PyxisBridge = {
     return {
       result,
       cancel() {
+        canceled.add(id);
         post({ kind: "cancel", id });
       },
     };
