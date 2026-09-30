@@ -128,6 +128,20 @@ describe("importSmartbook", () => {
       }),
     );
     expect(smartbookMeta(db, unknown.sourceId)?.knownSpec).toBe(false);
+    const older = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "old",
+          title: "Prima",
+          specVersion: "1",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nTesto.\n",
+      }),
+    );
+    expect(smartbookMeta(db, older.sourceId)?.knownSpec).toBe(true);
   });
 
   it("reads the owner's Fisica 1 book when it is on disk", () => {
