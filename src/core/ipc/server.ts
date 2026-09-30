@@ -192,6 +192,9 @@ async function dispatch(
     case "plans.list":
       requests["plans.list"].input.parse(input);
       return plans?.list() ?? [];
+    case "plans.usage":
+      requests["plans.usage"].input.parse(input);
+      return plans?.usage() ?? [];
     case "plans.delete":
       return plans?.delete(requests["plans.delete"].input.parse(input));
     case "plans.export":
@@ -271,8 +274,8 @@ export function bindMaps(db: Parameters<typeof mapHandlers>[0]): void {
   maps = mapHandlers(db);
 }
 
-export function bindPlans(db: Parameters<typeof planHandlers>[0]): void {
-  plans = planHandlers(db);
+export function bindPlans(db: Parameters<typeof planHandlers>[0], workspace = ""): void {
+  plans = planHandlers(db, workspace);
 }
 
 export function bindProfile(db: Parameters<typeof profileHandlers>[0]): void {

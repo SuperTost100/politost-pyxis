@@ -398,6 +398,10 @@ export const requests = {
       z.object({ id: z.string(), title: z.string(), status: z.string() }),
     ),
   },
+  "plans.usage": {
+    input: z.object({}),
+    output: z.array(z.object({ id: z.string(), title: z.string(), bytes: z.number() })),
+  },
   "plans.read": {
     input: z.object({ planId: z.string() }),
     output: z

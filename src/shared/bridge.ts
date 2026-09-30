@@ -50,6 +50,8 @@ export interface PyxisBridge {
   killCore(): Promise<void>;
   backupWorkspace(): Promise<"saved" | "cancelled">;
   restoreWorkspace(): Promise<"restored" | "cancelled">;
+  workspacePath(): Promise<string>;
+  wipeWorkspace(): Promise<"wiped">;
   fetchPlan(url: string): Promise<string>;
 }
 
@@ -64,5 +66,7 @@ export const mainChannels = {
   keysStatus: "keys:status",
   workspaceBackup: "workspace:backup",
   workspaceRestore: "workspace:restore",
+  workspacePath: "workspace:path",
+  workspaceWipe: "workspace:wipe",
   planFetch: "plan:fetch",
 } as const;

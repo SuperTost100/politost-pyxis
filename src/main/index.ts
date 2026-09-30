@@ -17,6 +17,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
+import { wipeWorkspace } from "../core/share/wipe";
 import { ensureWorkspace, ensureWorkspaceDirs } from "./workspace";
 import {
   mainChannels,
@@ -550,6 +551,21 @@ function registerIpc(): void {
         await runArchive("restore", filePath);
         ensureWorkspaceDirs(workspacePath);
         return "restored";
+      } finally {
+        await resumeCore();
+      }
+    } finally {
+      release();
+    }
+  });
+  ipcMain.handle(mainChannels.workspacePath, () => workspacePath);
+  ipcMain.handle(mainChannels.workspaceWipe, async () => {
+    const release = occupyWorkspace();
+    try {
+      await pauseCore();
+      try {
+        wipeWorkspace(workspacePath);
+        return "wiped" as const;
       } finally {
         await resumeCore();
       }

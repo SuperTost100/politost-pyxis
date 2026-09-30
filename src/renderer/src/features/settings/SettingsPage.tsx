@@ -22,6 +22,15 @@ export function SettingsPage() {
 
   const [draftInterests, setDraftInterests] = useState<string | null>(null);
   const [dataNote, setDataNote] = useState<string | null>(null);
+  const [wipeArmed, setWipeArmed] = useState(false);
+  const place = useQuery({
+    queryKey: ["workspace-path"],
+    queryFn: () => window.pyxis.workspacePath(),
+  });
+  const usage = useQuery({
+    queryKey: ["plan-usage"],
+    queryFn: () => invoke("plans.usage", {}),
+  });
 
   async function patch(input: {
     dyslexia?: boolean;
@@ -129,6 +138,14 @@ export function SettingsPage() {
         ))}
       </div>
       <div className="label section-label">{t("settings.data")}</div>
+      {place.data ? <p className="small section-hint">{place.data}</p> : null}
+      <ul className="choice-list">
+        {(usage.data ?? []).map((plan) => (
+          <li key={plan.id} className="small">
+            {t("settings.planSize", { title: plan.title, size: formatBytes(plan.bytes) })}
+          </li>
+        ))}
+      </ul>
       <div className="choice-list">
         <Button
           onClick={() => {
@@ -154,8 +171,27 @@ export function SettingsPage() {
         >
           {t("settings.restore")}
         </Button>
+        <Button
+          danger={wipeArmed}
+          onClick={() => {
+            if (!wipeArmed) {
+              setWipeArmed(true);
+              return;
+            }
+            setDataNote(null);
+            void window.pyxis.wipeWorkspace().then(() => {
+              window.location.reload();
+            }).catch(() => {
+              setWipeArmed(false);
+              setDataNote(t("settings.wipeFailed"));
+            });
+          }}
+        >
+          {wipeArmed ? t("settings.wipeConfirm") : t("settings.wipe")}
+        </Button>
       </div>
-      <p className="small section-hint">{dataNote ?? t("settings.dataHint")}</p>
+      <p className="small section-hint">{dataNote ?? t("settings.wipeHint")}</p>
+      <p className="small section-hint">{t("settings.dataHint")}</p>
       <div className="label section-label">{t("settings.language")}</div>
       <div className="choice-list">
         <Choice
@@ -174,6 +210,11 @@ export function SettingsPage() {
       <p className="small section-hint">{t("settings.notices")}</p>
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  return `${Math.round(bytes / 1024)} KB`;
 }
 
 function Choice(props: {

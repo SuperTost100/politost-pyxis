@@ -38,6 +38,7 @@ const replayable = new Set([
   "study.lesson",
   "study.exercises",
   "plans.list",
+  "plans.usage",
   "plans.read",
   "plans.export",
   "plans.mastery",
@@ -208,6 +209,8 @@ const bridge: PyxisBridge = {
   killCore: () => ipcRenderer.invoke("dev:killCore"),
   backupWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceBackup),
   restoreWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceRestore),
+  workspacePath: () => ipcRenderer.invoke(mainChannels.workspacePath),
+  wipeWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceWipe),
   fetchPlan: (url: string) => ipcRenderer.invoke(mainChannels.planFetch, url),
 };
 

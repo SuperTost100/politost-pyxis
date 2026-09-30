@@ -70,6 +70,7 @@ export const implemented = [
   "SET-02", // src/renderer/src/features/settings/EnginesPanel.tsx
   "SET-03", // src/renderer/src/features/settings/SettingsPage.tsx
   "SET-04", // src/renderer/src/features/settings/SettingsPage.tsx
+  "SET-05", // src/core/share/usage.ts
   "SET-08", // src/renderer/src/features/settings/SettingsPage.tsx
   "SET-07", // src/core/profile/profile.ts
   "SHR-04", // src/main/index.ts
