@@ -117,7 +117,11 @@ export function chatScope(db: Database.Database, chatId: string): string[] {
   return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
 }
 
-function priorPassages(db: Database.Database, chatId: string): PassageHit[] {
+function priorPassages(
+  db: Database.Database,
+  chatId: string,
+  sourceIds: string[],
+): PassageHit[] {
   const rows = db
     .prepare(
       `SELECT p.id, p.source_id, p.text, p.section_path, p.locator_json
@@ -135,15 +139,23 @@ function priorPassages(db: Database.Database, chatId: string): PassageHit[] {
     section_path: string | null;
     locator_json: string | null;
   }>;
-  return rows.map((row) => ({
-    id: row.id,
-    sourceId: row.source_id ?? "",
-    text: row.text,
-    sectionPath: row.section_path,
-    locator: row.locator_json
-      ? (JSON.parse(row.locator_json) as PassageHit["locator"])
-      : {},
-  }));
+  const seen = new Set<string>();
+  const hits: PassageHit[] = [];
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    if (sourceIds.length > 0 && !sourceIds.includes(row.source_id ?? "")) continue;
+    seen.add(row.id);
+    hits.push({
+      id: row.id,
+      sourceId: row.source_id ?? "",
+      text: row.text,
+      sectionPath: row.section_path,
+      locator: row.locator_json
+        ? (JSON.parse(row.locator_json) as PassageHit["locator"])
+        : {},
+    });
+  }
+  return hits;
 }
 
 function ensureChat(db: Database.Database, chatId: string | undefined, title: string, now: number) {
@@ -180,7 +192,7 @@ function gather(
     const wider = retrieve(db, `${earlier.body} ${text}`, options);
     if (wider.covered) return wider;
   }
-  const prior = priorPassages(db, chatId);
+  const prior = priorPassages(db, chatId, sourceIds);
   if (prior.length > 0) return { hits: prior, covered: true, usedVectors: false };
   return found;
 }

@@ -81,6 +81,13 @@ describe("askTurn", () => {
     });
     expect(second.covered).toBe(true);
     expect(prompt).toContain("vettore");
+    const outside = await askTurn(db, {
+      chatId: first.chatId,
+      text: "un esempio",
+      sourceIds: ["missing-source"],
+      run: async () => reply,
+    });
+    expect(outside.covered).toBe(false);
   });
 
   it("does not keep a source answer that cites nothing", async () => {

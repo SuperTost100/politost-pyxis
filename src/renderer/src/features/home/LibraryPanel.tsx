@@ -25,6 +25,7 @@ export function LibraryPanel() {
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [ocrFor, setOcrFor] = useState<string | null>(null);
+  const [preferOpened, setPreferOpened] = useState(Boolean(params.get("passage")));
 
   const chapters = useQuery({
     queryKey: ["source-chapters", sourceId],
@@ -55,6 +56,7 @@ export function LibraryPanel() {
     if (source) setSourceId(source);
     if (chapterParam) setChapter(Number(chapterParam));
     if (paragraphParam) setParagraph(paragraphParam);
+    if (params.get("passage")) setPreferOpened(true);
     const openedSource = opened.data?.[0]?.sourceId;
     if (openedSource) setSourceId(openedSource);
   }, [params, opened.data]);
@@ -162,6 +164,7 @@ export function LibraryPanel() {
                 type="button"
                 className="choice"
                 onClick={() => {
+                  setPreferOpened(false);
                   setSourceId(hit.sourceId);
                   setChapter(hit.locator.chapter ?? null);
                   setParagraph(hit.locator.paragraph);
@@ -181,6 +184,7 @@ export function LibraryPanel() {
               type="button"
               className={source.id === sourceId ? "choice is-selected" : "choice"}
               onClick={() => {
+                setPreferOpened(false);
                 setSourceId(source.id);
                 setChapter(null);
                 setParagraph(undefined);
@@ -198,6 +202,7 @@ export function LibraryPanel() {
             type="button"
             className={item.number === chapter ? "choice is-selected" : "choice"}
             onClick={() => {
+              setPreferOpened(false);
               setChapter(item.number);
               setParagraph(undefined);
             }}
@@ -207,7 +212,7 @@ export function LibraryPanel() {
         ))}
       </div>
       <div className="reading-column">
-        {(opened.data ?? page.data ?? []).map((row) => (
+        {((preferOpened ? opened.data : null) ?? page.data ?? []).map((row) => (
           <div
             key={row.id}
             id={row.current ? "passage-current" : undefined}
