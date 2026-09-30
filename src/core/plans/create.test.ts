@@ -2,7 +2,7 @@ import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { importSmartbook } from "../sources/smartbook";
-import { createPlan } from "./create";
+import { createPlan, deletePlan } from "./create";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -46,5 +46,9 @@ describe("createPlan", () => {
       )
       .get(plan.planId) as { n: number };
     expect(linked.n).toBe(2);
+    deletePlan(db, plan.planId);
+    const left = db.prepare(`SELECT COUNT(*) AS n FROM plans`).get() as { n: number };
+    expect(left.n).toBe(0);
+    expect(() => deletePlan(db, plan.planId)).toThrow(/plan-missing/);
   });
 });

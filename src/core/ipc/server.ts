@@ -158,6 +158,8 @@ async function dispatch(
     case "plans.list":
       requests["plans.list"].input.parse(input);
       return plans?.list() ?? [];
+    case "plans.delete":
+      return plans?.delete(requests["plans.delete"].input.parse(input));
     case "plans.export":
       return plans?.export(requests["plans.export"].input.parse(input));
     case "plans.import":

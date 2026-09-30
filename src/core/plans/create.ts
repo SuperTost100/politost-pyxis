@@ -103,6 +103,11 @@ export function createPlan(
   return { planId, topics, pathNodes };
 }
 
+export function deletePlan(db: Database.Database, planId: string): void {
+  const info = db.prepare(`DELETE FROM plans WHERE id = ?`).run(planId);
+  if (info.changes === 0) throw new Error("plan-missing");
+}
+
 export function completeNode(
   db: Database.Database,
   planId: string,

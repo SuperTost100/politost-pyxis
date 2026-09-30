@@ -265,6 +265,10 @@ export const requests = {
       })
       .nullable(),
   },
+  "plans.delete": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({ ok: z.boolean() }),
+  },
   "plans.export": {
     input: z.object({ planId: z.string() }),
     output: planFileSchema,

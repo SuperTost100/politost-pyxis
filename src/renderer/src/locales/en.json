@@ -93,6 +93,7 @@
     "unlocksAfterCurrent": "Unlocks after the current step",
     "current": "Now",
     "export": "Export",
+    "delete": "Delete the plan",
     "intro": "Introduction",
     "diagnostic": "Diagnostic",
     "learn": "Study",

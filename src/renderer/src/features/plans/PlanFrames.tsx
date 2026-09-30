@@ -163,6 +163,20 @@ export function PlanPage() {
           </li>
         ))}
       </ol>
+      <Button
+        type="text"
+        danger
+        shape="round"
+        onClick={() => {
+          if (!planId || !window.confirm(t("plans.delete"))) return;
+          void invoke("plans.delete", { planId }).then(() => {
+            void client.invalidateQueries({ queryKey: ["plans"] });
+            navigate("/exams");
+          });
+        }}
+      >
+        {t("plans.delete")}
+      </Button>
     </FocusLayout>
   );
 }
