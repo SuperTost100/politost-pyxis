@@ -67,6 +67,13 @@ export function exportPlan(db: Database.Database, planId: string): PlanFile {
   };
 }
 
+function topicRef(topicIds: string[], index: number | null): string | null {
+  if (index == null) return null;
+  const id = topicIds[index];
+  if (!id) throw new Error("plan-file");
+  return id;
+}
+
 export function importPlan(db: Database.Database, file: PlanFile, now = Date.now()): string {
   const parsed = planFileSchema.parse(file);
   const planId = uuidv7(now);
@@ -91,14 +98,14 @@ export function importPlan(db: Database.Database, file: PlanFile, now = Date.now
       ).run(topicIds[i], planId, topic.title, topic.position, now);
     });
     parsed.nodes.forEach((node, i) => {
-      const topicId = node.topic == null ? null : (topicIds[node.topic] ?? null);
+      const topicId = topicRef(topicIds, node.topic);
       db.prepare(
         `INSERT INTO path_nodes (id, plan_id, topic_id, kind, position, title, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
       ).run(uuidv7(now + 100 + i), planId, topicId, node.kind, node.position, node.title, now);
     });
     parsed.cards.forEach((card, i) => {
-      const topicId = card.topic == null ? null : (topicIds[card.topic] ?? null);
+      const topicId = topicRef(topicIds, card.topic);
       db.prepare(
         `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, created_at)
          VALUES (?, ?, ?, ?, ?, 'sources', ?)`,

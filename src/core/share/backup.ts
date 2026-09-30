@@ -110,9 +110,19 @@ export function restoreWorkspace(zipPath: string, workspace: string): void {
     corrupt();
   }
 
+  if (bytes.length > 80 * 1024 * 1024) corrupt();
   let entries: Record<string, Uint8Array>;
   try {
-    entries = unzipSync(bytes);
+    // ponytail: same declared-size cap as a smartbook. A header that lies about originalSize can still expand; switch to a streaming unzip.
+    let declared = 0;
+    const maxExpanded = 256 * 1024 * 1024;
+    entries = unzipSync(bytes, {
+      filter(file) {
+        declared += file.originalSize;
+        return declared <= maxExpanded;
+      },
+    });
+    if (declared > maxExpanded) corrupt();
   } catch {
     corrupt();
   }

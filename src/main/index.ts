@@ -481,7 +481,7 @@ function registerIpc(): void {
   );
   ipcMain.handle(mainChannels.planFetch, async (_event, raw: string) => {
     const url = httpPlanUrl(raw);
-    const response = await fetch(url, { redirect: "error" });
+    const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(15_000) });
     if (!response.ok || !response.body) throw new Error("plan-url");
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];

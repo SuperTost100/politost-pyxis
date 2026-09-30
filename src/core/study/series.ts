@@ -13,13 +13,16 @@ export type SeriesEvent = {
 };
 
 function dayStart(at: number): number {
-  return Math.floor(at / DAY) * DAY;
+  const date = new Date(at);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
 }
 
 function weekStart(at: number): number {
-  const day = dayStart(at);
-  const weekday = new Date(day).getUTCDay();
-  return day - ((weekday + 6) % 7) * DAY;
+  const date = new Date(dayStart(at));
+  const weekday = date.getDay();
+  date.setDate(date.getDate() - ((weekday + 6) % 7));
+  return date.getTime();
 }
 
 function isStudied(

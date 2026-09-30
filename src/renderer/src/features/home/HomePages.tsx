@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 import { Button, Segmented } from "antd";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
@@ -97,10 +98,11 @@ export function ExamsHome() {
 }
 
 function ImportPlan(props: { label: string; onImported: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
   return (
-    <label className="choice">
-      {props.label}
+    <>
       <input
+        ref={fileRef}
         type="file"
         accept="application/json,.json"
         hidden
@@ -119,6 +121,9 @@ function ImportPlan(props: { label: string; onImported: () => void }) {
           });
         }}
       />
-    </label>
+      <Button shape="round" onClick={() => fileRef.current?.click()}>
+        {props.label}
+      </Button>
+    </>
   );
 }

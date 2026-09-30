@@ -25,6 +25,7 @@ export function LibraryPanel() {
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [ocrFor, setOcrFor] = useState<string | null>(null);
+  const [pickedPassage, setPickedPassage] = useState<string | null>(null);
   const [preferOpened, setPreferOpened] = useState(Boolean(params.get("passage")));
 
   const chapters = useQuery({
@@ -32,7 +33,7 @@ export function LibraryPanel() {
     enabled: sourceId != null,
     queryFn: () => invoke("sources.chapters", { sourceId: sourceId ?? "" }),
   });
-  const passageId = params.get("passage");
+  const passageId = params.get("passage") ?? pickedPassage;
   const opened = useQuery({
     queryKey: ["source-passage", passageId],
     enabled: Boolean(passageId),
@@ -63,7 +64,7 @@ export function LibraryPanel() {
 
   useEffect(() => {
     document.getElementById("passage-current")?.scrollIntoView({ block: "center" });
-  }, [page.data]);
+  }, [page.data, opened.data]);
 
   const add = useMutation({
     mutationFn: async () => {
@@ -172,9 +173,17 @@ export function LibraryPanel() {
                 type="button"
                 className="choice"
                 onClick={() => {
-                  setPreferOpened(false);
                   setSourceId(hit.sourceId);
-                  setChapter(hit.locator.chapter ?? null);
+                  if (hit.locator.chapter == null) {
+                    setPreferOpened(true);
+                    setPickedPassage(hit.id);
+                    setChapter(null);
+                    setParagraph(undefined);
+                    return;
+                  }
+                  setPreferOpened(false);
+                  setPickedPassage(null);
+                  setChapter(hit.locator.chapter);
                   setParagraph(hit.locator.paragraph);
                 }}
               >

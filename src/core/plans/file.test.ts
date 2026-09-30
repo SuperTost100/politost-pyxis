@@ -76,6 +76,21 @@ describe("plan file", () => {
     expect(importPlan(db, clamped, 60_000)).not.toBe(plan.planId);
   });
 
+  it("refuses a node that points past the topic list", () => {
+    const db = openDatabase(":memory:");
+    expect(() =>
+      importPlan(db, {
+        version: 1,
+        title: "Fisica",
+        topics: [{ title: "Moti", position: 0 }],
+        nodes: [{ title: "Studio", kind: "learn", position: 0, topic: 1 }],
+        cards: [],
+      }),
+    ).toThrow("plan-file");
+    const count = db.prepare(`SELECT COUNT(*) AS n FROM plans`).get() as { n: number };
+    expect(count.n).toBe(0);
+  });
+
   it("accepts only an http plan link", () => {
     expect(httpPlanUrl("https://example.com/piano.json")).toBe(
       "https://example.com/piano.json",
