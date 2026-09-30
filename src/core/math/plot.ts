@@ -131,7 +131,7 @@ export function splitSeries(
   return groups;
 }
 
-// ponytail: bisection, then a geometric walk from each end. A finite sign-changing spike that rises above both samples still breaks. Upgrade path is a denser sample or a CAS.
+// ponytail: bisection, then a geometric walk. A finite peak that stops climbing stays one stroke. Upgrade path is a denser sample or a CAS.
 function connects(
   prev: { x: number; y: number },
   point: { x: number; y: number },
@@ -202,9 +202,34 @@ function tallerInside(
   const width = point.x - prev.x;
   for (let k = 1; k <= 48; k++) {
     const step = width * 2 ** -k;
-    if (magnitude(prev.x + step) > limit || magnitude(point.x - step) > limit) return true;
+    if (keepsClimbing(prev.x + step, step, magnitude, limit)) return true;
+    if (keepsClimbing(point.x - step, step, magnitude, limit)) return true;
   }
   return false;
+}
+
+function keepsClimbing(
+  start: number,
+  step: number,
+  magnitude: (x: number) => number,
+  limit: number,
+) {
+  let x = start;
+  let mag = magnitude(x);
+  if (mag <= limit) return false;
+  let h = step;
+  for (let i = 0; i < 40; i++) {
+    h /= 2;
+    if (x + h === x) return mag > limit * 8;
+    const left = magnitude(x - h);
+    const right = magnitude(x + h);
+    if (!Number.isFinite(left) || !Number.isFinite(right)) return true;
+    const next = Math.max(left, right);
+    if (next <= mag) return false;
+    mag = next;
+    x = left >= right ? x - h : x + h;
+  }
+  return true;
 }
 
 function applyFn(name: string, arg: number): number {
