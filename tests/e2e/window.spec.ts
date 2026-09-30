@@ -101,6 +101,16 @@ test("a smartbook becomes a plan without a model", async () => {
     await page.getByRole("textbox", { name: "Correggi" }).fill("W = F s.");
     await page.getByRole("button", { name: "Correggi" }).click();
     await expect(page.getByText("100 su 100")).toBeVisible();
+    await page.getByRole("button", { name: "Indietro" }).click();
+    await page.getByRole("button", { name: /Esercizi/ }).click();
+    await page.getByRole("button", { name: "Ho letto" }).click();
+    const cards = page.getByRole("button", { name: /Carte/ });
+    await expect(cards).toBeEnabled();
+    await cards.click();
+    await expect(page.getByText("1. Moti · 1")).toBeVisible();
+    await page.getByRole("button", { name: "Gira" }).click();
+    await page.getByRole("button", { name: "Bene" }).click();
+    await expect(page.getByText("Prossima tra 1 giorni")).toBeVisible();
   } finally {
     await app?.close();
     rmSync(userData, { recursive: true, force: true });
