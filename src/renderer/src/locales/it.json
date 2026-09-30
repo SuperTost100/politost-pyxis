@@ -431,6 +431,7 @@
     "vision": "Motore per le immagini",
     "capabilityWarning": "Questo modello non legge le immagini. Scegline un altro nella pagina Motori.",
     "anthropicKey": "Chiave Anthropic",
+    "openaiKey": "Chiave OpenAI",
     "saveKey": "Salva la chiave",
     "keySaved": "Chiave salvata",
     "capabilityCheck": "Controlla un id modello",

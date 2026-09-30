@@ -45,6 +45,7 @@ export function EnginesPanel() {
   const [codeFor, setCodeFor] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [keyValue, setKeyValue] = useState("");
+  const [openAiKey, setOpenAiKey] = useState("");
   const [probe, setProbe] = useState("");
   useEffect(
     () =>
@@ -251,6 +252,27 @@ export function EnginesPanel() {
           autoComplete="off"
           aria-label={t("engines.anthropicKey")}
           onChange={(event) => setKeyValue(event.target.value)}
+        />
+        <button type="submit">{t("engines.saveKey")}</button>
+      </form>
+      <div className="label section-label">{t("engines.openaiKey")}</div>
+      <form
+        className="engine-key"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void window.pyxis.keys.set("openai", openAiKey).then(() => {
+            setOpenAiKey("");
+            setResult(t("engines.keySaved"));
+            void client.invalidateQueries({ queryKey: ["engines"] });
+          });
+        }}
+      >
+        <input
+          type="password"
+          value={openAiKey}
+          autoComplete="off"
+          aria-label={t("engines.openaiKey")}
+          onChange={(event) => setOpenAiKey(event.target.value)}
         />
         <button type="submit">{t("engines.saveKey")}</button>
       </form>
