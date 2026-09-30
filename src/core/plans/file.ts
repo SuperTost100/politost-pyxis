@@ -5,8 +5,16 @@ import { planFileSchema, type PlanFile } from "../../shared/plan-file";
 export type { PlanFile };
 
 export function exportPlan(db: Database.Database, planId: string): PlanFile {
-  const plan = db.prepare(`SELECT title FROM plans WHERE id = ?`).get(planId) as
-    | { title: string }
+  const plan = db.prepare(
+    `SELECT title, exam_at, target, content_language, style FROM plans WHERE id = ?`,
+  ).get(planId) as
+    | {
+        title: string;
+        exam_at: number | null;
+        target: number;
+        content_language: string | null;
+        style: string;
+      }
     | undefined;
   if (!plan) throw new Error("plan-missing");
   const topics = db
@@ -41,6 +49,16 @@ export function exportPlan(db: Database.Database, planId: string): PlanFile {
       back: card.back,
       topic: card.topic_id == null ? null : (index.get(card.topic_id) ?? null),
     })),
+    examAt: plan.exam_at,
+    target: plan.target,
+    language:
+      plan.content_language === "it" || plan.content_language === "en"
+        ? plan.content_language
+        : null,
+    style:
+      plan.style === "read" || plan.style === "practice" || plan.style === "decide"
+        ? plan.style
+        : "decide",
   };
 }
 
@@ -50,8 +68,18 @@ export function importPlan(db: Database.Database, file: PlanFile, now = Date.now
   const topicIds = parsed.topics.map((_, i) => uuidv7(now + i + 1));
   const run = db.transaction(() => {
     db.prepare(
-      `INSERT INTO plans (id, title, status, created_at, updated_at) VALUES (?, ?, 'ready', ?, ?)`,
-    ).run(planId, parsed.title, now, now);
+      `INSERT INTO plans (id, title, status, content_language, exam_at, target, style, created_at, updated_at)
+       VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      planId,
+      parsed.title,
+      parsed.language ?? null,
+      parsed.examAt ?? null,
+      parsed.target ?? 0.75,
+      parsed.style ?? "decide",
+      now,
+      now,
+    );
     parsed.topics.forEach((topic, i) => {
       db.prepare(
         `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, ?, ?, ?, ?)`,

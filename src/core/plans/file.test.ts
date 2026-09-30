@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan } from "./create";
 import { exportPlan, importPlan } from "./file";
-import { httpPlanUrl } from "../../shared/plan-file";
+import { examInstant, httpPlanUrl } from "../../shared/plan-file";
 import { importSmartbook } from "../sources/smartbook";
 
 function pack(files: Record<string, string>): Uint8Array {
@@ -28,7 +28,14 @@ describe("plan file", () => {
         "esercizi.md": "",
       }),
     );
-    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
+    const plan = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [imported.sourceId],
+      examAt: 90_000,
+      target: 0.8,
+      language: "en",
+      style: "read",
+    });
     db.prepare(
       `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, created_at)
        VALUES ('card-1', ?, (SELECT id FROM topics WHERE plan_id = ?), 'fronte', 'retro', 'sources', 1)`,
@@ -49,6 +56,20 @@ describe("plan file", () => {
       back: string;
     };
     expect(card).toEqual({ front: "fronte", back: "retro" });
+    const stored = db
+      .prepare(`SELECT exam_at, target, content_language, style FROM plans WHERE id = ?`)
+      .get(copyId) as {
+      exam_at: number;
+      target: number;
+      content_language: string;
+      style: string;
+    };
+    expect(stored).toEqual({
+      exam_at: 90_000,
+      target: 0.8,
+      content_language: "en",
+      style: "read",
+    });
   });
 
   it("accepts only an http plan link", () => {
@@ -56,5 +77,13 @@ describe("plan file", () => {
       "https://example.com/piano.json",
     );
     expect(() => httpPlanUrl("file:///tmp/piano.json")).toThrow("plan-url");
+  });
+
+  it("keeps the calendar day across a daylight-saving change", () => {
+    const at = new Date(examInstant(1, new Date(2026, 2, 28, 23, 30, 0)));
+    expect(at.getFullYear()).toBe(2026);
+    expect(at.getMonth()).toBe(2);
+    expect(at.getDate()).toBe(29);
+    expect(at.getHours()).toBe(12);
   });
 });

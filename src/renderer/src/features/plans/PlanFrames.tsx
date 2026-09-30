@@ -6,9 +6,7 @@ import { useNavigate, useParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
 import { invoke } from "../../lib/ipc";
-import { planFileSchema } from "@shared/plan-file";
-
-const DAY = 86_400_000;
+import { examInstant, planFileSchema } from "@shared/plan-file";
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();
@@ -36,7 +34,7 @@ export function WizardFrame() {
     setFailed(false);
     try {
       const days = examChoice === "1" ? 1 : examChoice === "2" ? 2 : examChoice === "3" ? 3 : 10;
-      const fromDate = date ? new Date(`${date}T12:00:00`).getTime() : Date.now() + days * DAY;
+      const fromDate = date ? new Date(`${date}T12:00:00`).getTime() : examInstant(days);
       const result = await invoke("plans.create", {
         title: name,
         sourceIds: picked,
