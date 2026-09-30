@@ -75,7 +75,42 @@ describe("cards", () => {
       topicId,
       pairs: [{ front: "1. Moti · 1", back: "Il vettore.", passageId }],
     });
-    expect(dueCards(db, planId, T0)[0]?.sectionPath).toBe("1. Moti");
+    const due = dueCards(db, planId, T0)[0];
+    expect(due?.sectionPath).toBe("1. Moti");
+    expect(due?.passageId).toBe(passageId);
+    expect(due?.sourceId).toBe(sourceId);
+  });
+
+  it("fills a missing passage on a card that already exists", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const sourceId = uuidv7();
+    const passageId = uuidv7();
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES (?, 'smartbook', 'Demo', 'ready', 1, 1)`,
+    ).run(sourceId);
+    db.prepare(
+      `INSERT INTO passages (id, source_id, text, section_path, locator_json, created_at)
+       VALUES (?, ?, 'Il vettore.', '1. Moti', '{"chapter":1}', 1)`,
+    ).run(passageId, sourceId);
+    seedCards(db, {
+      planId,
+      topicId,
+      pairs: [{ front: "1. Moti · 1", back: "Il vettore." }],
+    });
+    seedCards(db, {
+      planId,
+      topicId,
+      pairs: [{ front: "1. Moti · 1", back: "Il vettore.", passageId }],
+    });
+    const due = dueCards(db, planId, T0)[0];
+    expect(due?.passageId).toBe(passageId);
+    expect(due?.chapter).toBe(1);
+    const count = db.prepare(`SELECT COUNT(*) AS n FROM cards WHERE plan_id = ?`).get(planId) as {
+      n: number;
+    };
+    expect(count.n).toBe(1);
   });
 
   it("after a good rating the card is not due until dueAt", () => {

@@ -63,7 +63,20 @@ export function CardsPage() {
         <article className="passage">
           <MarkdownView>{card.front}</MarkdownView>
           {showBack ? <MarkdownView>{card.back}</MarkdownView> : null}
-          {showBack && card.sectionPath ? <CitationChip>{card.sectionPath}</CitationChip> : null}
+          {showBack && card.sectionPath && card.passageId && card.sourceId ? (
+            <CitationChip
+              onClick={() => {
+                const params = new URLSearchParams({
+                  source: card.sourceId ?? "",
+                  passage: card.passageId ?? "",
+                });
+                if (card.chapter != null) params.set("chapter", String(card.chapter));
+                navigate(`/exams/library?${params.toString()}`);
+              }}
+            >
+              {card.sectionPath}
+            </CitationChip>
+          ) : null}
           {intervalDays != null ? (
             <p className="small">{t("cards.next", { days: intervalDays })}</p>
           ) : null}

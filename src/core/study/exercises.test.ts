@@ -40,6 +40,10 @@ describe("topicExercises", () => {
     const second = topicExercises(db, topics[1]?.id ?? "");
     expect(first.map((row) => row.prompt)).toEqual(["Quanto vale il lavoro?"]);
     expect(first[0]?.answer).toContain("W = F");
+    const passage = db
+      .prepare(`SELECT id FROM passages WHERE source_id = ? AND section_path = '1. Moti'`)
+      .get(imported.sourceId) as { id: string };
+    expect(first[0]?.passageId).toBe(passage.id);
     expect(second.map((row) => row.prompt)).toEqual(["Quanto vale la forza?"]);
   });
 });

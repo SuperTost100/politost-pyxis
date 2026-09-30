@@ -13,7 +13,15 @@ export function topicExercises(db: Database.Database, topicId: string) {
   const marks = chapters.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT e.id, e.prompt, e.answer, e.passage_id
+      `SELECT e.id, e.prompt, e.answer,
+        COALESCE(e.passage_id, (
+          SELECT p.id FROM passages p
+          JOIN topic_passages tp ON tp.passage_id = p.id
+          WHERE tp.topic_id = t.id
+            AND json_extract(p.locator_json, '$.chapter') = json_extract(e.locator_json, '$.chapter')
+          ORDER BY p.created_at
+          LIMIT 1
+        )) AS passage_id
        FROM exercises e
        JOIN smartbooks sb ON sb.id = e.smartbook_id
        JOIN plan_sources ps ON ps.source_id = sb.source_id

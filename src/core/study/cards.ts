@@ -8,6 +8,9 @@ export type DueCard = {
   back: string;
   topicId: string | null;
   sectionPath: string | null;
+  passageId: string | null;
+  sourceId: string | null;
+  chapter: number | null;
   state: ScheduleState;
 };
 
@@ -20,7 +23,10 @@ export function seedCards(
   },
 ): string[] {
   const exists = db.prepare(
-    `SELECT 1 FROM cards WHERE plan_id = ? AND TRIM(front) = ? LIMIT 1`,
+    `SELECT id, passage_id FROM cards WHERE plan_id = ? AND TRIM(front) = ? LIMIT 1`,
+  );
+  const link = db.prepare(
+    `UPDATE cards SET passage_id = ? WHERE id = ? AND passage_id IS NULL`,
   );
   const insert = db.prepare(
     `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, passage_id, created_at)
@@ -30,7 +36,13 @@ export function seedCards(
   for (const pair of input.pairs) {
     const front = pair.front.trim();
     const back = pair.back.trim();
-    if (exists.get(input.planId, front)) continue;
+    const prior = exists.get(input.planId, front) as
+      | { id: string; passage_id: string | null }
+      | undefined;
+    if (prior) {
+      if (prior.passage_id == null && pair.passageId) link.run(pair.passageId, prior.id);
+      continue;
+    }
     const now = Date.now();
     const id = uuidv7(now);
     insert.run(id, input.planId, input.topicId, front, back, pair.passageId ?? null, now);
@@ -48,7 +60,10 @@ export function dueCards(
   const rows = db
     .prepare(
       `SELECT c.id, c.front, c.back, c.topic_id,
+        c.passage_id,
         (SELECT p.section_path FROM passages p WHERE p.id = c.passage_id) AS section_path,
+        (SELECT p.source_id FROM passages p WHERE p.id = c.passage_id) AS source_id,
+        (SELECT json_extract(p.locator_json, '$.chapter') FROM passages p WHERE p.id = c.passage_id) AS chapter,
         (SELECT cr.state_json FROM card_reviews cr
          WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1) AS state_json,
         COALESCE(
@@ -78,7 +93,10 @@ export function dueCards(
     front: string;
     back: string;
     topic_id: string | null;
+    passage_id: string | null;
     section_path: string | null;
+    source_id: string | null;
+    chapter: number | null;
     state_json: string | null;
   }>;
 
@@ -88,6 +106,9 @@ export function dueCards(
     back: row.back,
     topicId: row.topic_id,
     sectionPath: row.section_path,
+    passageId: row.passage_id,
+    sourceId: row.source_id,
+    chapter: row.chapter,
     state: row.state_json ? (JSON.parse(row.state_json) as ScheduleState) : newCard(now),
   }));
 }

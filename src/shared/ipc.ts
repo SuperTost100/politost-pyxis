@@ -282,6 +282,9 @@ export const requests = {
         back: z.string(),
         topicId: z.string().nullable(),
         sectionPath: z.string().nullable(),
+        passageId: z.string().nullable(),
+        sourceId: z.string().nullable(),
+        chapter: z.number().nullable(),
         state: z.object({
           intervalDays: z.number(),
           ease: z.number(),
