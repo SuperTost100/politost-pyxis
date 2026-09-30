@@ -9,7 +9,7 @@ export function planHandlers(db: Database.Database) {
     list() {
       return listPlans(db);
     },
-    create(input: { title: string; sourceIds: string[] }) {
+    create(input: Parameters<typeof createPlan>[1]) {
       return createPlan(db, input);
     },
     read(input: { planId: string }) {

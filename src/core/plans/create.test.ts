@@ -34,6 +34,20 @@ describe("createPlan", () => {
       sourceIds: [imported.sourceId],
     });
     expect(plan.topics).toBe(2);
+    const stored = db
+      .prepare(`SELECT target, style, content_language, exam_at FROM plans WHERE id = ?`)
+      .get(plan.planId) as {
+      target: number;
+      style: string;
+      content_language: string | null;
+      exam_at: number | null;
+    };
+    expect(stored).toEqual({
+      target: 0.75,
+      style: "decide",
+      content_language: null,
+      exam_at: null,
+    });
     expect(plan.pathNodes).toBe(12);
     const kinds = db
       .prepare(`SELECT kind FROM path_nodes WHERE plan_id = ? ORDER BY position`)
@@ -54,5 +68,43 @@ describe("createPlan", () => {
     const left = db.prepare(`SELECT COUNT(*) AS n FROM plans`).get() as { n: number };
     expect(left.n).toBe(0);
     expect(() => deletePlan(db, plan.planId)).toThrow(/plan-missing/);
+  });
+
+  it("stores the exam date, target, language and style", () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Fisica",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore.\n",
+      }),
+    );
+    const plan = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [imported.sourceId],
+      examAt: 90_000,
+      target: 0.8,
+      language: "en",
+      style: "read",
+    });
+    const stored = db
+      .prepare(`SELECT exam_at, target, content_language, style FROM plans WHERE id = ?`)
+      .get(plan.planId) as {
+      exam_at: number;
+      target: number;
+      content_language: string;
+      style: string;
+    };
+    expect(stored).toEqual({
+      exam_at: 90_000,
+      target: 0.8,
+      content_language: "en",
+      style: "read",
+    });
   });
 });

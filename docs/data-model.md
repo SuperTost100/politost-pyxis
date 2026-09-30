@@ -18,7 +18,7 @@ One SQLite file, `pyxis.db`, in the workspace. WAL and foreign keys are on. `000
 | passages_vec     | The embedding index of passages.                                         |
 | smartbooks       | Metadata for a PoliTost smartbook source.                                |
 | exercises        | An exercise from a smartbook or a model.                                 |
-| plans            | A study plan.                                                            |
+| plans            | A study plan. `exam_at`, `target`, `content_language` and `style` come from the wizard. |
 | plan_sources     | A source attached to a plan.                                             |
 | topics           | A node in a plan's topic tree.                                           |
 | topic_passages   | Passages that support a topic.                                           |

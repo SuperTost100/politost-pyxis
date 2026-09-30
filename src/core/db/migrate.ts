@@ -11,6 +11,12 @@ const steps = [
     version: 3,
     sql: `ALTER TABLE cards ADD COLUMN passage_id TEXT REFERENCES passages(id) ON DELETE SET NULL`,
   },
+  {
+    version: 4,
+    sql: `ALTER TABLE plans ADD COLUMN exam_at INTEGER;
+ALTER TABLE plans ADD COLUMN target REAL NOT NULL DEFAULT 0.75;
+ALTER TABLE plans ADD COLUMN style TEXT NOT NULL DEFAULT 'decide';`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

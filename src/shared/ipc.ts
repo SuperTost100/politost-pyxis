@@ -431,7 +431,14 @@ export const requests = {
     output: z.object({ ok: z.boolean() }),
   },
   "plans.create": {
-    input: z.object({ title: z.string(), sourceIds: z.array(z.string()) }),
+    input: z.object({
+      title: z.string(),
+      sourceIds: z.array(z.string()),
+      examAt: z.number().nullable().optional(),
+      target: z.number().min(0.5).max(1).optional(),
+      language: z.enum(["it", "en"]).optional(),
+      style: z.enum(["read", "practice", "decide"]).optional(),
+    }),
     output: z.object({
       planId: z.string(),
       topics: z.number(),

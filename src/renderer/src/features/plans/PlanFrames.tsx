@@ -8,8 +8,10 @@ import { BuildingMark } from "../../components/BuildingMark";
 import { invoke } from "../../lib/ipc";
 import { planFileSchema } from "@shared/plan-file";
 
+const DAY = 86_400_000;
+
 export function WizardFrame() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
   const sources = useQuery({
@@ -18,6 +20,11 @@ export function WizardFrame() {
   });
   const [title, setTitle] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
+  const [examChoice, setExamChoice] = useState<"1" | "2" | "3" | "10">("10");
+  const [date, setDate] = useState("");
+  const [target, setTarget] = useState(75);
+  const [language, setLanguage] = useState(i18n.language.startsWith("en") ? "en" : "it");
+  const [style, setStyle] = useState<"read" | "practice" | "decide">("decide");
   const [busy, setBusy] = useState(false);
   const [built, setBuilt] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -28,7 +35,16 @@ export function WizardFrame() {
     setBusy(true);
     setFailed(false);
     try {
-      const result = await invoke("plans.create", { title: name, sourceIds: picked });
+      const days = examChoice === "1" ? 1 : examChoice === "2" ? 2 : examChoice === "3" ? 3 : 10;
+      const fromDate = date ? new Date(`${date}T12:00:00`).getTime() : Date.now() + days * DAY;
+      const result = await invoke("plans.create", {
+        title: name,
+        sourceIds: picked,
+        examAt: Number.isFinite(fromDate) ? fromDate : null,
+        target: target / 100,
+        language: language === "en" ? "en" : "it",
+        style,
+      });
       await client.invalidateQueries({ queryKey: ["plans"] });
       setBuilt(result.planId);
     } catch {
@@ -104,6 +120,91 @@ export function WizardFrame() {
             }
           >
             {source.title}
+          </button>
+        ))}
+      </div>
+      <div className="label section-label">{t("wizard.exam")}</div>
+      <div className="choice-list">
+        {(
+          [
+            ["1", t("wizard.tomorrow")],
+            ["2", t("wizard.inTwo")],
+            ["3", t("wizard.inThree")],
+            ["10", t("wizard.inTen")],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={!date && examChoice === id ? "choice is-selected" : "choice"}
+            aria-pressed={!date && examChoice === id}
+            onClick={() => {
+              setDate("");
+              setExamChoice(id);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <label className="label" htmlFor="plan-date">
+        {t("wizard.examDate")}
+      </label>
+      <input
+        id="plan-date"
+        type="date"
+        value={date}
+        onChange={(event) => setDate(event.target.value)}
+      />
+      <label className="label" htmlFor="plan-target">
+        {t("wizard.target", { score: target })}
+      </label>
+      <input
+        id="plan-target"
+        type="range"
+        min={50}
+        max={100}
+        step={5}
+        value={target}
+        aria-valuetext={t("wizard.target", { score: target })}
+        onChange={(event) => setTarget(Number(event.target.value))}
+      />
+      <div className="label section-label">{t("wizard.language")}</div>
+      <div className="choice-list">
+        {(
+          [
+            ["it", t("wizard.italian")],
+            ["en", t("wizard.english")],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={language === id ? "choice is-selected" : "choice"}
+            aria-pressed={language === id}
+            onClick={() => setLanguage(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="label section-label">{t("wizard.style")}</div>
+      <div className="choice-list">
+        {(
+          [
+            ["read", t("wizard.read")],
+            ["practice", t("wizard.practice")],
+            ["decide", t("wizard.decide")],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={style === id ? "choice is-selected" : "choice"}
+            aria-pressed={style === id}
+            onClick={() => setStyle(id)}
+          >
+            {label}
           </button>
         ))}
       </div>

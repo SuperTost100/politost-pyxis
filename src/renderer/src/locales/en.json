@@ -142,7 +142,21 @@
     "stepTopics": "Creating the topics",
     "stepPath": "Building the path",
     "failed": "The plan could not be prepared.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "exam": "Exam date",
+    "tomorrow": "Tomorrow",
+    "inTwo": "In 2 days",
+    "inThree": "In 3 days",
+    "inTen": "Within 10 days",
+    "examDate": "Or a date",
+    "target": "Target {{score}}",
+    "language": "Content language",
+    "italian": "Italiano",
+    "english": "English",
+    "style": "Study style",
+    "read": "Reading",
+    "practice": "Practicing",
+    "decide": "You decide"
   },
   "shared": {
     "title": "Open a shared plan",

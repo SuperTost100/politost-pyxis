@@ -12,7 +12,14 @@ export type CreatedPlan = {
 
 export function createPlan(
   db: Database.Database,
-  input: { title: string; sourceIds: string[] },
+  input: {
+    title: string;
+    sourceIds: string[];
+    examAt?: number | null;
+    target?: number;
+    language?: string;
+    style?: "read" | "practice" | "decide";
+  },
   now = Date.now(),
 ): CreatedPlan {
   const planId = uuidv7(now);
@@ -38,8 +45,18 @@ export function createPlan(
 
   const run = db.transaction(() => {
     db.prepare(
-      `INSERT INTO plans (id, title, status, created_at, updated_at) VALUES (?, ?, 'ready', ?, ?)`,
-    ).run(planId, input.title, now, now);
+      `INSERT INTO plans (id, title, status, content_language, exam_at, target, style, created_at, updated_at)
+       VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      planId,
+      input.title,
+      input.language ?? null,
+      input.examAt ?? null,
+      input.target ?? 0.75,
+      input.style ?? "decide",
+      now,
+      now,
+    );
     for (const sourceId of input.sourceIds) {
       db.prepare(`INSERT INTO plan_sources (plan_id, source_id) VALUES (?, ?)`).run(
         planId,

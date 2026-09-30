@@ -142,7 +142,21 @@
     "stepTopics": "Creo gli argomenti",
     "stepPath": "Costruisco il percorso",
     "failed": "Non riesco a preparare il piano.",
-    "retry": "Riprova"
+    "retry": "Riprova",
+    "exam": "Data dell'esame",
+    "tomorrow": "Domani",
+    "inTwo": "Tra 2 giorni",
+    "inThree": "Tra 3 giorni",
+    "inTen": "Entro 10 giorni",
+    "examDate": "Oppure una data",
+    "target": "Obiettivo {{score}}",
+    "language": "Lingua dei contenuti",
+    "italian": "Italiano",
+    "english": "English",
+    "style": "Modo di studio",
+    "read": "Leggere",
+    "practice": "Esercitarsi",
+    "decide": "Decidi tu"
   },
   "shared": {
     "title": "Apri un piano condiviso",
