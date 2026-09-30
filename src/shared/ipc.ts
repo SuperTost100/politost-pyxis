@@ -201,6 +201,38 @@ export const requests = {
       ),
     }),
   },
+  "study.simulationOpen": {
+    input: z.object({ planId: z.string() }),
+    output: z
+      .object({
+        attemptId: z.string(),
+        planId: z.string(),
+        deadline: z.number(),
+        leftMs: z.number(),
+        submitted: z.boolean(),
+        questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+      })
+      .nullable(),
+  },
+  "study.simulationStart": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({
+      attemptId: z.string(),
+      deadline: z.number(),
+      questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+    }),
+  },
+  "study.simulationRead": {
+    input: z.object({ attemptId: z.string() }),
+    output: z.object({
+      attemptId: z.string(),
+      planId: z.string(),
+      deadline: z.number(),
+      leftMs: z.number(),
+      submitted: z.boolean(),
+      questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+    }),
+  },
   "study.cards": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.array(

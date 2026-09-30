@@ -148,6 +148,10 @@ export function PlanPage() {
                   navigate(`/plans/${planId}/cards/${node.topicId}`);
                   return;
                 }
+                if (node.kind === "simulation") {
+                  navigate(`/plans/${planId}/simulation`);
+                  return;
+                }
                 void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
                   void client.invalidateQueries({ queryKey: ["plan", planId] });
                   void client.invalidateQueries({ queryKey: ["mastery", planId] });

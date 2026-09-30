@@ -73,6 +73,12 @@
     "title": "Lesson from the book",
     "done": "I've read it"
   },
+  "simulation": {
+    "title": "Simulation",
+    "start": "Start the 30 minutes",
+    "left": "{{minutes}} minutes",
+    "empty": "The book has no exercises for a simulation."
+  },
   "quiz": {
     "title": "Quiz from the book",
     "start": "Start",

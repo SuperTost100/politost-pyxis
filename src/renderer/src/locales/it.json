@@ -73,6 +73,12 @@
     "title": "Lezione dal libro",
     "done": "Ho letto"
   },
+  "simulation": {
+    "title": "Simulazione",
+    "start": "Inizia i 30 minuti",
+    "left": "{{minutes}} minuti",
+    "empty": "Il libro non ha esercizi per una simulazione."
+  },
   "quiz": {
     "title": "Quiz dal libro",
     "start": "Inizia",

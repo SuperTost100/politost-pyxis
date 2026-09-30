@@ -5,6 +5,7 @@ import { ensureTopicCards } from "./cardsFromBook";
 import { topicExercises } from "./exercises";
 import { openLesson } from "./openLesson";
 import type { Rating } from "./schedule";
+import { openSimulation, readSimulation, startSimulation } from "./simulation";
 import { startTopicQuiz, submitAttempt } from "./topicQuiz";
 
 export function studyHandlers(db: Database.Database) {
@@ -38,6 +39,15 @@ export function studyHandlers(db: Database.Database) {
     cards(input: { planId: string; topicId: string }) {
       ensureTopicCards(db, input.planId, input.topicId);
       return dueCards(db, input.planId, Date.now(), input.topicId);
+    },
+    simulationOpen(input: { planId: string }) {
+      return openSimulation(db, input.planId);
+    },
+    simulationStart(input: { planId: string }) {
+      return startSimulation(db, input.planId, 30);
+    },
+    simulationRead(input: { attemptId: string }) {
+      return readSimulation(db, input.attemptId);
     },
     rate(input: { cardId: string; rating: Rating }) {
       return rateCard(db, input.cardId, input.rating, Date.now());
