@@ -1,15 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Segmented } from "antd";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
 import { LibraryPanel } from "./LibraryPanel";
+import { planFileSchema } from "@shared/plan-file";
 
 export function ExamsHome() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  const client = useQueryClient();
   const plans = useQuery({
     queryKey: ["plans"],
     queryFn: () => invoke("plans.list", {}),
@@ -41,6 +43,10 @@ export function ExamsHome() {
             <Button type="primary" shape="round" onClick={() => navigate("/plans/new")}>
               {t("exams.newPlan")}
             </Button>
+            <ImportPlan
+              label={t("exams.importPlan")}
+              onImported={() => void client.invalidateQueries({ queryKey: ["plans"] })}
+            />
           </div>
           <ul className="choice-list">
             {(plans.data ?? []).map((plan) => (
@@ -83,5 +89,32 @@ export function ExamsHome() {
         />
       )}
     </div>
+  );
+}
+
+function ImportPlan(props: { label: string; onImported: () => void }) {
+  return (
+    <label className="choice">
+      {props.label}
+      <input
+        type="file"
+        accept="application/json,.json"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          void file.text().then(async (text) => {
+            try {
+              const parsed = planFileSchema.safeParse(JSON.parse(text));
+              if (!parsed.success) return;
+              await invoke("plans.import", parsed.data);
+              props.onImported();
+            } catch {
+              return;
+            }
+          });
+        }}
+      />
+    </label>
   );
 }

@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 import { completeNode, createPlan, listPlans, readPlan } from "./create";
+import { exportPlan, importPlan } from "./file";
 import { planMastery } from "./progress";
+import type { PlanFile } from "../../shared/plan-file";
 
 export function planHandlers(db: Database.Database) {
   return {
@@ -12,6 +14,12 @@ export function planHandlers(db: Database.Database) {
     },
     read(input: { planId: string }) {
       return readPlan(db, input.planId);
+    },
+    export(input: { planId: string }) {
+      return exportPlan(db, input.planId);
+    },
+    import(input: PlanFile) {
+      return { planId: importPlan(db, input) };
     },
     mastery(input: { planId: string }) {
       return planMastery(db, input.planId);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { planFileSchema } from "./plan-file";
 
 export const JobState = z.enum([
   "queued",
@@ -263,6 +264,14 @@ export const requests = {
         ),
       })
       .nullable(),
+  },
+  "plans.export": {
+    input: z.object({ planId: z.string() }),
+    output: planFileSchema,
+  },
+  "plans.import": {
+    input: planFileSchema,
+    output: z.object({ planId: z.string() }),
   },
   "plans.mastery": {
     input: z.object({ planId: z.string() }),

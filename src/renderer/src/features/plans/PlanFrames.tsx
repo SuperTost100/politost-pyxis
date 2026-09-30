@@ -99,6 +99,24 @@ export function PlanPage() {
           {t("nav.back")}
         </Button>
       }
+      primary={
+        <Button
+          shape="round"
+          onClick={() => {
+            if (!planId) return;
+            void invoke("plans.export", { planId }).then((file) => {
+              const blob = new Blob([JSON.stringify(file)], { type: "application/json" });
+              const link = document.createElement("a");
+              link.href = URL.createObjectURL(blob);
+              link.download = `${file.title}.pyxis.json`;
+              link.click();
+              URL.revokeObjectURL(link.href);
+            });
+          }}
+        >
+          {t("plans.export")}
+        </Button>
+      }
     >
       {(mastery.data ?? []).length > 0 ? (
         <ul className="choice-list">
