@@ -24,6 +24,8 @@ describe("plot", () => {
     expect(splitSeries(sample("sin(47.12389*x)", -8, 8), at("sin(47.12389*x)"))).toHaveLength(1);
     expect(splitSeries(sample("1000000000*sin(2000*x)", -8, 8), at("1000000000*sin(2000*x)"))).toHaveLength(1);
     expect(splitSeries(sample("0.00001/(x-0.06666)", -8, 8), at("0.00001/(x-0.06666)")).length).toBeGreaterThan(1);
+    expect(splitSeries(sample("1/(x-0.00000001)", -8, 8), at("1/(x-0.00000001)")).length).toBeGreaterThan(1);
+    expect(splitSeries(sample("0.000001/(x-0.025)", -8, 8), at("0.000001/(x-0.025)")).length).toBeGreaterThan(1);
     expect(splitSeries(sample("x+exp(-1000*x^2)", -8, 8), at("x+exp(-1000*x^2)"))).toHaveLength(1);
     expect(
       splitSeries(

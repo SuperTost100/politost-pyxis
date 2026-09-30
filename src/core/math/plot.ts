@@ -131,7 +131,7 @@ export function splitSeries(
   return groups;
 }
 
-// ponytail: bisection plus a few probes, not a symbolic pole test. Upgrade path is a denser sample or a CAS when a spike narrower than the last probe still matters.
+// ponytail: bisection, then a geometric walk from each end. A finite sign-changing spike that rises above both samples still breaks. Upgrade path is a denser sample or a CAS.
 function connects(
   prev: { x: number; y: number },
   point: { x: number; y: number },
@@ -170,7 +170,7 @@ function unresolvedPole(
 ) {
   const bound = Math.max(Math.abs(prev.y), Math.abs(point.y), 1e-9);
   const ceiling = Math.max(origin, bound);
-  if (prev.y * point.y < 0 && Math.abs(mid) > bound) return true;
+  if (prev.y * point.y < 0 && tallerInside(prev, point, at, bound)) return true;
   if (Math.abs(mid) > 8 * ceiling) return true;
   for (const t of [0.2, 0.4, 0.6, 0.8]) {
     let probe = Number.NaN;
@@ -180,6 +180,29 @@ function unresolvedPole(
       return true;
     }
     if (!Number.isFinite(probe) || Math.abs(probe) > 8 * ceiling) return true;
+  }
+  return false;
+}
+
+// The last cell can hide a pole beside the bigger sample. A smooth zero stays at or below that sample.
+function tallerInside(
+  prev: { x: number; y: number },
+  point: { x: number; y: number },
+  at: (x: number) => number,
+  limit: number,
+) {
+  const magnitude = (x: number) => {
+    try {
+      const y = at(x);
+      return Number.isFinite(y) ? Math.abs(y) : Number.POSITIVE_INFINITY;
+    } catch {
+      return Number.POSITIVE_INFINITY;
+    }
+  };
+  const width = point.x - prev.x;
+  for (let k = 1; k <= 48; k++) {
+    const step = width * 2 ** -k;
+    if (magnitude(prev.x + step) > limit || magnitude(point.x - step) > limit) return true;
   }
   return false;
 }
