@@ -30,7 +30,14 @@ function writeBook(dir: string): string {
 function launchApp(env: Record<string, string>) {
   const shared = { env: { ...process.env, PYXIS_E2E: "1", ...env } };
   const packaged = process.env["PYXIS_DIST_APP"];
-  if (packaged) return electron.launch({ executablePath: packaged, ...shared });
+  if (packaged) {
+    // ponytail: ad-hoc signing stalls the macOS Keychain, and the DevTools server then never replies. The switch is test-only. A real signing identity is the upgrade.
+    return electron.launch({
+      executablePath: packaged,
+      args: ["--use-mock-keychain"],
+      ...shared,
+    });
+  }
   return electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     ...shared,

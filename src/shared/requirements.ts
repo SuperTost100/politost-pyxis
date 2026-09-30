@@ -1,10 +1,6 @@
 /** IDs whose behavior exists in this repo. The comment is the file that implements it. */
 export const implemented = [
   "ASK-02", // src/core/chat/turn.ts
-  "ASK-05", // src/renderer/src/features/tools/WhiteboardPage.tsx
-  "ASK-07", // src/renderer/src/features/ask/AskPage.tsx
-  "ASK-09", // src/core/chat/turn.ts
-  "ASK-10", // src/renderer/src/features/ask/AskPage.tsx
   "ENG-01", // src/core/engine/handlers.ts
   "ENG-02", // src/main/index.ts
   "ENG-03", // src/core/engine/handlers.ts
@@ -27,10 +23,6 @@ export const implemented = [
   "FC-05", // src/core/study/schedule.ts
   "FC-07", // src/renderer/src/features/study/CardsPage.tsx
   "LES-10", // src/core/study/exercises.ts
-  "LES-20", // src/core/study/simulation.ts
-  "LES-21", // src/core/study/grade.ts
-  "LES-22", // src/core/study/simulation.ts
-  "MAP-01", // src/core/maps/store.ts
   "MAP-02", // src/core/maps/graph.ts
   "MAP-03", // src/core/maps/graph.ts
   "MAP-06", // src/renderer/src/features/maps/MapPage.tsx
@@ -47,7 +39,6 @@ export const implemented = [
   "PER-01", // src/core/profile/profile.ts
   "PER-02", // src/core/profile/profile.ts
   "PER-03", // src/renderer/src/features/settings/SettingsPage.tsx
-  "PER-04", // src/renderer/src/features/settings/SettingsPage.tsx
   "PER-05", // src/renderer/src/features/settings/SettingsPage.tsx
   "PER-06", // src/renderer/src/features/onboarding/OnboardingPage.tsx
   "PLAN-02", // src/renderer/src/features/plans/PlanFrames.tsx
@@ -55,7 +46,6 @@ export const implemented = [
   "PLAN-04", // src/renderer/src/features/plans/PlanFrames.tsx
   "PLAN-05", // src/renderer/src/features/plans/PlanFrames.tsx
   "PLAN-06", // src/renderer/src/features/plans/PlanFrames.tsx
-  "PLAN-20", // src/core/plans/create.ts
   "PLAN-21", // src/core/plans/create.ts
   "PLAN-22", // src/core/plans/path.ts
   "PLAN-26", // src/renderer/src/features/plans/PlanFrames.tsx
@@ -89,7 +79,6 @@ export const implemented = [
   "SRC-11", // src/core/sources/smartbook.ts
   "SRC-13", // src/core/sources/documents.ts
   "SRC-20", // src/core/sources/retrieve.ts
-  "SRC-22", // src/core/study/lesson.ts
   "SRC-23", // src/core/chat/turn.ts
 ] as const;
 
