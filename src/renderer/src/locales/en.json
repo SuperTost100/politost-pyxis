@@ -146,7 +146,11 @@
   },
   "shared": {
     "title": "Open a shared plan",
-    "body": "You can open a .pyxis file or paste a link."
+    "body": "You can open a .pyxis file or paste a link.",
+    "file": "Choose a file",
+    "url": "Plan link",
+    "open": "Open",
+    "bad": "This is not a plan."
   },
   "settings": {
     "title": "Settings",

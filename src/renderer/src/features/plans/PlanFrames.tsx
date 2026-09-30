@@ -6,6 +6,7 @@ import { useNavigate, useParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
 import { invoke } from "../../lib/ipc";
+import { planFileSchema } from "@shared/plan-file";
 
 export function WizardFrame() {
   const { t } = useTranslation();
@@ -297,10 +298,70 @@ export function PlanPage() {
 
 export function SharedPlanPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const [url, setUrl] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+
+  async function openText(text: string) {
+    let parsed: ReturnType<typeof planFileSchema.safeParse>;
+    try {
+      parsed = planFileSchema.safeParse(JSON.parse(text));
+    } catch {
+      setNote(t("shared.bad"));
+      return;
+    }
+    if (!parsed.success) {
+      setNote(t("shared.bad"));
+      return;
+    }
+    const result = await invoke("plans.import", parsed.data);
+    await client.invalidateQueries({ queryKey: ["plans"] });
+    navigate(`/plans/${result.planId}`);
+  }
+
   return (
     <div>
       <h1 className="title-1">{t("shared.title")}</h1>
       <p className="body ink-muted">{t("shared.body")}</p>
+      <label className="choice">
+        {t("shared.file")}
+        <input
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            void file.text().then(openText).catch(() => setNote(t("shared.bad")));
+          }}
+        />
+      </label>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const link = url.trim();
+          if (!link) return;
+          void window.pyxis
+            .fetchPlan(link)
+            .then(openText)
+            .catch(() => setNote(t("shared.bad")));
+        }}
+      >
+        <label className="label" htmlFor="plan-url">
+          {t("shared.url")}
+        </label>
+        <input
+          id="plan-url"
+          value={url}
+          onChange={(event) => setUrl(event.target.value)}
+        />
+        <Button htmlType="submit" shape="round" type="primary">
+          {t("shared.open")}
+        </Button>
+      </form>
+      {note ? <p className="body">{note}</p> : null}
     </div>
   );
 }

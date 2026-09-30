@@ -25,6 +25,7 @@ import {
   type SaveDialogOptions,
   type ThemeSource,
 } from "../shared/bridge";
+import { httpPlanUrl } from "../shared/plan-file";
 
 const isDev = !!process.env["ELECTRON_RENDERER_URL"];
 
@@ -426,6 +427,14 @@ function registerIpc(): void {
       pushKeys();
     },
   );
+  ipcMain.handle(mainChannels.planFetch, async (_event, raw: string) => {
+    const url = httpPlanUrl(raw);
+    const response = await fetch(url, { redirect: "error" });
+    if (!response.ok) throw new Error("plan-url");
+    const text = await response.text();
+    if (text.length > 1_000_000) throw new Error("plan-url");
+    return text;
+  });
   ipcMain.handle(mainChannels.workspaceBackup, async () => {
     const release = occupyWorkspace();
     try {

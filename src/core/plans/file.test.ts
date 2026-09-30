@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan } from "./create";
 import { exportPlan, importPlan } from "./file";
+import { httpPlanUrl } from "../../shared/plan-file";
 import { importSmartbook } from "../sources/smartbook";
 
 function pack(files: Record<string, string>): Uint8Array {
@@ -48,5 +49,12 @@ describe("plan file", () => {
       back: string;
     };
     expect(card).toEqual({ front: "fronte", back: "retro" });
+  });
+
+  it("accepts only an http plan link", () => {
+    expect(httpPlanUrl("https://example.com/piano.json")).toBe(
+      "https://example.com/piano.json",
+    );
+    expect(() => httpPlanUrl("file:///tmp/piano.json")).toThrow("plan-url");
   });
 });

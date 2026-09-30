@@ -22,3 +22,11 @@ export const planFileSchema = z.object({
 });
 
 export type PlanFile = z.infer<typeof planFileSchema>;
+
+export function httpPlanUrl(raw: string): string {
+  const parsed = new URL(raw);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("plan-url");
+  }
+  return parsed.toString();
+}

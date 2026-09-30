@@ -19,7 +19,7 @@ export function seedCards(
   input: {
     planId: string;
     topicId: string;
-    pairs: Array<{ front: string; back: string; passageId?: string }>;
+    pairs: Array<{ front: string; back: string; passageId?: string | null }>;
   },
 ): string[] {
   const exists = db.prepare(

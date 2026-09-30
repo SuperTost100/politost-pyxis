@@ -12,13 +12,15 @@ export function ensureTopicCards(db: Database.Database, planId: string, topicId:
        LIMIT 20`,
     )
     .all(topicId) as Array<{ id: string; text: string; section_path: string | null }>;
-  const pairs = passages.map((row, index) => ({
-    front: row.section_path?.trim()
-      ? `${row.section_path.trim()} · ${index + 1}`
-      : row.text.replace(/\s+/g, " ").trim().slice(0, 48),
-    back: row.text.slice(0, 600),
-    passageId: row.id,
-  }));
+  const pairs: Array<{ front: string; back: string; passageId?: string | null }> = passages.map(
+    (row, index) => ({
+      front: row.section_path?.trim()
+        ? `${row.section_path.trim()} · ${index + 1}`
+        : row.text.replace(/\s+/g, " ").trim().slice(0, 48),
+      back: row.text.slice(0, 600),
+      passageId: row.id,
+    }),
+  );
   for (const exercise of topicExercises(db, topicId).slice(0, 20)) {
     if (!exercise.answer) continue;
     pairs.push({

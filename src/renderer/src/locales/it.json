@@ -146,7 +146,11 @@
   },
   "shared": {
     "title": "Apri un piano condiviso",
-    "body": "Puoi aprire un file .pyxis o incollare un link."
+    "body": "Puoi aprire un file .pyxis o incollare un link.",
+    "file": "Scegli un file",
+    "url": "Link del piano",
+    "open": "Apri",
+    "bad": "Questo non è un piano."
   },
   "settings": {
     "title": "Impostazioni",

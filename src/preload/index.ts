@@ -151,6 +151,7 @@ const bridge: PyxisBridge = {
   killCore: () => ipcRenderer.invoke("dev:killCore"),
   backupWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceBackup),
   restoreWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceRestore),
+  fetchPlan: (url: string) => ipcRenderer.invoke(mainChannels.planFetch, url),
 };
 
 contextBridge.exposeInMainWorld("pyxis", bridge);
