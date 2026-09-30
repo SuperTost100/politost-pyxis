@@ -1,5 +1,6 @@
 import { createHashRouter, Navigate } from "react-router";
 import { CardsPage } from "../features/study/CardsPage";
+import { MapPage } from "../features/maps/MapPage";
 import { LessonPage } from "../features/study/LessonPage";
 import { PracticePage } from "../features/study/PracticePage";
 import { SimulationPage } from "../features/study/SimulationPage";
@@ -41,5 +42,6 @@ export const router = createHashRouter([
   { path: "/plans/:planId/quiz/:topicId", element: <QuizPage /> },
   { path: "/plans/:planId/cards/:topicId", element: <CardsPage /> },
   { path: "/plans/:planId/simulation", element: <SimulationPage /> },
+  { path: "/plans/:planId/map/:topicId", element: <MapPage /> },
   { path: "/tools/whiteboard", element: <WhiteboardFrame /> },
 ]);

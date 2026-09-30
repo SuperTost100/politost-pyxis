@@ -69,7 +69,11 @@ export function FocusLayout(props: {
   );
 }
 
-export function CanvasLayout(props: { title: string; children: ReactNode }) {
+export function CanvasLayout(props: {
+  title: string;
+  children: ReactNode;
+  closeTo?: string;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   return (
@@ -80,7 +84,7 @@ export function CanvasLayout(props: { title: string; children: ReactNode }) {
           type="text"
           aria-label={t("nav.close")}
           icon={<X size={18} strokeWidth={1.75} />}
-          onClick={() => navigate("/ask")}
+          onClick={() => navigate(props.closeTo ?? "/ask")}
         />
         <h1 className="title-3 focus-title">{props.title}</h1>
         <span />

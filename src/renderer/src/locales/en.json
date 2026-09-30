@@ -69,6 +69,14 @@
     "easy": "Easy",
     "next": "Next in {{days}} days"
   },
+  "map": {
+    "title": "Map",
+    "tree": "Tree",
+    "radial": "Radial",
+    "undo": "Undo",
+    "add": "Add a branch",
+    "png": "Export PNG"
+  },
   "lesson": {
     "title": "Lesson from the book",
     "done": "I've read it"

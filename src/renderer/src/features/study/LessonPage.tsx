@@ -34,6 +34,12 @@ export function LessonPage() {
         </Button>
       }
     >
+      <Button
+        shape="round"
+        onClick={() => navigate(`/plans/${planId ?? ""}/map/${topicId ?? ""}`)}
+      >
+        {t("map.title")}
+      </Button>
       <article className="passage">
         <MarkdownView>{lesson.data?.markdown ?? ""}</MarkdownView>
       </article>

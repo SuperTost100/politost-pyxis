@@ -1,0 +1,57 @@
+import { describe, expect, it } from "vitest";
+import { applyOps, layoutGraph, undoGraph, type ConceptGraph } from "./graph";
+
+function sample(): ConceptGraph {
+  return layoutGraph({
+    layout: "tree",
+    undo: null,
+    nodes: [
+      { id: "root", label: "Moti", parent: null, x: 0, y: 0, pinned: false },
+      { id: "a", label: "Vettore", parent: "root", x: 0, y: 0, pinned: false },
+      { id: "b", label: "Velocita", parent: "root", x: 0, y: 0, pinned: false },
+    ],
+    edges: [
+      { from: "root", to: "a" },
+      { from: "root", to: "b" },
+    ],
+  });
+}
+
+describe("concept map", () => {
+  it("spreads a tree and keeps a dragged node", () => {
+    const tree = sample();
+    const child = tree.nodes.find((node) => node.id === "a");
+    expect(child?.y).toBe(110);
+    expect(child?.x).not.toBe(tree.nodes.find((node) => node.id === "b")?.x);
+    const pinned = layoutGraph({
+      ...tree,
+      nodes: tree.nodes.map((node) =>
+        node.id === "a" ? { ...node, x: 40, y: 70, pinned: true } : node,
+      ),
+    });
+    expect(pinned.nodes.find((node) => node.id === "a")).toMatchObject({ x: 40, y: 70 });
+  });
+
+  it("puts children on a ring in the radial layout", () => {
+    const radial = layoutGraph({ ...sample(), layout: "radial" });
+    const root = radial.nodes.find((node) => node.id === "root");
+    const child = radial.nodes.find((node) => node.id === "a");
+    expect(root).toMatchObject({ x: 0, y: 0 });
+    expect(Math.hypot(child?.x ?? 0, child?.y ?? 0)).toBeGreaterThan(200);
+  });
+
+  it("applies one patch and undoes it", () => {
+    const next = applyOps(sample(), [
+      { op: "add_node", id: "c", label: "Catena", parent: "a" },
+      { op: "rename", id: "b", label: "Velocità" },
+    ]);
+    expect(next.nodes.map((node) => node.id).sort()).toEqual(["a", "b", "c", "root"]);
+    expect(next.nodes.find((node) => node.id === "b")?.label).toBe("Velocità");
+    const back = undoGraph(next);
+    expect(back.nodes.map((node) => node.id).sort()).toEqual(["a", "b", "root"]);
+    expect(back.undo).toBeNull();
+    expect(() => applyOps(sample(), [{ op: "rename", id: "missing", label: "x" }])).toThrow(
+      /map-missing/,
+    );
+  });
+});

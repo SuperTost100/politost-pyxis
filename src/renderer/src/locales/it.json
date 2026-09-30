@@ -69,6 +69,14 @@
     "easy": "Facile",
     "next": "Prossima tra {{days}} giorni"
   },
+  "map": {
+    "title": "Mappa",
+    "tree": "Albero",
+    "radial": "Radiale",
+    "undo": "Annulla",
+    "add": "Aggiungi un ramo",
+    "png": "Esporta PNG"
+  },
   "lesson": {
     "title": "Lezione dal libro",
     "done": "Ho letto"

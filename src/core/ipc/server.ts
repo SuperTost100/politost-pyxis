@@ -6,6 +6,7 @@ import {
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
+import { mapHandlers } from "../maps/handlers";
 import { planHandlers } from "../plans/handlers";
 import { studyHandlers } from "../study/handlers";
 import { profileHandlers } from "../profile/handlers";
@@ -30,6 +31,7 @@ let chats: ReturnType<typeof chatHandlers> | null = null;
 let profile: ReturnType<typeof profileHandlers> | null = null;
 let plans: ReturnType<typeof planHandlers> | null = null;
 let study: ReturnType<typeof studyHandlers> | null = null;
+let maps: ReturnType<typeof mapHandlers> | null = null;
 let port: CorePort | null = null;
 const inflight = new Map<string, AbortController>();
 
@@ -161,6 +163,16 @@ async function dispatch(
       return study?.rate(requests["study.rate"].input.parse(input));
     case "study.exercises":
       return study?.exercises(requests["study.exercises"].input.parse(input)) ?? [];
+    case "maps.open":
+      return maps?.open(requests["maps.open"].input.parse(input));
+    case "maps.layout":
+      return maps?.layout(requests["maps.layout"].input.parse(input));
+    case "maps.move":
+      return maps?.move(requests["maps.move"].input.parse(input));
+    case "maps.patch":
+      return maps?.patch(requests["maps.patch"].input.parse(input));
+    case "maps.undo":
+      return maps?.undo(requests["maps.undo"].input.parse(input));
     case "plans.list":
       requests["plans.list"].input.parse(input);
       return plans?.list() ?? [];
@@ -223,6 +235,10 @@ export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
 
 export function bindStudy(db: Parameters<typeof studyHandlers>[0]): void {
   study = studyHandlers(db);
+}
+
+export function bindMaps(db: Parameters<typeof mapHandlers>[0]): void {
+  maps = mapHandlers(db);
 }
 
 export function bindPlans(db: Parameters<typeof planHandlers>[0]): void {
