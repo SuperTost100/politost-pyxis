@@ -27,6 +27,16 @@ function writeBook(dir: string): string {
   return path;
 }
 
+function launchApp(env: Record<string, string>) {
+  const shared = { env: { ...process.env, PYXIS_E2E: "1", ...env } };
+  const packaged = process.env["PYXIS_DIST_APP"];
+  if (packaged) return electron.launch({ executablePath: packaged, ...shared });
+  return electron.launch({
+    args: [join(process.cwd(), "out/main/index.js")],
+    ...shared,
+  });
+}
+
 async function expectClean(page: Page): Promise<void> {
   const results = await new AxeBuilder({ page }).setLegacyMode(true).analyze();
   expect(results.violations).toEqual([]);
@@ -40,10 +50,7 @@ async function launchFresh(extra: Record<string, string> = {}): Promise<{
   const userData = mkdtempSync(join(tmpdir(), "pyxis-e2e-"));
   let app: ElectronApplication | undefined;
   try {
-    app = await electron.launch({
-      args: [join(process.cwd(), "out/main/index.js")],
-      env: { ...process.env, PYXIS_USER_DATA: userData, ...extra },
-    });
+    app = await launchApp({ PYXIS_USER_DATA: userData, ...extra });
     const page = await app.firstWindow();
     return { app, page, userData };
   } catch (error) {
@@ -74,16 +81,12 @@ test("a smartbook becomes a plan without a model", async () => {
   const backupZip = join(userData, "pyxis-backup.zip");
   let app: ElectronApplication | undefined;
   try {
-    app = await electron.launch({
-      args: [join(process.cwd(), "out/main/index.js")],
-      env: {
-        ...process.env,
-        PYXIS_USER_DATA: userData,
-        PYXIS_E2E_FILE: book,
-        PYXIS_E2E_SAVE: backupZip,
-        PYXIS_E2E_ZIP: backupZip,
-        PYXIS_E2E_REPLY: "Il vettore descrive il punto [P1].",
-      },
+    app = await launchApp({
+      PYXIS_USER_DATA: userData,
+      PYXIS_E2E_FILE: book,
+      PYXIS_E2E_SAVE: backupZip,
+      PYXIS_E2E_ZIP: backupZip,
+      PYXIS_E2E_REPLY: "Il vettore descrive il punto [P1].",
     });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).focus();

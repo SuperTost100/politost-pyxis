@@ -27,6 +27,11 @@ import {
 } from "../shared/bridge";
 
 const isDev = !!process.env["ELECTRON_RENDERER_URL"];
+
+function e2eSeam(): boolean {
+  // ponytail: a normal install ignores these paths. The dist test sets PYXIS_E2E=1.
+  return !app.isPackaged || process.env["PYXIS_E2E"] === "1";
+}
 const userDataOverride = process.env["PYXIS_USER_DATA"];
 if (userDataOverride) app.setPath("userData", userDataOverride);
 
@@ -277,7 +282,7 @@ function startCore(): void {
   child.postMessage({
     type: "bootstrap",
     workspacePath,
-    dev: !app.isPackaged,
+    dev: e2eSeam(),
   });
   pushKeys();
   child.on("exit", (code) => {
@@ -362,7 +367,7 @@ function registerIpc(): void {
     mainChannels.openDialog,
     async (_event, options: OpenDialogOptions) => {
       const forced = process.env["PYXIS_E2E_FILE"];
-      if (forced && !app.isPackaged) return [forced];
+      if (forced && e2eSeam()) return [forced];
       const dialogOptions = {
         title: options.title,
         properties: options.properties,
@@ -424,7 +429,7 @@ function registerIpc(): void {
   ipcMain.handle(mainChannels.workspaceBackup, async () => {
     const release = occupyWorkspace();
     try {
-      const forced = !app.isPackaged ? process.env["PYXIS_E2E_SAVE"] : undefined;
+      const forced = e2eSeam() ? process.env["PYXIS_E2E_SAVE"] : undefined;
       let filePath = forced;
       if (!filePath) {
         const result = mainWindow
@@ -453,7 +458,7 @@ function registerIpc(): void {
   ipcMain.handle(mainChannels.workspaceRestore, async () => {
     const release = occupyWorkspace();
     try {
-      const forced = !app.isPackaged ? process.env["PYXIS_E2E_ZIP"] : undefined;
+      const forced = e2eSeam() ? process.env["PYXIS_E2E_ZIP"] : undefined;
       let filePath = forced;
       if (!filePath) {
         const result = mainWindow
