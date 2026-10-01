@@ -486,6 +486,18 @@ export const requests = {
       }),
     ),
   },
+  "subjects.add": {
+    input: z.object({ name: z.string().trim().min(1).max(120) }),
+    output: z.object({ id: z.string(), name: z.string() }),
+  },
+  "subjects.reorder": {
+    input: z.object({ ids: z.array(z.string()).max(1000) }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "subjects.remove": {
+    input: z.object({ id: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "subjects.list": {
     input: z.object({}),
     output: z.array(z.object({ id: z.string(), name: z.string() })),

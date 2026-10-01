@@ -1,3 +1,4 @@
+import { addSubject } from "./subjects";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
@@ -53,17 +54,7 @@ export function createPlan(
     const subjectName = input.subject?.trim() ?? "";
     let subjectId: string | null = null;
     if (subjectName) {
-      const existing = db.prepare(`SELECT id FROM subjects WHERE name = ?`).get(subjectName) as
-        | { id: string }
-        | undefined;
-      subjectId = existing?.id ?? uuidv7(now);
-      if (!existing) {
-        db.prepare(`INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`).run(
-          subjectId,
-          subjectName,
-          now,
-        );
-      }
+      subjectId = addSubject(db, subjectName).id;
     }
     db.prepare(
       `INSERT INTO plans (id, title, status, subject_id, content_language, exam_at, target, style, created_at, updated_at)
@@ -532,7 +523,7 @@ export function nextLesson(db: Database.Database, planId: string, now = Date.now
 }
 
 export function listSubjects(db: Database.Database) {
-  return db.prepare(`SELECT id, name FROM subjects ORDER BY name`).all() as Array<{
+  return db.prepare(`SELECT id, name FROM subjects ORDER BY position, name, id`).all() as Array<{
     id: string;
     name: string;
   }>;

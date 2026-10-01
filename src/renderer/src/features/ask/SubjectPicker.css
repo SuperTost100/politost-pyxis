@@ -1,0 +1,10 @@
+.subject-picker { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.subject-picker .ant-select { min-width: 200px; max-width: min(320px, 100%); }
+.subject-manager-list { list-style: none; margin: var(--space-4) 0; padding: 0; }
+.subject-manager-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border); background: var(--surface); }
+.subject-manager-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.subject-drag { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; color: var(--ink-muted); background: transparent; border: 0; border-radius: var(--radius-sm); cursor: grab; touch-action: none; }
+.subject-manager-add { display: flex; gap: var(--space-3); }
+.subject-manager-add .ant-input { min-width: 0; flex: 1; }
+.subject-manager-add .ant-btn { white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .subject-manager-row { transition: none !important; } }

@@ -23,6 +23,15 @@ const reply: EngineResult = {
 };
 
 describe("askTurn", () => {
+  it("ASK-01 clears an existing subject when an empty selection is sent", async () => {
+    const db = openDatabase(":memory:");
+    const first = await askTurn(db, { text: "Ciao", subject: "Fisica", run: async () => reply });
+    let system = "";
+    await askTurn(db, { chatId: first.chatId, text: "Ora parliamo d altro", subject: "", run: async (input) => { system = input.system ?? ""; return reply; } });
+    expect(db.prepare("SELECT subject FROM chats WHERE id = ?").get(first.chatId)).toEqual({ subject: null });
+    expect(system).not.toContain("Subject: Fisica");
+    db.close();
+  });
   it("answers from a passage and stores the citation", async () => {
     const db = openDatabase(":memory:");
     const imported = importSmartbook(

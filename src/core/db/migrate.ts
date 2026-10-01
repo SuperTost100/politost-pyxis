@@ -47,6 +47,11 @@ ALTER TABLE chats ADD COLUMN subject TEXT;`,
     sql: `ALTER TABLE chats ADD COLUMN context_json TEXT;
 ALTER TABLE sources ADD COLUMN library INTEGER NOT NULL DEFAULT 1;`,
   },
+  {
+    version: 11,
+    sql: `ALTER TABLE subjects ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+UPDATE subjects SET position = (SELECT COUNT(*) FROM subjects s WHERE s.name < subjects.name OR (s.name = subjects.name AND s.id < subjects.id));`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

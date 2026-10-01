@@ -1,3 +1,4 @@
+import { SubjectPicker } from "./SubjectPicker";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "antd";
@@ -44,10 +45,7 @@ export function AskPage() {
     queryKey: ["sources"],
     queryFn: () => invoke("sources.list", {}),
   });
-  const subjects = useQuery({
-    queryKey: ["subjects"],
-    queryFn: () => invoke("subjects.list", {}),
-  });
+
   const thread = useQuery({
     queryKey: ["chat", chatId],
     enabled: Boolean(chatId),
@@ -88,7 +86,7 @@ export function AskPage() {
         text: trimmed,
         sourceIds: picked,
         mode,
-        subject: subject || undefined,
+        subject,
         files: files.length > 0 ? files : undefined,
         allowGeneral: allowGeneral === true || (picked.length === 0 && files.length === 0),
       },
@@ -266,7 +264,7 @@ export function AskPage() {
           </button>
         </Notice>
       ) : null}
-      <div className="choice-list" aria-label={t("ask.sources")}>
+      <div className="choice-list" role="group" aria-label={t("ask.sources")}>
         {(sources.data ?? []).map((source) => (
           <button
             key={source.id}
@@ -292,20 +290,7 @@ export function AskPage() {
           style={{ maxWidth: 280 }}
         />
       ) : null}
-      <label className="engine-key">
-        <span className="small">{t("ask.subject")}</span>
-        <Input
-          value={subject}
-          aria-label={t("ask.subject")}
-          list="pyxis-subjects"
-          onChange={(event) => setSubject(event.target.value)}
-        />
-        <datalist id="pyxis-subjects">
-          {(subjects.data ?? []).map((item) => (
-            <option key={item.id} value={item.name} />
-          ))}
-        </datalist>
-      </label>
+      <SubjectPicker value={subject} onChange={setSubject} disabled={busy} />
       {lastTutor && chatId ? (
         <Button
           shape="round"
@@ -315,7 +300,7 @@ export function AskPage() {
             setLive("");
             const handle = window.pyxis.stream(
               "chats.regenerate",
-              { chatId, sourceIds: picked, mode, subject: subject || undefined },
+              { chatId, sourceIds: picked, mode, subject },
               (event) => {
                 const data = event as { text?: string };
                 if (typeof data.text === "string") setLive(data.text);

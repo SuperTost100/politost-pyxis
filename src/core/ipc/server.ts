@@ -215,6 +215,12 @@ async function dispatch(
     case "plans.list":
       requests["plans.list"].input.parse(input);
       return plans?.list() ?? [];
+    case "subjects.add":
+      return plans?.addSubject(requests["subjects.add"].input.parse(input));
+    case "subjects.reorder":
+      return plans?.reorderSubjects(requests["subjects.reorder"].input.parse(input));
+    case "subjects.remove":
+      return plans?.removeSubject(requests["subjects.remove"].input.parse(input));
     case "subjects.list":
       requests["subjects.list"].input.parse(input);
       return plans?.subjects() ?? [];

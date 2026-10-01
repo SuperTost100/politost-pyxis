@@ -282,15 +282,15 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
       | { subject: string | null }
       | undefined
   )?.subject;
-  const subject = input.subject?.trim() || storedSubject || "";
+  const subject = input.subject === undefined ? storedSubject ?? "" : input.subject.trim();
   if (input.sourceIds || sourceIds.length > 0) {
     db.prepare(`UPDATE chats SET scope_json = ?, subject = ? WHERE id = ?`).run(
       JSON.stringify(sourceIds),
       subject || null,
       chatId,
     );
-  } else if (subject) {
-    db.prepare(`UPDATE chats SET subject = ? WHERE id = ?`).run(subject, chatId);
+  } else if (input.subject !== undefined) {
+    db.prepare(`UPDATE chats SET subject = ? WHERE id = ?`).run(subject || null, chatId);
   }
   const userBody = notes.length > 0 ? `${input.text}\n\n${notes.join("\n")}` : input.text;
   const pending = db

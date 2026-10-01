@@ -1,3 +1,4 @@
+import { addSubject, reorderSubjects, removeSubject } from "./subjects";
 import type Database from "better-sqlite3";
 import { completeNode, createPlan, deletePlan, listPlans, listSubjects, nextLesson, readPlan, rebuildPlan } from "./create";
 import { exportPlan, importPlan } from "./file";
@@ -14,6 +15,9 @@ export function planHandlers(db: Database.Database, workspace = "") {
     subjects() {
       return listSubjects(db);
     },
+    addSubject(input: { name: string }) { return addSubject(db, input.name); },
+    reorderSubjects(input: { ids: string[] }) { reorderSubjects(db, input.ids); return { ok: true as const }; },
+    removeSubject(input: { id: string }) { removeSubject(db, input.id); return { ok: true as const }; },
     usage() {
       return planDiskUsage(db, workspace);
     },

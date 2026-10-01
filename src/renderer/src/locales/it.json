@@ -49,7 +49,23 @@
     "subject": "Materia",
     "askTutor": "Chiedi al tutor",
     "contextRemove": "Rimuovi",
-    "promote": "Aggiungi {{title}} alla libreria"
+    "promote": "Aggiungi {{title}} alla libreria",
+    "chooseSubject": "Scegli una materia",
+    "manageSubjects": "Gestisci materie",
+    "reorderSubject": "Riordina {{name}}",
+    "removeSubject": "Rimuovi",
+    "removeNamedSubject": "Rimuovi {{name}}",
+    "removeSubjectConfirm": "Rimuovere {{name}} dalla lista delle materie? I piani e le conversazioni restano salvati.",
+    "subjectOrderHelp": "Trascina una materia per cambiare ordine. Puoi anche selezionare la maniglia, premere Spazio, spostarla con le frecce e premere Spazio per salvare.",
+    "subjectDragInstructions": "Premi Spazio per prendere una materia, usa le frecce per spostarla e premi Spazio per posarla. Premi Esc per annullare.",
+    "subjectSaveFailed": "Non è stato possibile salvare le materie. Riprova.",
+    "newSubject": "Nuova materia",
+    "addSubject": "Aggiungi",
+    "cancelSubjects": "Annulla",
+    "subjectPicked": "Materia {{name}} selezionata.",
+    "subjectMoved": "{{name}}, posizione {{position}} di {{count}}.",
+    "subjectDropped": "{{name}} posata nella posizione {{position}}.",
+    "subjectDragCancelled": "Riordino annullato."
   },
   "exams": {
     "plans": "Piani",
@@ -351,7 +367,8 @@
     "unknownRequest": "Richiesta sconosciuta",
     "aborted": "Annullato",
     "invalidOutput": "La risposta non ha la forma attesa",
-    "attachTooBig": "Il file è troppo grande. Ogni allegato sta sotto i 15 MB, e al massimo otto file."
+    "attachTooBig": "Il file è troppo grande. Ogni allegato sta sotto i 15 MB, e al massimo otto file.",
+    "invalidSubject": "Inserisci una materia da 1 a 120 caratteri."
   },
   "dev": {
     "kicker": "Galleria",

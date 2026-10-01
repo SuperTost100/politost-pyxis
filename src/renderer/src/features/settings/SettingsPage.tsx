@@ -1,3 +1,4 @@
+import { SubjectPicker } from "../ask/SubjectPicker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "antd";
 import { useState } from "react";
@@ -90,6 +91,8 @@ export function SettingsPage() {
           onClick={() => void patch({ tutorMode: "socratic" })}
         />
       </div>
+      <div className="label section-label">{t("ask.subject")}</div>
+      <SubjectPicker value="" onChange={() => undefined} managementOnly />
       <div className="label section-label">{t("settings.interests")}</div>
       <div className="choice-list">
         <Choice

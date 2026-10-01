@@ -49,7 +49,23 @@
     "subject": "Subject",
     "askTutor": "Ask the tutor",
     "contextRemove": "Remove",
-    "promote": "Add {{title}} to the library"
+    "promote": "Add {{title}} to the library",
+    "chooseSubject": "Choose a subject",
+    "manageSubjects": "Manage subjects",
+    "reorderSubject": "Reorder {{name}}",
+    "removeSubject": "Remove",
+    "removeNamedSubject": "Remove {{name}}",
+    "removeSubjectConfirm": "Remove {{name}} from the subject list? Existing plans and conversations are kept.",
+    "subjectOrderHelp": "Drag a subject to change the order. You can also focus its handle, press Space, move with the arrow keys, then press Space to save.",
+    "subjectDragInstructions": "Press Space to pick up a subject, use the arrow keys to move it, and press Space to drop it. Press Escape to cancel.",
+    "subjectSaveFailed": "The subjects could not be saved. Try again.",
+    "newSubject": "New subject",
+    "addSubject": "Add",
+    "cancelSubjects": "Cancel",
+    "subjectPicked": "Picked up {{name}}.",
+    "subjectMoved": "{{name}}, position {{position}} of {{count}}.",
+    "subjectDropped": "{{name}} placed at position {{position}}.",
+    "subjectDragCancelled": "Reordering cancelled."
   },
   "exams": {
     "plans": "Plans",
@@ -351,7 +367,8 @@
     "unknownRequest": "Unknown request",
     "aborted": "Cancelled",
     "invalidOutput": "The answer was not in the expected shape",
-    "attachTooBig": "That file is too large. Keep each attachment under 15 MB, and eight files at most."
+    "attachTooBig": "That file is too large. Keep each attachment under 15 MB, and eight files at most.",
+    "invalidSubject": "Enter a subject name of 1 to 120 characters."
   },
   "dev": {
     "kicker": "Gallery",
