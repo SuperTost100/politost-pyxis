@@ -1,3 +1,4 @@
+import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "antd";
 import { useEffect, useRef, useState } from "react";
@@ -20,6 +21,15 @@ export function AskPage() {
   const loadedFor = useRef<string | undefined>(undefined);
   const [uncovered, setUncovered] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [live, setLive] = useState("");
+  const [subject, setSubject] = useState("");
+  const [files, setFiles] = useState<string[]>([]);
+  useEffect(() => {
+    const path = sessionStorage.getItem("pyxis-board-file");
+    if (!path) return;
+    sessionStorage.removeItem("pyxis-board-file");
+    setFiles((current) => (current.includes(path) ? current : [...current, path]));
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const stop = useRef<(() => void) | null>(null);
 
@@ -34,6 +44,10 @@ export function AskPage() {
     queryKey: ["sources"],
     queryFn: () => invoke("sources.list", {}),
   });
+  const subjects = useQuery({
+    queryKey: ["subjects"],
+    queryFn: () => invoke("subjects.list", {}),
+  });
   const thread = useQuery({
     queryKey: ["chat", chatId],
     enabled: Boolean(chatId),
@@ -46,6 +60,7 @@ export function AskPage() {
   useEffect(() => {
     if (chatId) return;
     setPicked([]);
+    setSubject("");
     setUncovered(null);
     setHistoryOpen(false);
     loadedFor.current = undefined;
@@ -56,6 +71,7 @@ export function AskPage() {
     if (loadedFor.current === chatId) return;
     loadedFor.current = chatId;
     setPicked(thread.data.sourceIds);
+    setSubject(thread.data.subject ?? "");
   }, [chatId, thread.data]);
 
   async function send(text: string, allowGeneral?: boolean) {
@@ -63,6 +79,7 @@ export function AskPage() {
     if (!trimmed || busy) return;
     if (chatId && loadedFor.current !== chatId) return;
     setBusy(true);
+    setLive("");
     setError(null);
     const handle = window.pyxis.stream(
       "chats.ask",
@@ -71,9 +88,14 @@ export function AskPage() {
         text: trimmed,
         sourceIds: picked,
         mode,
-        allowGeneral: allowGeneral === true || picked.length === 0,
+        subject: subject || undefined,
+        files: files.length > 0 ? files : undefined,
+        allowGeneral: allowGeneral === true || (picked.length === 0 && files.length === 0),
       },
-      () => undefined,
+      (event) => {
+        const data = event as { text?: string };
+        if (typeof data.text === "string") setLive(data.text);
+      },
     );
     stop.current = handle.cancel;
     try {
@@ -82,6 +104,7 @@ export function AskPage() {
       >;
       if (!result) return;
       setDraft("");
+      setFiles([]);
       sessionStorage.removeItem("pyxis-draft");
       setUncovered(result.covered ? null : trimmed);
       void client.invalidateQueries({ queryKey: ["chat", result.chatId] });
@@ -95,6 +118,7 @@ export function AskPage() {
       if (key !== "errors.aborted") setError(key);
     } finally {
       stop.current = null;
+      setLive("");
       setBusy(false);
     }
   }
@@ -218,7 +242,7 @@ export function AskPage() {
                     if (cite.locator.paragraph) params.set("paragraph", cite.locator.paragraph);
                     if (cite.locator.page != null) params.set("page", String(cite.locator.page));
                     if (cite.locator.slide != null) params.set("slide", String(cite.locator.slide));
-                    navigate(`/exams/library?${params.toString()}`);
+                    openSourceViewer({ passageId: params.get("passage") ?? undefined, sourceId: params.get("source") ?? undefined });
                   }}
                 >
                   {row.body}
@@ -226,6 +250,11 @@ export function AskPage() {
               </ChatMessage>
             ),
           )}
+          {busy && live ? (
+            <ChatMessage role="tutor">
+              <MarkdownView>{live}</MarkdownView>
+            </ChatMessage>
+          ) : null}
         </div>
       )}
       {error ? <Notice tone="danger">{t(error)}</Notice> : null}
@@ -263,6 +292,83 @@ export function AskPage() {
           style={{ maxWidth: 280 }}
         />
       ) : null}
+      <label className="engine-key">
+        <span className="small">{t("ask.subject")}</span>
+        <Input
+          value={subject}
+          aria-label={t("ask.subject")}
+          list="pyxis-subjects"
+          onChange={(event) => setSubject(event.target.value)}
+        />
+        <datalist id="pyxis-subjects">
+          {(subjects.data ?? []).map((item) => (
+            <option key={item.id} value={item.name} />
+          ))}
+        </datalist>
+      </label>
+      {lastTutor && chatId ? (
+        <Button
+          shape="round"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            setLive("");
+            const handle = window.pyxis.stream(
+              "chats.regenerate",
+              { chatId, sourceIds: picked, mode, subject: subject || undefined },
+              (event) => {
+                const data = event as { text?: string };
+                if (typeof data.text === "string") setLive(data.text);
+              },
+            );
+            stop.current = handle.cancel;
+            void handle.result
+              .then(() => {
+                void client.invalidateQueries({ queryKey: ["chat", chatId] });
+              })
+              .finally(() => {
+                stop.current = null;
+                setLive("");
+                setBusy(false);
+              });
+          }}
+        >
+          {t("ask.regenerate")}
+        </Button>
+      ) : null}
+      {thread.data?.context ? (
+        <div className="passage">
+          <p className="small">{thread.data.context.title}</p>
+          <p>{thread.data.context.body}</p>
+          <Button
+            type="text"
+            shape="round"
+            onClick={() => {
+              if (!chatId) return;
+              void invoke("chats.clearContext", { chatId }).then(() => {
+                void client.invalidateQueries({ queryKey: ["chat", chatId] });
+              });
+            }}
+          >
+            {t("ask.contextRemove")}
+          </Button>
+        </div>
+      ) : null}
+      {(thread.data?.held ?? []).map((source) => (
+        <Button
+          key={source.id}
+          shape="round"
+          onClick={() => {
+            void invoke("sources.promote", { sourceId: source.id }).then(() => {
+              void client.invalidateQueries({ queryKey: ["chat", chatId] });
+              void client.invalidateQueries({ queryKey: ["sources"] });
+            });
+          }}
+        >
+          {t("ask.promote", { title: source.title })}
+        </Button>
+      ))}
+      {files.length > 0 ? <p className="small">{files.map((file) => file.split("/").pop()).join(", ")}</p> : null}
       <Composer
         value={draft}
         onValueChange={(next) => {
@@ -274,6 +380,21 @@ export function AskPage() {
         streaming={busy}
         onStop={() => stop.current?.()}
         onSend={() => void send(draft)}
+        onAttach={() => {
+          void window.pyxis
+            .showOpenDialog({
+              properties: ["openFile", "multiSelections"],
+              filters: [
+                {
+                  name: "Files",
+                  extensions: ["png", "jpg", "jpeg", "webp", "pdf", "docx", "pptx", "txt", "md"],
+                },
+              ],
+            })
+            .then((picked) => {
+              if (picked && picked.length > 0) setFiles((current) => [...current, ...picked]);
+            });
+        }}
       />
     </div>
   );

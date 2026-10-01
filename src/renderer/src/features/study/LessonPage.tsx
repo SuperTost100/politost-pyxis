@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
+import { downloadText } from "../../lib/download";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 
@@ -41,6 +42,17 @@ export function LessonPage() {
         onClick={() => navigate(`/plans/${planId ?? ""}/map/${topicId ?? ""}`)}
       >
         {t("map.title")}
+      </Button>
+      <Button
+        shape="round"
+        onClick={() => {
+          if (!planId || !topicId) return;
+          void invoke("study.markdown", { planId, kind: "lesson", topicId }).then((file) => {
+            downloadText(file.filename, file.markdown);
+          });
+        }}
+      >
+        {t("export.markdown")}
       </Button>
       <article className="passage">
         <MarkdownView>{lesson.data?.markdown ?? ""}</MarkdownView>

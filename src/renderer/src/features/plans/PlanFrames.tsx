@@ -31,29 +31,46 @@ export function WizardFrame() {
   const [busy, setBusy] = useState(false);
   const [built, setBuilt] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [topicTitles, setTopicTitles] = useState<Record<string, string>>({});
+  const stop = useRef<(() => void) | null>(null);
 
   async function create() {
     const name = title.trim();
-    if (!name || picked.length === 0 || busy) return;
+    if (!name || busy) return;
     setBusy(true);
     setFailed(false);
     try {
       const days = examChoice === "1" ? 1 : examChoice === "2" ? 2 : examChoice === "3" ? 3 : 10;
       const fromDate = date ? new Date(`${date}T12:00:00`).getTime() : examInstant(days);
-      const result = await invoke("plans.create", {
-        title: name,
-        subject: subject.trim() || undefined,
-        sourceIds: picked,
-        examAt: Number.isFinite(fromDate) ? fromDate : null,
-        target: target / 100,
-        language: language === "en" ? "en" : "it",
-        style,
-      });
+      const handle = window.pyxis.stream(
+        "plans.create",
+        {
+          title: name,
+          subject: subject.trim() || undefined,
+          sourceIds: picked,
+          examAt: Number.isFinite(fromDate) ? fromDate : null,
+          target: target / 100,
+          language: language === "en" ? "en" : "it",
+          style,
+          topicTitles: picked.map(
+            (id) => topicTitles[id] || (sources.data ?? []).find((source) => source.id === id)?.title || "",
+          ),
+        },
+        () => undefined,
+      );
+      stop.current = handle.cancel;
+      const result = (await handle.result) as { planId: string } | undefined;
+      if (!result) return;
       await client.invalidateQueries({ queryKey: ["plans"] });
       setBuilt(result.planId);
-    } catch {
-      setFailed(true);
+    } catch (err) {
+      const key =
+        err && typeof err === "object" && "messageKey" in err
+          ? String((err as { messageKey: unknown }).messageKey)
+          : "";
+      if (key !== "errors.aborted") setFailed(true);
     } finally {
+      stop.current = null;
       setBusy(false);
     }
   }
@@ -84,6 +101,11 @@ export function WizardFrame() {
         {failed ? (
           <Button shape="round" onClick={() => void create()}>
             {t("wizard.retry")}
+          </Button>
+        ) : null}
+        {busy ? (
+          <Button shape="round" onClick={() => stop.current?.()}>
+            {t("wizard.cancel")}
           </Button>
         ) : null}
       </FocusLayout>
@@ -141,6 +163,22 @@ export function WizardFrame() {
           </button>
         ))}
       </div>
+      {picked.length === 0 ? <p className="small">{t("wizard.noMaterial")}</p> : null}
+      {picked.map((id) => {
+        const source = (sources.data ?? []).find((item) => item.id === id);
+        return (
+          <label key={id} className="engine-key">
+            <span className="small">{t("wizard.topicName")}</span>
+            <input
+              aria-label={t("wizard.topicName")}
+              value={topicTitles[id] ?? source?.title ?? ""}
+              onChange={(event) =>
+                setTopicTitles((current) => ({ ...current, [id]: event.target.value }))
+              }
+            />
+          </label>
+        );
+      })}
       <div className="label section-label">{t("wizard.exam")}</div>
       <div className="choice-list">
         {(
@@ -229,7 +267,7 @@ export function WizardFrame() {
       <Button
         type="primary"
         shape="round"
-        disabled={busy || title.trim() === "" || picked.length === 0}
+        disabled={busy || title.trim() === ""}
         onClick={() => void create()}
       >
         {t("wizard.create")}
@@ -269,6 +307,9 @@ export function PlanPage() {
     queryFn: () => invoke("plans.series", { planId: planId ?? "" }),
   });
   const progress = series.data;
+  const [tab, setTab] = useState<"progress" | "path" | "topics" | "sources">("progress");
+  const [withProgress, setWithProgress] = useState(false);
+  const [withSources, setWithSources] = useState(false);
   const onTrack = (progress?.topics ?? []).filter(
     (topic) => topic.mastery >= reachableTarget(plan.data?.target ?? 0.8),
   ).length;
@@ -295,7 +336,7 @@ export function PlanPage() {
           shape="round"
           onClick={() => {
             if (!planId) return;
-            void invoke("plans.export", { planId }).then((file) => {
+            void invoke("plans.export", { planId, progress: withProgress, embed: withSources }).then((file) => {
               const blob = new Blob([JSON.stringify(file)], { type: "application/json" });
               const link = document.createElement("a");
               link.href = URL.createObjectURL(blob);
@@ -311,7 +352,87 @@ export function PlanPage() {
         </Button>
       }
     >
-      {progress ? (
+      {plan.data?.status === "draft" ? <p className="small">{t("plans.draft")}</p> : null}
+      <label className="choice">
+        <input
+          type="checkbox"
+          checked={withProgress}
+          onChange={(event) => setWithProgress(event.target.checked)}
+        />
+        <span>{t("plans.includeProgress")}</span>
+      </label>
+      <label className="choice">
+        <input
+          type="checkbox"
+          checked={withSources}
+          onChange={(event) => setWithSources(event.target.checked)}
+        />
+        <span>{t("plans.embedSources")}</span>
+      </label>
+      {withSources ? <p className="small">{t("plans.embedWarning")}</p> : null}
+      <div className="choice-list">
+        {(
+          [
+            ["progress", t("progress.title")],
+            ["path", t("plans.tabPath")],
+            ["topics", t("plans.tabTopics")],
+            ["sources", t("plans.tabSources")],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={tab === id ? "choice is-selected" : "choice"}
+            aria-pressed={tab === id}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "topics" ? (
+        <ul className="choice-list">
+          {(plan.data?.topics ?? []).map((topic) => (
+            <li key={topic.id} className="small">
+              {topic.title}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {tab === "sources" ? (
+        <div>
+          <ul className="choice-list">
+            {(plan.data?.sources ?? []).map((source) => (
+              <li key={source.id} className="small">
+                {source.title}
+              </li>
+            ))}
+          </ul>
+          <Button
+            shape="round"
+            onClick={() => {
+              if (!planId) return;
+              void window.pyxis
+                .showOpenDialog({ properties: ["openFile", "multiSelections"] })
+                .then(async (paths) => {
+                  if (!paths || paths.length === 0) return;
+                  const imported = [];
+                  for (const path of paths) {
+                    imported.push(await invoke("sources.import", { path }));
+                  }
+                  await invoke("plans.rebuild", {
+                    planId,
+                    sourceIds: imported.map((item) => item.sourceId),
+                  });
+                  void client.invalidateQueries({ queryKey: ["plan", planId] });
+                });
+            }}
+          >
+            {t("plans.rebuild")}
+          </Button>
+        </div>
+      ) : null}
+      {tab === "progress" && progress ? (
         <section>
           <h2 className="title-3">{t("progress.title")}</h2>
           <p className="small">
@@ -399,6 +520,7 @@ export function PlanPage() {
           ))}
         </ul>
       ) : null}
+      {(tab === "path" || tab === "progress") ? (
       <ol className="choice-list">
         {(plan.data?.nodes ?? []).map((node) => (
           <li key={node.id}>
@@ -443,6 +565,7 @@ export function PlanPage() {
           </li>
         ))}
       </ol>
+      ) : null}
       {recommended.data ? (
         <Button
           type="primary"

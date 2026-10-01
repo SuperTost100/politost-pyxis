@@ -36,6 +36,8 @@ const replayable = new Set([
   "engines.features",
   "engines.capability",
   "study.lesson",
+  "study.markdown",
+  "study.csv",
   "study.exercises",
   "plans.list",
   "subjects.list",
@@ -55,6 +57,7 @@ const replayable = new Set([
   "sources.meta",
   "sources.passage",
   "sources.chapter",
+  "sources.viewerDocument",
   "chats.list",
   "chats.read",
 ]);

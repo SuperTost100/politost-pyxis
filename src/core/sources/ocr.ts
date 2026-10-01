@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { chunkText } from "./chunk";
 import { uuidv7 } from "../../shared/ids";
 
 export type OcrPage = { page: number; text: string };
@@ -22,14 +23,19 @@ function documentId(db: Database.Database, sourceId: string): string {
   return row.id;
 }
 
-function pagePassageId(db: Database.Database, sourceId: string, page: number): string | undefined {
+function pagePassageId(
+  db: Database.Database,
+  sourceId: string,
+  documentId: string,
+  page: number,
+): string | undefined {
   const row = db
     .prepare(
       `SELECT id FROM passages
-       WHERE source_id = ? AND json_extract(locator_json, '$.page') = ?
+       WHERE source_id = ? AND document_id = ? AND json_extract(locator_json, '$.page') = ?
        LIMIT 1`,
     )
-    .get(sourceId, page) as { id: string } | undefined;
+    .get(sourceId, documentId, page) as { id: string } | undefined;
   return row?.id;
 }
 
@@ -54,25 +60,25 @@ export function applyOcrPage(db: Database.Database, sourceId: string, page: OcrP
   const row = sourceStatus(db, sourceId);
   if (!row) throw new Error("source-missing");
   if (row.status !== "ocr-queued") throw new Error("ocr-not-active");
-  if (pagePassageId(db, sourceId, page.page)) return false;
-  const text = page.text.replace(/\s+/g, " ").trim();
-  if (!text) return false;
   const now = Date.now();
   const document_id = documentId(db, sourceId);
-  db.prepare(
-    `INSERT INTO passages
+  if (pagePassageId(db, sourceId, document_id, page.page)) return false;
+  const version = (
+    db.prepare(`SELECT version FROM source_documents WHERE id = ?`).get(document_id) as
+      | { version: number }
+      | undefined
+  )?.version ?? 1;
+  const text = page.text.replace(/\s+/g, " ").trim();
+  if (!text) return false;
+  db.transaction(() => {
+    const insert = db.prepare(`INSERT INTO passages
       (id, source_id, document_id, version, text, locator_json, section_path, char_start, char_end, created_at)
-     VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?, ?)`,
-  ).run(
-    uuidv7(now),
-    sourceId,
-    document_id,
-    text,
-    JSON.stringify({ page: page.page }),
-    `p. ${page.page}`,
-    text.length,
-    now,
-  );
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    for (const chunk of chunkText(text)) {
+      insert.run(uuidv7(), sourceId, document_id, version, chunk.text,
+        JSON.stringify({ page: page.page }), `p. ${page.page}`, chunk.start, chunk.end, now);
+    }
+  })();
   return true;
 }
 
@@ -81,16 +87,17 @@ export function finishOcr(db: Database.Database, sourceId: string): "ready" | "f
   const row = sourceStatus(db, sourceId);
   if (!row) throw new Error("source-missing");
   if (row.status !== "ocr-queued") throw new Error("ocr-not-active");
+  const current = documentId(db, sourceId);
   const count = db
-    .prepare(`SELECT COUNT(*) AS n FROM passages WHERE source_id = ?`)
-    .get(sourceId) as { n: number };
+    .prepare(`SELECT COUNT(DISTINCT json_extract(locator_json, '$.page')) AS n FROM passages WHERE source_id = ? AND document_id = ?`)
+    .get(sourceId, current) as { n: number };
   const status = count.n > 0 ? "ready" : "failed";
   const now = Date.now();
   touchSource(db, sourceId, status, now);
   if (status === "ready") {
     db.prepare(
-      `UPDATE source_documents SET tree_json = ? WHERE id = ?`,
-    ).run(JSON.stringify({ pages: count.n }), documentId(db, sourceId));
+      `UPDATE source_documents SET tree_json = json_set(tree_json, '$.pages', ?) WHERE id = ?`,
+    ).run(count.n, documentId(db, sourceId));
   }
   return status;
 }

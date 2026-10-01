@@ -11,6 +11,7 @@ type Stored = {
   picks?: Record<string, string>;
   questions: Array<{
     id: string;
+    sourceId?: string;
     topicId?: string;
     stem: string;
     answer: { kind: "completion"; accepted: string[][] };
@@ -53,6 +54,7 @@ export function startSimulation(
   planId: string,
   minutes = 30,
   now = Date.now(),
+  source: "exam" | "mixed" = "mixed",
 ) {
   const topics = db
     .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
@@ -61,8 +63,10 @@ export function startSimulation(
     topics.map((topic) =>
       topicExercises(db, topic.id)
         .filter((row) => row.answer && row.answer.trim())
+        .filter((row) => source === "mixed" || row.kind === "esame")
         .map((row) => ({
           id: row.id,
+          sourceId: row.id,
           topicId: topic.id,
           stem: row.prompt,
           answer: { kind: "completion" as const, accepted: [[row.answer ?? ""]] },

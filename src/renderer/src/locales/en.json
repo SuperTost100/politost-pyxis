@@ -42,7 +42,14 @@
     "rename": "Rename",
     "delete": "Delete",
     "deleteConfirm": "Delete forever",
-    "new": "New chat"
+    "new": "New chat",
+    "stop": "Stop",
+    "regenerate": "Regenerate",
+    "stopped": "Stopped",
+    "subject": "Subject",
+    "askTutor": "Ask the tutor",
+    "contextRemove": "Remove",
+    "promote": "Add {{title}} to the library"
   },
   "exams": {
     "plans": "Plans",
@@ -68,11 +75,61 @@
     "encrypted": "This smartbook is protected. Pyxis opens plain packages only.",
     "importFailed": "This file could not be read.",
     "scanned": "{{title}} has no text. It is a scan.",
-    "offerOcr": "Run OCR",
+    "offerOcr": "Read the scan",
     "ocrQueued": "OCR is queued on this computer.",
+    "ocrReading": "Reading the page.",
     "version": "version {{version}}",
     "spec": "spec {{spec}}",
-    "specUnknown": "This smartbook spec is not recognized. The file was still opened."
+    "specUnknown": "This smartbook spec is not recognized. The file was still opened.",
+    "qualityTitle": "Material that works",
+    "qualityBody": "Past exams with solutions, lecture slides, your notes, and formula sheets.",
+    "duplicate": "This file is already in the library.",
+    "blurry": "This photo looks blurry. A sharper picture is easier to read.",
+    "paste": "Paste notes",
+    "pasteHint": "At least 1,500 characters, about one page.",
+    "pasteShort": "Paste at least 1,500 characters.",
+    "pasteTitle": "Title",
+    "link": "Add a link",
+    "linkHint": "Pyxis saves the article text. It does not run the page.",
+    "pageEmpty": "That page has almost no text. Paste the text instead.",
+    "linkScheme": "Only http and https links can be saved.",
+    "linkFailed": "That link could not be read.",
+    "folder": "Add a folder",
+    "importChosen": "Import selected",
+    "rename": "Rename",
+    "replace": "Replace file",
+    "remove": "Remove",
+    "removeConfirm": "Remove it from plans too",
+    "inUse": "A plan still uses this source. Remove it anyway?",
+    "heic": "HEIC photos need to be exported as JPEG first.",
+    "titleEmpty": "The title cannot be empty.",
+    "embedAsk": "Download the local search model (about 120 MB). It stays on this computer.",
+    "embedReady": "Local search model is ready.",
+    "embedHash": "The search model file did not match its checksum.",
+    "embedOff": "Local search stays on word matching until you download the model.",
+    "jobs": {
+      "extract": "Read source",
+      "passages": "Prepare passages",
+      "vectors": "Index passages",
+      "download": "Download search model"
+    },
+    "copySelection": "Copy",
+    "embedQueued": "The download is in jobs. You can cancel or resume it.",
+    "status": {
+      "queued": "Queued",
+      "extracting": "Reading",
+      "indexing": "Indexing",
+      "ready": "Ready",
+      "needs-ocr": "No text layer",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted"
+    },
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pageNumber": "Page {{page}} of {{count}}",
+    "pdfFailed": "The page could not open. Close the source and try again.",
+    "busy": "This source has an unfinished job. Resume or dismiss it before replacing the file."
   },
   "cards": {
     "title": "Cards",
@@ -109,9 +166,17 @@
     "title": "Lesson from the book",
     "done": "I've read it"
   },
+  "export": {
+    "markdown": "Markdown",
+    "csv": "CSV",
+    "answers": "With the answers"
+  },
   "simulation": {
     "title": "Simulation",
-    "start": "Start the 30 minutes",
+    "start": "Start",
+    "minutes": "{{count}} minutes",
+    "exam": "Exam questions",
+    "mixed": "Mixed questions",
     "left": "{{minutes}} minutes",
     "empty": "The book has no exercises for a simulation.",
     "localGrade": "Scored on this computer, without a model.",
@@ -122,7 +187,10 @@
     "start": "Start",
     "submit": "Check",
     "score": "{{score}} out of 100",
-    "empty": "This topic has no solutions to check."
+    "empty": "This topic has no solutions to check.",
+    "true": "True",
+    "false": "False",
+    "flag": "Flag this item"
   },
   "practice": {
     "title": "Book exercises",
@@ -141,6 +209,14 @@
     "recommendGaps": "{{count}} open gaps",
     "recommendNext": "The open step",
     "export": "Export",
+    "includeProgress": "Include progress",
+    "embedSources": "Include the source files",
+    "embedWarning": "These files may be copyrighted. Share them only if you have the right.",
+    "tabPath": "Path",
+    "tabTopics": "Topics",
+    "tabSources": "Sources",
+    "draft": "This plan has no material yet. Add a source, then rebuild the topics.",
+    "rebuild": "Rebuild topics",
     "delete": "Delete the plan",
     "intro": "Introduction",
     "diagnostic": "Diagnostic",
@@ -180,6 +256,9 @@
     "stepPath": "Building the path",
     "failed": "The plan could not be prepared.",
     "retry": "Try again",
+    "cancel": "Cancel",
+    "noMaterial": "No material yet. The plan stays a draft until you add a source.",
+    "topicName": "Topic name",
     "exam": "Exam date",
     "tomorrow": "Tomorrow",
     "inTwo": "In 2 days",
@@ -271,7 +350,8 @@
     "notAvailable": "This action is not available",
     "unknownRequest": "Unknown request",
     "aborted": "Cancelled",
-    "invalidOutput": "The answer was not in the expected shape"
+    "invalidOutput": "The answer was not in the expected shape",
+    "attachTooBig": "That file is too large. Keep each attachment under 15 MB, and eight files at most."
   },
   "dev": {
     "kicker": "Gallery",
@@ -378,7 +458,9 @@
       "details": "Details"
     },
     "markdown": {
-      "run": "Run"
+      "run": "Run",
+      "verified": "Verified",
+      "failed": "Not verified"
     },
     "lesson": {
       "recommended": "Recommended"
@@ -528,6 +610,10 @@
   },
   "tools": {
     "save": "Save",
+    "attach": "Attach to chat",
+    "erase": "Eraser",
+    "pen": "Pen",
+    "redo": "Redo",
     "whiteboardTitle": "Whiteboard",
     "whiteboardBody": "The whiteboard fills the window. Strokes stay on this computer."
   }

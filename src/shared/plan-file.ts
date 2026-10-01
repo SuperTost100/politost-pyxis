@@ -17,12 +17,49 @@ export const planFileSchema = z.object({
       front: z.string(),
       back: z.string(),
       topic: z.number().nullable(),
+      schedule: z
+        .object({
+          rating: z.string(),
+          state: z.unknown(),
+          at: z.number(),
+        })
+        .optional(),
     }),
   ),
   examAt: z.number().nullable().optional(),
   target: z.number().min(0.5).max(1).optional(),
   language: z.enum(["it", "en"]).nullable().optional(),
   style: z.enum(["read", "practice", "decide"]).optional(),
+  progress: z
+    .array(
+      z.object({
+        kind: z.enum([
+          "answer_given",
+          "card_rated",
+          "lesson_opened",
+          "lesson_completed",
+          "simulation_submitted",
+          "active_time",
+          "gap_opened",
+          "gap_closed",
+        ]),
+        topic: z.number().nullable(),
+        payload: z.unknown(),
+        at: z.number(),
+      }),
+    )
+    .optional(),
+  sources: z
+    .array(
+      z.object({
+        title: z.string(),
+        sha: z.string().nullable(),
+        bytes: z.number().int().nonnegative(),
+        mime: z.string().nullable().optional(),
+        data: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export type PlanFile = z.infer<typeof planFileSchema>;

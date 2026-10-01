@@ -313,7 +313,7 @@ export function createRunner(
       const rows = db
         .prepare(
           `SELECT id FROM jobs
-           WHERE state IN ('queued', 'running', 'failed', 'interrupted')
+           WHERE state IN ('queued', 'running', 'failed', 'cancelled', 'interrupted')
            ORDER BY created_at`,
         )
         .all() as Array<{ id: string }>;

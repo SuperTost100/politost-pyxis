@@ -17,6 +17,16 @@ export type PassageHit = {
 
 export type Embedder = (text: string) => Float32Array;
 
+let modelEmbed: ((text: string, signal?: AbortSignal) => Promise<Float32Array | null>) | undefined;
+export function setRetrievalModel(embed: typeof modelEmbed): void { modelEmbed = embed; }
+
+export async function retrieveWithModel(db: Database.Database, query: string,
+  options?: { sourceIds?: string[]; limit?: number; embed?: Embedder | null; signal?: AbortSignal }) {
+  if (options?.embed !== undefined || !modelEmbed) return retrieve(db, query, options);
+  const vector = await modelEmbed(`query: ${query}`, options?.signal);
+  return retrieve(db, query, { ...options, embed: vector ? () => vector : null });
+}
+
 type Row = {
   id: string;
   source_id: string | null;
@@ -110,7 +120,18 @@ function lexical(db: Database.Database, query: string, sourceIds?: string[]): Ro
               bm25(passages_fts) AS rank
        FROM passages_fts
        JOIN passages p ON p.rowid = passages_fts.rowid
+       LEFT JOIN sources s ON s.id = p.source_id
        WHERE passages_fts MATCH ?${scope}
+         AND (p.source_id IS NULL OR s.status != 'removed')
+         AND (
+           p.source_id IS NULL
+           OR p.document_id = (
+             SELECT id FROM source_documents
+             WHERE source_id = p.source_id
+             ORDER BY version DESC
+             LIMIT 1
+           )
+         )
        ORDER BY rank
        LIMIT 30`,
     )
@@ -124,18 +145,36 @@ function vectorHits(
   sourceIds?: string[],
 ): { ids: string[]; bestDistance: number | null } {
   const vector = embed(`query: ${query}`);
-  const bytes = Buffer.from(vector.buffer);
+  const bytes = Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength);
+  // Scope before KNN ranking. Filtering a global top 30 can hide all scoped hits.
+  const scope = sourceIds?.length ? `AND p.source_id IN (${sourceIds.map(() => "?").join(",")})` : "";
   const rows = db
     .prepare(
       `SELECT passage_rowid AS n, distance FROM passages_vec
-       WHERE embedding MATCH ? AND k = 30
+       WHERE embedding MATCH ? AND k = 30 AND passage_rowid IN (
+         SELECT p.rowid FROM passages p LEFT JOIN sources s ON s.id = p.source_id
+         WHERE (p.source_id IS NULL OR s.status != 'removed') ${scope}
+         AND (p.source_id IS NULL OR p.document_id = (SELECT id FROM source_documents
+           WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))
        ORDER BY distance`,
     )
-    .all(bytes) as Array<{ n: number | bigint; distance: number }>;
+    .all(bytes, ...(sourceIds ?? [])) as Array<{ n: number | bigint; distance: number }>;
   const ids: string[] = [];
   let bestDistance: number | null = null;
   const lookup = db.prepare(
-    `SELECT id, source_id FROM passages WHERE rowid = ?`,
+    `SELECT p.id, p.source_id FROM passages p
+     LEFT JOIN sources s ON s.id = p.source_id
+     WHERE p.rowid = ?
+       AND (p.source_id IS NULL OR s.status != 'removed')
+       AND (
+         p.source_id IS NULL
+         OR p.document_id = (
+           SELECT id FROM source_documents
+           WHERE source_id = p.source_id
+           ORDER BY version DESC
+           LIMIT 1
+         )
+       )`,
   );
   for (const row of rows) {
     const found = lookup.get(Number(row.n)) as

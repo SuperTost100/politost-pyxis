@@ -4,6 +4,7 @@ import type Database from "better-sqlite3";
 import { strFromU8, unzipSync } from "fflate";
 import mammoth from "mammoth";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { chunkText } from "./chunk";
 import { uuidv7 } from "../../shared/ids";
 import { putBlob } from "../blobs";
 
@@ -117,64 +118,162 @@ function textSections(text: string, mode: "heading" | "blank"): ExtractedDocumen
   return { pages, scanned: false };
 }
 
-export async function importDocumentFile(
-  db: Database.Database,
-  workspace: string,
-  filePath: string,
-): Promise<{
+export type StoredSource = {
   sourceId: string;
   title: string;
   chapters: number;
   passages: number;
   exercises: number;
-}> {
-  const bytes = new Uint8Array(readFileSync(filePath));
-  const ext = extname(filePath).toLowerCase();
-  const extracted = await extractByExt(bytes, ext);
+};
+
+export function storeExtracted(
+  db: Database.Database,
+  workspace: string,
+  input: {
+    sourceId?: string;
+    title: string;
+    kind: string;
+    mime: string;
+    ext: string;
+    bytes: Uint8Array;
+    extracted: ExtractedDocument;
+    originUrl?: string;
+    fetchedAt?: number;
+  },
+): StoredSource {
   const now = Date.now();
-  const sourceId = uuidv7(now);
+  const sourceId = input.sourceId ?? uuidv7(now);
   const documentId = uuidv7(now + 1);
-  const title = basename(filePath, ext);
-  const sha = putBlob(workspace, bytes, mimeFor(ext), ext.slice(1));
-  const status = extracted.scanned ? "needs-ocr" : "ready";
-  const kept = extracted.scanned ? [] : extracted.pages.filter((page) => page.text);
+  const sha = putBlob(workspace, input.bytes, input.mime, input.ext.replace(/^\./, ""));
+  const status = input.extracted.scanned ? "needs-ocr" : "ready";
+  const kept = input.extracted.scanned ? [] : input.extracted.pages.filter((page) => page.text);
   db.transaction(() => {
     db.prepare(
-      `INSERT INTO sources (id, kind, title, blob_sha, mime, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(sourceId, kindFor(ext), title, sha, mimeFor(ext), status, now, now);
-    db.prepare(
-      `INSERT INTO source_documents (id, source_id, version, tree_json, created_at)
-       VALUES (?, ?, 1, ?, ?)`,
-    ).run(documentId, sourceId, JSON.stringify({ pages: kept.length }), now);
-    const insert = db.prepare(
-      `INSERT INTO passages
-        (id, source_id, document_id, version, text, locator_json, section_path, char_start, char_end, created_at)
-       VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?, ?)`,
+      `INSERT INTO sources
+        (id, kind, title, blob_sha, mime, status, origin_url, fetched_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET title = excluded.title, blob_sha = excluded.blob_sha, mime = excluded.mime, status = excluded.status, updated_at = excluded.updated_at`,
+    ).run(
+      sourceId,
+      input.kind,
+      input.title,
+      sha,
+      input.mime,
+      status,
+      input.originUrl ?? null,
+      input.fetchedAt ?? null,
+      now,
+      now,
     );
-    kept.forEach((page, index) => {
-      insert.run(
-        uuidv7(now + index + 2),
-        sourceId,
-        documentId,
-        page.text,
-        JSON.stringify(page.locator),
-        page.section,
-        page.text.length,
-        now,
-      );
-    });
+    insertPages(db, sourceId, documentId, 1, kept, now, sha, input.kind);
   })();
   return {
     sourceId,
-    title,
+    title: input.title,
     chapters: 0,
     passages: kept.length,
     exercises: 0,
   };
 }
 
-async function extractByExt(bytes: Uint8Array, ext: string): Promise<ExtractedDocument> {
+function insertPages(
+  db: Database.Database,
+  sourceId: string,
+  documentId: string,
+  version: number,
+  pages: ExtractedPage[],
+  now: number,
+  blobSha: string,
+  kind: string,
+): void {
+  db.prepare(
+    `INSERT INTO source_documents (id, source_id, version, tree_json, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(documentId, sourceId, version, JSON.stringify({ pages: pages.length, blobSha, kind }), now);
+  const insert = db.prepare(
+    `INSERT INTO passages
+      (id, source_id, document_id, version, text, locator_json, section_path, char_start, char_end, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  let index = 0;
+  for (const page of pages) {
+    for (const chunk of chunkText(page.text)) {
+      insert.run(uuidv7(now + index + 2), sourceId, documentId, version, chunk.text,
+        JSON.stringify(page.locator), page.section, chunk.start, chunk.end, now);
+      index += 1;
+    }
+  }
+
+}
+
+/** New extraction of an existing source. Older passages stay for citations. */
+export function addDocumentVersion(
+  db: Database.Database,
+  workspace: string,
+  sourceId: string,
+  input: {
+    title: string;
+    mime: string;
+    ext: string;
+    bytes: Uint8Array;
+    extracted: ExtractedDocument;
+  },
+): StoredSource {
+  const existing = db
+    .prepare(`SELECT id FROM sources WHERE id = ? AND status != 'removed'`)
+    .get(sourceId);
+  if (!existing) throw new Error("source-missing");
+  const now = Date.now();
+  const documentId = uuidv7(now);
+  const sha = putBlob(workspace, input.bytes, input.mime, input.ext.replace(/^\./, ""));
+  const status = input.extracted.scanned ? "needs-ocr" : "ready";
+  const kept = input.extracted.scanned ? [] : input.extracted.pages.filter((page) => page.text);
+  const versionRow = db
+    .prepare(`SELECT COALESCE(MAX(version), 0) AS n FROM source_documents WHERE source_id = ?`)
+    .get(sourceId) as { n: number };
+  const version = versionRow.n + 1;
+  db.transaction(() => {
+    insertPages(db, sourceId, documentId, version, kept, now, sha, kindFor(input.ext));
+    db.prepare(
+      `UPDATE item_passages SET stale = 1
+       WHERE passage_id IN (
+         SELECT id FROM passages WHERE source_id = ? AND document_id != ?
+       )`,
+    ).run(sourceId, documentId);
+    db.prepare(
+      `UPDATE sources
+       SET title = ?, blob_sha = ?, mime = ?, kind = ?, status = ?, updated_at = ?
+       WHERE id = ?`,
+    ).run(input.title, sha, input.mime, kindFor(input.ext), status, now, sourceId);
+  })();
+  return {
+    sourceId,
+    title: input.title,
+    chapters: 0,
+    passages: kept.length,
+    exercises: 0,
+  };
+}
+
+export async function importDocumentFile(
+  db: Database.Database,
+  workspace: string,
+  filePath: string,
+): Promise<StoredSource> {
+  const bytes = new Uint8Array(readFileSync(filePath));
+  const ext = extname(filePath).toLowerCase();
+  const extracted = await extractByExt(bytes, ext);
+  return storeExtracted(db, workspace, {
+    title: basename(filePath, ext),
+    kind: kindFor(ext),
+    mime: mimeFor(ext),
+    ext,
+    bytes,
+    extracted,
+  });
+}
+
+export async function extractByExt(bytes: Uint8Array, ext: string): Promise<ExtractedDocument> {
   if (ext === ".pdf") return extractPdf(bytes);
   if (ext === ".docx") return extractDocx(bytes);
   if (ext === ".pptx") return extractPptx(bytes);
@@ -183,7 +282,7 @@ async function extractByExt(bytes: Uint8Array, ext: string): Promise<ExtractedDo
   throw new Error("unsupported-file");
 }
 
-function mimeFor(ext: string): string {
+export function mimeFor(ext: string): string {
   if (ext === ".pdf") return "application/pdf";
   if (ext === ".docx") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   if (ext === ".pptx") return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
@@ -191,7 +290,7 @@ function mimeFor(ext: string): string {
   return "text/plain";
 }
 
-function kindFor(ext: string): string {
+export function kindFor(ext: string): string {
   if (ext === ".pdf") return "pdf";
   if (ext === ".docx") return "docx";
   if (ext === ".pptx") return "pptx";

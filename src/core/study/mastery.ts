@@ -1,4 +1,6 @@
-// ponytail: exponential half-life, not a Bayesian prior; upgrade path is the plan's mastery formula in implementation 4.7 if it differs.
+// Prior of 3 empty observations, so one fresh score cannot look like mastery.
+
+const PRIOR_COUNT = 3;
 
 export type MasteryEvent = {
   topicId: string;
@@ -51,7 +53,7 @@ export function masteryFor(
 
     if (totalWeight === 0) continue;
 
-    out[topicId] = clamp01(weightedSum / totalWeight);
+    out[topicId] = clamp01((weightedSum) / (PRIOR_COUNT + totalWeight));
   }
 
   return out;

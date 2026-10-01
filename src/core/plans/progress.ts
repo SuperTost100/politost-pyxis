@@ -103,6 +103,21 @@ export function syncGaps(db: Database.Database, planId: string, now = Date.now()
     .prepare(`SELECT id, topic_id, closed_at FROM gaps WHERE plan_id = ?`)
     .all(planId) as Array<{ id: string; topic_id: string | null; closed_at: number | null }>;
   const still = new Set(open.map((gap) => gap.topicId));
+  const flagged = db
+    .prepare(
+      `SELECT DISTINCT t.id AS topic_id
+       FROM flags f
+       JOIN exercises e ON e.id = f.target_id AND f.target_kind = 'exercise'
+       JOIN smartbooks sb ON sb.id = e.smartbook_id
+       JOIN plan_sources ps ON ps.source_id = sb.source_id AND ps.plan_id = ?
+       JOIN topics t ON t.plan_id = ps.plan_id
+       JOIN topic_passages tp ON tp.topic_id = t.id
+       JOIN passages p ON p.id = tp.passage_id
+       WHERE json_extract(p.locator_json, '$.chapter') = json_extract(e.locator_json, '$.chapter')
+         AND p.source_id = sb.source_id`,
+    )
+    .all(planId) as Array<{ topic_id: string }>;
+  for (const row of flagged) still.add(row.topic_id);
   for (const row of existing) {
     if (row.closed_at == null && row.topic_id && !still.has(row.topic_id)) {
       db.prepare(`UPDATE gaps SET closed_at = ? WHERE id = ?`).run(now, row.id);
@@ -114,6 +129,14 @@ export function syncGaps(db: Database.Database, planId: string, now = Date.now()
     db.prepare(
       `INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES (?, ?, ?, ?)`,
     ).run(uuidv7(gap.openedAt), planId, gap.topicId, gap.openedAt);
+  }
+  for (const row of flagged) {
+    if (open.some((gap) => gap.topicId === row.topic_id)) continue;
+    const live = existing.find((item) => item.topic_id === row.topic_id && item.closed_at == null);
+    if (live) continue;
+    db.prepare(
+      `INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES (?, ?, ?, ?)`,
+    ).run(uuidv7(now), planId, row.topic_id, now);
   }
 }
 

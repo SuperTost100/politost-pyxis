@@ -1,7 +1,10 @@
 import type Database from "better-sqlite3";
 import { completeNode } from "../plans/create";
 import { saveQuiz, startAttempt, submitAttempt } from "./attempt";
+import { mixQuestions } from "./mix";
 import { topicExercises } from "./exercises";
+import { flaggedIds } from "./flags";
+import { requireTopic } from "./openLesson";
 
 export function acrossTopics<T>(buckets: T[][], limit: number): T[] {
   const picked: T[] = [];
@@ -69,17 +72,21 @@ export function startDiagnostic(db: Database.Database, planId: string) {
 }
 
 export function startTopicQuiz(db: Database.Database, planId: string, topicId: string) {
-  const exercises = topicExercises(db, topicId).filter((row) => row.answer && row.answer.trim());
-  if (exercises.length === 0) throw new Error("quiz-empty");
-  const itemId = saveQuiz(
-    db,
-    planId,
-    exercises.slice(0, 20).map((row) => ({
-      id: row.id,
-      stem: row.prompt,
-      grade: { kind: "completion" as const, answers: [], accepted: [[row.answer ?? ""]] },
-    })),
+  requireTopic(db, planId, topicId);
+  const blocked = flaggedIds(db, "exercise");
+  const exercises = topicExercises(db, topicId).filter(
+    (row) => row.answer && row.answer.trim() && !blocked.has(row.id),
   );
+  if (exercises.length === 0) throw new Error("quiz-empty");
+  const mixed = mixQuestions(
+    exercises.map((row) => ({ id: row.id, prompt: row.prompt, answer: row.answer ?? "" })),
+  );
+  const itemId = saveQuiz(db, planId, mixed.length > 0 ? mixed : exercises.slice(0, 20).map((row) => ({
+    id: row.id,
+    stem: row.prompt,
+    explanation: row.answer ?? "",
+    grade: { kind: "completion" as const, answers: [], accepted: [[row.answer ?? ""]] },
+  })));
   db.prepare(`UPDATE items SET topic_id = ? WHERE id = ?`).run(topicId, itemId);
   return startAttempt(db, planId, itemId);
 }

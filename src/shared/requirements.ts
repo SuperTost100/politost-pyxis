@@ -1,9 +1,13 @@
 /** IDs whose behavior exists in this repo. The comment is the file that implements it. */
 export const implemented = [
   "ASK-02", // src/core/chat/turn.ts
+  "ASK-05", // src/renderer/src/features/tools/WhiteboardPage.tsx
+  "ASK-04", // src/core/chat/attach.ts
+  "ASK-12", // src/core/chat/turn.ts
   "ASK-06", // src/renderer/src/components/ChatMessage.tsx
   "ASK-08", // src/core/chat/turn.ts
   "ASK-10", // src/renderer/src/features/ask/AskPage.tsx
+  "ASK-11", // src/core/chat/turn.ts
   "ENG-01", // src/core/engine/handlers.ts
   "ENG-02", // src/main/index.ts
   "ENG-03", // src/core/engine/handlers.ts
@@ -21,6 +25,9 @@ export const implemented = [
   "ENG-30", // src/core/engine/capabilities.ts
   "ENG-31", // src/core/engine/capabilities.ts
   "ENG-32", // src/core/engine/generate.ts
+  "EXP-02", // src/core/share/markdown.ts
+  "EXP-03", // src/core/share/markdown.ts
+  "EXP-04", // src/core/share/markdown.ts
   "EXP-05", // src/core/share/backup.ts
   "FC-02", // src/renderer/src/features/study/CardsPage.tsx
   "FC-03", // src/core/study/cards.ts
@@ -28,11 +35,19 @@ export const implemented = [
   "FC-06", // src/core/study/cards.ts
   "FC-05", // src/core/study/schedule.ts
   "FC-07", // src/renderer/src/features/study/CardsPage.tsx
+  "LES-11", // src/core/study/mix.ts
+  "LES-12", // src/core/study/grade.ts
+  "LES-13", // src/core/study/review.ts
+  "LES-14", // src/renderer/src/features/study/QuizPage.tsx
+  "LES-31", // src/core/study/flags.ts
   "LES-10", // src/core/study/exercises.ts
+  "MAP-01", // src/core/maps/store.ts
+  "MAP-04", // src/core/maps/graph.ts
   "MAP-02", // src/core/maps/graph.ts
   "MAP-03", // src/core/maps/graph.ts
   "MAP-06", // src/renderer/src/features/maps/MapPage.tsx
   "MAP-07", // src/core/maps/store.ts
+  "MATH-02", // src/core/math/check.ts
   "MATH-01", // src/renderer/src/components/MarkdownView.tsx
   "MATH-03", // src/core/math/python.ts
   "MATH-04", // src/core/math/plot.ts
@@ -82,6 +97,9 @@ export const implemented = [
   "SET-05", // src/core/share/usage.ts
   "SET-08", // src/renderer/src/features/settings/SettingsPage.tsx
   "SET-07", // src/core/profile/profile.ts
+  "SHR-01", // src/core/plans/file.ts
+  "SHR-02", // src/core/plans/file.ts
+  "SHR-03", // src/core/plans/file.ts
   "SHR-04", // src/main/index.ts
   "SHR-05", // src/shared/plan-file.ts
   "SHR-06", // docs/plan-file.md
@@ -89,6 +107,13 @@ export const implemented = [
   "SRC-01", // src/core/sources/smartbook.ts
   "SRC-02", // src/core/sources/documents.ts
   "SRC-03", // src/core/sources/documents.ts
+  "SRC-04", // src/core/sources/recognize.ts
+  "SRC-05", // src/core/sources/paste.ts
+  "SRC-06", // src/core/sources/link.ts
+  "SRC-07", // src/core/sources/folder.ts
+  "SRC-08", // src/core/sources/quality.ts
+  "SRC-12", // src/core/sources/manage.ts
+  "SRC-21", // src/core/sources/embed.ts
   "SRC-10", // src/core/sources/smartbook.ts
   "SRC-11", // src/core/sources/smartbook.ts
   "SRC-13", // src/core/sources/documents.ts

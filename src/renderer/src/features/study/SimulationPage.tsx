@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
+import { downloadText } from "../../lib/download";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 
@@ -15,7 +16,10 @@ export function SimulationPage() {
   const navigate = useNavigate();
   const client = useQueryClient();
   const [started, setStarted] = useState<string | null>(null);
+  const [length, setLength] = useState<30 | 60 | 90>(30);
+  const [source, setSource] = useState<"exam" | "mixed">("exam");
   const [picks, setPicks] = useState<Record<string, string>>({});
+  const [withAnswers, setWithAnswers] = useState(false);
   const open = useQuery({
     queryKey: ["simulation", planId, started],
     enabled: Boolean(planId),
@@ -44,18 +48,44 @@ export function SimulationPage() {
       }
     >
       {!run ? (
-        <Button
-          type="primary"
-          shape="round"
-          onClick={() => {
-            if (!planId) return;
-            void invoke("study.simulationStart", { planId }).then((next) => {
-              setStarted(next.attemptId);
-            });
-          }}
-        >
-          {t("simulation.start")}
-        </Button>
+        <div className="gallery-row">
+          {([30, 60, 90] as const).map((count) => (
+            <Button
+              key={count}
+              shape="round"
+              type={length === count ? "primary" : "default"}
+              onClick={() => setLength(count)}
+            >
+              {t("simulation.minutes", { count })}
+            </Button>
+          ))}
+          <Button
+            shape="round"
+            type={source === "exam" ? "primary" : "default"}
+            onClick={() => setSource("exam")}
+          >
+            {t("simulation.exam")}
+          </Button>
+          <Button
+            shape="round"
+            type={source === "mixed" ? "primary" : "default"}
+            onClick={() => setSource("mixed")}
+          >
+            {t("simulation.mixed")}
+          </Button>
+          <Button
+            type="primary"
+            shape="round"
+            onClick={() => {
+              if (!planId) return;
+              void invoke("study.simulationStart", { planId, minutes: length, source }).then((next) => {
+                setStarted(next.attemptId);
+              });
+            }}
+          >
+            {t("simulation.start")}
+          </Button>
+        </div>
       ) : (
         <ol className="choice-list">
           {run.questions.map((question) => (
@@ -103,6 +133,33 @@ export function SimulationPage() {
         </section>
       ) : null}
       {open.error ? <p className="small">{t("simulation.empty")}</p> : null}
+      {!run || run.submitted ? (
+        <>
+          <label className="choice">
+            <input
+              type="checkbox"
+              checked={withAnswers}
+              onChange={(event) => setWithAnswers(event.target.checked)}
+            />
+            <span>{t("export.answers")}</span>
+          </label>
+          <Button
+            shape="round"
+            onClick={() => {
+              if (!planId) return;
+              void invoke("study.markdown", {
+                planId,
+                kind: "simulation",
+                answers: withAnswers,
+              }).then((file) => {
+                downloadText(file.filename, file.markdown);
+              });
+            }}
+          >
+            {t("export.markdown")}
+          </Button>
+        </>
+      ) : null}
     </FocusLayout>
   );
 }

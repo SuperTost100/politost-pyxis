@@ -1,87 +1,88 @@
 /**
- * Fixed-interval spaced repetition (Anki-like ladder, not FSRS).
+ * FSRS scheduler (`ts-fsrs`, default parameters, retention 0.9, fuzz off).
  *
- * Interval table (days until next review, from current `intervalDays`):
- * | Rating | intervalDays === 0 | intervalDays > 0                          |
- * |--------|--------------------|-------------------------------------------|
- * | again  | 0                  | 1 (ease −0.20)                            |
- * | hard   | 1                  | max(1, round(interval × 1.2)), ease −0.15 |
- * | good   | 1                  | max(1, round(interval × ease))            |
- * | easy   | 2                  | max(1, round(interval × ease × 1.3)), ease +0.15 |
+ * Button map, matching the plan's Easy = FSRS Good choice:
+ * again -> Again, hard -> Hard, good -> Good, easy -> Easy.
  *
- * Default ease: 2.5 (clamped 1.3–3.0).
+ * `intervalDays` is FSRS `scheduled_days`. `ease` keeps the last difficulty
+ * so older rows still parse. The full card lives on `fsrs`.
  */
 
-// ponytail: fixed multipliers only — no FSRS stability/retrievability; swap to `ts-fsrs` for production scheduling.
+import { createEmptyCard, fsrs, generatorParameters, Rating as FsrsRating, type Card } from "ts-fsrs";
+
 /** A card counts as mastered once its interval reaches this many days. */
 export const masteredAfterDays = 21;
 
-export type Rating = "again" | "hard" | "good" | "easy";
+export type RatingName = "again" | "hard" | "good" | "easy";
+export type Rating = RatingName;
+
+export type StoredCard = {
+  due: string;
+  stability: number;
+  difficulty: number;
+  elapsed_days: number;
+  scheduled_days: number;
+  learning_steps: number;
+  reps: number;
+  lapses: number;
+  state: number;
+  last_review?: string;
+};
 
 export type ScheduleState = {
   intervalDays: number;
   ease: number;
   dueAt: number;
+  fsrs?: StoredCard;
 };
 
-const MS_PER_DAY = 86_400_000;
-const DEFAULT_EASE = 2.5;
-const MIN_EASE = 1.3;
-const MAX_EASE = 3.0;
+const scheduler = fsrs(generatorParameters({ enable_fuzz: false, request_retention: 0.9 }));
 
-function addDays(fromMs: number, days: number): number {
-  return fromMs + days * MS_PER_DAY;
+function revive(stored: StoredCard): Card {
+  return {
+    ...stored,
+    due: new Date(stored.due),
+    last_review: stored.last_review ? new Date(stored.last_review) : undefined,
+    state: stored.state,
+  };
 }
 
-function clampEase(ease: number): number {
-  return Math.min(MAX_EASE, Math.max(MIN_EASE, ease));
+function store(card: Card): StoredCard {
+  return {
+    due: card.due.toISOString(),
+    stability: card.stability,
+    difficulty: card.difficulty,
+    elapsed_days: card.elapsed_days,
+    scheduled_days: card.scheduled_days,
+    learning_steps: card.learning_steps,
+    reps: card.reps,
+    lapses: card.lapses,
+    state: card.state,
+    last_review: card.last_review?.toISOString(),
+  };
 }
 
 /** Brand-new card: due immediately, no prior interval. */
 export function newCard(now: number): ScheduleState {
-  return { intervalDays: 0, ease: DEFAULT_EASE, dueAt: now };
+  return { intervalDays: 0, ease: 2.5, dueAt: now };
 }
 
-export function review(state: ScheduleState, rating: Rating, now: number): ScheduleState {
-  const ease = state.ease;
-  const interval = state.intervalDays;
-
-  if (rating === "again") {
-    const nextEase = clampEase(ease - 0.2);
-    const nextInterval = interval === 0 ? 0 : 1;
-    return {
-      intervalDays: nextInterval,
-      ease: nextEase,
-      dueAt: addDays(now, nextInterval),
-    };
-  }
-
-  if (rating === "hard") {
-    const nextEase = clampEase(ease - 0.15);
-    const nextInterval = interval === 0 ? 1 : Math.max(1, Math.round(interval * 1.2));
-    return {
-      intervalDays: nextInterval,
-      ease: nextEase,
-      dueAt: addDays(now, nextInterval),
-    };
-  }
-
-  if (rating === "good") {
-    const nextInterval = interval === 0 ? 1 : Math.max(1, Math.round(interval * ease));
-    return {
-      intervalDays: nextInterval,
-      ease,
-      dueAt: addDays(now, nextInterval),
-    };
-  }
-
-  const nextEase = clampEase(ease + 0.15);
-  const boostedEase = nextEase * 1.3;
-  const nextInterval =
-    interval === 0 ? 2 : Math.max(1, Math.round(interval * boostedEase));
+export function review(state: ScheduleState, rating: RatingName, now: number): ScheduleState {
+  const current = state.fsrs ? revive(state.fsrs) : createEmptyCard(new Date(now));
+  const preview = scheduler.repeat(current, new Date(now));
+  const next =
+    rating === "again"
+      ? preview[FsrsRating.Again].card
+      : rating === "hard"
+        ? preview[FsrsRating.Hard].card
+        : rating === "easy"
+          ? preview[FsrsRating.Easy].card
+          : preview[FsrsRating.Good].card;
+  const saved = store(next);
   return {
-    intervalDays: nextInterval,
-    ease: nextEase,
-    dueAt: addDays(now, nextInterval),
+    intervalDays: Math.max(0, saved.scheduled_days),
+    ease: saved.difficulty,
+    dueAt: new Date(saved.due).getTime(),
+    fsrs: saved,
   };
 }

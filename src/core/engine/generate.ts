@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IpcError } from "../../shared/ipc";
+import { isAbort, IpcError } from "../../shared/ipc";
 import { runTurn, type EngineResult, type Selection } from "./funnel";
 
 export type GenerateInput = {
@@ -8,6 +8,12 @@ export type GenerateInput = {
   selection: Omit<Selection, "cwd" | "access">;
   schema?: z.ZodType;
   signal?: AbortSignal;
+  onDelta?: (text: string) => void;
+  attachments?: Array<{
+    type: "image";
+    mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+    data: string;
+  }>;
   run?: typeof runTurn;
 };
 
@@ -54,6 +60,8 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     system: input.system,
     responseSchema,
     signal: input.signal,
+    attachments: input.attachments,
+    onDelta: input.onDelta,
   });
   if (!input.schema) return result;
   let data = parsed(input.schema, result);

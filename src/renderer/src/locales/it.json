@@ -42,7 +42,14 @@
     "rename": "Rinomina",
     "delete": "Elimina",
     "deleteConfirm": "Elimina per sempre",
-    "new": "Nuova chat"
+    "new": "Nuova chat",
+    "stop": "Ferma",
+    "regenerate": "Rigenera",
+    "stopped": "Interrotta",
+    "subject": "Materia",
+    "askTutor": "Chiedi al tutor",
+    "contextRemove": "Rimuovi",
+    "promote": "Aggiungi {{title}} alla libreria"
   },
   "exams": {
     "plans": "Piani",
@@ -68,11 +75,61 @@
     "encrypted": "Questo smartbook è protetto. Pyxis apre solo i pacchetti in chiaro.",
     "importFailed": "Non riesco a leggere questo file.",
     "scanned": "{{title}} non ha testo. È una scansione.",
-    "offerOcr": "Fai l'OCR",
+    "offerOcr": "Leggi la scansione",
     "ocrQueued": "OCR in coda su questo computer.",
+    "ocrReading": "Sto leggendo la pagina.",
     "version": "versione {{version}}",
     "spec": "spec {{spec}}",
-    "specUnknown": "Questa versione dello smartbook non è riconosciuta. Il file è stato aperto lo stesso."
+    "specUnknown": "Questa versione dello smartbook non è riconosciuta. Il file è stato aperto lo stesso.",
+    "qualityTitle": "Materiale che funziona",
+    "qualityBody": "Compiti degli anni passati con le soluzioni, slide, appunti e formulari.",
+    "duplicate": "Questo file è già in libreria.",
+    "blurry": "La foto è sfocata. Una foto più nitida si legge meglio.",
+    "paste": "Incolla gli appunti",
+    "pasteHint": "Almeno 1500 caratteri, circa una pagina.",
+    "pasteShort": "Incolla almeno 1500 caratteri.",
+    "pasteTitle": "Titolo",
+    "link": "Aggiungi un link",
+    "linkHint": "Pyxis salva il testo dell'articolo. Non esegue la pagina.",
+    "pageEmpty": "Quella pagina ha quasi nessun testo. Incolla il testo.",
+    "linkScheme": "Si possono salvare solo link http e https.",
+    "linkFailed": "Non riesco a leggere quel link.",
+    "folder": "Aggiungi una cartella",
+    "importChosen": "Importa i selezionati",
+    "rename": "Rinomina",
+    "replace": "Sostituisci il file",
+    "remove": "Rimuovi",
+    "removeConfirm": "Rimuovilo anche dai piani",
+    "inUse": "Un piano usa ancora questa fonte. Rimuoverla lo stesso?",
+    "heic": "Le foto HEIC vanno esportate in JPEG.",
+    "titleEmpty": "Il titolo non può essere vuoto.",
+    "embedAsk": "Scarica il modello di ricerca locale (circa 120 MB). Resta su questo computer.",
+    "embedReady": "Il modello di ricerca locale è pronto.",
+    "embedHash": "Il file del modello di ricerca non corrisponde al checksum.",
+    "embedOff": "La ricerca locale resta sulle parole finché non scarichi il modello.",
+    "jobs": {
+      "extract": "Leggo la fonte",
+      "passages": "Preparo i passaggi",
+      "vectors": "Indicizzo i passaggi",
+      "download": "Scarico il modello di ricerca"
+    },
+    "copySelection": "Copia",
+    "embedQueued": "Il download è nei lavori in corso. Puoi annullarlo o riprenderlo.",
+    "status": {
+      "queued": "In attesa",
+      "extracting": "Lettura",
+      "indexing": "Indicizzazione",
+      "ready": "Pronta",
+      "needs-ocr": "Senza testo",
+      "failed": "Non riuscita",
+      "cancelled": "Annullata",
+      "interrupted": "Interrotta"
+    },
+    "previousPage": "Precedente",
+    "nextPage": "Successiva",
+    "pageNumber": "Pagina {{page}} di {{count}}",
+    "pdfFailed": "Non riesco ad aprire la pagina. Chiudi la fonte e riprova.",
+    "busy": "Questa fonte ha un lavoro in sospeso. Riprendilo o chiudilo prima di sostituire il file."
   },
   "cards": {
     "title": "Schede",
@@ -109,9 +166,17 @@
     "title": "Lezione dal libro",
     "done": "Ho letto"
   },
+  "export": {
+    "markdown": "Markdown",
+    "csv": "CSV",
+    "answers": "Con le risposte"
+  },
   "simulation": {
     "title": "Simulazione",
-    "start": "Inizia i 30 minuti",
+    "start": "Inizia",
+    "minutes": "{{count}} minuti",
+    "exam": "Domande d'esame",
+    "mixed": "Domande miste",
     "left": "{{minutes}} minuti",
     "empty": "Il libro non ha esercizi per una simulazione.",
     "localGrade": "Voto calcolato in locale, senza un modello.",
@@ -122,7 +187,10 @@
     "start": "Inizia",
     "submit": "Correggi",
     "score": "{{score}} su 100",
-    "empty": "Questo argomento non ha soluzioni da correggere."
+    "empty": "Questo argomento non ha soluzioni da correggere.",
+    "true": "Vero",
+    "false": "Falso",
+    "flag": "Segnala questa domanda"
   },
   "practice": {
     "title": "Esercizi del libro",
@@ -141,6 +209,14 @@
     "recommendGaps": "{{count}} lacune aperte",
     "recommendNext": "Il passo aperto",
     "export": "Esporta",
+    "includeProgress": "Includi i progressi",
+    "embedSources": "Includi i file delle fonti",
+    "embedWarning": "Questi file possono essere protetti da copyright. Condividili solo se ne hai il diritto.",
+    "tabPath": "Percorso",
+    "tabTopics": "Argomenti",
+    "tabSources": "Fonti",
+    "draft": "Questo piano non ha ancora materiale. Aggiungi una fonte, poi ricostruisci gli argomenti.",
+    "rebuild": "Ricostruisci gli argomenti",
     "delete": "Elimina il piano",
     "intro": "Introduzione",
     "diagnostic": "Diagnosi",
@@ -180,6 +256,9 @@
     "stepPath": "Costruisco il percorso",
     "failed": "Non riesco a preparare il piano.",
     "retry": "Riprova",
+    "cancel": "Annulla",
+    "noMaterial": "Ancora niente materiale. Il piano resta una bozza finché non aggiungi una fonte.",
+    "topicName": "Nome dell'argomento",
     "exam": "Data dell'esame",
     "tomorrow": "Domani",
     "inTwo": "Tra 2 giorni",
@@ -271,7 +350,8 @@
     "notAvailable": "Questa azione non è disponibile",
     "unknownRequest": "Richiesta sconosciuta",
     "aborted": "Annullato",
-    "invalidOutput": "La risposta non ha la forma attesa"
+    "invalidOutput": "La risposta non ha la forma attesa",
+    "attachTooBig": "Il file è troppo grande. Ogni allegato sta sotto i 15 MB, e al massimo otto file."
   },
   "dev": {
     "kicker": "Galleria",
@@ -378,7 +458,9 @@
       "details": "Dettagli"
     },
     "markdown": {
-      "run": "Esegui"
+      "run": "Esegui",
+      "verified": "Verificato",
+      "failed": "Non verificato"
     },
     "lesson": {
       "recommended": "Consigliato"
@@ -528,6 +610,10 @@
   },
   "tools": {
     "save": "Salva",
+    "attach": "Allega alla chat",
+    "erase": "Gomma",
+    "pen": "Penna",
+    "redo": "Ripeti",
     "whiteboardTitle": "Lavagna",
     "whiteboardBody": "La lavagna si apre a tutto schermo. I tratti restano su questo computer."
   }

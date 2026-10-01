@@ -69,7 +69,9 @@ async function onRendererMessage(from: CorePort, data: unknown): Promise<void> {
   const controller = new AbortController();
   inflight.set(message.id, controller);
   try {
-    const value = await dispatch(message.name, message.input, controller.signal);
+    const value = await dispatch(message.name, message.input, controller.signal, (event) => {
+      from.postMessage({ kind: "stream", id: message.id, event } satisfies PortMessage);
+    });
     from.postMessage({
       kind: "res",
       id: message.id,
@@ -92,6 +94,7 @@ async function dispatch(
   name: string,
   input: unknown,
   signal?: AbortSignal,
+  emit?: (event: unknown) => void,
 ): Promise<unknown> {
   if (!handlers) throw new IpcError("not-ready", "errors.notReady");
   switch (name) {
@@ -155,12 +158,20 @@ async function dispatch(
     }
     case "study.lesson":
       return study?.lesson(requests["study.lesson"].input.parse(input));
+    case "study.markdown":
+      return study?.markdown(requests["study.markdown"].input.parse(input));
+    case "study.csv":
+      return study?.csv(requests["study.csv"].input.parse(input));
     case "study.diagnosticStart":
       return study?.diagnosticStart(requests["study.diagnosticStart"].input.parse(input));
     case "study.quizStart":
       return study?.quizStart(requests["study.quizStart"].input.parse(input));
     case "study.quizSubmit":
       return study?.quizSubmit(requests["study.quizSubmit"].input.parse(input));
+    case "study.flag":
+      return study?.flag(requests["study.flag"].input.parse(input));
+    case "study.review":
+      return study?.review(requests["study.review"].input.parse(input));
     case "study.simulationOpen":
       return study?.simulationOpen(requests["study.simulationOpen"].input.parse(input)) ?? null;
     case "study.simulationStart":
@@ -189,6 +200,8 @@ async function dispatch(
       return study?.exercises(requests["study.exercises"].input.parse(input)) ?? [];
     case "tools.python":
       return tools?.python(requests["tools.python"].input.parse(input));
+    case "tools.stagePng":
+      return tools?.stagePng(requests["tools.stagePng"].input.parse(input));
     case "maps.open":
       return maps?.open(requests["maps.open"].input.parse(input));
     case "maps.layout":
@@ -227,7 +240,9 @@ async function dispatch(
     case "plans.read":
       return plans?.read(requests["plans.read"].input.parse(input)) ?? null;
     case "plans.create":
-      return plans?.create(requests["plans.create"].input.parse(input));
+      return plans?.create(requests["plans.create"].input.parse(input), signal);
+    case "plans.rebuild":
+      return plans?.rebuild(requests["plans.rebuild"].input.parse(input));
     case "profile.get":
       requests["profile.get"].input.parse(input);
       return profile?.get() ?? null;
@@ -238,6 +253,10 @@ async function dispatch(
       return chats?.list();
     case "chats.read":
       return chats?.read(requests["chats.read"].input.parse(input));
+    case "chats.seed":
+      return chats?.seed(requests["chats.seed"].input.parse(input));
+    case "chats.clearContext":
+      return chats?.clearContext(requests["chats.clearContext"].input.parse(input));
     case "chats.rate":
       return chats?.rate(requests["chats.rate"].input.parse(input));
     case "chats.rename":
@@ -248,6 +267,13 @@ async function dispatch(
       return chats?.ask({
         ...requests["chats.ask"].input.parse(input),
         signal,
+        onDelta: (text) => emit?.({ type: "text", text }),
+      });
+    case "chats.regenerate":
+      return chats?.regenerate({
+        ...requests["chats.regenerate"].input.parse(input),
+        signal,
+        onDelta: (text) => emit?.({ type: "text", text }),
       });
     case "sources.list":
       requests["sources.list"].input.parse(input);
@@ -255,15 +281,40 @@ async function dispatch(
     case "sources.import":
       return sources?.importFile(requests["sources.import"].input.parse(input));
     case "sources.search":
-      return sources?.search(requests["sources.search"].input.parse(input));
+      return sources?.search(requests["sources.search"].input.parse(input), signal);
     case "sources.chapters":
       return sources?.chapters(requests["sources.chapters"].input.parse(input));
     case "sources.meta":
       return sources?.meta(requests["sources.meta"].input.parse(input));
     case "sources.ocr":
       return sources?.ocr(requests["sources.ocr"].input.parse(input));
+    case "sources.paste":
+      return sources?.paste(requests["sources.paste"].input.parse(input));
+    case "sources.link":
+      return sources?.link(requests["sources.link"].input.parse(input));
+    case "sources.scanFolder":
+      return sources?.scanFolder(requests["sources.scanFolder"].input.parse(input));
+    case "sources.preview":
+      return sources?.preview(requests["sources.preview"].input.parse(input));
+    case "sources.rename":
+      return sources?.rename(requests["sources.rename"].input.parse(input));
+    case "sources.replace":
+      return sources?.replace(requests["sources.replace"].input.parse(input));
+    case "sources.remove":
+      return sources?.remove(requests["sources.remove"].input.parse(input));
+    case "sources.promote":
+      return sources?.promote(requests["sources.promote"].input.parse(input));
+    case "sources.ocrImage":
+      return sources?.ocrImage(requests["sources.ocrImage"].input.parse(input));
+    case "sources.embedState":
+      requests["sources.embedState"].input.parse(input);
+      return sources?.embedState();
+    case "sources.embed":
+      return sources?.embed(requests["sources.embed"].input.parse(input));
     case "sources.passage":
       return sources?.passage(requests["sources.passage"].input.parse(input));
+    case "sources.viewerDocument":
+      return sources?.viewerDocument(requests["sources.viewerDocument"].input.parse(input));
     case "sources.chapter":
       return sources?.chapter(requests["sources.chapter"].input.parse(input));
     default:
@@ -301,14 +352,16 @@ export function bindProfile(db: Parameters<typeof profileHandlers>[0]): void {
 
 export function bindChat(
   db: Parameters<typeof chatHandlers>[0],
+  workspace = "",
   fixtureReply?: string,
 ): void {
-  chats = chatHandlers(db, fixtureReply);
+  chats = chatHandlers(db, workspace, fixtureReply);
 }
 
 export function bindSources(
   db: Parameters<typeof sourceHandlers>[0],
   workspace: string,
+  runner: Runner,
 ): void {
-  sources = sourceHandlers(db, workspace);
+  sources = sourceHandlers(db, workspace, runner);
 }

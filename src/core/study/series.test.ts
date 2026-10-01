@@ -15,7 +15,7 @@ describe("study series", () => {
     );
     expect(points).toHaveLength(14);
     expect(points[13]?.count).toBe(1);
-    expect(points[13]?.mastery).toBeCloseTo(1);
+    expect(points[13]?.mastery).toBeCloseTo(0.25);
     expect(points[0]?.count).toBe(0);
     expect(points[0]?.mastery).toBe(0);
   });

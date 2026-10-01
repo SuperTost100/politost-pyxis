@@ -31,6 +31,22 @@ ALTER TABLE plans ADD COLUMN style TEXT NOT NULL DEFAULT 'decide';`,
 ALTER TABLE cards ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;
 UPDATE cards SET seed_key = TRIM(front) WHERE seed_key IS NULL AND grounding = 'sources';`,
   },
+  {
+    version: 8,
+    sql: `ALTER TABLE sources ADD COLUMN origin_url TEXT;
+ALTER TABLE sources ADD COLUMN fetched_at INTEGER;
+ALTER TABLE item_passages ADD COLUMN stale INTEGER NOT NULL DEFAULT 0;`,
+  },
+  {
+    version: 9,
+    sql: `ALTER TABLE messages ADD COLUMN stopped INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE chats ADD COLUMN subject TEXT;`,
+  },
+  {
+    version: 10,
+    sql: `ALTER TABLE chats ADD COLUMN context_json TEXT;
+ALTER TABLE sources ADD COLUMN library INTEGER NOT NULL DEFAULT 1;`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

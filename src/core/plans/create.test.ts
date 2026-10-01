@@ -2,7 +2,7 @@ import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { importSmartbook } from "../sources/smartbook";
-import { completeNode, createPlan, deletePlan, readPlan } from "./create";
+import { completeNode, createPlan, deletePlan, readPlan, rebuildPlan } from "./create";
 import { uuidv7 } from "../../shared/ids";
 import { pathState } from "./path";
 
@@ -186,5 +186,106 @@ describe("createPlan", () => {
     const view = readPlan(db, plan.planId);
     expect(view?.nodes.find((node) => node.kind === "simulation")?.state).toBe("done");
     expect(view?.nodes.find((node) => node.kind === "final")?.state).toBe("locked");
+  });
+
+  it("keeps a draft when there is no source, and renames topics before the path is built", () => {
+    const db = openDatabase(":memory:");
+    const plan = createPlan(db, { title: "Bozza", sourceIds: [], topicTitles: [] });
+    expect(plan.topics).toBe(0);
+    expect(db.prepare(`SELECT status FROM plans WHERE id = ?`).get(plan.planId)).toEqual({
+      status: "draft",
+    });
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Fisica",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+      }),
+    );
+    const named = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [imported.sourceId],
+      topicTitles: ["Cinematica"],
+    });
+    expect(readPlan(db, named.planId)?.topics[0]?.title).toBe("Cinematica");
+  });
+
+  it("builds one topic per section of a plain document and keeps old topics on rebuild", () => {
+    const db = openDatabase(":memory:");
+    const now = Date.now();
+    const sourceId = uuidv7(now);
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES (?, 'text', 'Dispense', 'ready', ?, ?)`,
+    ).run(sourceId, now, now);
+    const insert = db.prepare(
+      `INSERT INTO passages (id, source_id, text, locator_json, section_path, char_start, char_end, created_at)
+       VALUES (?, ?, ?, '{}', ?, 0, 10, ?)`,
+    );
+    insert.run(uuidv7(now + 1), sourceId, "la velocita e la derivata", "Cinematica", now);
+    insert.run(uuidv7(now + 2), sourceId, "la forza cambia il moto", "Dinamica", now);
+    const plan = createPlan(db, { title: "Fisica", sourceIds: [sourceId] });
+    const before = readPlan(db, plan.planId)?.topics.map((topic) => topic.id) ?? [];
+    expect(readPlan(db, plan.planId)?.topics.map((topic) => topic.title).sort()).toEqual([
+      "Cinematica",
+      "Dinamica",
+    ]);
+    const extra = uuidv7(now + 3);
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES (?, 'text', 'Dinamica', 'ready', ?, ?)`,
+    ).run(extra, now, now);
+    db.prepare(
+      `INSERT INTO passages (id, source_id, text, locator_json, section_path, char_start, char_end, created_at)
+       VALUES (?, ?, 'ancora forza', '{}', 'Dinamica', 0, 10, ?)`,
+    ).run(uuidv7(now + 4), extra, now);
+    const rebuilt = rebuildPlan(db, plan.planId, [extra]);
+    expect(rebuilt.topics).toBe(0);
+    const after = readPlan(db, plan.planId)?.topics.map((topic) => topic.id) ?? [];
+    expect(after).toEqual(before);
+    const fresh = uuidv7(now + 5);
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES (?, 'text', 'Energia', 'ready', ?, ?)`,
+    ).run(fresh, now, now);
+    db.prepare(
+      `INSERT INTO passages (id, source_id, text, locator_json, section_path, char_start, char_end, created_at)
+       VALUES (?, ?, 'lavoro ed energia', '{}', 'Energia', 0, 10, ?)`,
+    ).run(uuidv7(now + 6), fresh, now);
+    expect(rebuildPlan(db, plan.planId, [fresh]).topics).toBe(1);
+    const learn = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM path_nodes WHERE plan_id = ? AND kind = 'learn' AND title = 'Energia'`,
+      )
+      .get(plan.planId) as { n: number };
+    expect(learn.n).toBe(1);
+  });
+
+  it("stops before saving when cancel arrives during preparation", async () => {
+    const db = openDatabase(":memory:");
+    const { planHandlers } = await import("./handlers");
+    const controller = new AbortController();
+    const pending = planHandlers(db).create(
+      { title: "Stop", sourceIds: ["missing-a", "missing-b"] },
+      controller.signal,
+    );
+    controller.abort();
+    await expect(pending).rejects.toThrow(/aborted/);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM plans`).get()).toEqual({ n: 0 });
+  });
+
+  it("does not leave a plan when creation is cancelled", () => {
+    const db = openDatabase(":memory:");
+    const signal = new AbortController();
+    signal.abort();
+    expect(() => createPlan(db, { title: "Stop", sourceIds: [], signal: signal.signal })).toThrow(
+      /aborted/,
+    );
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM plans`).get()).toEqual({ n: 0 });
   });
 });

@@ -51,6 +51,14 @@ export function applyOps(graph: ConceptGraph, ops: MapOp[]): ConceptGraph {
   return layoutGraph({ ...graph, nodes, edges, undo });
 }
 
+export function branchFromInstruction(text: string): string | null {
+  const match = /^(?:aggiungi un ramo|add a branch)\s+(?:su|sulla|sul|on)\s+(.+)$/i.exec(
+    text.trim(),
+  );
+  const label = match?.[1]?.trim();
+  return label ? label : null;
+}
+
 export function undoGraph(graph: ConceptGraph): ConceptGraph {
   if (!graph.undo) return graph;
   return layoutGraph({

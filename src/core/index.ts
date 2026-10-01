@@ -17,6 +17,10 @@ import {
 import { demoJob } from "./jobs/demo";
 import { createRunner } from "./jobs/runner";
 
+import { setSourceWorkerDirectory } from "./sources/worker-client";
+
+setSourceWorkerDirectory(import.meta.dirname);
+
 type CorePort = {
   on(event: "message", listener: (event: { data: unknown }) => void): void;
   postMessage(message: unknown): void;
@@ -57,15 +61,26 @@ if (!parent) {
       const db = openDatabase(join(data.workspacePath, "pyxis.db"));
       setScratch(join(data.workspacePath, "scratch"));
       bindEngines(db);
-      bindSources(db, data.workspacePath);
+      const runner = createRunner(db, (job) => {
+        if (job.kind === "source-import" && ["failed", "cancelled", "interrupted"].includes(job.state)) {
+          db.prepare(`UPDATE sources SET status = ?, updated_at = ?
+            WHERE id = (SELECT json_extract(params_json, '$.sourceId') FROM jobs WHERE id = ?)
+              AND status != 'removed'`).run(job.state, Date.now(), job.id);
+        }
+        broadcast("job.updated", job);
+      });
+      bindSources(db, data.workspacePath, runner);
       // ponytail: unpackaged tests pass a recorded reply; a packaged app never reads it. Upgrade path is the engine fixture files in plan section 12.
-      bindChat(db, data.dev === true ? process.env["PYXIS_E2E_REPLY"] : undefined);
+      bindChat(
+        db,
+        data.workspacePath,
+        data.dev === true ? process.env["PYXIS_E2E_REPLY"] : undefined,
+      );
       bindProfile(db);
       bindPlans(db, data.workspacePath);
       bindMaps(db);
       bindTools();
       bindStudy(db);
-      const runner = createRunner(db, (job) => broadcast("job.updated", job));
       runner.register("demo", demoJob);
       bindRunner(runner, data.dev === true);
       void getFunnel()

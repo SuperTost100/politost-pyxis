@@ -17,6 +17,7 @@ export function Composer({
   onSend,
   onStop,
   onModeChange,
+  onAttach,
 }: {
   subject?: string;
   sources?: string[];
@@ -28,6 +29,7 @@ export function Composer({
   onSend?: () => void;
   onStop?: () => void;
   onModeChange?: (mode: "solver" | "socratic") => void;
+  onAttach?: () => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -68,6 +70,7 @@ export function Composer({
           label={t("components.composer.attach")}
           variant="ghost"
           size="sm"
+          onClick={onAttach}
         />
         <IconButton
           icon="signature"

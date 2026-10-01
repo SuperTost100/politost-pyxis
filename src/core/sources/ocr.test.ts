@@ -91,4 +91,32 @@ describe("ocr queue", () => {
       .get(sourceId) as { tree_json: string };
     expect(JSON.parse(tree.tree_json)).toEqual({ pages: 2 });
   });
+
+  it("ocr on a replacement does not reuse the old page", () => {
+    const db = openDatabase(":memory:");
+    const sourceId = seedNeedsOcr(db);
+    const oldDoc = db
+      .prepare(`SELECT id FROM source_documents WHERE source_id = ?`)
+      .get(sourceId) as { id: string };
+    requestOcr(db, sourceId);
+    applyOcrPage(db, sourceId, { page: 1, text: "vecchia pagina" });
+    finishOcr(db, sourceId);
+    const now = Date.now();
+    const next = uuidv7(now);
+    db.prepare(
+      `INSERT INTO source_documents (id, source_id, version, tree_json, created_at)
+       VALUES (?, ?, 2, '{}', ?)`,
+    ).run(next, sourceId, now);
+    db.prepare(`UPDATE sources SET status = 'needs-ocr' WHERE id = ?`).run(sourceId);
+    requestOcr(db, sourceId);
+    expect(applyOcrPage(db, sourceId, { page: 1, text: "pagina nuova della scansione" })).toBe(
+      true,
+    );
+    expect(finishOcr(db, sourceId)).toBe("ready");
+    const fresh = db
+      .prepare(`SELECT text, version FROM passages WHERE document_id = ?`)
+      .get(next) as { text: string; version: number };
+    expect(fresh).toEqual({ text: "pagina nuova della scansione", version: 2 });
+    expect(oldDoc.id).not.toBe(next);
+  });
 });

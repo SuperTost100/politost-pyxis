@@ -63,4 +63,16 @@ describe("retrieve", () => {
     expect(found.covered).toBe(false);
     expect(found.hits).toHaveLength(0);
   });
+
+  it("SRC-21 scopes before KNN ranking even when 30 other vectors are nearer", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`INSERT INTO sources (id, kind, title, created_at, updated_at) VALUES ('s1', 'text', 'Physics', 1, 1);
+      INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES ('d1', 's1', 1, '{}', 1)`);
+    for (let n = 0; n < 35; n++) passage(db, `outside ${n}`, unit(0));
+    const id = passage(db, "scoped physics", unit(0));
+    db.prepare(`UPDATE passages SET source_id = 's1', document_id = 'd1' WHERE id = ?`).run(id);
+    const found = retrieve(db, "no lexical match", { sourceIds: ["s1"], embed: () => unit(0) });
+    expect(found.hits.map((hit) => hit.id)).toEqual([id]);
+    db.close();
+  });
 });

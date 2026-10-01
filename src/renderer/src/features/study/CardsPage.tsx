@@ -1,3 +1,4 @@
+import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useEffect, useState } from "react";
@@ -6,6 +7,7 @@ import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { CitationChip } from "../../components/CitationChip";
 import { MarkdownView } from "../../components/MarkdownView";
+import { downloadText } from "../../lib/download";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 
@@ -72,6 +74,28 @@ export function CardsPage() {
         </Button>
       }
     >
+      <Button
+        shape="round"
+        onClick={() => {
+          if (!planId) return;
+          void invoke("study.markdown", { planId, kind: "cards", topicId }).then((file) => {
+            downloadText(file.filename, file.markdown);
+          });
+        }}
+      >
+        {t("export.markdown")}
+      </Button>
+      <Button
+        shape="round"
+        onClick={() => {
+          if (!planId) return;
+          void invoke("study.csv", { planId, topicId }).then((file) => {
+            downloadText(file.filename, file.csv, "text/csv");
+          });
+        }}
+      >
+        {t("export.csv")}
+      </Button>
       {queue.data ? (
         <p className="small">
           {t("cards.fresh", { count: queue.data.fresh })}
@@ -142,7 +166,7 @@ export function CardsPage() {
                   passage: card.passageId ?? "",
                 });
                 if (card.chapter != null) params.set("chapter", String(card.chapter));
-                navigate(`/exams/library?${params.toString()}`);
+                openSourceViewer({ passageId: params.get("passage") ?? undefined, sourceId: params.get("source") ?? undefined });
               }}
             >
               {card.sectionPath}

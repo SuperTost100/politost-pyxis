@@ -6,7 +6,7 @@ import { invoke } from "../../lib/ipc";
 import { useJobs } from "./queries";
 
 function stepText(label: string, t: (key: string) => string): string {
-  return label.startsWith("jobs.") ? t(label) : label;
+  return label.startsWith("jobs.") || label.startsWith("sources.jobs.") ? t(label) : label;
 }
 
 function errorText(error: string, t: (key: string) => string): string {
@@ -34,7 +34,7 @@ function JobList({ jobs }: { jobs: JobView[] }) {
                 {t("jobs.cancel")}
               </Button>
             ) : null}
-            {job.state === "failed" ? (
+            {job.state === "failed" || job.state === "cancelled" ? (
               <span className="job-actions">
                 <Button
                   type="text"

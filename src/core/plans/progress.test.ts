@@ -6,7 +6,7 @@ import { planMastery, planSeries } from "./progress";
 import { listSimulations } from "../study/simulation";
 
 describe("planMastery", () => {
-  it("reads a finished lesson as full mastery for that topic", () => {
+  it("shrinks one finished lesson toward the empty prior", () => {
     const db = openDatabase(":memory:");
     const planId = uuidv7(1);
     const topicId = uuidv7(2);
@@ -21,7 +21,7 @@ describe("planMastery", () => {
        VALUES (?, 'lesson_completed', ?, ?, '{}', ?)`,
     ).run(uuidv7(3), planId, topicId, Date.now());
     const rows = planMastery(db, planId);
-    expect(rows).toEqual([{ id: topicId, title: "Moti", mastery: 1 }]);
+    expect(rows).toEqual([{ id: topicId, title: "Moti", mastery: 0.25 }]);
   });
 
   it("lists a plan with its subject, days and mastery", () => {
@@ -119,7 +119,7 @@ describe("planMastery", () => {
        VALUES (?, 'active_time', ?, NULL, ?, ?)`,
     ).run(uuidv7(4), planId, JSON.stringify({ seconds: 120 }), now);
     const series = planSeries(db, planId, now);
-    expect(series.topics[0]?.mastery).toBe(1);
+    expect(series.topics[0]?.mastery).toBe(0.25);
     expect(series.minutes).toBe(2);
   });
 });

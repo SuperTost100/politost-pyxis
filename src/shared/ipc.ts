@@ -210,6 +210,19 @@ export const requests = {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.object({ markdown: z.string(), passageIds: z.array(z.string()) }),
   },
+  "study.markdown": {
+    input: z.object({
+      planId: z.string(),
+      kind: z.enum(["lesson", "cards", "quiz", "simulation"]),
+      topicId: z.string().optional(),
+      answers: z.boolean().optional(),
+    }),
+    output: z.object({ filename: z.string(), markdown: z.string() }),
+  },
+  "study.csv": {
+    input: z.object({ planId: z.string(), topicId: z.string().optional() }),
+    output: z.object({ filename: z.string(), csv: z.string() }),
+  },
   "study.diagnosticStart": {
     input: z.object({ planId: z.string() }),
     output: z.object({
@@ -217,8 +230,12 @@ export const requests = {
       questions: z.array(
         z.object({
           id: z.string(),
+          sourceId: z.string().optional(),
           stem: z.string(),
           grade: z.object({ kind: z.string() }),
+          options: z.array(z.string()).optional(),
+          left: z.array(z.string()).optional(),
+          right: z.array(z.string()).optional(),
         }),
       ),
     }),
@@ -230,8 +247,12 @@ export const requests = {
       questions: z.array(
         z.object({
           id: z.string(),
+          sourceId: z.string().optional(),
           stem: z.string(),
           grade: z.object({ kind: z.string() }),
+          options: z.array(z.string()).optional(),
+          left: z.array(z.string()).optional(),
+          right: z.array(z.string()).optional(),
         }),
       ),
     }),
@@ -244,7 +265,33 @@ export const requests = {
     output: z.object({
       score: z.number(),
       results: z.array(
-        z.object({ id: z.string(), score: z.number(), expected: z.string() }),
+        z.object({ id: z.string(), score: z.number(), expected: z.string(), explanation: z.string() }),
+      ),
+    }),
+  },
+  "study.flag": {
+    input: z.object({
+      targetKind: z.string(),
+      targetId: z.string(),
+      reason: z.string().optional(),
+    }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "study.review": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({
+      cards: z.array(z.object({ id: z.string(), front: z.string(), topicId: z.string().nullable() })),
+      attemptId: z.string(),
+      questions: z.array(
+        z.object({
+          id: z.string(),
+          sourceId: z.string().optional(),
+          stem: z.string(),
+          grade: z.object({ kind: z.string() }),
+          options: z.array(z.string()).optional(),
+          left: z.array(z.string()).optional(),
+          right: z.array(z.string()).optional(),
+        }),
       ),
     }),
   },
@@ -264,7 +311,11 @@ export const requests = {
       .nullable(),
   },
   "study.simulationStart": {
-    input: z.object({ planId: z.string() }),
+    input: z.object({
+      planId: z.string(),
+      minutes: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
+      source: z.enum(["exam", "mixed"]).optional(),
+    }),
     output: z.object({
       attemptId: z.string(),
       deadline: z.number(),
@@ -384,6 +435,10 @@ export const requests = {
       truncated: z.boolean(),
     }),
   },
+  "tools.stagePng": {
+    input: z.object({ dataUrl: z.string().max(4_000_000) }),
+    output: z.object({ path: z.string() }),
+  },
   "maps.open": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: conceptGraph,
@@ -458,6 +513,7 @@ export const requests = {
             state: z.enum(["locked", "current", "done"]),
           }),
         ),
+        sources: z.array(z.object({ id: z.string(), title: z.string() })),
       })
       .nullable(),
   },
@@ -466,7 +522,11 @@ export const requests = {
     output: z.object({ ok: z.boolean() }),
   },
   "plans.export": {
-    input: z.object({ planId: z.string() }),
+    input: z.object({
+      planId: z.string(),
+      progress: z.boolean().optional(),
+      embed: z.boolean().optional(),
+    }),
     output: planFileSchema,
   },
   "plans.import": {
@@ -533,12 +593,17 @@ export const requests = {
       target: z.number().min(0.5).max(1).optional(),
       language: z.enum(["it", "en"]).optional(),
       style: z.enum(["read", "practice", "decide"]).optional(),
+      topicTitles: z.array(z.string()).optional(),
     }),
     output: z.object({
       planId: z.string(),
       topics: z.number(),
       pathNodes: z.number(),
     }),
+  },
+  "plans.rebuild": {
+    input: z.object({ planId: z.string(), sourceIds: z.array(z.string()) }),
+    output: z.object({ topics: z.number() }),
   },
   "profile.get": {
     input: z.object({}),
@@ -612,6 +677,7 @@ export const requests = {
         title: z.string(),
         kind: z.string(),
         status: z.string(),
+        blobSha: z.string().nullable(),
       }),
     ),
   },
@@ -619,6 +685,7 @@ export const requests = {
     input: z.object({ path: z.string() }),
     output: z.object({
       sourceId: z.string(),
+      jobId: z.string().optional(),
       title: z.string(),
       chapters: z.number(),
       passages: z.number(),
@@ -664,6 +731,20 @@ export const requests = {
     input: z.object({ chatId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
   },
+  "chats.regenerate": {
+    input: z.object({
+      chatId: z.string(),
+      sourceIds: z.array(z.string()).optional(),
+      mode: z.enum(["solver", "socratic"]).optional(),
+      allowGeneral: z.boolean().optional(),
+      subject: z.string().optional(),
+      files: z.array(z.string()).optional(),
+    }),
+    output: z.object({
+      chatId: z.string(),
+      covered: z.boolean(),
+    }),
+  },
   "chats.rate": {
     input: z.object({
       messageId: z.string(),
@@ -685,6 +766,15 @@ export const requests = {
     input: z.object({ chatId: z.string() }),
     output: z.object({
       sourceIds: z.array(z.string()),
+      subject: z.string().nullable(),
+      context: z
+        .object({
+          kind: z.enum(["answer", "passage"]),
+          title: z.string(),
+          body: z.string(),
+        })
+        .nullable(),
+      held: z.array(z.object({ id: z.string(), title: z.string() })),
       messages: z.array(
       z.object({
         id: z.string(),
@@ -695,6 +785,7 @@ export const requests = {
         grounding: z.enum(["sources", "general"]).nullable(),
         followups: z.array(z.string()),
         reaction: z.enum(["up", "down"]).nullable(),
+        stopped: z.boolean(),
         citations: z.array(
           z.object({
             label: z.string(),
@@ -714,6 +805,20 @@ export const requests = {
       ),
     }),
   },
+  "chats.seed": {
+    input: z.object({
+      kind: z.enum(["answer", "passage"]),
+      title: z.string(),
+      body: z.string(),
+      sourceIds: z.array(z.string()).optional(),
+      subject: z.string().optional(),
+    }),
+    output: z.object({ chatId: z.string() }),
+  },
+  "chats.clearContext": {
+    input: z.object({ chatId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "chats.ask": {
     input: z.object({
       chatId: z.string().optional(),
@@ -721,6 +826,8 @@ export const requests = {
       sourceIds: z.array(z.string()).optional(),
       mode: z.enum(["solver", "socratic"]).optional(),
       allowGeneral: z.boolean().optional(),
+      subject: z.string().optional(),
+      files: z.array(z.string()).optional(),
     }),
     output: z.object({
       chatId: z.string(),
@@ -757,6 +864,78 @@ export const requests = {
     input: z.object({ sourceId: z.string() }),
     output: z.object({ status: z.literal("ocr-queued") }),
   },
+  "sources.paste": {
+    input: z.object({ title: z.string(), text: z.string() }),
+    output: z.object({
+      sourceId: z.string(),
+      jobId: z.string().optional(),
+      title: z.string(),
+      chapters: z.number(),
+      passages: z.number(),
+      exercises: z.number(),
+    }),
+  },
+  "sources.link": {
+    input: z.object({ url: z.string() }),
+    output: z.object({
+      sourceId: z.string(),
+      jobId: z.string().optional(),
+      title: z.string(),
+      chapters: z.number(),
+      passages: z.number(),
+      exercises: z.number(),
+    }),
+  },
+  "sources.scanFolder": {
+    input: z.object({ path: z.string() }),
+    output: z.array(
+      z.object({ path: z.string(), name: z.string(), duplicate: z.boolean() }),
+    ),
+  },
+  "sources.preview": {
+    input: z.object({ path: z.string() }),
+    output: z.object({ duplicate: z.boolean(), blurry: z.boolean() }),
+  },
+  "sources.rename": {
+    input: z.object({ sourceId: z.string(), title: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "sources.replace": {
+    input: z.object({ sourceId: z.string(), path: z.string() }),
+    output: z.object({
+      sourceId: z.string(),
+      jobId: z.string().optional(),
+      title: z.string(),
+      chapters: z.number(),
+      passages: z.number(),
+      exercises: z.number(),
+    }),
+  },
+  "sources.remove": {
+    input: z.object({ sourceId: z.string(), confirmed: z.boolean() }),
+    output: z.object({ removed: z.boolean(), inUse: z.boolean() }),
+  },
+  "sources.promote": {
+    input: z.object({ sourceId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "sources.ocrImage": {
+    input: z.object({
+      sourceId: z.string(),
+      pngBase64: z.string(),
+      page: z.number(),
+      last: z.boolean(),
+    }),
+    output: z.object({ status: z.enum(["ready", "failed", "ocr-queued"]) }),
+  },
+  "sources.embedState": {
+    input: z.object({}),
+    output: z.object({ consent: z.boolean(), ready: z.boolean() }),
+  },
+  "sources.embed": {
+    input: z.object({ consent: z.boolean() }),
+    output: z.object({ state: z.enum(["off", "ready", "missing"]), jobId: z.string().optional() }),
+  },
   "sources.passage": {
     input: z.object({ passageId: z.string() }),
     output: z.array(
@@ -775,6 +954,11 @@ export const requests = {
       }),
     ),
   },
+  "sources.viewerDocument": {
+    input: z.object({ sourceId: z.string().optional(), passageId: z.string().optional() })
+      .refine((v) => Boolean(v.sourceId || v.passageId)),
+    output: z.object({ sourceId: z.string(), title: z.string(), kind: z.string(), blobSha: z.string().nullable(), excerpt: z.string().nullable() }).nullable(),
+  },
   "sources.chapter": {
     input: z.object({
       sourceId: z.string(),
@@ -784,9 +968,10 @@ export const requests = {
     output: z.array(
       z.object({
         id: z.string(),
+        sourceId: z.string(),
         text: z.string(),
         sectionPath: z.string().nullable(),
-        locator: z.object({ chapter: z.number(), paragraph: z.string() }),
+        locator: z.object({ chapter: z.number().optional(), paragraph: z.string().optional(), page: z.number().optional(), slide: z.number().optional() }),
         current: z.boolean(),
       }),
     ),

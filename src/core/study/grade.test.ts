@@ -43,5 +43,50 @@ describe("gradeAnswer", () => {
         accepted: [["0"]],
       }),
     ).toBe(0);
+    expect(
+      gradeAnswer({
+        kind: "matching",
+        pairs: [
+          ["a", "1"],
+          ["a", "1"],
+          ["a", "1"],
+          ["a", "1"],
+        ],
+        correct: [
+          ["a", "1"],
+          ["b", "2"],
+          ["c", "3"],
+        ],
+      }),
+    ).toBeCloseTo(1 / 3);
+    expect(
+      gradeAnswer({
+        kind: "matching",
+        pairs: [
+          ["a", "1"],
+          ["a", "1"],
+          ["b", "2"],
+        ],
+        correct: [
+          ["a", "1"],
+          ["a", "1"],
+          ["b", "2"],
+        ],
+      }),
+    ).toBe(1);
+    expect(
+      gradeAnswer({
+        kind: "matching",
+        pairs: [[null as unknown as string, "1"]],
+        correct: [["a", "1"]],
+      }),
+    ).toBe(0);
+    expect(
+      gradeAnswer({
+        kind: "matching",
+        pairs: [["a", "b=c"]],
+        correct: [["a=b", "c"]],
+      }),
+    ).toBe(0);
   });
 });

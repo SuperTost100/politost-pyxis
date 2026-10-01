@@ -1,13 +1,18 @@
 import { Button } from "antd";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
+import { invoke } from "../../lib/ipc";
+import { strokeHits } from "./strokes";
 
 type Point = { x: number; y: number };
 type Stroke = { width: number; points: Point[] };
 
 export function WhiteboardPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [tool, setTool] = useState<"pen" | "erase">("pen");
   const [strokes, setStrokes] = useState<Stroke[]>(() => {
     try {
       const saved = sessionStorage.getItem("pyxis-board");
@@ -18,6 +23,8 @@ export function WhiteboardPage() {
   });
   const [width, setWidth] = useState(4);
   const current = useRef<Stroke | null>(null);
+  const past = useRef<Stroke[][]>([]);
+  const future = useRef<Stroke[][]>([]);
   const board = useRef<HTMLCanvasElement>(null);
 
   function paint(next: Stroke[]) {
@@ -55,6 +62,26 @@ export function WhiteboardPage() {
   }, []);
 
   function remember(next: Stroke[]) {
+    past.current.push(strokes);
+    future.current = [];
+    setStrokes(next);
+    sessionStorage.setItem("pyxis-board", JSON.stringify(next));
+    paint(next);
+  }
+
+  function undo() {
+    const prev = past.current.pop();
+    if (!prev) return;
+    future.current.push(strokes);
+    setStrokes(prev);
+    sessionStorage.setItem("pyxis-board", JSON.stringify(prev));
+    paint(prev);
+  }
+
+  function redo() {
+    const next = future.current.pop();
+    if (!next) return;
+    past.current.push(strokes);
     setStrokes(next);
     sessionStorage.setItem("pyxis-board", JSON.stringify(next));
     paint(next);
@@ -75,9 +102,23 @@ export function WhiteboardPage() {
         ))}
         <Button
           shape="round"
-          onClick={() => remember(strokes.slice(0, -1))}
+          type={tool === "pen" ? "primary" : "default"}
+          onClick={() => setTool("pen")}
         >
+          {t("tools.pen")}
+        </Button>
+        <Button
+          shape="round"
+          type={tool === "erase" ? "primary" : "default"}
+          onClick={() => setTool("erase")}
+        >
+          {t("tools.erase")}
+        </Button>
+        <Button shape="round" onClick={undo}>
           {t("map.undo")}
+        </Button>
+        <Button shape="round" onClick={redo}>
+          {t("tools.redo")}
         </Button>
         <Button
           type="primary"
@@ -95,6 +136,19 @@ export function WhiteboardPage() {
         >
           {t("tools.save")}
         </Button>
+        <Button
+          shape="round"
+          onClick={() => {
+            const url = board.current?.toDataURL("image/png");
+            if (!url) return;
+            void invoke("tools.stagePng", { dataUrl: url }).then((staged) => {
+              sessionStorage.setItem("pyxis-board-file", staged.path);
+              navigate("/ask");
+            });
+          }}
+        >
+          {t("tools.attach")}
+        </Button>
       </div>
       <canvas
         ref={board}
@@ -103,8 +157,13 @@ export function WhiteboardPage() {
         aria-label={t("tools.whiteboardTitle")}
         style={{ width: "100%", height: "70vh", touchAction: "none", background: "#101218" }}
         onPointerDown={(event) => {
+          const at = point(event);
+          if (tool === "erase") {
+            remember(strokes.filter((stroke) => !strokeHits(stroke, at)));
+            return;
+          }
           event.currentTarget.setPointerCapture(event.pointerId);
-          current.current = { width, points: [point(event)] };
+          current.current = { width, points: [at] };
         }}
         onPointerMove={(event) => {
           if (!current.current) return;

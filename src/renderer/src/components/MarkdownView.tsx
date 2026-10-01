@@ -12,7 +12,9 @@ import {
   mapOutsideCode,
   normalizeMathDelimiters,
 } from "../markdown/normalizeMathDelimiters";
+import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
+import { checkClaim } from "../../../core/math/check";
 import "./MarkdownView.css";
 
 export type CitationResolver = (passageId: number) => string | undefined;
@@ -87,9 +89,32 @@ export function MarkdownView({
               codeText = String(props.children ?? "").replace(/\n$/, "");
             }
             const isPython = lang === "python";
+            const claim =
+              lang === "check"
+                ? (() => {
+                    try {
+                      const body = JSON.parse(codeText) as {
+                        kind?: string;
+                        expr?: string;
+                        claimed?: string;
+                      };
+                      if (!body.kind || !body.expr || !body.claimed) return null;
+                      return checkClaim({ kind: body.kind, expr: body.expr, claimed: body.claimed });
+                    } catch {
+                      return null;
+                    }
+                  })()
+                : null;
             return (
               <div className="px-code-block">
                 <pre className="px-code-pre" {...rest}>{preChildren}</pre>
+                {claim ? (
+                  <CheckBadge
+                    state={claim}
+                    verifiedLabel={t("components.markdown.verified")}
+                    failedLabel={t("components.markdown.failed")}
+                  />
+                ) : null}
                 {isPython && onRunPython ? (
                   <Button
                     type="default"

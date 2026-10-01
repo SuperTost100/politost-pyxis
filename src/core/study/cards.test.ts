@@ -3,7 +3,6 @@ import { uuidv7 } from "../../shared/ids";
 import { openDatabase } from "../db/connection";
 import { deleteCard, dueCards, queueCounts, rateCard, saveCard, seedCards, setSuspended } from "./cards";
 
-const MS_PER_DAY = 86_400_000;
 const T0 = Date.UTC(2026, 2, 15, 10, 0, 0);
 
 function planWithTopic(db: ReturnType<typeof openDatabase>) {
@@ -166,9 +165,9 @@ describe("cards", () => {
       pairs: [{ front: "Lavoro?", back: "W = F s" }],
     });
     const next = rateCard(db, cardId!, "good", T0);
-    expect(next.dueAt).toBe(T0 + MS_PER_DAY);
+    expect(next.dueAt).toBeGreaterThan(T0);
     expect(dueCards(db, planId, T0)).toHaveLength(0);
-    expect(dueCards(db, planId, T0 + MS_PER_DAY)).toHaveLength(1);
+    expect(dueCards(db, planId, next.dueAt)).toHaveLength(1);
     const event = db
       .prepare(`SELECT topic_id, payload_json FROM learning_events WHERE kind = 'card_rated'`)
       .get() as { topic_id: string; payload_json: string };

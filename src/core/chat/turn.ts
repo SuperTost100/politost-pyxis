@@ -1,16 +1,24 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
-import { isAbort } from "../../shared/ipc";
+import { isAbort, IpcError } from "../../shared/ipc";
 import { generate } from "../engine/generate";
+import { capabilityWarning } from "../engine/capabilities";
 import { selectionFor } from "../engine/selection";
 import type { Embedder, PassageHit } from "../sources/retrieve";
-import { contentWords, retrieve } from "../sources/retrieve";
+import { contentWords, retrieveWithModel } from "../sources/retrieve";
+import { prepareFiles, savedImages } from "./attach";
 import {
   CHAT_PROMPT_VERSION,
   generalPrompt,
   socraticPrompt,
   solverPrompt,
 } from "./prompts";
+
+export type ChatContext = {
+  kind: "answer" | "passage";
+  title: string;
+  body: string;
+};
 
 export type ChatCitation = {
   label: string;
@@ -31,6 +39,7 @@ export type ChatMessageView = {
   followups: string[];
   citations: ChatCitation[];
   reaction: "up" | "down" | null;
+  stopped: boolean;
 };
 
 export type AskResult = {
@@ -45,8 +54,13 @@ type AskInput = {
   sourceIds?: string[];
   mode?: "solver" | "socratic";
   allowGeneral?: boolean;
+  subject?: string;
+  files?: string[];
+  workspace?: string;
+  recognize?: (bytes: Uint8Array, cachePath: string) => Promise<string>;
   embed?: Embedder | null;
   signal?: AbortSignal;
+  onDelta?: (text: string) => void;
   run?: Parameters<typeof generate>[0]["run"];
 };
 
@@ -174,7 +188,7 @@ function ensureChat(db: Database.Database, chatId: string | undefined, title: st
   return id;
 }
 
-function gather(
+async function gather(
   db: Database.Database,
   chatId: string,
   text: string,
@@ -182,7 +196,7 @@ function gather(
   embed: AskInput["embed"],
 ) {
   const options = { sourceIds, embed };
-  const found = retrieve(db, text, options);
+  const found = await retrieveWithModel(db, text, options);
   if (found.covered || !isFollowUp(text)) return found;
   const earlier = db
     .prepare(
@@ -191,7 +205,7 @@ function gather(
     )
     .get(chatId, text) as { body: string } | undefined;
   if (earlier) {
-    const wider = retrieve(db, `${earlier.body} ${text}`, options);
+    const wider = await retrieveWithModel(db, `${earlier.body} ${text}`, options);
     if (wider.covered) return wider;
   }
   const prior = priorPassages(db, chatId, sourceIds);
@@ -199,33 +213,116 @@ function gather(
   return found;
 }
 
+export function seedChat(
+  db: Database.Database,
+  input: ChatContext & { sourceIds?: string[]; subject?: string },
+): { chatId: string } {
+  const now = Date.now();
+  const chatId = uuidv7(now);
+  const context: ChatContext = { kind: input.kind, title: input.title, body: input.body };
+  db.prepare(
+    `INSERT INTO chats (id, title, scope_json, subject, context_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    chatId,
+    input.title.slice(0, 80),
+    JSON.stringify(input.sourceIds ?? []),
+    input.subject ?? null,
+    JSON.stringify(context),
+    now,
+    now,
+  );
+  return { chatId };
+}
+
+export function clearChatContext(db: Database.Database, chatId: string): void {
+  const info = db.prepare(`UPDATE chats SET context_json = NULL WHERE id = ?`).run(chatId);
+  if (info.changes === 0) throw new Error("chat-missing");
+}
+
+export function chatContext(db: Database.Database, chatId: string): ChatContext | null {
+  const row = db.prepare(`SELECT context_json FROM chats WHERE id = ?`).get(chatId) as
+    | { context_json: string | null }
+    | undefined;
+  if (!row?.context_json) return null;
+  return JSON.parse(row.context_json) as ChatContext;
+}
+
 export async function askTurn(db: Database.Database, input: AskInput): Promise<AskResult> {
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
   const now = Date.now();
   const chatId = ensureChat(db, input.chatId, input.text, now);
-  const sourceIds = input.sourceIds ?? chatScope(db, chatId);
-  if (input.sourceIds) {
-    db.prepare(`UPDATE chats SET scope_json = ? WHERE id = ?`).run(
-      JSON.stringify(input.sourceIds),
+  let sourceIds = input.sourceIds ?? chatScope(db, chatId);
+  let notes: string[] = [];
+  let images: Array<{ mediaType: "image/png" | "image/jpeg" | "image/webp"; data: string; sha: string }> = [];
+  if (input.files && input.files.length > 0 && input.workspace) {
+    try {
+      const prepared = await prepareFiles(
+        db,
+        input.workspace,
+        input.files,
+        selectionFor(db, "chat").model,
+        input.recognize,
+      );
+      sourceIds = [...new Set([...sourceIds, ...prepared.sourceIds])];
+      notes = prepared.notes;
+      images = prepared.images;
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        (err.message === "attach-too-big" || err.message === "attach-too-many")
+      ) {
+        throw new IpcError("attach-too-big", "errors.attachTooBig");
+      }
+      throw err;
+    }
+  }
+  const storedSubject = (
+    db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
+      | { subject: string | null }
+      | undefined
+  )?.subject;
+  const subject = input.subject?.trim() || storedSubject || "";
+  if (input.sourceIds || sourceIds.length > 0) {
+    db.prepare(`UPDATE chats SET scope_json = ?, subject = ? WHERE id = ?`).run(
+      JSON.stringify(sourceIds),
+      subject || null,
       chatId,
     );
+  } else if (subject) {
+    db.prepare(`UPDATE chats SET subject = ? WHERE id = ?`).run(subject, chatId);
   }
+  const userBody = notes.length > 0 ? `${input.text}\n\n${notes.join("\n")}` : input.text;
   const pending = db
     .prepare(
-      `SELECT role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
     )
-    .get(chatId) as { role: string; body: string } | undefined;
-  if (!(pending?.role === "user" && pending.body === input.text)) {
+    .get(chatId) as { id: string; role: string; body: string } | undefined;
+  let userMessageId = pending?.role === "user" && pending.body === userBody ? pending.id : "";
+  if (!userMessageId) {
+    userMessageId = uuidv7(now + 1);
     db.prepare(
       `INSERT INTO messages (id, chat_id, role, body, created_at) VALUES (?, ?, 'user', ?, ?)`,
-    ).run(uuidv7(now + 1), chatId, input.text, now);
+    ).run(userMessageId, chatId, userBody, now);
+  }
+  const attach = db.prepare(
+    `INSERT INTO attachments (id, message_id, blob_sha, mime, created_at) VALUES (?, ?, ?, ?, ?)`,
+  );
+  for (const image of images) {
+    attach.run(uuidv7(now + 3), userMessageId, image.sha, image.mediaType, now);
   }
   db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
 
-  const found = input.allowGeneral
-    ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
-    : gather(db, chatId, input.text, sourceIds, input.embed);
-  if (!input.allowGeneral && !found.covered) {
+  const seesImage =
+    Boolean(input.workspace) &&
+    capabilityWarning(selectionFor(db, "chat").model, "vision") == null &&
+    images.some((image) => image.data);
+  const thisTurnFile = notes.length > 0 || seesImage;
+  const found =
+    input.allowGeneral || (thisTurnFile && sourceIds.length === 0)
+      ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
+      : await gather(db, chatId, input.text, sourceIds, input.embed);
+  if (!input.allowGeneral && !found.covered && !thisTurnFile) {
     return { chatId, covered: false, message: null };
   }
 
@@ -240,25 +337,59 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
   const passageBlock = citations
     .map((cite, index) => `[P${cite.index}] ${cite.label}\n${found.hits[index]?.text ?? ""}`)
     .join("\n\n");
+  const subjectLine = subject ? `Subject: ${subject}.` : "";
+  const pinned = chatContext(db, chatId);
+  const pinnedBlock = pinned ? `Pinned context: ${pinned.title}\n${pinned.body}\n\n` : "";
+  const attachedBlock = notes.length > 0 ? `Attached text:\n${notes.join("\n")}\n\n` : "";
   const system = `${
     input.allowGeneral
       ? generalPrompt
       : input.mode === "socratic"
         ? socraticPrompt
         : solverPrompt
-  }\n${profileContext(db)}`;
-  const prompt = `${passageBlock}\n\nEarlier turns:\n${historyText(db, chatId)}\n\nQuestion:\n${input.text}`;
+  }\n${profileContext(db)}\n${subjectLine}`;
+  const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}\n\nEarlier turns:\n${historyText(db, chatId)}\n\nQuestion:\n${input.text}`;
+  let streamed = "";
   let result;
   try {
     result = await generate({
       prompt,
       system,
       selection: selectionFor(db, "chat"),
+      attachments:
+        input.workspace && capabilityWarning(selectionFor(db, "chat").model, "vision") == null
+          ? savedImages(db, input.workspace, chatId)
+          : images
+              .filter((image) => image.data)
+              .map((image) => ({
+                type: "image" as const,
+                mediaType: image.mediaType,
+                data: image.data,
+              })),
       signal: input.signal,
       run: input.run,
+      onDelta: (text) => {
+        streamed = text;
+        input.onDelta?.(text.replace(/<followups>[\s\S]*$/, "").trim());
+      },
     });
   } catch (err) {
-    if (isAbort(err) || (err instanceof Error && err.name === "AbortError")) throw err;
+    if ((isAbort(err) || (err instanceof Error && err.name === "AbortError")) && streamed.trim()) {
+      return finishReply(db, chatId, streamed, {
+        provider: "",
+        model: "",
+        grounding: input.allowGeneral ? "general" : "sources",
+        template: input.allowGeneral
+          ? "chat-general"
+          : input.mode === "socratic"
+            ? "chat-socratic"
+            : "chat-solver",
+        citations,
+        allowGeneral: input.allowGeneral === true,
+        stopped: true,
+        now,
+      });
+    }
     throw err;
   }
   if (result.text.trim().startsWith("NOT_COVERED")) {
@@ -294,7 +425,7 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
     [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
   );
   const linked = citations.filter((cite) => used.has(cite.index));
-  if (!input.allowGeneral && linked.length === 0) {
+  if (!input.allowGeneral && linked.length === 0 && !thisTurnFile) {
     db.prepare(`DELETE FROM messages WHERE id = ?`).run(messageId);
     return { chatId, covered: false, message: null };
   }
@@ -314,8 +445,89 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
       followups: parsed.followups,
       citations: linked,
       reaction: null,
+      stopped: false,
     },
   };
+}
+
+function finishReply(
+  db: Database.Database,
+  chatId: string,
+  text: string,
+  meta: {
+    provider: string;
+    model: string;
+    grounding: "sources" | "general";
+    template: string;
+    citations: ChatCitation[];
+    allowGeneral: boolean;
+    stopped: boolean;
+    now: number;
+  },
+): AskResult {
+  const parsed = splitFollowups(text);
+  const messageId = uuidv7(meta.now + 2);
+  db.prepare(
+    `INSERT INTO messages
+      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, stopped, created_at)
+     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?)`,
+  ).run(
+    messageId,
+    chatId,
+    parsed.body,
+    meta.provider,
+    meta.model,
+    meta.template,
+    CHAT_PROMPT_VERSION,
+    meta.grounding,
+    meta.stopped ? 1 : 0,
+    meta.now + 1,
+  );
+  const used = new Set(
+    [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
+  );
+  const linked = meta.citations.filter((cite) => used.has(cite.index));
+  const link = db.prepare(
+    `INSERT INTO message_passages (message_id, passage_id, label) VALUES (?, ?, ?)`,
+  );
+  for (const cite of linked) link.run(messageId, cite.passageId, `P${cite.index}`);
+  return {
+    chatId,
+    covered: true,
+    message: {
+      id: messageId,
+      role: "assistant",
+      body: parsed.body,
+      modelId: meta.model || null,
+      provider: meta.provider || null,
+      grounding: meta.grounding,
+      followups: [],
+      citations: linked,
+      reaction: null,
+      stopped: meta.stopped,
+    },
+  };
+}
+
+export async function regenerateTurn(
+  db: Database.Database,
+  input: Omit<AskInput, "text"> & { chatId: string },
+): Promise<AskResult> {
+  const last = db
+    .prepare(
+      `SELECT id, role FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(input.chatId) as { id: string; role: string } | undefined;
+  if (last?.role === "assistant") {
+    db.prepare(`DELETE FROM messages WHERE id = ?`).run(last.id);
+  }
+  const user = db
+    .prepare(
+      `SELECT body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(input.chatId) as { body: string } | undefined;
+  if (!user) throw new Error("chat-missing");
+  return askTurn(db, { ...input, text: user.body });
 }
 
 export function rateMessage(
@@ -352,10 +564,30 @@ export function listChats(db: Database.Database) {
     .all() as Array<{ id: string; title: string | null; updated_at: number }>;
 }
 
+export function heldSources(
+  db: Database.Database,
+  chatId: string,
+): Array<{ id: string; title: string }> {
+  const ids = chatScope(db, chatId);
+  if (ids.length === 0) return [];
+  return db
+    .prepare(
+      `SELECT id, title FROM sources WHERE library = 0 AND id IN (${ids.map(() => "?").join(", ")})`,
+    )
+    .all(...ids) as Array<{ id: string; title: string }>;
+}
+
+export function chatSubject(db: Database.Database, chatId: string): string | null {
+  const row = db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
+    | { subject: string | null }
+    | undefined;
+  return row?.subject ?? null;
+}
+
 export function readChat(db: Database.Database, chatId: string): ChatMessageView[] {
   const rows = db
     .prepare(
-      `SELECT id, role, body, model_id, engine_provider, grounding, reaction FROM messages
+      `SELECT id, role, body, model_id, engine_provider, grounding, reaction, stopped FROM messages
        WHERE chat_id = ? ORDER BY created_at`,
     )
     .all(chatId) as Array<{
@@ -366,6 +598,7 @@ export function readChat(db: Database.Database, chatId: string): ChatMessageView
     engine_provider: string | null;
     grounding: "sources" | "general" | null;
     reaction: string | null;
+    stopped: number;
   }>;
   const links = db.prepare(
     `SELECT mp.label, mp.passage_id, p.source_id, p.section_path, p.locator_json
@@ -401,6 +634,7 @@ export function readChat(db: Database.Database, chatId: string): ChatMessageView
       followups: parsed.followups,
       citations,
       reaction: row.reaction === "up" || row.reaction === "down" ? row.reaction : null,
+      stopped: row.stopped === 1,
     };
   });
 }

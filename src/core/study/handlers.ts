@@ -3,10 +3,11 @@ import { uuidv7 } from "../../shared/ids";
 import { deleteCard, dueCards, queueCounts, rateCard, saveCard, setSuspended, suspendedCards } from "./cards";
 import { ensureTopicCards } from "./cardsFromBook";
 import { topicExercises } from "./exercises";
-import { openLesson } from "./openLesson";
+import { writeLesson } from "./openLesson";
 import type { Rating } from "./schedule";
 import { completeCurrentStage } from "../plans/create";
 import { syncGaps } from "../plans/progress";
+import { runTurn } from "../engine/funnel";
 import {
   openSimulation,
   readSimulation,
@@ -14,7 +15,10 @@ import {
   saveSimulationDraft,
   startSimulation,
 } from "./simulation";
+import { flagTarget } from "./flags";
+import { startReview } from "./review";
 import { startDiagnostic, startTopicQuiz, submitAttempt } from "./topicQuiz";
+import { exportCardsCsv, exportMarkdown } from "../share/markdown";
 
 export function studyHandlers(db: Database.Database) {
   return {
@@ -22,7 +26,25 @@ export function studyHandlers(db: Database.Database) {
       return topicExercises(db, input.topicId);
     },
     lesson(input: { planId: string; topicId: string }) {
-      return openLesson(db, input.planId, input.topicId);
+      return writeLesson(db, input.planId, input.topicId, runTurn);
+    },
+    markdown(input: {
+      planId: string;
+      kind: "lesson" | "cards" | "quiz" | "simulation";
+      topicId?: string;
+      answers?: boolean;
+    }) {
+      return exportMarkdown(db, input);
+    },
+    csv(input: { planId: string; topicId?: string }) {
+      return exportCardsCsv(db, input);
+    },
+    flag(input: { targetKind: string; targetId: string; reason?: string }) {
+      flagTarget(db, input.targetKind, input.targetId, input.reason ?? "");
+      return { ok: true as const };
+    },
+    review(input: { planId: string }) {
+      return startReview(db, input.planId);
     },
     quizStart(input: { planId: string; topicId: string }) {
       return startTopicQuiz(db, input.planId, input.topicId);
@@ -122,8 +144,9 @@ export function studyHandlers(db: Database.Database) {
     simulationOpen(input: { planId: string }) {
       return openSimulation(db, input.planId);
     },
-    simulationStart(input: { planId: string }) {
-      return startSimulation(db, input.planId, 30);
+    simulationStart(input: { planId: string; minutes?: number; source?: "exam" | "mixed" }) {
+      const minutes = input.minutes === 60 || input.minutes === 90 ? input.minutes : 30;
+      return startSimulation(db, input.planId, minutes, Date.now(), input.source ?? "exam");
     },
     simulationDraft(input: { attemptId: string; picks: Record<string, string> }) {
       return saveSimulationDraft(db, input.attemptId, input.picks);

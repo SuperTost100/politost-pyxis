@@ -22,6 +22,8 @@ export function createPlan(
     language?: string;
     style?: "read" | "practice" | "decide";
     subject?: string;
+    topicTitles?: string[];
+    signal?: AbortSignal;
   },
   now = Date.now(),
 ): CreatedPlan {
@@ -47,6 +49,7 @@ export function createPlan(
   const topicIds: string[] = [];
 
   const run = db.transaction(() => {
+    if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
     const subjectName = input.subject?.trim() ?? "";
     let subjectId: string | null = null;
     if (subjectName) {
@@ -64,10 +67,11 @@ export function createPlan(
     }
     db.prepare(
       `INSERT INTO plans (id, title, status, subject_id, content_language, exam_at, target, style, created_at, updated_at)
-       VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       planId,
       input.title,
+      input.sourceIds.length === 0 ? "draft" : "ready",
       subjectId,
       input.language ?? null,
       input.examAt ?? null,
@@ -76,13 +80,35 @@ export function createPlan(
       now,
       now,
     );
-    for (const sourceId of input.sourceIds) {
+    for (const [sourceIndex, sourceId] of input.sourceIds.entries()) {
+      const before = topicIds.length;
       db.prepare(`INSERT INTO plan_sources (plan_id, source_id) VALUES (?, ?)`).run(
         planId,
         sourceId,
       );
       const chapters = smartbookChapters(db, sourceId);
+      if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
       if (chapters.length === 0) {
+        const sections = db
+          .prepare(
+            `SELECT DISTINCT section_path AS section FROM passages
+             WHERE source_id = ? AND section_path IS NOT NULL AND TRIM(section_path) != ''
+             ORDER BY section_path`,
+          )
+          .all(sourceId) as Array<{ section: string }>;
+        if (sections.length > 0) {
+          const linkSection = db.prepare(
+            `INSERT INTO topic_passages (topic_id, passage_id)
+             SELECT ?, id FROM passages WHERE source_id = ? AND section_path = ?`,
+          );
+          for (const section of sections) {
+            const topicId = uuidv7(now + topics + 1);
+            insertTopic.run(topicId, planId, section.section, topics, now);
+            linkSection.run(topicId, sourceId, section.section);
+            topicIds.push(topicId);
+            topics += 1;
+          }
+        } else {
         const source = db.prepare(`SELECT title FROM sources WHERE id = ?`).get(sourceId) as
           | { title: string }
           | undefined;
@@ -91,14 +117,20 @@ export function createPlan(
         linkAll.run(topicId, sourceId);
         topicIds.push(topicId);
         topics += 1;
-        continue;
-      }
+        }
+      } else {
       for (const chapter of chapters) {
         const topicId = uuidv7(now + topics + 1);
         insertTopic.run(topicId, planId, `${chapter.number}. ${chapter.title}`, topics, now);
         linkPassage.run(topicId, sourceId, chapter.number);
         topicIds.push(topicId);
         topics += 1;
+      }
+      }
+      const override = input.topicTitles?.[sourceIndex]?.trim();
+      if (override && topicIds.length === before + 1) {
+        const topicId = topicIds[before];
+        if (topicId) db.prepare(`UPDATE topics SET title = ? WHERE id = ?`).run(override, topicId);
       }
     }
     const titles = new Map(
@@ -142,6 +174,140 @@ export function createPlan(
   });
   run();
   return { planId, topics, pathNodes };
+}
+
+export function rebuildPlan(
+  db: Database.Database,
+  planId: string,
+  sourceIds: string[],
+  now = Date.now(),
+): { topics: number } {
+  const plan = db.prepare(`SELECT id, title, style FROM plans WHERE id = ?`).get(planId) as
+    | { id: string; title: string; style: string }
+    | undefined;
+  if (!plan) throw new Error("plan-missing");
+  const linked = new Set(
+    (
+      db.prepare(`SELECT source_id FROM plan_sources WHERE plan_id = ?`).all(planId) as Array<{
+        source_id: string;
+      }>
+    ).map((row) => row.source_id),
+  );
+  const byTitle = new Map(
+    (
+      db.prepare(`SELECT id, title FROM topics WHERE plan_id = ?`).all(planId) as Array<{
+        id: string;
+        title: string;
+      }>
+    ).map((row) => [row.title, row.id]),
+  );
+  let added = 0;
+  const created: string[] = [];
+  const position = () =>
+    (
+      db.prepare(`SELECT COUNT(*) AS n FROM topics WHERE plan_id = ?`).get(planId) as { n: number }
+    ).n;
+  const run = db.transaction(() => {
+    for (const sourceId of sourceIds) {
+      if (linked.has(sourceId)) continue;
+      db.prepare(`INSERT INTO plan_sources (plan_id, source_id) VALUES (?, ?)`).run(
+        planId,
+        sourceId,
+      );
+      const chapters = smartbookChapters(db, sourceId);
+      const groups: Array<{ title: string; kind: "chapter" | "section" | "all"; key: string }> =
+        chapters.length > 0
+          ? chapters.map((chapter) => ({
+              title: `${chapter.number}. ${chapter.title}`,
+              kind: "chapter",
+              key: String(chapter.number),
+            }))
+          : (
+              db
+                .prepare(
+                  `SELECT DISTINCT section_path AS section FROM passages
+                   WHERE source_id = ? AND section_path IS NOT NULL AND TRIM(section_path) != ''`,
+                )
+                .all(sourceId) as Array<{ section: string }>
+            ).map((row) => ({ title: row.section, kind: "section" as const, key: row.section }));
+      const rows =
+        groups.length > 0 ? groups : [{ title: "", kind: "all" as const, key: "" }];
+      for (const group of rows) {
+        const source = db.prepare(`SELECT title FROM sources WHERE id = ?`).get(sourceId) as
+          | { title: string }
+          | undefined;
+        const title = group.kind === "all" ? (source?.title ?? "Note") : group.title;
+        const existing = byTitle.get(title);
+        const topicId = existing ?? uuidv7(now + added + 1);
+        if (!existing) {
+          db.prepare(
+            `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, ?, ?, ?, ?)`,
+          ).run(topicId, planId, title, position(), now);
+          byTitle.set(title, topicId);
+          added += 1;
+          created.push(topicId);
+        }
+        db.prepare(
+          `INSERT OR IGNORE INTO topic_passages (topic_id, passage_id)
+           SELECT ?, id FROM passages WHERE source_id = ?
+             AND (
+               (? = 'all')
+               OR (? = 'section' AND section_path = ?)
+               OR (? = 'chapter' AND json_extract(locator_json, '$.chapter') = ?)
+             )`,
+        ).run(topicId, sourceId, group.kind, group.kind, group.key, group.kind, Number(group.key));
+      }
+    }
+    const stages =
+      plan.style === "practice"
+        ? (["practice", "learn", "cards", "gaps"] as const)
+        : (["learn", "practice", "cards", "gaps"] as const);
+    const tail = db
+      .prepare(
+        `SELECT id, position FROM path_nodes
+         WHERE plan_id = ? AND kind IN ('simulation', 'final')
+         ORDER BY position`,
+      )
+      .all(planId) as Array<{ id: string; position: number }>;
+    const insertAt = tail[0]?.position ?? (
+      db.prepare(`SELECT COUNT(*) AS n FROM path_nodes WHERE plan_id = ?`).get(planId) as {
+        n: number;
+      }
+    ).n;
+    if (created.length > 0 && tail.length > 0) {
+      db.prepare(`UPDATE path_nodes SET position = position + ? WHERE plan_id = ? AND position >= ?`).run(
+        created.length * stages.length,
+        planId,
+        insertAt,
+      );
+    }
+    const insertNode = db.prepare(
+      `INSERT INTO path_nodes (id, plan_id, topic_id, kind, position, title, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    );
+    created.forEach((topicId, topicIndex) => {
+      const title =
+        (
+          db.prepare(`SELECT title FROM topics WHERE id = ?`).get(topicId) as { title: string }
+        ).title;
+      stages.forEach((stage, stageIndex) => {
+        insertNode.run(
+          uuidv7(now + 1000 + topicIndex * stages.length + stageIndex),
+          planId,
+          topicId,
+          stage,
+          insertAt + topicIndex * stages.length + stageIndex,
+          title,
+          now,
+        );
+      });
+    });
+    if (sourceIds.length > 0) {
+      db.prepare(`UPDATE plans SET status = 'ready', updated_at = ? WHERE id = ?`).run(now, planId);
+    }
+  });
+  run();
+  return { topics: added };
 }
 
 export function deletePlan(db: Database.Database, planId: string): void {
@@ -245,7 +411,14 @@ export function readPlan(db: Database.Database, planId: string) {
     position: row.position,
     state: states.find((item) => item.id === row.id)?.state ?? "locked",
   }));
-  return { ...plan, topics, nodes };
+  return { ...plan, topics, nodes, sources: db
+    .prepare(
+      `SELECT s.id, s.title FROM sources s
+       JOIN plan_sources ps ON ps.source_id = s.id
+       WHERE ps.plan_id = ?
+       ORDER BY s.title`,
+    )
+    .all(planId) as Array<{ id: string; title: string }> };
 }
 
 function daysUntil(examAt: number, now: number): number {

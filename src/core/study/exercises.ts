@@ -13,7 +13,7 @@ export function topicExercises(db: Database.Database, topicId: string) {
   const marks = chapters.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT e.id, e.prompt, e.answer,
+      `SELECT e.id, e.prompt, e.answer, json_extract(e.locator_json, '$.kind') AS kind,
         COALESCE(e.passage_id, (
           SELECT p.id FROM passages p
           JOIN topic_passages tp ON tp.passage_id = p.id
@@ -40,12 +40,14 @@ export function topicExercises(db: Database.Database, topicId: string) {
     id: string;
     prompt: string;
     answer: string | null;
+    kind: string | null;
     passage_id: string | null;
   }>;
   return rows.map((row) => ({
     id: row.id,
     prompt: row.prompt,
     answer: row.answer,
+    kind: row.kind,
     passageId: row.passage_id,
   }));
 }

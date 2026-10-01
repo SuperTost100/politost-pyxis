@@ -1,9 +1,13 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { PNG } from "pngjs";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { importSmartbook } from "../sources/smartbook";
 import { strToU8, zipSync } from "fflate";
-import { askTurn, chatScope, deleteChat, listChats, rateMessage, readChat, renameChat } from "./turn";
+import { askTurn, chatContext, chatScope, deleteChat, heldSources, listChats, rateMessage, readChat, renameChat, seedChat } from "./turn";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -240,5 +244,218 @@ describe("askTurn", () => {
     expect(readChat(db, chats[0]?.id ?? "").some((row) => row.role === "assistant")).toBe(
       false,
     );
+  });
+
+  it("keeps the text already streamed when the student stops", async () => {
+    const db = openDatabase(":memory:");
+    const seen: string[] = [];
+    const result = await askTurn(db, {
+      text: "deriva x al quadrato",
+      allowGeneral: true,
+      subject: "Fisica",
+      onDelta: (text) => seen.push(text),
+      run: async (input) => {
+        input.onDelta?.("La derivata ");
+        input.onDelta?.("La derivata è 2x");
+        throw new DOMException("aborted", "AbortError");
+      },
+    });
+    expect(seen.at(-1)).toBe("La derivata è 2x");
+    expect(result.message?.stopped).toBe(true);
+    expect(result.message?.body).toBe("La derivata è 2x");
+    const stored = readChat(db, result.chatId).at(-1);
+    expect(stored?.stopped).toBe(true);
+    expect(
+      db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(result.chatId),
+    ).toEqual({ subject: "Fisica" });
+  });
+
+  it("keeps the subject on the next turn and links a stopped citation", async () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Demo",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+      }),
+    );
+    const stopped = await askTurn(db, {
+      text: "Che cos'è il vettore?",
+      sourceIds: [imported.sourceId],
+      subject: "Fisica",
+      run: async (input) => {
+        input.onDelta?.("Il vettore descrive il punto [P1].");
+        throw new DOMException("aborted", "AbortError");
+      },
+    });
+    expect(stopped.message?.citations).toHaveLength(1);
+    expect(readChat(db, stopped.chatId).at(-1)?.citations).toHaveLength(1);
+    let system = "";
+    await askTurn(db, {
+      chatId: stopped.chatId,
+      text: "un esempio",
+      allowGeneral: true,
+      run: async (input) => {
+        system = input.system ?? "";
+        return reply;
+      },
+    });
+    expect(system).toContain("Subject: Fisica");
+  });
+
+  it("pins a wrong answer in the next prompt", async () => {
+    const db = openDatabase(":memory:");
+    const seeded = seedChat(db, {
+      kind: "answer",
+      title: "Vettore",
+      body: "Question: che cos'è il vettore?\nYour answer: una linea\nExpected: un punto",
+    });
+    expect(chatContext(db, seeded.chatId)?.kind).toBe("answer");
+    let prompt = "";
+    await askTurn(db, {
+      chatId: seeded.chatId,
+      text: "perché?",
+      allowGeneral: true,
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(prompt).toContain("Pinned context: Vettore");
+    expect(prompt).toContain("una linea");
+  });
+
+  it("retrieves a document attached to the message and keeps it out of the library", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-attach-"));
+    const file = join(dir, "note.txt");
+    writeFileSync(file, "la velocita e la derivata dello spazio rispetto al tempo");
+    const db = openDatabase(":memory:");
+    let prompt = "";
+    const result = await askTurn(db, {
+      text: "velocita",
+      files: [file],
+      workspace: dir,
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(result.covered).toBe(true);
+    expect(prompt).toContain("derivata");
+    expect(heldSources(db, result.chatId)).toHaveLength(1);
+    const again = await askTurn(db, {
+      chatId: result.chatId,
+      text: "ancora sulla velocita",
+      workspace: dir,
+      run: async () => reply,
+    });
+    expect(again.covered).toBe(true);
+    const aside = await askTurn(db, {
+      chatId: result.chatId,
+      text: "Who wrote Hamlet?",
+      workspace: dir,
+      run: async () => reply,
+    });
+    expect(aside.covered).toBe(false);
+  });
+
+  it("reads an image with local OCR when the model cannot see it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-ocr-"));
+    const file = join(dir, "board.png");
+    writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
+    ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
+    let prompt = "";
+    await askTurn(db, {
+      text: "cosa c'è scritto",
+      allowGeneral: true,
+      files: [file],
+      workspace: dir,
+      recognize: async () => "F uguale m a",
+      run: async (input) => {
+        prompt = input.prompt;
+        expect(input.attachments ?? []).toHaveLength(0);
+        return reply;
+      },
+    });
+    expect(prompt).toContain("F uguale m a");
+    let again = "";
+    await askTurn(db, {
+      chatId: (
+        db.prepare(`SELECT id FROM chats`).get() as { id: string }
+      ).id,
+      text: "ripeti",
+      allowGeneral: true,
+      workspace: dir,
+      run: async (input) => {
+        again = input.prompt;
+        return reply;
+      },
+    });
+    expect(again).toContain("F uguale m a");
+  });
+
+  it("answers from an image even when no passage covers the question", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-vision-"));
+    const file = join(dir, "board.png");
+    writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
+    ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
+    const result = await askTurn(db, {
+      text: "cosa c'è scritto",
+      files: [file],
+      workspace: dir,
+      recognize: async () => "F uguale m a",
+      run: async () => reply,
+    });
+    expect(result.covered).toBe(true);
+    expect(result.message?.body).toContain("[P1]");
+  });
+
+  it("does not treat a blank image as covered when the model cannot see it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-blank-"));
+    const file = join(dir, "board.png");
+    writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
+    ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
+    const result = await askTurn(db, {
+      text: "cosa c'è scritto",
+      files: [file],
+      workspace: dir,
+      recognize: async () => "",
+      run: async () => reply,
+    });
+    expect(result.covered).toBe(false);
+  });
+
+  it("refuses an attachment over 15 MB", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-big-"));
+    const file = join(dir, "huge.txt");
+    writeFileSync(file, "x");
+    const { openSync, ftruncateSync, closeSync } = await import("node:fs");
+    const fd = openSync(file, "r+");
+    ftruncateSync(fd, 16 * 1024 * 1024);
+    closeSync(fd);
+    const db = openDatabase(":memory:");
+    await expect(
+      askTurn(db, {
+        text: "leggi",
+        files: [file],
+        workspace: dir,
+        allowGeneral: true,
+        run: async () => reply,
+      }),
+    ).rejects.toMatchObject({ messageKey: "errors.attachTooBig" });
   });
 });

@@ -1,0 +1,16 @@
+.source-viewer-locator { color: var(--ink-muted); margin-top: var(--space-2); }
+.source-viewer-chapter { max-width: 68ch; }
+.source-viewer-paragraph { padding: var(--space-3) var(--space-4); border-left: 3px solid transparent; }
+.source-viewer-paragraph.is-current { border-left-color: var(--star); animation: source-position 2s ease-out forwards; }
+.source-viewer-selection { position: sticky; top: 0; z-index: 1; background: var(--surface-overlay); border-radius: var(--radius-xl); }
+@keyframes source-position { from { background: var(--star-soft); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .source-viewer-paragraph.is-current { animation: none; background: var(--star-soft); } }
+
+.source-pdf-navigation { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-4); }
+.source-pdf-navigation button { white-space: nowrap; }
+.source-pdf-page { position: relative; }
+.source-pdf-page canvas { display: block; max-width: 100%; }
+.source-pdf-text { position: absolute; inset: 0; overflow: clip; line-height: 1; text-align: initial; transform-origin: 0 0; }
+.source-pdf-text span { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0 0; }
+.source-pdf-text .is-cited { background: var(--star-soft); outline: 2px solid var(--star); }
+.source-pdf-text ::selection { background: var(--primary-soft); }

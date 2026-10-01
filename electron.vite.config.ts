@@ -33,6 +33,8 @@ export default defineConfig({
           index: resolve(root, "src/main/index.ts"),
           core: resolve(root, "src/core/index.ts"),
           "archive-worker": resolve(root, "src/main/archive-worker.ts"),
+          "extract-worker": resolve(root, "src/core/sources/extract-worker.ts"),
+          "embed-worker": resolve(root, "src/core/sources/embed-worker.ts"),
         },
       },
     },

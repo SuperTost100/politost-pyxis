@@ -9,6 +9,7 @@ import type { Appearance, ThemeSource } from "@shared/bridge";
 import { pyxisTheme } from "../design-system/theme/pyxis-theme";
 import { i18n, type Locale } from "../locales/i18n";
 import { CoreNotice } from "./CoreNotice";
+import { SourceViewer } from "../components/SourceViewer";
 import { JobsSync } from "../features/jobs/queries";
 import { AppStateContext } from "./app-state";
 import { router } from "./router";
@@ -61,6 +62,7 @@ export function App() {
             <JobsSync />
             <CoreNotice />
             <RouterProvider router={router} />
+            <SourceViewer />
           </AntApp>
         </ProConfigProvider>
       </ConfigProvider>

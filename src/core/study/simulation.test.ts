@@ -142,11 +142,13 @@ describe("simulation", () => {
       at += 1;
     }
     for (const topicId of new Set(nodes.flatMap((node) => (node.topic_id ? [node.topic_id] : [])))) {
-      db.prepare(
-        `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
-         VALUES (?, 'answer_given', ?, ?, ?, ?)`,
-      ).run(uuidv7(at), plan.planId, topicId, JSON.stringify({ score: 1, scores: [1] }), at);
-      at += 1;
+      for (let copy = 0; copy < 3; copy += 1) {
+        db.prepare(
+          `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+           VALUES (?, 'answer_given', ?, ?, ?, ?)`,
+        ).run(uuidv7(at), plan.planId, topicId, JSON.stringify({ score: 1, scores: [1] }), at);
+        at += 1;
+      }
     }
     const opened = startSimulation(db, plan.planId, 30, at);
     expect(opened.questions.map((question) => question.stem)).toContain("FROM2");
@@ -190,5 +192,29 @@ describe("simulation", () => {
       .prepare(`SELECT payload_json FROM attempt_answers WHERE attempt_id = ?`)
       .get(opened.attemptId) as { payload_json: string };
     expect(JSON.parse(saved.payload_json).picks[question!.id]).toBe("10 N");
+  });
+
+  it("keeps an exam simulation to the exam file", () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Fisica",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore.\n",
+        "esercizi.md":
+          ':::exercise{id="e1" chapter="1"}\nEsercizio di pratica\n:::solution\npratica\n:::\n:::\n',
+        "esami.md":
+          ':::exercise{id="x1" chapter="1"}\nDomanda d esame\n:::solution\nesame\n:::\n:::\n',
+      }),
+    );
+    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
+    const opened = startSimulation(db, plan.planId, 60, Date.now(), "exam");
+    expect(opened.questions.map((question) => question.stem)).toEqual(["Domanda d esame"]);
+    expect(readSimulation(db, opened.attemptId).leftMs).toBeGreaterThan(50 * 60_000);
   });
 });

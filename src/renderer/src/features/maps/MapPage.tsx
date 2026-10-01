@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
+import { branchFromInstruction } from "../../../../core/maps/graph";
 
 export function MapPage() {
   const { t } = useTranslation();
@@ -85,10 +86,18 @@ export function MapPage() {
           shape="round"
           disabled={label.trim() === ""}
           onClick={() => {
+            const branch = branchFromInstruction(label);
             void invoke("maps.patch", {
               planId: planId ?? "",
               topicId: topicId ?? "",
-              ops: [{ op: "add_node", id: `n-${Date.now()}`, label: label.trim(), parent: "root" }],
+              ops: [
+                {
+                  op: "add_node",
+                  id: `n-${Date.now()}`,
+                  label: branch ?? label.trim(),
+                  parent: "root",
+                },
+              ],
             }).then(() => {
               setLabel("");
               refresh();

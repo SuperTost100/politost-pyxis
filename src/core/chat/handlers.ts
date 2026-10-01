@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
-import { askTurn, chatScope, deleteChat, listChats, rateMessage, readChat, renameChat } from "./turn";
+import { askTurn, chatContext, chatScope, chatSubject, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat } from "./turn";
 
-export function chatHandlers(db: Database.Database, fixtureReply?: string) {
+export function chatHandlers(db: Database.Database, workspace = "", fixtureReply?: string) {
   return {
     list() {
       return listChats(db).map((row) => ({
@@ -11,7 +11,26 @@ export function chatHandlers(db: Database.Database, fixtureReply?: string) {
       }));
     },
     read(input: { chatId: string }) {
-      return { sourceIds: chatScope(db, input.chatId), messages: readChat(db, input.chatId) };
+      return {
+        sourceIds: chatScope(db, input.chatId),
+        subject: chatSubject(db, input.chatId),
+        context: chatContext(db, input.chatId),
+        held: heldSources(db, input.chatId),
+        messages: readChat(db, input.chatId),
+      };
+    },
+    seed(input: {
+      kind: "answer" | "passage";
+      title: string;
+      body: string;
+      sourceIds?: string[];
+      subject?: string;
+    }) {
+      return seedChat(db, input);
+    },
+    clearContext(input: { chatId: string }) {
+      clearChatContext(db, input.chatId);
+      return { ok: true as const };
     },
     rate(input: { messageId: string; reaction: "up" | "down" }) {
       return { reaction: rateMessage(db, input.messageId, input.reaction) };
@@ -24,6 +43,29 @@ export function chatHandlers(db: Database.Database, fixtureReply?: string) {
       deleteChat(db, input.chatId);
       return { ok: true as const };
     },
+    regenerate(input: {
+      chatId: string;
+      sourceIds?: string[];
+      mode?: "solver" | "socratic";
+      allowGeneral?: boolean;
+      signal?: AbortSignal;
+      onDelta?: (text: string) => void;
+      subject?: string;
+      files?: string[];
+    }) {
+      return regenerateTurn(db, {
+        ...input,
+        workspace,
+        run: fixtureReply
+          ? async () => ({
+              text: fixtureReply,
+              model: "fixture",
+              provider: "fixture",
+              inputTokens: 0,
+            })
+          : undefined,
+      });
+    },
     ask(input: {
       chatId?: string;
       text: string;
@@ -31,9 +73,13 @@ export function chatHandlers(db: Database.Database, fixtureReply?: string) {
       mode?: "solver" | "socratic";
       allowGeneral?: boolean;
       signal?: AbortSignal;
+      onDelta?: (text: string) => void;
+      subject?: string;
+      files?: string[];
     }) {
       return askTurn(db, {
         ...input,
+        workspace,
         run: fixtureReply
           ? async () => ({
               text: fixtureReply,

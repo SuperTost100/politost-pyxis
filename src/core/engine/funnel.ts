@@ -44,16 +44,49 @@ export async function runTurn(input: {
   system?: string;
   responseSchema?: { name?: string; schema: Record<string, unknown> };
   signal?: AbortSignal;
+  onDelta?: (text: string) => void;
+  attachments?: Array<{
+    type: "image";
+    mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+    data: string;
+  }>;
 }): Promise<EngineResult> {
+  const selection = {
+    ...input.selection,
+    cwd: input.selection.cwd || scratch,
+    access: "none" as const,
+  };
+  if (input.onDelta) {
+    const stream = getFunnel().stream({
+      selection,
+      prompt: input.prompt,
+      system: input.system,
+      responseSchema: input.responseSchema,
+      attachments: input.attachments,
+      signal: input.signal,
+    });
+    let text = "";
+    for await (const event of stream) {
+      if (event.type !== "text.delta") continue;
+      text += event.text;
+      input.onDelta(text);
+    }
+    const result = await stream.result;
+    return {
+      text: result.text || text,
+      model: result.model,
+      provider: result.provider,
+      inputTokens: result.usage?.inputTokens ?? 0,
+      structured: result.structured,
+      structuredError: result.structuredError,
+    };
+  }
   const result = await getFunnel().run({
-    selection: {
-      ...input.selection,
-      cwd: input.selection.cwd || scratch,
-      access: "none",
-    },
+    selection,
     prompt: input.prompt,
     system: input.system,
     responseSchema: input.responseSchema,
+    attachments: input.attachments,
     signal: input.signal,
   });
   return {

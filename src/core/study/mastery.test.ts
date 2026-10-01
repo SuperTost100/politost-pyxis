@@ -12,10 +12,10 @@ describe("masteryFor", () => {
     ];
     const m = masteryFor(events, T0).t1 ?? 0;
 
+    const old = 0.5 ** (30 / 14);
+    expect(m).toBeCloseTo(1 / (3 + 1 + old), 5);
     expect(m).toBeGreaterThan(0);
-    expect(m).toBeLessThan(1);
-    expect(m).toBeGreaterThan(0.5);
-    expect(1 - m).toBeLessThan(m);
+    expect(m).toBeLessThan(0.5);
   });
 });
 

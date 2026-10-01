@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOps, layoutGraph, undoGraph, type ConceptGraph } from "./graph";
+import { applyOps, branchFromInstruction, layoutGraph, undoGraph, type ConceptGraph } from "./graph";
 
 function sample(): ConceptGraph {
   return layoutGraph({
@@ -77,5 +77,15 @@ describe("concept map", () => {
     expect(() => applyOps(sample(), [{ op: "rename", id: "missing", label: "x" }])).toThrow(
       /map-missing/,
     );
+  });
+
+  it("turns one instruction into one undoable branch", () => {
+    const label = branchFromInstruction("aggiungi un ramo sulla regola della catena");
+    expect(label).toBe("regola della catena");
+    const next = applyOps(sample(), [
+      { op: "add_node", id: "c", label: label ?? "", parent: "root" },
+    ]);
+    expect(next.nodes.find((node) => node.id === "c")?.label).toBe("regola della catena");
+    expect(undoGraph(next).nodes.some((node) => node.id === "c")).toBe(false);
   });
 });
