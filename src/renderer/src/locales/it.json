@@ -176,7 +176,40 @@
     "radial": "Radiale",
     "undo": "Annulla",
     "add": "Aggiungi un ramo",
-    "png": "Esporta PNG"
+    "png": "Esporta PNG",
+    "layout": "Disposizione",
+    "choose": "Scegli una mappa",
+    "tools": "Strumenti della mappa",
+    "rename": "Rinomina nodo",
+    "connect": "Collega nodi",
+    "delete": "Elimina ramo",
+    "recolor": "Colore del nodo",
+    "fit": "Adatta la mappa",
+    "instruction": "Modifica con AI",
+    "instructionPlaceholder": "Aggiungi un ramo sulla regola della catena…",
+    "apply": "Applica modifiche",
+    "applied": "Modifiche applicate. Annulla ripristina la mappa precedente.",
+    "editFailed": "Non riesco a modificare la mappa. Riprova.",
+    "generateFailed": "Non riesco a creare le mappe. Riprova.",
+    "exportFailed": "Non riesco a esportare l’immagine. Riprova.",
+    "empty": "Crea una mappa di questo argomento",
+    "emptyBody": "Le tue fonti diventano mappe mirate, da modificare e usare anche offline.",
+    "generate": "Crea mappe",
+    "building": "Creo le tue mappe…",
+    "keyboard": "Tab seleziona un nodo · Invio rinomina · Canc elimina un ramo · Le frecce spostano",
+    "save": "Salva",
+    "cancel": "Annulla",
+    "target": "Collega a",
+    "nodeLabel": "Testo del nodo",
+    "colors": {
+      "surface-raised": "Neutro",
+      "primary-soft": "Cobalto",
+      "mastery-soft": "Menta",
+      "star-soft": "Oro",
+      "danger-soft": "Rosa"
+    },
+    "buildSources": "Crea dalle fonti",
+    "general": "Conoscenza generale, non dalle tue fonti"
   },
   "lesson": {
     "title": "Lezione dal libro",
@@ -404,7 +437,8 @@
       "running": "In corso",
       "failed": "Non riuscito",
       "interrupted": "Interrotto"
-    }
+    },
+    "maps": "Creo le mappe"
   },
   "errors": {
     "coreRestarted": "Il motore interno si è riavviato",

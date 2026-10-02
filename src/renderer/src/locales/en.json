@@ -176,7 +176,40 @@
     "radial": "Radial",
     "undo": "Undo",
     "add": "Add a branch",
-    "png": "Export PNG"
+    "png": "Export PNG",
+    "layout": "Layout",
+    "choose": "Choose a map",
+    "tools": "Map tools",
+    "rename": "Rename node",
+    "connect": "Connect nodes",
+    "delete": "Delete branch",
+    "recolor": "Node color",
+    "fit": "Fit map",
+    "instruction": "Edit with AI",
+    "instructionPlaceholder": "Add a branch on the chain rule…",
+    "apply": "Apply changes",
+    "applied": "Changes applied. Undo restores the previous map.",
+    "editFailed": "The map could not be changed. Try again.",
+    "generateFailed": "The maps could not be built. Try again.",
+    "exportFailed": "The image could not be exported. Try again.",
+    "empty": "Build a map of this topic",
+    "emptyBody": "Your sources become focused maps that you can edit and keep offline.",
+    "generate": "Build maps",
+    "building": "Building your maps…",
+    "keyboard": "Tab selects a node · Enter renames · Delete removes a branch · Arrow keys move",
+    "save": "Save",
+    "cancel": "Cancel",
+    "target": "Connect to",
+    "nodeLabel": "Node label",
+    "colors": {
+      "surface-raised": "Neutral",
+      "primary-soft": "Cobalt",
+      "mastery-soft": "Mint",
+      "star-soft": "Gold",
+      "danger-soft": "Rose"
+    },
+    "buildSources": "Build from sources",
+    "general": "General knowledge, not from your sources"
   },
   "lesson": {
     "title": "Lesson from the book",
@@ -404,7 +437,8 @@
       "running": "Running",
       "failed": "Failed",
       "interrupted": "Interrupted"
-    }
+    },
+    "maps": "Building maps"
   },
   "errors": {
     "coreRestarted": "The internal engine restarted",

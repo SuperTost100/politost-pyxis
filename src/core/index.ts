@@ -108,7 +108,18 @@ if (!parent) {
             )
           : undefined,
       );
-      bindMaps(db);
+      const mapFixture =
+        data.dev === true ? process.env["PYXIS_E2E_MAP_REPLIES"] : undefined;
+      bindMaps(
+        db,
+        runner,
+        mapFixture
+          ? recordedPlanRun(
+              mapFixture,
+              Number(process.env["PYXIS_E2E_MAP_DELAY"] ?? 0),
+            )
+          : undefined,
+      );
       bindTools();
       bindStudy(
         db,

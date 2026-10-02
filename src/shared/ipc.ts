@@ -2,37 +2,11 @@ import { z } from "zod";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { planFileSchema } from "./plan-file";
 
-const mapNode = z.object({
-  id: z.string(),
-  label: z.string(),
-  parent: z.string().nullable(),
-  x: z.number(),
-  y: z.number(),
-  pinned: z.boolean(),
-  color: z.string().optional(),
-});
-const mapEdge = z.object({ from: z.string(), to: z.string() });
-const conceptGraph = z.object({
-  layout: z.enum(["tree", "radial"]),
-  nodes: z.array(mapNode),
-  edges: z.array(mapEdge),
-  undo: z
-    .object({ nodes: z.array(mapNode), edges: z.array(mapEdge) })
-    .nullable(),
-});
-const mapOp = z.discriminatedUnion("op", [
-  z.object({
-    op: z.literal("add_node"),
-    id: z.string(),
-    label: z.string(),
-    parent: z.string(),
-  }),
-  z.object({ op: z.literal("rename"), id: z.string(), label: z.string() }),
-  z.object({ op: z.literal("delete"), id: z.string() }),
-  z.object({ op: z.literal("connect"), from: z.string(), to: z.string() }),
-  z.object({ op: z.literal("disconnect"), from: z.string(), to: z.string() }),
-  z.object({ op: z.literal("recolor"), id: z.string(), color: z.string() }),
-]);
+import {
+  conceptGraphSchema as conceptGraph,
+  mapOpSchema as mapOp,
+  mapSummarySchema,
+} from "./concept-map";
 
 export const JobState = z.enum([
   "queued",
@@ -576,14 +550,51 @@ export const requests = {
     input: z.object({ dataUrl: z.string().max(4_000_000) }),
     output: z.object({ path: z.string() }),
   },
-  "maps.open": {
+  "maps.list": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.array(mapSummarySchema),
+  },
+  "maps.build": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z
+      .object({
+        jobId: z.string(),
+        state: JobState,
+        progress: z.number(),
+        stepLabel: z.string().nullable(),
+        error: z.string().nullable(),
+      })
+      .nullable(),
+  },
+  "maps.generate": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({
+      jobId: z.string().optional(),
+      maps: z.array(mapSummarySchema),
+    }),
+  },
+  "maps.edit": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      mapId: z.string().optional(),
+      instruction: z.string().trim().min(1).max(2000),
+    }),
+    output: conceptGraph,
+  },
+  "maps.open": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      mapId: z.string().optional(),
+    }),
     output: conceptGraph,
   },
   "maps.layout": {
     input: z.object({
       planId: z.string(),
       topicId: z.string(),
+      mapId: z.string().optional(),
       layout: z.enum(["tree", "radial"]),
     }),
     output: conceptGraph,
@@ -592,6 +603,7 @@ export const requests = {
     input: z.object({
       planId: z.string(),
       topicId: z.string(),
+      mapId: z.string().optional(),
       nodeId: z.string(),
       x: z.number(),
       y: z.number(),
@@ -602,12 +614,17 @@ export const requests = {
     input: z.object({
       planId: z.string(),
       topicId: z.string(),
+      mapId: z.string().optional(),
       ops: z.array(mapOp),
     }),
     output: conceptGraph,
   },
   "maps.undo": {
-    input: z.object({ planId: z.string(), topicId: z.string() }),
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      mapId: z.string().optional(),
+    }),
     output: conceptGraph,
   },
   "plans.list": {

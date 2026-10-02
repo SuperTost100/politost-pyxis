@@ -1,282 +1,633 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "antd";
-import { useRef, useState } from "react";
+import { Button, Input, Modal, Segmented, Select } from "antd";
+import {
+  Plus,
+  Link,
+  Trash2,
+  Palette,
+  Scan,
+  Undo2,
+  Download,
+  Pencil,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
+import {
+  ReactFlow,
+  Background,
+  BackgroundVariant,
+  Handle,
+  Position,
+  applyNodeChanges,
+  type Node,
+  type NodeProps,
+  type ReactFlowInstance,
+  type NodeChange,
+} from "@xyflow/react";
+import { toPng } from "html-to-image";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
+import { MarkdownView } from "../../components/MarkdownView";
 import { invoke } from "../../lib/ipc";
-import { branchFromInstruction } from "../../../../core/maps/graph";
+import { mapColors as fills, type MapOp } from "@shared/concept-map";
+import "@xyflow/react/dist/style.css";
+import "./MapPage.css";
+
+type FlowNode = Node<
+  { label: string; color: string; root: boolean },
+  "concept"
+>;
+function ConceptNode({ data }: NodeProps<FlowNode>) {
+  return (
+    <div
+      className={`px-concept-node${data.root ? " is-root" : ""}`}
+      style={{
+        background: data.color.startsWith("#")
+          ? data.color
+          : `var(--${data.color})`,
+      }}
+    >
+      <Handle type="target" position={Position.Top} />
+      <MarkdownView variant="body">{data.label}</MarkdownView>
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+const nodeTypes = { concept: ConceptNode };
 
 export function MapPage() {
   const { t } = useTranslation();
-  const { planId, topicId } = useParams();
+  const { planId = "", topicId = "" } = useParams();
   const client = useQueryClient();
+  const [mapId, setMapId] = useState<string>();
+  const [selected, setSelected] = useState<string>();
+  const [instruction, setInstruction] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [jobId, setJobId] = useState<string>();
+  const [dialog, setDialog] = useState<"add" | "rename" | "connect" | null>(
+    null,
+  );
   const [label, setLabel] = useState("");
-  const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
-  const keyPos = useRef(new Map<string, { x: number; y: number }>());
-  const keyChain = useRef(new Map<string, Promise<unknown>>());
-  const moveGen = useRef(new Map<string, number>());
+  const [target, setTarget] = useState<string>();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [nodes, setNodes] = useState<FlowNode[]>([]);
+  const flow = useRef<ReactFlowInstance<FlowNode> | null>(null);
+  const canvas = useRef<HTMLDivElement>(null);
+  const moves = useRef<Promise<unknown>>(Promise.resolve());
+  const listKey = ["maps", planId, topicId];
+  const list = useQuery({
+    queryKey: listKey,
+    queryFn: () => invoke("maps.list", { planId, topicId }),
+    refetchInterval: jobId ? 500 : false,
+  });
+  const build = useQuery({
+    queryKey: ["map-build", planId, topicId],
+    queryFn: () => invoke("maps.build", { planId, topicId }),
+    refetchInterval: (query) =>
+      query.state.data && ["queued", "running"].includes(query.state.data.state)
+        ? 500
+        : false,
+  });
+  const activeId =
+    list.data?.find((m) => m.id === mapId)?.id ?? list.data?.[0]?.id;
+  useEffect(() => {
+    setMapId(undefined);
+    setJobId(undefined);
+    setNotice("");
+    setInstruction("");
+  }, [planId, topicId]);
+  const mapKey = ["map", planId, topicId, activeId];
   const map = useQuery({
-    queryKey: ["map", planId, topicId],
-    enabled: Boolean(planId && topicId),
-    queryFn: () => invoke("maps.open", { planId: planId ?? "", topicId: topicId ?? "" }),
+    queryKey: mapKey,
+    enabled: Boolean(activeId),
+    queryFn: () => invoke("maps.open", { planId, topicId, mapId: activeId }),
   });
   const graph = map.data;
-  const nodes = (graph?.nodes ?? []).map((node) =>
-    drag?.id === node.id ? { ...node, x: drag.x, y: drag.y } : node,
+  const selectedNode = graph?.nodes.find((n) => n.id === selected);
+  const root = graph?.nodes.find((n) => n.parent === null);
+  const job = build.data;
+  const building = Boolean(job && ["queued", "running"].includes(job.state));
+  useEffect(() => {
+    if (job && ["queued", "running"].includes(job.state)) setJobId(job.jobId);
+  }, [job?.jobId, job?.state]);
+  const disabled =
+    busy ||
+    Boolean(building) ||
+    list.isPending ||
+    Boolean(activeId && map.isPending);
+  useEffect(() => {
+    if (
+      jobId &&
+      job &&
+      ["succeeded", "failed", "cancelled", "interrupted"].includes(job.state)
+    ) {
+      setJobId(undefined);
+      void client.invalidateQueries({ queryKey: listKey });
+      if (job.state !== "succeeded") setNotice(t("map.generateFailed"));
+    }
+  }, [job?.state, jobId, client, planId, topicId, t]);
+  useEffect(() => {
+    setNodes(
+      (graph?.nodes ?? []).map((n) => ({
+        id: n.id,
+        type: "concept",
+        position: { x: n.x, y: n.y },
+        selected: selected === n.id,
+        ariaLabel: n.label,
+        ariaRole: "button",
+        data: {
+          label: n.label,
+          root: n.parent === null,
+          color:
+            fills.some((color) => color === n.color) ||
+            /^#[0-9a-f]{6}$/i.test(n.color ?? "")
+              ? n.color!
+              : n.parent === null
+                ? "surface-overlay"
+                : "surface-raised",
+        },
+      })),
+    );
+  }, [graph, selected]);
+  useEffect(() => {
+    setSelected(undefined);
+    setPaletteOpen(false);
+  }, [activeId]);
+  const edges = useMemo(
+    () =>
+      (graph?.edges ?? []).map((e) => ({
+        id: JSON.stringify([e.from, e.to]),
+        source: e.from,
+        target: e.to,
+        label: e.label,
+        type: "straight",
+        style: { stroke: "var(--border-control)", strokeWidth: 1.5 },
+        labelStyle: {
+          fill: "var(--ink-muted)",
+          fontFamily: "var(--font-sans)",
+          fontSize: 12,
+        },
+        labelBgStyle: { fill: "var(--bg)" },
+      })),
+    [graph],
   );
-  const bounds = boundsOf(nodes);
 
-  function refresh() {
-    void client.invalidateQueries({ queryKey: ["map", planId, topicId] });
+  async function commit(action: () => Promise<NonNullable<typeof graph>>) {
+    if (disabled) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      await moves.current.catch(() => undefined);
+      const result = await action();
+      client.setQueryData(mapKey, result);
+    } catch {
+      setNotice(t("map.editFailed"));
+    } finally {
+      setBusy(false);
+    }
   }
-
+  function patch(ops: MapOp[]) {
+    return commit(() =>
+      invoke("maps.patch", { planId, topicId, mapId: activeId, ops }),
+    );
+  }
+  const changes = useCallback(
+    (changes: NodeChange<FlowNode>[]) => {
+      setNodes((current) => applyNodeChanges(changes, current));
+      for (const change of changes) {
+        if (
+          change.type !== "position" ||
+          !change.position ||
+          change.dragging ||
+          !activeId
+        )
+          continue;
+        const { x, y } = change.position;
+        moves.current = moves.current
+          .catch(() => undefined)
+          .then(() =>
+            invoke("maps.move", {
+              planId,
+              topicId,
+              mapId: activeId,
+              nodeId: change.id,
+              x,
+              y,
+            }),
+          )
+          .then((result) => client.setQueryData(mapKey, result))
+          .catch(() => setNotice(t("map.editFailed")));
+      }
+    },
+    [planId, topicId, activeId, client],
+  );
+  async function generateMaps() {
+    setBusy(true);
+    setNotice("");
+    try {
+      const result = await invoke("maps.generate", { planId, topicId });
+      setJobId(result.jobId);
+      await client.invalidateQueries({ queryKey: listKey });
+      await client.invalidateQueries({
+        queryKey: ["map-build", planId, topicId],
+      });
+    } catch {
+      setNotice(t("map.generateFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function exportPng() {
+    if (!canvas.current) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      await document.fonts.ready;
+      const url = await toPng(canvas.current, {
+        backgroundColor: getComputedStyle(document.documentElement)
+          .getPropertyValue("--bg")
+          .trim(),
+        pixelRatio: 2,
+        filter: (el) =>
+          !(
+            el instanceof HTMLElement &&
+            (el.classList.contains("px-map-rail") ||
+              el.classList.contains("react-flow__attribution"))
+          ),
+      });
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "map.png";
+      link.click();
+    } catch {
+      setNotice(t("map.exportFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  function rename() {
+    if (selectedNode) {
+      setLabel(selectedNode.label);
+      setDialog("rename");
+    }
+  }
   return (
-    <CanvasLayout title={t("map.title")} closeTo={`/plans/${planId ?? ""}`}>
-      <div className="gallery-row">
-        <Button
-          shape="round"
-          type={graph?.layout === "tree" ? "primary" : "default"}
-          onClick={() =>
-            void invoke("maps.layout", {
-              planId: planId ?? "",
-              topicId: topicId ?? "",
-              layout: "tree",
-            }).then(refresh)
-          }
-        >
-          {t("map.tree")}
-        </Button>
-        <Button
-          shape="round"
-          type={graph?.layout === "radial" ? "primary" : "default"}
-          onClick={() =>
-            void invoke("maps.layout", {
-              planId: planId ?? "",
-              topicId: topicId ?? "",
-              layout: "radial",
-            }).then(refresh)
-          }
-        >
-          {t("map.radial")}
-        </Button>
-        <Button shape="round" disabled={!graph?.undo} onClick={() => {
-          const pending = [...keyChain.current.values()];
-          for (const id of keyChain.current.keys()) {
-            moveGen.current.set(id, (moveGen.current.get(id) ?? 0) + 1);
-          }
-          keyPos.current.clear();
-          void Promise.all(pending.map((job) => job.catch(() => undefined))).then(() =>
-            invoke("maps.undo", { planId: planId ?? "", topicId: topicId ?? "" }).then(refresh),
-          );
-        }}>
-          {t("map.undo")}
-        </Button>
-        <Button shape="round" onClick={() => downloadPng(nodes, graph?.edges ?? [])}>
-          {t("map.png")}
-        </Button>
-        <Input
-          aria-label={t("map.add")}
-          value={label}
-          onChange={(event) => setLabel(event.target.value)}
-          style={{ maxWidth: 240 }}
-        />
-        <Button
-          type="primary"
-          shape="round"
-          disabled={label.trim() === ""}
-          onClick={() => {
-            const branch = branchFromInstruction(label);
-            void invoke("maps.patch", {
-              planId: planId ?? "",
-              topicId: topicId ?? "",
-              ops: [
-                {
-                  op: "add_node",
-                  id: `n-${Date.now()}`,
-                  label: branch ?? label.trim(),
-                  parent: "root",
-                },
-              ],
-            }).then(() => {
-              setLabel("");
-              refresh();
-            });
-          }}
-        >
-          {t("map.add")}
-        </Button>
-      </div>
-      <svg
-        className="px-map"
-        role="group"
-        aria-label={t("map.title")}
-        viewBox={`${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`}
-        style={{ width: "100%", height: "70vh", background: "transparent" }}
-      >
-        {(graph?.edges ?? []).map((edge) => {
-          const from = nodes.find((node) => node.id === edge.from);
-          const to = nodes.find((node) => node.id === edge.to);
-          if (!from || !to) return null;
-          return (
-            <line
-              key={`${edge.from}-${edge.to}`}
-              x1={from.x}
-              y1={from.y}
-              x2={to.x}
-              y2={to.y}
-              stroke="currentColor"
-              strokeWidth={1.5}
+    <CanvasLayout
+      title={list.data?.find((m) => m.id === activeId)?.title ?? t("map.title")}
+      closeTo={`/plans/${planId}`}
+    >
+      <div className="px-map-editor">
+        <div className="px-map-topbar">
+          {graph && (
+            <Segmented
+              aria-label={t("map.layout")}
+              disabled={disabled}
+              value={graph?.layout ?? "tree"}
+              options={[
+                { label: t("map.tree"), value: "tree" },
+                { label: t("map.radial"), value: "radial" },
+              ]}
+              onChange={(layout) =>
+                void commit(() =>
+                  invoke("maps.layout", {
+                    planId,
+                    topicId,
+                    mapId: activeId,
+                    layout: layout as "tree" | "radial",
+                  }),
+                )
+              }
             />
-          );
-        })}
-        {nodes.map((node) => (
-          <g
-            key={node.id}
-            tabIndex={0}
-            role="button"
-            aria-label={node.label}
-            transform={`translate(${node.x} ${node.y})`}
-            style={{ cursor: "grab" }}
-            onKeyDown={(event) => {
-              const step = event.shiftKey ? 48 : 16;
-              const dx =
-                event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
-              const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
-              if ((dx === 0 && dy === 0) || !planId || !topicId) return;
-              event.preventDefault();
-              const current = keyPos.current.get(node.id) ?? { x: node.x, y: node.y };
-              const x = current.x + dx;
-              const y = current.y + dy;
-              keyPos.current.set(node.id, { x, y });
-              const gen = moveGen.current.get(node.id) ?? 0;
-              const prev = keyChain.current.get(node.id) ?? Promise.resolve();
-              const job = prev.catch(() => undefined).then(() => {
-                if ((moveGen.current.get(node.id) ?? 0) !== gen) return;
-                return invoke("maps.move", { planId, topicId, nodeId: node.id, x, y }).then(refresh);
-              });
-              keyChain.current.set(node.id, job);
-            }}
-            onPointerDown={(event) => {
-              const origin = { x: node.x, y: node.y };
-              const gen = (moveGen.current.get(node.id) ?? 0) + 1;
-              moveGen.current.set(node.id, gen);
-              keyPos.current.delete(node.id);
-              const pending = keyChain.current.get(node.id) ?? Promise.resolve();
-              const svg = event.currentTarget.ownerSVGElement;
-              const target = event.currentTarget;
-              target.setPointerCapture(event.pointerId);
-              const local = (ev: PointerEvent) => svgPoint(svg, ev.clientX, ev.clientY);
-              const originPointer = local(event.nativeEvent);
-              const move = (ev: PointerEvent) => {
-                const point = local(ev);
-                setDrag({
-                  id: node.id,
-                  x: Math.round(origin.x + point.x - originPointer.x),
-                  y: Math.round(origin.y + point.y - originPointer.y),
-                });
-              };
-              const up = (ev: PointerEvent) => {
-                target.removeEventListener("pointermove", move);
-                target.removeEventListener("pointerup", up);
-                const point = local(ev);
-                const x = Math.round(origin.x + point.x - originPointer.x);
-                const y = Math.round(origin.y + point.y - originPointer.y);
-                setDrag(null);
-                const job = pending.catch(() => undefined).then(() => {
-                  if ((moveGen.current.get(node.id) ?? 0) !== gen) return;
-                  return invoke("maps.move", {
-                    planId: planId ?? "",
-                    topicId: topicId ?? "",
-                    nodeId: node.id,
-                    x,
-                    y,
-                  }).then(refresh);
-                });
-                keyChain.current.set(node.id, job);
-              };
-              target.addEventListener("pointermove", move);
-              target.addEventListener("pointerup", up);
-            }}
-          >
-            <rect x={-70} y={-22} width={140} height={44} rx={12} fill={node.color ?? "var(--surface)"} stroke="currentColor" />
-            <text textAnchor="middle" dominantBaseline="middle" fill="currentColor" fontSize={13}>
-              {node.label.slice(0, 22)}
-            </text>
-          </g>
-        ))}
-      </svg>
+          )}
+          {list.data && list.data.length > 1 && (
+            <Select
+              aria-label={t("map.choose")}
+              className="px-map-picker"
+              value={activeId}
+              disabled={disabled}
+              options={list.data.map((m) => ({ label: m.title, value: m.id }))}
+              onChange={setMapId}
+            />
+          )}
+          <span className="px-map-top-spacer" />
+          {graph && (
+            <>
+              {(!list.data?.some((m) => m.provider) ||
+                (job &&
+                  ["failed", "cancelled", "interrupted"].includes(
+                    job.state,
+                  ))) && (
+                <Button
+                  shape="round"
+                  disabled={disabled}
+                  onClick={() => void generateMaps()}
+                >
+                  {t("map.buildSources")}
+                </Button>
+              )}
+              <Button
+                shape="circle"
+                aria-label={t("map.undo")}
+                disabled={disabled || !graph.undo}
+                icon={<Undo2 size={18} />}
+                onClick={() =>
+                  void commit(() =>
+                    invoke("maps.undo", { planId, topicId, mapId: activeId }),
+                  )
+                }
+              />
+              <Button
+                shape="round"
+                disabled={disabled}
+                icon={<Download size={18} />}
+                onClick={() => void exportPng()}
+              >
+                {t("map.png")}
+              </Button>
+            </>
+          )}
+        </div>
+        {building && (
+          <p className="meta px-map-notice" role="status">
+            {t("map.building")}
+          </p>
+        )}
+        {(notice || map.isError || list.isError) && (
+          <p className="small px-map-notice" role="status">
+            {notice || t("map.editFailed")}
+          </p>
+        )}
+        {list.data?.find((m) => m.id === activeId)?.grounding === "general" && (
+          <p className="meta px-map-notice">{t("map.general")}</p>
+        )}
+        {!graph ? (
+          <div className="px-map-empty">
+            <h2 className="title-2">
+              {t(building ? "map.building" : "map.empty")}
+            </h2>
+            <p className="small">{t("map.emptyBody")}</p>
+            <Button
+              type="primary"
+              shape="round"
+              loading={disabled}
+              onClick={() => void generateMaps()}
+            >
+              {t("map.generate")}
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="px-map-canvas" ref={canvas}>
+              <ReactFlow<FlowNode>
+                key={activeId}
+                nodes={nodes}
+                edges={edges}
+                nodeTypes={nodeTypes}
+                proOptions={{ hideAttribution: true }}
+                fitView
+                fitViewOptions={{ padding: 0.25 }}
+                minZoom={0.15}
+                maxZoom={2}
+                nodesDraggable={!disabled}
+                nodesConnectable={!disabled}
+                elementsSelectable={!disabled}
+                deleteKeyCode={null}
+                onInit={(instance) => {
+                  flow.current = instance;
+                }}
+                onNodesChange={changes}
+                onFocusCapture={(event) => {
+                  const id = (event.target as HTMLElement).closest<HTMLElement>(
+                    ".react-flow__node",
+                  )?.dataset.id;
+                  if (id) {
+                    setSelected(id);
+                    setNodes((current) =>
+                      current.map((n) => ({ ...n, selected: n.id === id })),
+                    );
+                  }
+                }}
+                onNodeClick={(_, node) => setSelected(node.id)}
+                onPaneClick={() => {
+                  setSelected(undefined);
+                  setPaletteOpen(false);
+                }}
+                onConnect={(connection) =>
+                  void patch([
+                    {
+                      op: "connect",
+                      from: connection.source,
+                      to: connection.target,
+                    },
+                  ])
+                }
+                onNodeDoubleClick={(_, node) => {
+                  setSelected(node.id);
+                  setLabel(node.data.label);
+                  setDialog("rename");
+                }}
+                onSelectionChange={({ nodes }) => {
+                  if (nodes.length === 1) setSelected(nodes[0]!.id);
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.target instanceof HTMLInputElement ||
+                    event.target instanceof HTMLTextAreaElement ||
+                    disabled
+                  )
+                    return;
+                  if (event.key === "Enter" && selectedNode) {
+                    event.preventDefault();
+                    rename();
+                  }
+                  if (event.key === "Delete" && selectedNode?.parent) {
+                    event.preventDefault();
+                    void patch([{ op: "delete", id: selectedNode.id }]);
+                  }
+                }}
+              >
+                <Background
+                  variant={BackgroundVariant.Dots}
+                  gap={24}
+                  size={1}
+                  color="var(--border)"
+                />
+              </ReactFlow>
+              <div
+                className="px-map-rail"
+                role="toolbar"
+                aria-label={t("map.tools")}
+              >
+                <Button
+                  type="text"
+                  shape="circle"
+                  disabled={disabled}
+                  aria-label={t("map.add")}
+                  icon={<Plus size={18} />}
+                  onClick={() => {
+                    setLabel("");
+                    setDialog("add");
+                  }}
+                />
+                <Button
+                  type="text"
+                  shape="circle"
+                  disabled={disabled || !selectedNode}
+                  aria-label={t("map.rename")}
+                  icon={<Pencil size={18} />}
+                  onClick={rename}
+                />
+                <Button
+                  type="text"
+                  shape="circle"
+                  disabled={disabled || !selectedNode}
+                  aria-label={t("map.connect")}
+                  icon={<Link size={18} />}
+                  onClick={() => {
+                    setTarget(undefined);
+                    setDialog("connect");
+                  }}
+                />
+                <Button
+                  type="text"
+                  shape="circle"
+                  disabled={disabled || !selectedNode?.parent}
+                  aria-label={t("map.delete")}
+                  icon={<Trash2 size={18} />}
+                  onClick={() =>
+                    selected && void patch([{ op: "delete", id: selected }])
+                  }
+                />
+                <Button
+                  type="text"
+                  shape="circle"
+                  disabled={disabled || !selectedNode}
+                  aria-label={t("map.recolor")}
+                  icon={<Palette size={18} />}
+                  onClick={() => setPaletteOpen((v) => !v)}
+                />
+                <Button
+                  type="text"
+                  shape="circle"
+                  aria-label={t("map.fit")}
+                  icon={<Scan size={18} />}
+                  onClick={() =>
+                    void flow.current?.fitView({ padding: 0.25, duration: 0 })
+                  }
+                />
+                {paletteOpen && selected && (
+                  <div
+                    className="px-map-palette"
+                    role="group"
+                    aria-label={t("map.recolor")}
+                  >
+                    {fills.map((color) => (
+                      <button
+                        key={color}
+                        disabled={disabled}
+                        aria-label={t(`map.colors.${color}`)}
+                        style={{ background: `var(--${color})` }}
+                        onClick={() => {
+                          void patch([{ op: "recolor", id: selected, color }]);
+                          setPaletteOpen(false);
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <form
+              className="px-map-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (instruction.trim())
+                  void commit(async () => {
+                    const result = await invoke("maps.edit", {
+                      planId,
+                      topicId,
+                      mapId: activeId,
+                      instruction: instruction.trim(),
+                    });
+                    setInstruction("");
+                    setNotice(t("map.applied"));
+                    return result;
+                  });
+              }}
+            >
+              <Input
+                aria-label={t("map.instruction")}
+                placeholder={t("map.instructionPlaceholder")}
+                value={instruction}
+                maxLength={2000}
+                disabled={disabled}
+                onChange={(event) => setInstruction(event.target.value)}
+              />
+              <Button
+                htmlType="submit"
+                type="primary"
+                shape="round"
+                loading={busy}
+                disabled={disabled || !instruction.trim()}
+              >
+                {t("map.apply")}
+              </Button>
+            </form>
+            <p className="meta px-map-help">{t("map.keyboard")}</p>
+          </>
+        )}
+      </div>
+      <Modal
+        title={t(
+          dialog === "connect"
+            ? "map.connect"
+            : dialog === "rename"
+              ? "map.rename"
+              : "map.add",
+        )}
+        open={dialog !== null}
+        onCancel={() => setDialog(null)}
+        okText={t("map.save")}
+        cancelText={t("map.cancel")}
+        okButtonProps={{
+          disabled: dialog === "connect" ? !target : !label.trim(),
+        }}
+        onOk={() => {
+          const op: MapOp =
+            dialog === "connect"
+              ? { op: "connect", from: selected!, to: target! }
+              : dialog === "rename"
+                ? { op: "rename", id: selected!, label: label.trim() }
+                : {
+                    op: "add_node",
+                    id: crypto.randomUUID(),
+                    label: label.trim(),
+                    parent: selected ?? root!.id,
+                  };
+          void patch([op]);
+          setDialog(null);
+        }}
+      >
+        {dialog === "connect" ? (
+          <Select
+            aria-label={t("map.target")}
+            style={{ width: "100%" }}
+            value={target}
+            onChange={setTarget}
+            options={graph?.nodes
+              .filter((n) => n.id !== selected)
+              .map((n) => ({ label: n.label, value: n.id }))}
+          />
+        ) : (
+          <Input
+            aria-label={t("map.nodeLabel")}
+            value={label}
+            maxLength={200}
+            onChange={(event) => setLabel(event.target.value)}
+          />
+        )}
+      </Modal>
     </CanvasLayout>
   );
-}
-
-function svgPoint(svg: SVGSVGElement | null, clientX: number, clientY: number) {
-  if (!svg) return { x: 0, y: 0 };
-  const point = svg.createSVGPoint();
-  point.x = clientX;
-  point.y = clientY;
-  const matrix = svg.getScreenCTM();
-  if (!matrix) return { x: 0, y: 0 };
-  const local = point.matrixTransform(matrix.inverse());
-  return { x: local.x, y: local.y };
-}
-
-function boundsOf(nodes: Array<{ x: number; y: number }>) {
-  const xs = nodes.map((node) => node.x);
-  const ys = nodes.map((node) => node.y);
-  const minX = Math.min(0, ...xs) - 120;
-  const minY = Math.min(0, ...ys) - 80;
-  const maxX = Math.max(0, ...xs) + 120;
-  const maxY = Math.max(0, ...ys) + 80;
-  return { minX, minY, width: Math.max(400, maxX - minX), height: Math.max(300, maxY - minY) };
-}
-
-function downloadPng(
-  nodes: Array<{ id: string; x: number; y: number; label: string }>,
-  edges: Array<{ from: string; to: string }>,
-) {
-  const bounds = boundsOf(nodes);
-  const canvas = document.createElement("canvas");
-  canvas.width = 1200;
-  canvas.height = Math.round((1200 * bounds.height) / bounds.width);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  ctx.fillStyle = "#101218";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const sx = canvas.width / bounds.width;
-  const sy = canvas.height / bounds.height;
-  const px = (x: number) => (x - bounds.minX) * sx;
-  const py = (y: number) => (y - bounds.minY) * sy;
-  ctx.strokeStyle = "#d7dbe6";
-  ctx.lineWidth = 2;
-  for (const edge of edges) {
-    const from = nodes.find((node) => node.id === edge.from);
-    const to = nodes.find((node) => node.id === edge.to);
-    if (!from || !to) continue;
-    ctx.beginPath();
-    ctx.moveTo(px(from.x), py(from.y));
-    ctx.lineTo(px(to.x), py(to.y));
-    ctx.stroke();
-  }
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = "16px sans-serif";
-  for (const node of nodes) {
-    const x = px(node.x);
-    const y = py(node.y);
-    const w = 140 * sx;
-    const h = 44 * sy;
-    ctx.fillStyle = "#1c2230";
-    ctx.strokeStyle = "#d7dbe6";
-    ctx.beginPath();
-    ctx.roundRect(x - w / 2, y - h / 2, w, h, 12);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "#e8ebf2";
-    ctx.fillText(node.label.slice(0, 22), x, y);
-  }
-  const link = document.createElement("a");
-  link.href = canvas.toDataURL("image/png");
-  link.download = "map.png";
-  link.click();
 }

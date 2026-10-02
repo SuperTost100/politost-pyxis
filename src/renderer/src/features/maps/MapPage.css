@@ -1,0 +1,145 @@
+.px-map-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: calc(100vh - 112px);
+  min-height: 500px;
+}
+.px-map-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.px-map-top-spacer {
+  flex: 1;
+}
+.px-map-picker {
+  min-width: 200px;
+  max-width: 320px;
+}
+.px-map-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.px-concept-node {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  width: 200px;
+  min-height: 64px;
+  padding: var(--space-3) var(--space-4);
+  color: var(--ink);
+}
+.px-concept-node .px-markdown {
+  font: 400 15px/22px var(--font-sans);
+}
+.px-concept-node .px-markdown p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.px-concept-node.is-root .px-markdown {
+  font-weight: 600;
+}
+.px-map-canvas .react-flow__node.selected,
+.px-map-canvas .react-flow__node:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: var(--radius-md);
+}
+.px-map-canvas .react-flow__handle {
+  background: var(--border-control);
+  border-color: var(--surface);
+  width: 7px;
+  height: 7px;
+}
+.px-map-rail {
+  position: absolute;
+  top: 50%;
+  left: var(--space-3);
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+.px-map-palette {
+  position: absolute;
+  left: calc(100% + 8px);
+  bottom: 12px;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-map-palette button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-control);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.px-map-composer {
+  display: flex;
+  width: min(100%, 720px);
+  align-self: center;
+  align-items: center;
+  gap: var(--space-3);
+}
+.px-map-composer .ant-input {
+  flex: 1;
+  min-width: 0;
+}
+.px-map-composer .ant-btn {
+  white-space: nowrap;
+}
+.px-map-help {
+  text-align: center;
+  margin: 0;
+}
+.px-map-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-4);
+}
+.px-map-empty h2,
+.px-map-empty p,
+.px-map-notice {
+  margin: 0;
+}
+@media (max-width: 1000px) {
+  .px-map-topbar {
+    gap: var(--space-2);
+  }
+  .px-map-picker {
+    max-width: 240px;
+  }
+}
+
+.px-map-topbar {
+  padding: var(--space-3) var(--space-3) 0;
+}
+.px-map-topbar .ant-segmented-item {
+  color: var(--ink-muted);
+}
+.px-map-topbar .ant-segmented-item-selected {
+  color: var(--ink);
+  background: var(--surface-overlay);
+}
+
+.px-map-topbar .ant-segmented-thumb {
+  background: var(--surface-overlay);
+}

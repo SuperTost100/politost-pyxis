@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOps, branchFromInstruction, layoutGraph, undoGraph, type ConceptGraph } from "./graph";
+import { applyOps, layoutGraph, undoGraph, type ConceptGraph } from "./graph";
 
 function sample(): ConceptGraph {
   return layoutGraph({
@@ -21,7 +21,7 @@ describe("concept map", () => {
   it("spreads a tree and keeps a dragged node", () => {
     const tree = sample();
     const child = tree.nodes.find((node) => node.id === "a");
-    expect(child?.y).toBe(110);
+    expect(child?.y).toBe(160);
     expect(child?.x).not.toBe(tree.nodes.find((node) => node.id === "b")?.x);
     const pinned = layoutGraph({
       ...tree,
@@ -29,7 +29,10 @@ describe("concept map", () => {
         node.id === "a" ? { ...node, x: 40, y: 70, pinned: true } : node,
       ),
     });
-    expect(pinned.nodes.find((node) => node.id === "a")).toMatchObject({ x: 40, y: 70 });
+    expect(pinned.nodes.find((node) => node.id === "a")).toMatchObject({
+      x: 40,
+      y: 70,
+    });
   });
 
   it("puts children on a ring in the radial layout", () => {
@@ -56,7 +59,10 @@ describe("concept map", () => {
     });
     const first = many.nodes.find((node) => node.id === "n0");
     const second = many.nodes.find((node) => node.id === "n1");
-    const gap = Math.hypot((first?.x ?? 0) - (second?.x ?? 0), (first?.y ?? 0) - (second?.y ?? 0));
+    const gap = Math.hypot(
+      (first?.x ?? 0) - (second?.x ?? 0),
+      (first?.y ?? 0) - (second?.y ?? 0),
+    );
     expect(gap).toBeGreaterThan(140);
   });
 
@@ -65,27 +71,29 @@ describe("concept map", () => {
       { op: "add_node", id: "c", label: "Catena", parent: "a" },
       { op: "rename", id: "b", label: "Velocità" },
     ]);
-    expect(next.nodes.map((node) => node.id).sort()).toEqual(["a", "b", "c", "root"]);
+    expect(next.nodes.map((node) => node.id).sort()).toEqual([
+      "a",
+      "b",
+      "c",
+      "root",
+    ]);
     expect(next.nodes.find((node) => node.id === "b")?.label).toBe("Velocità");
     const back = undoGraph(next);
-    expect(back.nodes.map((node) => node.id).sort()).toEqual(["a", "b", "root"]);
+    expect(back.nodes.map((node) => node.id).sort()).toEqual([
+      "a",
+      "b",
+      "root",
+    ]);
     expect(back.undo).toBeNull();
     const old = sample();
     old.layout = "radial";
-    old.undo = { nodes: old.nodes.map((node) => ({ ...node })), edges: old.edges.map((edge) => ({ ...edge })) };
+    old.undo = {
+      nodes: old.nodes.map((node) => ({ ...node })),
+      edges: old.edges.map((edge) => ({ ...edge })),
+    };
     expect(undoGraph(old).layout).toBe("radial");
-    expect(() => applyOps(sample(), [{ op: "rename", id: "missing", label: "x" }])).toThrow(
-      /map-missing/,
-    );
-  });
-
-  it("turns one instruction into one undoable branch", () => {
-    const label = branchFromInstruction("aggiungi un ramo sulla regola della catena");
-    expect(label).toBe("regola della catena");
-    const next = applyOps(sample(), [
-      { op: "add_node", id: "c", label: label ?? "", parent: "root" },
-    ]);
-    expect(next.nodes.find((node) => node.id === "c")?.label).toBe("regola della catena");
-    expect(undoGraph(next).nodes.some((node) => node.id === "c")).toBe(false);
+    expect(() =>
+      applyOps(sample(), [{ op: "rename", id: "missing", label: "x" }]),
+    ).toThrow(/map-missing/);
   });
 });

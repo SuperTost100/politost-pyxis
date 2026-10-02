@@ -240,6 +240,14 @@ async function dispatch(
       return tools?.python(requests["tools.python"].input.parse(input));
     case "tools.stagePng":
       return tools?.stagePng(requests["tools.stagePng"].input.parse(input));
+    case "maps.list":
+      return maps?.list(requests["maps.list"].input.parse(input));
+    case "maps.build":
+      return maps?.build(requests["maps.build"].input.parse(input));
+    case "maps.generate":
+      return maps?.generate(requests["maps.generate"].input.parse(input));
+    case "maps.edit":
+      return maps?.edit(requests["maps.edit"].input.parse(input));
     case "maps.open":
       return maps?.open(requests["maps.open"].input.parse(input));
     case "maps.layout":
@@ -408,8 +416,12 @@ export function bindTools(): void {
   tools = toolHandlers();
 }
 
-export function bindMaps(db: Parameters<typeof mapHandlers>[0]): void {
-  maps = mapHandlers(db);
+export function bindMaps(
+  db: Parameters<typeof mapHandlers>[0],
+  runner?: Runner,
+  run?: Parameters<typeof mapHandlers>[2],
+): void {
+  maps = mapHandlers(db, runner, run);
 }
 
 export function bindPlans(

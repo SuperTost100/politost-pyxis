@@ -94,7 +94,7 @@ export function CanvasLayout(props: {
         <h1 className="title-3 focus-title">{props.title}</h1>
         <span />
       </header>
-      <div className="canvas-stage">{props.children}</div>
+      <main className="canvas-stage">{props.children}</main>
     </div>
   );
 }

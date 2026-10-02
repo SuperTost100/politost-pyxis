@@ -1,34 +1,43 @@
-export type MapNode = {
-  id: string;
-  label: string;
-  parent: string | null;
-  x: number;
-  y: number;
-  pinned: boolean;
-  color?: string;
-};
+import { hierarchy, tree } from "d3-hierarchy";
+import {
+  conceptGraphSchema,
+  mapOpSchema,
+  type ConceptGraph,
+  type MapOp,
+} from "../../shared/concept-map";
+export type { ConceptGraph, MapOp };
+export type MapNode = ConceptGraph["nodes"][number];
+export type MapEdge = ConceptGraph["edges"][number];
 
-export type MapEdge = { from: string; to: string };
-
-export type ConceptGraph = {
-  layout: "tree" | "radial";
-  nodes: MapNode[];
-  edges: MapEdge[];
-  undo: { nodes: MapNode[]; edges: MapEdge[]; layout?: "tree" | "radial" } | null;
-};
-
-export type MapOp =
-  | { op: "add_node"; id: string; label: string; parent: string }
-  | { op: "rename"; id: string; label: string }
-  | { op: "delete"; id: string }
-  | { op: "connect"; from: string; to: string }
-  | { op: "disconnect"; from: string; to: string }
-  | { op: "recolor"; id: string; color: string };
-
-const GAP_X = 180;
-const GAP_Y = 110;
+export function validateGraph(graph: ConceptGraph): void {
+  conceptGraphSchema.parse(graph);
+  const ids = new Set(graph.nodes.map((node) => node.id));
+  if (ids.size !== graph.nodes.length) throw new Error("map-duplicate");
+  if (graph.nodes.filter((node) => node.parent === null).length !== 1)
+    throw new Error("map-root");
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  for (const node of graph.nodes) {
+    const seen = new Set([node.id]);
+    let parent = node.parent;
+    while (parent !== null) {
+      if (!ids.has(parent)) throw new Error("map-missing");
+      if (seen.has(parent)) throw new Error("map-cycle");
+      seen.add(parent);
+      parent = byId.get(parent)!.parent;
+    }
+  }
+  const edges = new Set<string>();
+  for (const edge of graph.edges) {
+    if (!ids.has(edge.from) || !ids.has(edge.to))
+      throw new Error("map-missing");
+    const key = JSON.stringify([edge.from, edge.to]);
+    if (edges.has(key)) throw new Error("map-duplicate-edge");
+    edges.add(key);
+  }
+}
 
 export function layoutGraph(graph: ConceptGraph): ConceptGraph {
+  validateGraph(graph);
   const nodes = graph.nodes.map((node) => ({ ...node }));
   if (graph.layout === "radial") placeRadial(nodes);
   else placeTree(nodes);
@@ -43,20 +52,13 @@ export function applyOps(graph: ConceptGraph, ops: MapOp[]): ConceptGraph {
   };
   let nodes = undo.nodes.map((node) => ({ ...node }));
   let edges = undo.edges.map((edge) => ({ ...edge }));
-  for (const op of ops) {
+  for (const candidate of ops) {
+    const op = mapOpSchema.parse(candidate);
     const next = applyOne(nodes, edges, op);
     nodes = next.nodes;
     edges = next.edges;
   }
   return layoutGraph({ ...graph, nodes, edges, undo });
-}
-
-export function branchFromInstruction(text: string): string | null {
-  const match = /^(?:aggiungi un ramo|add a branch)\s+(?:su|sulla|sul|on)\s+(.+)$/i.exec(
-    text.trim(),
-  );
-  const label = match?.[1]?.trim();
-  return label ? label : null;
 }
 
 export function undoGraph(graph: ConceptGraph): ConceptGraph {
@@ -82,24 +84,36 @@ function applyOne(
     return {
       nodes: [
         ...nodes,
-        { id: op.id, label: op.label, parent: op.parent, x: 0, y: 0, pinned: false },
+        {
+          id: op.id,
+          label: op.label,
+          parent: op.parent,
+          x: 0,
+          y: 0,
+          pinned: false,
+        },
       ],
       edges: [...edges, { from: op.parent, to: op.id }],
     };
   }
-  if (!("id" in op) && op.op !== "connect" && op.op !== "disconnect") return { nodes, edges };
+  if (!("id" in op) && op.op !== "connect" && op.op !== "disconnect")
+    return { nodes, edges };
   if (op.op === "rename" || op.op === "recolor" || op.op === "delete") {
     if (!ids.has(op.id)) throw new Error("map-missing");
   }
   if (op.op === "rename") {
     return {
-      nodes: nodes.map((node) => (node.id === op.id ? { ...node, label: op.label } : node)),
+      nodes: nodes.map((node) =>
+        node.id === op.id ? { ...node, label: op.label } : node,
+      ),
       edges,
     };
   }
   if (op.op === "recolor") {
     return {
-      nodes: nodes.map((node) => (node.id === op.id ? { ...node, color: op.color } : node)),
+      nodes: nodes.map((node) =>
+        node.id === op.id ? { ...node, color: op.color } : node,
+      ),
       edges,
     };
   }
@@ -122,64 +136,51 @@ function applyOne(
   }
   if (op.op === "connect") {
     if (!ids.has(op.from) || !ids.has(op.to)) throw new Error("map-missing");
-    if (edges.some((edge) => edge.from === op.from && edge.to === op.to)) return { nodes, edges };
-    return { nodes, edges: [...edges, { from: op.from, to: op.to }] };
+    if (edges.some((edge) => edge.from === op.from && edge.to === op.to))
+      return { nodes, edges };
+    return {
+      nodes,
+      edges: [
+        ...edges,
+        { from: op.from, to: op.to, ...(op.label ? { label: op.label } : {}) },
+      ],
+    };
   }
+  if (!ids.has(op.from) || !ids.has(op.to)) throw new Error("map-missing");
   return {
     nodes,
-    edges: edges.filter((edge) => !(edge.from === op.from && edge.to === op.to)),
+    edges: edges.filter(
+      (edge) => !(edge.from === op.from && edge.to === op.to),
+    ),
   };
 }
 
-function placeTree(nodes: MapNode[]): void {
-  const depths = depthOf(nodes);
-  const rows = new Map<number, MapNode[]>();
-  for (const node of nodes) {
-    const depth = depths.get(node.id) ?? 0;
-    const row = rows.get(depth) ?? [];
-    row.push(node);
-    rows.set(depth, row);
-  }
-  for (const [depth, row] of rows) {
-    row.forEach((node, index) => {
-      if (node.pinned) return;
-      node.x = (index - (row.length - 1) / 2) * GAP_X;
-      node.y = depth * GAP_Y;
-    });
-  }
+function rooted(nodes: MapNode[]) {
+  return hierarchy(
+    nodes.find((node) => node.parent === null)!,
+    (node) => nodes.filter((child) => child.parent === node.id),
+  );
 }
-
-function placeRadial(nodes: MapNode[]): void {
-  const root = nodes.find((node) => node.parent == null) ?? nodes[0];
-  if (!root) return;
-  if (!root.pinned) {
-    root.x = 0;
-    root.y = 0;
-  }
-  const children = nodes.filter((node) => node.parent != null);
-  const ring = Math.max(220, Math.ceil((children.length * 160) / (2 * Math.PI)));
-  children.forEach((node, index) => {
-    if (node.pinned) return;
-    const angle = (index / Math.max(children.length, 1)) * Math.PI * 2 - Math.PI / 2;
-    const radius = node.parent === root.id ? ring : ring + 160;
-    node.x = Math.round(Math.cos(angle) * radius);
-    node.y = Math.round(Math.sin(angle) * radius);
+function placeTree(nodes: MapNode[]): void {
+  const placed = tree<MapNode>().nodeSize([240, 160])(rooted(nodes));
+  placed.each((point) => {
+    if (!point.data.pinned) {
+      point.data.x = point.x;
+      point.data.y = point.y;
+    }
   });
 }
-
-function depthOf(nodes: MapNode[]): Map<string, number> {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const depths = new Map<string, number>();
-  function walk(id: string, seen: Set<string>): number {
-    const known = depths.get(id);
-    if (known != null) return known;
-    if (seen.has(id)) return 0;
-    seen.add(id);
-    const parent = byId.get(id)?.parent;
-    const depth = parent ? walk(parent, seen) + 1 : 0;
-    depths.set(id, depth);
-    return depth;
-  }
-  for (const node of nodes) walk(node.id, new Set());
-  return depths;
+function placeRadial(nodes: MapNode[]): void {
+  const root = rooted(nodes);
+  const maxDepth = Math.max(1, root.height);
+  const outerRadius = Math.max(
+    320 * maxDepth,
+    (nodes.length * 250) / (2 * Math.PI),
+  );
+  const placed = tree<MapNode>().size([2 * Math.PI, outerRadius])(root);
+  placed.each((point) => {
+    if (point.data.pinned) return;
+    point.data.x = Math.round(Math.sin(point.x) * point.y);
+    point.data.y = Math.round(-Math.cos(point.x) * point.y);
+  });
 }
