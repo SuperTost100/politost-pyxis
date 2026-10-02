@@ -1,3 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
+import { invoke } from "../lib/ipc";
+import {
+  anchoredChecks,
+  fencedChecks,
+  type AnchoredCheck,
+  type MathCheck,
+} from "@shared/math-check";
 import { Button } from "antd";
 import type { ComponentPropsWithoutRef } from "react";
 import { isValidElement, useMemo } from "react";
@@ -14,7 +22,6 @@ import {
 } from "../markdown/normalizeMathDelimiters";
 import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
-import { checkClaim } from "../../../core/math/check";
 import "./MarkdownView.css";
 
 export type CitationResolver = (passageId: number) => string | undefined;
@@ -35,18 +42,38 @@ export function MarkdownView({
   citationResolver,
   onCitationClick,
   onRunPython,
+  checks,
 }: {
   children: string;
+  checks?: AnchoredCheck[];
   variant?: "reading" | "body";
   citationResolver?: CitationResolver;
   onCitationClick?: (passageId: number) => void;
   onRunPython?: (code: string) => void;
 }) {
   const { t } = useTranslation();
+  const claims = useMemo(
+    () => anchoredChecks(children, checks ?? fencedChecks(children)),
+    [children, checks],
+  );
   const source = useMemo(() => {
-    const withCites = linkCitations(children, citationResolver);
-    return normalizeMathDelimiters(withCites);
-  }, [children, citationResolver]);
+    let body = children.replace(/```check\s*\n[\s\S]*?\n```/g, "");
+    const inserts = new Map<number, string[]>();
+    claims.forEach((claim, index) => {
+      const start = body.indexOf(claim.step);
+      if (start < 0) return;
+      const next = body.indexOf("\n\n", start + claim.step.length);
+      const at = next < 0 ? body.length : next;
+      inserts.set(at, [
+        ...(inserts.get(at) ?? []),
+        `[check](mathcheck:${index})`,
+      ]);
+    });
+    for (const [at, markers] of [...inserts].sort((a, b) => b[0] - a[0])) {
+      body = `${body.slice(0, at)}\n\n${markers.join(" ")}\n\n${body.slice(at)}`;
+    }
+    return normalizeMathDelimiters(linkCitations(body, citationResolver));
+  }, [children, citationResolver, claims]);
 
   return (
     <div className={["px-markdown", `is-${variant}`].join(" ")}>
@@ -55,10 +82,17 @@ export function MarkdownView({
         rehypePlugins={[rehypeKatex]}
         skipHtml
         urlTransform={(url) =>
-          /^cite:p\d+$/.test(url) ? url : defaultUrlTransform(url)
+          /^(?:cite:p|mathcheck:)\d+$/.test(url)
+            ? url
+            : defaultUrlTransform(url)
         }
         components={{
           a: ({ href, children: linkChildren, ...rest }) => {
+            const check = href?.match(/^mathcheck:(\d+)$/);
+            if (check) {
+              const claim = claims[Number(check[1])];
+              return claim ? <AsyncCheck claim={claim} /> : null;
+            }
             const match = href?.match(/^cite:p(\d+)$/);
             if (match) {
               const id = Number(match[1]);
@@ -89,32 +123,11 @@ export function MarkdownView({
               codeText = String(props.children ?? "").replace(/\n$/, "");
             }
             const isPython = lang === "python";
-            const claim =
-              lang === "check"
-                ? (() => {
-                    try {
-                      const body = JSON.parse(codeText) as {
-                        kind?: string;
-                        expr?: string;
-                        claimed?: string;
-                      };
-                      if (!body.kind || !body.expr || !body.claimed) return null;
-                      return checkClaim({ kind: body.kind, expr: body.expr, claimed: body.claimed });
-                    } catch {
-                      return null;
-                    }
-                  })()
-                : null;
             return (
               <div className="px-code-block">
-                <pre className="px-code-pre" {...rest}>{preChildren}</pre>
-                {claim ? (
-                  <CheckBadge
-                    state={claim}
-                    verifiedLabel={t("components.markdown.verified")}
-                    failedLabel={t("components.markdown.failed")}
-                  />
-                ) : null}
+                <pre className="px-code-pre" {...rest}>
+                  {preChildren}
+                </pre>
                 {isPython && onRunPython ? (
                   <Button
                     type="default"
@@ -129,14 +142,22 @@ export function MarkdownView({
               </div>
             );
           },
-          code: ({ className, children, ...rest }: ComponentPropsWithoutRef<"code"> & { inline?: boolean }) => {
+          code: ({
+            className,
+            children,
+            ...rest
+          }: ComponentPropsWithoutRef<"code"> & { inline?: boolean }) => {
             if (!className) {
               return (
-                <code className={className} {...rest}>{children}</code>
+                <code className={className} {...rest}>
+                  {children}
+                </code>
               );
             }
             return (
-              <code className={className} {...rest}>{children}</code>
+              <code className={className} {...rest}>
+                {children}
+              </code>
             );
           },
         }}
@@ -144,5 +165,30 @@ export function MarkdownView({
         {source}
       </ReactMarkdown>
     </div>
+  );
+}
+
+function AsyncCheck({ claim }: { claim: MathCheck }) {
+  const { t } = useTranslation();
+  const { kind, expr, claimed, vars } = claim;
+  const input = { kind, expr, claimed, vars };
+  const result = useQuery({
+    queryKey: ["math-check", input],
+    queryFn: () => invoke("tools.check", input),
+    retry: false,
+    staleTime: 60000,
+  });
+  return result.data || result.isError ? (
+    <CheckBadge
+      state={result.data?.state ?? "none"}
+      reason={result.data?.reason}
+      verifiedLabel={t("components.markdown.verified")}
+      failedLabel={t("components.markdown.failed")}
+      uncheckableLabel={t("components.markdown.uncheckable")}
+    />
+  ) : (
+    <span className="meta" role="status">
+      {t("components.markdown.checking")}
+    </span>
   );
 }

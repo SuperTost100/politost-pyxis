@@ -231,6 +231,11 @@ async function dispatch(
       return (
         study?.exercises(requests["study.exercises"].input.parse(input)) ?? []
       );
+    case "tools.check":
+      return tools?.check(requests["tools.check"].input.parse(input));
+    case "tools.runtime":
+      requests["tools.runtime"].input.parse(input);
+      return tools?.runtime();
     case "tools.python":
       return tools?.python(requests["tools.python"].input.parse(input));
     case "tools.stagePng":

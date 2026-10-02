@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { planFileSchema } from "./plan-file";
 
 const mapNode = z.object({
@@ -545,9 +546,26 @@ export const requests = {
       }),
     ),
   },
+  "tools.check": {
+    input: checkClaimSchema,
+    output: z.object({
+      state: z.enum(["verified", "failed", "none"]),
+      reason: z.string().optional(),
+    }),
+  },
+  "tools.runtime": {
+    input: z.object({}),
+    output: z.object({
+      phase: z.enum(["idle", "downloading", "ready", "failed"]),
+      bytes: z.number(),
+      totalBytes: z.number(),
+      error: z.string().optional(),
+    }),
+  },
   "tools.python": {
     input: z.object({ code: z.string().max(8000) }),
     output: z.object({
+      images: z.array(z.string()).optional(),
       stdout: z.string(),
       stderr: z.string(),
       timedOut: z.boolean(),
@@ -946,6 +964,7 @@ export const requests = {
         z.object({
           id: z.string(),
           role: z.enum(["user", "assistant"]),
+          checks: z.array(anchoredCheckSchema).optional(),
           body: z.string(),
           modelId: z.string().nullable(),
           provider: z.string().nullable(),
@@ -1003,6 +1022,7 @@ export const requests = {
         .object({
           id: z.string(),
           role: z.enum(["user", "assistant"]),
+          checks: z.array(anchoredCheckSchema).optional(),
           body: z.string(),
           modelId: z.string().nullable(),
           provider: z.string().nullable(),

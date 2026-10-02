@@ -1,3 +1,4 @@
+import { receiveRuntimeReply, setRuntimeSender } from "./math/runtime-client";
 import { recordedPlanRun } from "./engine/recorded-plan";
 import { join } from "node:path";
 import { openDatabase } from "./db/connection";
@@ -36,11 +37,15 @@ type ParentEvent = {
     dev?: boolean;
     anthropic?: string;
     openai?: string;
+    id?: string;
+    result?: unknown;
+    error?: string;
   };
   ports: CorePort[];
 };
 
 type ParentPort = {
+  postMessage(message: unknown): void;
   on(event: "message", listener: (event: ParentEvent) => void): void;
 };
 
@@ -53,20 +58,32 @@ if (!parent) {
   let booted = false;
   parent.on("message", (event) => {
     const data = event.data;
+    if (data?.type === "runtime-result" && data.id)
+      receiveRuntimeReply({
+        id: data.id,
+        result: data.result,
+        error: data.error,
+      });
     if (data?.type === "bootstrap" && !booted) {
       if (!data.workspacePath) {
         console.error("pyxis-core: workspace missing");
         return;
       }
       booted = true;
+      setRuntimeSender((message) => parent.postMessage(message));
       const db = openDatabase(join(data.workspacePath, "pyxis.db"));
       setScratch(join(data.workspacePath, "scratch"));
       bindEngines(db);
       const runner = createRunner(db, (job) => {
-        if (job.kind === "source-import" && ["failed", "cancelled", "interrupted"].includes(job.state)) {
-          db.prepare(`UPDATE sources SET status = ?, updated_at = ?
+        if (
+          job.kind === "source-import" &&
+          ["failed", "cancelled", "interrupted"].includes(job.state)
+        ) {
+          db.prepare(
+            `UPDATE sources SET status = ?, updated_at = ?
             WHERE id = (SELECT json_extract(params_json, '$.sourceId') FROM jobs WHERE id = ?)
-              AND status != 'removed'`).run(job.state, Date.now(), job.id);
+              AND status != 'removed'`,
+          ).run(job.state, Date.now(), job.id);
         }
         broadcast("job.updated", job);
       });
@@ -78,11 +95,31 @@ if (!parent) {
         data.dev === true ? process.env["PYXIS_E2E_REPLY"] : undefined,
       );
       bindProfile(db);
-      const planFixture = data.dev === true ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined;
-      bindPlans(db, data.workspacePath, runner, planFixture ? recordedPlanRun(planFixture, Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0)) : undefined);
+      const planFixture =
+        data.dev === true ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined;
+      bindPlans(
+        db,
+        data.workspacePath,
+        runner,
+        planFixture
+          ? recordedPlanRun(
+              planFixture,
+              Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0),
+            )
+          : undefined,
+      );
       bindMaps(db);
       bindTools();
-      bindStudy(db, runner, planFixture ? recordedPlanRun(planFixture, Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0)) : undefined);
+      bindStudy(
+        db,
+        runner,
+        planFixture
+          ? recordedPlanRun(
+              planFixture,
+              Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0),
+            )
+          : undefined,
+      );
       runner.register("demo", demoJob);
       bindRunner(runner, data.dev === true);
       void getFunnel()

@@ -1,34 +1,70 @@
-import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { runPython } from "./python";
+import { receiveRuntimeReply, setRuntimeSender } from "./runtime-client";
 
-describe("runPython", () => {
-  it("stops an infinite loop and blocks the network", async () => {
-    if (process.platform !== "darwin" || !existsSync("/usr/bin/sandbox-exec")) {
-      const blocked = await runPython("print(1)\n", 1000);
-      expect(blocked.stderr).toBe("python-sandbox-missing");
-      expect(blocked.stdout).toBe("");
-      return;
-    }
-    const hung = await runPython("while True:\n    pass\n", 400);
-    expect(hung.timedOut).toBe(true);
-    const again = await runPython("print(1 + 1)\n", 4000);
-    expect(again.timedOut).toBe(false);
-    expect(again.stdout).toContain("2");
-    const net = await runPython(
-      "import urllib.request\nurllib.request.urlopen('https://example.com')\n",
-      4000,
+type Request = {
+  type: string;
+  id: string;
+  operation: string;
+  payload: { code: string; timeoutMs: number };
+};
+describe("Python runtime transport", () => {
+  it("routes concurrent replies by request ID and forwards deadlines", async () => {
+    const requests: Request[] = [];
+    setRuntimeSender((message) => requests.push(message as Request));
+    const first = runPython("print(1)", 1000);
+    const second = runPython("while True: pass", 10000);
+    expect(
+      requests.map((row) => [row.type, row.operation, row.payload]),
+    ).toEqual([
+      ["runtime-request", "python", { code: "print(1)", timeoutMs: 1000 }],
+      [
+        "runtime-request",
+        "python",
+        { code: "while True: pass", timeoutMs: 10000 },
+      ],
+    ]);
+    receiveRuntimeReply({ id: "unrelated", result: {} });
+    receiveRuntimeReply({
+      id: requests[1]!.id,
+      result: {
+        stdout: "",
+        stderr: "KeyboardInterrupt",
+        images: [],
+        timedOut: true,
+        truncated: false,
+      },
+    });
+    receiveRuntimeReply({
+      id: requests[0]!.id,
+      result: {
+        stdout: "1\n",
+        stderr: "",
+        images: ["data:image/png;base64,AA=="],
+        timedOut: false,
+        truncated: false,
+      },
+    });
+    expect(await first).toMatchObject({
+      stdout: "1\n",
+      images: ["data:image/png;base64,AA=="],
+      timedOut: false,
+    });
+    expect(await second).toMatchObject({ timedOut: true });
+  });
+  it("returns a runtime error without invoking native Python", async () => {
+    setRuntimeSender((message) =>
+      receiveRuntimeReply({
+        id: (message as Request).id,
+        error: "runtime-download-failed",
+      }),
     );
-    expect(net.timedOut).toBe(false);
-    expect(net.stderr.length).toBeGreaterThan(0);
-    expect(net.stdout).not.toContain("Example Domain");
-    const flood = await runPython("print('x' * 500000)\n", 4000);
-    expect(flood.stdout.length).toBeLessThanOrEqual(200_000);
-    expect(flood.truncated).toBe(true);
-    const tree = await runPython(
-      "import subprocess\nsubprocess.Popen(['sleep', '30'])\nprint('started')\n",
-      800,
-    );
-    expect(tree.timedOut).toBe(true);
-  }, 20_000);
+    expect(await runPython("print(2)")).toEqual({
+      stdout: "",
+      stderr: "runtime-download-failed",
+      images: [],
+      timedOut: false,
+      truncated: false,
+    });
+  });
 });

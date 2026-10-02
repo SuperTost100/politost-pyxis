@@ -525,7 +525,9 @@
     "markdown": {
       "run": "Run",
       "verified": "Verified",
-      "failed": "Not verified"
+      "failed": "Not verified",
+      "checking": "Checking calculation…",
+      "uncheckable": "Not checkable"
     },
     "lesson": {
       "recommended": "Recommended"
@@ -671,7 +673,16 @@
     "title": "Python",
     "run": "Run",
     "timeout": "Stopped after 10 seconds.",
-    "missing": "Python is not available in this sandbox."
+    "missing": "Could not prepare Python. Try again.",
+    "code": "Python code",
+    "sessionFiles": "Each run has its own temporary files.",
+    "preparing": "Preparing Python…",
+    "running": "Running…",
+    "download": "Downloading Python · {{current}} of {{total}} MB",
+    "output": "Output",
+    "diagnostics": "Diagnostics",
+    "plot": "Python plot {{index}}",
+    "truncated": "Output stopped at 200 KB."
   },
   "tools": {
     "save": "Save",

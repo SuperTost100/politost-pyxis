@@ -16,7 +16,9 @@ export function AskPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [draft, setDraft] = useState(() => sessionStorage.getItem("pyxis-draft") ?? "");
+  const [draft, setDraft] = useState(
+    () => sessionStorage.getItem("pyxis-draft") ?? "",
+  );
   const [mode, setMode] = useState<"solver" | "socratic">("solver");
   const [picked, setPicked] = useState<string[]>([]);
   const loadedFor = useRef<string | undefined>(undefined);
@@ -29,7 +31,9 @@ export function AskPage() {
     const path = sessionStorage.getItem("pyxis-board-file");
     if (!path) return;
     sessionStorage.removeItem("pyxis-board-file");
-    setFiles((current) => (current.includes(path) ? current : [...current, path]));
+    setFiles((current) =>
+      current.includes(path) ? current : [...current, path],
+    );
   }, []);
   const [error, setError] = useState<string | null>(null);
   const stop = useRef<(() => void) | null>(null);
@@ -88,7 +92,8 @@ export function AskPage() {
         mode,
         subject,
         files: files.length > 0 ? files : undefined,
-        allowGeneral: allowGeneral === true || (picked.length === 0 && files.length === 0),
+        allowGeneral:
+          allowGeneral === true || (picked.length === 0 && files.length === 0),
       },
       (event) => {
         const data = event as { text?: string };
@@ -122,59 +127,67 @@ export function AskPage() {
   }
 
   const messages = thread.data?.messages ?? [];
-  const lastTutor = [...messages].reverse().find((row) => row.role === "assistant");
+  const lastTutor = [...messages]
+    .reverse()
+    .find((row) => row.role === "assistant");
   const titles = (sources.data ?? [])
     .filter((source) => picked.includes(source.id))
     .map((source) => source.title);
 
-  const historyList = (history.data ?? []).length > 0 ? (
-    <ul className="choice-list" aria-label={t("ask.history")}>
-      {(history.data ?? []).map((chat) => (
-        <li key={chat.id}>
-          <Button
-            type="text"
-            onClick={() => {
-              setHistoryOpen(false);
-              navigate(`/ask/${chat.id}`);
-            }}
-          >
-            {chat.title?.trim() || t("ask.untitled")}
-          </Button>
-          <Input
-            aria-label={t("ask.rename")}
-            value={titleDraft[chat.id] ?? chat.title ?? ""}
-            onChange={(event) =>
-              setTitleDraft((current) => ({ ...current, [chat.id]: event.target.value }))
-            }
-            onBlur={() => {
-              const title = (titleDraft[chat.id] ?? chat.title ?? "").trim();
-              if (!title || title === chat.title) return;
-              void invoke("chats.rename", { chatId: chat.id, title }).then(() =>
-                client.invalidateQueries({ queryKey: ["chats"] }),
-              );
-            }}
-          />
-          <Button
-            type="text"
-            danger={confirmDelete === chat.id}
-            onClick={() => {
-              if (confirmDelete !== chat.id) {
-                setConfirmDelete(chat.id);
-                return;
+  const historyList =
+    (history.data ?? []).length > 0 ? (
+      <ul className="choice-list" aria-label={t("ask.history")}>
+        {(history.data ?? []).map((chat) => (
+          <li key={chat.id}>
+            <Button
+              type="text"
+              onClick={() => {
+                setHistoryOpen(false);
+                navigate(`/ask/${chat.id}`);
+              }}
+            >
+              {chat.title?.trim() || t("ask.untitled")}
+            </Button>
+            <Input
+              aria-label={t("ask.rename")}
+              value={titleDraft[chat.id] ?? chat.title ?? ""}
+              onChange={(event) =>
+                setTitleDraft((current) => ({
+                  ...current,
+                  [chat.id]: event.target.value,
+                }))
               }
-              void invoke("chats.delete", { chatId: chat.id }).then(() => {
-                setConfirmDelete(null);
-                void client.invalidateQueries({ queryKey: ["chats"] });
-                if (chat.id === chatId) navigate("/ask");
-              });
-            }}
-          >
-            {confirmDelete === chat.id ? t("ask.deleteConfirm") : t("ask.delete")}
-          </Button>
-        </li>
-      ))}
-    </ul>
-  ) : null;
+              onBlur={() => {
+                const title = (titleDraft[chat.id] ?? chat.title ?? "").trim();
+                if (!title || title === chat.title) return;
+                void invoke("chats.rename", { chatId: chat.id, title }).then(
+                  () => client.invalidateQueries({ queryKey: ["chats"] }),
+                );
+              }}
+            />
+            <Button
+              type="text"
+              danger={confirmDelete === chat.id}
+              onClick={() => {
+                if (confirmDelete !== chat.id) {
+                  setConfirmDelete(chat.id);
+                  return;
+                }
+                void invoke("chats.delete", { chatId: chat.id }).then(() => {
+                  setConfirmDelete(null);
+                  void client.invalidateQueries({ queryKey: ["chats"] });
+                  if (chat.id === chatId) navigate("/ask");
+                });
+              }}
+            >
+              {confirmDelete === chat.id
+                ? t("ask.deleteConfirm")
+                : t("ask.delete")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    ) : null;
 
   return (
     <div className="ask-home">
@@ -183,7 +196,11 @@ export function AskPage() {
           <Button type="text" onClick={() => navigate("/ask")}>
             {t("ask.new")}
           </Button>
-          <Button type="text" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
+          <Button
+            type="text"
+            aria-expanded={historyOpen}
+            onClick={() => setHistoryOpen((open) => !open)}
+          >
             {t("ask.history")}
           </Button>
         </div>
@@ -215,20 +232,28 @@ export function AskPage() {
                 general={row.grounding === "general"}
                 text={row.body}
                 reaction={row.reaction}
-                suggestions={row.id === lastTutor?.id ? row.followups : undefined}
+                suggestions={
+                  row.id === lastTutor?.id ? row.followups : undefined
+                }
                 onSuggest={(text) => send(text)}
                 onReact={(reaction) => {
-                  void invoke("chats.rate", { messageId: row.id, reaction }).then(() =>
+                  void invoke("chats.rate", {
+                    messageId: row.id,
+                    reaction,
+                  }).then(() =>
                     client.invalidateQueries({ queryKey: ["chat", chatId] }),
                   );
                 }}
               >
                 <MarkdownView
+                  checks={row.checks}
                   citationResolver={(index) =>
                     row.citations.find((cite) => cite.index === index)?.label
                   }
                   onCitationClick={(index) => {
-                    const cite = row.citations.find((item) => item.index === index);
+                    const cite = row.citations.find(
+                      (item) => item.index === index,
+                    );
                     if (!cite) return;
                     const params = new URLSearchParams({
                       source: cite.sourceId,
@@ -237,10 +262,16 @@ export function AskPage() {
                     if (cite.locator.chapter != null) {
                       params.set("chapter", String(cite.locator.chapter));
                     }
-                    if (cite.locator.paragraph) params.set("paragraph", cite.locator.paragraph);
-                    if (cite.locator.page != null) params.set("page", String(cite.locator.page));
-                    if (cite.locator.slide != null) params.set("slide", String(cite.locator.slide));
-                    openSourceViewer({ passageId: params.get("passage") ?? undefined, sourceId: params.get("source") ?? undefined });
+                    if (cite.locator.paragraph)
+                      params.set("paragraph", cite.locator.paragraph);
+                    if (cite.locator.page != null)
+                      params.set("page", String(cite.locator.page));
+                    if (cite.locator.slide != null)
+                      params.set("slide", String(cite.locator.slide));
+                    openSourceViewer({
+                      passageId: params.get("passage") ?? undefined,
+                      sourceId: params.get("source") ?? undefined,
+                    });
                   }}
                 >
                   {row.body}
@@ -269,7 +300,9 @@ export function AskPage() {
           <button
             key={source.id}
             type="button"
-            className={picked.includes(source.id) ? "choice is-selected" : "choice"}
+            className={
+              picked.includes(source.id) ? "choice is-selected" : "choice"
+            }
             aria-pressed={picked.includes(source.id)}
             onClick={() =>
               setPicked((current) =>
@@ -353,7 +386,11 @@ export function AskPage() {
           {t("ask.promote", { title: source.title })}
         </Button>
       ))}
-      {files.length > 0 ? <p className="small">{files.map((file) => file.split("/").pop()).join(", ")}</p> : null}
+      {files.length > 0 ? (
+        <p className="small">
+          {files.map((file) => file.split("/").pop()).join(", ")}
+        </p>
+      ) : null}
       <Composer
         value={draft}
         onValueChange={(next) => {
@@ -372,12 +409,23 @@ export function AskPage() {
               filters: [
                 {
                   name: "Files",
-                  extensions: ["png", "jpg", "jpeg", "webp", "pdf", "docx", "pptx", "txt", "md"],
+                  extensions: [
+                    "png",
+                    "jpg",
+                    "jpeg",
+                    "webp",
+                    "pdf",
+                    "docx",
+                    "pptx",
+                    "txt",
+                    "md",
+                  ],
                 },
               ],
             })
             .then((picked) => {
-              if (picked && picked.length > 0) setFiles((current) => [...current, ...picked]);
+              if (picked && picked.length > 0)
+                setFiles((current) => [...current, ...picked]);
             });
         }}
       />

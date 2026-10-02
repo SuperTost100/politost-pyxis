@@ -12,3 +12,5 @@
 .px-check-badge.is-failed {
   color: var(--danger);
 }
+
+.px-check-badge.is-uncheckable { color: var(--ink-muted); }

@@ -1,3 +1,5 @@
+import { splitChecks, solverChecks } from "./checks";
+import type { AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { isAbort, IpcError } from "../../shared/ipc";
@@ -40,6 +42,7 @@ export type ChatMessageView = {
   citations: ChatCitation[];
   reaction: "up" | "down" | null;
   stopped: boolean;
+  checks: AnchoredCheck[];
 };
 
 export type AskResult = {
@@ -100,7 +103,7 @@ function historyText(db: Database.Database, chatId: string): string {
     .all(chatId) as Array<{ role: string; body: string }>;
   return rows
     .reverse()
-    .map((row) => `${row.role}: ${row.body}`)
+    .map((row) => `${row.role}: ${splitChecks(row.body).body}`)
     .join("\n")
     .slice(-6000);
 }
@@ -125,12 +128,14 @@ function isFollowUp(text: string): boolean {
 }
 
 export function chatScope(db: Database.Database, chatId: string): string[] {
-  const row = db.prepare(`SELECT scope_json FROM chats WHERE id = ?`).get(chatId) as
-    | { scope_json: string }
-    | undefined;
+  const row = db
+    .prepare(`SELECT scope_json FROM chats WHERE id = ?`)
+    .get(chatId) as { scope_json: string } | undefined;
   if (!row) return [];
   const parsed = JSON.parse(row.scope_json) as unknown;
-  return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+  return Array.isArray(parsed)
+    ? parsed.filter((id) => typeof id === "string")
+    : [];
 }
 
 function priorPassages(
@@ -159,7 +164,8 @@ function priorPassages(
   const hits: PassageHit[] = [];
   for (const row of rows) {
     if (seen.has(row.id)) continue;
-    if (sourceIds.length > 0 && !sourceIds.includes(row.source_id ?? "")) continue;
+    if (sourceIds.length > 0 && !sourceIds.includes(row.source_id ?? ""))
+      continue;
     seen.add(row.id);
     hits.push({
       id: row.id,
@@ -174,11 +180,16 @@ function priorPassages(
   return hits;
 }
 
-function ensureChat(db: Database.Database, chatId: string | undefined, title: string, now: number) {
+function ensureChat(
+  db: Database.Database,
+  chatId: string | undefined,
+  title: string,
+  now: number,
+) {
   if (chatId) {
-    const existing = db.prepare(`SELECT id FROM chats WHERE id = ?`).get(chatId) as
-      | { id: string }
-      | undefined;
+    const existing = db
+      .prepare(`SELECT id FROM chats WHERE id = ?`)
+      .get(chatId) as { id: string } | undefined;
     if (existing) return existing.id;
   }
   const id = uuidv7(now);
@@ -205,11 +216,16 @@ async function gather(
     )
     .get(chatId, text) as { body: string } | undefined;
   if (earlier) {
-    const wider = await retrieveWithModel(db, `${earlier.body} ${text}`, options);
+    const wider = await retrieveWithModel(
+      db,
+      `${earlier.body} ${text}`,
+      options,
+    );
     if (wider.covered) return wider;
   }
   const prior = priorPassages(db, chatId, sourceIds);
-  if (prior.length > 0) return { hits: prior, covered: true, usedVectors: false };
+  if (prior.length > 0)
+    return { hits: prior, covered: true, usedVectors: false };
   return found;
 }
 
@@ -219,7 +235,11 @@ export function seedChat(
 ): { chatId: string } {
   const now = Date.now();
   const chatId = uuidv7(now);
-  const context: ChatContext = { kind: input.kind, title: input.title, body: input.body };
+  const context: ChatContext = {
+    kind: input.kind,
+    title: input.title,
+    body: input.body,
+  };
   db.prepare(
     `INSERT INTO chats (id, title, scope_json, subject, context_json, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -236,25 +256,37 @@ export function seedChat(
 }
 
 export function clearChatContext(db: Database.Database, chatId: string): void {
-  const info = db.prepare(`UPDATE chats SET context_json = NULL WHERE id = ?`).run(chatId);
+  const info = db
+    .prepare(`UPDATE chats SET context_json = NULL WHERE id = ?`)
+    .run(chatId);
   if (info.changes === 0) throw new Error("chat-missing");
 }
 
-export function chatContext(db: Database.Database, chatId: string): ChatContext | null {
-  const row = db.prepare(`SELECT context_json FROM chats WHERE id = ?`).get(chatId) as
-    | { context_json: string | null }
-    | undefined;
+export function chatContext(
+  db: Database.Database,
+  chatId: string,
+): ChatContext | null {
+  const row = db
+    .prepare(`SELECT context_json FROM chats WHERE id = ?`)
+    .get(chatId) as { context_json: string | null } | undefined;
   if (!row?.context_json) return null;
   return JSON.parse(row.context_json) as ChatContext;
 }
 
-export async function askTurn(db: Database.Database, input: AskInput): Promise<AskResult> {
+export async function askTurn(
+  db: Database.Database,
+  input: AskInput,
+): Promise<AskResult> {
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
   const now = Date.now();
   const chatId = ensureChat(db, input.chatId, input.text, now);
   let sourceIds = input.sourceIds ?? chatScope(db, chatId);
   let notes: string[] = [];
-  let images: Array<{ mediaType: "image/png" | "image/jpeg" | "image/webp"; data: string; sha: string }> = [];
+  let images: Array<{
+    mediaType: "image/png" | "image/jpeg" | "image/webp";
+    data: string;
+    sha: string;
+  }> = [];
   if (input.files && input.files.length > 0 && input.workspace) {
     try {
       const prepared = await prepareFiles(
@@ -279,10 +311,10 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
   }
   const storedSubject = (
     db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
-      | { subject: string | null }
-      | undefined
+      { subject: string | null } | undefined
   )?.subject;
-  const subject = input.subject === undefined ? storedSubject ?? "" : input.subject.trim();
+  const subject =
+    input.subject === undefined ? (storedSubject ?? "") : input.subject.trim();
   if (input.sourceIds || sourceIds.length > 0) {
     db.prepare(`UPDATE chats SET scope_json = ?, subject = ? WHERE id = ?`).run(
       JSON.stringify(sourceIds),
@@ -290,15 +322,20 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
       chatId,
     );
   } else if (input.subject !== undefined) {
-    db.prepare(`UPDATE chats SET subject = ? WHERE id = ?`).run(subject || null, chatId);
+    db.prepare(`UPDATE chats SET subject = ? WHERE id = ?`).run(
+      subject || null,
+      chatId,
+    );
   }
-  const userBody = notes.length > 0 ? `${input.text}\n\n${notes.join("\n")}` : input.text;
+  const userBody =
+    notes.length > 0 ? `${input.text}\n\n${notes.join("\n")}` : input.text;
   const pending = db
     .prepare(
       `SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
     )
     .get(chatId) as { id: string; role: string; body: string } | undefined;
-  let userMessageId = pending?.role === "user" && pending.body === userBody ? pending.id : "";
+  let userMessageId =
+    pending?.role === "user" && pending.body === userBody ? pending.id : "";
   if (!userMessageId) {
     userMessageId = uuidv7(now + 1);
     db.prepare(
@@ -335,12 +372,18 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
     locator: hit.locator,
   }));
   const passageBlock = citations
-    .map((cite, index) => `[P${cite.index}] ${cite.label}\n${found.hits[index]?.text ?? ""}`)
+    .map(
+      (cite, index) =>
+        `[P${cite.index}] ${cite.label}\n${found.hits[index]?.text ?? ""}`,
+    )
     .join("\n\n");
   const subjectLine = subject ? `Subject: ${subject}.` : "";
   const pinned = chatContext(db, chatId);
-  const pinnedBlock = pinned ? `Pinned context: ${pinned.title}\n${pinned.body}\n\n` : "";
-  const attachedBlock = notes.length > 0 ? `Attached text:\n${notes.join("\n")}\n\n` : "";
+  const pinnedBlock = pinned
+    ? `Pinned context: ${pinned.title}\n${pinned.body}\n\n`
+    : "";
+  const attachedBlock =
+    notes.length > 0 ? `Attached text:\n${notes.join("\n")}\n\n` : "";
   const system = `${
     input.allowGeneral
       ? generalPrompt
@@ -349,15 +392,17 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
         : solverPrompt
   }\n${profileContext(db)}\n${subjectLine}`;
   const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}\n\nEarlier turns:\n${historyText(db, chatId)}\n\nQuestion:\n${input.text}`;
+  const selection = selectionFor(db, "chat");
   let streamed = "";
   let result;
   try {
     result = await generate({
       prompt,
       system,
-      selection: selectionFor(db, "chat"),
+      selection,
       attachments:
-        input.workspace && capabilityWarning(selectionFor(db, "chat").model, "vision") == null
+        input.workspace &&
+        capabilityWarning(selectionFor(db, "chat").model, "vision") == null
           ? savedImages(db, input.workspace, chatId)
           : images
               .filter((image) => image.data)
@@ -374,7 +419,10 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
       },
     });
   } catch (err) {
-    if ((isAbort(err) || (err instanceof Error && err.name === "AbortError")) && streamed.trim()) {
+    if (
+      (isAbort(err) || (err instanceof Error && err.name === "AbortError")) &&
+      streamed.trim()
+    ) {
       return finishReply(db, chatId, streamed, {
         provider: "",
         model: "",
@@ -396,11 +444,20 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
     return { chatId, covered: false, message: null };
   }
   const parsed = splitFollowups(result.text);
+  const checks =
+    input.mode !== "socratic"
+      ? await solverChecks(parsed.body, {
+          selection,
+          signal: input.signal,
+          run: input.run,
+        })
+      : [];
+
   const stored = `${parsed.body}${
     parsed.followups.length > 0
       ? `\n<followups>\n${parsed.followups.join("\n")}\n</followups>`
       : ""
-  }`;
+  }${checks.length ? `\n<checks>${JSON.stringify(checks)}</checks>` : ""}`;
   const messageId = uuidv7(now + 2);
   const grounding = input.allowGeneral ? "general" : "sources";
   db.prepare(
@@ -413,7 +470,11 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
     stored,
     result.provider,
     result.model,
-    input.allowGeneral ? "chat-general" : input.mode === "socratic" ? "chat-socratic" : "chat-solver",
+    input.allowGeneral
+      ? "chat-general"
+      : input.mode === "socratic"
+        ? "chat-socratic"
+        : "chat-solver",
     CHAT_PROMPT_VERSION,
     grounding,
     now + 1,
@@ -446,6 +507,7 @@ export async function askTurn(db: Database.Database, input: AskInput): Promise<A
       citations: linked,
       reaction: null,
       stopped: false,
+      checks,
     },
   };
 }
@@ -490,7 +552,8 @@ function finishReply(
   const link = db.prepare(
     `INSERT INTO message_passages (message_id, passage_id, label) VALUES (?, ?, ?)`,
   );
-  for (const cite of linked) link.run(messageId, cite.passageId, `P${cite.index}`);
+  for (const cite of linked)
+    link.run(messageId, cite.passageId, `P${cite.index}`);
   return {
     chatId,
     covered: true,
@@ -505,6 +568,7 @@ function finishReply(
       citations: linked,
       reaction: null,
       stopped: meta.stopped,
+      checks: splitChecks(parsed.body).checks,
     },
   };
 }
@@ -540,11 +604,19 @@ export function rateMessage(
     .get(messageId) as { reaction: string | null } | undefined;
   if (!row) throw new Error("message-missing");
   const next = row.reaction === reaction ? null : reaction;
-  db.prepare(`UPDATE messages SET reaction = ? WHERE id = ?`).run(next, messageId);
+  db.prepare(`UPDATE messages SET reaction = ? WHERE id = ?`).run(
+    next,
+    messageId,
+  );
   return next;
 }
 
-export function renameChat(db: Database.Database, chatId: string, title: string, now = Date.now()) {
+export function renameChat(
+  db: Database.Database,
+  chatId: string,
+  title: string,
+  now = Date.now(),
+) {
   const trimmed = title.trim();
   if (!trimmed) throw new Error("chat-title");
   const info = db
@@ -577,14 +649,20 @@ export function heldSources(
     .all(...ids) as Array<{ id: string; title: string }>;
 }
 
-export function chatSubject(db: Database.Database, chatId: string): string | null {
-  const row = db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
-    | { subject: string | null }
-    | undefined;
+export function chatSubject(
+  db: Database.Database,
+  chatId: string,
+): string | null {
+  const row = db
+    .prepare(`SELECT subject FROM chats WHERE id = ?`)
+    .get(chatId) as { subject: string | null } | undefined;
   return row?.subject ?? null;
 }
 
-export function readChat(db: Database.Database, chatId: string): ChatMessageView[] {
+export function readChat(
+  db: Database.Database,
+  chatId: string,
+): ChatMessageView[] {
   const rows = db
     .prepare(
       `SELECT id, role, body, model_id, engine_provider, grounding, reaction, stopped FROM messages
@@ -607,14 +685,23 @@ export function readChat(db: Database.Database, chatId: string): ChatMessageView
      WHERE mp.message_id = ?`,
   );
   return rows.map((row) => {
-    const parsed = row.role === "assistant" ? splitFollowups(row.body) : { body: row.body, followups: [] };
-    const citations = (links.all(row.id) as Array<{
-      label: string;
-      passage_id: string;
-      source_id: string | null;
-      section_path: string | null;
-      locator_json: string | null;
-    }>).map((link) => ({
+    const metadata =
+      row.role === "assistant"
+        ? splitChecks(row.body)
+        : { body: row.body, checks: [] };
+    const parsed =
+      row.role === "assistant"
+        ? splitFollowups(metadata.body)
+        : { body: metadata.body, followups: [] };
+    const citations = (
+      links.all(row.id) as Array<{
+        label: string;
+        passage_id: string;
+        source_id: string | null;
+        section_path: string | null;
+        locator_json: string | null;
+      }>
+    ).map((link) => ({
       label: link.section_path || link.label,
       index: Number(link.label.replace("P", "")) || 0,
       passageId: link.passage_id,
@@ -633,8 +720,10 @@ export function readChat(db: Database.Database, chatId: string): ChatMessageView
       grounding: row.grounding,
       followups: parsed.followups,
       citations,
-      reaction: row.reaction === "up" || row.reaction === "down" ? row.reaction : null,
+      reaction:
+        row.reaction === "up" || row.reaction === "down" ? row.reaction : null,
       stopped: row.stopped === 1,
+      checks: metadata.checks,
     };
   });
 }

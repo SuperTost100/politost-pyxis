@@ -1,0 +1,43 @@
+.px-python {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 760px;
+  align-self: center;
+}
+.px-python > p {
+  margin: 0;
+}
+.px-python textarea {
+  font: 400 14px/1.7 var(--font-mono);
+  tab-size: 4;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+.px-python-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.px-python-actions .ant-btn {
+  white-space: nowrap;
+}
+.px-python pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  font: 400 13px/1.6 var(--font-mono);
+  max-height: 400px;
+  overflow-y: auto;
+}
+.px-python-plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}

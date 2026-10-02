@@ -1,3 +1,10 @@
+import { invalidateRuntime } from "./runtime-pack";
+import {
+  configurePythonRuntime,
+  disposePythonRuntime,
+  handleRuntimeRequest,
+  registerRuntimeProtocol,
+} from "./python-runtime";
 import {
   app,
   BrowserWindow,
@@ -320,6 +327,50 @@ function startCore(): Promise<void> {
     stdio: "inherit",
   });
   coreChild = child;
+  configurePythonRuntime(workspacePath);
+  let childExited = false;
+  child.once("exit", () => {
+    childExited = true;
+  });
+  function runtimeReply(message: unknown): void {
+    if (childExited || coreChild !== child || quitting || holdCore) return;
+    try {
+      child.postMessage(message);
+    } catch {
+      /* The utility process may already have exited. */
+    }
+  }
+  child.on(
+    "message",
+    (data: {
+      type?: string;
+      id?: string;
+      operation?: string;
+      payload?: unknown;
+    }) => {
+      if (
+        childExited ||
+        coreChild !== child ||
+        quitting ||
+        holdCore ||
+        data.type !== "runtime-request" ||
+        !data.id ||
+        !data.operation
+      )
+        return;
+      void handleRuntimeRequest(data.operation, data.payload).then(
+        (result) =>
+          runtimeReply({ type: "runtime-result", id: data.id, result }),
+        (error: unknown) =>
+          runtimeReply({
+            type: "runtime-result",
+            id: data.id,
+            error:
+              error instanceof Error ? error.message : "runtime-unavailable",
+          }),
+      );
+    },
+  );
   keysReadyFor = null;
   rendererPortFor = null;
   child.postMessage({
@@ -350,24 +401,29 @@ function startCore(): Promise<void> {
 
 function pauseCore(): Promise<void> {
   holdCore = true;
+  disposePythonRuntime();
   const child = coreChild;
-  if (!child) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      holdCore = false;
-      reject(new Error("core-busy"));
-    }, 3000);
-    child.once("exit", () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve();
-    });
-    child.kill();
-  });
+  const stopped = !child
+    ? Promise.resolve()
+    : new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          holdCore = false;
+          reject(new Error("core-busy"));
+        }, 3000);
+        child.once("exit", () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        });
+        child.kill();
+      });
+  return Promise.all([stopped, invalidateRuntime(workspacePath)]).then(
+    () => undefined,
+  );
 }
 
 function runArchive(op: "backup" | "restore", zip: string): Promise<void> {
@@ -474,7 +530,8 @@ function registerIpc(): void {
       if (!safeStorage.isEncryptionAvailable()) {
         throw new Error("encryption-unavailable");
       }
-      const stored = readJson<Record<string, string>>(userFile("keys.json")) ?? {};
+      const stored =
+        readJson<Record<string, string>>(userFile("keys.json")) ?? {};
       stored[provider] = safeStorage.encryptString(key).toString("base64");
       writeFileSync(userFile("keys.json"), JSON.stringify(stored));
       await pushKeys();
@@ -482,7 +539,10 @@ function registerIpc(): void {
   );
   ipcMain.handle(mainChannels.planFetch, async (_event, raw: string) => {
     const url = httpPlanUrl(raw);
-    const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(15_000) });
+    const response = await fetch(url, {
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
     if (!response.ok || !response.body) throw new Error("plan-url");
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
@@ -587,10 +647,7 @@ function registerIpc(): void {
 
 function registerProtocols(): void {
   registerBlobProtocol(workspacePath);
-  protocol.handle(
-    "pyxis-runtime",
-    () => new Response("not found", { status: 404 }),
-  );
+  registerRuntimeProtocol(session.defaultSession, workspacePath);
 }
 
 app.whenReady().then(() => {
@@ -599,7 +656,10 @@ app.whenReady().then(() => {
   try {
     recoverInterruptedWipe(workspacePath);
   } catch (err) {
-    console.error("pyxis: an unfinished wipe could not be restored", err instanceof Error ? err.message : "unknown");
+    console.error(
+      "pyxis: an unfinished wipe could not be restored",
+      err instanceof Error ? err.message : "unknown",
+    );
     app.exit(1);
     return;
   }
@@ -633,6 +693,7 @@ app.on("before-quit", (event) => {
     return;
   }
   quitting = true;
+  disposePythonRuntime();
   coreChild?.postMessage({ type: "shutdown" });
 });
 

@@ -15,11 +15,19 @@ function copySandboxPage(): Plugin {
     name: "copy-sandbox-page",
     apply: "build",
     generateBundle() {
-      this.emitFile({
-        type: "asset",
-        fileName: "sandbox.html",
-        source: readFileSync(resolve(root, "src/sandbox/index.html")),
-      });
+      for (const [name, sourceName] of [
+        ["sandbox.html", "index.html"],
+        ["host.js", "host.js"],
+        ["python-worker.js", "python-worker.js"],
+        ["check-worker.js", "check-worker.js"],
+        ["symbolic.py", "symbolic.py"],
+      ] as const) {
+        this.emitFile({
+          type: "asset",
+          fileName: `runtime/${name}`,
+          source: readFileSync(resolve(root, "src/sandbox", sourceName)),
+        });
+      }
     },
   };
 }
