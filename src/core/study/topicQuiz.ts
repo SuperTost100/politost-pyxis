@@ -23,6 +23,9 @@ export function acrossTopics<T>(buckets: T[][], limit: number): T[] {
 }
 
 export function startDiagnostic(db: Database.Database, planId: string) {
+  if ((db.prepare("SELECT status FROM plans WHERE id = ?").get(planId) as { status: string } | undefined)?.status === "building") throw new Error("plan-building");
+  const generated = db.prepare("SELECT id FROM items WHERE plan_id = ? AND kind = 'diagnostic' AND engine_provider IS NOT NULL ORDER BY created_at DESC LIMIT 1").get(planId) as { id: string } | undefined;
+  if (generated) return startAttempt(db, planId, generated.id);
   const topics = db
     .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
     .all(planId) as Array<{ id: string }>;

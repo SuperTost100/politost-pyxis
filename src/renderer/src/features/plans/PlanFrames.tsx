@@ -1,12 +1,19 @@
+import { StepLines } from "../../components/StepLines";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "antd";
+import { Button, Modal } from "antd";
+import { MarkdownView } from "../../components/MarkdownView";
+import { openSourceViewer } from "../../components/SourceViewer";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
 import { invoke } from "../../lib/ipc";
-import { examInstant, planFileSchema, reachableTarget } from "@shared/plan-file";
+import {
+  examInstant,
+  planFileSchema,
+  reachableTarget,
+} from "@shared/plan-file";
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();
@@ -26,85 +33,158 @@ export function WizardFrame() {
   const [examChoice, setExamChoice] = useState<"1" | "2" | "3" | "10">("10");
   const [date, setDate] = useState("");
   const [target, setTarget] = useState(75);
-  const [language, setLanguage] = useState(i18n.language.startsWith("en") ? "en" : "it");
+  const [language, setLanguage] = useState(
+    i18n.language.startsWith("en") ? "en" : "it",
+  );
   const [style, setStyle] = useState<"read" | "practice" | "decide">("decide");
-  const [busy, setBusy] = useState(false);
-  const [built, setBuilt] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const buildPlanId = params.get("build");
+  const build = useQuery({
+    queryKey: ["plan-build", buildPlanId],
+    queryFn: () => invoke("plans.build", { planId: buildPlanId! }),
+    enabled: Boolean(buildPlanId),
+    refetchInterval: 500,
+  });
+  const buildingPlan = useQuery({
+    queryKey: ["plan", buildPlanId],
+    queryFn: () => invoke("plans.read", { planId: buildPlanId! }),
+    enabled: Boolean(buildPlanId),
+  });
+  const busy =
+    starting ||
+    Boolean(
+      buildPlanId &&
+      (build.isPending ||
+        Boolean(
+          build.data && ["running", "queued"].includes(build.data.state),
+        )),
+    );
+  const built = build.data?.state === "succeeded" ? buildPlanId : null;
+  const failed = Boolean(
+    build.data &&
+    ["failed", "cancelled", "interrupted"].includes(build.data.state),
+  );
   const [topicTitles, setTopicTitles] = useState<Record<string, string>>({});
-  const stop = useRef<(() => void) | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
 
   async function create() {
     const name = title.trim();
     if (!name || busy) return;
-    setBusy(true);
-    setFailed(false);
+    setStarting(true);
     try {
-      const days = examChoice === "1" ? 1 : examChoice === "2" ? 2 : examChoice === "3" ? 3 : 10;
-      const fromDate = date ? new Date(`${date}T12:00:00`).getTime() : examInstant(days);
-      const handle = window.pyxis.stream(
-        "plans.create",
-        {
-          title: name,
-          subject: subject.trim() || undefined,
-          sourceIds: picked,
-          examAt: Number.isFinite(fromDate) ? fromDate : null,
-          target: target / 100,
-          language: language === "en" ? "en" : "it",
-          style,
-          topicTitles: picked.map(
-            (id) => topicTitles[id] || (sources.data ?? []).find((source) => source.id === id)?.title || "",
-          ),
-        },
-        () => undefined,
-      );
-      stop.current = handle.cancel;
-      const result = (await handle.result) as { planId: string } | undefined;
+      const days =
+        examChoice === "1"
+          ? 1
+          : examChoice === "2"
+            ? 2
+            : examChoice === "3"
+              ? 3
+              : 10;
+      const fromDate = date
+        ? new Date(`${date}T12:00:00`).getTime()
+        : examInstant(days);
+      const result = await invoke("plans.create", {
+        title: name,
+        subject: subject.trim() || undefined,
+        sourceIds: picked,
+        examAt: Number.isFinite(fromDate) ? fromDate : null,
+        target: target / 100,
+        language: language === "en" ? "en" : "it",
+        style,
+        topicTitles: picked.map(
+          (id) =>
+            topicTitles[id] ||
+            (sources.data ?? []).find((source) => source.id === id)?.title ||
+            "",
+        ),
+      });
       if (!result) return;
       await client.invalidateQueries({ queryKey: ["plans"] });
-      setBuilt(result.planId);
+      setParams({ build: result.planId });
     } catch (err) {
       const key =
         err && typeof err === "object" && "messageKey" in err
           ? String((err as { messageKey: unknown }).messageKey)
           : "";
-      if (key !== "errors.aborted") setFailed(true);
+      if (key !== "errors.aborted") setStartError(key || "wizard.failed");
     } finally {
-      stop.current = null;
-      setBusy(false);
+      setStarting(false);
     }
   }
 
-  if (busy || built || failed) {
-    const name = title.trim();
+  if (buildPlanId || busy || built || failed) {
+    const name = buildingPlan.data?.title ?? title.trim();
     return (
-      <FocusLayout title={t("wizard.preparing", { title: name })} closable={!busy}>
+      <FocusLayout
+        title={t("wizard.preparing", { title: name })}
+        closable={!busy}
+      >
         <BuildingMark
-          inner={busy ? 0.45 : 1}
-          middle={built ? 1 : 0}
-          outer={built ? 1 : 0}
+          inner={Math.min(1, (build.data?.progress ?? 0) * 6)}
+          middle={Math.max(0, Math.min(1, (build.data?.progress ?? 0) * 6 - 1))}
+          outer={Math.max(0, Math.min(1, ((build.data?.progress ?? 0) * 6 - 2) / 4))}
           done={Boolean(built)}
           failedTrail={failed ? 0 : undefined}
         />
         <p className="title-2">{t("wizard.preparing", { title: name })}</p>
-        <ul className="choice-list">
-          <li className="small">{t("wizard.stepSources")}</li>
-          <li className="small">{t("wizard.stepTopics")}</li>
-          <li className="small">{t("wizard.stepPath")}</li>
-        </ul>
-        {failed ? <p className="small">{t("wizard.failed")}</p> : null}
+        <StepLines steps={(build.data?.steps ?? []).map((step) => ({ id: step.name, label: t(step.label), state: step.state === "succeeded" ? "done" : step.state }))} label={t("wizard.preparing", { title: name })} />
+        {build.data?.stepLabel ? (
+          <p className="small" role="status">
+            {t(build.data.stepLabel)}
+          </p>
+        ) : null}
+        {buildPlanId && !build.isPending && !build.data ? (
+          <p className="small" role="alert">
+            {t("wizard.buildMissing")}
+          </p>
+        ) : null}
+        {failed ? (
+          <p className="small">
+            {t(
+              build.data?.state === "cancelled"
+                ? "wizard.cancelled"
+                : "wizard.failed",
+            )}
+          </p>
+        ) : null}
         {built ? (
-          <Button type="primary" shape="round" onClick={() => navigate(`/plans/${built}`)}>
+          <Button
+            type="primary"
+            shape="round"
+            onClick={() => navigate(`/plans/${built}`)}
+          >
             {t("wizard.open")}
           </Button>
         ) : null}
         {failed ? (
-          <Button shape="round" onClick={() => void create()}>
-            {t("wizard.retry")}
+          <Button
+            shape="round"
+            onClick={() => {
+              if (build.data)
+                void invoke(
+                  build.data.state === "interrupted"
+                    ? "jobs.resume"
+                    : "jobs.retry",
+                  { jobId: build.data.jobId },
+                ).then(() => build.refetch());
+            }}
+          >
+            {t(
+              build.data?.state === "interrupted"
+                ? "jobs.resume"
+                : "wizard.retry",
+            )}
           </Button>
         ) : null}
         {busy ? (
-          <Button shape="round" onClick={() => stop.current?.()}>
+          <Button
+            shape="round"
+            onClick={() => {
+              if (build.data)
+                void invoke("jobs.cancel", { jobId: build.data.jobId });
+            }}
+          >
             {t("wizard.cancel")}
           </Button>
         ) : null}
@@ -122,6 +202,11 @@ export function WizardFrame() {
       }
     >
       <p className="body ink-muted">{t("wizard.body")}</p>
+      {startError ? (
+        <p className="small" role="alert">
+          {t(startError)}
+        </p>
+      ) : null}
       <label className="label" htmlFor="plan-title">
         {t("wizard.planTitle")}
       </label>
@@ -149,7 +234,9 @@ export function WizardFrame() {
           <button
             key={source.id}
             type="button"
-            className={picked.includes(source.id) ? "choice is-selected" : "choice"}
+            className={
+              picked.includes(source.id) ? "choice is-selected" : "choice"
+            }
             aria-pressed={picked.includes(source.id)}
             onClick={() =>
               setPicked((current) =>
@@ -163,7 +250,9 @@ export function WizardFrame() {
           </button>
         ))}
       </div>
-      {picked.length === 0 ? <p className="small">{t("wizard.noMaterial")}</p> : null}
+      {picked.length === 0 ? (
+        <p className="small">{t("wizard.noMaterial")}</p>
+      ) : null}
       {picked.map((id) => {
         const source = (sources.data ?? []).find((item) => item.id === id);
         return (
@@ -173,7 +262,10 @@ export function WizardFrame() {
               aria-label={t("wizard.topicName")}
               value={topicTitles[id] ?? source?.title ?? ""}
               onChange={(event) =>
-                setTopicTitles((current) => ({ ...current, [id]: event.target.value }))
+                setTopicTitles((current) => ({
+                  ...current,
+                  [id]: event.target.value,
+                }))
               }
             />
           </label>
@@ -192,7 +284,9 @@ export function WizardFrame() {
           <button
             key={id}
             type="button"
-            className={!date && examChoice === id ? "choice is-selected" : "choice"}
+            className={
+              !date && examChoice === id ? "choice is-selected" : "choice"
+            }
             aria-pressed={!date && examChoice === id}
             onClick={() => {
               setDate("");
@@ -306,8 +400,16 @@ export function PlanPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.series", { planId: planId ?? "" }),
   });
+  const [introOpen, setIntroOpen] = useState(false);
+  const intro = useQuery({
+    queryKey: ["plan", planId, "intro"],
+    queryFn: () => invoke("plans.intro", { planId: planId! }),
+    enabled: Boolean(planId),
+  });
   const progress = series.data;
-  const [tab, setTab] = useState<"progress" | "path" | "topics" | "sources">("progress");
+  const [tab, setTab] = useState<"progress" | "path" | "topics" | "sources">(
+    "progress",
+  );
   const [withProgress, setWithProgress] = useState(false);
   const [withSources, setWithSources] = useState(false);
   const onTrack = (progress?.topics ?? []).filter(
@@ -316,13 +418,26 @@ export function PlanPage() {
   const chart = progress?.chart ?? [];
   const chartWidth = 280;
   const chartHeight = 72;
-  const chartStep = chart.length > 1 ? chartWidth / (chart.length - 1) : chartWidth;
+  const chartStep =
+    chart.length > 1 ? chartWidth / (chart.length - 1) : chartWidth;
   const chartPath = chart
     .map((point, index) => {
       const command = index === 0 ? "M" : "L";
       return `${command} ${index * chartStep} ${chartHeight - point.mastery * chartHeight}`;
     })
     .join(" ");
+  if (plan.data?.status === "building")
+    return (
+      <FocusLayout title={plan.data.title} closable>
+        <p className="body">{t("wizard.buildInProgress")}</p>
+        <Button
+          type="primary"
+          onClick={() => navigate(`/plans/new?build=${planId}`)}
+        >
+          {t("wizard.continueBuild")}
+        </Button>
+      </FocusLayout>
+    );
   return (
     <FocusLayout
       title={plan.data?.title ?? t("wizard.title")}
@@ -336,8 +451,14 @@ export function PlanPage() {
           shape="round"
           onClick={() => {
             if (!planId) return;
-            void invoke("plans.export", { planId, progress: withProgress, embed: withSources }).then((file) => {
-              const blob = new Blob([JSON.stringify(file)], { type: "application/json" });
+            void invoke("plans.export", {
+              planId,
+              progress: withProgress,
+              embed: withSources,
+            }).then((file) => {
+              const blob = new Blob([JSON.stringify(file)], {
+                type: "application/json",
+              });
               const link = document.createElement("a");
               link.href = URL.createObjectURL(blob);
               link.download = `${file.title}.pyxis.json`;
@@ -352,7 +473,52 @@ export function PlanPage() {
         </Button>
       }
     >
-      {plan.data?.status === "draft" ? <p className="small">{t("plans.draft")}</p> : null}
+      <Modal
+        open={introOpen}
+        title={t("plans.intro")}
+        onCancel={() => setIntroOpen(false)}
+        footer={
+          <Button
+            type="primary"
+            onClick={() => {
+              const node = plan.data?.nodes.find(
+                (item) => item.kind === "intro",
+              );
+              if (node && planId)
+                void invoke("plans.complete", { planId, nodeId: node.id }).then(
+                  () => {
+                    setIntroOpen(false);
+                    void client.invalidateQueries({
+                      queryKey: ["plan", planId],
+                    });
+                    void client.invalidateQueries({
+                      queryKey: ["recommend", planId],
+                    });
+                  },
+                );
+            }}
+          >
+            {t("wizard.continue")}
+          </Button>
+        }
+      >
+        <MarkdownView
+          onCitationClick={(number) => {
+            const passageId = intro.data?.passageIds[number - 1];
+            if (passageId) openSourceViewer({ passageId });
+          }}
+        >
+          {intro.data?.markdown ?? ""}
+        </MarkdownView>
+      </Modal>
+      {plan.data?.status === "building" ? (
+        <Button onClick={() => navigate(`/plans/new?build=${planId}`)}>
+          {t("wizard.continueBuild")}
+        </Button>
+      ) : null}
+      {plan.data?.status === "draft" ? (
+        <p className="small">{t("plans.draft")}</p>
+      ) : null}
       <label className="choice">
         <input
           type="checkbox"
@@ -394,7 +560,15 @@ export function PlanPage() {
         <ul className="choice-list">
           {(plan.data?.topics ?? []).map((topic) => (
             <li key={topic.id} className="small">
-              {topic.title}
+              <details>
+                <summary>{topic.title}</summary>
+                {topic.summary ? <p className="body">{topic.summary}</p> : null}
+                <ul>
+                  {topic.subtopics.map((name, i) => (
+                    <li key={i}>{name}</li>
+                  ))}
+                </ul>
+              </details>
             </li>
           ))}
         </ul>
@@ -436,9 +610,14 @@ export function PlanPage() {
         <section>
           <h2 className="title-3">{t("progress.title")}</h2>
           <p className="small">
-            {t("progress.onTrack", { ready: onTrack, total: progress.topics.length })}
+            {t("progress.onTrack", {
+              ready: onTrack,
+              total: progress.topics.length,
+            })}
           </p>
-          <p className="small">{t("progress.lessons", { count: progress.lessons })}</p>
+          <p className="small">
+            {t("progress.lessons", { count: progress.lessons })}
+          </p>
           <p className="small">{t("progress.chart")}</p>
           <svg
             viewBox={`0 0 ${chartWidth} ${chartHeight}`}
@@ -447,24 +626,39 @@ export function PlanPage() {
             role="img"
             aria-label={t("progress.chart")}
           >
-            <path d={chartPath} fill="none" stroke="currentColor" strokeWidth="2" />
+            <path
+              d={chartPath}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            />
           </svg>
-          <p className="small">{t("progress.week", { count: progress.pace.week })}</p>
-          <p className="small">{t("progress.minutes", { count: progress.minutes })}</p>
+          <p className="small">
+            {t("progress.week", { count: progress.pace.week })}
+          </p>
+          <p className="small">
+            {t("progress.minutes", { count: progress.minutes })}
+          </p>
           <p className="small">
             {t("progress.peak", {
-              day: new Date(progress.pace.peakDay).toLocaleDateString(undefined, {
-                weekday: "long",
-                day: "numeric",
-                month: "short",
-              }),
+              day: new Date(progress.pace.peakDay).toLocaleDateString(
+                undefined,
+                {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "short",
+                },
+              ),
             })}
           </p>
           <h3 className="body-strong">{t("progress.simulations")}</h3>
           {(simulations.data ?? []).length === 0 ? (
             <>
               <p className="small">{t("progress.noSimulations")}</p>
-              <Button shape="round" onClick={() => navigate(`/plans/${planId ?? ""}/simulation`)}>
+              <Button
+                shape="round"
+                onClick={() => navigate(`/plans/${planId ?? ""}/simulation`)}
+              >
                 {t("progress.startSimulation")}
               </Button>
             </>
@@ -489,7 +683,8 @@ export function PlanPage() {
             <ul className="choice-list">
               {progress.gaps.map((gap) => (
                 <li key={gap.topicId} className="small">
-                  {progress.topics.find((topic) => topic.id === gap.topicId)?.title ?? gap.topicId}
+                  {progress.topics.find((topic) => topic.id === gap.topicId)
+                    ?.title ?? gap.topicId}
                 </li>
               ))}
             </ul>
@@ -520,59 +715,76 @@ export function PlanPage() {
           ))}
         </ul>
       ) : null}
-      {(tab === "path" || tab === "progress") ? (
-      <ol className="choice-list">
-        {(plan.data?.nodes ?? []).map((node) => (
-          <li key={node.id}>
-            <button
-              type="button"
-              className="choice"
-              disabled={node.state === "locked"}
-              onClick={() => {
-                if (!planId) return;
-                if (node.kind === "diagnostic") {
-                  navigate(`/plans/${planId}/diagnostic`);
-                  return;
-                }
-                if (node.kind === "learn" && node.topicId) {
-                  navigate(`/plans/${planId}/lesson/${node.topicId}`);
-                  return;
-                }
-                if (node.kind === "practice" && node.topicId) {
-                  navigate(`/plans/${planId}/practice/${node.topicId}`);
-                  return;
-                }
-                if (node.kind === "cards" && node.topicId) {
-                  navigate(`/plans/${planId}/cards/${node.topicId}`);
-                  return;
-                }
-                if (node.kind === "simulation") {
-                  navigate(`/plans/${planId}/simulation`);
-                  return;
-                }
-                void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
-                  void client.invalidateQueries({ queryKey: ["plan", planId] });
-                  void client.invalidateQueries({ queryKey: ["mastery", planId] });
-                });
-              }}
-            >
-              <span className="body-strong">{node.title}</span>
-              <span className="small">
-                {t(`plans.${node.kind}`)}
-                {node.state === "current" ? ` · ${t("plans.current")}` : ""}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ol>
+      {tab === "path" || tab === "progress" ? (
+        <ol className="choice-list">
+          {(plan.data?.nodes ?? []).map((node) => (
+            <li key={node.id}>
+              <button
+                type="button"
+                className="choice"
+                disabled={node.state === "locked"}
+                onClick={() => {
+                  if (!planId) return;
+                  if (node.kind === "intro" && intro.data) {
+                    setIntroOpen(true);
+                    return;
+                  }
+                  if (node.kind === "diagnostic") {
+                    navigate(`/plans/${planId}/diagnostic`);
+                    return;
+                  }
+                  if (node.kind === "learn" && node.topicId) {
+                    navigate(`/plans/${planId}/lesson/${node.topicId}`);
+                    return;
+                  }
+                  if (node.kind === "practice" && node.topicId) {
+                    navigate(`/plans/${planId}/practice/${node.topicId}`);
+                    return;
+                  }
+                  if (node.kind === "cards" && node.topicId) {
+                    navigate(`/plans/${planId}/cards/${node.topicId}`);
+                    return;
+                  }
+                  if (node.kind === "simulation") {
+                    navigate(`/plans/${planId}/simulation`);
+                    return;
+                  }
+                  void invoke("plans.complete", {
+                    planId,
+                    nodeId: node.id,
+                  }).then(() => {
+                    void client.invalidateQueries({
+                      queryKey: ["plan", planId],
+                    });
+                    void client.invalidateQueries({
+                      queryKey: ["mastery", planId],
+                    });
+                  });
+                }}
+              >
+                <span className="body-strong">{node.title}</span>
+                <span className="small">
+                  {t(`plans.${node.kind}`)}
+                  {node.state === "current" ? ` · ${t("plans.current")}` : ""}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
       ) : null}
       {recommended.data ? (
         <Button
           type="primary"
           shape="round"
           onClick={() => {
-            const node = plan.data?.nodes.find((item) => item.id === recommended.data?.nodeId);
+            const node = plan.data?.nodes.find(
+              (item) => item.id === recommended.data?.nodeId,
+            );
             if (!node || !planId) return;
+            if (node.kind === "intro" && intro.data) {
+              setIntroOpen(true);
+              return;
+            }
             if (node.kind === "diagnostic") {
               navigate(`/plans/${planId}/diagnostic`);
               return;
@@ -593,10 +805,14 @@ export function PlanPage() {
               navigate(`/plans/${planId}/simulation`);
               return;
             }
-            void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
-              void client.invalidateQueries({ queryKey: ["plan", planId] });
-              void client.invalidateQueries({ queryKey: ["recommend", planId] });
-            });
+            void invoke("plans.complete", { planId, nodeId: node.id }).then(
+              () => {
+                void client.invalidateQueries({ queryKey: ["plan", planId] });
+                void client.invalidateQueries({
+                  queryKey: ["recommend", planId],
+                });
+              },
+            );
           }}
         >
           {t("plans.recommended")}
@@ -688,7 +904,11 @@ export function SharedPlanPage() {
             .finally(drop);
         }}
       />
-      <Button shape="round" disabled={busy} onClick={() => fileRef.current?.click()}>
+      <Button
+        shape="round"
+        disabled={busy}
+        onClick={() => fileRef.current?.click()}
+      >
         {t("shared.file")}
       </Button>
       <form

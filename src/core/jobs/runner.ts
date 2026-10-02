@@ -278,7 +278,7 @@ export function createRunner(
     retry(jobId) {
       const changed = db
         .prepare(
-          `UPDATE jobs SET state = 'queued', error = NULL, updated_at = ? WHERE id = ? AND state IN ('failed', 'cancelled')`,
+          `UPDATE jobs SET state = 'queued', dismissed = 0, error = NULL, updated_at = ? WHERE id = ? AND state IN ('failed', 'cancelled')`,
         )
         .run(Date.now(), jobId);
       if (changed.changes === 0) return;
@@ -292,7 +292,7 @@ export function createRunner(
     resume(jobId) {
       const changed = db
         .prepare(
-          `UPDATE jobs SET state = 'queued', updated_at = ? WHERE id = ? AND state = 'interrupted'`,
+          `UPDATE jobs SET state = 'queued', dismissed = 0, updated_at = ? WHERE id = ? AND state = 'interrupted'`,
         )
         .run(Date.now(), jobId);
       if (changed.changes === 0) return;
@@ -302,6 +302,11 @@ export function createRunner(
     dismiss(jobId) {
       if (active.has(jobId)) return;
       const view = viewOf(jobId);
+      if (view?.kind === "plan-build" && ["failed", "cancelled", "succeeded"].includes(view.state)) {
+        db.prepare("UPDATE jobs SET dismissed = 1 WHERE id = ?").run(jobId);
+        publish(jobId);
+        return;
+      }
       const changed = db
         .prepare(
           `DELETE FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled', 'succeeded')`,
@@ -313,7 +318,7 @@ export function createRunner(
       const rows = db
         .prepare(
           `SELECT id FROM jobs
-           WHERE state IN ('queued', 'running', 'failed', 'cancelled', 'interrupted')
+           WHERE dismissed = 0 AND state IN ('queued', 'running', 'failed', 'cancelled', 'interrupted')
            ORDER BY created_at`,
         )
         .all() as Array<{ id: string }>;

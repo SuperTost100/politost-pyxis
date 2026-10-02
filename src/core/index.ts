@@ -1,3 +1,4 @@
+import { recordedPlanRun } from "./engine/recorded-plan";
 import { join } from "node:path";
 import { openDatabase } from "./db/connection";
 import { getFunnel, setApiKeys, setScratch } from "./engine/funnel";
@@ -77,7 +78,8 @@ if (!parent) {
         data.dev === true ? process.env["PYXIS_E2E_REPLY"] : undefined,
       );
       bindProfile(db);
-      bindPlans(db, data.workspacePath);
+      const planFixture = data.dev === true ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined;
+      bindPlans(db, data.workspacePath, runner, planFixture ? recordedPlanRun(planFixture, Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0)) : undefined);
       bindMaps(db);
       bindTools();
       bindStudy(db);

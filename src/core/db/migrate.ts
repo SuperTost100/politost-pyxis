@@ -52,6 +52,8 @@ ALTER TABLE sources ADD COLUMN library INTEGER NOT NULL DEFAULT 1;`,
     sql: `ALTER TABLE subjects ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
 UPDATE subjects SET position = (SELECT COUNT(*) FROM subjects s WHERE s.name < subjects.name OR (s.name = subjects.name AND s.id < subjects.id));`,
   },
+  { version: 12, sql: `ALTER TABLE topics ADD COLUMN tree_json TEXT CHECK (tree_json IS NULL OR json_valid(tree_json));
+ALTER TABLE jobs ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0;` },
 ];
 
 export function migrate(db: Database.Database): void {

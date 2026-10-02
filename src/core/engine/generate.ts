@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isAbort, IpcError } from "../../shared/ipc";
+import { IpcError } from "../../shared/ipc";
 import { runTurn, type EngineResult, type Selection } from "./funnel";
 
 export type GenerateInput = {
@@ -20,7 +20,10 @@ export type GenerateInput = {
 export type GenerateOutput = EngineResult & { data?: unknown };
 
 function jsonSchema(schema: z.ZodType): Record<string, unknown> {
-  const json = z.toJSONSchema(schema) as Record<string, unknown>;
+  const json = z.toJSONSchema(schema, { target: "draft-7" }) as Record<
+    string,
+    unknown
+  >;
   lock(json);
   return json;
 }

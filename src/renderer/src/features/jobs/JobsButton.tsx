@@ -6,7 +6,7 @@ import { invoke } from "../../lib/ipc";
 import { useJobs } from "./queries";
 
 function stepText(label: string, t: (key: string) => string): string {
-  return label.startsWith("jobs.") || label.startsWith("sources.jobs.") ? t(label) : label;
+  return label.startsWith("jobs.") || label.startsWith("sources.jobs.") || label.startsWith("wizard.") ? t(label) : label;
 }
 
 function errorText(error: string, t: (key: string) => string): string {

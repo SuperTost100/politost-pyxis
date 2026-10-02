@@ -288,7 +288,16 @@
     "style": "Modo di studio",
     "read": "Leggere",
     "practice": "Esercitarsi",
-    "decide": "Decidi tu"
+    "decide": "Decidi tu",
+    "stepIntro": "Scrittura dell’introduzione",
+    "stepDiagnostic": "Preparazione del test iniziale",
+    "stepReady": "Piano pronto",
+    "sourceNotReady": "Una fonte richiede attenzione. Completa l’importazione o l’OCR, poi riprova a costruire il piano.",
+    "cancelled": "Creazione annullata. Riprova per riprendere dal passaggio salvato.",
+    "continueBuild": "Riprendi la creazione del piano",
+    "continue": "Continua",
+    "buildMissing": "Questa creazione non è più disponibile. Torna ai piani per crearne uno nuovo.",
+    "buildInProgress": "Questo piano è ancora in costruzione. Apri l’avanzamento per riprendere o annullare."
   },
   "shared": {
     "title": "Apri un piano condiviso",

@@ -232,7 +232,7 @@ describe("askTurn", () => {
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "codex", model: "gpt-6.1-sol" }));
     await askTurn(db, { text: "dopo", allowGeneral: true, run });
-    expect(seen).toEqual(["claude-sonnet-4-6", "gpt-6.1-sol"]);
+    expect(seen).toEqual(["claude-sonnet-5", "gpt-6.1-sol"]);
   });
 
   it("does not store a reply when the turn is aborted", async () => {

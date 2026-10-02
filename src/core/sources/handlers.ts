@@ -67,6 +67,9 @@ export function sourceHandlers(db: Database.Database, workspace: string, runner?
     return (await embedTexts(modelDir, [text], signal))[0] ?? null;
   });
   if (runner) {
+    db.prepare(`UPDATE sources SET status = 'interrupted' WHERE status NOT IN ('removed', 'ready')
+      AND EXISTS (SELECT 1 FROM jobs j WHERE j.kind = 'source-import' AND j.state = 'interrupted'
+      AND json_extract(j.params_json, '$.sourceId') = sources.id)`).run();
     registerSourceJobs(db, workspace, runner);
     runner.register("source-index", { jobClass: "local", steps: [
       { name: "index", label: "sources.jobs.vectors", async run(ctx) {

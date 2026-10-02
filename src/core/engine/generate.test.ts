@@ -23,9 +23,17 @@ describe("generate", () => {
       prompt: "name a colour",
       schema: z.object({ colour: z.string() }),
       run: async (input) => {
+        expect(input.responseSchema?.schema.$schema).toBe(
+          "http://json-schema.org/draft-07/schema#",
+        );
+        expect(input.responseSchema?.schema.additionalProperties).toBe(false);
         calls.push(input.prompt);
-        if (calls.length === 1) return result({ text: "blue", structuredError: "not json" });
-        return result({ structured: { colour: "blue" }, text: "{\"colour\":\"blue\"}" });
+        if (calls.length === 1)
+          return result({ text: "blue", structuredError: "not json" });
+        return result({
+          structured: { colour: "blue" },
+          text: '{"colour":"blue"}',
+        });
       },
     });
     expect(calls).toHaveLength(2);

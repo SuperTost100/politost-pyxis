@@ -514,7 +514,7 @@ export const requests = {
         title: z.string(),
         status: z.string(),
         target: z.number(),
-        topics: z.array(z.object({ id: z.string(), title: z.string(), position: z.number() })),
+        topics: z.array(z.object({ id: z.string(), title: z.string(), position: z.number(), summary: z.string(), subtopics: z.array(z.string()) })),
         nodes: z.array(
           z.object({
             id: z.string(),
@@ -596,6 +596,11 @@ export const requests = {
     input: z.object({ planId: z.string(), nodeId: z.string() }),
     output: z.object({ ok: z.boolean() }),
   },
+  "plans.build": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({ jobId: z.string(), state: JobState, progress: z.number(), stepLabel: z.string().nullable(), error: z.string().nullable(), steps: z.array(JobStepView) }).nullable(),
+  },
+  "plans.intro": { input: z.object({ planId: z.string() }), output: z.object({ markdown: z.string(), passageIds: z.array(z.string()) }).nullable() },
   "plans.create": {
     input: z.object({
       title: z.string(),
@@ -609,6 +614,7 @@ export const requests = {
     }),
     output: z.object({
       planId: z.string(),
+      jobId: z.string().optional(),
       topics: z.number(),
       pathNodes: z.number(),
     }),

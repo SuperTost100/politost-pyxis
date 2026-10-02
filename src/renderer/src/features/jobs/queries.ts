@@ -13,6 +13,9 @@ export function JobsSync() {
   const client = useQueryClient();
   useEffect(() => {
     const offJob = onBroadcast("job.updated", () => {
+      void client.invalidateQueries({ queryKey: ["plans"] });
+      void client.invalidateQueries({ queryKey: ["plan"] });
+      void client.invalidateQueries({ queryKey: ["plan-build"] });
       void client.invalidateQueries({ queryKey: ["sources"] });
       void client.invalidateQueries({ queryKey: ["source-chapters"] });
       void client.invalidateQueries({ queryKey: ["source-meta"] });

@@ -9,7 +9,7 @@ export type StoredSelection = {
 
 const fallback: StoredSelection = {
   provider: "claude",
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
 };
 
 export function selectionFor(

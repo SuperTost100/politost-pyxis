@@ -288,7 +288,16 @@
     "style": "Study style",
     "read": "Reading",
     "practice": "Practicing",
-    "decide": "You decide"
+    "decide": "You decide",
+    "stepIntro": "Writing the introduction",
+    "stepDiagnostic": "Preparing the diagnostic quiz",
+    "stepReady": "Plan ready",
+    "sourceNotReady": "A source needs attention. Finish its import or OCR, then retry this build.",
+    "cancelled": "Build cancelled. Retry to resume from the saved step.",
+    "continueBuild": "Continue plan build",
+    "continue": "Continue",
+    "buildMissing": "This build is no longer available. Return to your plans to create a new one.",
+    "buildInProgress": "This plan is still being built. Open its progress to resume or cancel."
   },
   "shared": {
     "title": "Open a shared plan",

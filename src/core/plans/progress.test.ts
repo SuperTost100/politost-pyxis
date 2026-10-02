@@ -8,6 +8,7 @@ import { listSimulations } from "../study/simulation";
 describe("planMastery", () => {
   it("shrinks one finished lesson toward the empty prior", () => {
     const db = openDatabase(":memory:");
+    const now = 1_700_000_000_000;
     const planId = uuidv7(1);
     const topicId = uuidv7(2);
     db.prepare(
@@ -19,8 +20,8 @@ describe("planMastery", () => {
     db.prepare(
       `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
        VALUES (?, 'lesson_completed', ?, ?, '{}', ?)`,
-    ).run(uuidv7(3), planId, topicId, Date.now());
-    const rows = planMastery(db, planId);
+    ).run(uuidv7(3), planId, topicId, now);
+    const rows = planMastery(db, planId, now);
     expect(rows).toEqual([{ id: topicId, title: "Moti", mastery: 0.25 }]);
   });
 
