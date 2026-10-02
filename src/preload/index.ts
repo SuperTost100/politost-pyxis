@@ -30,6 +30,7 @@ const aborted = {
 
 // ponytail: a replacement port replays reads only. A write that died with the core is rejected so it cannot run twice. Upgrade path is a request id stored in the core.
 const replayable = new Set([
+  "study.quizRead",
   "plans.build", "plans.intro",
   "jobs.list",
   "engines.overview",

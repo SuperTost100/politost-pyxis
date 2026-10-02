@@ -1,0 +1,162 @@
+.px-quiz-setup,
+.px-quiz-question,
+.px-quiz-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: 100%;
+  max-width: 680px;
+  align-self: center;
+}
+.px-quiz-count {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.px-quiz-count output {
+  font: 500 28px/1.2 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+.px-quiz-types {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.px-quiz-types legend {
+  margin-bottom: var(--space-3);
+}
+.px-quiz-pills,
+.px-quiz-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+.px-quiz-pills .choice {
+  width: auto;
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
+  padding: 10px 16px;
+}
+.px-quiz-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font: 400 15px/22px var(--font-sans);
+}
+.px-quiz-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+.px-quiz-setup > .ant-btn {
+  align-self: flex-start;
+  white-space: nowrap;
+}
+.px-quiz-stem {
+  font: 400 20px/1.6 var(--font-sans);
+  outline: none;
+}
+.px-quiz-stem:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 6px;
+}
+.px-quiz-question .choice {
+  display: flex;
+  align-items: flex-start;
+  text-align: left;
+  gap: var(--space-3);
+}
+.px-quiz-question .choice p {
+  margin: 0;
+}
+.px-quiz-letter {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+.px-quiz-soft-time {
+  margin-top: calc(-1 * var(--space-3));
+}
+.px-quiz-soft-track {
+  height: 3px;
+  width: 100%;
+  background: var(--border);
+  overflow: hidden;
+}
+.px-quiz-soft-track span {
+  height: 100%;
+  display: block;
+  background: var(--primary);
+}
+.px-quiz-soft-time p {
+  margin: var(--space-2) 0 0;
+}
+.px-quiz-matching,
+.px-quiz-blanks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.px-quiz-matching label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 1fr);
+  gap: var(--space-4);
+  align-items: center;
+}
+.px-quiz-matching select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.px-quiz-matching select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.px-quiz-blanks label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-quiz-feedback,
+.px-quiz-preview {
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.px-quiz-review {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}
+.px-quiz-review summary {
+  cursor: pointer;
+  line-height: 1.6;
+}
+.px-quiz-review summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+.px-quiz-open textarea {
+  font: 400 17px/1.6 var(--font-sans);
+}
+.px-quiz-preview {
+  margin-top: var(--space-3);
+}
+.px-quiz-actions .ant-btn {
+  white-space: nowrap;
+}
+
+.px-quiz-generation {
+  width: 100%;
+  max-width: 680px;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}

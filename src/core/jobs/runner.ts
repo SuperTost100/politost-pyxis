@@ -302,7 +302,7 @@ export function createRunner(
     dismiss(jobId) {
       if (active.has(jobId)) return;
       const view = viewOf(jobId);
-      if (view?.kind === "plan-build" && ["failed", "cancelled", "succeeded"].includes(view.state)) {
+      if ((view?.kind === "plan-build" || view?.kind === "quiz-build") && ["failed", "cancelled", "succeeded"].includes(view.state)) {
         db.prepare("UPDATE jobs SET dismissed = 1 WHERE id = ?").run(jobId);
         publish(jobId);
         return;

@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { flaggedIds } from "../study/flags";
 import { uuidv7 } from "../../shared/ids";
 import { idleTopics, masteryFor, type MasteryEvent } from "../study/mastery";
 import {
@@ -10,7 +11,11 @@ import {
   type SeriesEvent,
 } from "../study/series";
 
-export function planMastery(db: Database.Database, planId: string, now = Date.now()) {
+export function planMastery(
+  db: Database.Database,
+  planId: string,
+  now = Date.now(),
+) {
   const topics = db
     .prepare(`SELECT id, title FROM topics WHERE plan_id = ? ORDER BY position`)
     .all(planId) as Array<{ id: string; title: string }>;
@@ -25,22 +30,35 @@ export function planMastery(db: Database.Database, planId: string, now = Date.no
     payload_json: string;
     created_at: number;
   }>;
+  const blocked = flaggedIds(db, "exercise");
   const events: MasteryEvent[] = rows.flatMap((row) => {
-    if (row.kind === "active_time" || row.kind === "gap_opened" || row.kind === "gap_closed") {
+    if (
+      row.kind === "active_time" ||
+      row.kind === "gap_opened" ||
+      row.kind === "gap_closed"
+    ) {
       return [];
     }
-    const payload = JSON.parse(row.payload_json) as { score?: number };
-    return [{
-      topicId: row.topic_id,
-      kind: row.kind === "card_rated" ? "card" : row.kind === "answer_given" ? "quiz" : "lesson",
-      score:
-        typeof payload.score === "number"
-          ? payload.score
-          : row.kind === "lesson_completed"
-            ? 1
-            : 0.5,
-      at: row.created_at,
-    }];
+    const payload = scorePayload(row.payload_json, blocked);
+    if (!payload) return [];
+    return [
+      {
+        topicId: row.topic_id,
+        kind:
+          row.kind === "card_rated"
+            ? "card"
+            : row.kind === "answer_given"
+              ? "quiz"
+              : "lesson",
+        score:
+          typeof payload.score === "number"
+            ? payload.score
+            : row.kind === "lesson_completed"
+              ? 1
+              : 0.5,
+        at: row.created_at,
+      },
+    ];
   });
   const scores = masteryFor(events, now);
   return topics.map((topic) => ({
@@ -62,13 +80,11 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
     payload_json: string;
     created_at: number;
   }>;
+  const blocked = flaggedIds(db, "exercise");
   return rows.flatMap((row): SeriesEvent[] => {
     if (row.kind === "gap_opened" || row.kind === "gap_closed") return [];
-    const payload = JSON.parse(row.payload_json) as {
-      score?: number;
-      scores?: number[];
-      seconds?: number;
-    };
+    const payload = scorePayload(row.payload_json, blocked);
+    if (!payload) return [];
     if (row.kind === "active_time") {
       return [
         {
@@ -81,14 +97,23 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
       ];
     }
     if (!row.topic_id) return [];
-    const kind = row.kind === "card_rated" ? "card" : row.kind === "answer_given" ? "quiz" : "lesson";
+    const kind =
+      row.kind === "card_rated"
+        ? "card"
+        : row.kind === "answer_given"
+          ? "quiz"
+          : "lesson";
     return [
       {
         topicId: row.topic_id,
         at: row.created_at,
         kind,
         score:
-          typeof payload.score === "number" ? payload.score : row.kind === "lesson_completed" ? 1 : 0.5,
+          typeof payload.score === "number"
+            ? payload.score
+            : row.kind === "lesson_completed"
+              ? 1
+              : 0.5,
         scores: Array.isArray(payload.scores)
           ? payload.scores.filter((score) => typeof score === "number")
           : undefined,
@@ -97,11 +122,19 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   });
 }
 
-export function syncGaps(db: Database.Database, planId: string, now = Date.now()) {
+export function syncGaps(
+  db: Database.Database,
+  planId: string,
+  now = Date.now(),
+) {
   const open = openGaps(readSeries(db, planId));
   const existing = db
     .prepare(`SELECT id, topic_id, closed_at FROM gaps WHERE plan_id = ?`)
-    .all(planId) as Array<{ id: string; topic_id: string | null; closed_at: number | null }>;
+    .all(planId) as Array<{
+    id: string;
+    topic_id: string | null;
+    closed_at: number | null;
+  }>;
   const still = new Set(open.map((gap) => gap.topicId));
   const flagged = db
     .prepare(
@@ -124,7 +157,9 @@ export function syncGaps(db: Database.Database, planId: string, now = Date.now()
     }
   }
   for (const gap of open) {
-    const live = existing.find((row) => row.topic_id === gap.topicId && row.closed_at == null);
+    const live = existing.find(
+      (row) => row.topic_id === gap.topicId && row.closed_at == null,
+    );
     if (live) continue;
     db.prepare(
       `INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES (?, ?, ?, ?)`,
@@ -132,7 +167,9 @@ export function syncGaps(db: Database.Database, planId: string, now = Date.now()
   }
   for (const row of flagged) {
     if (open.some((gap) => gap.topicId === row.topic_id)) continue;
-    const live = existing.find((item) => item.topic_id === row.topic_id && item.closed_at == null);
+    const live = existing.find(
+      (item) => item.topic_id === row.topic_id && item.closed_at == null,
+    );
     if (live) continue;
     db.prepare(
       `INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES (?, ?, ?, ?)`,
@@ -140,12 +177,17 @@ export function syncGaps(db: Database.Database, planId: string, now = Date.now()
   }
 }
 
-export function planSeries(db: Database.Database, planId: string, now = Date.now()) {
+export function planSeries(
+  db: Database.Database,
+  planId: string,
+  now = Date.now(),
+) {
   syncGaps(db, planId, now);
   const topics = planMastery(db, planId, now);
   const events = readSeries(db, planId);
   const studied = events.filter(
-    (event): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } => event.kind !== "active",
+    (event): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } =>
+      event.kind !== "active",
   );
   const idle = new Set(
     idleTopics(
@@ -180,5 +222,28 @@ export function planSeries(db: Database.Database, planId: string, now = Date.now
     minutes: Math.round(activity.weekSeconds / 60),
     lessons: studied.filter((event) => event.kind === "lesson").length,
     topics: topics.map((topic) => ({ ...topic, idle: idle.has(topic.id) })),
+  };
+}
+
+function scorePayload(
+  raw: string,
+  blocked: Set<string>,
+): { score?: number; scores?: number[]; seconds?: number } | null {
+  const payload = JSON.parse(raw) as {
+    score?: number;
+    scores?: number[];
+    seconds?: number;
+    questionScores?: Array<{ id: string; sourceIds: string[]; score: number }>;
+  };
+  if (!payload.questionScores) return payload;
+  const rows = payload.questionScores.filter(
+    (row) =>
+      !blocked.has(row.id) && !row.sourceIds.some((id) => blocked.has(id)),
+  );
+  if (!rows.length) return null;
+  return {
+    ...payload,
+    scores: rows.map((row) => row.score),
+    score: rows.reduce((sum, row) => sum + row.score, 0) / rows.length,
   };
 }

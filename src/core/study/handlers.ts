@@ -1,6 +1,14 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
-import { deleteCard, dueCards, queueCounts, rateCard, saveCard, setSuspended, suspendedCards } from "./cards";
+import {
+  deleteCard,
+  dueCards,
+  queueCounts,
+  rateCard,
+  saveCard,
+  setSuspended,
+  suspendedCards,
+} from "./cards";
 import { ensureTopicCards } from "./cardsFromBook";
 import { topicExercises } from "./exercises";
 import { writeLesson } from "./openLesson";
@@ -17,10 +25,31 @@ import {
 } from "./simulation";
 import { flagTarget } from "./flags";
 import { startReview } from "./review";
-import { startDiagnostic, startTopicQuiz, submitAttempt } from "./topicQuiz";
+import { startDiagnostic, submitAttempt } from "./topicQuiz";
 import { exportCardsCsv, exportMarkdown } from "../share/markdown";
 
-export function studyHandlers(db: Database.Database) {
+import {
+  gradeConfiguredAttempt,
+  gradeQuizQuestion,
+  quizAttempt,
+} from "./quizGrading";
+import { startConfiguredQuiz, type quizKinds } from "./configuredQuiz";
+
+import type { Runner } from "../jobs/runner";
+import type { GenerateInput } from "../engine/generate";
+import {
+  enqueueQuiz,
+  readQuiz,
+  registerQuizJobs,
+  saveQuizDraft,
+} from "./quizJobs";
+
+export function studyHandlers(
+  db: Database.Database,
+  runner?: Runner,
+  run: GenerateInput["run"] = runTurn,
+) {
+  if (runner) registerQuizJobs(db, runner, run);
   return {
     exercises(input: { topicId: string }) {
       return topicExercises(db, input.topicId);
@@ -46,11 +75,44 @@ export function studyHandlers(db: Database.Database) {
     review(input: { planId: string }) {
       return startReview(db, input.planId);
     },
-    quizStart(input: { planId: string; topicId: string }) {
-      return startTopicQuiz(db, input.planId, input.topicId);
+    quizStart(input: {
+      planId: string;
+      topicId: string;
+      count?: number;
+      feedback?: boolean;
+      types?: Array<(typeof quizKinds)[number]>;
+    }) {
+      return runner
+        ? enqueueQuiz(db, runner, input)
+        : startConfiguredQuiz(db, input, run);
+    },
+    quizDraft(input: {
+      attemptId: string;
+      picks: Record<string, string>;
+      index: number;
+    }) {
+      return saveQuizDraft(db, input.attemptId, input.picks, input.index);
+    },
+    quizRead(input: { attemptId: string }) {
+      return readQuiz(db, input.attemptId);
     },
     diagnosticStart(input: { planId: string }) {
       return startDiagnostic(db, input.planId);
+    },
+    async quizCheck(input: {
+      attemptId: string;
+      questionId: string;
+      pick: string;
+    }) {
+      if (!quizAttempt(db, input.attemptId).body.config?.feedback)
+        throw new Error("feedback-unavailable");
+      return gradeQuizQuestion(
+        db,
+        input.attemptId,
+        input.questionId,
+        input.pick,
+        run,
+      );
     },
     quizSubmit(input: { attemptId: string; picks: Record<string, string> }) {
       const gate = db
@@ -59,7 +121,12 @@ export function studyHandlers(db: Database.Database) {
            FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ?`,
         )
         .get(input.attemptId) as
-        | { started_at: number; submitted_at: number | null; kind: string; body_json: string }
+        | {
+            started_at: number;
+            submitted_at: number | null;
+            kind: string;
+            body_json: string;
+          }
         | undefined;
       if (gate?.kind === "simulation" && gate.submitted_at == null) {
         const stored = JSON.parse(gate.body_json) as { minutes?: number };
@@ -77,47 +144,109 @@ export function studyHandlers(db: Database.Database) {
           };
         }
       }
-      const scored = submitAttempt(db, input.attemptId, input.picks);
-      const row = db
-        .prepare(
-          `SELECT a.plan_id, i.topic_id, i.kind, i.body_json FROM attempts a
+      const finalize = (
+        graded?: Awaited<ReturnType<typeof gradeConfiguredAttempt>>,
+      ) =>
+        db.transaction(() => {
+          if (graded)
+            for (const [id, checked] of graded)
+              input.picks[id] ??= checked.pick;
+          const scored = submitAttempt(
+            db,
+            input.attemptId,
+            input.picks,
+            Date.now(),
+            graded,
+          );
+          const row = db
+            .prepare(
+              `SELECT a.plan_id, i.topic_id, i.kind, i.body_json FROM attempts a
            JOIN items i ON i.id = a.item_id WHERE a.id = ?`,
-        )
-        .get(input.attemptId) as
-        | { plan_id: string; topic_id: string | null; kind: string; body_json: string }
-        | undefined;
-      if (row) {
-        const now = Date.now();
-        const record = (topicId: string | null, score: number, scores: number[], at: number) => {
-          db.prepare(
-            `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+            )
+            .get(input.attemptId) as
+            | {
+                plan_id: string;
+                topic_id: string | null;
+                kind: string;
+                body_json: string;
+              }
+            | undefined;
+          if (row) {
+            const now = Date.now();
+            const record = (
+              topicId: string | null,
+              score: number,
+              scores: number[],
+              at: number,
+            ) => {
+              db.prepare(
+                `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
              VALUES (?, 'answer_given', ?, ?, ?, ?)`,
-          ).run(
-            uuidv7(at),
-            row.plan_id,
-            topicId,
-            JSON.stringify({ score, scores }),
-            at,
-          );
-        };
-        if (row.topic_id) {
-          record(
-            row.topic_id,
-            scored.score,
-            scored.results.map((result) => result.score),
-            now,
-          );
-          syncGaps(db, row.plan_id, now);
-        } else if (row.kind === "simulation" || row.kind === "diagnostic") {
-          const stored = JSON.parse(row.body_json) as {
-            questions?: Array<{ topicId?: string }>;
-          };
-          completeCurrentStage(db, row.plan_id, row.kind, now + 1);
-          recordTopicScores(db, row.plan_id, stored.questions ?? [], scored.results, now);
-          syncGaps(db, row.plan_id, now);
-        }
-      }
-      return scored;
+              ).run(
+                uuidv7(at),
+                row.plan_id,
+                topicId,
+                JSON.stringify({
+                  score,
+                  scores,
+                  questionScores:
+                    row.kind === "quiz"
+                      ? scored.results.map((result) => {
+                          const question = (
+                            JSON.parse(row.body_json) as {
+                              questions: Array<{
+                                id: string;
+                                sourceId?: string;
+                                sourceIds?: string[];
+                              }>;
+                            }
+                          ).questions.find(
+                            (question) => question.id === result.id,
+                          );
+                          return {
+                            id: result.id,
+                            sourceIds: [
+                              question?.sourceId,
+                              ...(question?.sourceIds ?? []),
+                            ].filter(Boolean),
+                            score: result.score,
+                          };
+                        })
+                      : undefined,
+                }),
+                at,
+              );
+            };
+            if (row.topic_id) {
+              record(
+                row.topic_id,
+                scored.score,
+                scored.results.map((result) => result.score),
+                now,
+              );
+              syncGaps(db, row.plan_id, now);
+            } else if (row.kind === "simulation" || row.kind === "diagnostic") {
+              const stored = JSON.parse(row.body_json) as {
+                questions?: Array<{ topicId?: string }>;
+              };
+              completeCurrentStage(db, row.plan_id, row.kind, now + 1);
+              recordTopicScores(
+                db,
+                row.plan_id,
+                stored.questions ?? [],
+                scored.results,
+                now,
+              );
+              syncGaps(db, row.plan_id, now);
+            }
+          }
+          return scored;
+        })();
+      return gate?.kind === "quiz" && JSON.parse(gate.body_json).config
+        ? gradeConfiguredAttempt(db, input.attemptId, input.picks, run).then(
+            finalize,
+          )
+        : finalize();
     },
     cards(input: { planId: string; topicId: string }) {
       ensureTopicCards(db, input.planId, input.topicId);
@@ -127,7 +256,13 @@ export function studyHandlers(db: Database.Database) {
       ensureTopicCards(db, input.planId, input.topicId);
       return queueCounts(db, input.planId, input.topicId);
     },
-    save(input: { planId: string; topicId: string; cardId?: string; front: string; back: string }) {
+    save(input: {
+      planId: string;
+      topicId: string;
+      cardId?: string;
+      front: string;
+      back: string;
+    }) {
       return saveCard(db, input);
     },
     remove(input: { cardId: string }) {
@@ -144,11 +279,25 @@ export function studyHandlers(db: Database.Database) {
     simulationOpen(input: { planId: string }) {
       return openSimulation(db, input.planId);
     },
-    simulationStart(input: { planId: string; minutes?: number; source?: "exam" | "mixed" }) {
-      const minutes = input.minutes === 60 || input.minutes === 90 ? input.minutes : 30;
-      return startSimulation(db, input.planId, minutes, Date.now(), input.source ?? "exam");
+    simulationStart(input: {
+      planId: string;
+      minutes?: number;
+      source?: "exam" | "mixed";
+    }) {
+      const minutes =
+        input.minutes === 60 || input.minutes === 90 ? input.minutes : 30;
+      return startSimulation(
+        db,
+        input.planId,
+        minutes,
+        Date.now(),
+        input.source ?? "exam",
+      );
     },
-    simulationDraft(input: { attemptId: string; picks: Record<string, string> }) {
+    simulationDraft(input: {
+      attemptId: string;
+      picks: Record<string, string>;
+    }) {
       return saveSimulationDraft(db, input.attemptId, input.picks);
     },
     simulationRead(input: { attemptId: string }) {

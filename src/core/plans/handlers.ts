@@ -85,6 +85,15 @@ export function planHandlers(
       db.prepare(
         "DELETE FROM jobs WHERE kind = 'plan-build' AND json_extract(params_json, '$.planId') = ?",
       ).run(input.planId);
+      const quizJobs = db
+        .prepare(
+          "SELECT id FROM jobs WHERE kind = 'quiz-build' AND json_extract(params_json, '$.input.planId') = ?",
+        )
+        .all(input.planId) as Array<{ id: string }>;
+      for (const quizJob of quizJobs) runner?.cancel(quizJob.id);
+      db.prepare(
+        "DELETE FROM jobs WHERE kind = 'quiz-build' AND json_extract(params_json, '$.input.planId') = ?",
+      ).run(input.planId);
       deletePlan(db, input.planId);
       return { ok: true };
     },

@@ -3,9 +3,37 @@ import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
 import { listPlans, nextLesson } from "./create";
 import { planMastery, planSeries } from "./progress";
+import { flagTarget } from "../study/flags";
 import { listSimulations } from "../study/simulation";
 
 describe("planMastery", () => {
+  it("removes flagged quiz questions from mastery even when flagged after submission", () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Physics', 'ready', 1, 1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t', 'p', 'Motion', 0, 1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at) VALUES ('e', 'answer_given', 'p', 't', ?, 1000)",
+    ).run(
+      JSON.stringify({
+        score: 0.5,
+        scores: [1, 0],
+        questionScores: [
+          { id: "correct", sourceIds: [], score: 1 },
+          { id: "wrong", sourceIds: ["exercise"], score: 0 },
+        ],
+      }),
+    );
+    expect(planMastery(db, "p", 1000)[0]!.mastery).toBe(0.125);
+    flagTarget(db, "exercise", "exercise");
+    expect(planMastery(db, "p", 1000)[0]!.mastery).toBe(0.25);
+    flagTarget(db, "exercise", "correct");
+    expect(planMastery(db, "p", 1000)[0]!.mastery).toBe(0);
+    db.close();
+  });
   it("shrinks one finished lesson toward the empty prior", () => {
     const db = openDatabase(":memory:");
     const now = 1_700_000_000_000;
@@ -30,7 +58,9 @@ describe("planMastery", () => {
     const subjectId = uuidv7(4);
     const planId = uuidv7(1);
     const now = Date.UTC(2026, 0, 10, 12);
-    db.prepare(`INSERT INTO subjects (id, name, created_at) VALUES (?, 'Fisica', 1)`).run(subjectId);
+    db.prepare(
+      `INSERT INTO subjects (id, name, created_at) VALUES (?, 'Fisica', 1)`,
+    ).run(subjectId);
     db.prepare(
       `INSERT INTO plans (id, title, status, subject_id, exam_at, created_at, updated_at)
        VALUES (?, 'Meccanica', 'ready', ?, ?, 1, 1)`,
@@ -57,7 +87,15 @@ describe("planMastery", () => {
     db.prepare(
       `INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at)
        VALUES ('ans', 'run', ?, ?)`,
-    ).run(JSON.stringify({ results: [{ id: "q", score: 1 }, { id: "q2", score: 0 }] }), started);
+    ).run(
+      JSON.stringify({
+        results: [
+          { id: "q", score: 1 },
+          { id: "q2", score: 0 },
+        ],
+      }),
+      started,
+    );
     expect(listSimulations(db, planId)).toEqual([
       { id: "run", at: started + 30 * 60_000, score: 0.5, minutes: 30 },
     ]);
@@ -73,7 +111,11 @@ describe("planMastery", () => {
        VALUES ('intro', 'p', 'intro', 0, 'Introduzione', 1)`,
     ).run();
     expect(nextLesson(db, "missing")).toBeNull();
-    expect(nextLesson(db, "p")).toEqual({ nodeId: "intro", reason: "next", count: 0 });
+    expect(nextLesson(db, "p")).toEqual({
+      nodeId: "intro",
+      reason: "next",
+      count: 0,
+    });
   });
 
   it("stores an open gap from two misses in one quiz", () => {
@@ -90,7 +132,13 @@ describe("planMastery", () => {
     db.prepare(
       `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
        VALUES (?, 'answer_given', ?, ?, ?, ?)`,
-    ).run(uuidv7(3), planId, topicId, JSON.stringify({ score: 0, scores: [0, 0] }), now);
+    ).run(
+      uuidv7(3),
+      planId,
+      topicId,
+      JSON.stringify({ score: 0, scores: [0, 0] }),
+      now,
+    );
     const series = planSeries(db, planId, now);
     expect(series.chart).toHaveLength(14);
     expect(series.chart[13]?.count).toBe(1);

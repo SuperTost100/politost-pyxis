@@ -13,20 +13,23 @@ export function recordedPlanRun(
     });
     const schema = input.responseSchema?.schema as
       { properties?: Record<string, unknown> } | undefined;
-    const key = Object.keys(schema?.properties ?? {})[0] ?? "markdown";
+    const key = input.system?.startsWith("Create distinct") && replies.quizQuestions ? "quizQuestions" : Object.keys(schema?.properties ?? {})[0] ?? "markdown";
     const context = JSON.parse(input.prompt) as {
       passages?: Array<{ id: string }>;
       sources?: Array<{ sourceId: string; section: string }>;
+      previousQuestions?: string[];
     };
     const text = JSON.stringify(replies[key]).replace(
-      /\{\{(passage|source|section):(\d+)\}\}/g,
+      /\{\{(passage|source|section|question):(\d+)\}\}/g,
       (_, kind: string, raw: string) => {
         const i = Number(raw);
-        return kind === "passage"
-          ? (context.passages?.[i]?.id ?? "missing")
-          : kind === "source"
-            ? (context.sources?.[i]?.sourceId ?? "missing")
-            : (context.sources?.[i]?.section ?? "missing");
+        return kind === "question"
+          ? String((context.previousQuestions?.length ?? 0) + i)
+          : kind === "passage"
+            ? (context.passages?.[i]?.id ?? "missing")
+            : kind === "source"
+              ? (context.sources?.[i]?.sourceId ?? "missing")
+              : (context.sources?.[i]?.section ?? "missing");
       },
     );
     return {

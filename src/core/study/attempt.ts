@@ -14,7 +14,7 @@ export type QuizQuestion = {
   grade: Grade;
 };
 
-type StoredQuestion = {
+export type StoredQuestion = {
   id: string;
   sourceId?: string;
   sourceIds?: string[];
@@ -74,10 +74,9 @@ export function startAttempt(
     grade: { kind: Grade["kind"] };
   }>;
 } {
-  const item = db.prepare(`SELECT body_json FROM items WHERE id = ? AND plan_id = ?`).get(
-    itemId,
-    planId,
-  ) as { body_json: string } | undefined;
+  const item = db
+    .prepare(`SELECT body_json FROM items WHERE id = ? AND plan_id = ?`)
+    .get(itemId, planId) as { body_json: string } | undefined;
   if (!item) throw new Error("quiz-missing");
   const stored = JSON.parse(item.body_json) as Stored;
   const attemptId = uuidv7(now);
@@ -103,21 +102,37 @@ export function submitAttempt(
   attemptId: string,
   picks: Record<string, unknown>,
   now = Date.now(),
-): { score: number; results: Array<{ id: string; score: number; expected: string; explanation: string }> } {
+  graded?: Map<
+    string,
+    { score: number; expected: string; explanation: string }
+  >,
+): {
+  score: number;
+  results: Array<{
+    id: string;
+    score: number;
+    expected: string;
+    explanation: string;
+  }>;
+} {
   const attempt = db
     .prepare(
       `SELECT a.id, a.submitted_at, i.body_json
        FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ?`,
     )
-    .get(attemptId) as { id: string; submitted_at: number | null; body_json: string } | undefined;
+    .get(attemptId) as
+    { id: string; submitted_at: number | null; body_json: string } | undefined;
   if (!attempt) throw new Error("attempt-missing");
   if (attempt.submitted_at != null) throw new Error("attempt-closed");
   const stored = JSON.parse(attempt.body_json) as Stored;
   const results = stored.questions.map((question) => ({
     id: question.id,
-    score: gradeAnswer(answerOf(question.answer, picks[question.id])),
-    expected: expectedText(question),
-    explanation: question.explanation ?? "",
+    score:
+      graded?.get(question.id)?.score ??
+      gradeAnswer(answerOf(question.answer, picks[question.id])),
+    expected: graded?.get(question.id)?.expected ?? expectedText(question),
+    explanation:
+      graded?.get(question.id)?.explanation ?? question.explanation ?? "",
   }));
   const score =
     results.length === 0
@@ -126,15 +141,19 @@ export function submitAttempt(
   db.prepare(
     `INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)`,
   ).run(uuidv7(now), attemptId, JSON.stringify({ picks, results, score }), now);
-  db.prepare(`UPDATE attempts SET submitted_at = ? WHERE id = ?`).run(now, attemptId);
+  db.prepare(`UPDATE attempts SET submitted_at = ? WHERE id = ?`).run(
+    now,
+    attemptId,
+  );
   return { score, results };
 }
 
-function expectedText(question: StoredQuestion): string {
+export function expectedText(question: StoredQuestion): string {
   const answer = question.answer;
   if (answer.kind === "mcq") return question.options?.[answer.correct] ?? "";
   if (answer.kind === "tf") return answer.correct ? "true" : "false";
-  if (answer.kind === "matching") return answer.correct.map((pair) => pair.join(" = ")).join("; ");
+  if (answer.kind === "matching")
+    return answer.correct.map((pair) => pair.join(" = ")).join("; ");
   if (answer.kind === "open") return answer.reference;
   return answer.accepted[0]?.[0] ?? "";
 }
@@ -146,7 +165,9 @@ function readPairs(pick: unknown): Array<[string, string]> {
       ? parsedPairs(pick)
       : [];
   return list.flatMap((item) =>
-    Array.isArray(item) && typeof item[0] === "string" && typeof item[1] === "string"
+    Array.isArray(item) &&
+    typeof item[0] === "string" &&
+    typeof item[1] === "string"
       ? [[item[0], item[1]] as [string, string]]
       : [],
   );
@@ -161,17 +182,20 @@ function parsedPairs(pick: string): unknown[] {
   }
 }
 
-function answerOf(expected: Grade, pick: unknown): Grade {
+export function answerOf(expected: Grade, pick: unknown): Grade {
   if (expected.kind === "mcq") {
     const text = typeof pick === "number" ? String(pick) : pick;
     const picked =
-      typeof text === "string" && text.trim() !== "" && Number.isInteger(Number(text))
+      typeof text === "string" &&
+      text.trim() !== "" &&
+      Number.isInteger(Number(text))
         ? Number(text)
         : -1;
     return { kind: "mcq", picked, correct: expected.correct };
   }
   if (expected.kind === "tf") {
-    const answered = pick === true || pick === "true" || pick === false || pick === "false";
+    const answered =
+      pick === true || pick === "true" || pick === false || pick === "false";
     const picked = pick === true || pick === "true";
     return {
       kind: "tf",
@@ -184,12 +208,30 @@ function answerOf(expected: Grade, pick: unknown): Grade {
     return { kind: "matching", pairs, correct: expected.correct };
   }
   if (expected.kind === "open") {
-    return { kind: "open", answer: typeof pick === "string" ? pick : "", reference: expected.reference };
+    return {
+      kind: "open",
+      answer: typeof pick === "string" ? pick : "",
+      reference: expected.reference,
+    };
   }
   const answers = Array.isArray(pick)
     ? (pick as string[])
     : typeof pick === "string"
-      ? [pick]
+      ? completionAnswers(pick)
       : [];
   return { kind: "completion", answers, accepted: expected.accepted };
+}
+
+function completionAnswers(pick: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(pick);
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((value) => typeof value === "string")
+    )
+      return parsed;
+  } catch {
+    /* Plain single-blank answers remain supported. */
+  }
+  return [pick];
 }

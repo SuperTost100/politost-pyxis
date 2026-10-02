@@ -15,7 +15,9 @@ const conceptGraph = z.object({
   layout: z.enum(["tree", "radial"]),
   nodes: z.array(mapNode),
   edges: z.array(mapEdge),
-  undo: z.object({ nodes: z.array(mapNode), edges: z.array(mapEdge) }).nullable(),
+  undo: z
+    .object({ nodes: z.array(mapNode), edges: z.array(mapEdge) })
+    .nullable(),
 });
 const mapOp = z.discriminatedUnion("op", [
   z.object({
@@ -177,7 +179,15 @@ export const requests = {
   },
   "engines.setFeature": {
     input: z.object({
-      feature: z.enum(["default", "chat", "plan", "lesson", "grading", "map", "vision"]),
+      feature: z.enum([
+        "default",
+        "chat",
+        "plan",
+        "lesson",
+        "grading",
+        "map",
+        "vision",
+      ]),
       provider: z.string(),
       model: z.string(),
     }),
@@ -185,7 +195,10 @@ export const requests = {
   },
   "engines.features": {
     input: z.object({}),
-    output: z.record(z.string(), z.object({ provider: z.string(), model: z.string() })),
+    output: z.record(
+      z.string(),
+      z.object({ provider: z.string(), model: z.string() }),
+    ),
   },
   "engines.login": {
     input: z.object({ provider: z.string() }),
@@ -241,7 +254,17 @@ export const requests = {
     }),
   },
   "study.quizStart": {
-    input: z.object({ planId: z.string(), topicId: z.string() }),
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      feedback: z.boolean().optional(),
+      count: z.number().int().min(10).max(100).optional(),
+      types: z
+        .array(z.enum(["mcq", "tf", "completion", "matching", "open"]))
+        .min(1)
+        .max(5)
+        .optional(),
+    }),
     output: z.object({
       attemptId: z.string(),
       questions: z.array(
@@ -257,6 +280,79 @@ export const requests = {
       ),
     }),
   },
+  "study.quizDraft": {
+    input: z.object({
+      attemptId: z.string(),
+      picks: z.record(z.string(), z.string().max(20000)),
+      index: z.number().int().min(0).max(99),
+    }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "study.quizRead": {
+    input: z.object({ attemptId: z.string() }),
+    output: z.object({
+      draft: z
+        .object({ picks: z.record(z.string(), z.string()), index: z.number() })
+        .optional(),
+      submittedAt: z.number().optional(),
+      result: z
+        .object({
+          score: z.number(),
+          picks: z.record(z.string(), z.string()),
+          results: z.array(
+            z.object({
+              id: z.string(),
+              score: z.number(),
+              expected: z.string(),
+              explanation: z.string(),
+            }),
+          ),
+        })
+        .optional(),
+      questions: z.array(
+        z.object({
+          id: z.string(),
+          sourceId: z.string().optional(),
+          stem: z.string(),
+          grade: z.object({ kind: z.string() }),
+          options: z.array(z.string()).optional(),
+          left: z.array(z.string()).optional(),
+          right: z.array(z.string()).optional(),
+        }),
+      ),
+      jobId: z.string().optional(),
+      state: z.string(),
+      error: z.string().optional(),
+      requestedCount: z.number(),
+      feedback: z.boolean(),
+      checked: z.array(
+        z.object({
+          id: z.string(),
+          score: z.number(),
+          expected: z.string(),
+          explanation: z.string(),
+          pick: z.string(),
+          provider: z.string().optional(),
+          model: z.string().optional(),
+        }),
+      ),
+    }),
+  },
+  "study.quizCheck": {
+    input: z.object({
+      attemptId: z.string(),
+      questionId: z.string(),
+      pick: z.string(),
+    }),
+    output: z.object({
+      id: z.string(),
+      score: z.number(),
+      expected: z.string(),
+      explanation: z.string(),
+      provider: z.string().optional(),
+      model: z.string().optional(),
+    }),
+  },
   "study.quizSubmit": {
     input: z.object({
       attemptId: z.string(),
@@ -265,7 +361,12 @@ export const requests = {
     output: z.object({
       score: z.number(),
       results: z.array(
-        z.object({ id: z.string(), score: z.number(), expected: z.string(), explanation: z.string() }),
+        z.object({
+          id: z.string(),
+          score: z.number(),
+          expected: z.string(),
+          explanation: z.string(),
+        }),
       ),
     }),
   },
@@ -280,7 +381,13 @@ export const requests = {
   "study.review": {
     input: z.object({ planId: z.string() }),
     output: z.object({
-      cards: z.array(z.object({ id: z.string(), front: z.string(), topicId: z.string().nullable() })),
+      cards: z.array(
+        z.object({
+          id: z.string(),
+          front: z.string(),
+          topicId: z.string().nullable(),
+        }),
+      ),
       attemptId: z.string(),
       questions: z.array(
         z.object({
@@ -306,14 +413,18 @@ export const requests = {
         submitted: z.boolean(),
         questions: z.array(z.object({ id: z.string(), stem: z.string() })),
         picks: z.record(z.string(), z.string()),
-        topics: z.array(z.object({ id: z.string(), title: z.string(), score: z.number() })),
+        topics: z.array(
+          z.object({ id: z.string(), title: z.string(), score: z.number() }),
+        ),
       })
       .nullable(),
   },
   "study.simulationStart": {
     input: z.object({
       planId: z.string(),
-      minutes: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
+      minutes: z
+        .union([z.literal(30), z.literal(60), z.literal(90)])
+        .optional(),
       source: z.enum(["exam", "mixed"]).optional(),
     }),
     output: z.object({
@@ -332,7 +443,9 @@ export const requests = {
       submitted: z.boolean(),
       questions: z.array(z.object({ id: z.string(), stem: z.string() })),
       picks: z.record(z.string(), z.string()),
-      topics: z.array(z.object({ id: z.string(), title: z.string(), score: z.number() })),
+      topics: z.array(
+        z.object({ id: z.string(), title: z.string(), score: z.number() }),
+      ),
     }),
   },
   "study.simulationDraft": {
@@ -348,7 +461,9 @@ export const requests = {
       submitted: z.boolean(),
       questions: z.array(z.object({ id: z.string(), stem: z.string() })),
       picks: z.record(z.string(), z.string()),
-      topics: z.array(z.object({ id: z.string(), title: z.string(), score: z.number() })),
+      topics: z.array(
+        z.object({ id: z.string(), title: z.string(), score: z.number() }),
+      ),
     }),
   },
   "study.active": {
@@ -381,7 +496,11 @@ export const requests = {
   },
   "study.queue": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
-    output: z.object({ fresh: z.number(), learning: z.number(), mastered: z.number() }),
+    output: z.object({
+      fresh: z.number(),
+      learning: z.number(),
+      mastered: z.number(),
+    }),
   },
   "study.save": {
     input: z.object({
@@ -504,7 +623,9 @@ export const requests = {
   },
   "plans.usage": {
     input: z.object({}),
-    output: z.array(z.object({ id: z.string(), title: z.string(), bytes: z.number() })),
+    output: z.array(
+      z.object({ id: z.string(), title: z.string(), bytes: z.number() }),
+    ),
   },
   "plans.read": {
     input: z.object({ planId: z.string() }),
@@ -514,7 +635,15 @@ export const requests = {
         title: z.string(),
         status: z.string(),
         target: z.number(),
-        topics: z.array(z.object({ id: z.string(), title: z.string(), position: z.number(), summary: z.string(), subtopics: z.array(z.string()) })),
+        topics: z.array(
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            position: z.number(),
+            summary: z.string(),
+            subtopics: z.array(z.string()),
+          }),
+        ),
         nodes: z.array(
           z.object({
             id: z.string(),
@@ -575,11 +704,17 @@ export const requests = {
   "plans.series": {
     input: z.object({ planId: z.string() }),
     output: z.object({
-      chart: z.array(z.object({ day: z.number(), count: z.number(), mastery: z.number() })),
+      chart: z.array(
+        z.object({ day: z.number(), count: z.number(), mastery: z.number() }),
+      ),
       weeks: z.array(z.number()),
       counts: z.record(z.string(), z.array(z.number())),
       gaps: z.array(z.object({ topicId: z.string(), openedAt: z.number() })),
-      pace: z.object({ week: z.number(), peakDay: z.number(), peakCount: z.number() }),
+      pace: z.object({
+        week: z.number(),
+        peakDay: z.number(),
+        peakCount: z.number(),
+      }),
       minutes: z.number(),
       lessons: z.number(),
       topics: z.array(
@@ -598,9 +733,23 @@ export const requests = {
   },
   "plans.build": {
     input: z.object({ planId: z.string() }),
-    output: z.object({ jobId: z.string(), state: JobState, progress: z.number(), stepLabel: z.string().nullable(), error: z.string().nullable(), steps: z.array(JobStepView) }).nullable(),
+    output: z
+      .object({
+        jobId: z.string(),
+        state: JobState,
+        progress: z.number(),
+        stepLabel: z.string().nullable(),
+        error: z.string().nullable(),
+        steps: z.array(JobStepView),
+      })
+      .nullable(),
   },
-  "plans.intro": { input: z.object({ planId: z.string() }), output: z.object({ markdown: z.string(), passageIds: z.array(z.string()) }).nullable() },
+  "plans.intro": {
+    input: z.object({ planId: z.string() }),
+    output: z
+      .object({ markdown: z.string(), passageIds: z.array(z.string()) })
+      .nullable(),
+  },
   "plans.create": {
     input: z.object({
       title: z.string(),
@@ -794,32 +943,32 @@ export const requests = {
         .nullable(),
       held: z.array(z.object({ id: z.string(), title: z.string() })),
       messages: z.array(
-      z.object({
-        id: z.string(),
-        role: z.enum(["user", "assistant"]),
-        body: z.string(),
-        modelId: z.string().nullable(),
-        provider: z.string().nullable(),
-        grounding: z.enum(["sources", "general"]).nullable(),
-        followups: z.array(z.string()),
-        reaction: z.enum(["up", "down"]).nullable(),
-        stopped: z.boolean(),
-        citations: z.array(
-          z.object({
-            label: z.string(),
-            index: z.number(),
-            passageId: z.string(),
-            sourceId: z.string(),
-            sectionPath: z.string().nullable(),
-            locator: z.object({
-              chapter: z.number().optional(),
-              paragraph: z.string().optional(),
-              page: z.number().optional(),
-              slide: z.number().optional(),
+        z.object({
+          id: z.string(),
+          role: z.enum(["user", "assistant"]),
+          body: z.string(),
+          modelId: z.string().nullable(),
+          provider: z.string().nullable(),
+          grounding: z.enum(["sources", "general"]).nullable(),
+          followups: z.array(z.string()),
+          reaction: z.enum(["up", "down"]).nullable(),
+          stopped: z.boolean(),
+          citations: z.array(
+            z.object({
+              label: z.string(),
+              index: z.number(),
+              passageId: z.string(),
+              sourceId: z.string(),
+              sectionPath: z.string().nullable(),
+              locator: z.object({
+                chapter: z.number().optional(),
+                paragraph: z.string().optional(),
+                page: z.number().optional(),
+                slide: z.number().optional(),
+              }),
             }),
-          }),
-        ),
-      }),
+          ),
+        }),
       ),
     }),
   },
@@ -952,7 +1101,10 @@ export const requests = {
   },
   "sources.embed": {
     input: z.object({ consent: z.boolean() }),
-    output: z.object({ state: z.enum(["off", "ready", "missing"]), jobId: z.string().optional() }),
+    output: z.object({
+      state: z.enum(["off", "ready", "missing"]),
+      jobId: z.string().optional(),
+    }),
   },
   "sources.passage": {
     input: z.object({ passageId: z.string() }),
@@ -973,9 +1125,21 @@ export const requests = {
     ),
   },
   "sources.viewerDocument": {
-    input: z.object({ sourceId: z.string().optional(), passageId: z.string().optional() })
+    input: z
+      .object({
+        sourceId: z.string().optional(),
+        passageId: z.string().optional(),
+      })
       .refine((v) => Boolean(v.sourceId || v.passageId)),
-    output: z.object({ sourceId: z.string(), title: z.string(), kind: z.string(), blobSha: z.string().nullable(), excerpt: z.string().nullable() }).nullable(),
+    output: z
+      .object({
+        sourceId: z.string(),
+        title: z.string(),
+        kind: z.string(),
+        blobSha: z.string().nullable(),
+        excerpt: z.string().nullable(),
+      })
+      .nullable(),
   },
   "sources.chapter": {
     input: z.object({
@@ -989,7 +1153,12 @@ export const requests = {
         sourceId: z.string(),
         text: z.string(),
         sectionPath: z.string().nullable(),
-        locator: z.object({ chapter: z.number().optional(), paragraph: z.string().optional(), page: z.number().optional(), slide: z.number().optional() }),
+        locator: z.object({
+          chapter: z.number().optional(),
+          paragraph: z.string().optional(),
+          page: z.number().optional(),
+          slide: z.number().optional(),
+        }),
         current: z.boolean(),
       }),
     ),

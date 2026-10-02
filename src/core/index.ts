@@ -82,7 +82,7 @@ if (!parent) {
       bindPlans(db, data.workspacePath, runner, planFixture ? recordedPlanRun(planFixture, Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0)) : undefined);
       bindMaps(db);
       bindTools();
-      bindStudy(db);
+      bindStudy(db, runner, planFixture ? recordedPlanRun(planFixture, Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0)) : undefined);
       runner.register("demo", demoJob);
       bindRunner(runner, data.dev === true);
       void getFunnel()
