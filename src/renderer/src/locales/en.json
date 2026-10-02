@@ -229,7 +229,32 @@
     "left": "{{minutes}} minutes",
     "empty": "The book has no exercises for a simulation.",
     "localGrade": "Scored on this computer, without a model.",
-    "byTopic": "By topic"
+    "byTopic": "By topic",
+    "setup": "Set up a written exam",
+    "duration": "Time limit",
+    "material": "Questions",
+    "tutorLocked": "The tutor is unavailable during the attempt. Your answers save as you write.",
+    "timeLeft": "Time remaining",
+    "outOf100": "out of 100",
+    "modelGrade": "Estimated grade by {{model}}.",
+    "question": "Question {{count}}",
+    "blank": "No answer",
+    "missed": "What was missed",
+    "reference": "Reference solution",
+    "grading": "Grading your exam",
+    "frozen": "Your answers are submitted. Grading continues if you close the app.",
+    "retryGrade": "Retry grading",
+    "gradeFailed": "Grading stopped. Retry continues from the last graded question.",
+    "navigate": "Exam questions",
+    "questionState": "Question {{count}}, {{state}}",
+    "answered": "answered",
+    "unanswered": "unanswered",
+    "deliver": "Submit this exam?",
+    "keepWriting": "Keep writing",
+    "confirm": "{{count}} questions are unanswered. Submit your saved answers now?",
+    "actionFailed": "This action failed. Try again.",
+    "saveFailed": "Your last answer could not be saved. Try submitting again before closing.",
+    "submit": "Submit"
   },
   "quiz": {
     "title": "Quiz",
@@ -438,7 +463,8 @@
       "failed": "Failed",
       "interrupted": "Interrupted"
     },
-    "maps": "Building maps"
+    "maps": "Building maps",
+    "simulationGrading": "Grading the exam"
   },
   "errors": {
     "coreRestarted": "The internal engine restarted",

@@ -201,6 +201,10 @@ async function dispatch(
       return study?.simulationStart(
         requests["study.simulationStart"].input.parse(input),
       );
+    case "study.simulationSubmit":
+      return study?.simulationSubmit(
+        requests["study.simulationSubmit"].input.parse(input),
+      );
     case "study.simulationRead":
       return study?.simulationRead(
         requests["study.simulationRead"].input.parse(input),
@@ -408,8 +412,9 @@ export function bindStudy(
   db: Parameters<typeof studyHandlers>[0],
   runner?: Parameters<typeof studyHandlers>[1],
   run?: Parameters<typeof studyHandlers>[2],
+  simulationRun?: Parameters<typeof studyHandlers>[3],
 ): void {
-  study = studyHandlers(db, runner, run);
+  study = studyHandlers(db, runner, run, simulationRun);
 }
 
 export function bindTools(): void {

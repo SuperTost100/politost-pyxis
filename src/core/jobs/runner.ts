@@ -305,7 +305,8 @@ export function createRunner(
       if (
         (view?.kind === "plan-build" ||
           view?.kind === "quiz-build" ||
-          view?.kind === "map-build") &&
+          view?.kind === "map-build" ||
+          view?.kind === "simulation-grade") &&
         ["failed", "cancelled", "succeeded"].includes(view.state)
       ) {
         db.prepare("UPDATE jobs SET dismissed = 1 WHERE id = ?").run(jobId);

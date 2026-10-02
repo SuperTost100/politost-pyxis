@@ -17,6 +17,44 @@ export const JobState = z.enum([
   "interrupted",
 ]);
 
+export const simulationViewSchema = z.object({
+  attemptId: z.string(),
+  planId: z.string(),
+  deadline: z.number(),
+  leftMs: z.number(),
+  submitted: z.boolean(),
+  locked: z.boolean(),
+  questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+  picks: z.record(z.string(), z.string()),
+  topics: z.array(
+    z.object({ id: z.string(), title: z.string(), score: z.number() }),
+  ),
+  grading: z
+    .object({
+      jobId: z.string(),
+      state: JobState,
+      progress: z.number(),
+      error: z.string().nullable(),
+      provider: z.string().optional(),
+      model: z.string().optional(),
+    })
+    .optional(),
+  score: z.number().optional(),
+  results: z
+    .array(
+      z.object({
+        id: z.string(),
+        score: z.number(),
+        expected: z.string(),
+        feedback: z.string(),
+        missed: z.array(z.string()),
+        provider: z.string(),
+        model: z.string(),
+      }),
+    )
+    .optional(),
+});
+
 export const JobStepView = z.object({
   name: z.string(),
   label: z.string(),
@@ -379,26 +417,13 @@ export const requests = {
   },
   "study.simulationOpen": {
     input: z.object({ planId: z.string() }),
-    output: z
-      .object({
-        attemptId: z.string(),
-        planId: z.string(),
-        deadline: z.number(),
-        leftMs: z.number(),
-        submitted: z.boolean(),
-        questions: z.array(z.object({ id: z.string(), stem: z.string() })),
-        picks: z.record(z.string(), z.string()),
-        topics: z.array(
-          z.object({ id: z.string(), title: z.string(), score: z.number() }),
-        ),
-      })
-      .nullable(),
+    output: simulationViewSchema.nullable(),
   },
   "study.simulationStart": {
     input: z.object({
       planId: z.string(),
       minutes: z
-        .union([z.literal(30), z.literal(60), z.literal(90)])
+        .union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)])
         .optional(),
       source: z.enum(["exam", "mixed"]).optional(),
     }),
@@ -410,36 +435,21 @@ export const requests = {
   },
   "study.simulationRead": {
     input: z.object({ attemptId: z.string() }),
-    output: z.object({
-      attemptId: z.string(),
-      planId: z.string(),
-      deadline: z.number(),
-      leftMs: z.number(),
-      submitted: z.boolean(),
-      questions: z.array(z.object({ id: z.string(), stem: z.string() })),
-      picks: z.record(z.string(), z.string()),
-      topics: z.array(
-        z.object({ id: z.string(), title: z.string(), score: z.number() }),
-      ),
-    }),
+    output: simulationViewSchema,
   },
   "study.simulationDraft": {
     input: z.object({
       attemptId: z.string(),
       picks: z.record(z.string(), z.string()),
     }),
-    output: z.object({
+    output: simulationViewSchema,
+  },
+  "study.simulationSubmit": {
+    input: z.object({
       attemptId: z.string(),
-      planId: z.string(),
-      deadline: z.number(),
-      leftMs: z.number(),
-      submitted: z.boolean(),
-      questions: z.array(z.object({ id: z.string(), stem: z.string() })),
-      picks: z.record(z.string(), z.string()),
-      topics: z.array(
-        z.object({ id: z.string(), title: z.string(), score: z.number() }),
-      ),
+      picks: z.record(z.string(), z.string()).optional(),
     }),
+    output: simulationViewSchema,
   },
   "study.active": {
     input: z.object({

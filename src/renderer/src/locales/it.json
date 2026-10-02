@@ -229,7 +229,32 @@
     "left": "{{minutes}} minuti",
     "empty": "Il libro non ha esercizi per una simulazione.",
     "localGrade": "Voto calcolato in locale, senza un modello.",
-    "byTopic": "Per argomento"
+    "byTopic": "Per argomento",
+    "setup": "Prepara un esame scritto",
+    "duration": "Tempo a disposizione",
+    "material": "Domande",
+    "tutorLocked": "Il tutor non è disponibile durante la prova. Le risposte si salvano mentre scrivi.",
+    "timeLeft": "Tempo rimanente",
+    "outOf100": "su 100",
+    "modelGrade": "Valutazione stimata da {{model}}.",
+    "question": "Domanda {{count}}",
+    "blank": "Nessuna risposta",
+    "missed": "Cosa manca",
+    "reference": "Soluzione di riferimento",
+    "grading": "Correzione della prova",
+    "frozen": "Le risposte sono consegnate. La correzione continua anche se chiudi l’app.",
+    "retryGrade": "Riprendi la correzione",
+    "gradeFailed": "La correzione si è fermata. Riprova dall’ultima domanda corretta.",
+    "navigate": "Domande della prova",
+    "questionState": "Domanda {{count}}, {{state}}",
+    "answered": "risposta data",
+    "unanswered": "senza risposta",
+    "deliver": "Consegni la prova?",
+    "keepWriting": "Continua a scrivere",
+    "confirm": "{{count}} domande sono senza risposta. Consegni ora le risposte salvate?",
+    "actionFailed": "L’azione non è riuscita. Riprova.",
+    "saveFailed": "L’ultima risposta non si è salvata. Riprova a consegnare prima di chiudere.",
+    "submit": "Consegna"
   },
   "quiz": {
     "title": "Quiz",
@@ -438,7 +463,8 @@
       "failed": "Non riuscito",
       "interrupted": "Interrotto"
     },
-    "maps": "Creo le mappe"
+    "maps": "Creo le mappe",
+    "simulationGrading": "Correggo la prova"
   },
   "errors": {
     "coreRestarted": "Il motore interno si è riavviato",

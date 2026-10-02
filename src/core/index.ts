@@ -130,6 +130,12 @@ if (!parent) {
               Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0),
             )
           : undefined,
+        data.dev === true && process.env["PYXIS_E2E_SIMULATION_REPLIES"]
+          ? recordedPlanRun(
+              process.env["PYXIS_E2E_SIMULATION_REPLIES"]!,
+              Number(process.env["PYXIS_E2E_SIMULATION_DELAY"] ?? 0),
+            )
+          : undefined,
       );
       runner.register("demo", demoJob);
       bindRunner(runner, data.dev === true);

@@ -30,6 +30,7 @@ export function FocusLayout(props: {
   secondary?: ReactNode;
   progress?: number;
   closable?: boolean;
+  headerRight?: ReactNode;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -53,7 +54,7 @@ export function FocusLayout(props: {
             <div className="meta focus-meta">{props.meta}</div>
           ) : null}
         </div>
-        <span />
+        <div className="focus-header-right">{props.headerRight}</div>
       </header>
       {props.progress != null ? (
         <div

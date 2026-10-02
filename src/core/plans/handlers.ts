@@ -87,13 +87,13 @@ export function planHandlers(
       ).run(input.planId);
       const quizJobs = db
         .prepare(
-          "SELECT id FROM jobs WHERE kind IN ('quiz-build', 'map-build') AND json_extract(params_json, '$.input.planId') = ?",
+          "SELECT id FROM jobs WHERE (kind IN ('quiz-build', 'map-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind = 'simulation-grade' AND json_extract(params_json, '$.planId') = ?)",
         )
-        .all(input.planId) as Array<{ id: string }>;
+        .all(input.planId, input.planId) as Array<{ id: string }>;
       for (const quizJob of quizJobs) runner?.cancel(quizJob.id);
       db.prepare(
-        "DELETE FROM jobs WHERE kind IN ('quiz-build', 'map-build') AND json_extract(params_json, '$.input.planId') = ?",
-      ).run(input.planId);
+        "DELETE FROM jobs WHERE (kind IN ('quiz-build', 'map-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind = 'simulation-grade' AND json_extract(params_json, '$.planId') = ?)",
+      ).run(input.planId, input.planId);
       deletePlan(db, input.planId);
       return { ok: true };
     },

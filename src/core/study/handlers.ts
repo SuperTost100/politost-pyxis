@@ -22,6 +22,8 @@ import {
   recordTopicScores,
   saveSimulationDraft,
   startSimulation,
+  submitSimulation,
+  registerSimulationJobs,
 } from "./simulation";
 import { flagTarget } from "./flags";
 import { startReview } from "./review";
@@ -48,8 +50,12 @@ export function studyHandlers(
   db: Database.Database,
   runner?: Runner,
   run: GenerateInput["run"] = runTurn,
+  simulationRun: GenerateInput["run"] = runTurn,
 ) {
-  if (runner) registerQuizJobs(db, runner, run);
+  if (runner) {
+    registerQuizJobs(db, runner, run);
+    registerSimulationJobs(db, runner, simulationRun);
+  }
   return {
     exercises(input: { topicId: string }) {
       return topicExercises(db, input.topicId);
@@ -128,22 +134,7 @@ export function studyHandlers(
             body_json: string;
           }
         | undefined;
-      if (gate?.kind === "simulation" && gate.submitted_at == null) {
-        const stored = JSON.parse(gate.body_json) as { minutes?: number };
-        const minutes = stored.minutes ?? 30;
-        if (Date.now() >= gate.started_at + minutes * 60_000) {
-          readSimulation(db, input.attemptId);
-          const answer = db
-            .prepare(
-              `SELECT payload_json FROM attempt_answers WHERE attempt_id = ? ORDER BY created_at DESC LIMIT 1`,
-            )
-            .get(input.attemptId) as { payload_json: string };
-          return JSON.parse(answer.payload_json) as {
-            score: number;
-            results: Array<{ id: string; score: number; expected: string }>;
-          };
-        }
-      }
+      if (gate?.kind === "simulation") throw new Error("use-simulation-submit");
       const finalize = (
         graded?: Awaited<ReturnType<typeof gradeConfiguredAttempt>>,
       ) =>
@@ -285,7 +276,9 @@ export function studyHandlers(
       source?: "exam" | "mixed";
     }) {
       const minutes =
-        input.minutes === 60 || input.minutes === 90 ? input.minutes : 30;
+        input.minutes === 60 || input.minutes === 90 || input.minutes === 120
+          ? input.minutes
+          : 30;
       return startSimulation(
         db,
         input.planId,
@@ -293,6 +286,12 @@ export function studyHandlers(
         Date.now(),
         input.source ?? "exam",
       );
+    },
+    simulationSubmit(input: {
+      attemptId: string;
+      picks?: Record<string, string>;
+    }) {
+      return submitSimulation(db, input.attemptId, input.picks);
     },
     simulationDraft(input: {
       attemptId: string;
