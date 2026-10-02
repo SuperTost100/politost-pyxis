@@ -31,7 +31,8 @@ const aborted = {
 // ponytail: a replacement port replays reads only. A write that died with the core is rejected so it cannot run twice. Upgrade path is a request id stored in the core.
 const replayable = new Set([
   "study.quizRead",
-  "plans.build", "plans.intro",
+  "plans.build",
+  "plans.intro",
   "jobs.list",
   "engines.overview",
   "engines.models",
@@ -222,6 +223,10 @@ const bridge: PyxisBridge = {
   workspacePath: () => ipcRenderer.invoke(mainChannels.workspacePath),
   wipeWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceWipe),
   fetchPlan: (url: string) => ipcRenderer.invoke(mainChannels.planFetch, url),
+  saveArtifact: (input) => ipcRenderer.invoke(mainChannels.artifactSave, input),
+  exportPdf: (input) => ipcRenderer.invoke(mainChannels.pdfExport, input),
+  printData: () => ipcRenderer.invoke(mainChannels.printData),
+  printReady: () => ipcRenderer.invoke(mainChannels.printReady),
 };
 
 contextBridge.exposeInMainWorld("pyxis", bridge);

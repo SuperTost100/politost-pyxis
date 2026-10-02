@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Checkbox, Input, Modal, Segmented } from "antd";
+import { Button, Input, Modal, Segmented } from "antd";
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,7 +9,7 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { MasteryBar } from "../../components/MasteryBar";
 import { StepLines } from "../../components/StepLines";
-import { downloadText } from "../../lib/download";
+import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import "./SimulationPage.css";
@@ -25,7 +25,6 @@ export function SimulationPage() {
   const [source, setSource] = useState<"exam" | "mixed">("exam");
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [index, setIndex] = useState(0);
-  const [withAnswers, setWithAnswers] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [confirm, setConfirm] = useState(false);
@@ -373,26 +372,11 @@ export function SimulationPage() {
       )}
       {(!run || run.submitted) && (
         <div className="px-sim-export">
-          <Checkbox
-            checked={withAnswers}
-            onChange={(event) => setWithAnswers(event.target.checked)}
-          >
-            {t("export.answers")}
-          </Checkbox>
-          <Button
-            shape="round"
-            onClick={() =>
-              void invoke("study.markdown", {
-                planId,
-                kind: "simulation",
-                answers: withAnswers,
-              })
-                .then((file) => downloadText(file.filename, file.markdown))
-                .catch(() => setNotice(t("simulation.actionFailed")))
-            }
-          >
-            {t("export.markdown")}
-          </Button>
+          <ExportButton
+            planId={planId}
+            kind="simulation"
+            attemptId={run?.attemptId}
+          />
         </div>
       )}
       <Modal

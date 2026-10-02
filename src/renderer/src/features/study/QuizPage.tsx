@@ -6,7 +6,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { StepLines } from "../../components/StepLines";
 import { MarkdownView } from "../../components/MarkdownView";
-import { downloadText } from "../../lib/download";
+import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import "./QuizPage.css";
@@ -68,7 +68,6 @@ export function QuizPage() {
   const [index, setIndex] = useState(0);
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<Record<string, Result>>({});
-  const [withAnswers, setWithAnswers] = useState(false);
   const [actionError, setActionError] = useState(false);
   const heading = useRef<HTMLDivElement>(null);
   const start = useMutation({
@@ -529,30 +528,12 @@ export function QuizPage() {
             );
           })}
           <div className="px-quiz-actions">
-            <label className="px-quiz-toggle">
-              <input
-                type="checkbox"
-                checked={withAnswers}
-                onChange={(event) => setWithAnswers(event.target.checked)}
-              />
-              <span>{t("export.answers")}</span>
-            </label>
-            <Button
-              shape="round"
-              onClick={() => {
-                if (planId)
-                  void invoke("study.markdown", {
-                    planId,
-                    kind: "quiz",
-                    topicId,
-                    answers: withAnswers,
-                  })
-                    .then((file) => downloadText(file.filename, file.markdown))
-                    .catch(() => setActionError(true));
-              }}
-            >
-              {t("export.markdown")}
-            </Button>
+            <ExportButton
+              planId={planId ?? ""}
+              topicId={topicId}
+              kind="quiz"
+              attemptId={attemptId || undefined}
+            />
           </div>
         </section>
       ) : question ? (

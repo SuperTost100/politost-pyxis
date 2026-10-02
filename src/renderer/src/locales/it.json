@@ -218,7 +218,23 @@
   "export": {
     "markdown": "Markdown",
     "csv": "CSV",
-    "answers": "Con le risposte"
+    "answers": "Con le risposte",
+    "title": "Esporta",
+    "save": "Salva file",
+    "cancel": "Annulla",
+    "format": "Formato",
+    "pdf": "PDF",
+    "pyxis": "Piano Pyxis",
+    "anki": "Anki",
+    "saved": "File salvato",
+    "failed": "Impossibile esportare il file. Riprova.",
+    "description": {
+      "pdf": "Un documento stampabile con le formule renderizzate.",
+      "markdown": "Testo modificabile con formule e riferimenti alle fonti.",
+      "anki": "Un mazzo per Anki con carte semplici e cloze.",
+      "csv": "Carte in un file CSV per Anki o un foglio di calcolo.",
+      "pyxis": "Argomenti, lezioni, domande, carte e mappe in un piano importabile in Pyxis."
+    }
   },
   "simulation": {
     "title": "Simulazione",

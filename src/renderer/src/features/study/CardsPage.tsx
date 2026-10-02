@@ -7,7 +7,7 @@ import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { CitationChip } from "../../components/CitationChip";
 import { MarkdownView } from "../../components/MarkdownView";
-import { downloadText } from "../../lib/download";
+import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 
@@ -31,17 +31,23 @@ export function CardsPage() {
   const cards = useQuery({
     queryKey: ["cards", planId, topicId],
     enabled: Boolean(planId && topicId),
-    queryFn: () => invoke("study.cards", { planId: planId ?? "", topicId: topicId ?? "" }),
+    queryFn: () =>
+      invoke("study.cards", { planId: planId ?? "", topicId: topicId ?? "" }),
   });
   const parked = useQuery({
     queryKey: ["card-suspended", planId, topicId],
     enabled: Boolean(planId && topicId),
-    queryFn: () => invoke("study.suspended", { planId: planId ?? "", topicId: topicId ?? "" }),
+    queryFn: () =>
+      invoke("study.suspended", {
+        planId: planId ?? "",
+        topicId: topicId ?? "",
+      }),
   });
   const queue = useQuery({
     queryKey: ["card-queue", planId, topicId],
     enabled: Boolean(planId && topicId),
-    queryFn: () => invoke("study.queue", { planId: planId ?? "", topicId: topicId ?? "" }),
+    queryFn: () =>
+      invoke("study.queue", { planId: planId ?? "", topicId: topicId ?? "" }),
   });
   const plan = useQuery({
     queryKey: ["plan", planId],
@@ -49,7 +55,10 @@ export function CardsPage() {
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
   const node = (plan.data?.nodes ?? []).find(
-    (item) => item.kind === "cards" && item.topicId === topicId && item.state === "current",
+    (item) =>
+      item.kind === "cards" &&
+      item.topicId === topicId &&
+      item.state === "current",
   );
   const card = cards.data?.[0];
   useEffect(() => {
@@ -61,41 +70,28 @@ export function CardsPage() {
 
   function refresh() {
     void client.invalidateQueries({ queryKey: ["cards", planId, topicId] });
-    void client.invalidateQueries({ queryKey: ["card-queue", planId, topicId] });
-    void client.invalidateQueries({ queryKey: ["card-suspended", planId, topicId] });
+    void client.invalidateQueries({
+      queryKey: ["card-queue", planId, topicId],
+    });
+    void client.invalidateQueries({
+      queryKey: ["card-suspended", planId, topicId],
+    });
   }
 
   return (
     <FocusLayout
       title={t("cards.title")}
       secondary={
-        <Button type="text" shape="round" onClick={() => navigate(`/plans/${planId ?? ""}`)}>
+        <Button
+          type="text"
+          shape="round"
+          onClick={() => navigate(`/plans/${planId ?? ""}`)}
+        >
           {t("nav.back")}
         </Button>
       }
     >
-      <Button
-        shape="round"
-        onClick={() => {
-          if (!planId) return;
-          void invoke("study.markdown", { planId, kind: "cards", topicId }).then((file) => {
-            downloadText(file.filename, file.markdown);
-          });
-        }}
-      >
-        {t("export.markdown")}
-      </Button>
-      <Button
-        shape="round"
-        onClick={() => {
-          if (!planId) return;
-          void invoke("study.csv", { planId, topicId }).then((file) => {
-            downloadText(file.filename, file.csv, "text/csv");
-          });
-        }}
-      >
-        {t("export.csv")}
-      </Button>
+      <ExportButton planId={planId ?? ""} topicId={topicId} kind="cards" />
       {queue.data ? (
         <p className="small">
           {t("cards.fresh", { count: queue.data.fresh })}
@@ -110,10 +106,12 @@ export function CardsPage() {
           shape="round"
           onClick={() => {
             if (!planId) return;
-            void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
-              void client.invalidateQueries({ queryKey: ["plan", planId] });
-              navigate(`/plans/${planId}`);
-            });
+            void invoke("plans.complete", { planId, nodeId: node.id }).then(
+              () => {
+                void client.invalidateQueries({ queryKey: ["plan", planId] });
+                navigate(`/plans/${planId}`);
+              },
+            );
           }}
         >
           {t("lesson.done")}
@@ -128,11 +126,19 @@ export function CardsPage() {
               <label className="label" htmlFor="card-front">
                 {t("cards.front")}
               </label>
-              <input id="card-front" value={draftFront} onChange={(event) => setDraftFront(event.target.value)} />
+              <input
+                id="card-front"
+                value={draftFront}
+                onChange={(event) => setDraftFront(event.target.value)}
+              />
               <label className="label" htmlFor="card-back">
                 {t("cards.back")}
               </label>
-              <input id="card-back" value={draftBack} onChange={(event) => setDraftBack(event.target.value)} />
+              <input
+                id="card-back"
+                value={draftBack}
+                onChange={(event) => setDraftBack(event.target.value)}
+              />
               <Button
                 type="primary"
                 shape="round"
@@ -157,16 +163,26 @@ export function CardsPage() {
           ) : (
             <MarkdownView>{card.front}</MarkdownView>
           )}
-          {showBack && !editing ? <MarkdownView>{card.back}</MarkdownView> : null}
-          {showBack && !editing && card.sectionPath && card.passageId && card.sourceId ? (
+          {showBack && !editing ? (
+            <MarkdownView>{card.back}</MarkdownView>
+          ) : null}
+          {showBack &&
+          !editing &&
+          card.sectionPath &&
+          card.passageId &&
+          card.sourceId ? (
             <CitationChip
               onClick={() => {
                 const params = new URLSearchParams({
                   source: card.sourceId ?? "",
                   passage: card.passageId ?? "",
                 });
-                if (card.chapter != null) params.set("chapter", String(card.chapter));
-                openSourceViewer({ passageId: params.get("passage") ?? undefined, sourceId: params.get("source") ?? undefined });
+                if (card.chapter != null)
+                  params.set("chapter", String(card.chapter));
+                openSourceViewer({
+                  passageId: params.get("passage") ?? undefined,
+                  sourceId: params.get("source") ?? undefined,
+                });
               }}
             >
               {card.sectionPath}
@@ -176,7 +192,11 @@ export function CardsPage() {
             <p className="small">{t("cards.next", { days: intervalDays })}</p>
           ) : null}
           {!showBack && !editing ? (
-            <Button type="primary" shape="round" onClick={() => setShowBack(true)}>
+            <Button
+              type="primary"
+              shape="round"
+              onClick={() => setShowBack(true)}
+            >
               {t("cards.flip")}
             </Button>
           ) : null}
@@ -188,12 +208,14 @@ export function CardsPage() {
                   shape="round"
                   type={rating === "good" ? "primary" : "default"}
                   onClick={() => {
-                    void invoke("study.rate", { cardId: card.id, rating }).then((state) => {
-                      setIntervalDays(state.intervalDays);
-                      setShowBack(false);
-                      setSeen((current) => [...current, rating]);
-                      refresh();
-                    });
+                    void invoke("study.rate", { cardId: card.id, rating }).then(
+                      (state) => {
+                        setIntervalDays(state.intervalDays);
+                        setShowBack(false);
+                        setSeen((current) => [...current, rating]);
+                        refresh();
+                      },
+                    );
                   }}
                 >
                   {t(`cards.${rating}`)}
@@ -212,7 +234,10 @@ export function CardsPage() {
               <Button
                 shape="round"
                 onClick={() => {
-                  void invoke("study.suspend", { cardId: card.id, suspended: true }).then(() => {
+                  void invoke("study.suspend", {
+                    cardId: card.id,
+                    suspended: true,
+                  }).then(() => {
                     setShowBack(false);
                     refresh();
                   });
@@ -246,7 +271,10 @@ export function CardsPage() {
           <Button
             shape="round"
             onClick={() => {
-              void invoke("study.suspend", { cardId: item.id, suspended: false }).then(() => refresh());
+              void invoke("study.suspend", {
+                cardId: item.id,
+                suspended: false,
+              }).then(() => refresh());
             }}
           >
             {t("cards.resume")}
@@ -267,8 +295,18 @@ export function CardsPage() {
       <label className="label" htmlFor="new-front">
         {t("cards.add")}
       </label>
-      <input id="new-front" value={addingFront} onChange={(event) => setAddingFront(event.target.value)} placeholder={t("cards.front")} />
-      <input value={addingBack} onChange={(event) => setAddingBack(event.target.value)} placeholder={t("cards.back")} aria-label={t("cards.back")} />
+      <input
+        id="new-front"
+        value={addingFront}
+        onChange={(event) => setAddingFront(event.target.value)}
+        placeholder={t("cards.front")}
+      />
+      <input
+        value={addingBack}
+        onChange={(event) => setAddingBack(event.target.value)}
+        placeholder={t("cards.back")}
+        aria-label={t("cards.back")}
+      />
       <Button
         shape="round"
         onClick={() => {

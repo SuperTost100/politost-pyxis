@@ -1,8 +1,9 @@
+import { ExportButton } from "../share/ExportButton";
 import { PlanProgress } from "./PlanProgress";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StepLines } from "../../components/StepLines";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Checkbox, Modal } from "antd";
+import { Button, Modal } from "antd";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useRef, useState } from "react";
@@ -414,8 +415,6 @@ export function PlanPage() {
   const [tab, setTab] = useState<"progress" | "path" | "topics" | "sources">(
     "progress",
   );
-  const [withProgress, setWithProgress] = useState(false);
-  const [withSources, setWithSources] = useState(false);
   if (plan.data?.status === "building")
     return (
       <FocusLayout title={plan.data.title} closable>
@@ -437,30 +436,7 @@ export function PlanPage() {
         </Button>
       }
       primary={
-        <Button
-          shape="round"
-          onClick={() => {
-            if (!planId) return;
-            void invoke("plans.export", {
-              planId,
-              progress: withProgress,
-              embed: withSources,
-            }).then((file) => {
-              const blob = new Blob([JSON.stringify(file)], {
-                type: "application/json",
-              });
-              const link = document.createElement("a");
-              link.href = URL.createObjectURL(blob);
-              link.download = `${file.title}.pyxis.json`;
-              document.body.append(link);
-              link.click();
-              link.remove();
-              URL.revokeObjectURL(link.href);
-            });
-          }}
-        >
-          {t("plans.export")}
-        </Button>
+        <ExportButton planId={planId ?? ""} kind="plan" disabled={!plan.data} />
       }
     >
       <Modal
@@ -509,21 +485,6 @@ export function PlanPage() {
       {plan.data?.status === "draft" ? (
         <p className="small">{t("plans.draft")}</p>
       ) : null}
-      <div className="px-plan-export-options">
-        <Checkbox
-          checked={withProgress}
-          onChange={(event) => setWithProgress(event.target.checked)}
-        >
-          {t("plans.includeProgress")}
-        </Checkbox>
-        <Checkbox
-          checked={withSources}
-          onChange={(event) => setWithSources(event.target.checked)}
-        >
-          {t("plans.embedSources")}
-        </Checkbox>
-      </div>
-      {withSources ? <p className="small">{t("plans.embedWarning")}</p> : null}
       <SegmentedTabs
         label={t("plans.views")}
         value={tab}
@@ -768,7 +729,7 @@ export function SharedPlanPage() {
       <input
         ref={fileRef}
         type="file"
-        accept="application/json,.json"
+        accept="application/json,.json,.pyxis"
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0];

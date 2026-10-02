@@ -1,3 +1,4 @@
+import { PrintPage } from "../features/share/PrintPage";
 import { createHashRouter, Navigate } from "react-router";
 import { CardsPage } from "../features/study/CardsPage";
 import { MapPage } from "../features/maps/MapPage";
@@ -21,6 +22,7 @@ import { SettingsPage } from "../features/settings/SettingsPage";
 import { Shell } from "./layouts/Shell";
 
 export const router = createHashRouter([
+  { path: "/print", element: <PrintPage /> },
   {
     path: "/",
     element: <Shell />,

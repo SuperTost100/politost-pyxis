@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
-import { downloadText } from "../../lib/download";
+import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 
@@ -17,7 +17,8 @@ export function LessonPage() {
   const lesson = useQuery({
     queryKey: ["lesson", planId, topicId],
     enabled: Boolean(planId && topicId),
-    queryFn: () => invoke("study.lesson", { planId: planId ?? "", topicId: topicId ?? "" }),
+    queryFn: () =>
+      invoke("study.lesson", { planId: planId ?? "", topicId: topicId ?? "" }),
   });
   const plan = useQuery({
     queryKey: ["plan", planId],
@@ -25,14 +26,21 @@ export function LessonPage() {
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
   const node = (plan.data?.nodes ?? []).find(
-    (item) => item.kind === "learn" && item.topicId === topicId && item.state === "current",
+    (item) =>
+      item.kind === "learn" &&
+      item.topicId === topicId &&
+      item.state === "current",
   );
 
   return (
     <FocusLayout
       title={t("lesson.title")}
       secondary={
-        <Button type="text" shape="round" onClick={() => navigate(`/plans/${planId ?? ""}`)}>
+        <Button
+          type="text"
+          shape="round"
+          onClick={() => navigate(`/plans/${planId ?? ""}`)}
+        >
           {t("nav.back")}
         </Button>
       }
@@ -43,17 +51,12 @@ export function LessonPage() {
       >
         {t("map.title")}
       </Button>
-      <Button
-        shape="round"
-        onClick={() => {
-          if (!planId || !topicId) return;
-          void invoke("study.markdown", { planId, kind: "lesson", topicId }).then((file) => {
-            downloadText(file.filename, file.markdown);
-          });
-        }}
-      >
-        {t("export.markdown")}
-      </Button>
+      <ExportButton
+        planId={planId ?? ""}
+        topicId={topicId}
+        kind="lesson"
+        disabled={!lesson.data}
+      />
       <article className="passage">
         <MarkdownView>{lesson.data?.markdown ?? ""}</MarkdownView>
       </article>
@@ -63,10 +66,12 @@ export function LessonPage() {
           shape="round"
           onClick={() => {
             if (!planId) return;
-            void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
-              void client.invalidateQueries({ queryKey: ["plan", planId] });
-              navigate(`/plans/${planId}`);
-            });
+            void invoke("plans.complete", { planId, nodeId: node.id }).then(
+              () => {
+                void client.invalidateQueries({ queryKey: ["plan", planId] });
+                navigate(`/plans/${planId}`);
+              },
+            );
           }}
         >
           {t("lesson.done")}

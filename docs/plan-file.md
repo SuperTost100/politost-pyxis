@@ -1,27 +1,49 @@
 # Plan file
 
-Version 1 is a JSON document, checked by `planFileSchema` in `src/shared/plan-file.ts`. The app saves it as `<title>.pyxis.json`.
+Pyxis exports a UTF-8 JSON document named `<title>.pyxis.json`. New exports use version 2. The importer still accepts version 1. The runtime definition is `src/shared/plan-file.ts`; regenerate the public JSON Schema with `npx tsx scripts/gen-plan-schema.ts`.
+
+A version 2 file contains the plan settings, ordered topics and path nodes, cards, lessons, questions, exercises, map collections and the passages those objects cite. `topic` is an index into `topics`, or null for content that belongs to the whole plan. Topics also carry their summary tree and `passageIds`. A minimal file is:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "title": "Fisica 1",
-  "topics": [{ "title": "1. Moti", "position": 0 }],
-  "nodes": [{ "title": "1. Moti", "kind": "learn", "position": 2, "topic": 0 }],
-  "cards": [{ "front": "fronte", "back": "retro", "topic": 0 }],
-  "examAt": 90,
+  "topics": [{ "id": "topic-1", "title": "Moti", "position": 0 }],
+  "nodes": [
+    {
+      "id": "node-1",
+      "title": "Moti",
+      "kind": "learn",
+      "position": 2,
+      "topic": 0
+    }
+  ],
+  "cards": [{ "id": "card-1", "front": "$v$", "back": "Velocita", "topic": 0 }],
+  "examAt": 90000,
   "target": 0.8,
-  "language": "en",
+  "language": "it",
   "style": "read"
 }
 ```
 
-`examAt`, `target`, `language` and `style` travel with the file. An older file without them imports with no exam date, a target of 0.75, no language, and style `decide`. `progress` is absent unless the student ticks it. Each event stores `kind`, a topic index or null, `payload`, and `at`. Only a `lesson_completed` payload stores `nodeId` as an index into `nodes`. Import writes the new path node id. An old id on that event is dropped. A number stored in the database is dropped on export, so it is not read as an index. Other events keep `nodeId` as stored. `sources` lists each source by title, hash, and size. `data` is present only when the student ticks the source files. Import writes an embedded file into the workspace and checks the hash. A reference without `data` stays in the file and does not create a source. `topic` on a node or a card is an index into `topics`, or null when the step is the introduction, the diagnostic, the simulation or the final check. Import creates a new plan id and new topic ids, so importing the same file twice yields two plans. The shared-plan screen reads a file in the window, or asks the main process for an http or https link, then calls `plans.import`.
+Each passage carries its quoted `text`, SHA-256 `textSha`, source and document references, source-file SHA-256 `sourceSha`, version, locator, section and character offsets. The importer checks the text hash and source hash before writing. It creates excerpt sources when the original files are absent. Citations can therefore open the quoted material in a fresh workspace. An excerpt does not pretend to contain the original PDF or smartbook archive.
 
-A stored target outside 0.5–1 is clamped to the nearest bound on export. On the path, a target of 1 opens at 0.99 (`reachableTarget` in `src/shared/plan-file.ts`).
+`items` stores the lesson or question body, its topic, passage references and reported provider/model. Lesson cache keys travel with the body. Numbered citations such as `[P1]` keep their order through `item_passages`. Older questions without an ID receive a deterministic ID scoped to their item and position before export or import. The app never supplies a missing answer. Question IDs, source exercise references and inline `:::exercise{id="..."}` markers receive new IDs on import. Smartbook chapter IDs and paragraph labels remain source locators, so they keep their original values.
 
-A node or a card whose topic index is not null and falls outside `topics` is refused with `plan-file`. The import rolls back, so a bad file leaves no plan.
+`maps` contains each topic's map collection. Every entry carries a title, graph and passage references. Graph layout, labels, positions, pinned nodes, colors, edges and the previous undo snapshot travel with it. Import assigns new graph node IDs and rewrites parents, edges and source references.
 
-A shared link must be http or https. The fetch follows no redirects, aborts after 15 seconds, and stops reading past 1,000,000 bytes.
+Every import creates new IDs for the plan and its owned content. It remaps the known references rather than reusing IDs from another workspace. Importing the same file twice creates two independent plans. Invalid topic indexes, dangling passage references, mismatched document/source versions, invalid graphs, duplicate IDs or corrupted quoted text reject the file before database rows are written. Database inserts run in one transaction.
 
-The file does not carry passages, lessons or citations. Those stay in the workspace that owns the sources. A backup of the whole workspace is a separate zip: a vacuumed `pyxis.db` plus the `blobs/` tree. Restore checks that the staged database already has `user_version` of at least 1 and the tables `plans`, `profile` and `path_nodes`, then runs migrations on that copy. A zip whose declared uncompressed size is over 2 GiB is refused. There is no compressed-size cap, so a backup this app can write still restores. A header that lies about uncompressed size can still expand. If the check or the migration fails, the zip is refused and the live workspace stays. See `src/core/share/backup.ts`.
+## Optional source files and progress
+
+`sources` lists each source's ID, title, kind, SHA-256, byte count and MIME type. The app adds base64 `data` only when the student selects source embedding. Import checks the decoded byte count and SHA-256 before writing any embedded file. Without `data`, source references and quoted excerpts remain available. The original source hash stays in excerpt document metadata for later exports.
+
+Progress is absent by default. When selected, `progress` carries learning events and each card's latest scheduling review and suspension state. A `lesson_completed` event stores its path `nodeId` as an index into `nodes`; import turns that index into the new node ID. Known IDs in other event payloads are remapped. Answer drafts, quiz picks, model grading jobs and simulation result bodies never travel as content. A shared plan does not include engine credentials, workspace settings or model caches.
+
+Version 1 carries topics, path nodes, cards, plan settings and optional progress or embedded sources. It has no portable lesson, question, map or citation content. Missing settings use no exam date, a target of 0.75, no content language and style `decide`. A stored target outside 0.5 to 1 is clamped on export. Path gating treats a target of 1 as 0.99, as defined by `reachableTarget`.
+
+## Validation limits
+
+The schema bounds titles, IDs, quoted text, collection sizes and embedded files. One source can contain at most 200 MiB. Each arbitrary JSON body is limited to 24 nested levels, 100,000 visited values, 10,000 entries per array, 200 keys per object and 1,000,000 characters per string. Non-finite numbers and prototype-related keys are refused. The importer also checks known lesson, introduction, quiz, diagnostic and simulation body fields, including question answer types and option indexes. Extra bounded metadata remains intact. JSON Schema describes the file shape; body checks, hash checks, reference checks, graph checks and JSON traversal limits run in the importer.
+
+The shared-plan screen accepts a local file or an HTTP/HTTPS URL. The main process fetches links with a timeout, a response size limit and no redirects. Whole-workspace backup and restore use a separate ZIP format and staged database validation; see `src/core/share/backup.ts`.

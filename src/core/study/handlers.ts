@@ -28,6 +28,7 @@ import {
 import { flagTarget } from "./flags";
 import { startReview } from "./review";
 import { startDiagnostic, submitAttempt } from "./topicQuiz";
+import { exportAnki } from "../share/anki";
 import { exportCardsCsv, exportMarkdown } from "../share/markdown";
 
 import {
@@ -68,11 +69,21 @@ export function studyHandlers(
       kind: "lesson" | "cards" | "quiz" | "simulation";
       topicId?: string;
       answers?: boolean;
+      attemptId?: string;
     }) {
       return exportMarkdown(db, input);
     },
     csv(input: { planId: string; topicId?: string }) {
       return exportCardsCsv(db, input);
+    },
+    anki(input: { planId: string; topicId?: string }) {
+      const result = exportAnki(db, input.planId, input);
+      return {
+        filename: result.filename,
+        base64: Buffer.from(result.bytes).toString("base64"),
+        noteCount: result.noteCount,
+        cardCount: result.cardCount,
+      };
     },
     flag(input: { targetKind: string; targetId: string; reason?: string }) {
       flagTarget(db, input.targetKind, input.targetId, input.reason ?? "");

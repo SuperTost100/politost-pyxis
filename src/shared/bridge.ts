@@ -53,6 +53,16 @@ export interface PyxisBridge {
   workspacePath(): Promise<string>;
   wipeWorkspace(): Promise<"wiped">;
   fetchPlan(url: string): Promise<string>;
+  saveArtifact(input: {
+    filename: string;
+    base64: string;
+  }): Promise<"saved" | "cancelled">;
+  exportPdf(input: {
+    filename: string;
+    markdown: string;
+  }): Promise<"saved" | "cancelled">;
+  printData(): Promise<{ markdown: string } | null>;
+  printReady(): Promise<void>;
 }
 
 export const mainChannels = {
@@ -69,4 +79,8 @@ export const mainChannels = {
   workspacePath: "workspace:path",
   workspaceWipe: "workspace:wipe",
   planFetch: "plan:fetch",
+  artifactSave: "artifact:save",
+  pdfExport: "artifact:pdf",
+  printData: "print:data",
+  printReady: "print:ready",
 } as const;

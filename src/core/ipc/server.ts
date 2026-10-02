@@ -171,6 +171,8 @@ async function dispatch(
       return study?.lesson(requests["study.lesson"].input.parse(input));
     case "study.markdown":
       return study?.markdown(requests["study.markdown"].input.parse(input));
+    case "study.anki":
+      return study?.anki(requests["study.anki"].input.parse(input));
     case "study.csv":
       return study?.csv(requests["study.csv"].input.parse(input));
     case "study.diagnosticStart":

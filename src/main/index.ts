@@ -1,3 +1,4 @@
+import { registerArtifactHandlers } from "./artifacts";
 import { invalidateRuntime } from "./runtime-pack";
 import {
   configurePythonRuntime,
@@ -490,6 +491,7 @@ function registerIpc(): void {
       return result.filePaths;
     },
   );
+  registerArtifactHandlers(() => mainWindow, e2eSeam);
   ipcMain.handle(
     mainChannels.saveDialog,
     async (_event, options: SaveDialogOptions) => {

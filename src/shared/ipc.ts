@@ -240,10 +240,20 @@ export const requests = {
     input: z.object({
       planId: z.string(),
       kind: z.enum(["lesson", "cards", "quiz", "simulation"]),
+      attemptId: z.string().optional(),
       topicId: z.string().optional(),
       answers: z.boolean().optional(),
     }),
     output: z.object({ filename: z.string(), markdown: z.string() }),
+  },
+  "study.anki": {
+    input: z.object({ planId: z.string(), topicId: z.string().optional() }),
+    output: z.object({
+      filename: z.string(),
+      base64: z.string(),
+      noteCount: z.number().int().nonnegative(),
+      cardCount: z.number().int().nonnegative(),
+    }),
   },
   "study.csv": {
     input: z.object({ planId: z.string(), topicId: z.string().optional() }),

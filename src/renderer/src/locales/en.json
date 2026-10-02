@@ -218,7 +218,23 @@
   "export": {
     "markdown": "Markdown",
     "csv": "CSV",
-    "answers": "With the answers"
+    "answers": "With the answers",
+    "title": "Export",
+    "save": "Save file",
+    "cancel": "Cancel",
+    "format": "Format",
+    "pdf": "PDF",
+    "pyxis": "Pyxis plan",
+    "anki": "Anki",
+    "saved": "File saved",
+    "failed": "Could not export this file. Try again.",
+    "description": {
+      "pdf": "A printable document with rendered formulas.",
+      "markdown": "Editable text with formulas and source references.",
+      "anki": "A deck for Anki with basic and cloze cards.",
+      "csv": "Cards in a CSV file for Anki or a spreadsheet.",
+      "pyxis": "Topics, lessons, questions, cards and maps in a plan you can import into Pyxis."
+    }
   },
   "simulation": {
     "title": "Simulation",

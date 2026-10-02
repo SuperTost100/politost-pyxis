@@ -1,3 +1,4 @@
+import { PrintPage } from "../features/share/PrintPage";
 import { App as AntApp, ConfigProvider } from "antd";
 import { ProConfigProvider } from "@ant-design/pro-components";
 import enUS from "antd/locale/en_US";
@@ -15,6 +16,14 @@ import { AppStateContext } from "./app-state";
 import { router } from "./router";
 
 export function App() {
+  return window.location.hash.startsWith("#/print") ? (
+    <PrintPage />
+  ) : (
+    <StudyApp />
+  );
+}
+
+function StudyApp() {
   const { i18n: i18nInstance } = useTranslation();
   const locale: Locale = i18nInstance.language === "en" ? "en" : "it";
   const [appearance, setAppearance] = useState<Appearance>({
@@ -60,7 +69,7 @@ export function App() {
         <ProConfigProvider dark={appearance.resolved === "dark"} hashed={false}>
           <AntApp>
             <JobsSync />
-            <CoreNotice />
+              <CoreNotice />
             <RouterProvider router={router} />
             <SourceViewer />
           </AntApp>
