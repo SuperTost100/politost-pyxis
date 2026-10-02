@@ -29,7 +29,9 @@ export function StatTile({
         </div>
         <div className="px-stat-pills">
           {(pills ?? []).map((x) => (
-            <span key={x} className="px-pill-meta">{x}</span>
+            <span key={x} className="px-pill-meta">
+              {x}
+            </span>
           ))}
         </div>
       </div>
@@ -37,6 +39,7 @@ export function StatTile({
         value={value}
         target={target}
         tone="primary"
+        label={label}
         showValue={false}
       />
       {stats ? (

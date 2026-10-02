@@ -142,7 +142,9 @@ describe("planMastery", () => {
     const series = planSeries(db, planId, now);
     expect(series.chart).toHaveLength(14);
     expect(series.chart[13]?.count).toBe(1);
-    expect(series.gaps).toEqual([{ topicId, openedAt: now }]);
+    expect(series.gaps).toEqual([
+      { topicId, openedAt: now, severity: "severe", wrongAnswers: 2 },
+    ]);
     expect(series.pace.week).toBe(1);
     const again = planSeries(db, planId, now);
     expect(again.gaps).toHaveLength(1);
@@ -170,5 +172,195 @@ describe("planMastery", () => {
     const series = planSeries(db, planId, now);
     expect(series.topics[0]?.mastery).toBe(0.25);
     expect(series.minutes).toBe(2);
+  });
+});
+
+describe("M12 preparation data", () => {
+  function fixture(now: number) {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO plans (id,title,status,target,created_at,updated_at) VALUES('p','Physics','ready',.8,1,1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('a','p','Motion',0,1),('b','p','Force',1,1)",
+    ).run();
+    let n = 0;
+    return {
+      db,
+      event: (kind: string, topic: string | null, payload: unknown, at = now) =>
+        db
+          .prepare(
+            "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES(?,?,'p',?,?,?)",
+          )
+          .run(`e${n++}`, kind, topic, JSON.stringify(payload), at),
+    };
+  }
+  it("includes untouched topics in the chart and summary, and counts completed lessons only", () => {
+    const now = new Date(2026, 0, 14, 12).getTime();
+    const { db, event } = fixture(now);
+    event("lesson_opened", "a", {});
+    event("lesson_completed", "a", {});
+    event("lesson_completed", null, { nodeId: "intro" });
+    event("answer_given", "a", { score: 0.5, scores: [1, 0, 0.5] });
+    const series = planSeries(db, "p", now);
+    const mastery = planMastery(db, "p", now);
+    expect(series.preparation.mastery).toBe(
+      (mastery[0]!.mastery + mastery[1]!.mastery) / 2,
+    );
+    expect(series.chart.at(-1)!.mastery).toBe(series.preparation.mastery);
+    expect(series.chart[0]!.mastery).toBe(0);
+    expect(series.lessons).toBe(1);
+    expect(series.preparation.weeklyChange).toBe(series.preparation.mastery);
+    expect(series.topics[0]).toMatchObject({
+      exercisesSolved: 1,
+      lessons: 1,
+      lastStudied: now,
+    });
+    expect(series.topics[1]).toMatchObject({
+      exercisesSolved: 0,
+      lessons: 0,
+      lastStudied: null,
+    });
+    db.close();
+  });
+  it("returns time bars and aggregates the most active weekday across both weeks", () => {
+    const now = new Date(2026, 0, 14, 12).getTime();
+    const { db, event } = fixture(now);
+    const monday = new Date(2026, 0, 12, 12).getTime();
+    event("active_time", null, { seconds: 60 }, monday - 7 * 86400000);
+    event("active_time", null, { seconds: 120 }, monday);
+    event("active_time", null, { seconds: 150 }, monday + 86400000);
+    event("lesson_completed", "a", {}, monday);
+    event("lesson_completed", "b", {}, monday - 7 * 86400000);
+    const series = planSeries(db, "p", now);
+    expect(series.pace.bars).toHaveLength(14);
+    expect(series.pace.bars.reduce((n, b) => n + b.seconds, 0)).toBe(330);
+    expect(series.pace.weekMinutes).toBe(5);
+    expect(series.pace.weekLessons).toBe(1);
+    expect(series.pace.mostActiveWeekday).toBe(1);
+    db.close();
+  });
+  it("uses 21 days and below-target mastery for idle warnings, including untouched old topics", () => {
+    const now = new Date(2026, 0, 30, 12).getTime();
+    const { db, event } = fixture(now);
+    event("lesson_completed", "a", {}, now - 22 * 86400000);
+    expect(planSeries(db, "p", now).topics.map((t) => t.idle)).toEqual([
+      true,
+      true,
+    ]);
+    event("active_time", "a", { seconds: 15 });
+    expect(planSeries(db, "p", now).topics.map((t) => t.idle)).toEqual([
+      false,
+      true,
+    ]);
+    db.close();
+  });
+  it("lists only this plan's flagged questions and excludes them from solved counts", () => {
+    const now = new Date(2026, 0, 14, 12).getTime();
+    const { db, event } = fixture(now);
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES('quiz','p','a','quiz',?,1)",
+    ).run(
+      JSON.stringify({
+        questions: [
+          {
+            id: "q",
+            stem: "How fast?",
+            answer: { kind: "open", reference: "Ten" },
+          },
+        ],
+      }),
+    );
+    event("answer_given", "a", {
+      score: 1,
+      scores: [1],
+      questionScores: [{ id: "q", sourceIds: [], score: 1 }],
+    });
+    flagTarget(db, "exercise", "q", "Wrong premise", now);
+    flagTarget(db, "exercise", "unrelated", "Other course", now);
+    const series = planSeries(db, "p", now);
+    expect(series.flagged).toHaveLength(1);
+    expect(series.flagged[0]).toMatchObject({
+      targetId: "q",
+      label: "How fast?",
+      reason: "Wrong premise",
+      topicId: "a",
+    });
+    expect(series.topics[0]!.exercisesSolved).toBe(0);
+    db.close();
+  });
+  it("resolves flags by kind and plan without replacing passage labels with question aliases", () => {
+    const now = new Date(2026, 0, 14, 12).getTime();
+    const { db } = fixture(now);
+    db.prepare(
+      "INSERT INTO plans(id,title,status,created_at,updated_at) VALUES('other','Other','ready',1,1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('other-topic','other','Other',0,1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO passages(id,text,section_path,created_at) VALUES('passage','Velocity text','Velocity chapter',1),('other-passage','Other text','Other chapter',1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO topic_passages(topic_id,passage_id) VALUES('a','passage'),('other-topic','other-passage')",
+    ).run();
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES('quiz','p','a','quiz',?,1)",
+    ).run(
+      JSON.stringify({
+        questions: [
+          {
+            id: "generated",
+            sourceId: "passage",
+            sourceIds: ["passage", "other-passage"],
+            stem: "Diagnostic 9",
+          },
+        ],
+      }),
+    );
+    flagTarget(db, "passage", "passage", "Check this paragraph", now);
+    flagTarget(db, "exercise", "passage", "Legacy exercise alias", now);
+    flagTarget(db, "exercise", "generated", "Question", now);
+    flagTarget(db, "passage", "generated", "Wrong kind", now);
+    flagTarget(db, "passage", "other-passage", "Other plan", now);
+    flagTarget(
+      db,
+      "exercise",
+      "other-passage",
+      "Grounding is not an exercise alias",
+      now,
+    );
+    flagTarget(db, "item", "quiz", "Quiz item", now);
+    const flagged = planSeries(db, "p", now).flagged;
+    expect(flagged).toHaveLength(4);
+    expect(flagged.find((f) => f.targetKind === "passage")).toMatchObject({
+      targetId: "passage",
+      label: "Velocity chapter",
+      topicId: "a",
+    });
+    expect(
+      flagged.find(
+        (f) => f.targetKind === "exercise" && f.targetId === "passage",
+      ),
+    ).toMatchObject({ label: "Diagnostic 9", topicId: "a" });
+    expect(flagged.some((f) => f.targetId === "other-passage")).toBe(false);
+    expect(planSeries(db, "other", now).flagged).toHaveLength(1);
+    db.close();
+  });
+  it("ranks severe gaps first without inventing a model misconception", () => {
+    const now = new Date(2026, 0, 14, 12).getTime();
+    const { db, event } = fixture(now);
+    for (let i = 0; i < 20; i++)
+      event("answer_given", "a", { score: 1, scores: [1] }, now - 1000 + i);
+    event("answer_given", "a", { score: 0, scores: [0, 0] });
+    event("answer_given", "b", { score: 0, scores: [0, 0, 0] });
+    const series = planSeries(db, "p", now);
+    expect(
+      series.gaps.map((g) => [g.topicId, g.severity, g.wrongAnswers]),
+    ).toEqual([
+      ["b", "severe", 3],
+      ["a", "minor", 2],
+    ]);
+    db.close();
   });
 });

@@ -1,6 +1,8 @@
+import { PlanProgress } from "./PlanProgress";
+import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StepLines } from "../../components/StepLines";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal } from "antd";
+import { Button, Checkbox, Modal } from "antd";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useRef, useState } from "react";
@@ -9,11 +11,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
 import { invoke } from "../../lib/ipc";
-import {
-  examInstant,
-  planFileSchema,
-  reachableTarget,
-} from "@shared/plan-file";
+import { examInstant, planFileSchema } from "@shared/plan-file";
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();
@@ -123,12 +121,22 @@ export function WizardFrame() {
         <BuildingMark
           inner={Math.min(1, (build.data?.progress ?? 0) * 6)}
           middle={Math.max(0, Math.min(1, (build.data?.progress ?? 0) * 6 - 1))}
-          outer={Math.max(0, Math.min(1, ((build.data?.progress ?? 0) * 6 - 2) / 4))}
+          outer={Math.max(
+            0,
+            Math.min(1, ((build.data?.progress ?? 0) * 6 - 2) / 4),
+          )}
           done={Boolean(built)}
           failedTrail={failed ? 0 : undefined}
         />
         <p className="title-2">{t("wizard.preparing", { title: name })}</p>
-        <StepLines steps={(build.data?.steps ?? []).map((step) => ({ id: step.name, label: t(step.label), state: step.state === "succeeded" ? "done" : step.state }))} label={t("wizard.preparing", { title: name })} />
+        <StepLines
+          steps={(build.data?.steps ?? []).map((step) => ({
+            id: step.name,
+            label: t(step.label),
+            state: step.state === "succeeded" ? "done" : step.state,
+          }))}
+          label={t("wizard.preparing", { title: name })}
+        />
         {build.data?.stepLabel ? (
           <p className="small" role="status">
             {t(build.data.stepLabel)}
@@ -380,11 +388,6 @@ export function PlanPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
-  const mastery = useQuery({
-    queryKey: ["mastery", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.mastery", { planId: planId ?? "" }),
-  });
   const recommended = useQuery({
     queryKey: ["recommend", planId],
     enabled: Boolean(planId),
@@ -399,6 +402,7 @@ export function PlanPage() {
     queryKey: ["series", planId],
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.series", { planId: planId ?? "" }),
+    refetchOnMount: "always",
   });
   const [introOpen, setIntroOpen] = useState(false);
   const intro = useQuery({
@@ -412,20 +416,6 @@ export function PlanPage() {
   );
   const [withProgress, setWithProgress] = useState(false);
   const [withSources, setWithSources] = useState(false);
-  const onTrack = (progress?.topics ?? []).filter(
-    (topic) => topic.mastery >= reachableTarget(plan.data?.target ?? 0.8),
-  ).length;
-  const chart = progress?.chart ?? [];
-  const chartWidth = 280;
-  const chartHeight = 72;
-  const chartStep =
-    chart.length > 1 ? chartWidth / (chart.length - 1) : chartWidth;
-  const chartPath = chart
-    .map((point, index) => {
-      const command = index === 0 ? "M" : "L";
-      return `${command} ${index * chartStep} ${chartHeight - point.mastery * chartHeight}`;
-    })
-    .join(" ");
   if (plan.data?.status === "building")
     return (
       <FocusLayout title={plan.data.title} closable>
@@ -519,43 +509,32 @@ export function PlanPage() {
       {plan.data?.status === "draft" ? (
         <p className="small">{t("plans.draft")}</p>
       ) : null}
-      <label className="choice">
-        <input
-          type="checkbox"
+      <div className="px-plan-export-options">
+        <Checkbox
           checked={withProgress}
           onChange={(event) => setWithProgress(event.target.checked)}
-        />
-        <span>{t("plans.includeProgress")}</span>
-      </label>
-      <label className="choice">
-        <input
-          type="checkbox"
+        >
+          {t("plans.includeProgress")}
+        </Checkbox>
+        <Checkbox
           checked={withSources}
           onChange={(event) => setWithSources(event.target.checked)}
-        />
-        <span>{t("plans.embedSources")}</span>
-      </label>
-      {withSources ? <p className="small">{t("plans.embedWarning")}</p> : null}
-      <div className="choice-list">
-        {(
-          [
-            ["progress", t("progress.title")],
-            ["path", t("plans.tabPath")],
-            ["topics", t("plans.tabTopics")],
-            ["sources", t("plans.tabSources")],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            className={tab === id ? "choice is-selected" : "choice"}
-            aria-pressed={tab === id}
-            onClick={() => setTab(id)}
-          >
-            {label}
-          </button>
-        ))}
+        >
+          {t("plans.embedSources")}
+        </Checkbox>
       </div>
+      {withSources ? <p className="small">{t("plans.embedWarning")}</p> : null}
+      <SegmentedTabs
+        label={t("plans.views")}
+        value={tab}
+        onChange={(value) => setTab(value as typeof tab)}
+        items={[
+          { value: "progress", label: t("progress.title") },
+          { value: "path", label: t("plans.tabPath") },
+          { value: "topics", label: t("plans.tabTopics") },
+          { value: "sources", label: t("plans.tabSources") },
+        ]}
+      />
       {tab === "topics" ? (
         <ul className="choice-list">
           {(plan.data?.topics ?? []).map((topic) => (
@@ -606,116 +585,14 @@ export function PlanPage() {
           </Button>
         </div>
       ) : null}
-      {tab === "progress" && progress ? (
-        <section>
-          <h2 className="title-3">{t("progress.title")}</h2>
-          <p className="small">
-            {t("progress.onTrack", {
-              ready: onTrack,
-              total: progress.topics.length,
-            })}
-          </p>
-          <p className="small">
-            {t("progress.lessons", { count: progress.lessons })}
-          </p>
-          <p className="small">{t("progress.chart")}</p>
-          <svg
-            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-            width="100%"
-            height={chartHeight}
-            role="img"
-            aria-label={t("progress.chart")}
-          >
-            <path
-              d={chartPath}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            />
-          </svg>
-          <p className="small">
-            {t("progress.week", { count: progress.pace.week })}
-          </p>
-          <p className="small">
-            {t("progress.minutes", { count: progress.minutes })}
-          </p>
-          <p className="small">
-            {t("progress.peak", {
-              day: new Date(progress.pace.peakDay).toLocaleDateString(
-                undefined,
-                {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "short",
-                },
-              ),
-            })}
-          </p>
-          <h3 className="body-strong">{t("progress.simulations")}</h3>
-          {(simulations.data ?? []).length === 0 ? (
-            <>
-              <p className="small">{t("progress.noSimulations")}</p>
-              <Button
-                shape="round"
-                onClick={() => navigate(`/plans/${planId ?? ""}/simulation`)}
-              >
-                {t("progress.startSimulation")}
-              </Button>
-            </>
-          ) : (
-            <ul className="choice-list">
-              {(simulations.data ?? []).map((run) => (
-                <li key={run.id} className="small">
-                  {new Date(run.at).toLocaleDateString()}
-                  {" · "}
-                  {t("progress.simulationRow", {
-                    score: Math.round(run.score * 100),
-                    minutes: run.minutes,
-                  })}
-                </li>
-              ))}
-            </ul>
-          )}
-          <h3 className="body-strong">{t("progress.gaps")}</h3>
-          {progress.gaps.length === 0 ? (
-            <p className="small">{t("progress.noGaps")}</p>
-          ) : (
-            <ul className="choice-list">
-              {progress.gaps.map((gap) => (
-                <li key={gap.topicId} className="small">
-                  {progress.topics.find((topic) => topic.id === gap.topicId)
-                    ?.title ?? gap.topicId}
-                </li>
-              ))}
-            </ul>
-          )}
-          <table>
-            <tbody>
-              {progress.topics.map((topic) => (
-                <tr key={topic.id}>
-                  <th scope="row">
-                    {topic.title}
-                    {topic.idle ? ` · ${t("progress.idle")}` : ""}
-                  </th>
-                  {(progress.counts[topic.id] ?? []).map((count, index) => (
-                    <td key={progress.weeks[index] ?? index}>{count}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      ) : null}
-      {(mastery.data ?? []).length > 0 ? (
-        <ul className="choice-list">
-          {(mastery.data ?? []).map((topic) => (
-            <li key={topic.id} className="small">
-              {topic.title} · {Math.round(topic.mastery * 100)}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {tab === "path" || tab === "progress" ? (
+      {tab === "progress" && progress && (
+        <PlanProgress
+          planId={planId!}
+          progress={progress}
+          simulations={simulations.data ?? []}
+        />
+      )}
+      {tab === "path" ? (
         <ol className="choice-list">
           {(plan.data?.nodes ?? []).map((node) => (
             <li key={node.id}>

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { flaggedIds } from "../study/flags";
 import { uuidv7 } from "../../shared/ids";
-import { idleTopics, masteryFor, type MasteryEvent } from "../study/mastery";
+import { masteryFor, type MasteryEvent } from "../study/mastery";
 import {
   activeMinutes,
   chartPoints,
@@ -189,18 +189,78 @@ export function planSeries(
     (event): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } =>
       event.kind !== "active",
   );
-  const idle = new Set(
-    idleTopics(
-      studied.map((event) => ({
-        topicId: event.topicId,
-        kind: event.kind,
-        score: event.score,
-        at: event.at,
-      })),
-      now,
-    ),
+  const plan = db.prepare("SELECT target FROM plans WHERE id=?").get(planId) as
+    { target: number } | undefined;
+  const target = plan?.target ?? 0.8;
+  const ids = topics.map((topic) => topic.id);
+  const average = (rows: ReturnType<typeof planMastery>) =>
+    rows.reduce((sum, row) => sum + row.mastery, 0) / Math.max(1, rows.length);
+  const preparation = average(topics);
+  const historicalAverage = (at: number) => {
+    const scores = masteryFor(
+      studied
+        .filter((event) => event.at <= at)
+        .map((event) => ({
+          topicId: event.topicId,
+          kind: event.kind,
+          score: event.score,
+          at: event.at,
+        })),
+      at,
+    );
+    return (
+      ids.reduce((sum, id) => sum + (scores[id] ?? 0), 0) /
+      Math.max(1, ids.length)
+    );
+  };
+  const chart = chartPoints(events, now).map((point) => {
+    const end = new Date(point.day);
+    end.setDate(end.getDate() + 1);
+    end.setHours(0, 0, 0, 0);
+    return {
+      ...point,
+      mastery: historicalAverage(Math.min(now, end.getTime() - 1)),
+    };
+  });
+  const completed = db
+    .prepare(
+      "SELECT topic_id,created_at FROM learning_events WHERE plan_id=? AND kind='lesson_completed' AND topic_id IS NOT NULL",
+    )
+    .all(planId) as { topic_id: string | null; created_at: number }[];
+  const topicDates = new Map(
+    (
+      db
+        .prepare("SELECT id,created_at FROM topics WHERE plan_id=?")
+        .all(planId) as { id: string; created_at: number }[]
+    ).map((row) => [row.id, row.created_at]),
   );
-  const chart = chartPoints(events, now);
+  const skillTopics = topics.map((topic) => {
+    const rows = events.filter(
+      (event) => event.topicId === topic.id && event.at <= now,
+    );
+    const lastStudied = rows.length
+      ? rows.reduce((latest, event) => Math.max(latest, event.at), 0)
+      : null;
+    return {
+      ...topic,
+      exercisesSolved: rows
+        .filter((event) => event.kind === "quiz")
+        .reduce(
+          (sum, event) =>
+            sum +
+            (event.scores ?? [event.score]).filter((score) => score >= 1)
+              .length,
+          0,
+        ),
+      lessons: completed.filter(
+        (row) => row.topic_id === topic.id && row.created_at <= now,
+      ).length,
+      lastStudied,
+      idle:
+        now - (lastStudied ?? topicDates.get(topic.id) ?? now) >=
+          21 * 86400000 && topic.mastery < target,
+    };
+  });
   const activity = activeMinutes(events, now);
   const weeks = weeklyCounts(
     events,
@@ -213,15 +273,75 @@ export function planSeries(
        WHERE plan_id = ? AND closed_at IS NULL AND topic_id IS NOT NULL`,
     )
     .all(planId) as Array<{ topicId: string; openedAt: number }>;
+  const rankedGaps = gaps
+    .map((gap) => ({
+      ...gap,
+      severity:
+        (topics.find((topic) => topic.id === gap.topicId)?.mastery ?? 0) <
+        target / 2
+          ? ("severe" as const)
+          : ("minor" as const),
+      wrongAnswers: studied
+        .filter(
+          (event) =>
+            event.kind === "quiz" &&
+            event.topicId === gap.topicId &&
+            event.at >= gap.openedAt,
+        )
+        .reduce(
+          (sum, event) =>
+            sum +
+            (event.scores ?? [event.score]).filter((score) => score < 1).length,
+          0,
+        ),
+    }))
+    .sort(
+      (a, b) =>
+        (a.severity === b.severity ? 0 : a.severity === "severe" ? -1 : 1) ||
+        b.wrongAnswers - a.wrongAnswers ||
+        a.openedAt - b.openedAt,
+    );
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  const weekdaySeconds = Array<number>(7).fill(0);
+  for (const bar of activity.bars)
+    weekdaySeconds[new Date(bar.day).getDay()]! += bar.seconds;
+  const peak = Math.max(...weekdaySeconds);
   return {
     chart,
+    preparation: {
+      mastery: preparation,
+      target,
+      weeklyChange:
+        preparation -
+        historicalAverage(
+          (() => {
+            const at = new Date(now);
+            at.setDate(at.getDate() - 7);
+            return at.getTime();
+          })(),
+        ),
+      onTrack: topics.filter((topic) => topic.mastery >= target).length,
+      totalTopics: topics.length,
+      lessons: completed.filter((row) => row.created_at <= now).length,
+    },
     weeks: weeks.weeks,
     counts: weeks.counts,
-    gaps,
-    pace: paceFacts(chart, now, activity.bars),
+    gaps: rankedGaps,
+    flagged: flaggedContent(db, planId),
+    pace: {
+      ...paceFacts(chart, now, activity.bars),
+      bars: activity.bars,
+      weekMinutes: Math.round(activity.weekSeconds / 60),
+      weekLessons: completed.filter(
+        (row) => row.created_at >= start.getTime() && row.created_at <= now,
+      ).length,
+      mostActiveWeekday: peak > 0 ? weekdaySeconds.indexOf(peak) : null,
+    },
     minutes: Math.round(activity.weekSeconds / 60),
-    lessons: studied.filter((event) => event.kind === "lesson").length,
-    topics: topics.map((topic) => ({ ...topic, idle: idle.has(topic.id) })),
+    lessons: completed.filter((row) => row.created_at <= now).length,
+    topics: skillTopics,
   };
 }
 
@@ -246,4 +366,79 @@ function scorePayload(
     scores: rows.map((row) => row.score),
     score: rows.reduce((sum, row) => sum + row.score, 0) / rows.length,
   };
+}
+
+function flaggedContent(db: Database.Database, planId: string) {
+  const items = db
+    .prepare("SELECT id,topic_id,body_json FROM items WHERE plan_id=?")
+    .all(planId) as {
+    id: string;
+    topic_id: string | null;
+    body_json: string;
+  }[];
+  const labels = new Map<string, { label: string; topicId?: string }>();
+  const key = (kind: string, id: string) => JSON.stringify([kind, id]);
+  const passages = db
+    .prepare(
+      "SELECT p.id,p.section_path,p.text,t.id AS topicId FROM topic_passages tp JOIN topics t ON t.id=tp.topic_id JOIN passages p ON p.id=tp.passage_id WHERE t.plan_id=? ORDER BY t.position,p.created_at,p.id",
+    )
+    .all(planId) as {
+    id: string;
+    section_path: string | null;
+    text: string;
+    topicId: string;
+  }[];
+  for (const passage of passages)
+    if (!labels.has(key("passage", passage.id)))
+      labels.set(key("passage", passage.id), {
+        label: (passage.section_path?.trim() || passage.text).slice(0, 200),
+        topicId: passage.topicId,
+      });
+  for (const item of items) {
+    const body = JSON.parse(item.body_json) as {
+      markdown?: string;
+      questions?: {
+        id: string;
+        sourceId?: string;
+        sourceIds?: string[];
+        stem: string;
+        topicId?: string;
+      }[];
+    };
+    labels.set(key("item", item.id), {
+      label: (body.markdown ?? item.id).slice(0, 200),
+      topicId: item.topic_id ?? undefined,
+    });
+    for (const q of body.questions ?? [])
+      for (const id of [q.id, q.sourceId].filter((id): id is string =>
+        Boolean(id),
+      ))
+        labels.set(key("exercise", id), {
+          label: q.stem.slice(0, 200),
+          topicId: q.topicId ?? item.topic_id ?? undefined,
+        });
+  }
+  const exercises = db
+    .prepare(
+      "SELECT e.id,e.prompt FROM exercises e JOIN smartbooks sb ON sb.id=e.smartbook_id JOIN plan_sources ps ON ps.source_id=sb.source_id WHERE ps.plan_id=?",
+    )
+    .all(planId) as { id: string; prompt: string }[];
+  for (const e of exercises)
+    if (!labels.has(key("exercise", e.id)))
+      labels.set(key("exercise", e.id), { label: e.prompt.slice(0, 200) });
+  const flags = db
+    .prepare(
+      "SELECT id,target_kind AS targetKind,target_id AS targetId,reason,created_at AS createdAt FROM flags ORDER BY created_at DESC,id",
+    )
+    .all() as {
+    id: string;
+    targetKind: string;
+    targetId: string;
+    reason: string | null;
+    createdAt: number;
+  }[];
+  return flags.flatMap((flag) => {
+    const content = labels.get(key(flag.targetKind, flag.targetId));
+    return content ? [{ ...flag, reason: flag.reason ?? "", ...content }] : [];
+  });
 }
