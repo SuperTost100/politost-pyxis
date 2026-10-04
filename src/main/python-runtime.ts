@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { BrowserWindow, session, type Session } from "electron";
 import { checkClaimSchema } from "../shared/math-check";
 import {
-  ensureRuntime,
+  cancelRuntimeDownload,
+  currentRuntimeStatus,
+  downloadRuntime,
+  requireRuntime,
   runtimeManifest,
-  runtimeStatus,
   verifiedRuntimeFile,
 } from "./runtime-pack";
 
@@ -73,7 +75,10 @@ function mime(name: string): string {
   if (name.endsWith(".py")) return "text/plain";
   return "application/octet-stream";
 }
-export function registerRuntimeProtocol(target: Session, path: string): void {
+export function registerRuntimeProtocol(
+  target: Session,
+  path: string | (() => string),
+): void {
   target.protocol.handle("pyxis-runtime", async (request) => {
     const name = resourceName(request.url);
     if (!name || request.method !== "GET")
@@ -85,7 +90,10 @@ export function registerRuntimeProtocol(target: Session, path: string): void {
             join(import.meta.dirname, "../renderer/runtime", asset),
           ),
         )
-      : await verifiedRuntimeFile(path, name.slice("pyodide/".length));
+      : await verifiedRuntimeFile(
+          typeof path === "function" ? path() : path,
+          name.slice("pyodide/".length),
+        );
     return bytes
       ? new Response(bytes, {
           headers: { ...HEADERS, "Content-Type": mime(name) },
@@ -97,7 +105,8 @@ async function sandbox(): Promise<BrowserWindow> {
   if (!workspace) throw new Error("runtime-workspace-missing");
   const epoch = generation;
   const path = workspace;
-  await ensureRuntime(path);
+  // Running code never downloads; the explicit runtime job does that.
+  await requireRuntime(path);
   if (epoch !== generation) throw new Error("runtime-disposed");
   if (opening) return opening;
   if (window && !window.isDestroyed()) return window;
@@ -135,7 +144,8 @@ async function sandbox(): Promise<BrowserWindow> {
     });
     try {
       await created.loadURL(ORIGIN + "index.html");
-      if (epoch !== generation || created.isDestroyed()) throw new Error("runtime-disposed");
+      if (epoch !== generation || created.isDestroyed())
+        throw new Error("runtime-disposed");
       window = created;
       return created;
     } catch (error) {
@@ -177,7 +187,16 @@ export async function handleRuntimeRequest(
   operation: string,
   payload: unknown,
 ): Promise<unknown> {
-  if (operation === "status") return runtimeStatus(workspace);
+  if (operation === "status") return currentRuntimeStatus(workspace);
+  if (operation === "download") {
+    if (!workspace) throw new Error("runtime-workspace-missing");
+    await downloadRuntime(workspace);
+    return currentRuntimeStatus(workspace);
+  }
+  if (operation === "cancel-download") {
+    cancelRuntimeDownload(workspace);
+    return {};
+  }
   if (operation === "check") {
     try {
       return await execute("check", checkClaimSchema.parse(payload));

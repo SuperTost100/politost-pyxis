@@ -7,6 +7,7 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
 export function Button({
+  "aria-label": ariaLabel,
   variant = "primary",
   size = "md",
   icon,
@@ -17,6 +18,7 @@ export function Button({
   onClick,
   type = "button",
 }: {
+  "aria-label"?: string;
   variant?: Variant;
   size?: Size;
   icon?: IconName;
@@ -36,6 +38,7 @@ export function Button({
   const antSize = size === "sm" ? "small" : size === "lg" ? "large" : "middle";
   return (
     <AntButton
+      aria-label={ariaLabel}
       htmlType={type}
       type={antType}
       danger={variant === "danger"}
@@ -54,9 +57,7 @@ export function Button({
         .filter(Boolean)
         .join(" ")}
       icon={
-        icon ? (
-          <Icon name={icon} size={size === "sm" ? 16 : 18} />
-        ) : undefined
+        icon ? <Icon name={icon} size={size === "sm" ? 16 : 18} /> : undefined
       }
     >
       {children}

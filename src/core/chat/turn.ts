@@ -8,12 +8,13 @@ import { capabilityWarning } from "../engine/capabilities";
 import { selectionFor } from "../engine/selection";
 import type { Embedder, PassageHit } from "../sources/retrieve";
 import { contentWords, retrieveWithModel } from "../sources/retrieve";
-import { prepareFiles, savedImages } from "./attach";
+import { prepareFiles, savedImages, type PreparedFiles } from "./attach";
+import { contentLanguage } from "../engine/prompts";
 import {
-  CHAT_PROMPT_VERSION,
-  generalPrompt,
-  socraticPrompt,
-  solverPrompt,
+  type ChatTemplateId,
+  chatProvenance,
+  chatSystemPrompt,
+  chatTemplateId,
 } from "./prompts";
 
 export type ChatContext = {
@@ -81,7 +82,7 @@ function profileContext(db: Database.Database): string {
       }
     | undefined;
   if (!row) return "";
-  return `Student: ${row.display_name ?? ""}. Level: ${row.education_level ?? ""}. Course: ${row.course ?? ""}. Write all output in ${row.content_language ?? "the student's language"}.`;
+  return `Student: ${row.display_name ?? ""}. Level: ${row.education_level ?? ""}. Course: ${row.course ?? ""}.`;
 }
 
 function splitFollowups(text: string): { body: string; followups: string[] } {
@@ -95,12 +96,16 @@ function splitFollowups(text: string): { body: string; followups: string[] } {
   return { body: text.replace(match[0], "").trim(), followups };
 }
 
-function historyText(db: Database.Database, chatId: string): string {
+function historyText(
+  db: Database.Database,
+  chatId: string,
+  excludeId = "",
+): string {
   const rows = db
     .prepare(
-      `SELECT role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 8`,
+      `SELECT role, body FROM messages WHERE chat_id = ? AND id != ? ORDER BY created_at DESC LIMIT 8`,
     )
-    .all(chatId) as Array<{ role: string; body: string }>;
+    .all(chatId, excludeId) as Array<{ role: string; body: string }>;
   return rows
     .reverse()
     .map((row) => `${row.role}: ${splitChecks(row.body).body}`)
@@ -276,17 +281,14 @@ export function chatContext(
 export async function askTurn(
   db: Database.Database,
   input: AskInput,
+  replacing?: { assistantId: string; userId: string },
 ): Promise<AskResult> {
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
   const now = Date.now();
   const chatId = ensureChat(db, input.chatId, input.text, now);
   let sourceIds = input.sourceIds ?? chatScope(db, chatId);
   let notes: string[] = [];
-  let images: Array<{
-    mediaType: "image/png" | "image/jpeg" | "image/webp";
-    data: string;
-    sha: string;
-  }> = [];
+  let images: PreparedFiles["images"] = [];
   if (input.files && input.files.length > 0 && input.workspace) {
     try {
       const prepared = await prepareFiles(
@@ -295,6 +297,7 @@ export async function askTurn(
         input.files,
         selectionFor(db, "chat").model,
         input.recognize,
+        input.signal,
       );
       sourceIds = [...new Set([...sourceIds, ...prepared.sourceIds])];
       notes = prepared.notes;
@@ -335,7 +338,8 @@ export async function askTurn(
     )
     .get(chatId) as { id: string; role: string; body: string } | undefined;
   let userMessageId =
-    pending?.role === "user" && pending.body === userBody ? pending.id : "";
+    replacing?.userId ||
+    (pending?.role === "user" && pending.body === userBody ? pending.id : "");
   if (!userMessageId) {
     userMessageId = uuidv7(now + 1);
     db.prepare(
@@ -347,6 +351,8 @@ export async function askTurn(
   );
   for (const image of images) {
     attach.run(uuidv7(now + 3), userMessageId, image.sha, image.mediaType, now);
+    if (image.original)
+      attach.run(uuidv7(now + 4), userMessageId, image.original.sha, image.original.mime, now);
   }
   db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
 
@@ -384,14 +390,9 @@ export async function askTurn(
     : "";
   const attachedBlock =
     notes.length > 0 ? `Attached text:\n${notes.join("\n")}\n\n` : "";
-  const system = `${
-    input.allowGeneral
-      ? generalPrompt
-      : input.mode === "socratic"
-        ? socraticPrompt
-        : solverPrompt
-  }\n${profileContext(db)}\n${subjectLine}`;
-  const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}\n\nEarlier turns:\n${historyText(db, chatId)}\n\nQuestion:\n${input.text}`;
+  const template = chatTemplateId(input);
+  const system = `${chatSystemPrompt(template, contentLanguage(db))}\n${profileContext(db)}\n${subjectLine}`;
+  const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}\n\nEarlier turns:\n${historyText(db, chatId, replacing?.assistantId)}\n\nQuestion:\n${input.text}`;
   const selection = selectionFor(db, "chat");
   let streamed = "";
   let result;
@@ -424,14 +425,10 @@ export async function askTurn(
       streamed.trim()
     ) {
       return finishReply(db, chatId, streamed, {
-        provider: "",
-        model: "",
+        provider: selection.provider,
+        model: selection.model,
         grounding: input.allowGeneral ? "general" : "sources",
-        template: input.allowGeneral
-          ? "chat-general"
-          : input.mode === "socratic"
-            ? "chat-socratic"
-            : "chat-solver",
+        template,
         citations,
         allowGeneral: input.allowGeneral === true,
         stopped: true,
@@ -470,12 +467,8 @@ export async function askTurn(
     stored,
     result.provider,
     result.model,
-    input.allowGeneral
-      ? "chat-general"
-      : input.mode === "socratic"
-        ? "chat-socratic"
-        : "chat-solver",
-    CHAT_PROMPT_VERSION,
+    template,
+    chatProvenance(template).version,
     grounding,
     now + 1,
   );
@@ -486,7 +479,12 @@ export async function askTurn(
     [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
   );
   const linked = citations.filter((cite) => used.has(cite.index));
-  if (!input.allowGeneral && linked.length === 0 && !thisTurnFile) {
+  if (
+    !input.allowGeneral &&
+    linked.length === 0 &&
+    !thisTurnFile &&
+    !(input.mode === "socratic" && parsed.body.trim().endsWith("?"))
+  ) {
     db.prepare(`DELETE FROM messages WHERE id = ?`).run(messageId);
     return { chatId, covered: false, message: null };
   }
@@ -540,7 +538,7 @@ function finishReply(
     meta.provider,
     meta.model,
     meta.template,
-    CHAT_PROMPT_VERSION,
+    chatProvenance(meta.template as ChatTemplateId).version,
     meta.grounding,
     meta.stopped ? 1 : 0,
     meta.now + 1,
@@ -582,16 +580,30 @@ export async function regenerateTurn(
       `SELECT id, role FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
     )
     .get(input.chatId) as { id: string; role: string } | undefined;
-  if (last?.role === "assistant") {
-    db.prepare(`DELETE FROM messages WHERE id = ?`).run(last.id);
-  }
   const user = db
     .prepare(
-      `SELECT body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC LIMIT 1`,
     )
-    .get(input.chatId) as { body: string } | undefined;
+    .get(input.chatId) as { id: string; body: string } | undefined;
   if (!user) throw new Error("chat-missing");
-  return askTurn(db, { ...input, text: user.body });
+  const result = await askTurn(
+    db,
+    { ...input, text: user.body },
+    last?.role === "assistant"
+      ? { assistantId: last.id, userId: user.id }
+      : undefined,
+  );
+  if (result.message?.stopped && last?.role === "assistant") {
+    db.prepare("DELETE FROM messages WHERE id = ? AND chat_id = ?").run(result.message.id, input.chatId);
+    throw new DOMException("Aborted", "AbortError");
+  }
+  if (result.message && last?.role === "assistant") {
+    db.prepare(`DELETE FROM messages WHERE id = ? AND chat_id = ?`).run(
+      last.id,
+      input.chatId,
+    );
+  }
+  return result;
 }
 
 export function rateMessage(

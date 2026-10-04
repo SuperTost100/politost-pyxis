@@ -1,3 +1,4 @@
+import { Tag } from "./Tag";
 import { Card } from "antd";
 import { Button } from "./Button";
 import { MasteryBar } from "./MasteryBar";
@@ -5,6 +6,8 @@ import "./PlanCard.css";
 
 export function PlanCard({
   subject,
+  importedLabel,
+  continueLabel,
   title,
   mastery,
   target,
@@ -13,6 +16,8 @@ export function PlanCard({
   onContinue,
 }: {
   subject?: string;
+  importedLabel?: string;
+  continueLabel?: string;
   title: string;
   mastery: number;
   target?: number;
@@ -25,13 +30,16 @@ export function PlanCard({
       <div className="px-plan-top">
         <div>
           {subject ? <div className="px-plan-subject">{subject}</div> : null}
-          <h3 className="px-plan-title">{title}</h3>
+          {importedLabel && <Tag tone="neutral">{importedLabel}</Tag>}
+          <h2 className="px-plan-title">{title}</h2>
         </div>
-        <MasteryBar value={mastery} target={target} />
+        <MasteryBar value={mastery} target={target} label={title} />
       </div>
       <div className="px-plan-foot">
         <span className="px-plan-meta">{meta}</span>
-        <Button size="sm" onClick={onContinue}>{cta ?? "Continua"}</Button>
+        <Button aria-label={continueLabel} variant="secondary" size="sm" onClick={onContinue}>
+          {cta ?? "Continua"}
+        </Button>
       </div>
     </Card>
   );

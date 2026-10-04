@@ -1,10 +1,12 @@
 .px-markdown.is-reading {
-  font: 400 17px/28px var(--font-sans);
+  font: 400 calc(17px * var(--text-scale, 1))/calc(28px * var(--text-scale, 1))
+    var(--font-sans);
   max-width: 68ch;
 }
 
 .px-markdown.is-body {
-  font: 400 15px/22px var(--font-sans);
+  font: 400 calc(15px * var(--text-scale, 1))/calc(22px * var(--text-scale, 1))
+    var(--font-sans);
 }
 
 .px-markdown :where(p, ul, ol, blockquote) {

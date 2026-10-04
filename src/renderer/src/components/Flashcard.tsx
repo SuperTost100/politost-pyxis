@@ -50,6 +50,7 @@ export function Flashcard({
             ? t("components.flashcard.answer")
             : t("components.flashcard.flipHint")
         }
+        aria-pressed={flipped}
         onClick={() => setFlipped((f) => !f)}
         onKeyDown={(e) => {
           if (e.key === " " || e.key === "Enter") {
@@ -62,10 +63,16 @@ export function Flashcard({
         {flipped ? (
           <p className="px-fc-a">{back}</p>
         ) : (
-          <span className="px-fc-hint">{t("components.flashcard.flipHint")}</span>
+          <span className="px-fc-hint">
+            {t("components.flashcard.flipHint")}
+          </span>
         )}
-        {flipped && source ? <CitationChip>{source}</CitationChip> : null}
       </div>
+      {flipped && source ? (
+        <div className="px-fc-source">
+          <CitationChip>{source}</CitationChip>
+        </div>
+      ) : null}
       {flipped ? (
         <div className="px-fc-rates">
           {rates.map((r, i) => (

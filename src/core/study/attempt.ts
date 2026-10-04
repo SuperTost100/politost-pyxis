@@ -6,6 +6,8 @@ export type QuizQuestion = {
   id: string;
   sourceId?: string;
   sourceIds?: string[];
+  topicId?: string;
+  generatedBy?: { provider: string; model: string };
   stem: string;
   explanation?: string;
   options?: string[];
@@ -18,6 +20,8 @@ export type StoredQuestion = {
   id: string;
   sourceId?: string;
   sourceIds?: string[];
+  topicId?: string;
+  generatedBy?: { provider: string; model: string };
   stem: string;
   explanation?: string;
   options?: string[];
@@ -42,6 +46,8 @@ export function saveQuiz(
       id: question.id,
       sourceId: question.sourceId,
       sourceIds: question.sourceIds,
+      topicId: question.topicId,
+      generatedBy: question.generatedBy,
       stem: question.stem,
       explanation: question.explanation,
       options: question.options,

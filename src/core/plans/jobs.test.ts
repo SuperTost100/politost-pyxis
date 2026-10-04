@@ -10,6 +10,7 @@ import {
 import { importSmartbook } from "../sources/smartbook";
 import { strToU8, zipSync } from "fflate";
 import type { GenerateInput } from "../engine/generate";
+import { partialText, templateVersion } from "../engine/prompts";
 import { startDiagnostic } from "../study/topicQuiz";
 import { readPlan } from "./create";
 
@@ -82,15 +83,21 @@ describe("PLAN-21 durable plan build", () => {
   });
   it("retries only the failed generation and preserves the topic and introduction", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const sourceId = source(db);
     const calls = { intro: 0, diagnostic: 0, tree: 0 };
+    const systems: Record<string, string> = {};
     const run: GenerateInput["run"] = async (input) => {
       if (input.system?.startsWith("Write")) {
         calls.intro++;
+        systems.intro = input.system;
         return response({ markdown: "Il moto [P1]." });
       }
       if (input.system?.startsWith("Create")) {
         calls.diagnostic++;
+        systems.diagnostic = input.system;
         if (calls.diagnostic === 1) throw new Error("offline");
         return response(diagnostic(input.prompt));
       }
@@ -122,10 +129,36 @@ describe("PLAN-21 durable plan build", () => {
       n: 0,
     });
     expect(startDiagnostic(db, built.planId).questions).toHaveLength(10);
+    for (const id of ["intro", "diagnostic"] as const) {
+      expect(systems[id], id).toContain("Write all output in Italian.");
+      expect(systems[id], id).toContain(partialText("citation"));
+      expect(systems[id], id).not.toMatch(/\{\{[A-Za-z]/);
+    }
+    expect(
+      db
+        .prepare(
+          "SELECT kind, prompt_template, prompt_version FROM items WHERE kind IN ('intro','diagnostic') ORDER BY kind",
+        )
+        .all(),
+    ).toEqual([
+      {
+        kind: "diagnostic",
+        prompt_template: "plan.diagnostic",
+        prompt_version: templateVersion("plan.diagnostic"),
+      },
+      {
+        kind: "intro",
+        prompt_template: "plan.intro",
+        prompt_version: templateVersion("plan.intro"),
+      },
+    ]);
     db.close();
   });
   it("cancels a real model step and resumes the same plan", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const sourceId = source(db);
     let entered = false;
     let block = true;
@@ -166,6 +199,9 @@ describe("PLAN-21 durable plan build", () => {
   });
   it("consolidates document sections and keeps their captured version on retry", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     db.prepare(
       "INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('pdf', 'pdf', 'Note', 'ready', 1, 1)",
     ).run();
@@ -224,6 +260,9 @@ describe("PLAN-21 durable plan build", () => {
   it("checkpoints long-document summaries before retrying consolidation", async () => {
     const db = openDatabase(":memory:");
     db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    db.prepare(
       "INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('pdf', 'pdf', 'Long notes', 'ready', 1, 1)",
     ).run();
     db.prepare(
@@ -236,7 +275,13 @@ describe("PLAN-21 durable plan build", () => {
       insert.run(`p${i}`, `Concept ${i}. `.repeat(30), `p. ${i + 1}`, i);
     let summaries = 0;
     let trees = 0;
+    const filled: string[] = [];
     const run: GenerateInput["run"] = async (input) => {
+      if (
+        input.system?.startsWith("Summarize") ||
+        input.system?.startsWith("Build")
+      )
+        filled.push(input.system);
       if (input.system?.startsWith("Summarize")) {
         summaries++;
         const content = JSON.parse(input.prompt) as {
@@ -298,6 +343,17 @@ describe("PLAN-21 durable plan build", () => {
     expect(
       db.prepare("SELECT COUNT(*) AS n FROM topic_passages").get(),
     ).toEqual({ n: 600 });
+    expect(filled).toHaveLength(3);
+    for (const system of filled) {
+      expect(system).toContain("Write all output in Italian.");
+      expect(system).not.toMatch(/\{\{[A-Za-z]/);
+    }
+    expect(
+      db.prepare("SELECT prompt_template, prompt_version FROM plans").get(),
+    ).toEqual({
+      prompt_template: "plan.topics",
+      prompt_version: templateVersion("plan.topics"),
+    });
     db.close();
   });
 });

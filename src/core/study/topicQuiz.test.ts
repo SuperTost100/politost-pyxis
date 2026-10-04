@@ -1,18 +1,27 @@
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { completeNode, createPlan, deletePlan, readPlan } from "../plans/create";
+import {
+  completeNode,
+  createPlan,
+  deletePlan,
+  readPlan,
+} from "../plans/create";
 import { importSmartbook } from "../sources/smartbook";
 import { studyHandlers } from "./handlers";
+import { readQuiz } from "./quizJobs";
+import { submitAttempt } from "./topicQuiz";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
-    Object.fromEntries(Object.entries(files).map(([name, text]) => [name, strToU8(text)])),
+    Object.fromEntries(
+      Object.entries(files).map(([name, text]) => [name, strToU8(text)]),
+    ),
   );
 }
 
 describe("diagnostic", () => {
-  it("grades the book and finishes the diagnostic node", () => {
+  it("model-grades equivalent open wording and finishes the diagnostic node", async () => {
     const db = openDatabase(":memory:");
     const imported = importSmartbook(
       db,
@@ -28,21 +37,44 @@ describe("diagnostic", () => {
           ':::exercise{id="e1" chapter="1"}\nQuanto vale?\n:::solution\n10 N\n:::\n:::\n',
       }),
     );
-    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
-    const intro = readPlan(db, plan.planId)?.nodes.find((node) => node.kind === "diagnostic");
-    const introNode = readPlan(db, plan.planId)?.nodes.find((node) => node.kind === "intro");
+    const plan = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [imported.sourceId],
+    });
+    const intro = readPlan(db, plan.planId)?.nodes.find(
+      (node) => node.kind === "diagnostic",
+    );
+    const introNode = readPlan(db, plan.planId)?.nodes.find(
+      (node) => node.kind === "intro",
+    );
     completeNode(db, plan.planId, introNode?.id ?? "");
-    const study = studyHandlers(db);
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "review-model" }));
+    const study = studyHandlers(db, undefined, async (input) => {
+      expect(input.prompt).toContain("ten newtons");
+      return {
+        text: '{"score":1,"explanation":"Equivalent units and value."}',
+        structured: { score: 1, explanation: "Equivalent units and value." },
+        model: "grading-model",
+        provider: "claude",
+        inputTokens: 1,
+      };
+    });
     const started = study.diagnosticStart({ planId: plan.planId });
     const question = started.questions[0];
-    study.quizSubmit({
+    await study.quizSubmit({
       attemptId: started.attemptId,
-      picks: { [question?.id ?? ""]: "10 N" },
+      picks: { [question?.id ?? ""]: "ten newtons" },
     });
     const after = readPlan(db, plan.planId);
-    expect(after?.nodes.find((node) => node.id === intro?.id)?.state).toBe("done");
+    expect(after?.nodes.find((node) => node.id === intro?.id)?.state).toBe(
+      "done",
+    );
     const event = db
-      .prepare(`SELECT topic_id, payload_json FROM learning_events WHERE kind = 'answer_given'`)
+      .prepare(
+        `SELECT topic_id, payload_json FROM learning_events WHERE kind = 'answer_given'`,
+      )
       .get() as { topic_id: string; payload_json: string };
     expect(event.topic_id).toBeTruthy();
     expect(JSON.parse(event.payload_json).score).toBe(1);
@@ -64,20 +96,31 @@ describe("diagnostic", () => {
         "chapters/01.md": "## p1 | Energia\nSolo testo.\n",
       }),
     );
-    const plan = createPlan(db, { title: "Note", sourceIds: [imported.sourceId] });
-    const intro = readPlan(db, plan.planId)?.nodes.find((node) => node.kind === "intro");
+    const plan = createPlan(db, {
+      title: "Note",
+      sourceIds: [imported.sourceId],
+    });
+    const intro = readPlan(db, plan.planId)?.nodes.find(
+      (node) => node.kind === "intro",
+    );
     completeNode(db, plan.planId, intro?.id ?? "");
     const study = studyHandlers(db);
-    expect(study.diagnosticStart({ planId: plan.planId }).questions).toEqual([]);
-    expect(readPlan(db, plan.planId)?.nodes.find((node) => node.kind === "diagnostic")?.state).toBe(
-      "done",
+    expect(study.diagnosticStart({ planId: plan.planId }).questions).toEqual(
+      [],
     );
+    expect(
+      readPlan(db, plan.planId)?.nodes.find(
+        (node) => node.kind === "diagnostic",
+      )?.state,
+    ).toBe("done");
   });
 
   it("takes questions from each topic and only from that topic's book", () => {
     const db = openDatabase(":memory:");
-    const many = Array.from({ length: 20 }, (_, index) =>
-      `:::exercise{id="a${index}" chapter="1"}\nA${index}\n:::solution\n1\n:::\n:::\n`,
+    const many = Array.from(
+      { length: 20 },
+      (_, index) =>
+        `:::exercise{id="a${index}" chapter="1"}\nA${index}\n:::solution\n1\n:::\n:::\n`,
     ).join("\n");
     const first = importSmartbook(
       db,
@@ -106,14 +149,17 @@ describe("diagnostic", () => {
           chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
         }),
         "chapters/01.md": "## p1 | Energia\nAltro.\n",
-        "esercizi.md": ':::exercise{id="z1" chapter="1"}\nOTHER\n:::solution\n9\n:::\n:::\n',
+        "esercizi.md":
+          ':::exercise{id="z1" chapter="1"}\nOTHER\n:::solution\n9\n:::\n:::\n',
       }),
     );
     const plan = createPlan(db, {
       title: "Mix",
       sourceIds: [first.sourceId, second.sourceId],
     });
-    const intro = readPlan(db, plan.planId)?.nodes.find((node) => node.kind === "intro");
+    const intro = readPlan(db, plan.planId)?.nodes.find(
+      (node) => node.kind === "intro",
+    );
     completeNode(db, plan.planId, intro?.id ?? "");
     const started = studyHandlers(db).diagnosticStart({ planId: plan.planId });
     const stems = started.questions.map((question) => question.stem);
@@ -121,5 +167,88 @@ describe("diagnostic", () => {
     expect(stems).toContain("OTHER");
     expect(stems.filter((stem) => stem === "OTHER")).toHaveLength(1);
     expect(started.questions).toHaveLength(20);
+  });
+
+  it("resumes the open diagnostic with its draft and freezes it after submit", () => {
+    const db = openDatabase(":memory:");
+    const book = (id: string, answer: string) =>
+      importSmartbook(
+        db,
+        pack({
+          "smartbook.json": JSON.stringify({
+            id,
+            title: id,
+            access: "public",
+            chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+          }),
+          "chapters/01.md": "## p1 | Energia\nTesto.\n",
+          "esercizi.md": `:::exercise{id="e1" chapter="1"}\nQ ${id}\n:::solution\n${answer}\n:::\n:::\n`,
+        }),
+      );
+    const make = (title: string, sourceId: string) => {
+      const plan = createPlan(db, { title, sourceIds: [sourceId] });
+      const intro = readPlan(db, plan.planId)?.nodes.find(
+        (node) => node.kind === "intro",
+      );
+      completeNode(db, plan.planId, intro?.id ?? "");
+      return plan.planId;
+    };
+    const planA = make("A", book("a", "10").sourceId);
+    const planB = make("B", book("b", "20").sourceId);
+    const study = studyHandlers(db);
+    const first = study.diagnosticStart({ planId: planA });
+    const questionId = first.questions[0]!.id;
+    study.quizDraft({
+      attemptId: first.attemptId,
+      picks: { [questionId]: "dieci" },
+      index: 0,
+    });
+
+    // A reload restarts the diagnostic: same attempt, same questions, saved draft.
+    const resumed = study.diagnosticStart({ planId: planA });
+    expect(resumed.attemptId).toBe(first.attemptId);
+    expect(resumed.questions.map((q) => q.id)).toEqual(
+      first.questions.map((q) => q.id),
+    );
+    const read = readQuiz(db, first.attemptId, planA);
+    expect(read.draft?.picks).toEqual({ [questionId]: "dieci" });
+    expect(read.state).toBe("succeeded");
+    expect(read.questions[0]?.grade.kind).toBe("open");
+    expect(db.prepare("SELECT COUNT(*) AS n FROM attempts").get()).toEqual({
+      n: 1,
+    });
+
+    // Another plan neither resumes nor reads this attempt.
+    expect(() => readQuiz(db, first.attemptId, planB)).toThrow("quiz-missing");
+    expect(() =>
+      study.quizRead({ attemptId: first.attemptId, planId: planB }),
+    ).toThrow("quiz-missing");
+    expect(() =>
+      study.quizDraft({
+        attemptId: first.attemptId,
+        planId: planB,
+        picks: {},
+        index: 0,
+      }),
+    ).toThrow("attempt-closed");
+    expect(study.diagnosticStart({ planId: planB }).attemptId).not.toBe(
+      first.attemptId,
+    );
+
+    // Once submitted the attempt is frozen: no more drafts, and a restart is a fresh attempt.
+    submitAttempt(db, first.attemptId, { [questionId]: "dieci" });
+    expect(() =>
+      study.quizDraft({
+        attemptId: first.attemptId,
+        picks: { [questionId]: "altro" },
+        index: 0,
+      }),
+    ).toThrow("attempt-closed");
+    expect(readQuiz(db, first.attemptId, planA).result?.picks).toEqual({
+      [questionId]: "dieci",
+    });
+    expect(study.diagnosticStart({ planId: planA }).attemptId).not.toBe(
+      first.attemptId,
+    );
   });
 });

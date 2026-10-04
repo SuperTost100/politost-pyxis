@@ -10,7 +10,7 @@ const fileName = z
   .max(240)
   .refine((s) => !/[\\/\x00-\x1f]/.test(s));
 const artifact = z.object({
-  filename: fileName.refine((s) => /\.(pyxis|md|csv|apkg)$/i.test(s)),
+  filename: fileName.refine((s) => /\.(pyxis|md|csv|apkg|png|svg)$/i.test(s)),
   base64: z
     .string()
     .max(96 * 1024 * 1024)

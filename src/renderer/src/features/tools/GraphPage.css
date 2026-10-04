@@ -1,0 +1,140 @@
+.px-graph {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  min-height: calc(100vh - 100px);
+}
+.px-graph-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-right: 1px solid var(--border);
+}
+.px-graph-controls p {
+  margin: 0;
+}
+.px-graph-preview {
+  min-height: 52px;
+  padding: var(--space-3) 0;
+}
+.px-graph-formula {
+  min-width: 0;
+  overflow: auto;
+  padding: 3px 0;
+}
+.px-graph-formula .katex {
+  font-size: 1.05em;
+}
+.px-graph-error {
+  color: var(--danger);
+}
+.px-graph-bounds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.px-graph-bounds label,
+.px-graph-integral label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-graph-bounds .ant-input-number {
+  width: 100%;
+}
+.px-graph-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-3);
+}
+.px-graph-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: auto;
+}
+.px-graph-actions button {
+  white-space: nowrap;
+}
+.px-graph-plots {
+  display: grid;
+  min-width: 0;
+  padding: var(--space-4);
+  gap: var(--space-4);
+  align-content: start;
+}
+.px-graph-analysis {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.px-graph-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  padding: var(--space-4);
+}
+.px-graph-panel header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-graph-panel h2 {
+  margin: 0;
+}
+.px-graph-panel svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 220px;
+  touch-action: none;
+  cursor: grab;
+  outline-offset: 2px;
+}
+.px-graph-panel svg:focus-visible {
+  outline: 2px solid var(--focus-ring);
+}
+.px-graph-panel svg text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--ink-muted);
+}
+.px-graph-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.px-graph-axis {
+  stroke: var(--border-control);
+  stroke-width: 1.2;
+}
+.px-graph-integral {
+  margin-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.px-graph-integral .ant-input-number {
+  max-width: 130px;
+}
+.px-graph-integral p {
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .px-graph {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .px-graph-analysis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .px-graph-controls {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .px-graph-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

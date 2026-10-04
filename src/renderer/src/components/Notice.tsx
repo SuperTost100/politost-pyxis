@@ -43,7 +43,13 @@ export function Notice({
           </button>
         ) : null}
         {details && open ? (
-          <pre className="px-notice-details code">{details}</pre>
+          <pre
+            className="px-notice-details code"
+            tabIndex={0}
+            aria-label={t("components.notice.details")}
+          >
+            {details}
+          </pre>
         ) : null}
       </div>
       {action ? (

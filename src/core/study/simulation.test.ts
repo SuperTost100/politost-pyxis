@@ -5,19 +5,96 @@ import { createPlan } from "../plans/create";
 import { importSmartbook } from "../sources/smartbook";
 import { createRunner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
+import { promptProvenance, templateVersion } from "../engine/prompts";
 import { studyHandlers } from "./handlers";
 import {
+  enqueueSimulation,
   listSimulations,
   openSimulation,
   readSimulation,
+  readSimulationBuild,
   recordTopicScores,
   registerSimulationJobs,
   saveSimulationDraft,
   startSimulation,
   submitSimulation,
 } from "./simulation";
+const engine = (db: ReturnType<typeof openDatabase>) =>
+  db
+    .prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    )
+    .run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+const count = (db: ReturnType<typeof openDatabase>, table: string) =>
+  (db.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
+/** A notes/PDF-style plan: topics with passages but no smartbook exercises. */
+function notesFixture() {
+  const db = openDatabase(":memory:");
+  engine(db);
+  db.prepare(
+    "INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('plan', 'Appunti', 'ready', 1, 1)",
+  ).run();
+  for (const t of [0, 1]) {
+    db.prepare(
+      "INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, 'plan', ?, ?, 1)",
+    ).run(`t${t}`, `Argomento ${t}`, t);
+    for (const p of [0, 1]) {
+      db.prepare(
+        "INSERT INTO passages (id, text, created_at) VALUES (?, ?, 1)",
+      ).run(`p${t}${p}`, `Testo ${t}${p}`);
+      db.prepare(
+        "INSERT INTO topic_passages (topic_id, passage_id) VALUES (?, ?)",
+      ).run(`t${t}`, `p${t}${p}`);
+    }
+  }
+  return { db, planId: "plan" };
+}
+let written = 0;
+const writer: GenerateInput["run"] = async (input) => {
+  if (!input.system?.includes("written-exam questions")) return response();
+  systems.push(input.system);
+  const asked = JSON.parse(input.prompt) as {
+    count: number;
+    passages: Array<{ id: string }>;
+  };
+  const structured = {
+    questions: Array.from({ length: asked.count }, () => ({
+      stem: `Domanda scritta ${written++}`,
+      reference: "Risposta di riferimento",
+      passageIds: [asked.passages[0]!.id],
+    })),
+  };
+  return {
+    text: JSON.stringify(structured),
+    structured,
+    provider: "claude",
+    model: "writer-model",
+    inputTokens: 1,
+  };
+};
+async function built(db: ReturnType<typeof openDatabase>, planId: string) {
+  for (let i = 0; i < 400; i++) {
+    const view = openSimulation(db, planId);
+    if (view) return view;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(JSON.stringify(readSimulationBuild(db, planId)));
+}
+async function buildState(
+  db: ReturnType<typeof openDatabase>,
+  planId: string,
+  state: string,
+) {
+  for (let i = 0; i < 400; i++) {
+    const build = readSimulationBuild(db, planId);
+    if (build?.state === state) return build;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(JSON.stringify(readSimulationBuild(db, planId)));
+}
 function fixture() {
   const db = openDatabase(":memory:");
+  engine(db);
   const imported = importSmartbook(
     db,
     zipSync(
@@ -62,7 +139,11 @@ function response(score = 0.75) {
     inputTokens: 1,
   };
 }
-const run: GenerateInput["run"] = async () => response();
+const systems: string[] = [];
+const run: GenerateInput["run"] = async (input) => {
+  systems.push(input.system ?? "");
+  return response();
+};
 async function until(
   db: ReturnType<typeof openDatabase>,
   attemptId: string,
@@ -108,7 +189,30 @@ describe("M11 model-graded simulations", () => {
       model: "actual-grading-model",
       missed: ["Unità di misura"],
     });
-    expect(done.results![1]!.score).toBe(0);
+    expect(done.results![1]).toMatchObject({
+      score: 0,
+      provider: "",
+      model: "",
+      feedback: "Nessuna risposta.",
+    });
+    expect(systems).toHaveLength(1);
+    expect(systems[0]).toContain(
+      "Write all feedback and missed points in Italian.",
+    );
+    expect(systems[0]).not.toMatch(/\{\{[A-Za-z]/);
+    expect(done.results![0]!.prompt).toEqual(
+      promptProvenance("simulation.grade"),
+    );
+    expect(
+      db
+        .prepare(
+          "SELECT prompt_template, prompt_version FROM items WHERE kind='simulation'",
+        )
+        .get(),
+    ).toEqual({
+      prompt_template: "simulation.grade",
+      prompt_version: templateVersion("simulation.grade"),
+    });
     expect(done.topics.map((t) => t.score)).toEqual([0.75, 0]);
     expect(done.score).toBe(0.375);
     expect(done.leftMs).toBe(0);
@@ -201,7 +305,11 @@ describe("M11 model-graded simulations", () => {
     expect(() =>
       studyHandlers(db).quizSubmit({ attemptId: opened.attemptId, picks: {} }),
     ).toThrow("use-simulation-submit");
-    submitSimulation(db, opened.attemptId, {});
+    submitSimulation(
+      db,
+      opened.attemptId,
+      Object.fromEntries(opened.questions.map((q) => [q.id, "answer"])),
+    );
     db.prepare(
       "UPDATE feature_engines SET selection_json=? WHERE feature='grading'",
     ).run(JSON.stringify({ provider: "claude", model: "changed" }));
@@ -222,7 +330,9 @@ describe("M11 model-graded simulations", () => {
       return response();
     });
     const opened = startSimulation(db, planId, 30, Date.now(), "exam");
-    const view = submitSimulation(db, opened.attemptId, {});
+    const view = submitSimulation(db, opened.attemptId, {
+      [opened.questions[0]!.id]: "answer",
+    });
     while (!started) await new Promise((r) => setTimeout(r, 1));
     runner.cancel(view.grading!.jobId);
     release();
@@ -235,6 +345,205 @@ describe("M11 model-graded simulations", () => {
     registerSimulationJobs(db, runner, run);
     submitSimulation(db, opened.attemptId);
     await until(db, opened.attemptId, "succeeded");
+    db.close();
+  });
+  it("needs a grading engine before any attempt or job is written", () => {
+    const { db, planId } = fixture();
+    db.prepare("DELETE FROM feature_engines").run();
+    const runner = createRunner(db, () => {});
+    registerSimulationJobs(db, runner, run);
+    expect(() => startSimulation(db, planId, 30, Date.now(), "exam")).toThrow(
+      "engine-missing",
+    );
+    expect(() => enqueueSimulation(db, planId)).toThrow("engine-missing");
+    const notes = notesFixture();
+    notes.db.prepare("DELETE FROM feature_engines").run();
+    registerSimulationJobs(
+      notes.db,
+      createRunner(notes.db, () => {}),
+      writer,
+    );
+    expect(() => enqueueSimulation(notes.db, notes.planId)).toThrow(
+      "engine-missing",
+    );
+    for (const [d, table] of [
+      [db, "items"],
+      [db, "attempts"],
+      [db, "jobs"],
+      [notes.db, "items"],
+      [notes.db, "attempts"],
+      [notes.db, "jobs"],
+    ] as const)
+      expect(count(d, table)).toBe(0);
+    db.close();
+    notes.db.close();
+  });
+  it("unlocks the tutor once answers are frozen and keeps an expired exam readable without an engine", async () => {
+    const { db, planId } = fixture();
+    const runner = createRunner(db, () => {});
+    const study = studyHandlers(db, runner, run, run);
+    const started = Date.now();
+    const opened = startSimulation(db, planId, 30, started, "exam");
+    expect(study.activeSimulation()).toMatchObject({
+      attemptId: opened.attemptId,
+    });
+    db.prepare("DELETE FROM feature_engines").run();
+    const late = started + 31 * 60000;
+    const view = readSimulation(db, opened.attemptId, late);
+    expect(view).toMatchObject({
+      locked: true,
+      submitted: false,
+      blocked: "engine-missing",
+    });
+    expect(view.grading).toBeUndefined();
+    expect(() => submitSimulation(db, opened.attemptId, {}, late)).toThrow(
+      "engine-missing",
+    );
+    expect(study.activeSimulation()).not.toBeNull();
+    engine(db);
+    expect(readSimulation(db, opened.attemptId, late).grading).toBeDefined();
+    expect(study.activeSimulation()).toBeNull();
+    await until(db, opened.attemptId, "succeeded");
+    db.close();
+  });
+  it("unlocks the tutor while grading failed, so the attempt does not hold Ask", async () => {
+    const { db, planId } = fixture();
+    const runner = createRunner(db, () => {});
+    const study = studyHandlers(db, runner, run, async () => {
+      throw new Error("offline");
+    });
+    const opened = startSimulation(db, planId, 30, Date.now(), "exam");
+    submitSimulation(db, opened.attemptId, {
+      [opened.questions[0]!.id]: "answer",
+    });
+    await until(db, opened.attemptId, "failed");
+    expect(study.activeSimulation()).toBeNull();
+    expect(openSimulation(db, planId)!.grading!.state).toBe("failed");
+    db.close();
+  });
+  it("builds non-smartbook questions in a job, then starts the attempt with truthful provenance", async () => {
+    const { db, planId } = notesFixture();
+    const runner = createRunner(db, () => {});
+    registerSimulationJobs(db, runner, writer);
+    expect(() => startSimulation(db, planId, 30, Date.now(), "exam")).toThrow(
+      "simulation-needs-build",
+    );
+    const queued = enqueueSimulation(db, planId, 60) as { jobId: string };
+    expect(enqueueSimulation(db, planId, 60)).toEqual(queued);
+    expect(count(db, "attempts")).toBe(0);
+    expect(readSimulationBuild(db, planId)).toMatchObject({
+      jobId: queued.jobId,
+    });
+    const view = await built(db, planId);
+    expect(view.questions).toHaveLength(20);
+    expect(new Set(view.questions.map((q) => q.stem)).size).toBe(20);
+    expect(view.generated).toEqual({
+      provider: "claude",
+      model: "writer-model",
+    });
+    expect(view.leftMs).toBeGreaterThan(59 * 60000);
+    expect(readSimulationBuild(db, planId)).toBeNull();
+    expect(systems.at(-1)).toContain("Write all output in Italian.");
+    expect(systems.at(-1)).toContain("Cite only the supplied passages");
+    expect(systems.at(-1)).not.toMatch(/\{\{[A-Za-z>]/);
+    const item = db
+      .prepare(
+        "SELECT grounding, engine_provider, model_id, prompt_template, prompt_version FROM items WHERE kind='simulation'",
+      )
+      .get();
+    expect(item).toEqual({
+      grounding: "sources",
+      engine_provider: "claude",
+      model_id: "writer-model",
+      prompt_template: "simulation.questions",
+      prompt_version: templateVersion("simulation.questions"),
+    });
+    expect(count(db, "item_passages")).toBeGreaterThan(0);
+    submitSimulation(
+      db,
+      view.attemptId,
+      Object.fromEntries(view.questions.map((q) => [q.id, "risposta"])),
+    );
+    const done = await until(db, view.attemptId, "succeeded");
+    expect(done.generated?.model).toBe("writer-model");
+    expect(done.results![0]!.model).toBe("actual-grading-model");
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT prompt_template AS t FROM items WHERE kind='simulation'",
+          )
+          .get() as { t: string }
+      ).t,
+    ).toBe("simulation.questions");
+    db.close();
+  });
+  it("repairs an invalid batch without retaining schema validation state", async () => {
+    const { db, planId } = notesFixture();
+    const runner = createRunner(db, () => {});
+    let calls = 0;
+    registerSimulationJobs(db, runner, async (input) => {
+      calls++;
+      const result = await writer!({
+        ...input,
+        prompt: input.prompt.split(
+          "\n\nThe previous answer failed validation.",
+        )[0]!,
+      });
+      if (calls === 1) {
+        const data = result.structured as {
+          questions: Array<{ passageIds: string[] }>;
+        };
+        data.questions[0]!.passageIds = ["unknown-passage"];
+        result.text = JSON.stringify(data);
+      }
+      return result;
+    });
+    enqueueSimulation(db, planId);
+    expect((await built(db, planId)).questions).toHaveLength(20);
+    expect(calls).toBe(3);
+    db.close();
+  });
+  it("retries a failed question build from its checkpoint and writes no attempt until it succeeds", async () => {
+    const { db, planId } = notesFixture();
+    const runner = createRunner(db, () => {});
+    let calls = 0;
+    registerSimulationJobs(db, runner, async (input) => {
+      calls++;
+      if (calls === 2) throw new Error("offline");
+      return writer(input);
+    });
+    const { jobId } = enqueueSimulation(db, planId) as { jobId: string };
+    const failed = await buildState(db, planId, "failed");
+    expect(failed.progress).toBe(0.5);
+    expect(count(db, "attempts")).toBe(0);
+    runner.retry(jobId);
+    const view = await built(db, planId);
+    expect(calls).toBe(3);
+    expect(view.questions).toHaveLength(20);
+    expect(count(db, "attempts")).toBe(1);
+    db.close();
+  });
+  it("cancels a question build without publishing a late reply", async () => {
+    const { db, planId } = notesFixture();
+    const runner = createRunner(db, () => {});
+    let release!: () => void;
+    let began = false;
+    registerSimulationJobs(db, runner, async (input) => {
+      began = true;
+      await new Promise<void>((r) => {
+        release = r;
+      });
+      return writer(input);
+    });
+    const { jobId } = enqueueSimulation(db, planId) as { jobId: string };
+    while (!began) await new Promise((r) => setTimeout(r, 1));
+    runner.cancel(jobId);
+    release();
+    await buildState(db, planId, "cancelled");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(count(db, "attempts")).toBe(0);
+    expect(count(db, "items")).toBe(0);
     db.close();
   });
   it("keeps repeated question scores on their own topics", () => {

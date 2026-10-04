@@ -6,51 +6,72 @@ One SQLite file, `pyxis.db`, in the workspace. WAL and foreign keys are on. `000
 
 Migrations after the initial schema, applied in one transaction by `src/core/db/migrate.ts`:
 
-| `user_version` | Change |
-| --- | --- |
-| 2 | `chats.scope_json` |
-| 3 | `cards.passage_id` |
-| 4 | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`) |
-| 5 | `messages.reaction` (`up`, `down`, or empty) |
-| 6 | `cards.suspended` (`0` or `1`). A suspended card stays out of the due queue |
-| 7 | `cards.seed_key` and `cards.removed`. A removed generated card is not created again |
+| `user_version` | Change                                                                              |
+| -------------- | ----------------------------------------------------------------------------------- |
+| 2              | `chats.scope_json`                                                                  |
+| 3              | `cards.passage_id`                                                                  |
+| 4              | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`)    |
+| 5              | `messages.reaction` (`up`, `down`, or empty)                                        |
+| 6              | `cards.suspended` (`0` or `1`). A suspended card stays out of the due queue         |
+| 7              | `cards.seed_key` and `cards.removed`. A removed generated card is not created again |
+| 8              | Source `origin_url`/`fetched_at` and stale citation state in `item_passages`        |
+| 9              | Stopped message state and chat subject                                              |
+| 10             | Saved chat context and source library visibility                                    |
+| 11             | Reorderable subject position                                                        |
+| 12             | Topic `tree_json` and dismissible jobs                                              |
 
-Current version is 7. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Current version is 12. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
-| Table            | A row is                                                                 |
-| ---------------- | ------------------------------------------------------------------------ |
-| profile          | The student's profile. The renderer writes it.                           |
-| settings         | One app setting, keyed by name.                                          |
-| engines          | A configured model provider.                                             |
-| feature_engines  | Which engine a feature uses.                                             |
-| subjects         | A school subject.                                                        |
-| sources          | An imported file or link.                                                |
-| source_documents | One extraction version of a source.                                      |
-| passages         | An immutable chunk of a document.                                        |
-| passages_fts     | The full-text index of passages.                                         |
-| passages_vec     | The embedding index of passages.                                         |
-| smartbooks       | Metadata for a PoliTost smartbook source.                                |
-| exercises        | An exercise from a smartbook or a model.                                 |
+| Table            | A row is                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| profile          | The student's profile. The renderer writes it.                                          |
+| settings         | One app setting, keyed by name.                                                         |
+| engines          | A configured model provider.                                                            |
+| feature_engines  | Which engine a feature uses.                                                            |
+| subjects         | A school subject.                                                                       |
+| sources          | An imported file or link.                                                               |
+| source_documents | One extraction version of a source.                                                     |
+| passages         | An immutable chunk of a document.                                                       |
+| passages_fts     | The full-text index of passages.                                                        |
+| passages_vec     | The embedding index of passages.                                                        |
+| smartbooks       | Metadata for a PoliTost smartbook source.                                               |
+| exercises        | An exercise from a smartbook or a model.                                                |
 | plans            | A study plan. `exam_at`, `target`, `content_language` and `style` come from the wizard. |
-| plan_sources     | A source attached to a plan.                                             |
-| topics           | A node in a plan's topic tree.                                           |
-| topic_passages   | Passages that support a topic.                                           |
-| path_nodes       | One step on a plan's path.                                               |
-| items            | A generated lesson, question, or explanation.                            |
-| item_passages    | Passages cited by an item. Deleting a passage is restricted.             |
-| cards            | A flashcard. `passage_id` is the source passage shown on the back.       |
-| card_reviews     | One rating of a card.                                                    |
-| attempts         | A quiz or exercise attempt.                                              |
-| attempt_answers  | One answer inside an attempt.                                            |
-| gaps             | An open or closed knowledge gap.                                         |
-| gap_items        | Items attached to a gap.                                                 |
-| maps             | A concept map.                                                           |
-| chats            | A tutor conversation.                                                    |
-| messages         | One turn in a chat.                                                      |
-| message_passages | Passages cited by a message.                                             |
-| attachments      | A file attached to a message, stored as a blob hash.                     |
-| whiteboards      | A whiteboard scene.                                                      |
-| flags            | A student flag on a generated item.                                      |
-| learning_events  | An append-only study event. Mastery is computed from these, not stored.  |
-| jobs             | A long task: extraction, plan build, download.                           |
-| job_steps        | One named step of a job. A retry skips steps that already stored output. |
+| plan_sources     | A source attached to a plan.                                                            |
+| topics           | A node in a plan's topic tree.                                                          |
+| topic_passages   | Passages that support a topic.                                                          |
+| path_nodes       | One step on a plan's path.                                                              |
+| items            | A generated lesson, question, or explanation.                                           |
+| item_passages    | Passages cited by an item. Deleting a passage is restricted.                            |
+| cards            | A flashcard. `passage_id` is the source passage shown on the back.                      |
+| card_reviews     | One rating of a card.                                                                   |
+| attempts         | A quiz or exercise attempt.                                                             |
+| attempt_answers  | One answer inside an attempt.                                                           |
+| gaps             | An open or closed knowledge gap.                                                        |
+| gap_items        | Items attached to a gap.                                                                |
+| maps             | A concept map.                                                                          |
+| chats            | A tutor conversation.                                                                   |
+| messages         | One turn in a chat.                                                                     |
+| message_passages | Passages cited by a message.                                                            |
+| attachments      | A file attached to a message, stored as a blob hash.                                    |
+| whiteboards      | A whiteboard scene.                                                                     |
+| flags            | A student flag on a generated item.                                                     |
+| learning_events  | An append-only study event. Mastery is computed from these, not stored.                 |
+| jobs             | A long task: extraction, plan build, download.                                          |
+| job_steps        | One named step of a job. A retry skips steps that already stored output.                |
+
+## Saved content and history
+
+Schema declarations are in `src/core/db/migrations/0001_init.sql`; later changes are in `migrate.ts`. JSON payloads hold typed domain content without a new column for each prompt revision. Card payloads hold full FSRS state. Map payloads hold collections, graph edits, pinned positions and undo state. Attempt payloads hold question snapshots, deadlines, answers and model-grading checkpoints, so reopening does not silently replace the question set.
+
+Subjects have a stable saved position. Source documents and passages retain extraction and locator information; the blob hash identifies original bytes. Deleting cited passages is constrained by references. Flags have a target kind as well as an ID so a flagged exercise cannot accidentally suppress a card with the same ID.
+
+`learning_events` is the input for derived mastery, activity and gap calculations. Active-time events count time rather than evidence of knowledge. Flagged exercise evidence is excluded by progress queries. Graph and heatmap buckets use local calendar boundaries. Gap closure's distinct-day rule currently uses UTC day buckets in `study/gaps.ts`.
+
+Plan files are a portability format, not a database dump. Version 2 includes study content and cited source excerpts, remaps IDs on import and optionally carries progress/original sources. See [plan file](plan-file.md). Workspace backups preserve the study database and source blobs. They exclude provider keys, runtime/model caches, scratch files and the exports folder. Restore preserves runtime/model caches already downloaded in the destination workspace; a fresh workspace can download them again. Restore validates and migrates a staging copy before replacing the active workspace.
+
+## Restore safety
+
+Restore validates SQLite integrity and foreign-key references before and after migrations. Future schema versions and unexpected ZIP paths are rejected before live data moves. Only canonical hash-named blob files and their metadata accompany the database; restore verifies their hashes and metadata. Existing runtime/model caches are copied into staging and survive both commit and rollback. A fsynced sibling restore journal records the original and staged directory identities. Startup checks that journal before creating workspace folders.
+
+The app keeps the original `.old` workspace until the restored core reports healthy readiness. An interrupted uncommitted swap rolls back to that original. Commitment is recorded before deleting old data; a failed cleanup leaves the committed marker for the next startup and never selects a partly deleted original. A replaced or unexpected directory stops recovery with both copies preserved for inspection.

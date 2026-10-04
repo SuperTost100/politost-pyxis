@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { fetchSnapshot } from "./link";
+import { readBlob } from "../blobs";
+import { readFileSync, statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type Database from "better-sqlite3";
 import { IpcError } from "../../shared/ipc";
@@ -12,14 +14,25 @@ import {
   setEmbeddingConsent,
 } from "./embed";
 import type { Runner } from "../jobs/runner";
-import { enqueueSourceFile, enqueueSourceData, registerSourceJobs } from "./jobs";
+import {
+  enqueueSourceFile,
+  enqueueSourceData,
+  registerSourceJobs,
+} from "./jobs";
 import { retrieveWithModel, setRetrievalModel } from "./retrieve";
 import { PASTE_MIN } from "./paste";
 import { listImportable } from "./folder";
 import { importImageFile, importLink, isImageExt, ocrPngPage } from "./intake";
-import { promoteSource, removeSource, renameSource, replaceSourceFile } from "./manage";
+import {
+  promoteSource,
+  removeSource,
+  renameSource,
+  replaceSourceFile,
+} from "./manage";
 import { requestOcr } from "./ocr";
 import { importPastedText } from "./paste";
+import { runSourceWorker } from "./worker-client";
+import { isHeicExt, MAX_HEIC_BYTES } from "./heic";
 import { imageVariance, recognizeImage } from "./recognize";
 import { isDuplicateBlob, qualityFlags, sha256 } from "./quality";
 import {
@@ -45,7 +58,9 @@ function sourceError(err: unknown): never {
     "link-timeout": "sources.linkFailed",
     "link-redirect": "sources.linkFailed",
     "link-too-big": "sources.linkFailed",
-    "heic-unsupported": "sources.heic",
+    "heic-invalid": "sources.importFailed",
+    "heic-too-large": "sources.importFailed",
+    "heic-decoder-unavailable": "sources.importFailed",
     "embed-hash": "sources.embedHash",
     "embed-unpinned": "sources.embedHash",
     "source-missing": "sources.importFailed",
@@ -60,45 +75,109 @@ function sourceError(err: unknown): never {
   throw new IpcError("invalid-output", "sources.importFailed", {}, message);
 }
 
-export function sourceHandlers(db: Database.Database, workspace: string, runner?: Runner) {
+export function sourceHandlers(
+  db: Database.Database,
+  workspace: string,
+  runner?: Runner,
+  readPickedFile: (path: string) => Buffer = readFileSync,
+) {
   const modelDir = join(workspace, "models", "e5");
   setRetrievalModel(async (text, signal) => {
     if (!embeddingConsent(db) || !embeddingReady(modelDir)) return null;
     return (await embedTexts(modelDir, [text], signal))[0] ?? null;
   });
   if (runner) {
-    db.prepare(`UPDATE sources SET status = 'interrupted' WHERE status NOT IN ('removed', 'ready')
+    db.prepare(
+      `UPDATE sources SET status = 'interrupted' WHERE status NOT IN ('removed', 'ready')
       AND EXISTS (SELECT 1 FROM jobs j WHERE j.kind = 'source-import' AND j.state = 'interrupted'
-      AND json_extract(j.params_json, '$.sourceId') = sources.id)`).run();
+      AND json_extract(j.params_json, '$.sourceId') = sources.id)`,
+    ).run();
     registerSourceJobs(db, workspace, runner);
-    runner.register("source-index", { jobClass: "local", steps: [
-      { name: "index", label: "sources.jobs.vectors", async run(ctx) {
-        if (!embeddingConsent(db) || !embeddingReady(modelDir)) return { count: 0 };
-        return { count: await indexModelVectors(db, modelDir, ctx.signal, (ctx.params as { sourceId: string }).sourceId) };
-      } },
-    ] });
-    runner.register("embedding-download", { jobClass: "local", steps: [
-      { name: "download", label: "sources.jobs.download", async run(ctx) {
-        if (!embeddingConsent(db)) throw new Error("embed-declined");
-        await downloadModel(modelDir, ctx.signal);
-        return { ready: true };
-      } },
-      { name: "index", label: "sources.jobs.vectors", async run(ctx) {
-        return { count: await indexModelVectors(db, modelDir, ctx.signal) };
-      } },
-    ] });
+    runner.register("source-index", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "index",
+          label: "sources.jobs.vectors",
+          async run(ctx) {
+            if (!embeddingConsent(db) || !embeddingReady(modelDir))
+              return { count: 0 };
+            return {
+              count: await indexModelVectors(
+                db,
+                modelDir,
+                ctx.signal,
+                (ctx.params as { sourceId: string }).sourceId,
+              ),
+            };
+          },
+        },
+      ],
+    });
+    runner.register("embedding-download", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "download",
+          label: "sources.jobs.download",
+          async run(ctx) {
+            if (!embeddingConsent(db)) throw new Error("embed-declined");
+            await downloadModel(modelDir, ctx.signal);
+            return { ready: true };
+          },
+        },
+        {
+          name: "index",
+          label: "sources.jobs.vectors",
+          async run(ctx) {
+            return { count: await indexModelVectors(db, modelDir, ctx.signal) };
+          },
+        },
+      ],
+    });
   }
   const tess = join(workspace, "runtimes", "tesseract");
   return {
+    async linkPreview(input: { url: string }, signal?: AbortSignal) {
+      try {
+        const snapshot = await fetchSnapshot(
+          input.url,
+          undefined,
+          undefined,
+          signal,
+        );
+        return {
+          title: snapshot.title,
+          excerpt: snapshot.markdown.slice(0, 400),
+          kind: snapshot.pdf ? ("pdf" as const) : ("web" as const),
+          bytes: snapshot.pdf?.byteLength ?? null,
+        };
+      } catch (error) {
+        sourceError(error);
+      }
+    },
     list() {
-      return listSources(db);
+      return listSources(db).map((source) => {
+        let bytes: number | null = null;
+        if (source.blobSha) {
+          try {
+            bytes = statSync(readBlob(workspace, source.blobSha).file).size;
+          } catch {
+            /* Missing original is shown without an invented size. */
+          }
+        }
+        return { ...source, bytes };
+      });
     },
     async importFile(input: { path: string }) {
       try {
-        if (runner) return await enqueueSourceFile(db, workspace, runner, input.path);
+        if (runner)
+          return await enqueueSourceFile(db, workspace, runner, input.path);
         const ext = extname(input.path).toLowerCase();
-        if (ext === ".ptsb") return importSmartbookFile(db, workspace, input.path);
-        if (isImageExt(ext)) return await importImageFile(db, workspace, input.path);
+        if (ext === ".ptsb")
+          return importSmartbookFile(db, workspace, input.path);
+        if (isImageExt(ext))
+          return await importImageFile(db, workspace, input.path);
         return await importDocumentFile(db, workspace, input.path);
       } catch (err) {
         sourceError(err);
@@ -109,7 +188,14 @@ export function sourceHandlers(db: Database.Database, workspace: string, runner?
         if (runner) {
           const text = input.text.replace(/\r\n/g, "\n").trim();
           if (text.length < PASTE_MIN) throw new Error("paste-short");
-          return enqueueSourceData(db, workspace, runner, new TextEncoder().encode(text), ".txt", input.title.trim() || "Notes");
+          return enqueueSourceData(
+            db,
+            workspace,
+            runner,
+            new TextEncoder().encode(text),
+            ".txt",
+            input.title.trim() || "Notes",
+          );
         }
         return importPastedText(db, workspace, input.title, input.text);
       } catch (err) {
@@ -120,8 +206,17 @@ export function sourceHandlers(db: Database.Database, workspace: string, runner?
       try {
         if (runner) {
           const url = new URL(input.url);
-          if (!["http:", "https:"].includes(url.protocol)) throw new Error("link-scheme");
-          return enqueueSourceData(db, workspace, runner, new Uint8Array(), ".md", url.hostname, url.href);
+          if (!["http:", "https:"].includes(url.protocol))
+            throw new Error("link-scheme");
+          return enqueueSourceData(
+            db,
+            workspace,
+            runner,
+            new Uint8Array(),
+            ".md",
+            url.hostname,
+            url.href,
+          );
         }
         return await importLink(db, workspace, input.url);
       } catch (err) {
@@ -130,7 +225,7 @@ export function sourceHandlers(db: Database.Database, workspace: string, runner?
     },
     scanFolder(input: { path: string }) {
       return listImportable(input.path).map((file) => {
-        const bytes = new Uint8Array(readFileSync(file));
+        const bytes = new Uint8Array(readPickedFile(file));
         return {
           path: file,
           name: basename(file),
@@ -138,16 +233,25 @@ export function sourceHandlers(db: Database.Database, workspace: string, runner?
         };
       });
     },
-    preview(input: { path: string }) {
-      const bytes = new Uint8Array(readFileSync(input.path));
-      const flags = qualityFlags({
-        duplicate: isDuplicateBlob(db, sha256(bytes)),
-        variance: imageVariance(bytes, extname(input.path)),
-      });
-      return {
-        duplicate: flags.includes("duplicate"),
-        blurry: flags.includes("blurry"),
-      };
+    async preview(input: { path: string }) {
+      try {
+        const ext = extname(input.path);
+        if (isHeicExt(ext) && statSync(input.path).size > MAX_HEIC_BYTES)
+          throw new Error("heic-too-large");
+        const bytes = new Uint8Array(readFileSync(input.path));
+        const flags = qualityFlags({
+          duplicate: isDuplicateBlob(db, sha256(bytes)),
+          variance: isHeicExt(ext)
+            ? await runSourceWorker<number | null>("extract-worker", { path: input.path, ext: ext.toLowerCase(), mode: "quality" })
+            : imageVariance(bytes, ext),
+        });
+        return {
+          duplicate: flags.includes("duplicate"),
+          blurry: flags.includes("blurry"),
+        };
+      } catch (err) {
+        sourceError(err);
+      }
     },
     rename(input: { sourceId: string; title: string }) {
       try {
@@ -159,8 +263,20 @@ export function sourceHandlers(db: Database.Database, workspace: string, runner?
     },
     async replace(input: { sourceId: string; path: string }) {
       try {
-        if (runner) return await enqueueSourceFile(db, workspace, runner, input.path, input.sourceId);
-        const result = await replaceSourceFile(db, workspace, input.sourceId, input.path);
+        if (runner)
+          return await enqueueSourceFile(
+            db,
+            workspace,
+            runner,
+            input.path,
+            input.sourceId,
+          );
+        const result = await replaceSourceFile(
+          db,
+          workspace,
+          input.sourceId,
+          input.path,
+        );
         return result;
       } catch (err) {
         sourceError(err);
@@ -181,7 +297,12 @@ export function sourceHandlers(db: Database.Database, workspace: string, runner?
         sourceError(err);
       }
     },
-    async ocrImage(input: { sourceId: string; pngBase64: string; page: number; last: boolean }) {
+    async ocrImage(input: {
+      sourceId: string;
+      pngBase64: string;
+      page: number;
+      last: boolean;
+    }) {
       try {
         const png = Buffer.from(input.pngBase64, "base64");
         const status = await ocrPngPage(
@@ -192,7 +313,13 @@ export function sourceHandlers(db: Database.Database, workspace: string, runner?
           (bytes) => recognizeImage(bytes, tess),
           input.last,
         );
-        if (runner && status === "ready" && embeddingConsent(db) && embeddingReady(modelDir)) runner.start("source-index", { sourceId: input.sourceId });
+        if (
+          runner &&
+          status === "ready" &&
+          embeddingConsent(db) &&
+          embeddingReady(modelDir)
+        )
+          runner.start("source-index", { sourceId: input.sourceId });
         return { status };
       } catch (err) {
         sourceError(err);
@@ -225,19 +352,48 @@ export function sourceHandlers(db: Database.Database, workspace: string, runner?
       return passagesAround(db, input.passageId);
     },
     viewerDocument(input: { sourceId?: string; passageId?: string }) {
-      const row = db.prepare(`SELECT s.id, s.title, s.kind, s.blob_sha, d.tree_json, d.version,
+      const row = db
+        .prepare(
+          `SELECT s.id, s.title, s.kind, s.blob_sha, d.tree_json, d.version,
         (SELECT MAX(version) FROM source_documents WHERE source_id = s.id) AS latest
         FROM sources s LEFT JOIN source_documents d ON d.id = COALESCE(
           (SELECT document_id FROM passages WHERE id = ?),
           (SELECT id FROM source_documents WHERE source_id = s.id ORDER BY version DESC LIMIT 1))
-        WHERE s.id = COALESCE((SELECT source_id FROM passages WHERE id = ?), ?)`)
-        .get(input.passageId ?? null, input.passageId ?? null, input.sourceId ?? null) as
-        { id: string; title: string; kind: string; blob_sha: string | null; tree_json: string | null; version: number; latest: number } | undefined;
+        WHERE s.id = COALESCE((SELECT source_id FROM passages WHERE id = ?), ?)`,
+        )
+        .get(
+          input.passageId ?? null,
+          input.passageId ?? null,
+          input.sourceId ?? null,
+        ) as
+        | {
+            id: string;
+            title: string;
+            kind: string;
+            blob_sha: string | null;
+            tree_json: string | null;
+            version: number;
+            latest: number;
+          }
+        | undefined;
       if (!row) return null;
-      const tree = row.tree_json ? JSON.parse(row.tree_json) as { blobSha?: string; kind?: string } : {};
-      return { sourceId: row.id, title: row.title, kind: tree.kind ?? row.kind,
-        blobSha: tree.blobSha ?? (row.version === row.latest ? row.blob_sha : null),
-        excerpt: input.passageId ? (db.prepare("SELECT text FROM passages WHERE id = ?").get(input.passageId) as { text: string } | undefined)?.text ?? null : null };
+      const tree = row.tree_json
+        ? (JSON.parse(row.tree_json) as { blobSha?: string; kind?: string })
+        : {};
+      return {
+        sourceId: row.id,
+        title: row.title,
+        kind: tree.kind ?? row.kind,
+        blobSha:
+          tree.blobSha ?? (row.version === row.latest ? row.blob_sha : null),
+        excerpt: input.passageId
+          ? ((
+              db
+                .prepare("SELECT text FROM passages WHERE id = ?")
+                .get(input.passageId) as { text: string } | undefined
+            )?.text ?? null)
+          : null,
+      };
     },
     chapter(input: { sourceId: string; chapter: number; paragraph?: string }) {
       const rows =

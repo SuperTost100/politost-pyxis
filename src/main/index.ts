@@ -1,3 +1,13 @@
+import { decryptKeys } from "./decrypt-keys";
+import { spawn } from "node:child_process";
+import { writeKeyStore } from "./key-store";
+import { randomUUID } from "node:crypto";
+import { pickedFileGrant, type FileGrant } from "../core/ipc/file-grants";
+import { fetchPlanText } from "./plan-fetch";
+import { stageWorkspaceMove } from "./workspace-move";
+import { renameSync } from "node:fs";
+import packageMetadata from "../../package.json";
+import { githubRepository, releaseChecker } from "./updates";
 import { registerArtifactHandlers } from "./artifacts";
 import { invalidateRuntime } from "./runtime-pack";
 import {
@@ -19,6 +29,7 @@ import {
   session,
   shell,
   utilityProcess,
+  type IpcMainInvokeEvent,
   type UtilityProcess,
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -34,7 +45,6 @@ import {
   type SaveDialogOptions,
   type ThemeSource,
 } from "../shared/bridge";
-import { httpPlanUrl } from "../shared/plan-file";
 
 const isDev = !!process.env["ELECTRON_RENDERER_URL"];
 
@@ -154,6 +164,8 @@ function installNavigationGuards(): void {
 
 let mainWindow: BrowserWindow | null = null;
 let coreChild: UtilityProcess | null = null;
+let coreRestartFailures = 0;
+const exitedCores = new WeakSet<UtilityProcess>();
 let holdCore = false;
 let workspaceBusy = false;
 let archiveSettled = Promise.resolve();
@@ -265,14 +277,8 @@ function createWindow(): void {
 
 function storedKeys(): { anthropic?: string; openai?: string } {
   const stored = readJson<Record<string, string>>(userFile("keys.json")) ?? {};
-  const out: { anthropic?: string; openai?: string } = {};
-  if (!safeStorage.isEncryptionAvailable()) return out;
-  for (const id of ["anthropic", "openai"] as const) {
-    const cipher = stored[id];
-    if (!cipher) continue;
-    out[id] = safeStorage.decryptString(Buffer.from(cipher, "base64"));
-  }
-  return out;
+  if (!safeStorage.isEncryptionAvailable()) return {};
+  return decryptKeys(stored, (cipher) => safeStorage.decryptString(cipher));
 }
 
 let keysChain: Promise<void> = Promise.resolve();
@@ -280,13 +286,13 @@ let pageReady = false;
 let keysReadyFor: UtilityProcess | null = null;
 let rendererPortFor: UtilityProcess | null = null;
 
-function pushKeys(): Promise<void> {
-  const run = keysChain.then(() => deliverKeys());
+function pushKeys(removedProvider?: string): Promise<void> {
+  const run = keysChain.then(() => deliverKeys(removedProvider));
   keysChain = run.catch(() => undefined);
   return run;
 }
 
-function deliverKeys(): Promise<void> {
+function deliverKeys(removedProvider?: string): Promise<void> {
   const child = coreChild;
   if (!child) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -301,7 +307,30 @@ function deliverKeys(): Promise<void> {
       resolve();
     };
     child.on("message", onMessage);
-    child.postMessage({ type: "keys", ...storedKeys() });
+    child.postMessage({ type: "keys", ...storedKeys(), removedProvider });
+  });
+}
+
+const pickedGrants = new Map<string, FileGrant>();
+async function grantPickedPaths(paths: string[]): Promise<void> {
+  const grants = paths.map(pickedFileGrant);
+  for (const grant of grants) pickedGrants.set(grant.path, grant);
+  const child = coreChild;
+  if (!child || exitedCores.has(child)) throw new Error("core-busy");
+  const id = randomUUID();
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.off("message", applied);
+      reject(new Error("core-busy"));
+    }, 3000);
+    const applied = (data: { type?: string; id?: string }) => {
+      if (data.type !== "file-grants-applied" || data.id !== id) return;
+      clearTimeout(timer);
+      child.off("message", applied);
+      resolve();
+    };
+    child.on("message", applied);
+    child.postMessage({ type: "file-grants", id, grants });
   });
 }
 
@@ -322,7 +351,37 @@ function connectRenderer(): void {
   mainWindow.webContents.postMessage("pyxis:port", null, [port2]);
 }
 
-function startCore(): Promise<void> {
+const CORE_READY_TIMEOUT_MS = 30_000;
+
+function waitForCoreReady(
+  child: UtilityProcess,
+  timeoutMs: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const done = (err?: Error) => {
+      clearTimeout(timer);
+      child.off("message", onMessage);
+      child.off("exit", onExit);
+      if (err) reject(err);
+      else resolve();
+    };
+    const onMessage = (data: { type?: string }) => {
+      if (data?.type === "core-ready") done();
+      else if (data?.type === "core-failed")
+        done(new Error("core-bootstrap-failed"));
+    };
+    const onExit = () => done(new Error("core-exited"));
+    const timer = setTimeout(
+      () => done(new Error("core-ready-timeout")),
+      timeoutMs,
+    );
+    child.on("message", onMessage);
+    child.once("exit", onExit);
+  });
+}
+
+function startCore(strict = false): Promise<void> {
+  let startupFailed = false;
   const child = utilityProcess.fork(join(import.meta.dirname, "core.js"), [], {
     serviceName: "pyxis-core",
     stdio: "inherit",
@@ -332,6 +391,7 @@ function startCore(): Promise<void> {
   let childExited = false;
   child.once("exit", () => {
     childExited = true;
+    exitedCores.add(child);
   });
   function runtimeReply(message: unknown): void {
     if (childExited || coreChild !== child || quitting || holdCore) return;
@@ -374,27 +434,73 @@ function startCore(): Promise<void> {
   );
   keysReadyFor = null;
   rendererPortFor = null;
+  let timedOut = false;
+  // Generous: slow disks or antivirus can delay the synchronous DB open.
+  const healthy = waitForCoreReady(child, CORE_READY_TIMEOUT_MS);
   child.postMessage({
     type: "bootstrap",
     workspacePath,
+    grants: [...pickedGrants.values()],
     dev: e2eSeam(),
   });
   child.on("exit", (code) => {
+    if (timedOut) return;
     if (quitting || holdCore || coreChild !== child) return;
     console.error(`pyxis-core exited (${code ?? "null"})`);
-    setTimeout(() => {
-      if (!quitting && !holdCore && coreChild === child) startCore();
-    }, 200);
+    coreRestartFailures += 1;
+    if (coreRestartFailures >= 5) {
+      mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
+      return;
+    }
+    setTimeout(
+      () => {
+        if (!quitting && !holdCore && coreChild === child) void startCore();
+      },
+      200 * 2 ** (coreRestartFailures - 1),
+    );
   });
-  return pushKeys()
+  let deliveringKeys = false;
+  return healthy
     .catch((err: unknown) => {
+      if (err instanceof Error && err.message === "core-ready-timeout") {
+        // Terminate the unhealthy core; it must not restart on its own.
+        timedOut = true;
+        exitedCores.add(child);
+        child.kill();
+        if (coreChild === child && !quitting)
+          mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
+      }
+      // A reported bootstrap failure exits on its own; kill covers a hang. The
+      // exit handler then applies the bounded restart policy.
+      else if (!exitedCores.has(child)) child.kill();
+      throw err;
+    })
+    .then(() => {
+      deliveringKeys = true;
+      return pushKeys();
+    })
+    .catch((err: unknown) => {
+      startupFailed = true;
+      if (deliveringKeys) {
+        timedOut = true;
+        exitedCores.add(child);
+        child.kill();
+        if (coreChild === child && !quitting)
+          mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
+      }
+      if (strict) throw err;
       console.error(
-        "pyxis-core: keys were not applied",
+        "pyxis-core: startup failed",
         err instanceof Error ? err.message : "unknown",
       );
     })
     .finally(() => {
-      if (coreChild !== child) return;
+      if (coreChild !== child || startupFailed || exitedCores.has(child))
+        return;
+      if (!startupFailed) {
+        coreRestartFailures = 0;
+        mainWindow?.webContents.send(mainChannels.coreUnavailable, false);
+      }
       keysReadyFor = child;
       connectRenderer();
     });
@@ -404,50 +510,67 @@ function pauseCore(): Promise<void> {
   holdCore = true;
   disposePythonRuntime();
   const child = coreChild;
-  const stopped = !child
-    ? Promise.resolve()
-    : new Promise<void>((resolve, reject) => {
-        let settled = false;
-        const timer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          holdCore = false;
-          reject(new Error("core-busy"));
-        }, 3000);
-        child.once("exit", () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolve();
+  const stopped =
+    !child || exitedCores.has(child)
+      ? Promise.resolve()
+      : new Promise<void>((resolve, reject) => {
+          let settled = false;
+          const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            holdCore = false;
+            reject(new Error("core-busy"));
+          }, 3000);
+          child.once("exit", () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve();
+          });
+          child.kill();
         });
-        child.kill();
-      });
-  return Promise.all([stopped, invalidateRuntime(workspacePath)]).then(
-    () => undefined,
+  return Promise.allSettled([stopped, invalidateRuntime(workspacePath)]).then(
+    (results) => {
+      for (const result of results)
+        if (result.status === "rejected") throw result.reason;
+    },
   );
 }
 
-function runArchive(op: "backup" | "restore", zip: string): Promise<void> {
+function runArchive(
+  op: "backup" | "restore" | "commit" | "recover",
+  zip?: string,
+): Promise<boolean> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const finish = (err?: Error) => {
+    const finish = (err?: Error, cleanupComplete = true) => {
       if (settled) return;
       settled = true;
       if (err) reject(err);
-      else resolve();
+      else resolve(cleanupComplete);
     };
     const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
       workerData: { op, workspace: workspacePath, zip },
     });
-    worker.once("message", (message: { ok?: boolean; message?: string }) => {
-      if (message.ok) finish();
-      else finish(new Error(message.message || "backup-failed"));
-    });
+    worker.once(
+      "message",
+      (message: {
+        ok?: boolean;
+        message?: string;
+        cleanupComplete?: boolean;
+      }) => {
+        if (message.ok) finish(undefined, message.cleanupComplete);
+        else finish(new Error(message.message || "backup-failed"));
+      },
+    );
     worker.once("error", (err) => {
       finish(err instanceof Error ? err : new Error("backup-failed"));
     });
     worker.once("exit", (code) => {
-      if (code !== 0) finish(new Error("backup-failed"));
+      if (!settled)
+        finish(
+          new Error(code === 0 ? "backup-worker-no-result" : "backup-failed"),
+        );
     });
   });
 }
@@ -460,9 +583,23 @@ function resumeCore(): Promise<void> {
 
 const zipFilter = [{ name: "Zip", extensions: ["zip"] }];
 
+// Print windows keep their own channels (artifacts.ts); these handlers are for
+// the main window only.
+function requireMainSender(event: IpcMainInvokeEvent, code: string): void {
+  if (event.sender.id !== mainWindow?.webContents.id) throw new Error(code);
+}
+
 function registerIpc(): void {
+  ipcMain.handle(mainChannels.coreRetry, async (event) => {
+    if (event.sender.id !== mainWindow?.webContents.id)
+      throw new Error("core-untrusted-sender");
+    if (coreChild && !exitedCores.has(coreChild)) return;
+    coreRestartFailures = 0;
+    await startCore();
+  });
   ipcMain.handle(mainChannels.appearanceGet, () => appearance());
-  ipcMain.handle(mainChannels.appearanceSet, (_event, source: ThemeSource) => {
+  ipcMain.handle(mainChannels.appearanceSet, (event, source: ThemeSource) => {
+    requireMainSender(event, "main-untrusted-sender");
     if (source !== "system" && source !== "dark" && source !== "light") {
       throw new Error("invalid-theme");
     }
@@ -470,15 +607,21 @@ function registerIpc(): void {
     broadcastAppearance();
     return next;
   });
-  ipcMain.handle(mainChannels.openExternal, async (_event, url: string) => {
+  ipcMain.handle(mainChannels.openExternal, async (event, url: string) => {
+    requireMainSender(event, "external-untrusted-sender");
     if (!allowedExternal(url)) throw new Error("blocked-url");
     await shell.openExternal(url);
   });
   ipcMain.handle(
     mainChannels.openDialog,
-    async (_event, options: OpenDialogOptions) => {
+    async (event, options: OpenDialogOptions) => {
+      if (event.sender.id !== mainWindow?.webContents.id)
+        throw new Error("picker-untrusted-sender");
       const forced = process.env["PYXIS_E2E_FILE"];
-      if (forced && e2eSeam()) return [forced];
+      if (forced && e2eSeam()) {
+        await grantPickedPaths([forced]);
+        return [forced];
+      }
       const dialogOptions = {
         title: options.title,
         properties: options.properties,
@@ -488,13 +631,38 @@ function registerIpc(): void {
         ? await dialog.showOpenDialog(mainWindow, dialogOptions)
         : await dialog.showOpenDialog(dialogOptions);
       if (result.canceled) return null;
+      await grantPickedPaths(result.filePaths);
       return result.filePaths;
     },
   );
+  const metadata = packageMetadata as { repository?: unknown; version: string };
+  const releaseFixture =
+    e2eSeam() && process.env["PYXIS_E2E_RELEASE"]
+      ? JSON.parse(process.env["PYXIS_E2E_RELEASE"]!)
+      : null;
+  const checkUpdates = releaseChecker({
+    repository: releaseFixture
+      ? "PoliTost/pyxis-test"
+      : githubRepository(metadata.repository),
+    current: app.isPackaged ? app.getVersion() : metadata.version,
+    cachePath: userFile("updates.json"),
+    ...(releaseFixture
+      ? {
+          fetch: async () =>
+            new Response(JSON.stringify(releaseFixture), { status: 200 }),
+        }
+      : {}),
+  });
+  ipcMain.handle(mainChannels.updatesCheck, (event) => {
+    if (event.sender.id !== mainWindow?.webContents.id)
+      throw new Error("updates-untrusted-sender");
+    return checkUpdates();
+  });
   registerArtifactHandlers(() => mainWindow, e2eSeam);
   ipcMain.handle(
     mainChannels.saveDialog,
-    async (_event, options: SaveDialogOptions) => {
+    async (event, options: SaveDialogOptions) => {
+      requireMainSender(event, "save-untrusted-sender");
       const dialogOptions = {
         title: options.title,
         defaultPath: options.defaultPath,
@@ -507,25 +675,92 @@ function registerIpc(): void {
       return result.filePath;
     },
   );
-  ipcMain.handle(mainChannels.keysStatus, () => {
-    const backend = safeStorage.getSelectedStorageBackend();
-    const canSave = process.platform !== "linux" || backend !== "basic_text";
-    return { backend, canSave };
+  function authorizeKeys(senderId: number): void {
+    if (senderId !== mainWindow?.webContents.id)
+      throw new Error("keys-untrusted-sender");
+  }
+  function keyProvider(provider: unknown): "anthropic" | "openai" {
+    if (provider !== "anthropic" && provider !== "openai")
+      throw new Error("unknown-provider");
+    return provider;
+  }
+  ipcMain.handle(mainChannels.terminalOpen, async (event) => {
+    authorizeKeys(event.sender.id);
+    if (process.platform === "darwin") {
+      const error = await shell.openPath(
+        "/System/Applications/Utilities/Terminal.app",
+      );
+      if (error) throw new Error("terminal-unavailable");
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const child =
+        process.platform === "win32"
+          ? spawn("cmd.exe", ["/c", "start", "", "cmd.exe"], {
+              detached: true,
+              stdio: "ignore",
+            })
+          : spawn("x-terminal-emulator", [], {
+              detached: true,
+              stdio: "ignore",
+            });
+      child.once("error", () => reject(new Error("terminal-unavailable")));
+      child.once("spawn", () => {
+        child.unref();
+        resolve();
+      });
+    });
+  });
+  ipcMain.handle(mainChannels.keysStatus, (event) => {
+    authorizeKeys(event.sender.id);
+    const backend =
+      process.platform === "linux"
+        ? safeStorage.getSelectedStorageBackend()
+        : process.platform === "darwin"
+          ? "keychain"
+          : "dpapi";
+    const canSave =
+      safeStorage.isEncryptionAvailable() &&
+      (process.platform !== "linux" || backend !== "basic_text");
+    const keys = storedKeys();
+    return {
+      backend,
+      canSave,
+      configured: (["anthropic", "openai"] as const).filter(
+        (provider) => !!keys[provider],
+      ),
+    };
+  });
+  ipcMain.handle(mainChannels.keysRemove, async (event, raw: unknown) => {
+    authorizeKeys(event.sender.id);
+    const provider = keyProvider(raw);
+    const stored =
+      readJson<Record<string, string>>(userFile("keys.json")) ?? {};
+    delete stored[provider];
+    writeKeyStore(userFile("keys.json"), stored);
+    await pushKeys(`${provider === "anthropic" ? "anthropic" : "openai"}-api`);
   });
   ipcMain.on("app:dev", (event) => {
     event.returnValue = !app.isPackaged;
   });
-  ipcMain.handle("dev:killCore", () => {
+  ipcMain.handle("dev:killCore", (event) => {
     if (app.isPackaged) return;
+    requireMainSender(event, "dev-untrusted-sender");
     coreChild?.kill();
   });
   ipcMain.handle(
     mainChannels.keysSet,
-    async (_event, provider: string, key: string) => {
-      if (provider !== "anthropic" && provider !== "openai") {
-        throw new Error("unknown-provider");
-      }
-      const backend = safeStorage.getSelectedStorageBackend();
+    async (event, raw: unknown, key: unknown) => {
+      authorizeKeys(event.sender.id);
+      const provider = keyProvider(raw);
+      if (typeof key !== "string" || !key.trim() || key.length > 4096)
+        throw new Error("invalid-key");
+      const backend =
+        process.platform === "linux"
+          ? safeStorage.getSelectedStorageBackend()
+          : process.platform === "darwin"
+            ? "keychain"
+            : "dpapi";
       if (process.platform === "linux" && backend === "basic_text") {
         throw new Error("keyring-unavailable");
       }
@@ -535,33 +770,16 @@ function registerIpc(): void {
       const stored =
         readJson<Record<string, string>>(userFile("keys.json")) ?? {};
       stored[provider] = safeStorage.encryptString(key).toString("base64");
-      writeFileSync(userFile("keys.json"), JSON.stringify(stored));
+      writeKeyStore(userFile("keys.json"), stored);
       await pushKeys();
     },
   );
-  ipcMain.handle(mainChannels.planFetch, async (_event, raw: string) => {
-    const url = httpPlanUrl(raw);
-    const response = await fetch(url, {
-      redirect: "error",
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!response.ok || !response.body) throw new Error("plan-url");
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    for (;;) {
-      const step = await reader.read();
-      if (step.done) break;
-      size += step.value.byteLength;
-      if (size > 1_000_000) {
-        await reader.cancel();
-        throw new Error("plan-url");
-      }
-      chunks.push(step.value);
-    }
-    return new TextDecoder().decode(Buffer.concat(chunks));
+  ipcMain.handle(mainChannels.planFetch, async (event, raw: string) => {
+    requireMainSender(event, "plan-untrusted-sender");
+    return fetchPlanText(raw);
   });
-  ipcMain.handle(mainChannels.workspaceBackup, async () => {
+  ipcMain.handle(mainChannels.workspaceBackup, async (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
     const release = occupyWorkspace();
     try {
       const forced = e2eSeam() ? process.env["PYXIS_E2E_SAVE"] : undefined;
@@ -590,7 +808,8 @@ function registerIpc(): void {
       release();
     }
   });
-  ipcMain.handle(mainChannels.workspaceRestore, async () => {
+  ipcMain.handle(mainChannels.workspaceRestore, async (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
     const release = occupyWorkspace();
     try {
       const forced = e2eSeam() ? process.env["PYXIS_E2E_ZIP"] : undefined;
@@ -612,16 +831,89 @@ function registerIpc(): void {
       try {
         await runArchive("restore", filePath);
         ensureWorkspaceDirs(workspacePath);
-        return "restored";
-      } finally {
+        await startCore(true);
+        holdCore = false;
+      } catch (error) {
+        await pauseCore();
+        await runArchive("recover");
         await resumeCore();
+        throw error;
       }
+      // The old copy is held until core has validated and opened the restored
+      // workspace. Cleanup must not roll back a working new copy.
+      if (!(await runArchive("commit"))) {
+        console.warn(
+          "pyxis: restore succeeded; old workspace cleanup remains pending",
+        );
+      }
+      return "restored";
     } finally {
       release();
     }
   });
-  ipcMain.handle(mainChannels.workspacePath, () => workspacePath);
-  ipcMain.handle(mainChannels.workspaceWipe, async () => {
+  ipcMain.handle(mainChannels.workspaceMove, async (event) => {
+    if (event.sender.id !== mainWindow?.webContents.id)
+      throw new Error("workspace-untrusted-sender");
+    const release = occupyWorkspace();
+    try {
+      const forced = e2eSeam() ? process.env["PYXIS_E2E_MOVE"] : undefined;
+      const selected = forced
+        ? [forced]
+        : (
+            await dialog.showOpenDialog(mainWindow!, {
+              properties: ["openDirectory", "createDirectory"],
+            })
+          ).filePaths;
+      if (!selected[0]) return { status: "cancelled" };
+      const target = join(selected[0], "Pyxis workspace");
+      const original = workspacePath;
+      function savePath(path: string): void {
+        const temporary = userFile("config.json.tmp");
+        writeFileSync(
+          temporary,
+          JSON.stringify({ workspacePath: path }, null, 2),
+        );
+        renameSync(temporary, userFile("config.json"));
+      }
+      try {
+        await pauseCore();
+      } catch (error) {
+        holdCore = false;
+        if (!coreChild || exitedCores.has(coreChild)) await resumeCore();
+        throw error;
+      }
+      let move: Awaited<ReturnType<typeof stageWorkspaceMove>> | undefined;
+      try {
+        move = await stageWorkspaceMove(original, target);
+        savePath(move.path);
+        workspacePath = move.path;
+        await startCore(true);
+        holdCore = false;
+      } catch (error) {
+        await pauseCore();
+        const recovery = move ? await move.recoveryPath() : original;
+        savePath(recovery);
+        workspacePath = recovery;
+        if (move && recovery !== move.path) {
+          // Refusal to delete a replaced destination must not select it.
+          // recoveryPath has already checked the original copy is healthy.
+          await move.rollback().catch(() => undefined);
+        }
+        await resumeCore();
+        throw error;
+      }
+      const cleaned = await move.commit().catch(() => false);
+      return { status: "moved", path: workspacePath, cleanupPending: !cleaned };
+    } finally {
+      release();
+    }
+  });
+  ipcMain.handle(mainChannels.workspacePath, (event) => {
+    requireMainSender(event, "main-untrusted-sender");
+    return workspacePath;
+  });
+  ipcMain.handle(mainChannels.workspaceWipe, async (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
     const release = occupyWorkspace();
     try {
       await pauseCore();
@@ -648,19 +940,23 @@ function registerIpc(): void {
 }
 
 function registerProtocols(): void {
-  registerBlobProtocol(workspacePath);
-  registerRuntimeProtocol(session.defaultSession, workspacePath);
+  registerBlobProtocol(() => workspacePath);
+  registerRuntimeProtocol(session.defaultSession, () => workspacePath);
 }
 
 app.whenReady().then(() => {
   mkdirSync(app.getPath("userData"), { recursive: true });
-  workspacePath = ensureWorkspace();
   try {
+    workspacePath = ensureWorkspace();
     recoverInterruptedWipe(workspacePath);
   } catch (err) {
     console.error(
-      "pyxis: an unfinished wipe could not be restored",
+      "pyxis: workspace recovery could not finish",
       err instanceof Error ? err.message : "unknown",
+    );
+    dialog.showErrorBox(
+      "PoliTost Pyxis",
+      "Pyxis could not safely recover the workspace. Your saved copies have been kept. Restore a verified backup or keep the workspace, .old, .restore and journal files together for recovery.\n\nPyxis non ha potuto recuperare i dati in sicurezza. Le copie salvate sono conservate. Ripristina un backup verificato oppure conserva insieme la cartella dei dati, .old, .restore e i file di recupero.",
     );
     app.exit(1);
     return;

@@ -1,3 +1,4 @@
+import type { FileGrant } from "./ipc/file-grants";
 import { receiveRuntimeReply, setRuntimeSender } from "./math/runtime-client";
 import { recordedPlanRun } from "./engine/recorded-plan";
 import { join } from "node:path";
@@ -5,7 +6,9 @@ import { openDatabase } from "./db/connection";
 import { getFunnel, setApiKeys, setScratch } from "./engine/funnel";
 import {
   attachRendererPort,
+  addFileGrants,
   bindEngines,
+  removeEngineSelections,
   bindRunner,
   bindChat,
   bindTools,
@@ -34,7 +37,9 @@ type ParentEvent = {
   data?: {
     type?: string;
     workspacePath?: string;
+    grants?: FileGrant[];
     dev?: boolean;
+    removedProvider?: string;
     anthropic?: string;
     openai?: string;
     id?: string;
@@ -55,26 +60,47 @@ const parent = (process as NodeJS.Process & { parentPort?: ParentPort })
 if (!parent) {
   console.error("pyxis-core: parentPort missing");
 } else {
+  const port = parent;
   let booted = false;
-  parent.on("message", (event) => {
-    const data = event.data;
-    if (data?.type === "runtime-result" && data.id)
-      receiveRuntimeReply({
-        id: data.id,
-        result: data.result,
-        error: data.error,
-      });
-    if (data?.type === "bootstrap" && !booted) {
-      if (!data.workspacePath) {
-        console.error("pyxis-core: workspace missing");
-        return;
-      }
-      booted = true;
-      setRuntimeSender((message) => parent.postMessage(message));
-      const db = openDatabase(join(data.workspacePath, "pyxis.db"));
-      setScratch(join(data.workspacePath, "scratch"));
-      bindEngines(db);
-      const runner = createRunner(db, (job) => {
+  let jobRunner: ReturnType<typeof createRunner> | undefined;
+  let developmentSeam = false;
+
+  function failBootstrap(err: unknown): void {
+    console.error(
+      "pyxis-core: bootstrap failed",
+      err instanceof Error ? err.message : "unknown",
+    );
+    port.postMessage({ type: "core-failed" });
+    // Main also terminates this process; exiting here covers a lost message.
+    setTimeout(() => process.exit(1), 100);
+  }
+
+  function bootstrap(workspacePath: string, dev: boolean): void {
+    setRuntimeSender((message) => port.postMessage(message));
+    const db = openDatabase(join(workspacePath, "pyxis.db"));
+    setScratch(join(workspacePath, "scratch"));
+    // Explicit recorded fixtures may use a deterministic selection in their
+    // private test workspace. Normal launches require a confirmed engine.
+    if (
+      dev &&
+      [
+        "PYXIS_E2E_PLAN_REPLIES",
+        "PYXIS_E2E_MAP_REPLIES",
+        "PYXIS_E2E_SIMULATION_REPLIES",
+        "PYXIS_E2E_REPLY",
+      ].some((key) => process.env[key])
+    ) {
+      db.prepare(
+        "INSERT OR IGNORE INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, ?)",
+      ).run(
+        JSON.stringify({ provider: "claude", model: "recorded-fixture" }),
+        Date.now(),
+      );
+    }
+    bindEngines(db);
+    const runner = createRunner(
+      db,
+      (job) => {
         if (
           job.kind === "source-import" &&
           ["failed", "cancelled", "interrupted"].includes(job.state)
@@ -86,72 +112,126 @@ if (!parent) {
           ).run(job.state, Date.now(), job.id);
         }
         broadcast("job.updated", job);
+      },
+      undefined,
+      true,
+    );
+    jobRunner = runner;
+    bindSources(db, workspacePath, runner);
+    // Recorded replies require the explicit dev/test seam; packaged launches only enable it with PYXIS_E2E=1.
+    bindChat(
+      db,
+      workspacePath,
+      dev ? process.env["PYXIS_E2E_REPLY"] : undefined,
+    );
+    bindProfile(db);
+    const planFixture = dev ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined;
+    bindPlans(
+      db,
+      workspacePath,
+      runner,
+      planFixture
+        ? recordedPlanRun(
+            planFixture,
+            Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0),
+          )
+        : undefined,
+    );
+    const mapFixture = dev ? process.env["PYXIS_E2E_MAP_REPLIES"] : undefined;
+    bindMaps(
+      db,
+      runner,
+      mapFixture
+        ? recordedPlanRun(
+            mapFixture,
+            Number(process.env["PYXIS_E2E_MAP_DELAY"] ?? 0),
+          )
+        : undefined,
+    );
+    bindTools(workspacePath, runner);
+    bindStudy(
+      db,
+      runner,
+      planFixture
+        ? recordedPlanRun(
+            planFixture,
+            Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0),
+          )
+        : undefined,
+      dev && process.env["PYXIS_E2E_SIMULATION_REPLIES"]
+        ? recordedPlanRun(
+            process.env["PYXIS_E2E_SIMULATION_REPLIES"]!,
+            Number(process.env["PYXIS_E2E_SIMULATION_DELAY"] ?? 0),
+          )
+        : undefined,
+    );
+    runner.register("demo", demoJob);
+    bindRunner(runner, dev);
+    void getFunnel()
+      .overview()
+      .catch((err: unknown) => {
+        console.error(
+          "pyxis-core: overview failed",
+          err instanceof Error ? err.message : "unknown",
+        );
       });
-      bindSources(db, data.workspacePath, runner);
-      // ponytail: unpackaged tests pass a recorded reply; a packaged app never reads it. Upgrade path is the engine fixture files in plan section 12.
-      bindChat(
-        db,
-        data.workspacePath,
-        data.dev === true ? process.env["PYXIS_E2E_REPLY"] : undefined,
-      );
-      bindProfile(db);
-      const planFixture =
-        data.dev === true ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined;
-      bindPlans(
-        db,
-        data.workspacePath,
-        runner,
-        planFixture
-          ? recordedPlanRun(
-              planFixture,
-              Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0),
-            )
-          : undefined,
-      );
-      const mapFixture =
-        data.dev === true ? process.env["PYXIS_E2E_MAP_REPLIES"] : undefined;
-      bindMaps(
-        db,
-        runner,
-        mapFixture
-          ? recordedPlanRun(
-              mapFixture,
-              Number(process.env["PYXIS_E2E_MAP_DELAY"] ?? 0),
-            )
-          : undefined,
-      );
-      bindTools();
-      bindStudy(
-        db,
-        runner,
-        planFixture
-          ? recordedPlanRun(
-              planFixture,
-              Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0),
-            )
-          : undefined,
-        data.dev === true && process.env["PYXIS_E2E_SIMULATION_REPLIES"]
-          ? recordedPlanRun(
-              process.env["PYXIS_E2E_SIMULATION_REPLIES"]!,
-              Number(process.env["PYXIS_E2E_SIMULATION_DELAY"] ?? 0),
-            )
-          : undefined,
-      );
-      runner.register("demo", demoJob);
-      bindRunner(runner, data.dev === true);
-      void getFunnel()
-        .overview()
-        .catch((err: unknown) => {
-          console.error(
-            "pyxis-core: overview failed",
-            err instanceof Error ? err.message : "unknown",
-          );
-        });
-      console.log("pyxis-core ready");
+    console.log("pyxis-core ready");
+    // Healthy-ready handshake: main waits for this before sending keys/ports.
+    port.postMessage({ type: "core-ready" });
+  }
+
+  port.on("message", (event) => {
+    const data = event.data;
+    if (data?.type === "runtime-result" && data.id)
+      receiveRuntimeReply({
+        id: data.id,
+        result: data.result,
+        error: data.error,
+      });
+    if (data?.type === "file-grants" && data.grants) {
+      addFileGrants(data.grants);
+      port.postMessage({ type: "file-grants-applied", id: data.id });
+    }
+    if (data?.type === "bootstrap" && !booted) {
+      addFileGrants(data.grants ?? []);
+      const workspacePath = data.workspacePath;
+      if (!workspacePath) {
+        failBootstrap(new Error("workspace missing"));
+        return;
+      }
+      booted = true;
+      const dev = data.dev === true;
+      developmentSeam = dev && process.env["PYXIS_E2E"] === "1";
+      // Deterministic slow-start seam for the recovery E2E; needs PYXIS_E2E=1.
+      const delay =
+        dev && process.env["PYXIS_E2E"] === "1"
+          ? Math.min(Number(process.env["PYXIS_E2E_CORE_DELAY"]) || 0, 15_000)
+          : 0;
+      void (async () => {
+        if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+        try {
+          bootstrap(workspacePath, dev);
+        } catch (err) {
+          failBootstrap(err);
+        }
+      })();
     }
     if (data?.type === "keys") {
-      setApiKeys({ anthropic: data.anthropic, openai: data.openai });
-      process.parentPort.postMessage({ type: "keys-applied" });
+      void (async () => {
+        const delay = developmentSeam
+          ? Math.min(Number(process.env["PYXIS_E2E_KEYS_DELAY"]) || 0, 15000)
+          : 0;
+        if (delay > 0)
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        setApiKeys({ anthropic: data.anthropic, openai: data.openai });
+        if (
+          data.removedProvider === "anthropic-api" ||
+          data.removedProvider === "openai-api"
+        )
+          removeEngineSelections(data.removedProvider);
+        port.postMessage({ type: "keys-applied" });
+        jobRunner?.activate();
+      })();
     }
     if (data?.type === "shutdown") process.exit(0);
     const rendererPort = event.ports[0];

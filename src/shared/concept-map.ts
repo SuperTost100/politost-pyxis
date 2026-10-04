@@ -39,6 +39,14 @@ export const conceptGraphSchema = z.object({
       layout: z.enum(["tree", "radial"]).optional(),
     })
     .nullable(),
+  redo: z
+    .object({
+      nodes: z.array(node).max(25),
+      edges: z.array(edge).max(150),
+      layout: z.enum(["tree", "radial"]).optional(),
+    })
+    .nullable()
+    .optional(),
 });
 export const mapOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add_node"), id, label, parent: id }),

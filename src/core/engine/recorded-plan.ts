@@ -11,6 +11,15 @@ export function recordedPlanRun(
     await delay(Math.min(Math.max(delayMs, 0), 10000), undefined, {
       signal: input.signal,
     });
+    if (!input.responseSchema) {
+      const markdown = replies.markdown as { markdown?: string } | undefined;
+      return {
+        text: markdown?.markdown ?? "Recorded lesson [P1].",
+        model: "recorded-plan",
+        provider: "fixture",
+        inputTokens: 0,
+      };
+    }
     const schema = input.responseSchema?.schema as
       { properties?: Record<string, unknown> } | undefined;
     const key =

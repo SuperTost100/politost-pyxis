@@ -16,6 +16,8 @@ export function ChatMessage({
   text,
   reaction,
   onReact,
+  onRegenerate,
+  regenerateDisabled,
 }: {
   role?: "user" | "tutor";
   children: ReactNode;
@@ -25,6 +27,8 @@ export function ChatMessage({
   general?: boolean;
   text?: string;
   reaction?: "up" | "down" | null;
+  onRegenerate?: () => void;
+  regenerateDisabled?: boolean;
   onReact?: (reaction: "up" | "down") => void;
 }) {
   const { t } = useTranslation();
@@ -73,7 +77,16 @@ export function ChatMessage({
             pressed={reaction === "down"}
             onClick={() => onReact?.("down")}
           />
-          <IconButton icon="refresh-cw" label={t("components.chat.regenerate")} variant="ghost" size="sm" />
+          {onRegenerate ? (
+            <IconButton
+              icon="refresh-cw"
+              label={t("components.chat.regenerate")}
+              variant="ghost"
+              size="sm"
+              disabled={regenerateDisabled}
+              onClick={onRegenerate}
+            />
+          ) : null}
           {engine ? <span className="px-msg-engine">{engine}</span> : null}
         </div>
         {suggestions ? (

@@ -30,7 +30,8 @@ function readLast(): Record<Door, string> {
 
 function doorForPath(pathname: string, stored: Door): Door {
   if (pathname.startsWith("/ask")) return "ask";
-  if (pathname.startsWith("/exams")) return "exams";
+  if (pathname.startsWith("/exams") || pathname.startsWith("/plans"))
+    return "exams";
   return stored;
 }
 
@@ -53,8 +54,24 @@ export function Shell() {
     retryDelay: 300,
   });
 
+  const activeSimulation = useQuery({
+    queryKey: ["active-simulation"],
+    queryFn: () => invoke("study.activeSimulation", {}),
+    enabled: profile.isSuccess && Boolean(profile.data),
+    refetchInterval: 1000,
+  });
   useEffect(() => {
-    for (const header of document.querySelectorAll("header.ant-layout-header")) {
+    if (activeSimulation.data && location.pathname.startsWith("/ask"))
+      navigate(
+        `/plans/${activeSimulation.data.planId}/exam/${activeSimulation.data.attemptId}`,
+        { replace: true },
+      );
+  }, [activeSimulation.data, location.pathname, navigate]);
+
+  useEffect(() => {
+    for (const header of document.querySelectorAll(
+      "header.ant-layout-header",
+    )) {
       if (header instanceof HTMLElement && header.childElementCount === 0) {
         header.setAttribute("role", "presentation");
       }
@@ -69,12 +86,6 @@ export function Shell() {
   }, [client, profile.isSuccess]);
 
   useEffect(() => {
-    const reading = profile.data;
-    document.documentElement.dataset.dyslexia = reading?.dyslexia ? "on" : "off";
-    document.documentElement.dataset.text = reading?.textSize ?? "md";
-  }, [profile.data]);
-
-  useEffect(() => {
     if (!profile.isSuccess || profile.data) return;
     if (location.pathname.startsWith("/onboarding")) return;
     navigate("/onboarding");
@@ -84,7 +95,8 @@ export function Shell() {
     const door = doorForPath(location.pathname, storedDoor);
     if (
       location.pathname.startsWith("/ask") ||
-      location.pathname.startsWith("/exams")
+      location.pathname.startsWith("/exams") ||
+      location.pathname.startsWith("/plans")
     ) {
       const next = { ...readLast(), [door]: location.pathname };
       sessionStorage.setItem(LAST_KEY, JSON.stringify(next));
@@ -116,31 +128,40 @@ export function Shell() {
         >
           <div
             onClick={(event) => {
-              const item = (event.target as HTMLElement).closest(".ant-segmented-item");
-              if (!item?.classList.contains("ant-segmented-item-selected")) return;
+              const item = (event.target as HTMLElement).closest(
+                ".ant-segmented-item",
+              );
+              if (!item?.classList.contains("ant-segmented-item-selected"))
+                return;
               const text = item.textContent ?? "";
               if (text.includes(t("doors.ask"))) navigate(last.ask);
               else if (text.includes(t("doors.exams"))) navigate(last.exams);
             }}
           >
-          <Segmented<Door>
-            shape="round"
-            className="px-doors"
-            value={activeDoor}
-            onChange={(value) => navigate(value === "ask" ? last.ask : last.exams)}
-            options={[
-              {
-                value: "ask",
-                label: t("doors.ask"),
-                icon: <MessageCircle size={16} strokeWidth={1.75} />,
-              },
-              {
-                value: "exams",
-                label: t("doors.exams"),
-                icon: <GraduationCap size={16} strokeWidth={1.75} />,
-              },
-            ]}
-          />
+            <Segmented<Door>
+              shape="round"
+              className="px-doors"
+              value={activeSimulation.data ? "exams" : activeDoor}
+              onChange={(value) =>
+                navigate(value === "ask" ? last.ask : last.exams)
+              }
+              options={[
+                ...(!activeSimulation.data
+                  ? [
+                      {
+                        value: "ask" as const,
+                        label: t("doors.ask"),
+                        icon: <MessageCircle size={16} strokeWidth={1.75} />,
+                      },
+                    ]
+                  : []),
+                {
+                  value: "exams",
+                  label: t("doors.exams"),
+                  icon: <GraduationCap size={16} strokeWidth={1.75} />,
+                },
+              ]}
+            />
           </div>
         </div>
       )}
@@ -162,6 +183,18 @@ export function Shell() {
         style={{ maxWidth: 768, margin: "0 auto" }}
       >
         <div className="shell-page">
+          {activeSimulation.data ? (
+            <Button
+              shape="round"
+              onClick={() =>
+                navigate(
+                  `/plans/${activeSimulation.data!.planId}/exam/${activeSimulation.data!.attemptId}`,
+                )
+              }
+            >
+              {t("simulation.resume")}
+            </Button>
+          ) : null}
           <Outlet />
         </div>
       </PageContainer>

@@ -7,10 +7,12 @@ export function CoreNotice() {
   const { t } = useTranslation();
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  useEffect(() => window.pyxis.onCoreUnavailable(setUnavailable), []);
 
   useEffect(() => window.pyxis.onCoreRestarted(() => setOpen(true)), []);
 
-  if (!open) return null;
+  if (!open && !unavailable) return null;
   return (
     <div className="core-notice">
       <Notice
@@ -19,11 +21,15 @@ export function CoreNotice() {
           label: t("errors.retry"),
           onClick: () => {
             setOpen(false);
-            void client.invalidateQueries();
+            if (unavailable)
+              void window.pyxis
+                .retryCore()
+                .then(() => client.invalidateQueries());
+            else void client.invalidateQueries();
           },
         }}
       >
-        {t("errors.coreRestarted")}
+        {t(unavailable ? "errors.coreUnavailable" : "errors.coreRestarted")}
       </Notice>
     </div>
   );

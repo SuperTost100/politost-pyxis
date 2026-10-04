@@ -5,13 +5,28 @@ import { describe, expect, it } from "vitest";
 import { PNG } from "pngjs";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
+import { partialText, templateVersion } from "../engine/prompts";
 import { importSmartbook } from "../sources/smartbook";
 import { strToU8, zipSync } from "fflate";
-import { askTurn, chatContext, chatScope, deleteChat, heldSources, listChats, rateMessage, readChat, renameChat, seedChat } from "./turn";
+import {
+  askTurn,
+  regenerateTurn,
+  chatContext,
+  chatScope,
+  deleteChat,
+  heldSources,
+  listChats,
+  rateMessage,
+  readChat,
+  renameChat,
+  seedChat,
+} from "./turn";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
-    Object.fromEntries(Object.entries(files).map(([name, text]) => [name, strToU8(text)])),
+    Object.fromEntries(
+      Object.entries(files).map(([name, text]) => [name, strToU8(text)]),
+    ),
   );
 }
 
@@ -23,17 +38,134 @@ const reply: EngineResult = {
 };
 
 describe("askTurn", () => {
+  it("keeps a grounded Socratic question without requiring a factual citation", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5-5" }));
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "socratic",
+          title: "Vectors",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Vectors", file: "01.md" }],
+        }),
+        "chapters/01.md":
+          "## p1 | Posizione\nIl vettore posizione descrive il punto.\n",
+      }),
+    );
+    const input = {
+      text: "Che cos'è il vettore posizione?",
+      sourceIds: [imported.sourceId],
+      mode: "socratic" as const,
+    };
+    const question = await askTurn(db, {
+      ...input,
+      run: async () => ({
+        ...reply,
+        text: "Quali informazioni ti servono per descrivere la posizione?",
+      }),
+    });
+    expect(question.covered).toBe(true);
+    expect(question.message?.citations).toEqual([]);
+    expect(readChat(db, question.chatId).at(-1)?.body).toBe(
+      question.message?.body,
+    );
+    const factual = await askTurn(db, {
+      ...input,
+      mode: "solver",
+      run: async () => ({
+        ...reply,
+        text: "Il vettore posizione descrive il punto.",
+      }),
+    });
+    expect(factual.covered).toBe(false);
+    expect(factual.message).toBeNull();
+    db.close();
+  });
+
+  it("preserves the prior answer on failed or uncovered regeneration and replaces it once on success", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const first = await askTurn(db, {
+      text: "Explain",
+      allowGeneral: true,
+      run: async () => reply,
+    });
+    const before = readChat(db, first.chatId);
+    await expect(
+      regenerateTurn(db, {
+        chatId: first.chatId,
+        allowGeneral: true,
+        run: async () => {
+          throw new Error("offline");
+        },
+      }),
+    ).rejects.toThrow("offline");
+    expect(readChat(db, first.chatId)).toEqual(before);
+    await expect(regenerateTurn(db, {
+      chatId: first.chatId, allowGeneral: true,
+      run: async input => { input.onDelta?.("Partial replacement"); throw new DOMException("Aborted", "AbortError"); },
+    })).rejects.toMatchObject({ name: "AbortError" });
+    expect(readChat(db, first.chatId)).toEqual(before);
+    await regenerateTurn(db, {
+      chatId: first.chatId,
+      allowGeneral: true,
+      run: async () => ({ ...reply, text: "NOT_COVERED" }),
+    });
+    expect(readChat(db, first.chatId)).toEqual(before);
+    let prompt = "";
+    const result = await regenerateTurn(db, {
+      chatId: first.chatId,
+      allowGeneral: true,
+      run: async (input) => {
+        prompt = input.prompt;
+        return { ...reply, text: "Replacement" };
+      },
+    });
+    expect(prompt).not.toContain("Il vettore descrive");
+    expect(readChat(db, first.chatId).map((row) => row.body)).toEqual([
+      "Explain",
+      "Replacement",
+    ]);
+    expect(result.message?.id).not.toBe(first.message?.id);
+    db.close();
+  });
   it("ASK-01 clears an existing subject when an empty selection is sent", async () => {
     const db = openDatabase(":memory:");
-    const first = await askTurn(db, { text: "Ciao", subject: "Fisica", run: async () => reply });
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const first = await askTurn(db, {
+      text: "Ciao",
+      subject: "Fisica",
+      run: async () => reply,
+    });
     let system = "";
-    await askTurn(db, { chatId: first.chatId, text: "Ora parliamo d altro", subject: "", run: async (input) => { system = input.system ?? ""; return reply; } });
-    expect(db.prepare("SELECT subject FROM chats WHERE id = ?").get(first.chatId)).toEqual({ subject: null });
+    await askTurn(db, {
+      chatId: first.chatId,
+      text: "Ora parliamo d altro",
+      subject: "",
+      run: async (input) => {
+        system = input.system ?? "";
+        return reply;
+      },
+    });
+    expect(
+      db.prepare("SELECT subject FROM chats WHERE id = ?").get(first.chatId),
+    ).toEqual({ subject: null });
     expect(system).not.toContain("Subject: Fisica");
     db.close();
   });
   it("answers from a passage and stores the citation", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(
       db,
       pack({
@@ -43,13 +175,31 @@ describe("askTurn", () => {
           access: "public",
           chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
         }),
-        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+        "chapters/01.md":
+          "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
       }),
     );
+    let system = "";
     const result = await askTurn(db, {
       text: "Che cos'è il vettore?",
       sourceIds: [imported.sourceId],
-      run: async () => reply,
+      run: async (input) => {
+        system = input.system ?? "";
+        return reply;
+      },
+    });
+    expect(system).toContain("Write all output in Italian.");
+    expect(system).toContain(partialText("citation"));
+    expect(system).not.toMatch(/\{\{[A-Za-z]/);
+    expect(
+      db
+        .prepare(
+          "SELECT prompt_template, prompt_version FROM messages WHERE role = 'assistant'",
+        )
+        .get(),
+    ).toEqual({
+      prompt_template: "chat.solver",
+      prompt_version: templateVersion("chat.solver"),
     });
     expect(result.covered).toBe(true);
     expect(result.message?.modelId).toBe("gpt-6.1-sol");
@@ -79,6 +229,9 @@ describe("askTurn", () => {
 
   it("keeps a short follow-up on the passage already cited", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(
       db,
       pack({
@@ -88,7 +241,8 @@ describe("askTurn", () => {
           access: "public",
           chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
         }),
-        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+        "chapters/01.md":
+          "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
       }),
     );
     const first = await askTurn(db, {
@@ -118,6 +272,9 @@ describe("askTurn", () => {
 
   it("does not keep a source answer that cites nothing", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(
       db,
       pack({
@@ -127,7 +284,8 @@ describe("askTurn", () => {
           access: "public",
           chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
         }),
-        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+        "chapters/01.md":
+          "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
       }),
     );
     const result = await askTurn(db, {
@@ -136,11 +294,16 @@ describe("askTurn", () => {
       run: async () => ({ ...reply, text: "Senza un rimando." }),
     });
     expect(result.covered).toBe(false);
-    expect(readChat(db, result.chatId).some((row) => row.role === "assistant")).toBe(false);
+    expect(
+      readChat(db, result.chatId).some((row) => row.role === "assistant"),
+    ).toBe(false);
   });
 
   it("reuses the pending question for a general answer", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const first = await askTurn(db, {
       text: "fotosintesi delle banane",
       run: async () => reply,
@@ -154,12 +317,17 @@ describe("askTurn", () => {
         text: "Dalle conoscenze generali.\n<followups>\nA\nB\nC\n</followups>",
       }),
     });
-    const users = readChat(db, first.chatId).filter((row) => row.role === "user");
+    const users = readChat(db, first.chatId).filter(
+      (row) => row.role === "user",
+    );
     expect(users).toHaveLength(1);
   });
 
   it("skips the model when the material does not cover the question", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     importSmartbook(
       db,
       pack({
@@ -169,7 +337,8 @@ describe("askTurn", () => {
           access: "public",
           chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
         }),
-        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+        "chapters/01.md":
+          "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
       }),
     );
     let calls = 0;
@@ -182,11 +351,16 @@ describe("askTurn", () => {
     });
     expect(result.covered).toBe(false);
     expect(calls).toBe(0);
-    expect(readChat(db, result.chatId).some((row) => row.role === "assistant")).toBe(false);
+    expect(
+      readChat(db, result.chatId).some((row) => row.role === "assistant"),
+    ).toBe(false);
   });
 
   it("answers from general knowledge when asked", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const result = await askTurn(db, {
       text: "fotosintesi delle banane",
       allowGeneral: true,
@@ -201,6 +375,9 @@ describe("askTurn", () => {
 
   it("puts the profile into the tutor prompt", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     db.prepare(
       `INSERT INTO profile
         (id, display_name, education_level, course, content_language, created_at, updated_at)
@@ -217,11 +394,17 @@ describe("askTurn", () => {
     });
     expect(system).toContain("Ada");
     expect(system).toContain("Fisica 1");
-    expect(system).toContain("Italian");
+    expect(system).toContain("Write all output in Italian.");
+    // General answers have no passages, so they do not carry the citation rule.
+    expect(system).not.toContain(partialText("citation"));
+    expect(system).not.toMatch(/\{\{[A-Za-z]/);
   });
 
   it("uses the chat engine selected for that turn", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const seen: string[] = [];
     const run = async (input: { selection: { model: string } }) => {
       seen.push(input.selection.model);
@@ -237,6 +420,9 @@ describe("askTurn", () => {
 
   it("does not store a reply when the turn is aborted", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const controller = new AbortController();
     await expect(
       askTurn(db, {
@@ -249,14 +435,19 @@ describe("askTurn", () => {
         },
       }),
     ).rejects.toMatchObject({ name: "AbortError" });
-    const chats = db.prepare(`SELECT id FROM chats`).all() as Array<{ id: string }>;
-    expect(readChat(db, chats[0]?.id ?? "").some((row) => row.role === "assistant")).toBe(
-      false,
-    );
+    const chats = db.prepare(`SELECT id FROM chats`).all() as Array<{
+      id: string;
+    }>;
+    expect(
+      readChat(db, chats[0]?.id ?? "").some((row) => row.role === "assistant"),
+    ).toBe(false);
   });
 
   it("keeps the text already streamed when the student stops", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const seen: string[] = [];
     const result = await askTurn(db, {
       text: "deriva x al quadrato",
@@ -274,6 +465,8 @@ describe("askTurn", () => {
     expect(result.message?.body).toBe("La derivata è 2x");
     const stored = readChat(db, result.chatId).at(-1);
     expect(stored?.stopped).toBe(true);
+    expect(stored?.provider).toBe("claude");
+    expect(stored?.modelId).toBe("claude-sonnet-5");
     expect(
       db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(result.chatId),
     ).toEqual({ subject: "Fisica" });
@@ -281,6 +474,9 @@ describe("askTurn", () => {
 
   it("keeps the subject on the next turn and links a stopped citation", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(
       db,
       pack({
@@ -290,7 +486,8 @@ describe("askTurn", () => {
           access: "public",
           chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
         }),
-        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+        "chapters/01.md":
+          "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
       }),
     );
     const stopped = await askTurn(db, {
@@ -319,6 +516,9 @@ describe("askTurn", () => {
 
   it("pins a wrong answer in the next prompt", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const seeded = seedChat(db, {
       kind: "answer",
       title: "Vettore",
@@ -342,8 +542,14 @@ describe("askTurn", () => {
   it("retrieves a document attached to the message and keeps it out of the library", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pyxis-attach-"));
     const file = join(dir, "note.txt");
-    writeFileSync(file, "la velocita e la derivata dello spazio rispetto al tempo");
+    writeFileSync(
+      file,
+      "la velocita e la derivata dello spazio rispetto al tempo",
+    );
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     let prompt = "";
     const result = await askTurn(db, {
       text: "velocita",
@@ -379,6 +585,9 @@ describe("askTurn", () => {
     writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
     const db = openDatabase(":memory:");
     db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    db.prepare(
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
     let prompt = "";
@@ -397,9 +606,7 @@ describe("askTurn", () => {
     expect(prompt).toContain("F uguale m a");
     let again = "";
     await askTurn(db, {
-      chatId: (
-        db.prepare(`SELECT id FROM chats`).get() as { id: string }
-      ).id,
+      chatId: (db.prepare(`SELECT id FROM chats`).get() as { id: string }).id,
       text: "ripeti",
       allowGeneral: true,
       workspace: dir,
@@ -416,6 +623,9 @@ describe("askTurn", () => {
     const file = join(dir, "board.png");
     writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     db.prepare(
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
@@ -435,6 +645,9 @@ describe("askTurn", () => {
     const file = join(dir, "board.png");
     writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     db.prepare(
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
@@ -457,6 +670,9 @@ describe("askTurn", () => {
     ftruncateSync(fd, 16 * 1024 * 1024);
     closeSync(fd);
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     await expect(
       askTurn(db, {
         text: "leggi",

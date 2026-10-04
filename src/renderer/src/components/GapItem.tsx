@@ -9,6 +9,7 @@ export function GapItem({
   children,
   onFill,
   fillLabel = "Colma",
+  fillDisabled = false,
   severitySevereLabel = "grave",
   severityMinorLabel = "lieve",
 }: {
@@ -17,6 +18,7 @@ export function GapItem({
   children: ReactNode;
   onFill?: () => void;
   fillLabel?: string;
+  fillDisabled?: boolean;
   severitySevereLabel?: string;
   severityMinorLabel?: string;
 }) {
@@ -24,17 +26,20 @@ export function GapItem({
     <div className="px-card px-gap">
       <span className={["px-gap-dot", `is-${severity}`].join(" ")} />
       <div className="px-gap-body">
-        <Tag
-          tone={severity === "severe" ? "severe" : "general"}
-          icon="target"
-        >
+        <Tag tone={severity === "severe" ? "severe" : "general"} icon="target">
           {severity === "severe" ? severitySevereLabel : severityMinorLabel}
         </Tag>
         <p className="px-gap-text">{children}</p>
         <span className="px-gap-topic">{topic}</span>
       </div>
       {onFill ? (
-        <Button size="sm" variant="secondary" onClick={onFill}>
+        <Button
+          aria-label={`${fillLabel} · ${topic}`}
+          size="sm"
+          variant="secondary"
+          onClick={onFill}
+          disabled={fillDisabled}
+        >
           {fillLabel}
         </Button>
       ) : null}

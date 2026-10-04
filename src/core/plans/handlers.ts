@@ -1,3 +1,11 @@
+import {
+  attachPlanSources,
+  removePlanSource,
+  finishSourceRebuild,
+  readPlanItem,
+  openPlanQuiz,
+} from "./views";
+import { savePlanSettings } from "./settings";
 import { enqueuePlan, planBuildState, registerPlanJobs } from "./jobs";
 import type { Runner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
@@ -13,6 +21,7 @@ import {
   readPlan,
   rebuildPlan,
 } from "./create";
+import { withLibraryOriginals } from "./libraryOriginals";
 import { exportPlan, importPlan } from "./file";
 import { planMastery, planSeries } from "./progress";
 import { planDiskUsage } from "../share/usage";
@@ -74,7 +83,24 @@ export function planHandlers(
       })();
     },
     rebuild(input: { planId: string; sourceIds: string[] }) {
-      return rebuildPlan(db, input.planId, input.sourceIds);
+      const result = rebuildPlan(db, input.planId, input.sourceIds);
+      finishSourceRebuild(db, input.planId, input.sourceIds);
+      return result;
+    },
+    settings(input: Parameters<typeof savePlanSettings>[1]) {
+      return savePlanSettings(db, input);
+    },
+    attachSources(input: { planId: string; sourceIds: string[] }) {
+      return attachPlanSources(db, input.planId, input.sourceIds);
+    },
+    removeSource(input: { planId: string; sourceId: string }) {
+      return removePlanSource(db, input.planId, input.sourceId);
+    },
+    item(input: { planId: string; itemId: string }) {
+      return readPlanItem(db, input.planId, input.itemId);
+    },
+    openQuiz(input: { planId: string; itemId: string }) {
+      return openPlanQuiz(db, input.planId, input.itemId);
     },
     read(input: { planId: string }) {
       return readPlan(db, input.planId);
@@ -87,14 +113,18 @@ export function planHandlers(
       ).run(input.planId);
       const quizJobs = db
         .prepare(
-          "SELECT id FROM jobs WHERE (kind IN ('quiz-build', 'map-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind = 'simulation-grade' AND json_extract(params_json, '$.planId') = ?)",
+          "SELECT id FROM jobs WHERE (kind IN ('quiz-build', 'map-build', 'exercise-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind IN ('simulation-grade', 'simulation-build', 'cards-build', 'gap-drill', 'exercise-build') AND json_extract(params_json, '$.planId') = ?) OR (kind IN ('quiz-grade', 'quiz-check') AND json_extract(params_json, '$.attemptId') IN (SELECT id FROM attempts WHERE plan_id = ?))",
         )
-        .all(input.planId, input.planId) as Array<{ id: string }>;
+        .all(input.planId, input.planId, input.planId) as Array<{ id: string }>;
       for (const quizJob of quizJobs) runner?.cancel(quizJob.id);
       db.prepare(
-        "DELETE FROM jobs WHERE (kind IN ('quiz-build', 'map-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind = 'simulation-grade' AND json_extract(params_json, '$.planId') = ?)",
-      ).run(input.planId, input.planId);
+        "DELETE FROM jobs WHERE (kind IN ('quiz-build', 'map-build', 'exercise-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind IN ('simulation-grade', 'simulation-build', 'cards-build', 'gap-drill', 'exercise-build') AND json_extract(params_json, '$.planId') = ?) OR (kind IN ('quiz-grade', 'quiz-check') AND json_extract(params_json, '$.attemptId') IN (SELECT id FROM attempts WHERE plan_id = ?))",
+      ).run(input.planId, input.planId, input.planId);
       deletePlan(db, input.planId);
+      db.prepare("DELETE FROM settings WHERE key IN (?,?)").run(
+        `plan-material:${input.planId}`,
+        `plan-import:${input.planId}`,
+      );
       return { ok: true };
     },
     export(input: { planId: string; progress?: boolean; embed?: boolean }) {
@@ -104,8 +134,15 @@ export function planHandlers(
         workspace,
       });
     },
-    import(input: PlanFile) {
-      return { planId: importPlan(db, input, Date.now(), workspace) };
+    import(input: PlanFile & { libraryFor?: Record<string, string> }) {
+      return {
+        planId: importPlan(
+          db,
+          withLibraryOriginals(db, workspace, input),
+          Date.now(),
+          workspace,
+        ),
+      };
     },
     mastery(input: { planId: string }) {
       return planMastery(db, input.planId);

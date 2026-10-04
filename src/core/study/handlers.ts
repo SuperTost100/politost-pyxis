@@ -9,17 +9,28 @@ import {
   setSuspended,
   suspendedCards,
 } from "./cards";
-import { ensureTopicCards } from "./cardsFromBook";
-import { topicExercises } from "./exercises";
-import { writeLesson } from "./openLesson";
+import {
+  enqueueTopicCards,
+  generateTopicCards,
+  readCardsBuild,
+  registerCardJobs,
+  seedExerciseCards,
+} from "./cardsFromBook";
+import { enqueueGapDrill, readGapDrill, registerGapJobs } from "./gapDrill";
+import { exerciseView, topicExercises } from "./exercises";
+import {
+  enqueueExercises,
+  exerciseJob,
+  registerExerciseJobs,
+} from "./exerciseJobs";
+import { requireTopic, writeLesson, type Wording } from "./openLesson";
 import type { Rating } from "./schedule";
-import { completeCurrentStage } from "../plans/create";
-import { syncGaps } from "../plans/progress";
 import { runTurn } from "../engine/funnel";
 import {
+  enqueueSimulation,
   openSimulation,
   readSimulation,
-  recordTopicScores,
+  readSimulationBuild,
   saveSimulationDraft,
   startSimulation,
   submitSimulation,
@@ -27,16 +38,21 @@ import {
 } from "./simulation";
 import { flagTarget } from "./flags";
 import { startReview } from "./review";
-import { startDiagnostic, submitAttempt } from "./topicQuiz";
+import { startDiagnostic } from "./topicQuiz";
 import { exportAnki } from "../share/anki";
 import { exportCardsCsv, exportMarkdown } from "../share/markdown";
 
 import {
+  checkQuestion,
+  finalizeAttempt,
   gradeConfiguredAttempt,
-  gradeQuizQuestion,
+  gradeOpenAnswers,
   quizAttempt,
+  readQuizGrading,
+  registerQuizGradingJobs,
+  submitQuiz,
 } from "./quizGrading";
-import { startConfiguredQuiz, type quizKinds } from "./configuredQuiz";
+import { startConfiguredQuiz, type QuizInput } from "./configuredQuiz";
 
 import type { Runner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
@@ -55,14 +71,43 @@ export function studyHandlers(
 ) {
   if (runner) {
     registerQuizJobs(db, runner, run);
+    registerExerciseJobs(db, runner, run);
+    registerQuizGradingJobs(db, runner, run);
     registerSimulationJobs(db, runner, simulationRun);
+    registerCardJobs(db, runner, run);
+    registerGapJobs(db, runner, run);
   }
   return {
-    exercises(input: { topicId: string }) {
-      return topicExercises(db, input.topicId);
+    exercises(input: { topicId: string; planId?: string; generate?: boolean }) {
+      const scope = input.planId
+        ? { planId: input.planId, topicId: input.topicId }
+        : null;
+      if (input.generate && scope && runner) enqueueExercises(db, runner, scope);
+      return {
+        exercises: topicExercises(db, input.topicId).map(exerciseView),
+        job: scope ? exerciseJob(db, scope) : null,
+      };
     },
-    lesson(input: { planId: string; topicId: string }) {
-      return writeLesson(db, input.planId, input.topicId, runTurn);
+    lesson(
+      input: {
+        planId: string;
+        topicId: string;
+        wording?: Wording;
+        regenerate?: boolean;
+      },
+      options?: {
+        signal?: AbortSignal;
+        onDelta?: (text: string) => void;
+        onPassages?: (passageIds: string[]) => void;
+      },
+    ) {
+      return writeLesson(
+        db,
+        input.planId,
+        input.topicId,
+        run ?? runTurn,
+        { ...options, wording: input.wording, regenerate: input.regenerate },
+      );
     },
     markdown(input: {
       planId: string;
@@ -92,26 +137,27 @@ export function studyHandlers(
     review(input: { planId: string }) {
       return startReview(db, input.planId);
     },
-    quizStart(input: {
-      planId: string;
-      topicId: string;
-      count?: number;
-      feedback?: boolean;
-      types?: Array<(typeof quizKinds)[number]>;
-    }) {
+    quizStart(input: QuizInput) {
       return runner
         ? enqueueQuiz(db, runner, input)
         : startConfiguredQuiz(db, input, run);
     },
     quizDraft(input: {
       attemptId: string;
+      planId?: string;
       picks: Record<string, string>;
       index: number;
     }) {
-      return saveQuizDraft(db, input.attemptId, input.picks, input.index);
+      return saveQuizDraft(
+        db,
+        input.attemptId,
+        input.picks,
+        input.index,
+        input.planId,
+      );
     },
-    quizRead(input: { attemptId: string }) {
-      return readQuiz(db, input.attemptId);
+    quizRead(input: { attemptId: string; planId?: string }) {
+      return readQuiz(db, input.attemptId, input.planId);
     },
     diagnosticStart(input: { planId: string }) {
       return startDiagnostic(db, input.planId);
@@ -123,12 +169,13 @@ export function studyHandlers(
     }) {
       if (!quizAttempt(db, input.attemptId).body.config?.feedback)
         throw new Error("feedback-unavailable");
-      return gradeQuizQuestion(
+      return checkQuestion(
         db,
+        runner,
+        run,
         input.attemptId,
         input.questionId,
         input.pick,
-        run,
       );
     },
     quizSubmit(input: { attemptId: string; picks: Record<string, string> }) {
@@ -146,117 +193,54 @@ export function studyHandlers(
           }
         | undefined;
       if (gate?.kind === "simulation") throw new Error("use-simulation-submit");
+      const modelGraded = gate?.kind === "quiz" || gate?.kind === "diagnostic";
+      // Model grading is a persistent job; the page watches it through quizGrading.
+      if (runner && modelGraded)
+        return submitQuiz(db, runner, input.attemptId, input.picks);
+      // ponytail: without a runner (unit tests) grade inline; the app always has one.
       const finalize = (
         graded?: Awaited<ReturnType<typeof gradeConfiguredAttempt>>,
-      ) =>
-        db.transaction(() => {
-          if (graded)
-            for (const [id, checked] of graded)
-              input.picks[id] ??= checked.pick;
-          const scored = submitAttempt(
-            db,
-            input.attemptId,
-            input.picks,
-            Date.now(),
-            graded,
-          );
-          const row = db
-            .prepare(
-              `SELECT a.plan_id, i.topic_id, i.kind, i.body_json FROM attempts a
-           JOIN items i ON i.id = a.item_id WHERE a.id = ?`,
-            )
-            .get(input.attemptId) as
-            | {
-                plan_id: string;
-                topic_id: string | null;
-                kind: string;
-                body_json: string;
-              }
-            | undefined;
-          if (row) {
-            const now = Date.now();
-            const record = (
-              topicId: string | null,
-              score: number,
-              scores: number[],
-              at: number,
-            ) => {
-              db.prepare(
-                `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
-             VALUES (?, 'answer_given', ?, ?, ?, ?)`,
-              ).run(
-                uuidv7(at),
-                row.plan_id,
-                topicId,
-                JSON.stringify({
-                  score,
-                  scores,
-                  questionScores:
-                    row.kind === "quiz"
-                      ? scored.results.map((result) => {
-                          const question = (
-                            JSON.parse(row.body_json) as {
-                              questions: Array<{
-                                id: string;
-                                sourceId?: string;
-                                sourceIds?: string[];
-                              }>;
-                            }
-                          ).questions.find(
-                            (question) => question.id === result.id,
-                          );
-                          return {
-                            id: result.id,
-                            sourceIds: [
-                              question?.sourceId,
-                              ...(question?.sourceIds ?? []),
-                            ].filter(Boolean),
-                            score: result.score,
-                          };
-                        })
-                      : undefined,
-                }),
-                at,
-              );
-            };
-            if (row.topic_id) {
-              record(
-                row.topic_id,
-                scored.score,
-                scored.results.map((result) => result.score),
-                now,
-              );
-              syncGaps(db, row.plan_id, now);
-            } else if (row.kind === "simulation" || row.kind === "diagnostic") {
-              const stored = JSON.parse(row.body_json) as {
-                questions?: Array<{ topicId?: string }>;
-              };
-              completeCurrentStage(db, row.plan_id, row.kind, now + 1);
-              recordTopicScores(
-                db,
-                row.plan_id,
-                stored.questions ?? [],
-                scored.results,
-                now,
-              );
-              syncGaps(db, row.plan_id, now);
-            }
-          }
-          return scored;
-        })();
-      return gate?.kind === "quiz" && JSON.parse(gate.body_json).config
-        ? gradeConfiguredAttempt(db, input.attemptId, input.picks, run).then(
-            finalize,
-          )
-        : finalize();
+      ) => finalizeAttempt(db, input.attemptId, input.picks, graded);
+      if (gate?.kind === "quiz" && JSON.parse(gate.body_json).config)
+        return gradeConfiguredAttempt(
+          db,
+          input.attemptId,
+          input.picks,
+          run,
+        ).then(finalize);
+      if (modelGraded)
+        return gradeOpenAnswers(db, input.attemptId, input.picks, run).then(
+          finalize,
+        );
+      return finalize();
     },
+    quizGrading(input: { attemptId: string }) {
+      return readQuizGrading(db, input.attemptId);
+    },
+    // Reads never generate: building cards is a durable job started by cardsGenerate.
     cards(input: { planId: string; topicId: string }) {
-      ensureTopicCards(db, input.planId, input.topicId);
       return dueCards(db, input.planId, Date.now(), input.topicId);
     },
     queue(input: { planId: string; topicId: string }) {
-      ensureTopicCards(db, input.planId, input.topicId);
       return queueCounts(db, input.planId, input.topicId);
+    },
+    async cardsGenerate(input: { planId: string; topicId: string }) {
+      if (runner) return enqueueTopicCards(db, runner, input);
+      // ponytail: without a runner (unit tests) generate inline; the app always has one.
+      requireTopic(db, input.planId, input.topicId);
+      seedExerciseCards(db, input.planId, input.topicId);
+      await generateTopicCards(db, input, run);
+      return { jobId: null };
+    },
+    cardsBuild(input: { planId: string; topicId: string }) {
+      return readCardsBuild(db, input);
+    },
+    gapDrillStart(input: { planId: string; topicId: string }) {
+      if (!runner) throw new Error("jobs-unavailable");
+      return enqueueGapDrill(db, runner, input);
+    },
+    gapDrillRead(input: { planId: string; topicId: string }) {
+      return readGapDrill(db, input.planId, input.topicId);
     },
     save(input: {
       planId: string;
@@ -278,6 +262,16 @@ export function studyHandlers(
     suspended(input: { planId: string; topicId: string }) {
       return suspendedCards(db, input.planId, input.topicId);
     },
+    activeSimulation() {
+      return (
+        (db
+          .prepare(
+            // Once answers are frozen the tutor unlocks, even while grading runs or has failed.
+            "SELECT a.id AS attemptId, a.plan_id AS planId FROM attempts a JOIN items i ON i.id=a.item_id WHERE i.kind='simulation' AND a.submitted_at IS NULL AND json_extract(i.body_json,'$.gradingStartedAt') IS NULL ORDER BY a.started_at DESC LIMIT 1",
+          )
+          .get() as { attemptId: string; planId: string } | undefined) ?? null
+      );
+    },
     simulationOpen(input: { planId: string }) {
       return openSimulation(db, input.planId);
     },
@@ -297,6 +291,27 @@ export function studyHandlers(
         Date.now(),
         input.source ?? "exam",
       );
+    },
+    simulationPrepare(input: {
+      planId: string;
+      minutes?: number;
+      source?: "exam" | "mixed";
+    }) {
+      const result = enqueueSimulation(
+        db,
+        input.planId,
+        input.minutes === 60 || input.minutes === 90 || input.minutes === 120
+          ? input.minutes
+          : 30,
+        Date.now(),
+        input.source ?? "exam",
+      );
+      return "attemptId" in result
+        ? { attemptId: result.attemptId }
+        : { jobId: result.jobId };
+    },
+    simulationBuild(input: { planId: string }) {
+      return readSimulationBuild(db, input.planId);
     },
     simulationSubmit(input: {
       attemptId: string;

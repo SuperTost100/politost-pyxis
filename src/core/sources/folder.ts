@@ -24,7 +24,11 @@ export function listImportable(root: string): string[] {
       if (entry.name.startsWith(".")) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (IMPORT_EXTENSIONS.has(extname(entry.name).toLowerCase())) found.push(full);
+      else if (
+        entry.isFile() &&
+        IMPORT_EXTENSIONS.has(extname(entry.name).toLowerCase())
+      )
+        found.push(full);
     }
   };
   walk(root);

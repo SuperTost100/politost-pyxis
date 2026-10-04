@@ -35,7 +35,40 @@ export async function verifiedRuntimeFile(
     return undefined;
   }
 }
-export function ensureRuntime(workspace: string): Promise<string> {
+/** Disk truth: every manifest file present and hash-verified. Never downloads. */
+export async function currentRuntimeStatus(
+  workspace: string,
+): Promise<RuntimeStatus> {
+  const state = runtimeStatus(workspace);
+  if (state.phase === "downloading") return state;
+  const files = await Promise.all(
+    manifest.files.map((file) => verifiedRuntimeFile(workspace, file.name)),
+  );
+  if (files.every(Boolean)) {
+    const ready: RuntimeStatus = {
+      phase: "ready",
+      bytes: totalBytes,
+      totalBytes,
+    };
+    states.set(workspace, ready);
+    return ready;
+  }
+  if (state.phase === "failed") return state;
+  const idle: RuntimeStatus = { phase: "idle", bytes: 0, totalBytes };
+  states.set(workspace, idle);
+  return idle;
+}
+/** Execution entry: the runtime must already be installed by explicit consent. */
+export async function requireRuntime(workspace: string): Promise<void> {
+  if (runtimeStatus(workspace).phase === "ready") return;
+  if ((await currentRuntimeStatus(workspace)).phase !== "ready")
+    throw new Error("runtime-missing");
+}
+export function cancelRuntimeDownload(workspace: string): void {
+  controllers.get(workspace)?.abort();
+}
+/** Only the explicit local-runtime-download job calls this. */
+export function downloadRuntime(workspace: string): Promise<string> {
   const existing = installs.get(workspace);
   if (existing) return existing;
   const controller = new AbortController();
@@ -43,17 +76,27 @@ export function ensureRuntime(workspace: string): Promise<string> {
   const promise = install(workspace, controller.signal).catch(
     (error: unknown) => {
       installs.delete(workspace);
-      states.set(workspace, {
-        ...runtimeStatus(workspace),
-        phase: "failed",
-        error:
-          error instanceof Error ? error.message : "runtime-download-failed",
-      });
+      states.set(
+        workspace,
+        controller.signal.aborted
+          ? { phase: "idle", bytes: 0, totalBytes }
+          : {
+              ...runtimeStatus(workspace),
+              phase: "failed",
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "runtime-download-failed",
+            },
+      );
       throw error;
     },
   );
   void promise.then(
-    () => controllers.delete(workspace),
+    () => {
+      controllers.delete(workspace);
+      installs.delete(workspace);
+    },
     () => controllers.delete(workspace),
   );
   installs.set(workspace, promise);

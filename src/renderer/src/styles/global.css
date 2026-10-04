@@ -399,10 +399,97 @@ html[data-platform="darwin"] .canvas-bar {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    transition: none !important;
   }
 }
 
 .px-map g:focus {
   outline: 2px solid var(--focus-ring);
+}
+
+/* Study forms share the same controls and spacing as the composer. */
+.px-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.px-form-field .ant-select {
+  width: 100%;
+}
+.px-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-block: var(--space-4);
+}
+.px-form-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+.px-form-inline > .ant-input {
+  flex: 1;
+  min-width: 0;
+}
+.px-form-inline > .ant-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.px-source-paste {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+.px-source-paste > .ant-btn {
+  justify-self: start;
+  white-space: nowrap;
+}
+.px-source-paste .ant-input {
+  border-radius: var(--radius-md);
+}
+.px-shared-form {
+  margin-top: var(--space-5);
+}
+.px-shared-form .px-form-inline {
+  margin-top: var(--space-2);
+}
+.px-profile-levels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.px-onboarding .gallery-row {
+  margin-top: var(--space-4);
+}
+.px-onboarding .body {
+  margin-bottom: var(--space-5);
+}
+ul.choice-list {
+  list-style: none;
+  padding: 0;
+  margin-block: var(--space-4);
+}
+@media (max-width: 600px) {
+  .px-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.px-wizard-topic {
+  margin-block: var(--space-4);
+}
+.px-wizard-target {
+  width: 100%;
+  min-height: 32px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.px-settings-interests {
+  margin-top: var(--space-3);
+}
+
+.px-wizard-create {
+  margin-top: var(--space-4);
 }

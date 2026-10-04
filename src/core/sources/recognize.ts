@@ -63,6 +63,7 @@ export function grayFromImage(
   return null;
 }
 
+/** Blur check that also sees HEIC, through the same bounded PNG the OCR gets. */
 export function imageVariance(bytes: Uint8Array, ext: string): number | null {
   const image = grayFromImage(bytes, ext);
   if (!image) return null;

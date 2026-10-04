@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,5 +86,17 @@ it("SRC-12 replacement preserves the original document format and blob for citat
   expect(handlers.viewerDocument({ passageId: oldId })?.blobSha).toBeTruthy();
   expect(handlers.viewerDocument({ sourceId: original.sourceId })?.kind).toBe("text");
   expect(db.prepare(`SELECT COUNT(*) AS n FROM source_documents WHERE source_id = ?`).get(original.sourceId)).toEqual({ n: 2 });
+  db.close();
+});
+
+it("SRC-04 marks a photo with empty OCR as failed instead of ready", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pyxis-empty-photo-")); dirs.push(workspace);
+  const db = openDatabase(":memory:"); const runner = createRunner(db, () => {});
+  registerSourceJobs(db, workspace, runner, async () => ({ document: { pages: [{ text: "", locator: { page: 1 }, section: "text" }], scanned: false } }));
+  const path = join(workspace, "blank.heic"); writeFileSync(path, readFileSync("tests/fixtures/synthetic-note.heic"));
+  const result = await enqueueSourceFile(db, workspace, runner, path);
+  await expect.poll(() => db.prepare("SELECT state FROM jobs WHERE id = ?").get(result.jobId)).toEqual({ state: "succeeded" });
+  expect(db.prepare("SELECT status FROM sources WHERE id = ?").get(result.sourceId)).toEqual({ status: "failed" });
+  expect(db.prepare("SELECT COUNT(*) AS n FROM passages WHERE source_id = ?").get(result.sourceId)).toEqual({ n: 0 });
   db.close();
 });

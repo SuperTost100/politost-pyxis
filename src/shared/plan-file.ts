@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cardReviewSchema } from "./card-schedule";
 import { conceptGraphSchema } from "./concept-map";
 const id = z.string().min(1).max(160);
 const index = z.number().int().nonnegative();
@@ -51,6 +52,7 @@ const question = z
     stem: text,
     answer,
     topicId: id.optional(),
+    generatedBy: z.object({ provider: z.string().max(200), model: z.string().max(200) }).optional(),
     sourceId: id.optional(),
     sourceIds: z.array(id).max(10000).optional(),
     explanation: text.optional(),
@@ -69,7 +71,11 @@ const question = z
         message: "Invalid option index",
       });
   });
-const proseBody = z.object({ markdown: text, cacheKey: text.optional() });
+const proseBody = z.object({
+  markdown: text,
+  cacheKey: text.optional(),
+  passageIds: z.array(id).max(10000).optional(),
+});
 const questionsBody = z.object({ questions: z.array(question).max(10000) });
 const simulationBody = questionsBody.extend({
   minutes: z.number().finite().positive().max(1440),
@@ -93,6 +99,21 @@ const portableItem = z
           ? simulationBody
           : questionsBody;
     const parsed = schema.safeParse(item.body);
+    if (parsed.success && (item.kind === "lesson" || item.kind === "intro")) {
+      const ordered = (parsed.data as z.infer<typeof proseBody>).passageIds;
+      if (
+        ordered &&
+        (new Set(ordered).size !== ordered.length ||
+          ordered.length !== item.passageIds.length ||
+          ordered.some((id) => !item.passageIds.includes(id)))
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["body", "passageIds"],
+          message: "Citation order must contain exactly the item's passages",
+        });
+      }
+    }
     if (!parsed.success)
       for (const issue of parsed.error.issues)
         ctx.addIssue({
@@ -150,13 +171,7 @@ export const planFileSchema = z.object({
         suspended: z.boolean().optional(),
         grounding: z.enum(["sources", "mixed", "general"]).optional(),
         topic: index.nullable(),
-        schedule: z
-          .object({
-            rating: z.string().max(100),
-            state: json,
-            at: z.number(),
-          })
-          .optional(),
+        schedule: cardReviewSchema.optional(),
       }),
     )
     .max(100000),
@@ -284,7 +299,9 @@ export function reachableTarget(target: number): number {
 }
 
 export function httpPlanUrl(raw: string): string {
+  if (raw.length > 4096) throw new Error("plan-url");
   const parsed = new URL(raw);
+  if (parsed.username || parsed.password) throw new Error("plan-url");
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("plan-url");
   }

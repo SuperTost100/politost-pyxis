@@ -147,6 +147,32 @@
 .px-quiz-preview {
   margin-top: var(--space-3);
 }
+.px-quiz-page,
+.px-quiz-timer-setup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-end;
+}
+.px-quiz-timer-setup {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.px-quiz-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-quiz-page .ant-select {
+  min-width: 240px;
+}
+.px-quiz-timer output {
+  font: 500 20px/1.2 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+.px-quiz-timer p {
+  margin: var(--space-2) 0 0;
+}
 .px-quiz-actions .ant-btn {
   white-space: nowrap;
 }

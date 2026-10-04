@@ -5,6 +5,7 @@ import {
   applyOps,
   layoutGraph,
   undoGraph,
+  redoGraph,
   type ConceptGraph,
   type MapOp,
 } from "./graph";
@@ -17,6 +18,8 @@ export type StoredMap = {
   graph: ConceptGraph;
   provider?: string;
   model?: string;
+  /** Template ID and version that generated the map. */
+  prompt?: { template: string; version: string };
   grounding?: "sources" | "general";
 };
 type Collection = { version: 1; maps: StoredMap[] };
@@ -78,7 +81,7 @@ export function storeMap(
     const index = value.maps.findIndex((item) => item.id === map.id);
     if (index < 0) value.maps.push(map);
     else value.maps[index] = map;
-    save(db, planId, topicId, value, map.grounding);
+    save(db, planId, topicId, value, map.grounding, map.prompt);
   })();
 }
 function save(
@@ -87,23 +90,32 @@ function save(
   topicId: string,
   value: Collection,
   grounding?: string,
+  prompt?: { template: string; version: string },
 ): void {
   const row = db
     .prepare("SELECT id FROM maps WHERE plan_id = ? AND topic_id = ?")
     .get(planId, topicId) as { id: string } | undefined;
   if (row)
     db.prepare(
-      "UPDATE maps SET graph_json = ?, grounding = COALESCE(?, grounding) WHERE id = ?",
-    ).run(JSON.stringify(value), grounding ?? null, row.id);
+      "UPDATE maps SET graph_json = ?, grounding = COALESCE(?, grounding), prompt_template = COALESCE(?, prompt_template), prompt_version = COALESCE(?, prompt_version) WHERE id = ?",
+    ).run(
+      JSON.stringify(value),
+      grounding ?? null,
+      prompt?.template ?? null,
+      prompt?.version ?? null,
+      row.id,
+    );
   else
     db.prepare(
-      "INSERT INTO maps (id, plan_id, topic_id, graph_json, grounding, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO maps (id, plan_id, topic_id, graph_json, grounding, prompt_template, prompt_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
       uuidv7(),
       planId,
       topicId,
       JSON.stringify(value),
       grounding ?? "sources",
+      prompt?.template ?? null,
+      prompt?.version ?? null,
       Date.now(),
     );
 }
@@ -220,6 +232,7 @@ export function moveTopicNode(
         node.id === nodeId ? { ...node, x, y, pinned: true } : node,
       ),
       undo: snapshot(graph),
+      redo: null,
     },
     mapId,
   );
@@ -236,7 +249,7 @@ export function setTopicLayout(
     db,
     planId,
     topicId,
-    { ...graph, layout, undo: snapshot(graph) },
+    { ...graph, layout, undo: snapshot(graph), redo: null },
     mapId,
   );
 }
@@ -266,6 +279,21 @@ export function undoTopicMap(
     planId,
     topicId,
     undoGraph(openTopicMap(db, planId, topicId, Date.now(), mapId)),
+    mapId,
+  );
+}
+
+export function redoTopicMap(
+  db: Database.Database,
+  planId: string,
+  topicId: string,
+  mapId?: string,
+): ConceptGraph {
+  return saveTopicMap(
+    db,
+    planId,
+    topicId,
+    redoGraph(openTopicMap(db, planId, topicId, Date.now(), mapId)),
     mapId,
   );
 }

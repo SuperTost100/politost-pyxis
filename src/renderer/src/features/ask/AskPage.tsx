@@ -232,6 +232,62 @@ export function AskPage() {
                 general={row.grounding === "general"}
                 text={row.body}
                 reaction={row.reaction}
+                regenerateDisabled={busy}
+                onRegenerate={
+                  row.id === lastTutor?.id && chatId
+                    ? () => {
+                        setBusy(true);
+                        setError(null);
+                        setLive("");
+                        const handle = window.pyxis.stream(
+                          "chats.regenerate",
+                          {
+                            chatId,
+                            sourceIds: picked,
+                            mode,
+                            subject,
+                            allowGeneral: row.grounding === "general",
+                          },
+                          (event) => {
+                            const data = event as { text?: string };
+                            if (typeof data.text === "string")
+                              setLive(data.text);
+                          },
+                        );
+                        stop.current = handle.cancel;
+                        void handle.result
+                          .then((result) => {
+                            const reply = result as Awaited<
+                              ReturnType<typeof invoke<"chats.regenerate">>
+                            >;
+                            setUncovered(
+                              reply.covered
+                                ? null
+                                : (thread.data?.messages
+                                    .filter(
+                                      (message) => message.role === "user",
+                                    )
+                                    .at(-1)?.body ?? ""),
+                            );
+                            void client.invalidateQueries({
+                              queryKey: ["chat", chatId],
+                            });
+                          })
+                          .catch((err: unknown) => {
+                            const key =
+                              err && typeof err === "object" && "key" in err
+                                ? String(err.key)
+                                : "errors.internal";
+                            if (key !== "errors.aborted") setError(key);
+                          })
+                          .finally(() => {
+                            stop.current = null;
+                            setLive("");
+                            setBusy(false);
+                          });
+                      }
+                    : undefined
+                }
                 suggestions={
                   row.id === lastTutor?.id ? row.followups : undefined
                 }
@@ -324,36 +380,6 @@ export function AskPage() {
         />
       ) : null}
       <SubjectPicker value={subject} onChange={setSubject} disabled={busy} />
-      {lastTutor && chatId ? (
-        <Button
-          shape="round"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            setLive("");
-            const handle = window.pyxis.stream(
-              "chats.regenerate",
-              { chatId, sourceIds: picked, mode, subject },
-              (event) => {
-                const data = event as { text?: string };
-                if (typeof data.text === "string") setLive(data.text);
-              },
-            );
-            stop.current = handle.cancel;
-            void handle.result
-              .then(() => {
-                void client.invalidateQueries({ queryKey: ["chat", chatId] });
-              })
-              .finally(() => {
-                stop.current = null;
-                setLive("");
-                setBusy(false);
-              });
-          }}
-        >
-          {t("ask.regenerate")}
-        </Button>
-      ) : null}
       {thread.data?.context ? (
         <div className="passage">
           <p className="small">{thread.data.context.title}</p>
@@ -392,6 +418,7 @@ export function AskPage() {
         </p>
       ) : null}
       <Composer
+        subject={subject || undefined}
         value={draft}
         onValueChange={(next) => {
           setDraft(next);
@@ -414,6 +441,8 @@ export function AskPage() {
                     "jpg",
                     "jpeg",
                     "webp",
+                    "heic",
+                    "heif",
                     "pdf",
                     "docx",
                     "pptx",

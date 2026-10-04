@@ -4,12 +4,14 @@ import type Database from "better-sqlite3";
 import { putBlob, readBlob } from "../blobs";
 import { capabilityWarning } from "../engine/capabilities";
 import { importDocumentFile } from "../sources/documents";
+import { runSourceWorker } from "../sources/worker-client";
+import { isHeicExt, imageMime } from "../sources/heic";
 import { recognizeImage } from "../sources/recognize";
 
-const images = new Set([".png", ".jpg", ".jpeg", ".webp"]);
-const MAX_FILES = 8;
-const MAX_FILE_BYTES = 15 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 30 * 1024 * 1024;
+const images = new Set([".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif"]);
+export const MAX_FILES = 8;
+export const MAX_FILE_BYTES = 15 * 1024 * 1024;
+export const MAX_TOTAL_BYTES = 30 * 1024 * 1024;
 
 const mimeFor: Record<string, string> = {
   ".png": "image/png",
@@ -23,7 +25,7 @@ type ImageMime = "image/png" | "image/jpeg" | "image/webp";
 export type PreparedFiles = {
   sourceIds: string[];
   notes: string[];
-  images: Array<{ mediaType: ImageMime; data: string; sha: string }>;
+  images: Array<{ mediaType: ImageMime; data: string; sha: string; original?: { sha: string; mime: string } }>;
 };
 
 export async function prepareFiles(
@@ -31,35 +33,60 @@ export async function prepareFiles(
   workspace: string,
   paths: string[],
   modelId: string,
-  recognize: (bytes: Uint8Array, cachePath: string) => Promise<string> = recognizeImage,
+  recognize: (
+    bytes: Uint8Array,
+    cachePath: string,
+  ) => Promise<string> = recognizeImage,
+  signal?: AbortSignal,
+  decodeHeic: (path: string, signal?: AbortSignal) => Promise<Uint8Array> = (path, signal) =>
+    runSourceWorker<Uint8Array>("extract-worker", { path, ext: extname(path).toLowerCase(), mode: "pixels" }, signal),
 ): Promise<PreparedFiles> {
+  signal?.throwIfAborted();
   if (paths.length > MAX_FILES) throw new Error("attach-too-many");
   let total = 0;
   for (const filePath of paths) {
     const size = statSync(filePath).size;
     total += size;
-    if (size > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) throw new Error("attach-too-big");
+    if (size > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES)
+      throw new Error("attach-too-big");
   }
   const sourceIds: string[] = [];
   const notes: string[] = [];
   const prepared: PreparedFiles["images"] = [];
   const seesImages = capabilityWarning(modelId, "vision") == null;
   for (const filePath of paths) {
+    signal?.throwIfAborted();
     const ext = extname(filePath).toLowerCase();
     const bytes = new Uint8Array(readFileSync(filePath));
     if (images.has(ext)) {
-      const mime = (mimeFor[ext] ?? "image/png") as ImageMime;
-      const sha = putBlob(workspace, bytes, mime, ext);
-      prepared.push({ mediaType: mime, data: seesImages ? Buffer.from(bytes).toString("base64") : "", sha });
+      const heic = isHeicExt(ext);
+      const pixels = heic ? await decodeHeic(filePath, signal) : bytes;
+      signal?.throwIfAborted();
+      const mime = (heic ? "image/png" : mimeFor[ext] ?? "image/png") as ImageMime;
+      const original = heic ? { sha: putBlob(workspace, bytes, imageMime(ext), ext), mime: imageMime(ext) } : undefined;
+      const sha = putBlob(workspace, pixels, mime, heic ? ".png" : ext);
+      prepared.push({
+        mediaType: mime,
+        data: seesImages ? Buffer.from(pixels).toString("base64") : "",
+        sha,
+        ...(original ? { original } : {}),
+      });
       if (seesImages) continue;
-      const text = await recognize(bytes, join(workspace, "runtimes", "tesseract"));
+      const text = await recognize(
+        pixels,
+        join(workspace, "runtimes", "tesseract"),
+      );
+      signal?.throwIfAborted();
       if (text) notes.push(text);
       continue;
     }
     const stored = await importDocumentFile(db, workspace, filePath);
-    db.prepare(`UPDATE sources SET library = 0 WHERE id = ?`).run(stored.sourceId);
+    db.prepare(`UPDATE sources SET library = 0 WHERE id = ?`).run(
+      stored.sourceId,
+    );
     sourceIds.push(stored.sourceId);
   }
+  signal?.throwIfAborted();
   return { sourceIds, notes, images: prepared };
 }
 
@@ -80,7 +107,11 @@ export function savedImages(
     .all(chatId) as Array<{ sha: string; mime: string }>;
   const out: Array<{ type: "image"; mediaType: ImageMime; data: string }> = [];
   for (const row of rows) {
-    if (row.mime !== "image/png" && row.mime !== "image/jpeg" && row.mime !== "image/webp") {
+    if (
+      row.mime !== "image/png" &&
+      row.mime !== "image/jpeg" &&
+      row.mime !== "image/webp"
+    ) {
       continue;
     }
     const bytes = readFileSync(readBlob(workspace, row.sha).file);

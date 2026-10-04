@@ -20,7 +20,7 @@ function mimeOf(metaPath: string): string {
   return "application/octet-stream";
 }
 
-export function registerBlobProtocol(workspace: string): void {
+export function registerBlobProtocol(workspace: string | (() => string)): void {
   protocol.handle("pyxis-blob", (request) => {
     let sha = "";
     try {
@@ -34,7 +34,10 @@ export function registerBlobProtocol(workspace: string): void {
     } catch {
       return new Response("bad request", { status: 400 });
     }
-    const root = join(workspace, parts[0]);
+    const root = join(
+      typeof workspace === "function" ? workspace() : workspace,
+      parts[0],
+    );
     const file = join(root, parts[1], parts[2]);
     try {
       const resolvedRoot = realpathSync(root);

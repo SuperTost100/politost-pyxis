@@ -1,6 +1,17 @@
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, sep } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  lstatSync,
+  openSync,
+  closeSync,
+  fsyncSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
+import { basename, dirname, join, sep } from "node:path";
 import { blobParts } from "../shared/blob-path";
 
 export type BlobRecord = {
@@ -20,6 +31,62 @@ function location(
   return { file, meta: `${file}.json` };
 }
 
+function regularFile(path: string): boolean {
+  if (!existsSync(path)) return false;
+  const info = lstatSync(path);
+  if (!info.isFile() || info.isSymbolicLink())
+    throw new Error("blob-unsafe-path");
+  return true;
+}
+
+function atomicWrite(path: string, bytes: Uint8Array | string): void {
+  const temporary = join(
+    dirname(path),
+    `.${basename(path)}.${randomUUID()}.tmp`,
+  );
+  const fd = openSync(temporary, "wx", 0o600);
+  try {
+    try {
+      writeFileSync(fd, bytes);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(temporary, path);
+    if (process.platform !== "win32") {
+      const directory = openSync(dirname(path), "r");
+      try {
+        fsyncSync(directory);
+      } finally {
+        closeSync(directory);
+      }
+    }
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+
+function validMetadata(path: string): boolean {
+  if (!regularFile(path)) return false;
+  try {
+    const meta = JSON.parse(readFileSync(path, "utf8")) as {
+      mime?: unknown;
+      ext?: unknown;
+    };
+    return (
+      !!meta &&
+      !Array.isArray(meta) &&
+      typeof meta.mime === "string" &&
+      /^[a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+$/.test(meta.mime) &&
+      meta.mime.length <= 200 &&
+      typeof meta.ext === "string" &&
+      /^[a-zA-Z0-9.]{0,32}$/.test(meta.ext)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function putBlob(
   workspace: string,
   bytes: Uint8Array,
@@ -29,8 +96,12 @@ export function putBlob(
   const sha = createHash("sha256").update(bytes).digest("hex");
   const { file, meta } = location(workspace, sha);
   mkdirSync(join(file, ".."), { recursive: true });
-  if (!existsSync(file)) writeFileSync(file, bytes);
-  if (!existsSync(meta)) writeFileSync(meta, JSON.stringify({ mime, ext }));
+  if (
+    !regularFile(file) ||
+    createHash("sha256").update(readFileSync(file)).digest("hex") !== sha
+  )
+    atomicWrite(file, bytes);
+  if (!validMetadata(meta)) atomicWrite(meta, JSON.stringify({ mime, ext }));
   return sha;
 }
 

@@ -45,6 +45,8 @@ const replayable = new Set([
   "plans.list",
   "subjects.list",
   "study.queue",
+  "study.cardsBuild",
+  "study.gapDrillRead",
   "study.suspended",
   "plans.usage",
   "plans.read",
@@ -73,6 +75,16 @@ const broadcasts = new Map<string, Set<(value: unknown) => void>>();
 const streams = new Map<string, (event: unknown) => void>();
 const portListeners = new Set<() => void>();
 let restarted: (() => void) | null = null;
+let unavailable = false;
+const unavailableListeners = new Set<(value: boolean) => void>();
+ipcRenderer.on(mainChannels.coreUnavailable, (_event, value: boolean) => {
+  unavailable = value;
+  if (value) {
+    for (const item of pending.values()) item.reject(coreRestarted);
+    pending.clear();
+  }
+  for (const listener of unavailableListeners) listener(value);
+});
 
 function handle(data: unknown): void {
   if (!data || typeof data !== "object" || !("kind" in data)) return;
@@ -171,10 +183,13 @@ const bridge: PyxisBridge = {
     ipcRenderer.invoke(mainChannels.openDialog, options),
   showSaveDialog: (options: SaveDialogOptions) =>
     ipcRenderer.invoke(mainChannels.saveDialog, options),
+  openTerminal: () => ipcRenderer.invoke(mainChannels.terminalOpen),
   keys: {
     set: (provider: string, key: string) =>
       ipcRenderer.invoke(mainChannels.keysSet, provider, key),
     status: () => ipcRenderer.invoke(mainChannels.keysStatus),
+    remove: (provider: string) =>
+      ipcRenderer.invoke(mainChannels.keysRemove, provider),
   },
   invoke(name, input) {
     const id = crypto.randomUUID();
@@ -217,16 +232,26 @@ const bridge: PyxisBridge = {
       if (restarted === cb) restarted = null;
     };
   },
+  onCoreUnavailable(cb) {
+    unavailableListeners.add(cb);
+    cb(unavailable);
+    return () => {
+      unavailableListeners.delete(cb);
+    };
+  },
+  retryCore: () => ipcRenderer.invoke(mainChannels.coreRetry),
   killCore: () => ipcRenderer.invoke("dev:killCore"),
   backupWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceBackup),
   restoreWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceRestore),
   workspacePath: () => ipcRenderer.invoke(mainChannels.workspacePath),
+  moveWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceMove),
   wipeWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceWipe),
   fetchPlan: (url: string) => ipcRenderer.invoke(mainChannels.planFetch, url),
   saveArtifact: (input) => ipcRenderer.invoke(mainChannels.artifactSave, input),
   exportPdf: (input) => ipcRenderer.invoke(mainChannels.pdfExport, input),
   printData: () => ipcRenderer.invoke(mainChannels.printData),
   printReady: () => ipcRenderer.invoke(mainChannels.printReady),
+  checkUpdates: () => ipcRenderer.invoke(mainChannels.updatesCheck),
 };
 
 contextBridge.exposeInMainWorld("pyxis", bridge);

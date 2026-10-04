@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
 import { cacheKey, loadLesson, saveLesson } from "./lesson";
+import { exportPlan, importPlan } from "../plans/file";
 
-function seedPlan(db: Database.Database): { planId: string; passageA: string; passageB: string } {
+function seedPlan(db: Database.Database): {
+  planId: string;
+  passageA: string;
+  passageB: string;
+} {
   const now = Date.now();
   const planId = uuidv7(now);
   db.prepare(
@@ -65,16 +70,22 @@ describe("lesson cache", () => {
     });
 
     const loaded = loadLesson(db, { planId, kind: "smart_text", key });
-    expect(loaded).toEqual({
+    expect(loaded).toMatchObject({
       markdown: "# Hello\n\n[P1]",
-      passageIds: [passageA, passageB].sort(),
+      passageIds: [passageA, passageB],
+      grounding: "sources",
     });
+    expect(loaded?.itemId).toBeTruthy();
 
     const row = db
       .prepare(`SELECT grounding, body_json FROM items WHERE plan_id = ?`)
       .get(planId) as { grounding: string; body_json: string };
     expect(row.grounding).toBe("sources");
-    expect(JSON.parse(row.body_json)).toEqual({ cacheKey: key, markdown: "# Hello\n\n[P1]" });
+    expect(JSON.parse(row.body_json)).toEqual({
+      cacheKey: key,
+      markdown: "# Hello\n\n[P1]",
+      passageIds: [passageA, passageB],
+    });
   });
 
   it("replaces body on the same key but keeps the row id", () => {
@@ -141,8 +152,12 @@ describe("lesson cache", () => {
       passageIds: [passageB],
     });
 
-    expect(loadLesson(db, { planId, kind: "smart_text", key: keyA })?.markdown).toBe("first");
-    expect(loadLesson(db, { planId, kind: "smart_text", key: keyB })?.markdown).toBe("second");
+    expect(
+      loadLesson(db, { planId, kind: "smart_text", key: keyA })?.markdown,
+    ).toBe("first");
+    expect(
+      loadLesson(db, { planId, kind: "smart_text", key: keyB })?.markdown,
+    ).toBe("second");
     const count = db
       .prepare(`SELECT COUNT(*) AS n FROM items WHERE plan_id = ?`)
       .get(planId) as { n: number };
@@ -165,4 +180,65 @@ describe("lesson cache", () => {
       }),
     ).toBeNull();
   });
+});
+
+it("keeps P1 citation order even when passage IDs sort differently, including legacy caches", () => {
+  const db = openDatabase(":memory:");
+  const { planId, passageA, passageB } = seedPlan(db);
+  const key = cacheKey({
+    kind: "lesson",
+    scopeId: planId,
+    promptVersion: "v1",
+    passageIds: [passageB, passageA],
+  });
+  saveLesson(db, {
+    planId,
+    kind: "lesson",
+    key,
+    markdown: "Beta [P1], alpha [P2].",
+    passageIds: [passageB, passageA],
+  });
+  expect(loadLesson(db, { planId, kind: "lesson", key })?.passageIds).toEqual([
+    passageB,
+    passageA,
+  ]);
+  db.prepare("UPDATE passages SET created_at = 1 WHERE id = ?").run(passageB);
+  db.prepare("UPDATE passages SET created_at = 2 WHERE id = ?").run(passageA);
+  db.prepare(
+    "UPDATE items SET body_json = json_remove(body_json, '$.passageIds') WHERE plan_id = ?",
+  ).run(planId);
+  expect(loadLesson(db, { planId, kind: "lesson", key })?.passageIds).toEqual([
+    passageB,
+    passageA,
+  ]);
+  const file = exportPlan(db, planId);
+  const fresh = openDatabase(":memory:");
+  const copiedId = importPlan(fresh, file);
+  const body = JSON.parse(
+    (
+      fresh
+        .prepare("SELECT body_json FROM items WHERE plan_id = ?")
+        .get(copiedId) as { body_json: string }
+    ).body_json,
+  );
+  const loaded = loadLesson(fresh, {
+    planId: copiedId,
+    kind: "lesson",
+    key: body.cacheKey,
+  })!;
+  expect(
+    loaded.passageIds.map(
+      (id) =>
+        (
+          fresh.prepare("SELECT text FROM passages WHERE id = ?").get(id) as {
+            text: string;
+          }
+        ).text,
+    ),
+  ).toEqual(["beta", "alpha"]);
+  const invalid = structuredClone(file);
+  (invalid.items![0]!.body as { passageIds: string[] }).passageIds = [];
+  expect(() => importPlan(fresh, invalid)).toThrow();
+  fresh.close();
+  db.close();
 });

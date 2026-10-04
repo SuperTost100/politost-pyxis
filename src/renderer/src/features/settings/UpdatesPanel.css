@@ -1,0 +1,23 @@
+.px-update-notice {
+  position: fixed;
+  z-index: 30;
+  right: var(--space-6);
+  bottom: var(--space-6);
+  width: min(420px, calc(100vw - 48px));
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
+}
+.px-update-notice > .ant-btn {
+  margin-top: var(--space-2);
+}
+
+.px-update-notice .px-notice-details {
+  max-height: min(320px, 35vh);
+  overflow-y: auto;
+  white-space: pre-wrap;
+}

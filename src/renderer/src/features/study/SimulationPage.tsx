@@ -27,6 +27,7 @@ export function SimulationPage() {
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [noEngine, setNoEngine] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [now, setNow] = useState(Date.now());
   const drafts = useRef<Promise<unknown>>(Promise.resolve());
@@ -44,7 +45,35 @@ export function SimulationPage() {
         ? invoke("study.simulationRead", { attemptId: started })
         : invoke("study.simulationOpen", { planId }),
   });
+  const build = useQuery({
+    queryKey: ["simulation-build", planId],
+    enabled: Boolean(planId) && !started,
+    refetchInterval: 1000,
+    queryFn: () => invoke("study.simulationBuild", { planId }),
+  });
+  const building = build.data;
+  const buildStopped = ["failed", "cancelled", "interrupted"].includes(
+    building?.state ?? "",
+  );
   const run = open.data?.planId === planId ? open.data : undefined;
+  function startFailed(err: unknown) {
+    const text = String((err as { code?: string })?.code ?? err);
+    setNotice(
+      text.includes("engine-missing")
+        ? t("simulation.noEngine")
+        : text.includes("simulation-empty")
+          ? t("simulation.empty")
+          : t("simulation.startFailed"),
+    );
+    setNoEngine(text.includes("engine-missing"));
+  }
+  async function control(action: "jobs.cancel" | "jobs.retry" | "jobs.resume") {
+    if (!building) return;
+    await invoke(action, { jobId: building.jobId }).catch(() =>
+      setNotice(t("simulation.actionFailed")),
+    );
+    await client.invalidateQueries({ queryKey: ["simulation-build", planId] });
+  }
   useEffect(() => {
     if (run && !started) {
       setStarted(run.attemptId);
@@ -80,7 +109,11 @@ export function SimulationPage() {
     .toString()
     .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
   const provenance = [
-    ...new Set(run?.results?.map((r) => `${r.provider} · ${r.model}`) ?? []),
+    ...new Set(
+      run?.results
+        ?.filter((r) => r.provider && r.model)
+        .map((r) => `${r.provider} · ${r.model}`) ?? [],
+    ),
   ].join(", ");
   async function submit() {
     if (!run || busy) return;
@@ -94,12 +127,28 @@ export function SimulationPage() {
         picks: shown,
       });
       await client.invalidateQueries({ queryKey: ["simulation", planId] });
-    } catch {
-      setNotice(t("simulation.actionFailed"));
+    } catch (err) {
+      setNotice(
+        String((err as { code?: string })?.code ?? err).includes(
+          "engine-missing",
+        )
+          ? t("simulation.noEngine")
+          : t("simulation.actionFailed"),
+      );
+      setNoEngine(
+        String((err as { code?: string })?.code ?? err).includes(
+          "engine-missing",
+        ),
+      );
     } finally {
       setBusy(false);
     }
   }
+  const generated = run?.generated
+    ? t("simulation.generatedWarning", {
+        model: `${run.generated.provider} · ${run.generated.model}`,
+      })
+    : "";
   return (
     <FocusLayout
       title={
@@ -107,7 +156,7 @@ export function SimulationPage() {
           ? (plan.data?.title ?? t("simulation.title"))
           : t("simulation.title")
       }
-      closable={!run || run.submitted}
+      closable={!run || run.submitted || locked}
       headerRight={
         run && !run.submitted ? (
           <div className="px-sim-header-actions">
@@ -131,7 +180,7 @@ export function SimulationPage() {
         ) : undefined
       }
       secondary={
-        !run || run.submitted ? (
+        !run || run.submitted || locked ? (
           <Button
             type="text"
             shape="round"
@@ -142,7 +191,33 @@ export function SimulationPage() {
         ) : undefined
       }
     >
-      {notice && <Notice tone="danger">{notice}</Notice>}
+      {notice && (
+        <Notice
+          tone="danger"
+          action={
+            noEngine
+              ? {
+                  label: t("simulation.openSettings"),
+                  onClick: () => navigate("/settings"),
+                }
+              : undefined
+          }
+        >
+          {notice}
+        </Notice>
+      )}
+      {run && !run.submitted && run.blocked && !run.grading && (
+        <Notice
+          tone="warning"
+          action={{
+            label: t("simulation.openSettings"),
+            onClick: () => navigate("/settings"),
+          }}
+        >
+          {t("simulation.noEngineLocked")}
+        </Notice>
+      )}
+      {generated && <Notice tone="warning">{generated}</Notice>}
       {open.isError && (
         <Notice tone="warning">{t("simulation.actionFailed")}</Notice>
       )}
@@ -153,7 +228,9 @@ export function SimulationPage() {
           <Segmented
             aria-label={t("simulation.duration")}
             value={length}
-            disabled={busy || open.isPending}
+            disabled={
+              busy || open.isPending || (Boolean(building) && !buildStopped)
+            }
             options={([30, 60, 90, 120] as const).map((value) => ({
               value,
               label: t("simulation.minutes", { count: value }),
@@ -164,7 +241,9 @@ export function SimulationPage() {
           <Segmented
             aria-label={t("simulation.material")}
             value={source}
-            disabled={busy || open.isPending}
+            disabled={
+              busy || open.isPending || (Boolean(building) && !buildStopped)
+            }
             options={[
               { value: "exam", label: t("simulation.exam") },
               { value: "mixed", label: t("simulation.mixed") },
@@ -172,26 +251,67 @@ export function SimulationPage() {
             onChange={(value) => setSource(value as typeof source)}
           />
           <Notice tone="info">{t("simulation.tutorLocked")}</Notice>
+          {building && !buildStopped && (
+            <>
+              <h3 className="body-strong">{t("simulation.buildTitle")}</h3>
+              <Notice tone="info">{t("simulation.buildInfo")}</Notice>
+              <StepLines
+                label={t("simulation.building")}
+                steps={[
+                  {
+                    id: building.jobId,
+                    label: `${t("simulation.building")} · ${Math.round(building.progress * 100)}%`,
+                    state: "running",
+                  },
+                ]}
+              />
+              <Button shape="round" onClick={() => void control("jobs.cancel")}>
+                {t("simulation.buildCancel")}
+              </Button>
+            </>
+          )}
+          {building && buildStopped && (
+            <Notice
+              tone="danger"
+              action={{
+                label: t("simulation.buildRetry"),
+                onClick: () =>
+                  void control(
+                    building.state === "interrupted"
+                      ? "jobs.resume"
+                      : "jobs.retry",
+                  ),
+              }}
+            >
+              {t("simulation.buildFailed")}
+            </Notice>
+          )}
           <Button
             type="primary"
             shape="round"
             loading={busy}
-            disabled={open.isPending}
+            disabled={open.isPending || (Boolean(building) && !buildStopped)}
             onClick={() => {
               setBusy(true);
               setNotice("");
-              void invoke("study.simulationStart", {
+              setNoEngine(false);
+              void invoke("study.simulationPrepare", {
                 planId,
                 minutes: length,
                 source,
               })
-                .then((next) => {
-                  setStarted(next.attemptId);
-                  navigate(`/plans/${planId}/exam/${next.attemptId}`, {
-                    replace: true,
-                  });
+                .then(async (next) => {
+                  if (next.attemptId) {
+                    setStarted(next.attemptId);
+                    navigate(`/plans/${planId}/exam/${next.attemptId}`, {
+                      replace: true,
+                    });
+                  } else
+                    await client.invalidateQueries({
+                      queryKey: ["simulation-build", planId],
+                    });
                 })
-                .catch(() => setNotice(t("simulation.empty")))
+                .catch(startFailed)
                 .finally(() => setBusy(false));
             }}
           >
@@ -297,6 +417,7 @@ export function SimulationPage() {
           ) && (
             <Notice
               tone="danger"
+              details={run.grading.error?.slice(0, 2000)}
               action={{
                 label: t("simulation.retryGrade"),
                 onClick: () => void submit(),

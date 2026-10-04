@@ -17,14 +17,30 @@ export type PassageHit = {
 
 export type Embedder = (text: string) => Float32Array;
 
-let modelEmbed: ((text: string, signal?: AbortSignal) => Promise<Float32Array | null>) | undefined;
-export function setRetrievalModel(embed: typeof modelEmbed): void { modelEmbed = embed; }
+let modelEmbed:
+  | ((text: string, signal?: AbortSignal) => Promise<Float32Array | null>)
+  | undefined;
+export function setRetrievalModel(embed: typeof modelEmbed): void {
+  modelEmbed = embed;
+}
 
-export async function retrieveWithModel(db: Database.Database, query: string,
-  options?: { sourceIds?: string[]; limit?: number; embed?: Embedder | null; signal?: AbortSignal }) {
-  if (options?.embed !== undefined || !modelEmbed) return retrieve(db, query, options);
+export async function retrieveWithModel(
+  db: Database.Database,
+  query: string,
+  options?: {
+    sourceIds?: string[];
+    limit?: number;
+    embed?: Embedder | null;
+    signal?: AbortSignal;
+  },
+) {
+  if (options?.embed !== undefined || !modelEmbed)
+    return retrieve(db, query, options);
   const vector = await modelEmbed(`query: ${query}`, options?.signal);
-  return retrieve(db, query, { ...options, embed: vector ? () => vector : null });
+  return retrieve(db, query, {
+    ...options,
+    embed: vector ? () => vector : null,
+  });
 }
 
 type Row = {
@@ -50,7 +66,10 @@ export function fuseRanks(lists: string[][], k = 60): string[] {
     .map(([id]) => id);
 }
 
-export function trimToBudget(hits: PassageHit[], maxTokens = 12_000): PassageHit[] {
+export function trimToBudget(
+  hits: PassageHit[],
+  maxTokens = 12_000,
+): PassageHit[] {
   const kept: PassageHit[] = [];
   let tokens = 0;
   for (const hit of hits) {
@@ -86,11 +105,27 @@ const STOP = new Set([
   "per",
   "con",
   "non",
+  "ancora",
+  "sulla",
+  "sullo",
+  "sulle",
+  "sul",
+  "su",
+  "spiega",
+  "explain",
+  "again",
+  "about",
+  "tell",
+  "me",
+  "definition",
+  "definizione",
 ]);
 
 export function contentWords(query: string): string[] {
   const words = query.match(/\p{L}[\p{L}\p{N}]*/gu) ?? [];
-  const kept = words.filter((word) => word.length >= 3 && !STOP.has(word.toLocaleLowerCase("it")));
+  const kept = words.filter(
+    (word) => word.length >= 3 && !STOP.has(word.toLocaleLowerCase("it")),
+  );
   return (kept.length > 0 ? kept : words).slice(0, 8);
 }
 
@@ -106,14 +141,20 @@ function hitOf(row: Row): PassageHit {
   };
 }
 
-function lexical(db: Database.Database, query: string, sourceIds?: string[]): Row[] {
+function lexical(
+  db: Database.Database,
+  query: string,
+  sourceIds?: string[],
+): Row[] {
   const words = contentWords(query);
   if (words.length === 0) return [];
-  const match = words.map((word) => `"${word.replaceAll('"', "")}"`).join(" OR ");
+  const match = words
+    .map((word) => `"${word.replaceAll('"', "")}"`)
+    .join(" OR ");
   const scope =
     sourceIds && sourceIds.length > 0
       ? ` AND p.source_id IN (${sourceIds.map(() => "?").join(", ")})`
-      : "";
+      : " AND (p.source_id IS NULL OR s.library = 1)";
   return db
     .prepare(
       `SELECT p.id, p.source_id, p.text, p.section_path, p.locator_json,
@@ -145,9 +186,15 @@ function vectorHits(
   sourceIds?: string[],
 ): { ids: string[]; bestDistance: number | null } {
   const vector = embed(`query: ${query}`);
-  const bytes = Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength);
+  const bytes = Buffer.from(
+    vector.buffer,
+    vector.byteOffset,
+    vector.byteLength,
+  );
   // Scope before KNN ranking. Filtering a global top 30 can hide all scoped hits.
-  const scope = sourceIds?.length ? `AND p.source_id IN (${sourceIds.map(() => "?").join(",")})` : "";
+  const scope = sourceIds?.length
+    ? `AND p.source_id IN (${sourceIds.map(() => "?").join(",")})`
+    : "AND (p.source_id IS NULL OR s.library = 1)";
   const rows = db
     .prepare(
       `SELECT passage_rowid AS n, distance FROM passages_vec
@@ -158,7 +205,10 @@ function vectorHits(
            WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))
        ORDER BY distance`,
     )
-    .all(bytes, ...(sourceIds ?? [])) as Array<{ n: number | bigint; distance: number }>;
+    .all(bytes, ...(sourceIds ?? [])) as Array<{
+    n: number | bigint;
+    distance: number;
+  }>;
   const ids: string[] = [];
   let bestDistance: number | null = null;
   const lookup = db.prepare(
@@ -178,13 +228,17 @@ function vectorHits(
   );
   for (const row of rows) {
     const found = lookup.get(Number(row.n)) as
-      | { id: string; source_id: string | null }
-      | undefined;
+      { id: string; source_id: string | null } | undefined;
     if (!found) continue;
-    if (sourceIds && sourceIds.length > 0 && !sourceIds.includes(found.source_id ?? "")) {
+    if (
+      sourceIds &&
+      sourceIds.length > 0 &&
+      !sourceIds.includes(found.source_id ?? "")
+    ) {
       continue;
     }
-    if (bestDistance == null || row.distance < bestDistance) bestDistance = row.distance;
+    if (bestDistance == null || row.distance < bestDistance)
+      bestDistance = row.distance;
     if (row.distance <= VECTOR_MAX_DISTANCE) ids.push(found.id);
   }
   return { ids, bestDistance };
@@ -204,7 +258,8 @@ export function retrieve(
   if (options?.embed) {
     const vectors = vectorHits(db, options.embed, query, options.sourceIds);
     bestDistance = vectors.bestDistance;
-    const vectorNear = bestDistance != null && bestDistance <= VECTOR_MAX_DISTANCE;
+    const vectorNear =
+      bestDistance != null && bestDistance <= VECTOR_MAX_DISTANCE;
     if (vectorNear) {
       usedVectors = true;
       lists.push(vectors.ids);
@@ -221,7 +276,27 @@ export function retrieve(
       }
     }
   }
-  const lexicalOk = lexicalRows.length > 0;
+  // SRC-23: inspect raw BM25 and term coverage, before rank fusion.
+  const words = [
+    ...new Set(
+      contentWords(query).map((word) =>
+        word.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase(),
+      ),
+    ),
+  ];
+  const lexicalOk = lexicalRows.some((row) => {
+    const tokens = new Set(
+      row.text
+        .normalize("NFD")
+        .replace(/\p{M}/gu, "")
+        .toLowerCase()
+        .match(/\p{L}[\p{L}\p{N}]*/gu) ?? [],
+    );
+    const matches = words.filter((word) => tokens.has(word)).length;
+    return (
+      -row.rank >= 1e-7 && matches >= Math.max(1, Math.ceil(words.length * 0.4))
+    );
+  });
   const vectorOk = bestDistance != null && bestDistance <= VECTOR_MAX_DISTANCE;
   const covered = options?.embed ? lexicalOk || vectorOk : lexicalOk;
   const hits = trimToBudget(

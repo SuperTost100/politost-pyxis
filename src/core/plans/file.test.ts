@@ -103,7 +103,7 @@ describe("plan file", () => {
     ).run(plan.planId, plan.planId, when);
     db.prepare(
       `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at)
-       VALUES ('rev-1', 'card-1', 'good', '{"dueAt":90000}', ?)`,
+       VALUES ('rev-1', 'card-1', 'good', '{"dueAt":90000,"intervalDays":0,"ease":2.5}', ?)`,
     ).run(when);
     const step = db
       .prepare(
@@ -137,7 +137,7 @@ describe("plan file", () => {
     expect(shared.cards[0]?.suspended).toBe(true);
     expect(shared.cards[0]?.schedule).toEqual({
       rating: "good",
-      state: { dueAt: 90000 },
+      state: { dueAt: 90000, intervalDays: 0, ease: 2.5 },
       at: when,
     });
     const restored = importPlan(
@@ -160,7 +160,7 @@ describe("plan file", () => {
       db.prepare("SELECT suspended FROM cards WHERE plan_id=?").get(restored),
     ).toEqual({ suspended: 1 });
     const scores = planMastery(db, restored, when);
-    expect(scores[0]?.mastery).toBeCloseTo(0.2);
+    expect(scores[0]?.mastery).toBeCloseTo(0.25); // Future evidence and suspended cards do not count.
     const review = db
       .prepare(
         `SELECT rating, state_json FROM card_reviews
@@ -168,7 +168,11 @@ describe("plan file", () => {
       )
       .get(restored) as { rating: string; state_json: string };
     expect(review.rating).toBe("good");
-    expect(JSON.parse(review.state_json)).toEqual({ dueAt: 90000 });
+    expect(JSON.parse(review.state_json)).toEqual({
+      dueAt: 90000,
+      intervalDays: 0,
+      ease: 2.5,
+    });
     expect(readPlan(db, restored)?.nodes[0]?.state).toBe("done");
     const kept = db
       .prepare(
@@ -515,6 +519,7 @@ it("carries lessons, questions, maps and quoted citations into a fresh workspace
     nodes,
     edges: [{ from: "root", to: "leaf" }],
     undo: { nodes, edges: [{ from: "root", to: "leaf" }], layout: "tree" },
+    redo: { nodes, edges: [{ from: "root", to: "leaf" }], layout: "radial" },
   };
   db.prepare(
     "INSERT INTO maps(id,plan_id,topic_id,graph_json,grounding,created_at) VALUES('map',?,?,?,'sources',3)",
@@ -559,7 +564,7 @@ it("carries lessons, questions, maps and quoted citations into a fresh workspace
         kind: "lesson",
         key: content.cacheKey,
       }),
-    ).toEqual({ markdown: content.markdown, passageIds: [p.id] });
+    ).toMatchObject({ markdown: content.markdown, passageIds: [p.id] });
     expect(topicExercises(fresh, t.id!).map((exercise) => exercise.id)).toEqual(
       [copy.exercises![0]!.id],
     );
@@ -595,6 +600,7 @@ it("carries lessons, questions, maps and quoted citations into a fresh workspace
     });
     expect(importedGraph.nodes[1]?.parent).toBe(importedGraph.nodes[0]?.id);
     expect(importedGraph.undo?.nodes[0]?.id).toBe(importedGraph.nodes[0]?.id);
+    expect(importedGraph.redo?.nodes[0]?.id).toBe(importedGraph.nodes[0]?.id);
     expect(importedGraph.nodes[0]?.id).not.toBe("root");
     expect(fresh.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   }
@@ -821,4 +827,66 @@ it("assigns stable scoped IDs to otherwise valid older questions without IDs", (
       metadata: { revision: 1 },
     }),
   });
+});
+
+it("rejects malformed imported card schedules before creating any rows", () => {
+  const db = openDatabase(":memory:");
+  try {
+    const base = {
+      version: 1 as const,
+      title: "Imported",
+      topics: [{ title: "Topic", position: 0 }],
+      nodes: [],
+      cards: [{ front: "F", back: "B", topic: 0 }],
+    };
+    expect(planFileSchema.safeParse(base).success).toBe(true);
+    const invalid = [
+      {
+        rating: "other",
+        state: { intervalDays: 1, ease: 2.5, dueAt: 1000 },
+        at: 1,
+      },
+      {
+        rating: "good",
+        state: { intervalDays: -1, ease: 2.5, dueAt: 1000 },
+        at: 1,
+      },
+      {
+        rating: "good",
+        state: { intervalDays: 1, ease: 2.5, dueAt: 1e30 },
+        at: 1,
+      },
+      {
+        rating: "good",
+        state: {
+          intervalDays: 1,
+          ease: 2.5,
+          dueAt: 1000,
+          fsrs: { due: "invalid" },
+        },
+        at: 1,
+      },
+    ];
+    for (const schedule of invalid) {
+      expect(() =>
+        importPlan(db, {
+          ...base,
+          cards: [{ ...base.cards[0]!, schedule }],
+        } as unknown as Parameters<typeof importPlan>[1]),
+      ).toThrow();
+      expect(
+        (db.prepare("SELECT COUNT(*) AS n FROM plans").get() as { n: number })
+          .n,
+      ).toBe(0);
+      expect(
+        (
+          db.prepare("SELECT COUNT(*) AS n FROM card_reviews").get() as {
+            n: number;
+          }
+        ).n,
+      ).toBe(0);
+    }
+  } finally {
+    db.close();
+  }
 });

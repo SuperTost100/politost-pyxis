@@ -1,12 +1,18 @@
 # Card scheduler
 
-Pyxis schedules cards with a fixed ladder in `src/core/study/schedule.ts`. It is not FSRS. Ease starts at 2.5 and stays between 1.3 and 3.0. A new card is due immediately (`intervalDays` 0).
+`src/core/study/schedule.ts` uses `ts-fsrs` with default parameters, target retention `0.9` and fuzz disabled. A new card is immediately due. Each review revives the stored FSRS card, calculates the selected next state and persists the complete result.
 
-| Rating | First review | Later reviews |
-| --- | --- | --- |
-| Again | due again now, ease minus 0.20 | 1 day, ease minus 0.20 |
-| Hard | 1 day, ease minus 0.15 | round(interval × 1.2) days, at least 1, ease minus 0.15 |
-| Good | 1 day | round(interval × ease) days, at least 1 |
-| Easy | 2 days, ease plus 0.15 | round(interval × ease × 1.3) days, at least 1, ease plus 0.15 |
+| Pyxis button | FSRS rating |
+| ------------ | ----------- |
+| Again        | Again       |
+| Hard         | Hard        |
+| Good         | Good        |
+| Easy         | Good        |
 
-The plan's FSRS mapping (Easy treated as Good, a 21-day line, a target retention) is the upgrade path: replace `review()` with `ts-fsrs` and keep the same four ratings. Tests in `schedule.test.ts` pin the intervals above.
+Easy deliberately maps to Good, as specified in the build plan. A student's Easy self-rating therefore cannot accelerate the schedule more than a correct Good answer. The review history still records the button they pressed. Tests check that identical starting states reviewed with Good and Easy yield identical schedules.
+
+`intervalDays` is FSRS `scheduled_days`. A card counts as mastered once that interval reaches 21 days. This is a progress classification, not a promise of permanent recall. Due dates may include short learning steps; they are not a fixed day ladder.
+
+The JSON card state stores due date, stability, difficulty, elapsed/scheduled days, learning steps, repetitions, lapses, state and last review. `ease` remains as a compatibility field and holds the current difficulty after an FSRS review. A legacy row without full FSRS state starts from an empty FSRS card on its next review. Suspended and removed cards stay out of the due queue.
+
+Changing retention or scheduler parameters changes future scheduling. Keep persisted state readable and update `schedule.test.ts` when making that change.

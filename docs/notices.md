@@ -1,0 +1,32 @@
+# Third-party notices
+
+`npm run notices` reads installed production dependencies, installed optional dependencies and installed peers. It follows each package's dependency resolution directory, retains multiple installed versions, and excludes unrelated development packages. The two bundled Fontsource 5.3.0 fonts are included explicitly with their local OFL text.
+
+`prebuild` and `predev` run this generator. Settings imports the application version and MIT text from `src/renderer/src/generated/build-info.json`. It loads `third-party-notices.json` only when the notices section opens. `docs/THIRD-PARTY-NOTICES.txt` is the standalone text copy.
+
+During installed package scanning, only package metadata and files named LICENSE, COPYING, COPYRIGHT, NOTICE or ThirdPartyNotices are read. Standard legal directories and Victory’s lib-vendor license files are scanned to a depth of two. Reads must remain inside the package directory. Binary files, invalid UTF-8, files over 2 MiB, more than 256 notice files per package, more than 4,000 packages, or more than 32 MiB total input fail generation. There are no network requests or absolute local paths in the generated notices. Outputs are deterministic for one installed dependency tree. Platform-specific optional packages change with the build platform.
+
+Run the focused generator checks with `node --test scripts/gen-notices.test.mjs`.
+
+## Current release gaps
+
+The macOS arm64 dependency tree contains 460 npm production packages and two bundled application fonts. The original package-only scan found 17 packages without notice files. Version-pinned upstream texts in `resources/third-party-notices.json` fill 15 of those omissions. The generator also reads Victory’s bundled `lib-vendor/*/LICENSE` files, including ISC D3/internmap notices. Supplementary records apply only to an installed name and exact version; runtime/font/model records are explicitly marked. The Sharp record names the macOS arm64 package explicitly and checks its entire installed versions.json against the captured component inventory, failing generation if any entry differs. It is skipped on other platforms. Every supplemental text has its primary source URL and a checked SHA-256, retained in both Settings and the standalone text copy. The generator does not fetch anything during builds. The supplemental JSON has a 32 MiB bound, while each text retains the 2 MiB bound.
+
+Two older packages still have metadata only:
+
+- `guid-typescript@1.0.9`: npm declares ISC. Its published gitHead no longer resolves in the named upstream repository; no matching copyright/license text was recovered.
+- `tr46@0.0.3`: npm and the matching source commit declare MIT, but commit `a8009f9ce80ff5dbe71dd71e203afe4e4c878d28` contains no license or copyright text.
+
+Those records remain clearly labeled as metadata only. No substitute copyright attribution is invented.
+
+Pyxis vendors the MIT content-core 0.2.0 source release from [GitHub tag v0.2.0](https://github.com/SuperTost100/politost-content-core/tree/v0.2.0), at commit `7c653a72d91c49323a27b4c95523850844414d9f` (annotated tag object `c4f1d3251b2bbebd60b04f626583ec2d91cac9d1`). Every one of the 25 packaged source, test and metadata files was checked against that commit’s Git blob hashes; the installed package includes the upstream MIT LICENSE with Tommaso Barbera’s copyright. The local archive `vendor/politost-content-core-0.2.0.tgz` has SHA-256 `250ed9e0cba70c9784f4129975f8a141c31bedd995fa01c0a91819d3215be4d5` and its npm integrity is pinned in package-lock.json. It was packed from the tagged source, rather than downloaded as a GitHub release binary. The parser-only aliases remain intentional: core uses the upstream parser without importing browser rendering dependencies. The read-only sibling Smartbook checkout remains unchanged at its older 0.1.0 version.
+
+The bundled inventory includes the exact Pyodide 314.0.7 MPL-2.0 text, CPython 3.14.2 license, and notices extracted from every one of the 14 Python wheels downloaded by `resources/pyodide-manifest.json`. Wheel bytes were verified against the manifest before extraction; the wheel archive URL/hash and each extracted file hash are retained. NumPy’s and Matplotlib’s bundled notices are included. Their original wheel archives keep the same texts when installed in the workspace.
+
+KaTeX’s package MIT text is supplemented with the separate KaTeX-fonts copyright notice. The E5 ONNX conversion card is pinned to the exact model revision; its referenced base model card is independently pinned and declares MIT. The cards are preserved instead of inventing a missing model copyright/license file.
+
+Electron’s own distribution includes `LICENSE` and the 19 MiB `LICENSES.chromium.html`. These remain separate runtime distribution files rather than being copied into the renderer’s JSON. The installer inventory must verify that electron-builder retains them on each target platform.
+
+The macOS Sharp/libvips binary inventory covers all 28 entries in its installed version table and the separately embedded libnsgif. Actual license texts come from exact upstream version tags or official source archives; each archive and extracted text has a retained hash. Its upstream notice table and pinned build script retain original source archive URLs, build instructions and patch references for the LGPL components. The build script’s Apache-2.0 license is included separately and does not replace the native binary’s LGPL metadata. This inventory was checked against the macOS arm64 package; other release platforms must verify their own native dependency version tables and retain the matching texts. No native libraries are relabeled under Pyxis’s MIT license.
+
+HEIC decoding uses the separate `libheif-js@1.23.2` WASM library under LGPL-3.0. Its original package license, the pinned libheif and libde265 license/copyright texts, and source build scripts are retained in the bundled notices. The dependency stays separate in the application archive and can be replaced by rebuilding the open-source app. The upstream build uses libheif commit `ac1cb05c39008f01525c991ff8b88f84ddf70fd2` and libde265 1.0.15; the retained scripts provide their source download locations and Emscripten build flags.

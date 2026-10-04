@@ -27,10 +27,10 @@ describe("review", () => {
     expect(lapse.dueAt - T0).toBeLessThanOrEqual(MS_PER_DAY);
   });
 
-  it("easy schedules farther out than good from the same state", () => {
+  it("easy follows the same conservative FSRS grade as good", () => {
     const warmed = review(review(newCard(T0), "good", T0), "good", T0);
     const goodNext = review(warmed, "good", T0);
     const easyNext = review(warmed, "easy", T0);
-    expect(easyNext.intervalDays).toBeGreaterThan(goodNext.intervalDays);
+    expect(easyNext).toEqual(goodNext);
   });
 });

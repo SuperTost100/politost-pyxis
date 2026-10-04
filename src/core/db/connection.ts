@@ -4,10 +4,18 @@ import { migrate } from "./migrate";
 
 export function openDatabase(file: string): Database.Database {
   const db = new Database(file);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  const vecPath = getLoadablePath().replaceAll("app.asar", "app.asar.unpacked");
-  db.loadExtension(vecPath);
-  migrate(db);
-  return db;
+  try {
+    db.pragma("journal_mode = WAL");
+    db.pragma("foreign_keys = ON");
+    const vecPath = getLoadablePath().replaceAll(
+      "app.asar",
+      "app.asar.unpacked",
+    );
+    db.loadExtension(vecPath);
+    migrate(db);
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 }

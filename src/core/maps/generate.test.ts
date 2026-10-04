@@ -5,6 +5,7 @@ import { importSmartbook } from "../sources/smartbook";
 import { createPlan } from "../plans/create";
 import { createRunner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
+import { partialText, templateVersion } from "../engine/prompts";
 import {
   editMap,
   enqueueMaps,
@@ -22,6 +23,9 @@ import {
 } from "./store";
 function fixture(count = 50) {
   const db = openDatabase(":memory:");
+  db.prepare(
+    "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+  ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
   const imported = importSmartbook(
     db,
     zipSync({
@@ -174,6 +178,39 @@ describe("M10 model maps", () => {
     expect(undoTopicMap(db, input.planId, input.topicId, id).nodes).toEqual(
       before.nodes,
     );
+    db.close();
+  });
+  it("fills the language placeholder, includes the citation rule and records template provenance", async () => {
+    const { db, input } = fixture(1);
+    const systems: string[] = [];
+    await generateMaps(db, input, async (call) => {
+      systems.push(call.system ?? "");
+      return run!(call);
+    });
+    expect(systems[0]).toContain("Write all output in Italian.");
+    expect(systems[0]).toContain(partialText("citation"));
+    expect(systems[0]).not.toMatch(/\{\{[A-Za-z]/);
+    expect(
+      db
+        .prepare(
+          "SELECT prompt_template, prompt_version FROM maps WHERE plan_id = ?",
+        )
+        .get(input.planId),
+    ).toEqual({
+      prompt_template: "map.generate",
+      prompt_version: templateVersion("map.generate"),
+    });
+    const id = listTopicMaps(db, input.planId, input.topicId)[0]!.id;
+    await editMap(
+      db,
+      { ...input, mapId: id, instruction: "Rename" },
+      async (call) => {
+        systems.push(call.system ?? "");
+        return response({ ops: [{ op: "rename", id: "n1", label: "Nuovo" }] });
+      },
+    );
+    expect(systems[1]).toContain("Write all new labels in Italian.");
+    expect(systems[1]).not.toMatch(/\{\{[A-Za-z]/);
     db.close();
   });
   it("does not overwrite a manual move made during model editing", async () => {

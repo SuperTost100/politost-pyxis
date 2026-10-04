@@ -69,7 +69,11 @@ const FONT_SANS = 'Figtree, system-ui, -apple-system, "Segoe UI", sans-serif';
 const FONT_MONO =
   '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
-export function pyxisTheme(mode: PyxisMode = "dark"): ThemeConfig {
+export function pyxisTheme(
+  mode: PyxisMode = "dark",
+  reducedMotion = false,
+  textScale = 1,
+): ThemeConfig {
   const c = pyxisColors[mode];
   return {
     algorithm: mode === "dark" ? theme.darkAlgorithm : theme.defaultAlgorithm,
@@ -77,6 +81,7 @@ export function pyxisTheme(mode: PyxisMode = "dark"): ThemeConfig {
     hashed: false,
     token: {
       // seed
+      motion: !reducedMotion,
       colorPrimary: c.primary,
       colorSuccess: c.mastery,
       colorWarning: c.star,
@@ -85,7 +90,7 @@ export function pyxisTheme(mode: PyxisMode = "dark"): ThemeConfig {
       colorLink: c.primaryText,
       fontFamily: FONT_SANS,
       fontFamilyCode: FONT_MONO,
-      fontSize: 15,
+      fontSize: 15 * textScale,
       borderRadius: 12,
       controlHeight: 40,
       wireframe: false,
@@ -138,6 +143,10 @@ export function pyxisTheme(mode: PyxisMode = "dark"): ThemeConfig {
         paddingInlineLG: 32,
         defaultBorderColor: c.borderControl,
         defaultBg: "transparent",
+        defaultHoverColor: c.primaryText,
+        defaultHoverBorderColor: c.primaryText,
+        defaultActiveColor: c.primaryText,
+        defaultActiveBorderColor: c.primaryText,
       },
       Segmented: {
         borderRadius: 999,
@@ -150,7 +159,7 @@ export function pyxisTheme(mode: PyxisMode = "dark"): ThemeConfig {
         itemSelectedBg: c.ink,
         itemSelectedColor: c.onInk,
         fontFamily: FONT_MONO,
-        fontSize: 12,
+        fontSize: 12 * textScale,
       },
       Input: {
         borderRadius: 999,
@@ -186,14 +195,17 @@ export function pyxisTheme(mode: PyxisMode = "dark"): ThemeConfig {
       Tabs: {
         itemColor: c.inkMuted,
         itemSelectedColor: c.ink,
-        inkBarColor: c.star,
+        inkBarColor: c.primary,
         titleFontSize: 15,
       },
+      Dropdown: { colorError: c.danger },
       Menu: {
         itemBg: "transparent",
         itemSelectedBg: c.primarySoft,
         itemSelectedColor: c.primaryText,
         itemBorderRadius: 12,
+        dangerItemColor: c.danger,
+        dangerItemHoverColor: c.danger,
       },
       Tooltip: {
         colorBgSpotlight: c.surfaceOverlay,

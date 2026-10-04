@@ -25,6 +25,7 @@ export function receiveRuntimeReply(data: {
 export function runtimeRequest(
   operation: string,
   payload: unknown,
+  timeoutMs = 120000,
 ): Promise<unknown> {
   if (!sender) return Promise.reject(new Error("runtime-unavailable"));
   const id = uuidv7();
@@ -32,7 +33,7 @@ export function runtimeRequest(
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error("runtime-unavailable"));
-    }, 120000);
+    }, timeoutMs);
     pending.set(id, { resolve, reject, timer });
     try {
       sender!({ type: "runtime-request", id, operation, payload });

@@ -15,7 +15,8 @@ export type PageSnapshot = {
 };
 
 function allowed(url: URL): void {
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("link-scheme");
+  if (url.protocol !== "http:" && url.protocol !== "https:")
+    throw new Error("link-scheme");
 }
 
 function ipv4FromMapped(host: string): string | null {
@@ -28,11 +29,20 @@ function ipv4FromMapped(host: string): string | null {
   return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`;
 }
 
-function blockedAddress(address: string): boolean {
-  let host = address.toLowerCase().replace(/^\[|\]$/g, "").split("%")[0] ?? "";
+export function blockedAddress(address: string): boolean {
+  let host =
+    address
+      .toLowerCase()
+      .replace(/^\[|\]$/g, "")
+      .split("%")[0] ?? "";
   const mapped = ipv4FromMapped(host);
   if (mapped) host = mapped;
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local")
+  )
+    return true;
   if (host === "::1" || host === "::" || host === "0.0.0.0") return true;
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (v4) {
@@ -43,12 +53,21 @@ function blockedAddress(address: string): boolean {
     if (a === 0 || a === 10 || a === 127) return true;
     if (a === 169 && b === 254) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
+    if (a === 192 && (b === 168 || (b === 0 && parts[2] === 0))) return true;
     if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a >= 224 || (a === 198 && (b === 18 || b === 19))) return true;
     return false;
   }
   if (!host.includes(":")) return false;
+  if (
+    host.startsWith("64:ff9b:") ||
+    host.startsWith("2002:") ||
+    host.startsWith("2001:db8:")
+  )
+    return true;
   const head = Number.parseInt(host.split(":")[0] || "0", 16);
+  if (head < 0x2000 || head >= 0x4000 || /^2001:(?:0{1,4})?:/.test(host))
+    return true;
   if (head >= 0xfe80 && head <= 0xfebf) return true;
   if (head >= 0xfec0 && head <= 0xfeff) return true;
   if (head >= 0xff00) return true;
@@ -63,7 +82,8 @@ async function publicAddresses(
   if (blockedAddress(url.hostname)) throw new Error("link-scheme");
   const addresses = await resolve(url.hostname);
   const safe = addresses.filter((address) => !blockedAddress(address));
-  if (addresses.length === 0 || safe.length !== addresses.length) throw new Error("link-scheme");
+  if (addresses.length === 0 || safe.length !== addresses.length)
+    throw new Error("link-scheme");
   return safe;
 }
 
@@ -76,8 +96,10 @@ async function fetchPinned(
   const family = address.includes(":") ? 6 : 4;
   const agent = new Agent({
     connect: {
-      lookup: (_hostname, _options, callback) => {
-        callback(null, [{ address, family }]);
+      lookup: (_hostname, options, callback) => {
+        if (typeof options === "object" && options.all)
+          callback(null, [{ address, family }]);
+        else callback(null, address, family);
       },
     },
   });
@@ -91,6 +113,15 @@ async function fetchPinned(
     await agent.close();
     throw err;
   }
+}
+
+/** One pinned public request; the caller must close the agent after consuming the body. */
+export async function fetchPublicResponse(rawUrl: string, init: RequestInit) {
+  const url = new URL(rawUrl);
+  const addresses = await publicAddresses(url, async (hostname) =>
+    (await lookup(hostname, { all: true })).map((item) => item.address),
+  );
+  return fetchPinned(url, addresses[0]!, init);
 }
 
 async function readCapped(response: Response): Promise<Uint8Array> {
@@ -129,19 +160,24 @@ export async function fetchSnapshot(
     const found = await lookup(hostname, { all: true });
     return found.map((item) => item.address);
   },
+  signal?: AbortSignal,
 ): Promise<PageSnapshot> {
   let current = new URL(rawUrl);
   const pin = fetchImpl === fetch;
   let response: Response | null = null;
   let agent: { close: () => Promise<void> } | null = null;
   const controller = new AbortController();
+  const requestSignal = signal
+    ? AbortSignal.any([controller.signal, signal])
+    : controller.signal;
+  requestSignal.throwIfAborted();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
       const addresses = await publicAddresses(current, resolve);
       const init: RequestInit = {
         redirect: "manual",
-        signal: controller.signal,
+        signal: requestSignal,
         headers: { accept: "text/html,application/pdf;q=0.9,*/*;q=0.1" },
       };
       try {
@@ -156,49 +192,75 @@ export async function fetchSnapshot(
           response = await fetchImpl(current.toString(), init);
         }
       } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") throw new Error("link-timeout");
+        if (err instanceof Error && err.name === "AbortError")
+          throw new Error("link-timeout");
         throw new Error("link-failed");
       }
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location");
         await response.body?.cancel();
-        if (!location || hop === MAX_REDIRECTS) throw new Error("link-redirect");
+        if (!location || hop === MAX_REDIRECTS)
+          throw new Error("link-redirect");
         current = new URL(location, current);
         continue;
       }
       break;
     }
-    if (!response || !response.ok) throw new Error("link-failed");
+    if (!response || !response.ok) {
+      await response?.body?.cancel();
+      throw new Error("link-failed");
+    }
     let bytes: Uint8Array;
     try {
       bytes = await readCapped(response);
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") throw new Error("link-timeout");
+      if (err instanceof Error && err.name === "AbortError")
+        throw new Error("link-timeout");
       throw err;
     }
     const type = (response.headers.get("content-type") ?? "").toLowerCase();
-    if (type.includes("application/pdf") || current.pathname.toLowerCase().endsWith(".pdf")) {
-      return { finalUrl: current.toString(), title: current.pathname, markdown: "", pdf: bytes };
+    if (
+      type.includes("application/pdf") ||
+      current.pathname.toLowerCase().endsWith(".pdf")
+    ) {
+      return {
+        finalUrl: current.toString(),
+        title: current.pathname,
+        markdown: "",
+        pdf: bytes,
+      };
     }
     const html = new TextDecoder().decode(bytes);
     const article = articleFromHtml(html, current.toString());
-    return { finalUrl: current.toString(), title: article.title, markdown: article.markdown, pdf: null };
+    return {
+      finalUrl: current.toString(),
+      title: article.title,
+      markdown: article.markdown,
+      pdf: null,
+    };
   } finally {
+    controller.abort();
     clearTimeout(timer);
     await agent?.close();
   }
 }
 
-export function articleFromHtml(html: string, pageUrl: string): { title: string; markdown: string } {
+export function articleFromHtml(
+  html: string,
+  pageUrl: string,
+): { title: string; markdown: string } {
   const { document } = parseHTML(html);
-  for (const node of document.querySelectorAll("script, style, noscript")) node.remove();
+  for (const node of document.querySelectorAll("script, style, noscript"))
+    node.remove();
   const article = new Readability(document, { charThreshold: 20 }).parse();
   const title =
     article?.title?.trim() ||
     document.querySelector("title")?.textContent?.trim() ||
     pageUrl;
   const content = article?.content ?? document.body?.innerHTML ?? "";
-  const markdown = new TurndownService({ headingStyle: "atx" }).turndown(content).trim();
+  const markdown = new TurndownService({ headingStyle: "atx" })
+    .turndown(content)
+    .trim();
   if (markdown.replace(/\s/g, "").length < 40) throw new Error("page-empty");
   return { title, markdown };
 }

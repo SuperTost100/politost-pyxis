@@ -1,0 +1,1174 @@
+import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Button,
+  DatePicker,
+  Form,
+  Input,
+  Modal,
+  Popover,
+  Select,
+  Slider,
+  Table,
+  Dropdown,
+} from "antd";
+import dayjs from "dayjs";
+import dateIt from "antd/es/date-picker/locale/it_IT";
+import dateEn from "antd/es/date-picker/locale/en_GB";
+import { useTranslation } from "react-i18next";
+import { useNavigate, useParams } from "react-router";
+import type { RequestOutput } from "@shared/ipc";
+import { invoke } from "../../lib/ipc";
+import { MasteryBar } from "../../components/MasteryBar";
+import { PathNode } from "../../components/PathNode";
+import { Dock } from "../../components/Dock";
+import { Icon } from "../../components/Icon";
+import { Tag } from "../../components/Tag";
+import { LibraryPanel } from "../home/LibraryPanel";
+import { IconButton } from "../../components/IconButton";
+import type { IconName } from "../../components/Icon";
+import { LessonTile } from "../../components/LessonTile";
+import { SegmentedTabs } from "../../components/SegmentedTabs";
+import { Notice } from "../../components/Notice";
+import { MarkdownView } from "../../components/MarkdownView";
+import { openSourceViewer } from "../../components/SourceViewer";
+import { ExportButton } from "../share/ExportButton";
+import { PlanProgress } from "./PlanProgress";
+import "./PlanPage.css";
+
+type Plan = NonNullable<RequestOutput<"plans.read">>;
+type Node = Plan["nodes"][number];
+const icons: Record<string, IconName> = {
+  intro: "book-open",
+  diagnostic: "list-checks",
+  learn: "book-open",
+  practice: "pencil-line",
+  cards: "layers",
+  gaps: "target",
+  simulation: "clock",
+  final: "circle-check",
+};
+const kinds = ["mcq", "completion", "matching", "tf", "open"] as const;
+type QuizKind = (typeof kinds)[number];
+
+export function PlanPage() {
+  const { t, i18n } = useTranslation();
+  const { planId = "", view } = useParams();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const plan = useQuery({
+    queryKey: ["plan", planId],
+    enabled: !!planId,
+    queryFn: () => invoke("plans.read", { planId }),
+  });
+  const recommended = useQuery({
+    queryKey: ["recommend", planId],
+    enabled: !!planId,
+    queryFn: () => invoke("plans.recommend", { planId }),
+  });
+  const simulations = useQuery({
+    queryKey: ["simulations", planId],
+    enabled: !!planId,
+    queryFn: () => invoke("plans.simulations", { planId }),
+  });
+  const series = useQuery({
+    queryKey: ["series", planId],
+    enabled: !!planId,
+    queryFn: () => invoke("plans.series", { planId }),
+    refetchOnMount: "always",
+  });
+  const intro = useQuery({
+    queryKey: ["plan", planId, "intro"],
+    enabled: !!planId,
+    queryFn: () => invoke("plans.intro", { planId }),
+  });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [itemPreview, setItemPreview] =
+    useState<RequestOutput<"plans.item"> | null>(null);
+  const library = useQuery({
+    queryKey: ["sources"],
+    enabled: pickerOpen,
+    refetchInterval: pickerOpen ? 1000 : false,
+    queryFn: () => invoke("sources.list", {}),
+  });
+  const [introOpen, setIntroOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [proposal, setProposal] = useState<string | null>(null);
+  const [group, setGroup] = useState("learn");
+  const [lessonKind, setLessonKind] = useState<string | null>(null);
+  const [topicId, setTopicId] = useState("");
+  const [count, setCount] = useState(20);
+  const [quizKinds, setQuizKinds] = useState<QuizKind[]>([...kinds]);
+  const [minutes, setMinutes] = useState<30 | 60 | 90 | 120>(60);
+  const [material, setMaterial] = useState<"exam" | "mixed">("mixed");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const busyRef = useRef(false);
+  const [form] = Form.useForm();
+  const [modal, modalContext] = Modal.useModal();
+  const path = useRef<HTMLOListElement>(null);
+  const scrolled = useRef("");
+  const [connectors, setConnectors] = useState<
+    Array<{ path: string; done: boolean }>
+  >([]);
+  const tab = ["progress", "topics", "sources"].includes(view ?? "")
+    ? view!
+    : "path";
+  const progress = series.data;
+  const current = plan.data?.nodes.find((node) => node.state === "current");
+  useEffect(() => {
+    if (
+      tab !== "path" ||
+      !current ||
+      scrolled.current === `${planId}:${current.id}`
+    )
+      return;
+    const frame = requestAnimationFrame(() => {
+      const element = path.current?.querySelector<HTMLElement>(
+        `[data-node-id="${current.id}"]`,
+      );
+      if (element) {
+        element.scrollIntoView({ block: "center", behavior: "instant" });
+        window.scrollBy({ top: window.innerHeight * 0.1, behavior: "instant" });
+        scrolled.current = `${planId}:${current.id}`;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [tab, planId, current?.id]);
+  useEffect(() => {
+    if (tab !== "path" || !path.current) return;
+    const list = path.current;
+    const measure = () => {
+      const origin = list.getBoundingClientRect();
+      const nodes = Array.from(
+        list.querySelectorAll<HTMLElement>(".px-node"),
+      ).map((node) => {
+        const rect = node.getBoundingClientRect();
+        return {
+          x: rect.left - origin.left + rect.width / 2,
+          y: rect.top - origin.top + rect.height / 2,
+          done: node.classList.contains("is-done"),
+        };
+      });
+      setConnectors(
+        nodes.slice(1).map((node, index) => {
+          const previous = nodes[index]!;
+          const middle = (previous.y + node.y) / 2;
+          return {
+            path: `M${previous.x} ${previous.y} C${previous.x} ${middle} ${node.x} ${middle} ${node.x} ${node.y}`,
+            done: node.done,
+          };
+        }),
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    measure();
+    return () => observer.disconnect();
+  }, [tab, plan.data]);
+  const refresh = async () => {
+    await Promise.all([
+      client.invalidateQueries({ queryKey: ["plan", planId] }),
+      client.invalidateQueries({ queryKey: ["recommend", planId] }),
+      client.invalidateQueries({ queryKey: ["series", planId] }),
+      client.invalidateQueries({ queryKey: ["plans"] }),
+    ]);
+  };
+  async function action(run: () => Promise<unknown>) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await run();
+    } catch {
+      setError(t("planOverview.failed"));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+  function startNode(node: Node, reviewDue = false) {
+    setSelectedNode(null);
+    if (node.state === "locked" && !reviewDue) return;
+    if (node.kind === "intro") {
+      setIntroOpen(true);
+      return;
+    }
+    if (["diagnostic", "simulation"].includes(node.kind)) {
+      navigate(`/plans/${planId}/${node.kind}`);
+      return;
+    }
+    if (
+      node.topicId &&
+      ["learn", "practice", "cards", "gaps"].includes(node.kind)
+    ) {
+      navigate(
+        `/plans/${planId}/${node.kind === "learn" ? "lesson" : node.kind === "gaps" ? "quiz" : node.kind}/${node.topicId}`,
+      );
+      return;
+    }
+    void action(async () => {
+      await invoke("plans.complete", { planId, nodeId: node.id });
+      await refresh();
+    });
+  }
+  function showCreate(topic?: string) {
+    setTopicId(topic ?? current?.topicId ?? plan.data?.topics[0]?.id ?? "");
+    setLessonKind(null);
+    setGroup("learn");
+    setError("");
+    setCreateOpen(true);
+  }
+  function openSettings() {
+    if (!plan.data) return;
+    form.setFieldsValue({
+      title: plan.data.title,
+      target: Math.round(plan.data.target * 100),
+      examAt: plan.data.examAt ? dayjs(plan.data.examAt) : null,
+    });
+    setError("");
+    setSettingsOpen(true);
+  }
+  function chooseLesson(kind: string) {
+    if (["quiz", "simulation"].includes(kind)) {
+      setLessonKind(kind);
+      return;
+    }
+    setCreateOpen(false);
+    navigate(
+      `/plans/${planId}/${kind}${["lesson", "practice", "cards", "map"].includes(kind) ? `/${topicId}` : ""}`,
+    );
+  }
+  function openItem(
+    item: Plan["topics"][number]["items"][number],
+    topicId: string,
+  ) {
+    if (item.kind === "map") {
+      navigate(`/plans/${planId}/map/${topicId}`);
+      return;
+    }
+    void action(async () => {
+      if (item.kind === "quiz") {
+        const attempt = await invoke("plans.openQuiz", {
+          planId,
+          itemId: item.id,
+        });
+        navigate(
+          `/plans/${planId}/quiz/${topicId}?attempt=${attempt.attemptId}`,
+        );
+      } else
+        setItemPreview(await invoke("plans.item", { planId, itemId: item.id }));
+    });
+  }
+  function askTopic(topic: Plan["topics"][number]) {
+    void action(async () => {
+      const thread = await invoke("chats.seed", {
+        kind: "passage",
+        title: topic.title,
+        body: [topic.title, topic.summary, ...topic.subtopics]
+          .filter(Boolean)
+          .join("\n\n"),
+        sourceIds: topic.sourceIds,
+        subject: plan.data?.subject ?? undefined,
+      });
+      navigate(`/ask/${thread.chatId}`);
+    });
+  }
+  const previewBody = itemPreview
+    ? (JSON.parse(itemPreview.bodyJson) as {
+        markdown?: string;
+        questions?: Array<{ stem: string; options?: string[] }>;
+      })
+    : null;
+  const suggestion = plan.data?.nodes.find(
+    (node) => node.id === (proposal ?? recommended.data?.nodeId),
+  );
+  const alternatives =
+    plan.data?.nodes.filter(
+      (node) =>
+        node.state !== "locked" &&
+        (node.topicId !== null || node.kind === "simulation"),
+    ) ?? [];
+  const stages = Array.from(
+    new Set(plan.data?.nodes.map((node) => node.kind) ?? []),
+  );
+  if (plan.data?.status === "building")
+    return (
+      <section>
+        <h1 className="title-1">{plan.data.title}</h1>
+        <p>{t("wizard.buildInProgress")}</p>
+        <Button
+          type="primary"
+          onClick={() => navigate(`/plans/new?build=${planId}`)}
+        >
+          {t("wizard.continueBuild")}
+        </Button>
+      </section>
+    );
+  if (plan.isError || (plan.isSuccess && !plan.data))
+    return <Notice tone="warning">{t("planOverview.unavailable")}</Notice>;
+  return (
+    <div className="px-plan-page">
+      {modalContext}
+      <header className="px-plan-header">
+        {plan.data?.subject && (
+          <p className="label ink-muted">{plan.data.subject}</p>
+        )}
+        <h1 className="title-1">{plan.data?.title ?? t("wizard.title")}</h1>
+        <p className="meta ink-muted">
+          {plan.data?.examAt
+            ? t("exams.days", {
+                count: Math.max(
+                  0,
+                  Math.ceil((plan.data.examAt - Date.now()) / 86400000),
+                ),
+              })
+            : t("plans.noExam")}{" "}
+          ·{" "}
+          {t("progress.onTrack", {
+            ready: progress?.preparation.onTrack ?? 0,
+            count: progress?.preparation.totalTopics ?? 0,
+          })}
+        </p>
+        <MasteryBar
+          value={Math.round((progress?.preparation.mastery ?? 0) * 100)}
+          target={(plan.data?.target ?? 0.75) * 100}
+          label={t("progress.title")}
+        />
+        <div className="px-plan-header-actions">
+          <IconButton
+            icon="settings"
+            label={t("planOverview.settings")}
+            onClick={openSettings}
+            disabled={!plan.data}
+          />
+          <Button
+            type="primary"
+            onClick={() => showCreate()}
+            disabled={!plan.data?.topics.length}
+          >
+            {t("planOverview.create")}
+          </Button>
+        </div>
+        {plan.data?.imported && <Tag>{t("planOverview.imported")}</Tag>}
+        {plan.data?.status === "draft" && (
+          <Notice tone="warning">{t("plans.draft")}</Notice>
+        )}
+      </header>
+      <SegmentedTabs
+        label={t("plans.views")}
+        value={tab}
+        onChange={(next) => navigate(`/plans/${planId}/${next}`)}
+        items={[
+          { value: "path", label: t("plans.tabPath") },
+          { value: "topics", label: t("plans.tabTopics") },
+          { value: "sources", label: t("plans.tabSources") },
+          { value: "progress", label: t("progress.title") },
+        ]}
+      />
+      {error && !settingsOpen && !createOpen && (
+        <Notice tone="danger">{error}</Notice>
+      )}
+      {tab === "path" && (
+        <div className="px-plan-path-frame">
+          <ol ref={path} className="px-plan-path">
+            {stages.map((stage) => (
+              <li key={stage} className="px-plan-stage">
+                <h2 className="label">{t(`plans.${stage}`)}</h2>
+                <ol>
+                  {plan.data?.nodes
+                    .filter((node) => node.kind === stage)
+                    .map((node, index) => (
+                      <li
+                        key={node.id}
+                        data-node-id={node.id}
+                        className={`px-plan-node ${index % 2 ? "is-right" : "is-left"}`}
+                      >
+                        <Popover
+                          trigger="click"
+                          open={selectedNode === node.id}
+                          onOpenChange={(open) =>
+                            setSelectedNode(open ? node.id : null)
+                          }
+                          placement={index % 2 ? "left" : "right"}
+                          content={
+                            <div className="px-plan-node-popover">
+                              <h3 className="title-3">{node.title}</h3>
+                              <p className="small ink-muted">
+                                {t(`plans.${node.kind}`)}
+                              </p>
+                              {node.topicId && (
+                                <MasteryBar
+                                  label={t("progress.title")}
+                                  value={Math.round(
+                                    (progress?.topics.find(
+                                      (topic) => topic.id === node.topicId,
+                                    )?.mastery ?? 0) * 100,
+                                  )}
+                                  target={(plan.data?.target ?? 0.75) * 100}
+                                />
+                              )}
+                              <p className="small">
+                                {node.state === "locked"
+                                  ? t(
+                                      node.unlockReason ||
+                                        "plans.unlocksAfterCurrent",
+                                    )
+                                  : t("planOverview.nodeReady")}
+                              </p>
+                              {node.kind === "learn" &&
+                                node.state !== "locked" &&
+                                node.topicId && (
+                                  <div className="px-plan-node-lessons">
+                                    <LessonTile
+                                      icon="book-open"
+                                      label={t("lesson.title")}
+                                      onClick={() => startNode(node)}
+                                    />
+                                    <LessonTile
+                                      icon="network"
+                                      label={t("map.title")}
+                                      onClick={() =>
+                                        navigate(
+                                          `/plans/${planId}/map/${node.topicId}`,
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                )}
+                              {node.state !== "locked" && (
+                                <Button
+                                  type="primary"
+                                  onClick={() => startNode(node)}
+                                >
+                                  {t("planOverview.start")}
+                                </Button>
+                              )}
+                            </div>
+                          }
+                        >
+                          <div>
+                            <PathNode
+                              icon={icons[node.kind] ?? "book-open"}
+                              label={node.title}
+                              state={node.state}
+                              inspectable
+                              unlockHint={t(
+                                node.unlockReason ||
+                                  "plans.unlocksAfterCurrent",
+                              )}
+                            />
+                          </div>
+                        </Popover>
+                      </li>
+                    ))}
+                </ol>
+              </li>
+            ))}
+          </ol>
+          <svg className="px-plan-path-lines" aria-hidden>
+            {connectors.map((line, index) => (
+              <path
+                key={index}
+                d={line.path}
+                className={line.done ? "is-done" : ""}
+              />
+            ))}
+          </svg>
+        </div>
+      )}
+      {tab === "path" && suggestion && (
+        <div className="px-plan-dock">
+          <Dock
+            eyebrow={t("plans.recommended")}
+            title={suggestion.title}
+            reason={
+              proposal
+                ? t(
+                    suggestion.state === "done"
+                      ? "planOverview.reviewReason"
+                      : "plans.recommendNext",
+                  )
+                : t(
+                    recommended.data?.reason === "due"
+                      ? "plans.recommendDue"
+                      : recommended.data?.reason === "gaps"
+                        ? "plans.recommendGaps"
+                        : "plans.recommendNext",
+                    { count: recommended.data?.count ?? 0 },
+                  )
+            }
+            anotherDisabled={
+              alternatives.filter((node) => node.id !== suggestion.id)
+                .length === 0
+            }
+            continueLabel={t("wizard.continue")}
+            anotherLabel={t("planOverview.another")}
+            onContinue={() =>
+              startNode(
+                suggestion,
+                recommended.data?.reason === "due" &&
+                  suggestion.kind === "cards",
+              )
+            }
+            onAnother={() => {
+              const index = alternatives.findIndex(
+                (node) => node.id === suggestion.id,
+              );
+              setProposal(
+                alternatives[(index + 1) % alternatives.length]?.id ?? null,
+              );
+            }}
+          />
+        </div>
+      )}
+      {tab === "topics" && (
+        <ul className="px-plan-topics">
+          {plan.data?.topics.map((topic) => (
+            <li key={topic.id}>
+              <div className="px-plan-topic-row">
+                <details>
+                  <summary>
+                    <span>
+                      <span className="body-strong">
+                        {topic.chapter !== null && (
+                          <Icon name="book-marked" size={16} />
+                        )}{" "}
+                        {topic.title}
+                      </span>
+                      <span className="meta ink-muted px-plan-topic-meta">
+                        {t("planOverview.topicPassages", {
+                          count: topic.passageCount,
+                        })}{" "}
+                        ·{" "}
+                        {t("planOverview.topicLessons", {
+                          count: topic.itemCount,
+                        })}
+                        {topic.chapter !== null
+                          ? ` · ${t("planOverview.chapter", { number: topic.chapter })}`
+                          : ""}
+                      </span>
+                    </span>
+                    <MasteryBar
+                      label={topic.title}
+                      value={Math.round(
+                        (progress?.topics.find((row) => row.id === topic.id)
+                          ?.mastery ?? 0) * 100,
+                      )}
+                      showValue={false}
+                    />
+                  </summary>
+                  {topic.summary && <p>{topic.summary}</p>}
+                  <ul>
+                    {topic.subtopics.map((name, index) => (
+                      <li key={index}>{name}</li>
+                    ))}
+                  </ul>
+                  {topic.items.length ? (
+                    <ul className="px-plan-generated-items">
+                      {topic.items.map((item) => (
+                        <li key={item.id}>
+                          <Button
+                            type="text"
+                            disabled={busy}
+                            onClick={() => openItem(item, topic.id)}
+                          >
+                            {t(
+                              item.kind === "lesson"
+                                ? "lesson.title"
+                                : item.kind === "quiz"
+                                  ? "quiz.title"
+                                  : item.kind === "map"
+                                    ? "map.title"
+                                    : `plans.${item.kind}`,
+                            )}{" "}
+                            ·{" "}
+                            {new Date(item.createdAt).toLocaleDateString(
+                              i18n.language,
+                            )}
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="small ink-muted">
+                      {t("planOverview.noLessons")}
+                    </p>
+                  )}
+                </details>
+                <Dropdown
+                  menu={{
+                    items: [
+                      {
+                        key: "viewer",
+                        label: t("planOverview.openViewer"),
+                        disabled: !topic.firstPassageId,
+                      },
+                      { key: "create", label: t("planOverview.create") },
+                      { key: "ask", label: t("planOverview.askTopic") },
+                    ],
+                    onClick: ({ key }) => {
+                      if (key === "viewer" && topic.firstPassageId)
+                        openSourceViewer({ passageId: topic.firstPassageId });
+                      if (key === "create") showCreate(topic.id);
+                      if (key === "ask") askTopic(topic);
+                    },
+                  }}
+                  trigger={["click"]}
+                >
+                  <Button
+                    type="text"
+                    aria-label={t("planOverview.topicActions", {
+                      title: topic.title,
+                    })}
+                    icon={<Icon name="settings" size={16} />}
+                  />
+                </Dropdown>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {tab === "sources" && (
+        <section className="px-plan-sources">
+          {plan.data?.needsRebuild && (
+            <Notice
+              tone="info"
+              action={{
+                label: t("plans.rebuild"),
+                onClick: () =>
+                  void action(async () => {
+                    await invoke("plans.rebuild", {
+                      planId,
+                      sourceIds:
+                        plan.data?.sources.map((source) => source.id) ?? [],
+                    });
+                    await refresh();
+                  }),
+              }}
+            >
+              {t("planOverview.rebuildSuggested")}
+            </Notice>
+          )}
+          <Table
+            tableLayout="fixed"
+            className="px-plan-source-table"
+            rowKey="id"
+            pagination={false}
+            dataSource={plan.data?.sources ?? []}
+            columns={[
+              { title: t("sources.nameColumn"), dataIndex: "title" },
+              {
+                title: t("sources.typeColumn"),
+                dataIndex: "kind",
+                render: (kind: string) =>
+                  t(`sources.kind.${kind}`, { defaultValue: kind }),
+              },
+              {
+                title: t("sources.statusColumn"),
+                dataIndex: "status",
+                render: (status: string) =>
+                  t(`sources.status.${status}`, { defaultValue: status }),
+              },
+              {
+                title: t("planOverview.sourceActions"),
+                key: "actions",
+                render: (_, source) => (
+                  <Button
+                    type="text"
+                    disabled={busy}
+                    onClick={() =>
+                      modal.confirm({
+                        title: t("planOverview.removeSource"),
+                        content: t("planOverview.removeSourceHelp", {
+                          title: source.title,
+                        }),
+                        onOk: () =>
+                          action(async () => {
+                            await invoke("plans.removeSource", {
+                              planId,
+                              sourceId: source.id,
+                            });
+                            await refresh();
+                          }),
+                      })
+                    }
+                  >
+                    {t("planOverview.removeSource")}
+                  </Button>
+                ),
+              },
+            ]}
+          />
+          <Button
+            type="primary"
+            onClick={() => {
+              setSelectedSources([]);
+              setPickerOpen(true);
+            }}
+          >
+            {t("planOverview.addSources")}
+          </Button>
+        </section>
+      )}
+      <Modal
+        width={720}
+        title={t("planOverview.addSources")}
+        open={pickerOpen}
+        onCancel={() => !busy && setPickerOpen(false)}
+        confirmLoading={busy}
+        okText={t("planOverview.attachSources")}
+        okButtonProps={{ disabled: !selectedSources.length }}
+        onOk={() =>
+          void action(async () => {
+            await invoke("plans.attachSources", {
+              planId,
+              sourceIds: selectedSources,
+            });
+            await refresh();
+            setPickerOpen(false);
+          })
+        }
+      >
+        {error && <Notice tone="danger">{error}</Notice>}
+        <p className="small ink-muted">{t("planOverview.pickerHelp")}</p>
+        <Table
+          tableLayout="fixed"
+          className="px-plan-source-table"
+          size="small"
+          rowKey="id"
+          loading={library.isPending}
+          dataSource={(library.data ?? []).filter(
+            (source) =>
+              !plan.data?.sources.some((attached) => attached.id === source.id),
+          )}
+          rowSelection={{
+            selectedRowKeys: selectedSources,
+            onChange: (keys) => setSelectedSources(keys.map(String)),
+            getCheckboxProps: (source) => ({
+              disabled: busy || source.status !== "ready",
+              name: source.title,
+              "aria-label": source.title,
+            }),
+          }}
+          columns={[
+            { title: t("sources.nameColumn"), dataIndex: "title" },
+            {
+              title: t("sources.typeColumn"),
+              dataIndex: "kind",
+              render: (kind: string) =>
+                t(`sources.kind.${kind}`, { defaultValue: kind }),
+            },
+            {
+              title: t("sources.statusColumn"),
+              dataIndex: "status",
+              render: (status: string) =>
+                t(`sources.status.${status}`, { defaultValue: status }),
+            },
+          ]}
+        />
+        <Button onClick={() => setImportOpen(true)}>
+          {t("planOverview.importSource")}
+        </Button>
+      </Modal>
+      <Modal
+        width={720}
+        open={importOpen}
+        title={t("planOverview.importSource")}
+        onCancel={() => setImportOpen(false)}
+        footer={null}
+        destroyOnHidden
+      >
+        <LibraryPanel
+          importOnly
+          onClose={() => {
+            setImportOpen(false);
+            void library.refetch();
+          }}
+        />
+      </Modal>
+      <Modal
+        width={720}
+        title={
+          itemPreview
+            ? t(
+                itemPreview.kind === "lesson"
+                  ? "lesson.title"
+                  : `plans.${itemPreview.kind}`,
+              )
+            : ""
+        }
+        open={!!itemPreview}
+        footer={null}
+        onCancel={() => setItemPreview(null)}
+      >
+        <MarkdownView
+          onCitationClick={(number) => {
+            const passageId = itemPreview?.passageIds[number - 1];
+            if (passageId) openSourceViewer({ passageId });
+          }}
+        >
+          {previewBody?.markdown ?? ""}
+        </MarkdownView>
+        {previewBody?.questions?.map((question, index) => (
+          <section key={index}>
+            <MarkdownView>{question.stem}</MarkdownView>
+            {question.options && (
+              <ul>
+                {question.options.map((option, index) => (
+                  <li key={index}>{option}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ))}
+      </Modal>
+      {tab === "progress" && progress && (
+        <PlanProgress
+          planId={planId}
+          progress={progress}
+          simulations={simulations.data ?? []}
+        />
+      )}
+      <Modal
+        open={introOpen}
+        title={t("plans.intro")}
+        onCancel={() => !busy && setIntroOpen(false)}
+        footer={
+          <Button
+            type="primary"
+            loading={busy}
+            onClick={() =>
+              void action(async () => {
+                const node = plan.data?.nodes.find(
+                  (node) => node.kind === "intro",
+                );
+                if (node?.state === "current")
+                  await invoke("plans.complete", { planId, nodeId: node.id });
+                await refresh();
+                setIntroOpen(false);
+              })
+            }
+          >
+            {t("wizard.continue")}
+          </Button>
+        }
+      >
+        <MarkdownView
+          onCitationClick={(number) => {
+            const passageId = intro.data?.passageIds[number - 1];
+            if (passageId) openSourceViewer({ passageId });
+          }}
+        >
+          {intro.data?.markdown ?? ""}
+        </MarkdownView>
+      </Modal>
+      <Modal
+        open={settingsOpen}
+        title={t("planOverview.settings")}
+        onCancel={() => !busy && setSettingsOpen(false)}
+        confirmLoading={busy}
+        okText={t("planOverview.save")}
+        onOk={() =>
+          void form
+            .validateFields()
+            .then((values) =>
+              action(async () => {
+                await invoke("plans.settings", {
+                  planId,
+                  title: values.title,
+                  target: values.target / 100,
+                  examAt: values.examAt
+                    ? values.examAt.endOf("day").valueOf()
+                    : null,
+                });
+                await refresh();
+                setSettingsOpen(false);
+              }),
+            )
+            .catch(() => {})
+        }
+      >
+        {error && <Notice tone="danger">{error}</Notice>}
+        <Form form={form} layout="vertical">
+          <Form.Item
+            name="title"
+            label={t("wizard.planTitle")}
+            rules={[{ required: true, whitespace: true }]}
+          >
+            <Input maxLength={200} disabled={busy} />
+          </Form.Item>
+          <Form.Item name="target" label={t("planOverview.target")}>
+            <Slider
+              min={50}
+              max={100}
+              disabled={busy}
+              ariaLabelForHandle={t("planOverview.target")}
+            />
+          </Form.Item>
+          <Form.Item name="examAt" label={t("wizard.exam")}>
+            <DatePicker
+              locale={i18n.language.startsWith("it") ? dateIt : dateEn}
+              format={
+                i18n.language.startsWith("it") ? "DD/MM/YYYY" : "DD/MM/YYYY"
+              }
+              disabled={busy}
+            />
+          </Form.Item>
+          <p className="small">
+            <strong>{t("planOverview.language")}: </strong>
+            {plan.data?.contentLanguage === "it"
+              ? t("wizard.italian")
+              : plan.data?.contentLanguage === "en"
+                ? t("wizard.english")
+                : (plan.data?.contentLanguage ?? i18n.language)}
+          </p>
+        </Form>
+        <section className="px-plan-settings-tools">
+          <ExportButton planId={planId} kind="plan" disabled={busy} />
+          <Button
+            disabled={busy || !plan.data?.sources.length}
+            onClick={() =>
+              modal.confirm({
+                title: t("plans.rebuild"),
+                content: t("planOverview.rebuildConfirm"),
+                onOk: () =>
+                  action(async () => {
+                    await invoke("plans.rebuild", {
+                      planId,
+                      sourceIds:
+                        plan.data?.sources.map((source) => source.id) ?? [],
+                    });
+                    await refresh();
+                    setSettingsOpen(false);
+                  }),
+              })
+            }
+          >
+            {t("plans.rebuild")}
+          </Button>
+        </section>
+        <section className="px-plan-danger">
+          <p className="small ink-muted">{t("planOverview.deleteHelp")}</p>
+          <Button
+            danger
+            disabled={busy}
+            onClick={() =>
+              modal.confirm({
+                title: t("plans.delete"),
+                content: t("planOverview.deleteConfirm"),
+                okButtonProps: { danger: true },
+                okText: t("plans.delete"),
+                onOk: () =>
+                  action(async () => {
+                    await invoke("plans.delete", { planId });
+                    await client.invalidateQueries({ queryKey: ["plans"] });
+                    navigate("/exams");
+                  }),
+              })
+            }
+          >
+            {t("plans.delete")}
+          </Button>
+        </section>
+      </Modal>
+      <Modal
+        width={640}
+        open={createOpen}
+        title={t("planOverview.create")}
+        onCancel={() => !busy && setCreateOpen(false)}
+        footer={null}
+      >
+        {error && <Notice tone="danger">{error}</Notice>}
+        {!lessonKind ? (
+          <>
+            <SegmentedTabs
+              label={t("planOverview.lessonGroup")}
+              value={group}
+              onChange={setGroup}
+              items={[
+                { value: "learn", label: t("planOverview.learn") },
+                { value: "practice", label: t("plans.practice") },
+                { value: "exam", label: t("nav.exams") },
+              ]}
+            />
+            <label
+              className="small px-plan-topic-label"
+              htmlFor="plan-lesson-topic"
+            >
+              {t("planOverview.topic")}
+            </label>
+            <Select
+              id="plan-lesson-topic"
+              value={topicId}
+              onChange={setTopicId}
+              options={plan.data?.topics.map((topic) => ({
+                value: topic.id,
+                label: topic.title,
+              }))}
+              style={{ width: "100%" }}
+            />
+            <div className="px-plan-lesson-grid">
+              {(group === "learn"
+                ? [
+                    {
+                      kind: "lesson",
+                      icon: "book-open",
+                      label: t("lesson.title"),
+                    },
+                    { kind: "map", icon: "network", label: t("map.title") },
+                  ]
+                : group === "practice"
+                  ? [
+                      {
+                        kind: "quiz",
+                        icon: "list-checks",
+                        label: t("quiz.title"),
+                      },
+                      {
+                        kind: "cards",
+                        icon: "layers",
+                        label: t("cards.title"),
+                      },
+                      {
+                        kind: "practice",
+                        icon: "pencil-line",
+                        label: t("practice.title"),
+                      },
+                    ]
+                  : [
+                      {
+                        kind: "diagnostic",
+                        icon: "list-checks",
+                        label: t("quiz.diagnostic"),
+                      },
+                      {
+                        kind: "simulation",
+                        icon: "clock",
+                        label: t("simulation.title"),
+                      },
+                    ]
+              ).map((tile) => (
+                <LessonTile
+                  key={tile.kind}
+                  icon={tile.icon as IconName}
+                  label={tile.label}
+                  recommended={
+                    tile.kind === "lesson" && current?.kind === "learn"
+                  }
+                  recommendedLabel={t("plans.recommended")}
+                  onClick={() => chooseLesson(tile.kind)}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <Button
+              type="text"
+              disabled={busy}
+              onClick={() => setLessonKind(null)}
+            >
+              {t("nav.back")}
+            </Button>
+            {lessonKind === "quiz" ? (
+              <>
+                <label className="body-strong">
+                  {t("quiz.count")} · {count}
+                </label>
+                <Slider
+                  min={10}
+                  max={100}
+                  value={count}
+                  onChange={setCount}
+                  disabled={busy}
+                  ariaLabelForHandle={t("quiz.count")}
+                />
+                <fieldset className="px-plan-quiz-types">
+                  <legend>{t("quiz.types")}</legend>
+                  {kinds.map((kind) => (
+                    <label key={kind}>
+                      <input
+                        type="checkbox"
+                        disabled={busy}
+                        checked={quizKinds.includes(kind)}
+                        onChange={() =>
+                          setQuizKinds((current) =>
+                            current.includes(kind)
+                              ? current.filter((value) => value !== kind)
+                              : [...current, kind],
+                          )
+                        }
+                      />
+                      {t(`quiz.kinds.${kind}`)}
+                    </label>
+                  ))}
+                </fieldset>
+              </>
+            ) : (
+              <Form layout="vertical">
+                <Form.Item label={t("simulation.duration")}>
+                  <Select
+                    value={minutes}
+                    onChange={setMinutes}
+                    disabled={busy}
+                    options={[30, 60, 90, 120].map((value) => ({
+                      value,
+                      label: t("simulation.minutes", { count: value }),
+                    }))}
+                  />
+                </Form.Item>
+                <Form.Item label={t("simulation.material")}>
+                  <Select
+                    value={material}
+                    onChange={setMaterial}
+                    disabled={busy}
+                    options={[
+                      { value: "exam", label: t("simulation.exam") },
+                      { value: "mixed", label: t("simulation.mixed") },
+                    ]}
+                  />
+                </Form.Item>
+              </Form>
+            )}
+            <Button
+              type="primary"
+              loading={busy}
+              disabled={lessonKind === "quiz" && !quizKinds.length}
+              onClick={() =>
+                void action(async () => {
+                  if (lessonKind === "quiz") {
+                    const result = await invoke("study.quizStart", {
+                      planId,
+                      topicId,
+                      count,
+                      types: quizKinds,
+                      feedback: true,
+                    });
+                    navigate(
+                      `/plans/${planId}/quiz/${topicId}?attempt=${result.attemptId}`,
+                    );
+                  } else {
+                    const result = await invoke("study.simulationPrepare", {
+                      planId,
+                      minutes,
+                      source: material,
+                    });
+                    navigate(result.attemptId ? `/plans/${planId}/exam/${result.attemptId}` : `/plans/${planId}/simulation`);
+                  }
+                })
+              }
+            >
+              {t("planOverview.start")}
+            </Button>
+          </>
+        )}
+      </Modal>
+    </div>
+  );
+}

@@ -58,7 +58,7 @@ export function applyOps(graph: ConceptGraph, ops: MapOp[]): ConceptGraph {
     nodes = next.nodes;
     edges = next.edges;
   }
-  return layoutGraph({ ...graph, nodes, edges, undo });
+  return layoutGraph({ ...graph, nodes, edges, undo, redo: null });
 }
 
 export function undoGraph(graph: ConceptGraph): ConceptGraph {
@@ -69,6 +69,27 @@ export function undoGraph(graph: ConceptGraph): ConceptGraph {
     nodes: graph.undo.nodes.map((node) => ({ ...node })),
     edges: graph.undo.edges.map((edge) => ({ ...edge })),
     undo: null,
+    redo: {
+      nodes: graph.nodes.map((node) => ({ ...node })),
+      edges: graph.edges.map((edge) => ({ ...edge })),
+      layout: graph.layout,
+    },
+  });
+}
+
+export function redoGraph(graph: ConceptGraph): ConceptGraph {
+  if (!graph.redo) return graph;
+  return layoutGraph({
+    ...graph,
+    nodes: graph.redo.nodes.map((node) => ({ ...node })),
+    edges: graph.redo.edges.map((edge) => ({ ...edge })),
+    layout: graph.redo.layout ?? graph.layout,
+    undo: {
+      nodes: graph.nodes.map((node) => ({ ...node })),
+      edges: graph.edges.map((edge) => ({ ...edge })),
+      layout: graph.layout,
+    },
+    redo: null,
   });
 }
 

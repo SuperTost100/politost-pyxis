@@ -115,78 +115,78 @@
 }
 .stat {
   font-family: var(--font-sans);
-  font-size: 56px;
-  line-height: 56px;
+  font-size: calc(56px * var(--text-scale, 1));
+  line-height: calc(56px * var(--text-scale, 1));
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 .display {
   font-family: var(--font-sans);
-  font-size: 40px;
-  line-height: 44px;
+  font-size: calc(40px * var(--text-scale, 1));
+  line-height: calc(44px * var(--text-scale, 1));
   font-weight: 600;
   letter-spacing: -0.015em;
 }
 .title-1 {
   font-family: var(--font-sans);
-  font-size: 28px;
-  line-height: 34px;
+  font-size: calc(28px * var(--text-scale, 1));
+  line-height: calc(34px * var(--text-scale, 1));
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 .title-2 {
   font-family: var(--font-sans);
-  font-size: 22px;
-  line-height: 28px;
+  font-size: calc(22px * var(--text-scale, 1));
+  line-height: calc(28px * var(--text-scale, 1));
   font-weight: 600;
 }
 .title-3 {
   font-family: var(--font-sans);
-  font-size: 17px;
-  line-height: 24px;
+  font-size: calc(17px * var(--text-scale, 1));
+  line-height: calc(24px * var(--text-scale, 1));
   font-weight: 600;
 }
 .reading {
   font-family: var(--font-sans);
-  font-size: 17px;
-  line-height: 28px;
+  font-size: calc(17px * var(--text-scale, 1));
+  line-height: calc(28px * var(--text-scale, 1));
   font-weight: 400;
 }
 .body {
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 22px;
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: calc(22px * var(--text-scale, 1));
   font-weight: 400;
 }
 .body-strong {
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 22px;
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: calc(22px * var(--text-scale, 1));
   font-weight: 600;
 }
 .small {
   font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: calc(18px * var(--text-scale, 1));
   font-weight: 400;
 }
 .label {
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: calc(12px * var(--text-scale, 1));
+  line-height: calc(16px * var(--text-scale, 1));
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .meta {
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: calc(12px * var(--text-scale, 1));
+  line-height: calc(16px * var(--text-scale, 1));
   font-weight: 400;
 }
 .code {
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
   font-weight: 400;
 }

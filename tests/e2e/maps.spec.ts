@@ -1,3 +1,4 @@
+import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
 import { _electron as electron, expect, test } from "@playwright/test";
 import {
@@ -116,10 +117,9 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
-    const source = (await page.evaluate(
-      (path) => window.pyxis.invoke("sources.import", { path }),
-      file,
-    )) as { sourceId: string };
+    const source = (await importPickedSource(page, app, file)) as {
+      sourceId: string;
+    };
     await expect
       .poll(
         async () =>

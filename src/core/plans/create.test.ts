@@ -2,13 +2,22 @@ import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { importSmartbook } from "../sources/smartbook";
-import { completeNode, createPlan, deletePlan, readPlan, rebuildPlan } from "./create";
+import {
+  completeNode,
+  createPlan,
+  deletePlan,
+  listPlans,
+  readPlan,
+  rebuildPlan,
+} from "./create";
 import { uuidv7 } from "../../shared/ids";
 import { pathState } from "./path";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
-    Object.fromEntries(Object.entries(files).map(([name, text]) => [name, strToU8(text)])),
+    Object.fromEntries(
+      Object.entries(files).map(([name, text]) => [name, strToU8(text)]),
+    ),
   );
 }
 
@@ -27,8 +36,10 @@ describe("createPlan", () => {
             { id: "c2", number: 2, title: "Forze", file: "02.md" },
           ],
         }),
-        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
-        "chapters/02.md": "## p1 | Newton\nLa forza cambia la quantita di moto.\n",
+        "chapters/01.md":
+          "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+        "chapters/02.md":
+          "## p1 | Newton\nLa forza cambia la quantita di moto.\n",
       }),
     );
     const plan = createPlan(db, {
@@ -37,7 +48,9 @@ describe("createPlan", () => {
     });
     expect(plan.topics).toBe(2);
     const stored = db
-      .prepare(`SELECT target, style, content_language, exam_at FROM plans WHERE id = ?`)
+      .prepare(
+        `SELECT target, style, content_language, exam_at FROM plans WHERE id = ?`,
+      )
       .get(plan.planId) as {
       target: number;
       style: string;
@@ -52,9 +65,14 @@ describe("createPlan", () => {
     });
     expect(plan.pathNodes).toBe(12);
     const kinds = db
-      .prepare(`SELECT kind FROM path_nodes WHERE plan_id = ? ORDER BY position`)
+      .prepare(
+        `SELECT kind FROM path_nodes WHERE plan_id = ? ORDER BY position`,
+      )
       .all(plan.planId) as Array<{ kind: string }>;
-    expect(kinds.slice(0, 2).map((row) => row.kind)).toEqual(["intro", "diagnostic"]);
+    expect(kinds.slice(0, 2).map((row) => row.kind)).toEqual([
+      "intro",
+      "diagnostic",
+    ]);
     const linked = db
       .prepare(
         `SELECT COUNT(*) AS n FROM topic_passages tp
@@ -63,11 +81,17 @@ describe("createPlan", () => {
       .get(plan.planId) as { n: number };
     expect(linked.n).toBe(2);
     const practice = db
-      .prepare(`SELECT id FROM path_nodes WHERE plan_id = ? AND kind = 'practice' LIMIT 1`)
+      .prepare(
+        `SELECT id FROM path_nodes WHERE plan_id = ? AND kind = 'practice' LIMIT 1`,
+      )
       .get(plan.planId) as { id: string };
-    expect(() => completeNode(db, plan.planId, practice.id)).toThrow(/node-locked/);
+    expect(() => completeNode(db, plan.planId, practice.id)).toThrow(
+      /node-locked/,
+    );
     deletePlan(db, plan.planId);
-    const left = db.prepare(`SELECT COUNT(*) AS n FROM plans`).get() as { n: number };
+    const left = db.prepare(`SELECT COUNT(*) AS n FROM plans`).get() as {
+      n: number;
+    };
     expect(left.n).toBe(0);
     expect(() => deletePlan(db, plan.planId)).toThrow(/plan-missing/);
   });
@@ -95,7 +119,9 @@ describe("createPlan", () => {
       style: "read",
     });
     const stored = db
-      .prepare(`SELECT exam_at, target, content_language, style FROM plans WHERE id = ?`)
+      .prepare(
+        `SELECT exam_at, target, content_language, style FROM plans WHERE id = ?`,
+      )
       .get(plan.planId) as {
       exam_at: number;
       target: number;
@@ -109,23 +135,43 @@ describe("createPlan", () => {
       style: "read",
     });
     const reading = db
-      .prepare(`SELECT kind FROM path_nodes WHERE plan_id = ? AND topic_id IS NOT NULL ORDER BY position`)
+      .prepare(
+        `SELECT kind FROM path_nodes WHERE plan_id = ? AND topic_id IS NOT NULL ORDER BY position`,
+      )
       .all(plan.planId) as Array<{ kind: string }>;
-    expect(reading.slice(0, 2).map((row) => row.kind)).toEqual(["learn", "practice"]);
+    expect(reading.slice(0, 2).map((row) => row.kind)).toEqual([
+      "learn",
+      "practice",
+    ]);
     const practicePlan = createPlan(db, {
       title: "Esercizi",
       sourceIds: [imported.sourceId],
       style: "practice",
     });
     const practicing = db
-      .prepare(`SELECT kind FROM path_nodes WHERE plan_id = ? AND topic_id IS NOT NULL ORDER BY position`)
+      .prepare(
+        `SELECT kind FROM path_nodes WHERE plan_id = ? AND topic_id IS NOT NULL ORDER BY position`,
+      )
       .all(practicePlan.planId) as Array<{ kind: string }>;
-    expect(practicing.slice(0, 2).map((row) => row.kind)).toEqual(["practice", "learn"]);
+    expect(practicing.slice(0, 2).map((row) => row.kind)).toEqual([
+      "practice",
+      "learn",
+    ]);
     const rows = db
-      .prepare(`SELECT id, kind, topic_id, position FROM path_nodes WHERE plan_id = ?`)
+      .prepare(
+        `SELECT id, kind, topic_id, position FROM path_nodes WHERE plan_id = ?`,
+      )
       .all(practicePlan.planId) as Array<{
       id: string;
-      kind: "intro" | "diagnostic" | "learn" | "practice" | "cards" | "gaps" | "simulation" | "final";
+      kind:
+        | "intro"
+        | "diagnostic"
+        | "learn"
+        | "practice"
+        | "cards"
+        | "gaps"
+        | "simulation"
+        | "final";
       topic_id: string | null;
       position: number;
     }>;
@@ -136,11 +182,15 @@ describe("createPlan", () => {
         topicId: row.topic_id,
         position: row.position,
       })),
-      rows.filter((row) => row.kind === "intro" || row.kind === "diagnostic").map((row) => row.id),
+      rows
+        .filter((row) => row.kind === "intro" || row.kind === "diagnostic")
+        .map((row) => row.id),
       {},
     );
     const stateOf = (kind: string) =>
-      states.find((item) => item.id === rows.find((row) => row.kind === kind)?.id)?.state;
+      states.find(
+        (item) => item.id === rows.find((row) => row.kind === kind)?.id,
+      )?.state;
     expect(stateOf("practice")).toBe("current");
     expect(stateOf("learn")).toBe("locked");
   });
@@ -166,7 +216,11 @@ describe("createPlan", () => {
     });
     const nodes = db
       .prepare(`SELECT id, kind, topic_id FROM path_nodes WHERE plan_id = ?`)
-      .all(plan.planId) as Array<{ id: string; kind: string; topic_id: string | null }>;
+      .all(plan.planId) as Array<{
+      id: string;
+      kind: string;
+      topic_id: string | null;
+    }>;
     let at = Date.now();
     for (const node of nodes) {
       if (node.kind === "final") continue;
@@ -176,23 +230,41 @@ describe("createPlan", () => {
       ).run(uuidv7(at), plan.planId, JSON.stringify({ nodeId: node.id }), at);
       at += 1;
     }
-    for (const topicId of new Set(nodes.flatMap((node) => (node.topic_id ? [node.topic_id] : [])))) {
+    for (const topicId of new Set(
+      nodes.flatMap((node) => (node.topic_id ? [node.topic_id] : [])),
+    )) {
       db.prepare(
         `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
          VALUES (?, 'answer_given', ?, ?, ?, ?)`,
-      ).run(uuidv7(at), plan.planId, topicId, JSON.stringify({ score: 0, scores: [0] }), at);
+      ).run(
+        uuidv7(at),
+        plan.planId,
+        topicId,
+        JSON.stringify({ score: 0, scores: [0] }),
+        at,
+      );
       at += 1;
     }
     const view = readPlan(db, plan.planId);
-    expect(view?.nodes.find((node) => node.kind === "simulation")?.state).toBe("done");
-    expect(view?.nodes.find((node) => node.kind === "final")?.state).toBe("locked");
+    expect(view?.nodes.find((node) => node.kind === "simulation")?.state).toBe(
+      "done",
+    );
+    expect(view?.nodes.find((node) => node.kind === "final")?.state).toBe(
+      "locked",
+    );
   });
 
   it("keeps a draft when there is no source, and renames topics before the path is built", () => {
     const db = openDatabase(":memory:");
-    const plan = createPlan(db, { title: "Bozza", sourceIds: [], topicTitles: [] });
+    const plan = createPlan(db, {
+      title: "Bozza",
+      sourceIds: [],
+      topicTitles: [],
+    });
     expect(plan.topics).toBe(0);
-    expect(db.prepare(`SELECT status FROM plans WHERE id = ?`).get(plan.planId)).toEqual({
+    expect(
+      db.prepare(`SELECT status FROM plans WHERE id = ?`).get(plan.planId),
+    ).toEqual({
       status: "draft",
     });
     const imported = importSmartbook(
@@ -204,7 +276,8 @@ describe("createPlan", () => {
           access: "public",
           chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
         }),
-        "chapters/01.md": "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+        "chapters/01.md":
+          "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
       }),
     );
     const named = createPlan(db, {
@@ -227,14 +300,28 @@ describe("createPlan", () => {
       `INSERT INTO passages (id, source_id, text, locator_json, section_path, char_start, char_end, created_at)
        VALUES (?, ?, ?, '{}', ?, 0, 10, ?)`,
     );
-    insert.run(uuidv7(now + 1), sourceId, "la velocita e la derivata", "Cinematica", now);
-    insert.run(uuidv7(now + 2), sourceId, "la forza cambia il moto", "Dinamica", now);
-    const plan = createPlan(db, { title: "Fisica", sourceIds: [sourceId] });
-    const before = readPlan(db, plan.planId)?.topics.map((topic) => topic.id) ?? [];
-    expect(readPlan(db, plan.planId)?.topics.map((topic) => topic.title).sort()).toEqual([
+    insert.run(
+      uuidv7(now + 1),
+      sourceId,
+      "la velocita e la derivata",
       "Cinematica",
+      now,
+    );
+    insert.run(
+      uuidv7(now + 2),
+      sourceId,
+      "la forza cambia il moto",
       "Dinamica",
-    ]);
+      now,
+    );
+    const plan = createPlan(db, { title: "Fisica", sourceIds: [sourceId] });
+    const before =
+      readPlan(db, plan.planId)?.topics.map((topic) => topic.id) ?? [];
+    expect(
+      readPlan(db, plan.planId)
+        ?.topics.map((topic) => topic.title)
+        .sort(),
+    ).toEqual(["Cinematica", "Dinamica"]);
     const extra = uuidv7(now + 3);
     db.prepare(
       `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
@@ -246,7 +333,8 @@ describe("createPlan", () => {
     ).run(uuidv7(now + 4), extra, now);
     const rebuilt = rebuildPlan(db, plan.planId, [extra]);
     expect(rebuilt.topics).toBe(0);
-    const after = readPlan(db, plan.planId)?.topics.map((topic) => topic.id) ?? [];
+    const after =
+      readPlan(db, plan.planId)?.topics.map((topic) => topic.id) ?? [];
     expect(after).toEqual(before);
     const fresh = uuidv7(now + 5);
     db.prepare(
@@ -276,16 +364,39 @@ describe("createPlan", () => {
     );
     controller.abort();
     await expect(pending).rejects.toThrow(/aborted/);
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM plans`).get()).toEqual({ n: 0 });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM plans`).get()).toEqual({
+      n: 0,
+    });
   });
 
   it("does not leave a plan when creation is cancelled", () => {
     const db = openDatabase(":memory:");
     const signal = new AbortController();
     signal.abort();
-    expect(() => createPlan(db, { title: "Stop", sourceIds: [], signal: signal.signal })).toThrow(
-      /aborted/,
-    );
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM plans`).get()).toEqual({ n: 0 });
+    expect(() =>
+      createPlan(db, { title: "Stop", sourceIds: [], signal: signal.signal }),
+    ).toThrow(/aborted/);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM plans`).get()).toEqual({
+      n: 0,
+    });
   });
+});
+
+it("orders upcoming exams by date and past exams last", () => {
+  const db = openDatabase(":memory:");
+  const now = new Date(2026, 9, 4, 12).getTime();
+  const insert = db.prepare(
+    "INSERT INTO plans (id,title,status,exam_at,created_at,updated_at) VALUES (?,?,'ready',?,1,?)",
+  );
+  insert.run("later", "Later", now + 7 * 86400000, 100);
+  insert.run("sooner", "Sooner", now + 86400000, 1);
+  insert.run("past", "Past", now - 86400000, 1000);
+  insert.run("undated", "Undated", null, 10000);
+  expect(listPlans(db, now).map((p) => p.id)).toEqual([
+    "sooner",
+    "later",
+    "undated",
+    "past",
+  ]);
+  db.close();
 });

@@ -1,0 +1,155 @@
+.engines-panel {
+  display: grid;
+  gap: var(--space-5);
+}
+.engines-panel h2,
+.engines-panel p {
+  margin: 0;
+}
+.engines-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.engines-heading .ant-btn {
+  flex: none;
+  white-space: nowrap;
+}
+.engines-list,
+.engines-add-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.engines-panel .px-engine,
+.engines-add-list .px-engine {
+  max-width: none;
+}
+.engines-row.is-disabled .px-engine {
+  background: var(--surface-raised);
+}
+.engines-row.is-disabled .px-engine-main {
+  color: var(--ink-muted);
+}
+.engines-disabled-reason {
+  margin: var(--space-2) var(--space-4) 0 !important;
+  color: var(--ink-muted);
+}
+.engines-feature-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.engines-feature-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+.engines-feature-row + .engines-feature-row {
+  border-top: 1px solid var(--border);
+}
+.engines-feature-row .ant-select {
+  width: 100%;
+}
+.engines-feature-row label {
+  font-weight: 500;
+}
+.engines-warning {
+  color: var(--star-text);
+  margin-top: var(--space-2) !important;
+}
+.engines-hint,
+.engines-terms {
+  color: var(--ink-muted);
+}
+.engines-diagnostics {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.engines-diagnostics summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.engines-diagnostics-scroll {
+  overflow: auto;
+  margin: var(--space-4) 0;
+}
+.engines-diagnostics table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+}
+.engines-diagnostics th,
+.engines-diagnostics td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.engines-diagnostics code {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.engines-drawer {
+  display: grid;
+  gap: var(--space-5);
+}
+.engines-drawer .ant-select {
+  width: 100%;
+}
+.engines-fast {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.engines-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.engines-actions .ant-btn {
+  white-space: nowrap;
+}
+.engines-key-form {
+  display: grid;
+  gap: var(--space-3);
+}
+.engines-key-form .ant-select {
+  width: 100%;
+}
+.engines-key-form .ant-btn {
+  justify-self: start;
+  margin-top: var(--space-2);
+}
+.engines-terminal {
+  display: grid;
+  gap: var(--space-2);
+}
+.engines-terminal code {
+  overflow-wrap: anywhere;
+}
+.engines-terminal .ant-btn {
+  justify-self: start;
+}
+.engines-result {
+  margin: var(--space-3) 0 !important;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .engines-feature-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+  .engines-add-list .px-engine {
+    flex-wrap: wrap;
+  }
+  .engines-add-list .px-engine-main {
+    flex-basis: calc(100% - 60px);
+  }
+}
+.engines-disabled-reason a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}

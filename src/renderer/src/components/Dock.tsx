@@ -11,6 +11,7 @@ export function Dock({
   anotherLabel,
   onContinue,
   onAnother,
+  anotherDisabled,
   children,
 }: {
   eyebrow: string;
@@ -20,6 +21,7 @@ export function Dock({
   anotherLabel: string;
   onContinue?: () => void;
   onAnother?: () => void;
+  anotherDisabled?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -34,8 +36,11 @@ export function Dock({
           label={anotherLabel}
           variant="ghost"
           onClick={onAnother}
+          disabled={anotherDisabled}
         />
-        <Button size="lg" onClick={onContinue}>{continueLabel}</Button>
+        <Button size="lg" onClick={onContinue}>
+          {continueLabel}
+        </Button>
       </div>
     </aside>
   );

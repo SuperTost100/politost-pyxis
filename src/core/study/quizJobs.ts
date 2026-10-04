@@ -1,3 +1,4 @@
+import { selectionFor } from "../engine/selection";
 import { uuidv7 } from "../../shared/ids";
 import type Database from "better-sqlite3";
 import type { GenerateInput } from "../engine/generate";
@@ -24,6 +25,13 @@ export function registerQuizJobs(
   run?: GenerateInput["run"],
 ) {
   runner.register("quiz-build", {
+    retryParams: (raw) => {
+      const params = raw as Params;
+      return {
+        ...params,
+        snapshot: { ...params.snapshot, selection: selectionFor(db, "lesson") },
+      };
+    },
     jobClass: "model-cli",
     steps: [
       {
@@ -67,17 +75,23 @@ export function enqueueQuiz(
   } satisfies Params);
   return { attemptId: attempt.attemptId, ...readQuiz(db, attempt.attemptId) };
 }
-export function readQuiz(db: Database.Database, attemptId: string) {
+/** Diagnostics reuse the quiz item shape but carry no build job or config. When `planId` is given the attempt must belong to that plan. */
+export function readQuiz(
+  db: Database.Database,
+  attemptId: string,
+  planId?: string,
+) {
   const row = db
     .prepare(
-      "SELECT i.body_json, a.submitted_at FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ? AND i.kind = 'quiz'",
+      "SELECT i.kind, i.body_json, a.submitted_at FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ? AND i.kind IN ('quiz', 'diagnostic') AND (? IS NULL OR a.plan_id = ?)",
     )
-    .get(attemptId) as
-    { body_json: string; submitted_at: number | null } | undefined;
+    .get(attemptId, planId ?? null, planId ?? null) as
+    | { kind: string; body_json: string; submitted_at: number | null }
+    | undefined;
   if (!row) throw new Error("quiz-missing");
   const body = JSON.parse(row.body_json) as {
-    config: { count: number; feedback: boolean };
-    complete: boolean;
+    config?: { count: number; feedback: boolean; timerMinutes?: number };
+    complete?: boolean;
     questions: Array<{
       id: string;
       stem: string;
@@ -119,15 +133,17 @@ export function readQuiz(db: Database.Database, attemptId: string) {
       "SELECT payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object' ORDER BY created_at DESC LIMIT 1",
     )
     .get(attemptId) as { payload_json: string } | undefined;
-  const draft = saved
-    ? (
-        JSON.parse(saved.payload_json) as {
-          draft: { picks: Record<string, string>; index: number };
-        }
-      ).draft
+  const savedBody = saved
+    ? (JSON.parse(saved.payload_json) as {
+        draft: { picks: Record<string, string>; index: number };
+        deadlineAt?: number;
+      })
     : undefined;
+  const draft = savedBody?.draft;
   return {
     draft,
+    timerMinutes: body.config?.timerMinutes,
+    deadlineAt: savedBody?.deadlineAt,
     submittedAt: row.submitted_at ?? undefined,
     result,
     questions: body.questions.map(({ answer, ...question }) => ({
@@ -135,33 +151,49 @@ export function readQuiz(db: Database.Database, attemptId: string) {
       grade: { kind: answer.kind },
     })),
     jobId: job?.id,
-    state: body.complete ? "succeeded" : (job?.state ?? "failed"),
+    state:
+      row.kind === "diagnostic" || body.complete
+        ? "succeeded"
+        : (job?.state ?? "failed"),
     error: job?.error ?? undefined,
-    requestedCount: body.config.count,
-    feedback: body.config.feedback,
+    requestedCount: body.config?.count ?? body.questions.length,
+    feedback: body.config?.feedback ?? false,
     checked: body.questions.flatMap((question) => {
       const check = checkedAnswer(db, attemptId, question.id);
-      return check && (body.config.feedback || row.submitted_at != null)
+      return check && (body.config?.feedback || row.submitted_at != null)
         ? [check]
         : [];
     }),
   };
 }
 
+const DRAFT_GRACE_MS = 5_000;
 export function saveQuizDraft(
   db: Database.Database,
   attemptId: string,
   picks: Record<string, string>,
   index: number,
+  planId?: string,
 ) {
   const row = db
     .prepare(
-      "SELECT a.submitted_at, i.body_json FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ? AND i.kind = 'quiz'",
+      "SELECT a.submitted_at, i.body_json FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ? AND i.kind IN ('quiz', 'diagnostic') AND (? IS NULL OR a.plan_id = ?)",
     )
-    .get(attemptId) as
+    .get(attemptId, planId ?? null, planId ?? null) as
     { submitted_at: number | null; body_json: string } | undefined;
-  if (!row || row.submitted_at != null) throw new Error("attempt-closed");
+  if (
+    !row ||
+    row.submitted_at != null ||
+    db
+      .prepare(
+        "SELECT id FROM jobs WHERE kind = 'quiz-grade' AND json_extract(params_json, '$.attemptId') = ? LIMIT 1",
+      )
+      .get(attemptId)
+  )
+    throw new Error("attempt-closed");
   const body = JSON.parse(row.body_json) as {
+    config?: { timerMinutes?: number };
+    complete?: boolean;
     questions: Array<{ id: string }>;
   };
   const ids = new Set(body.questions.map((question) => question.id));
@@ -170,18 +202,29 @@ export function saveQuizDraft(
     Object.keys(picks).some((id) => !ids.has(id))
   )
     throw new Error("question-missing");
+  const existing = db
+    .prepare(
+      "SELECT id, payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object' LIMIT 1",
+    )
+    .get(attemptId) as { id: string; payload_json: string } | undefined;
+  const now = Date.now();
+  // The timer starts at the first save once every question exists, and survives restarts in the draft row.
+  let deadlineAt = existing
+    ? (JSON.parse(existing.payload_json) as { deadlineAt?: number }).deadlineAt
+    : undefined;
+  const minutes = body.config?.timerMinutes;
+  if (deadlineAt == null && minutes && body.complete)
+    deadlineAt = now + minutes * 60_000;
+  // Answers typed after the deadline (beyond a short save grace) are not kept.
+  if (deadlineAt != null && now > deadlineAt + DRAFT_GRACE_MS)
+    throw new Error("attempt-closed");
   const payload = JSON.stringify({
     draft: {
       picks,
       index: Math.min(index, Math.max(0, body.questions.length - 1)),
     },
+    ...(deadlineAt != null ? { deadlineAt } : {}),
   });
-  const existing = db
-    .prepare(
-      "SELECT id FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object' LIMIT 1",
-    )
-    .get(attemptId) as { id: string } | undefined;
-  const now = Date.now();
   if (existing)
     db.prepare(
       "UPDATE attempt_answers SET payload_json = ?, created_at = ? WHERE id = ?",

@@ -1,6 +1,8 @@
+import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/documents";
@@ -58,10 +60,9 @@ test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results"
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    const source = (await page.evaluate(
-      (path) => window.pyxis.invoke("sources.import", { path }),
-      file,
-    )) as { sourceId: string };
+    const source = (await importPickedSource(page, app, file)) as {
+      sourceId: string;
+    };
     await expect
       .poll(async () => {
         const rows = (await page.evaluate(() =>
@@ -139,9 +140,9 @@ test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results"
       page.getByText("Domanda 1 di 10", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Vero", exact: true }),
+      page.getByRole("button", { name: "A. Vero", exact: true }),
     ).toBeEnabled();
-    await page.getByRole("button", { name: "Vero", exact: true }).click();
+    await page.getByRole("button", { name: "A. Vero", exact: true }).click();
     await page.getByRole("button", { name: "Correggi", exact: true }).click();
     await expect(page.getByText("Corretto", { exact: true })).toBeVisible();
     await page.screenshot({
@@ -169,9 +170,13 @@ test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results"
     await expect(
       page.getByText("Domanda 2 di 10", { exact: true }),
     ).toBeVisible();
+    await page.clock.resume();
     for (let i = 1; i < 10; i++) {
       await page
-        .getByRole("button", { name: i === 1 ? "Falso" : "Vero", exact: true })
+        .getByRole("button", {
+          name: i === 1 ? "B. Falso" : "A. Vero",
+          exact: true,
+        })
         .click();
       await page.getByRole("button", { name: "Correggi", exact: true }).click();
       await expect(
@@ -206,6 +211,23 @@ test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results"
     await expect(page.getByText(/La tua risposta: Falso/)).toContainText(
       "Risposta corretta: Vero",
     );
+    // A whole-plan timed quiz keeps its deadline through reload and submits unanswered work on expiry.
+    const timed = await page.evaluate((planId) => window.pyxis.invoke("study.quizStart", {
+      planId, scope: "plan", count: 10, types: ["tf"], feedback: false, timerMinutes: 1,
+    }), created.planId);
+    await expect.poll(async () => (await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).state).toBe("succeeded");
+    await page.evaluate(({ planId, topicId, attemptId }) => { location.hash = `/plans/${planId}/quiz/${topicId}?attempt=${attemptId}`; }, { planId: created.planId, topicId: plan.topics[0]!.id, attemptId: timed.attemptId });
+    await expect(page.locator(".px-quiz-question")).toBeVisible();
+    await expect.poll(async () => (await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).deadlineAt).toBeGreaterThan(0);
+    const deadline = (await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).deadlineAt;
+    await page.reload();
+    expect((await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).deadlineAt).toBe(deadline);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    db.prepare("UPDATE attempt_answers SET payload_json = json_set(payload_json, '$.deadlineAt', ?) WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object'").run(Date.now() - 1000, timed.attemptId);
+    db.close();
+    await page.reload();
+    await expect.poll(async () => (await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).submittedAt).toBeGreaterThan(0);
+    expect((await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).result?.score).toBe(0);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -243,8 +265,9 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
         }),
       model,
     );
-    const imported = (await page.evaluate(
-      (path) => window.pyxis.invoke("sources.import", { path }),
+    const imported = (await importPickedSource(
+      page,
+      app,
       "/Users/tost1/Documents/Personal/Vibecode/PoliTost/books/ptt-fisica1.ptsb",
     )) as { sourceId: string };
     await expect

@@ -1,3 +1,13 @@
+import { MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "../chat/attach";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
+import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
+import {
+  configureDisclosure,
+  acknowledgeProvider,
+  cancelDisclosure,
+  pendingDisclosures,
+} from "../engine/funnel";
 import {
   IpcError,
   requests,
@@ -6,7 +16,7 @@ import {
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
-import { toolHandlers } from "../math/handlers";
+import { registerRuntimeJob, toolHandlers } from "../math/handlers";
 import { mapHandlers } from "../maps/handlers";
 import { planHandlers } from "../plans/handlers";
 import { studyHandlers } from "../study/handlers";
@@ -36,6 +46,11 @@ let maps: ReturnType<typeof mapHandlers> | null = null;
 let tools: ReturnType<typeof toolHandlers> | null = null;
 let port: CorePort | null = null;
 const inflight = new Map<string, AbortController>();
+const fileGrants = new FileGrants();
+let fileScratch = "";
+export function addFileGrants(grants: FileGrant[]): void {
+  for (const grant of grants) fileGrants.add(grant);
+}
 
 export function setJobHandlers(next: HandlerMap): void {
   handlers = next;
@@ -105,6 +120,71 @@ async function dispatch(
   signal?: AbortSignal,
   emit?: (event: unknown) => void,
 ): Promise<unknown> {
+  if (name === "sources.scanFolder") {
+    const parsed = requests["sources.scanFolder"].input.parse(input);
+    try {
+      parsed.path = fileGrants.directory(parsed.path);
+    } catch {
+      throw new IpcError("file-access-denied", "errors.fileAccessDenied");
+    }
+    return dispatchValidated(name, parsed, signal, emit);
+  }
+  let parsed: { path?: string; files?: string[] } | undefined;
+  if (
+    name === "sources.import" ||
+    name === "sources.replace" ||
+    name === "sources.preview"
+  )
+    parsed = requests[name].input.parse(input);
+  if (name === "chats.ask" || name === "chats.regenerate")
+    parsed = requests[name].input.parse(input);
+  const paths = parsed?.path ? [parsed.path] : (parsed?.files ?? []);
+  if (!paths.length) return dispatchValidated(name, input, signal, emit);
+  let temporary: string | undefined;
+  try {
+    const attachment = name === "chats.ask" || name === "chats.regenerate";
+    if (attachment && paths.length > MAX_FILES)
+      throw new Error("attach-too-many");
+    let remaining = MAX_TOTAL_BYTES;
+    const bytes = paths.map((path) => {
+      const bytes = fileGrants.read(
+        path,
+        attachment ? Math.min(MAX_FILE_BYTES, remaining) : Infinity,
+      );
+      remaining -= bytes.length;
+      return bytes;
+    });
+    temporary = mkdtempSync(join(fileScratch, "picked-"));
+    const snapshots = paths.map((path, index) => {
+      const directory = join(temporary!, String(index));
+      mkdirSync(directory, { mode: 0o700 });
+      const snapshot = join(directory, basename(path));
+      writeFileSync(snapshot, bytes[index]!, { mode: 0o600, flag: "wx" });
+      return snapshot;
+    });
+    if (parsed?.path) parsed.path = snapshots[0]!;
+    else if (parsed) parsed.files = snapshots;
+    return await dispatchValidated(name, parsed, signal, emit);
+  } catch (error) {
+    if (error instanceof Error && error.message === "file-access-denied")
+      throw new IpcError("file-access-denied", "errors.fileAccessDenied");
+    if (
+      error instanceof Error &&
+      ["attach-too-big", "attach-too-many"].includes(error.message)
+    )
+      throw new IpcError("attach-too-big", "errors.attachTooBig");
+    throw error;
+  } finally {
+    if (temporary) rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+async function dispatchValidated(
+  name: string,
+  input: unknown,
+  signal?: AbortSignal,
+  emit?: (event: unknown) => void,
+): Promise<unknown> {
   if (!handlers) throw new IpcError("not-ready", "errors.notReady");
   switch (name) {
     case "jobs.list":
@@ -127,11 +207,28 @@ async function dispatch(
       const parsed = requests["engines.models"].input.parse(input);
       return engines?.models({ provider: parsed.provider as ProviderId });
     }
+    case "engines.disclosurePending":
+      requests["engines.disclosurePending"].input.parse(input);
+      return { providers: pendingDisclosures() };
+    case "engines.disclosureCancel": {
+      cancelDisclosure(
+        requests["engines.disclosureCancel"].input.parse(input).provider,
+      );
+      return { ok: true as const };
+    }
+    case "engines.acknowledge": {
+      acknowledgeProvider(
+        requests["engines.acknowledge"].input.parse(input).provider,
+      );
+      return { ok: true as const };
+    }
     case "engines.test": {
       const parsed = requests["engines.test"].input.parse(input);
       return engines?.test({
         provider: parsed.provider as ProviderId,
         model: parsed.model,
+        effort: parsed.effort,
+        fast: parsed.fast,
       });
     }
     case "engines.clearFeature":
@@ -152,6 +249,18 @@ async function dispatch(
     case "engines.features":
       requests["engines.features"].input.parse(input);
       return engines?.features();
+    case "engines.remove": {
+      const parsed = requests["engines.remove"].input.parse(input);
+      return engines?.remove({ provider: parsed.provider as ProviderId });
+    }
+    case "engines.logout": {
+      const parsed = requests["engines.logout"].input.parse(input);
+      return engines?.logout({ provider: parsed.provider as ProviderId });
+    }
+    case "engines.update": {
+      const parsed = requests["engines.update"].input.parse(input);
+      return engines?.update({ provider: parsed.provider as ProviderId });
+    }
     case "engines.login": {
       const parsed = requests["engines.login"].input.parse(input);
       return engines?.login({ provider: parsed.provider as ProviderId });
@@ -168,7 +277,11 @@ async function dispatch(
       });
     }
     case "study.lesson":
-      return study?.lesson(requests["study.lesson"].input.parse(input));
+      return study?.lesson(requests["study.lesson"].input.parse(input), {
+        signal,
+        onDelta: (text) => emit?.({ type: "text", text }),
+        onPassages: (passageIds) => emit?.({ type: "sources", passageIds }),
+      });
     case "study.markdown":
       return study?.markdown(requests["study.markdown"].input.parse(input));
     case "study.anki":
@@ -189,10 +302,17 @@ async function dispatch(
       return study?.quizCheck(requests["study.quizCheck"].input.parse(input));
     case "study.quizSubmit":
       return study?.quizSubmit(requests["study.quizSubmit"].input.parse(input));
+    case "study.quizGrading":
+      return study?.quizGrading(
+        requests["study.quizGrading"].input.parse(input),
+      );
     case "study.flag":
       return study?.flag(requests["study.flag"].input.parse(input));
     case "study.review":
       return study?.review(requests["study.review"].input.parse(input));
+    case "study.activeSimulation":
+      requests["study.activeSimulation"].input.parse(input);
+      return study?.activeSimulation();
     case "study.simulationOpen":
       return (
         study?.simulationOpen(
@@ -202,6 +322,14 @@ async function dispatch(
     case "study.simulationStart":
       return study?.simulationStart(
         requests["study.simulationStart"].input.parse(input),
+      );
+    case "study.simulationPrepare":
+      return study?.simulationPrepare(
+        requests["study.simulationPrepare"].input.parse(input),
+      );
+    case "study.simulationBuild":
+      return study?.simulationBuild(
+        requests["study.simulationBuild"].input.parse(input),
       );
     case "study.simulationSubmit":
       return study?.simulationSubmit(
@@ -217,6 +345,20 @@ async function dispatch(
       );
     case "study.cards":
       return study?.cards(requests["study.cards"].input.parse(input)) ?? [];
+    case "study.cardsGenerate":
+      return study?.cardsGenerate(
+        requests["study.cardsGenerate"].input.parse(input),
+      );
+    case "study.cardsBuild":
+      return study?.cardsBuild(requests["study.cardsBuild"].input.parse(input));
+    case "study.gapDrillStart":
+      return study?.gapDrillStart(
+        requests["study.gapDrillStart"].input.parse(input),
+      );
+    case "study.gapDrillRead":
+      return study?.gapDrillRead(
+        requests["study.gapDrillRead"].input.parse(input),
+      );
     case "study.queue":
       return study?.queue(requests["study.queue"].input.parse(input));
     case "study.save":
@@ -235,17 +377,28 @@ async function dispatch(
       return study?.active(requests["study.active"].input.parse(input));
     case "study.exercises":
       return (
-        study?.exercises(requests["study.exercises"].input.parse(input)) ?? []
+        study?.exercises(requests["study.exercises"].input.parse(input)) ?? {
+          exercises: [],
+          job: null,
+        }
       );
     case "tools.check":
       return tools?.check(requests["tools.check"].input.parse(input));
     case "tools.runtime":
       requests["tools.runtime"].input.parse(input);
       return tools?.runtime();
+    case "tools.runtimeDownload":
+      requests["tools.runtimeDownload"].input.parse(input);
+      return tools?.runtimeDownload();
     case "tools.python":
       return tools?.python(requests["tools.python"].input.parse(input));
-    case "tools.stagePng":
-      return tools?.stagePng(requests["tools.stagePng"].input.parse(input));
+    case "tools.stagePng": {
+      const staged = tools?.stagePng(
+        requests["tools.stagePng"].input.parse(input),
+      );
+      if (staged) fileGrants.add(pickedFileGrant(staged.path));
+      return staged;
+    }
     case "maps.list":
       return maps?.list(requests["maps.list"].input.parse(input));
     case "maps.build":
@@ -262,6 +415,8 @@ async function dispatch(
       return maps?.move(requests["maps.move"].input.parse(input));
     case "maps.patch":
       return maps?.patch(requests["maps.patch"].input.parse(input));
+    case "maps.redo":
+      return maps?.redo(requests["maps.redo"].input.parse(input));
     case "maps.undo":
       return maps?.undo(requests["maps.undo"].input.parse(input));
     case "plans.build":
@@ -308,6 +463,20 @@ async function dispatch(
       );
     case "plans.complete":
       return plans?.complete(requests["plans.complete"].input.parse(input));
+    case "plans.attachSources":
+      return plans?.attachSources(
+        requests["plans.attachSources"].input.parse(input),
+      );
+    case "plans.removeSource":
+      return plans?.removeSource(
+        requests["plans.removeSource"].input.parse(input),
+      );
+    case "plans.item":
+      return plans?.item(requests["plans.item"].input.parse(input));
+    case "plans.openQuiz":
+      return plans?.openQuiz(requests["plans.openQuiz"].input.parse(input));
+    case "plans.settings":
+      return plans?.settings(requests["plans.settings"].input.parse(input));
     case "plans.read":
       return plans?.read(requests["plans.read"].input.parse(input)) ?? null;
     case "plans.create":
@@ -366,6 +535,11 @@ async function dispatch(
       return sources?.ocr(requests["sources.ocr"].input.parse(input));
     case "sources.paste":
       return sources?.paste(requests["sources.paste"].input.parse(input));
+    case "sources.linkPreview":
+      return sources?.linkPreview(
+        requests["sources.linkPreview"].input.parse(input),
+        signal,
+      );
     case "sources.link":
       return sources?.link(requests["sources.link"].input.parse(input));
     case "sources.scanFolder":
@@ -406,7 +580,14 @@ export function bindRunner(runner: Runner, dev: boolean): void {
   setJobHandlers(jobHandlers(runner, dev));
 }
 
+export function removeEngineSelections(provider: string): void {
+  engines?.remove({ provider: provider as ProviderId });
+}
+
 export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
+  configureDisclosure(db, (provider, pending) =>
+    broadcast("engine.disclosure", { provider, pending }),
+  );
   engines = engineHandlers(db, (event) => broadcast("engine.login", event));
 }
 
@@ -419,8 +600,9 @@ export function bindStudy(
   study = studyHandlers(db, runner, run, simulationRun);
 }
 
-export function bindTools(): void {
-  tools = toolHandlers();
+export function bindTools(workspace = "", runner?: Runner): void {
+  if (runner) registerRuntimeJob(runner);
+  tools = toolHandlers(workspace, runner);
 }
 
 export function bindMaps(
@@ -457,5 +639,8 @@ export function bindSources(
   workspace: string,
   runner: Runner,
 ): void {
-  sources = sourceHandlers(db, workspace, runner);
+  fileScratch = join(workspace, "scratch");
+  sources = sourceHandlers(db, workspace, runner, (path) =>
+    fileGrants.read(path),
+  );
 }

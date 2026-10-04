@@ -29,3 +29,18 @@ describe("idleTopics", () => {
     expect(idleTopics(events, T0, 7)).toEqual(["stale"]);
   });
 });
+
+it("uses specified answer weights, ignores lessons and counts a card only once", () => {
+  const events: MasteryEvent[] = [
+    { topicId: "a", kind: "quiz", answerKind: "open", score: 1, at: T0 },
+    { topicId: "a", kind: "quiz", score: 0, at: T0 },
+    { topicId: "a", kind: "simulation", score: 1, at: T0 },
+    { topicId: "a", kind: "lesson", score: 1, at: T0 },
+    { topicId: "a", kind: "card", cardId: "c", score: 1, at: T0 - 100 },
+    { topicId: "a", kind: "card", cardId: "c", score: 0.8, at: T0 },
+    { topicId: "a", kind: "quiz", score: 1, at: T0 + 1 },
+  ];
+  expect(masteryFor(events, T0).a).toBeCloseTo(
+    (1.5 + 2 + 0.4) / (3 + 1.5 + 1 + 2 + 0.5),
+  );
+});

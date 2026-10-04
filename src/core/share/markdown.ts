@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Grade } from "../study/grade";
-import { openLesson } from "../study/openLesson";
+import { readLesson } from "../study/openLesson";
 
 export function lessonMarkdown(
   title: string,
@@ -147,6 +147,7 @@ export function exportMarkdown(
     planId: string;
     kind: "lesson" | "cards" | "quiz" | "simulation";
     topicId?: string;
+    wording?: "simple" | "balanced" | "technical";
     answers?: boolean;
     attemptId?: string;
   },
@@ -162,7 +163,7 @@ export function exportMarkdown(
       .prepare(`SELECT title FROM topics WHERE id = ? AND plan_id = ?`)
       .get(input.topicId, input.planId) as { title: string } | undefined;
     if (!topic) throw new Error("topic-missing");
-    const lesson = openLesson(db, input.planId, input.topicId);
+    const lesson = readLesson(db, input.planId, input.topicId, input.wording);
     return {
       filename,
       markdown: lessonMarkdown(

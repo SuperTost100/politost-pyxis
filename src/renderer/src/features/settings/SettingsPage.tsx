@@ -1,9 +1,29 @@
+import { AboutPanel } from "./AboutPanel";
+import { UpdatesPanel } from "./UpdatesPanel";
 import { SubjectPicker } from "../ask/SubjectPicker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "antd";
-import { useState } from "react";
+import {
+  ArrowLeft,
+  ChevronRight,
+  UserRound,
+  BookOpen,
+  Cpu,
+  Palette,
+  Languages,
+  HardDrive,
+  Shield,
+  RefreshCw,
+  Info,
+  Accessibility,
+  GraduationCap,
+  Terminal,
+} from "lucide-react";
+import { Notice } from "../../components/Notice";
+import "./SettingsPage.css";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppState } from "../../app/app-state";
 import { invoke } from "../../lib/ipc";
 import { i18n, setLanguage, type Locale } from "../../locales/i18n";
@@ -14,6 +34,11 @@ export function SettingsPage() {
   const { appearance, setTheme } = useAppState();
   const locale: Locale = i18n.language === "en" ? "en" : "it";
   const [params] = useSearchParams();
+  const route = useParams<{ section: string }>();
+  const section =
+    route.section ??
+    params.get("section") ??
+    (params.get("setup") === "1" ? "engines" : null);
   const navigate = useNavigate();
   const client = useQueryClient();
   const profile = useQuery({
@@ -21,9 +46,11 @@ export function SettingsPage() {
     queryFn: () => invoke("profile.get", {}),
   });
 
+  const [saveError, setSaveError] = useState(false);
   const [draftInterests, setDraftInterests] = useState<string | null>(null);
   const [dataNote, setDataNote] = useState<string | null>(null);
   const [wipeArmed, setWipeArmed] = useState(false);
+  const [moving, setMoving] = useState(false);
   const place = useQuery({
     queryKey: ["workspace-path"],
     queryFn: () => window.pyxis.workspacePath(),
@@ -34,6 +61,9 @@ export function SettingsPage() {
   });
 
   async function patch(input: {
+    displayName?: string;
+    school?: string;
+    course?: string;
     dyslexia?: boolean;
     textSize?: "sm" | "md" | "lg";
     tutorMode?: "solver" | "socratic";
@@ -41,176 +71,464 @@ export function SettingsPage() {
     interestsOn?: boolean;
     crashReports?: boolean;
   }) {
-    const saved = await invoke("profile.save", input);
-    client.setQueryData(["profile"], saved);
-    document.documentElement.dataset.dyslexia = saved.dyslexia ? "on" : "off";
-    document.documentElement.dataset.text = saved.textSize;
+    setSaveError(false);
+    try {
+      const saved = await invoke("profile.save", input);
+      client.setQueryData(["profile"], saved);
+      document.documentElement.dataset.dyslexia = saved.dyslexia ? "on" : "off";
+      document.documentElement.dataset.text = saved.textSize;
+    } catch {
+      setSaveError(true);
+    }
   }
-  return (
-    <div>
-      <h1 className="title-1">{t("settings.title")}</h1>
-      <div className="label section-label">{t("settings.appearance")}</div>
-      <div className="choice-list">
-        <Choice
-          label={t("settings.system")}
-          selected={appearance.source === "system"}
-          onClick={() => void setTheme("system")}
+  const labels: Record<string, string> = {
+    profile: t("settings.profile"),
+    subjects: t("ask.subject"),
+    engines: t("settings.enginesTitle"),
+    tutor: t("settings.tutor"),
+    reading: t("settings.reading"),
+    appearance: t("settings.appearance"),
+    language: t("settings.language"),
+    data: t("settings.data"),
+    privacy: t("settings.privacy"),
+    updates: t("updates.title"),
+    about: t("settings.about"),
+    diagnostics: t("settings.diagnostics"),
+  };
+  const groups = [
+    {
+      name: t("settings.groups.profile"),
+      rows: [
+        {
+          key: "profile",
+          icon: UserRound,
+          value: profile.data?.displayName ?? "",
+        },
+        { key: "subjects", icon: GraduationCap, value: "" },
+      ],
+    },
+    {
+      name: t("settings.groups.engines"),
+      rows: [{ key: "engines", icon: Cpu, value: "" }],
+    },
+    {
+      name: t("settings.groups.study"),
+      rows: [
+        {
+          key: "tutor",
+          icon: BookOpen,
+          value: t(
+            profile.data?.tutorMode === "socratic"
+              ? "settings.socratic"
+              : "settings.solver",
+          ),
+        },
+        {
+          key: "reading",
+          icon: Accessibility,
+          value: t(`settings.text.${profile.data?.textSize ?? "md"}`),
+        },
+        {
+          key: "appearance",
+          icon: Palette,
+          value: t(`settings.${appearance.source}`),
+        },
+        {
+          key: "language",
+          icon: Languages,
+          value: t(locale === "it" ? "settings.italian" : "settings.english"),
+        },
+      ],
+    },
+    {
+      name: t("settings.groups.data"),
+      rows: [{ key: "data", icon: HardDrive, value: "" }],
+    },
+    {
+      name: t("settings.groups.app"),
+      rows: [
+        { key: "privacy", icon: Shield, value: "" },
+        { key: "updates", icon: RefreshCw, value: "" },
+        { key: "about", icon: Info, value: "" },
+        { key: "diagnostics", icon: Terminal, value: "" },
+      ],
+    },
+  ];
+  const panels: Record<string, ReactNode> = {
+    appearance: (
+      <>
+        {" "}
+        <div className="label section-label">{t("settings.appearance")}</div>
+        <div className="choice-list">
+          <Choice
+            label={t("settings.system")}
+            selected={appearance.source === "system"}
+            onClick={() => void setTheme("system")}
+          />
+          <Choice
+            label={t("settings.dark")}
+            selected={appearance.source === "dark"}
+            onClick={() => void setTheme("dark")}
+          />
+          <Choice
+            label={t("settings.light")}
+            selected={appearance.source === "light"}
+            onClick={() => void setTheme("light")}
+          />
+        </div>
+        {appearance.source === "system" ? (
+          <p className="small section-hint">{t("settings.themeHint")}</p>
+        ) : null}
+      </>
+    ),
+    engines: <EnginesPanel />,
+    tutor: (
+      <>
+        {" "}
+        <div className="label section-label">{t("settings.tutor")}</div>
+        <div className="choice-list">
+          <Choice
+            label={t("settings.solver")}
+            selected={(profile.data?.tutorMode ?? "solver") === "solver"}
+            onClick={() => void patch({ tutorMode: "solver" })}
+          />
+          <Choice
+            label={t("settings.socratic")}
+            selected={profile.data?.tutorMode === "socratic"}
+            onClick={() => void patch({ tutorMode: "socratic" })}
+          />
+        </div>
+      </>
+    ),
+    subjects: (
+      <>
+        {" "}
+        <div className="label section-label">{t("ask.subject")}</div>
+        <SubjectPicker value="" onChange={() => undefined} managementOnly />
+      </>
+    ),
+    profile: (
+      <>
+        <div className="px-settings-profile-fields">
+          {(["displayName", "school", "course"] as const).map((field) => (
+            <label className="px-form-field" key={field}>
+              <span className="label">
+                {t(
+                  field === "displayName"
+                    ? "onboarding.name"
+                    : `onboarding.${field}`,
+                )}
+              </span>
+              <Input
+                key={profile.data?.[field] ?? ""}
+                defaultValue={profile.data?.[field] ?? ""}
+                onBlur={(event) =>
+                  void patch({ [field]: event.target.value.trim() })
+                }
+              />
+            </label>
+          ))}
+        </div>{" "}
+        <div className="label section-label">{t("settings.interests")}</div>
+        <div className="choice-list">
+          <Choice
+            label={t("settings.interestsOn")}
+            selected={profile.data?.interestsOn !== false}
+            onClick={() =>
+              void patch({ interestsOn: profile.data?.interestsOn === false })
+            }
+          />
+        </div>
+        <Input
+          className="px-settings-interests"
+          aria-label={t("settings.interests")}
+          value={draftInterests ?? (profile.data?.interests ?? []).join(", ")}
+          onChange={(event) => setDraftInterests(event.target.value)}
+          onBlur={() => {
+            if (draftInterests == null) return;
+            const items = draftInterests
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean);
+            void patch({ interests: items });
+            setDraftInterests(null);
+          }}
         />
-        <Choice
-          label={t("settings.dark")}
-          selected={appearance.source === "dark"}
-          onClick={() => void setTheme("dark")}
-        />
-        <Choice
-          label={t("settings.light")}
-          selected={appearance.source === "light"}
-          onClick={() => void setTheme("light")}
-        />
-      </div>
-      {appearance.source === "system" ? (
-        <p className="small section-hint">{t("settings.themeHint")}</p>
-      ) : null}
-      <EnginesPanel />
-      {params.get("setup") === "1" ? (
-        <div className="gallery-row">
-          <Button type="primary" shape="round" onClick={() => navigate("/exams")}>
-            {t("onboarding.done")}
+      </>
+    ),
+    privacy: (
+      <>
+        {" "}
+        <div className="label section-label">{t("settings.privacy")}</div>
+        <div className="choice-list">
+          <Choice
+            label={t("settings.crashReports")}
+            selected={profile.data?.crashReports === true}
+            onClick={() =>
+              void patch({ crashReports: profile.data?.crashReports !== true })
+            }
+          />
+        </div>
+        <p className="small section-hint">{t("settings.crashHint")}</p>
+      </>
+    ),
+    reading: (
+      <>
+        {" "}
+        <div className="label section-label">{t("settings.reading")}</div>
+        <div className="choice-list">
+          <Choice
+            label={t("settings.dyslexia")}
+            selected={profile.data?.dyslexia === true}
+            onClick={() =>
+              void patch({ dyslexia: profile.data?.dyslexia !== true })
+            }
+          />
+          {(["sm", "md", "lg"] as const).map((size) => (
+            <Choice
+              key={size}
+              label={t(`settings.text.${size}`)}
+              selected={(profile.data?.textSize ?? "md") === size}
+              onClick={() => void patch({ textSize: size })}
+            />
+          ))}
+        </div>
+        <div className="px-settings-reading-sample reading">
+          <p>{t("settings.readingSample")}</p>
+        </div>
+      </>
+    ),
+    data: (
+      <>
+        {" "}
+        <div className="label section-label">{t("settings.data")}</div>
+        {place.data ? <p className="small section-hint">{place.data}</p> : null}
+        <Button
+          shape="round"
+          loading={moving}
+          disabled={moving}
+          onClick={async () => {
+            setDataNote(null);
+            setMoving(true);
+            try {
+              const result = await window.pyxis.moveWorkspace();
+              if (result.status === "moved") {
+                client.setQueryData(["workspace-path"], result.path);
+                void client.invalidateQueries({ queryKey: ["plan-usage"] });
+                void client.invalidateQueries({ queryKey: ["jobs"] });
+                setDataNote(
+                  t(
+                    result.cleanupPending
+                      ? "settings.moveCleanup"
+                      : "settings.moveSaved",
+                    { path: place.data ?? "" },
+                  ),
+                );
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "";
+              const key = message.includes("workspace-move-destination-exists")
+                ? "settings.moveExists"
+                : message.includes("workspace-move-path-overlap")
+                  ? "settings.moveOverlap"
+                  : message.includes("workspace-move-symlink")
+                    ? "settings.moveSymlink"
+                    : message.includes("workspace-move-recovery-unavailable")
+                      ? "settings.moveRecovery"
+                      : "settings.moveFailed";
+              setDataNote(t(key));
+            } finally {
+              setMoving(false);
+            }
+          }}
+        >
+          {t("settings.move")}
+        </Button>
+        <p className="small section-hint">{t("settings.moveHint")}</p>
+        <ul className="choice-list">
+          {(usage.data ?? []).map((plan) => (
+            <li key={plan.id} className="small">
+              {t("settings.planSize", {
+                title: plan.title,
+                size: formatBytes(plan.bytes),
+              })}
+            </li>
+          ))}
+        </ul>
+        <div className="choice-list">
+          <Button
+            disabled={moving}
+            onClick={() => {
+              setDataNote(null);
+              void window.pyxis
+                .backupWorkspace()
+                .then((status) => {
+                  if (status === "saved")
+                    setDataNote(t("settings.backupSaved"));
+                })
+                .catch(() => {
+                  setDataNote(t("settings.backupFailed"));
+                });
+            }}
+          >
+            {t("settings.backup")}
+          </Button>
+          <Button
+            disabled={moving}
+            onClick={() => {
+              setDataNote(null);
+              void window.pyxis
+                .restoreWorkspace()
+                .then((status) => {
+                  if (status === "restored") window.location.reload();
+                })
+                .catch(() => {
+                  setDataNote(t("settings.restoreFailed"));
+                });
+            }}
+          >
+            {t("settings.restore")}
           </Button>
         </div>
-      ) : null}
-      <div className="label section-label">{t("settings.tutor")}</div>
-      <div className="choice-list">
-        <Choice
-          label={t("settings.solver")}
-          selected={(profile.data?.tutorMode ?? "solver") === "solver"}
-          onClick={() => void patch({ tutorMode: "solver" })}
-        />
-        <Choice
-          label={t("settings.socratic")}
-          selected={profile.data?.tutorMode === "socratic"}
-          onClick={() => void patch({ tutorMode: "socratic" })}
-        />
-      </div>
-      <div className="label section-label">{t("ask.subject")}</div>
-      <SubjectPicker value="" onChange={() => undefined} managementOnly />
-      <div className="label section-label">{t("settings.interests")}</div>
-      <div className="choice-list">
-        <Choice
-          label={t("settings.interestsOn")}
-          selected={profile.data?.interestsOn !== false}
-          onClick={() => void patch({ interestsOn: profile.data?.interestsOn === false })}
-        />
-      </div>
-      <Input
-        aria-label={t("settings.interests")}
-        value={draftInterests ?? (profile.data?.interests ?? []).join(", ")}
-        onChange={(event) => setDraftInterests(event.target.value)}
-        onBlur={() => {
-          if (draftInterests == null) return;
-          const items = draftInterests
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean);
-          void patch({ interests: items });
-          setDraftInterests(null);
-        }}
-      />
-      <div className="label section-label">{t("settings.privacy")}</div>
-      <div className="choice-list">
-        <Choice
-          label={t("settings.crashReports")}
-          selected={profile.data?.crashReports === true}
-          onClick={() => void patch({ crashReports: profile.data?.crashReports !== true })}
-        />
-      </div>
-      <p className="small section-hint">{t("settings.crashHint")}</p>
-      <div className="label section-label">{t("settings.reading")}</div>
-      <div className="choice-list">
-        <Choice
-          label={t("settings.dyslexia")}
-          selected={profile.data?.dyslexia === true}
-          onClick={() => void patch({ dyslexia: profile.data?.dyslexia !== true })}
-        />
-        {(["sm", "md", "lg"] as const).map((size) => (
+        <div className="px-settings-danger">
+          <p className="small ink-muted">{t("settings.wipeHint")}</p>
+          <Button
+            disabled={moving}
+            danger
+            onClick={() => {
+              if (!wipeArmed) {
+                setWipeArmed(true);
+                return;
+              }
+              setDataNote(null);
+              void window.pyxis
+                .wipeWorkspace()
+                .then(() => {
+                  window.location.reload();
+                })
+                .catch(() => {
+                  setWipeArmed(false);
+                  setDataNote(t("settings.wipeFailed"));
+                });
+            }}
+          >
+            {wipeArmed ? t("settings.wipeConfirm") : t("settings.wipe")}
+          </Button>
+          {wipeArmed ? (
+            <Button type="text" onClick={() => setWipeArmed(false)}>
+              {t("wizard.cancel")}
+            </Button>
+          ) : null}
+        </div>
+        {dataNote ? (
+          <p className="small section-hint" role="status">
+            {dataNote}
+          </p>
+        ) : null}
+        <p className="small section-hint">{t("settings.dataHint")}</p>
+      </>
+    ),
+    language: (
+      <>
+        {" "}
+        <div className="label section-label">{t("settings.language")}</div>
+        <div className="choice-list">
           <Choice
-            key={size}
-            label={t(`settings.text.${size}`)}
-            selected={(profile.data?.textSize ?? "md") === size}
-            onClick={() => void patch({ textSize: size })}
+            label={t("settings.italian")}
+            selected={locale === "it"}
+            onClick={() => setLanguage("it")}
           />
-        ))}
-      </div>
-      <div className="label section-label">{t("settings.data")}</div>
-      {place.data ? <p className="small section-hint">{place.data}</p> : null}
-      <ul className="choice-list">
-        {(usage.data ?? []).map((plan) => (
-          <li key={plan.id} className="small">
-            {t("settings.planSize", { title: plan.title, size: formatBytes(plan.bytes) })}
-          </li>
-        ))}
-      </ul>
-      <div className="choice-list">
-        <Button
-          onClick={() => {
-            setDataNote(null);
-            void window.pyxis.backupWorkspace().then((status) => {
-              if (status === "saved") setDataNote(t("settings.backupSaved"));
-            }).catch(() => {
-              setDataNote(t("settings.backupFailed"));
-            });
+          <Choice
+            label={t("settings.english")}
+            selected={locale === "en"}
+            onClick={() => setLanguage("en")}
+          />
+        </div>
+      </>
+    ),
+    updates: <UpdatesPanel />,
+    about: (
+      <>
+        {" "}
+        <AboutPanel
+          labels={{
+            title: t("settings.about"),
+            version: t("about.version"),
+            license: t("about.license"),
+            notices: t("about.notices"),
+            search: t("about.search"),
+            loading: t("about.loading"),
+            failed: t("about.failed"),
+            empty: t("about.empty"),
+            missingText: t("about.missingText"),
           }}
-        >
-          {t("settings.backup")}
-        </Button>
-        <Button
-          onClick={() => {
-            setDataNote(null);
-            void window.pyxis.restoreWorkspace().then((status) => {
-              if (status === "restored") window.location.reload();
-            }).catch(() => {
-              setDataNote(t("settings.restoreFailed"));
-            });
-          }}
-        >
-          {t("settings.restore")}
-        </Button>
-        <Button
-          danger={wipeArmed}
-          onClick={() => {
-            if (!wipeArmed) {
-              setWipeArmed(true);
-              return;
-            }
-            setDataNote(null);
-            void window.pyxis.wipeWorkspace().then(() => {
-              window.location.reload();
-            }).catch(() => {
-              setWipeArmed(false);
-              setDataNote(t("settings.wipeFailed"));
-            });
-          }}
-        >
-          {wipeArmed ? t("settings.wipeConfirm") : t("settings.wipe")}
-        </Button>
-      </div>
-      <p className="small section-hint">{dataNote ?? t("settings.wipeHint")}</p>
-      <p className="small section-hint">{t("settings.dataHint")}</p>
-      <div className="label section-label">{t("settings.language")}</div>
-      <div className="choice-list">
-        <Choice
-          label={t("settings.italian")}
-          selected={locale === "it"}
-          onClick={() => setLanguage("it")}
         />
-        <Choice
-          label={t("settings.english")}
-          selected={locale === "en"}
-          onClick={() => setLanguage("en")}
-        />
-      </div>
-      <div className="label section-label">{t("settings.about")}</div>
-      <p className="small section-hint">{t("settings.aboutBody")}</p>
-      <p className="small section-hint">{t("settings.notices")}</p>
+      </>
+    ),
+    diagnostics: (
+      <>
+        <p className="small ink-muted">{t("settings.diagnosticsHint")}</p>
+        <EnginesPanel />
+      </>
+    ),
+  };
+  const active = section && panels[section] ? section : null;
+  return (
+    <div className="px-settings">
+      {active ? (
+        <Button
+          type="text"
+          icon={<ArrowLeft size={18} />}
+          className="px-settings-back"
+          onClick={() => {
+            navigate("/settings");
+            setWipeArmed(false);
+          }}
+        >
+          {t("settings.back")}
+        </Button>
+      ) : null}
+      <h1 className="title-1">
+        {active ? labels[active] : t("settings.title")}
+      </h1>
+      {saveError ? (
+        <Notice tone="danger">{t("settings.saveFailed")}</Notice>
+      ) : null}
+      {active ? (
+        <section className="px-settings-subpage">
+          {panels[active]}
+          {params.get("setup") === "1" ? (
+            <Button
+              type="primary"
+              shape="round"
+              onClick={() => navigate("/exams")}
+            >
+              {t("onboarding.done")}
+            </Button>
+          ) : null}
+        </section>
+      ) : (
+        <div className="px-settings-groups">
+          {groups.map((group) => (
+            <section className="px-settings-group" key={group.name}>
+              <h2 className="label">{group.name}</h2>
+              {group.rows.map((row) => (
+                <button
+                  type="button"
+                  className="px-settings-row"
+                  key={row.key}
+                  onClick={() => navigate(`/settings/${row.key}`)}
+                >
+                  <row.icon size={20} aria-hidden="true" />
+                  <span className="body-strong">{labels[row.key]}</span>
+                  <span className="meta px-settings-current">{row.value}</span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              ))}
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

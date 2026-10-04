@@ -6,6 +6,8 @@ export type SeriesEvent = {
   at: number;
   score: number;
   scores?: number[];
+  answerKinds?: Array<string | undefined>;
+  evidenceKind?: "quiz" | "simulation";
   kind: "quiz" | "card" | "lesson" | "active";
   seconds?: number;
 };
@@ -44,21 +46,34 @@ export function chartPoints(events: SeriesEvent[], now: number, days = 14) {
     const day = addDays(end, -i);
     const until = addDays(day, 1);
     const studied = events.filter(isStudied);
-    const counted = studied.filter((event) => event.at >= day && event.at < until).length;
-    const masteryEvents: MasteryEvent[] = studied
-      .filter((event) => event.at < until)
-      .map((event) => ({
-        topicId: event.topicId,
-        kind: event.kind,
-        score: event.score,
-        at: event.at,
-      }));
+    const counted = studied.filter(
+      (event) => event.at >= day && event.at < until,
+    ).length;
+    const masteryEvents = seriesEvidence(
+      studied.filter((event) => event.at < until),
+    );
     const scores = Object.values(masteryFor(masteryEvents, until - 1));
     const mastery =
-      scores.length === 0 ? 0 : scores.reduce((sum, score) => sum + score, 0) / scores.length;
+      scores.length === 0
+        ? 0
+        : scores.reduce((sum, score) => sum + score, 0) / scores.length;
     points.push({ day, count: counted, mastery });
   }
   return points;
+}
+
+/** Legacy attempts retain their individual scores; missing answer kinds use quiz weight. */
+export function seriesEvidence(events: SeriesEvent[]): MasteryEvent[] {
+  return events.flatMap((event) => {
+    if (event.kind !== "quiz") return [];
+    return (event.scores ?? [event.score]).map((score, index) => ({
+      topicId: event.topicId,
+      kind: event.evidenceKind ?? "quiz",
+      answerKind: event.answerKinds?.[index],
+      score,
+      at: event.at,
+    }));
+  });
 }
 
 export function weeklyCounts(
@@ -68,7 +83,9 @@ export function weeklyCounts(
   weeks = 5,
 ) {
   const end = weekStart(now);
-  const starts = Array.from({ length: weeks }, (_, index) => addDays(end, (index - (weeks - 1)) * 7));
+  const starts = Array.from({ length: weeks }, (_, index) =>
+    addDays(end, (index - (weeks - 1)) * 7),
+  );
   const counts: Record<string, number[]> = {};
   for (const id of topicIds) counts[id] = Array(weeks).fill(0);
   for (const event of events) {
@@ -87,7 +104,9 @@ export function paceFacts(
   active: Array<{ day: number; seconds: number }> = [],
 ) {
   const start = weekStart(now);
-  const week = bars.filter((bar) => bar.day >= start).reduce((sum, bar) => sum + bar.count, 0);
+  const week = bars
+    .filter((bar) => bar.day >= start)
+    .reduce((sum, bar) => sum + bar.count, 0);
   const timed = active.some((bar) => bar.seconds > 0);
   const peakBars = active.map((bar) => ({ day: bar.day, count: bar.seconds }));
   const source = timed ? peakBars : bars;
@@ -105,12 +124,17 @@ export function activeMinutes(events: SeriesEvent[], now: number, days = 14) {
     const day = addDays(end, -i);
     const until = addDays(day, 1);
     const seconds = events
-      .filter((event) => event.kind === "active" && event.at >= day && event.at < until)
+      .filter(
+        (event) =>
+          event.kind === "active" && event.at >= day && event.at < until,
+      )
       .reduce((sum, event) => sum + (event.seconds ?? 0), 0);
     bars.push({ day, seconds });
   }
   const start = weekStart(now);
-  const week = bars.filter((bar) => bar.day >= start).reduce((sum, bar) => sum + bar.seconds, 0);
+  const week = bars
+    .filter((bar) => bar.day >= start)
+    .reduce((sum, bar) => sum + bar.seconds, 0);
   return { bars, weekSeconds: week };
 }
 
@@ -135,7 +159,8 @@ export function openGaps(events: SeriesEvent[]): OpenGap[] {
       const attempt = attempts[index];
       if (!attempt) continue;
       if (gap && shouldClose(gap, attempts.slice(0, index + 1))) gap = null;
-      if (!gap && shouldOpen(attempt, false)) gap = { topicId, openedAt: attempt.at };
+      if (!gap && shouldOpen(attempt, false))
+        gap = { topicId, openedAt: attempt.at };
     }
     if (gap && shouldClose(gap, attempts)) gap = null;
     if (gap) open.push(gap);

@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../../shared/ids";
 import { openDatabase } from "../db/connection";
-import { deleteCard, dueCards, queueCounts, rateCard, saveCard, seedCards, setSuspended } from "./cards";
+import {
+  deleteCard,
+  dueCards,
+  queueCounts,
+  rateCard,
+  saveCard,
+  seedCards,
+  setSuspended,
+} from "./cards";
 
 const T0 = Date.UTC(2026, 2, 15, 10, 0, 0);
 
@@ -36,7 +44,9 @@ describe("cards", () => {
     });
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(1);
-    const count = db.prepare(`SELECT COUNT(*) AS n FROM cards WHERE plan_id = ?`).get(planId) as {
+    const count = db
+      .prepare(`SELECT COUNT(*) AS n FROM cards WHERE plan_id = ?`)
+      .get(planId) as {
       n: number;
     };
     expect(count.n).toBe(2);
@@ -49,7 +59,11 @@ describe("cards", () => {
     db.prepare(
       `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, ?, 'Intro', 1, 1)`,
     ).run(other, planId);
-    seedCards(db, { planId, topicId, pairs: [{ front: "1. Introduction · 1", back: "A" }] });
+    seedCards(db, {
+      planId,
+      topicId,
+      pairs: [{ front: "1. Introduction · 1", back: "A" }],
+    });
     const second = seedCards(db, {
       planId,
       topicId: other,
@@ -124,7 +138,9 @@ describe("cards", () => {
     const due = dueCards(db, planId, T0)[0];
     expect(due?.passageId).toBe(passageId);
     expect(due?.chapter).toBe(1);
-    const count = db.prepare(`SELECT COUNT(*) AS n FROM cards WHERE plan_id = ?`).get(planId) as {
+    const count = db
+      .prepare(`SELECT COUNT(*) AS n FROM cards WHERE plan_id = ?`)
+      .get(planId) as {
       n: number;
     };
     expect(count.n).toBe(1);
@@ -169,10 +185,12 @@ describe("cards", () => {
     expect(dueCards(db, planId, T0)).toHaveLength(0);
     expect(dueCards(db, planId, next.dueAt)).toHaveLength(1);
     const event = db
-      .prepare(`SELECT topic_id, payload_json FROM learning_events WHERE kind = 'card_rated'`)
+      .prepare(
+        `SELECT topic_id, payload_json FROM learning_events WHERE kind = 'card_rated'`,
+      )
       .get() as { topic_id: string; payload_json: string };
     expect(event.topic_id).toBe(topicId);
-    expect(JSON.parse(event.payload_json)).toEqual({ score: 1 });
+    expect(JSON.parse(event.payload_json)).toEqual({ score: 1, cardId });
   });
 
   it("counts new, learning and mastered cards, and skips a suspended one", () => {
@@ -187,18 +205,47 @@ describe("cards", () => {
       ],
     });
     rateCard(db, learningId!, "good", T0);
-    const mastered = saveCard(db, { planId, topicId, front: "Lunga", back: "C" }, T0);
+    const mastered = saveCard(
+      db,
+      { planId, topicId, front: "Lunga", back: "C" },
+      T0,
+    );
     db.prepare(
       `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at)
        VALUES (?, ?, 'easy', ?, ?)`,
-    ).run(uuidv7(T0), mastered.id, JSON.stringify({ intervalDays: 21, ease: 2.5, dueAt: T0 }), T0);
-    const parked = saveCard(db, { planId, topicId, front: "Sospesa", back: "D" }, T0 + 1);
+    ).run(
+      uuidv7(T0),
+      mastered.id,
+      JSON.stringify({ intervalDays: 21, ease: 2.5, dueAt: T0 }),
+      T0,
+    );
+    const parked = saveCard(
+      db,
+      { planId, topicId, front: "Sospesa", back: "D" },
+      T0 + 1,
+    );
     setSuspended(db, parked.id, true);
-    expect(queueCounts(db, planId, topicId)).toEqual({ fresh: 1, learning: 1, mastered: 1 });
-    expect(dueCards(db, planId, T0).some((card) => card.id === parked.id)).toBe(false);
-    expect(dueCards(db, planId, T0).some((card) => card.id === freshId)).toBe(true);
-    saveCard(db, { planId, topicId, cardId: freshId, front: "Nuova", back: "Aggiornata" });
-    expect(dueCards(db, planId, T0).find((card) => card.id === freshId)?.back).toBe("Aggiornata");
+    expect(queueCounts(db, planId, topicId)).toEqual({
+      fresh: 1,
+      learning: 1,
+      mastered: 1,
+    });
+    expect(dueCards(db, planId, T0).some((card) => card.id === parked.id)).toBe(
+      false,
+    );
+    expect(dueCards(db, planId, T0).some((card) => card.id === freshId)).toBe(
+      true,
+    );
+    saveCard(db, {
+      planId,
+      topicId,
+      cardId: freshId,
+      front: "Nuova",
+      back: "Aggiornata",
+    });
+    expect(
+      dueCards(db, planId, T0).find((card) => card.id === freshId)?.back,
+    ).toBe("Aggiornata");
     deleteCard(db, freshId!);
     expect(queueCounts(db, planId, topicId).fresh).toBe(0);
   });
@@ -208,9 +255,17 @@ describe("cards", () => {
     const { planId, topicId } = planWithTopic(db);
     const pair = { front: "Forza", back: "F = ma" };
     const [id] = seedCards(db, { planId, topicId, pairs: [pair] });
-    saveCard(db, { planId, topicId, cardId: id, front: "Forza netta", back: "F = ma" });
+    saveCard(db, {
+      planId,
+      topicId,
+      cardId: id,
+      front: "Forza netta",
+      back: "F = ma",
+    });
     seedCards(db, { planId, topicId, pairs: [pair] });
-    const rows = db.prepare(`SELECT front, removed FROM cards WHERE plan_id = ?`).all(planId) as Array<{
+    const rows = db
+      .prepare(`SELECT front, removed FROM cards WHERE plan_id = ?`)
+      .all(planId) as Array<{
       front: string;
       removed: number;
     }>;
@@ -218,6 +273,49 @@ describe("cards", () => {
     deleteCard(db, id!);
     seedCards(db, { planId, topicId, pairs: [pair] });
     expect(dueCards(db, planId, T0)).toHaveLength(0);
-    expect(queueCounts(db, planId, topicId)).toEqual({ fresh: 0, learning: 0, mastered: 0 });
+    expect(queueCounts(db, planId, topicId)).toEqual({
+      fresh: 0,
+      learning: 0,
+      mastered: 0,
+    });
+  });
+  it("rejects duplicate, suspended and removed reviews without adding events", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const { id } = saveCard(db, { planId, topicId, front: "Q", back: "A" }, T0);
+    const next = rateCard(db, id, "again", T0);
+    expect(() => rateCard(db, id, "good", T0)).toThrow("card-not-due");
+    expect(db.prepare("SELECT COUNT(*) n FROM card_reviews").get()).toEqual({
+      n: 1,
+    });
+    expect(db.prepare("SELECT COUNT(*) n FROM learning_events").get()).toEqual({
+      n: 1,
+    });
+    setSuspended(db, id, true);
+    expect(() => rateCard(db, id, "good", next.dueAt)).toThrow(
+      "card-suspended",
+    );
+    setSuspended(db, id, false);
+    rateCard(db, id, "good", next.dueAt);
+    deleteCard(db, id);
+    expect(() => rateCard(db, id, "good", next.dueAt + 1)).toThrow(
+      "card-missing",
+    );
+    db.close();
+  });
+
+  it("rolls back a review if its learning event cannot be saved", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const { id } = saveCard(db, { planId, topicId, front: "Q", back: "A" }, T0);
+    db.exec(
+      "CREATE TRIGGER fail_event BEFORE INSERT ON learning_events BEGIN SELECT RAISE(ABORT, 'test-full'); END",
+    );
+    expect(() => rateCard(db, id, "good", T0)).toThrow("test-full");
+    expect(db.prepare("SELECT COUNT(*) n FROM card_reviews").get()).toEqual({
+      n: 0,
+    });
+    expect(dueCards(db, planId, T0)).toHaveLength(1);
+    db.close();
   });
 });

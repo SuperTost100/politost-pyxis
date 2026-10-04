@@ -1,7 +1,9 @@
+import { markPlanImported } from "./views";
 import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { uuidv7 } from "../../shared/ids";
+import { cardReviewSchema } from "../../shared/card-schedule";
 import { planFileSchema, type PlanFile } from "../../shared/plan-file";
 import { putBlob, readBlob } from "../blobs";
 import { validateGraph, type ConceptGraph } from "../maps/graph";
@@ -128,11 +130,11 @@ export function exportPlan(
       card.rating != null &&
       card.reviewed_at != null
         ? {
-            schedule: {
+            schedule: cardReviewSchema.parse({
               rating: card.rating,
-              state: JSON.parse(card.state_json) as unknown,
+              state: JSON.parse(card.state_json),
               at: card.reviewed_at,
-            },
+            }),
           }
         : {}),
     })),
@@ -329,6 +331,7 @@ export function importPlan(
       now,
       now,
     );
+    markPlanImported(db, planId, now);
     parsed.topics.forEach((topic, i) => {
       db.prepare(
         `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, ?, ?, ?, ?)`,
@@ -557,22 +560,39 @@ function exportContent(
       engine_provider: string | null;
       model_id: string | null;
     }[]
-  ).map((row) => ({
-    id: row.id,
-    topic: row.topic_id == null ? null : (topicIndex.get(row.topic_id) ?? null),
-    kind: row.kind,
-    body: portableQuestionIds(row.id, cleanContent(JSON.parse(row.body_json))),
-    passageIds: (
+  ).map((row) => {
+    const passageIds = (
       db
         .prepare(
-          "SELECT passage_id AS id FROM item_passages WHERE item_id=? ORDER BY passage_id",
+          "SELECT ip.passage_id AS id FROM item_passages ip JOIN passages p ON p.id=ip.passage_id WHERE ip.item_id=? ORDER BY p.created_at,p.id",
         )
         .all(row.id) as { id: string }[]
-    ).map((p) => p.id),
-    grounding: row.grounding,
-    provider: row.engine_provider,
-    model: row.model_id,
-  }));
+    ).map((p) => p.id);
+    let body = portableQuestionIds(
+      row.id,
+      cleanContent(JSON.parse(row.body_json)),
+    );
+    // Carry legacy prose citation order before import assigns fresh passage IDs.
+    if (
+      (row.kind === "lesson" || row.kind === "intro") &&
+      body &&
+      typeof body === "object" &&
+      !Array.isArray((body as { passageIds?: unknown }).passageIds)
+    ) {
+      body = { ...body, passageIds };
+    }
+    return {
+      id: row.id,
+      topic:
+        row.topic_id == null ? null : (topicIndex.get(row.topic_id) ?? null),
+      kind: row.kind,
+      body,
+      passageIds,
+      grounding: row.grounding,
+      provider: row.engine_provider,
+      model: row.model_id,
+    };
+  });
   const exercises = (
     db
       .prepare(
@@ -784,8 +804,20 @@ function importPortablePlan(
         edges: graph.undo.edges,
         undo: null,
       });
+    if (graph.redo)
+      validateGraph({
+        ...graph,
+        nodes: graph.redo.nodes,
+        edges: graph.redo.edges,
+        undo: null,
+        redo: null,
+      });
     const locals = new Map<string, string>();
-    for (const node of [...graph.nodes, ...(graph.undo?.nodes ?? [])])
+    for (const node of [
+      ...graph.nodes,
+      ...(graph.undo?.nodes ?? []),
+      ...(graph.redo?.nodes ?? []),
+    ])
       if (!locals.has(node.id)) locals.set(node.id, uuidv7(now + sequence++));
     const part = (
       nodes: ConceptGraph["nodes"],
@@ -810,6 +842,12 @@ function importPortablePlan(
         ? {
             ...part(graph.undo.nodes, graph.undo.edges),
             layout: graph.undo.layout,
+          }
+        : null,
+      redo: graph.redo
+        ? {
+            ...part(graph.redo.nodes, graph.redo.edges),
+            layout: graph.redo.layout,
           }
         : null,
     };
@@ -889,6 +927,7 @@ function importPortablePlan(
       now,
       now,
     );
+    markPlanImported(db, planId, now);
     topics.forEach((t, i) => {
       db.prepare(
         "INSERT INTO topics(id,plan_id,title,position,tree_json,created_at) VALUES(?,?,?,?,?,?)",

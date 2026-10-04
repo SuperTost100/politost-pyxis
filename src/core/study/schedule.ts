@@ -2,13 +2,19 @@
  * FSRS scheduler (`ts-fsrs`, default parameters, retention 0.9, fuzz off).
  *
  * Button map, matching the plan's Easy = FSRS Good choice:
- * again -> Again, hard -> Hard, good -> Good, easy -> Easy.
+ * again -> Again, hard -> Hard, good -> Good, easy -> Good.
  *
  * `intervalDays` is FSRS `scheduled_days`. `ease` keeps the last difficulty
  * so older rows still parse. The full card lives on `fsrs`.
  */
 
-import { createEmptyCard, fsrs, generatorParameters, Rating as FsrsRating, type Card } from "ts-fsrs";
+import {
+  createEmptyCard,
+  fsrs,
+  generatorParameters,
+  Rating as FsrsRating,
+  type Card,
+} from "ts-fsrs";
 
 /** A card counts as mastered once its interval reaches this many days. */
 export const masteredAfterDays = 21;
@@ -36,7 +42,9 @@ export type ScheduleState = {
   fsrs?: StoredCard;
 };
 
-const scheduler = fsrs(generatorParameters({ enable_fuzz: false, request_retention: 0.9 }));
+const scheduler = fsrs(
+  generatorParameters({ enable_fuzz: false, request_retention: 0.9 }),
+);
 
 function revive(stored: StoredCard): Card {
   return {
@@ -67,17 +75,21 @@ export function newCard(now: number): ScheduleState {
   return { intervalDays: 0, ease: 2.5, dueAt: now };
 }
 
-export function review(state: ScheduleState, rating: RatingName, now: number): ScheduleState {
-  const current = state.fsrs ? revive(state.fsrs) : createEmptyCard(new Date(now));
+export function review(
+  state: ScheduleState,
+  rating: RatingName,
+  now: number,
+): ScheduleState {
+  const current = state.fsrs
+    ? revive(state.fsrs)
+    : createEmptyCard(new Date(now));
   const preview = scheduler.repeat(current, new Date(now));
   const next =
     rating === "again"
       ? preview[FsrsRating.Again].card
       : rating === "hard"
         ? preview[FsrsRating.Hard].card
-        : rating === "easy"
-          ? preview[FsrsRating.Easy].card
-          : preview[FsrsRating.Good].card;
+        : preview[FsrsRating.Good].card;
   const saved = store(next);
   return {
     intervalDays: Math.max(0, saved.scheduled_days),
@@ -85,4 +97,15 @@ export function review(state: ScheduleState, rating: RatingName, now: number): S
     dueAt: new Date(saved.due).getTime(),
     fsrs: saved,
   };
+}
+
+/** Current recall probability, rather than a rating counted as another success. */
+export function retrievability(state: ScheduleState, now: number): number {
+  if (!state.fsrs?.last_review || state.fsrs.reps === 0) return 0;
+  const value = scheduler.get_retrievability(
+    revive(state.fsrs),
+    new Date(now),
+    false,
+  );
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }

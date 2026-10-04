@@ -1,4 +1,11 @@
-import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -28,4 +35,21 @@ describe("blobs", () => {
     const workspace = mkdtempSync(join(tmpdir(), "pyxis-blob-"));
     expect(() => readBlob(workspace, "../etc/passwd")).toThrow(/bad-hash/);
   });
+});
+
+it("repairs interrupted binary and metadata writes without publishing temporary files", () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pyxis-repair-blob-"));
+  try {
+    const bytes = new TextEncoder().encode("complete source");
+    const sha = putBlob(workspace, bytes, "text/plain", "txt");
+    const folder = join(workspace, "blobs", sha.slice(0, 2));
+    writeFileSync(join(folder, sha), "truncated");
+    writeFileSync(join(folder, `${sha}.json`), '{"mime":');
+    expect(putBlob(workspace, bytes, "text/plain", "txt")).toBe(sha);
+    expect(readFileSync(join(folder, sha))).toEqual(Buffer.from(bytes));
+    expect(readBlob(workspace, sha).mime).toBe("text/plain");
+    expect(readdirSync(folder).sort()).toEqual([sha, `${sha}.json`].sort());
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
 });

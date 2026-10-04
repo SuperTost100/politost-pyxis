@@ -1,16 +1,21 @@
 import { Button, Popover, Progress } from "antd";
-import { LoaderCircle } from "lucide-react";
+import { ListChecks, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { JobView } from "@shared/ipc";
+import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { useJobs } from "./queries";
 
 function stepText(label: string, t: (key: string) => string): string {
-  return label.startsWith("jobs.") || label.startsWith("sources.jobs.") || label.startsWith("wizard.") ? t(label) : label;
+  return t(label);
 }
 
 function errorText(error: string, t: (key: string) => string): string {
-  return error === "demo-step-failed" ? t("jobs.demoFailed") : error;
+  return error === "demo-step-failed"
+    ? t("jobs.demoFailed")
+    : error.includes("engine-missing")
+      ? t("engines.errors.engine-missing")
+      : t("jobs.failedGeneral");
 }
 
 function JobList({ jobs }: { jobs: JobView[] }) {
@@ -53,17 +58,28 @@ function JobList({ jobs }: { jobs: JobView[] }) {
               </span>
             ) : null}
             {job.state === "interrupted" ? (
-              <Button
-                type="text"
-                size="small"
-                onClick={() => void invoke("jobs.resume", { jobId: job.id })}
-              >
-                {t("jobs.resume")}
-              </Button>
+              <span className="job-actions">
+                <Button
+                  type="text"
+                  size="small"
+                  onClick={() => void invoke("jobs.resume", { jobId: job.id })}
+                >
+                  {t("jobs.resume")}
+                </Button>
+                <Button
+                  type="text"
+                  size="small"
+                  onClick={() => void invoke("jobs.dismiss", { jobId: job.id })}
+                >
+                  {t("jobs.dismiss")}
+                </Button>
+              </span>
             ) : null}
           </div>
           {job.error ? (
-            <p className="job-error">{errorText(job.error, t)}</p>
+            <Notice tone="danger" details={job.error.slice(0, 2000)}>
+              {errorText(job.error, t)}
+            </Notice>
           ) : null}
           {job.state === "running" || job.state === "queued" ? (
             <Progress
@@ -87,18 +103,28 @@ export function JobsButton() {
     (job) => job.state === "running" || job.state === "queued",
   );
   return (
-    <Popover trigger="click" content={<JobList jobs={jobs} />}>
+    <Popover
+      trigger="click"
+      content={
+        <section
+          role="region"
+          aria-label={t("jobs.label", { count: jobs.length })}
+        >
+          <JobList jobs={jobs} />
+        </section>
+      }
+    >
       <Button
         type="text"
         shape="round"
         aria-label={t("jobs.label", { count: jobs.length })}
       >
         <span className="jobs-trigger">
-          <LoaderCircle
-            className={spinning ? "px-spin" : undefined}
-            size={16}
-            strokeWidth={1.75}
-          />
+          {spinning ? (
+            <LoaderCircle className="px-spin" size={16} strokeWidth={1.75} />
+          ) : (
+            <ListChecks size={16} strokeWidth={1.75} />
+          )}
           <span className="meta jobs-count">{jobs.length}</span>
         </span>
       </Button>

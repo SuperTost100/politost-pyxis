@@ -1,0 +1,59 @@
+.px-import-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 680px;
+  margin-top: var(--space-5);
+}
+.px-import-review h2,
+.px-import-review p {
+  margin: 0;
+}
+.px-import-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: 400 15px/22px var(--font-sans);
+}
+.px-import-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-import-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font: 400 15px/22px var(--font-sans);
+}
+.px-import-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+.px-import-option input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.px-import-locate,
+.px-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.px-import-actions {
+  margin-top: var(--space-3);
+}
+.px-import-review .ant-btn {
+  white-space: nowrap;
+}

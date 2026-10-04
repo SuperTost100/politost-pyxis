@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
+import { useJobs } from "../jobs/queries";
 import "./PythonPage.css";
 
 export function PythonPage() {
@@ -14,12 +15,32 @@ export function PythonPage() {
   const [images, setImages] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const { data: jobs = [] } = useJobs();
+  const job = jobs.find((item) => item.kind === "local-runtime-download");
+  const active = job?.state === "queued" || job?.state === "running";
   const runtime = useQuery({
     queryKey: ["python-runtime"],
     queryFn: () => invoke("tools.runtime", {}),
-    enabled: busy,
-    refetchInterval: busy ? 500 : false,
+    refetchInterval: (query) =>
+      active || starting || query.state.data?.phase === "downloading"
+        ? 500
+        : false,
   });
+  const ready = runtime.data?.phase === "ready";
+  const megabytes = ((runtime.data?.totalBytes ?? 0) / 1e6).toFixed(1);
+  async function download() {
+    setStarting(true);
+    setNotice("");
+    try {
+      await invoke("tools.runtimeDownload", {});
+    } catch {
+      setNotice(t("python.downloadFailed"));
+    } finally {
+      setStarting(false);
+      void runtime.refetch();
+    }
+  }
   async function run() {
     setBusy(true);
     setNotice("");
@@ -33,7 +54,10 @@ export function PythonPage() {
       setImages(result.images ?? []);
       if (result.timedOut) setNotice(t("python.timeout"));
       else if (result.truncated) setNotice(t("python.truncated"));
-      else if (
+      else if (result.stderr === "runtime-missing") {
+        setStderr("");
+        void runtime.refetch();
+      } else if (
         result.stderr === "runtime-unavailable" ||
         result.stderr === "runtime-timeout"
       )
@@ -47,6 +71,55 @@ export function PythonPage() {
   return (
     <FocusLayout title={t("python.title")}>
       <section className="px-python">
+        {!ready && runtime.data ? (
+          <div className="px-python-consent" role="group">
+            <p className="body-strong">{t("python.consentTitle")}</p>
+            <p className="small">
+              {t("python.consentBody", { size: megabytes })}
+            </p>
+            {active || runtime.data.phase === "downloading" ? (
+              <div className="px-python-actions">
+                <span className="meta" role="status">
+                  {t("python.download", {
+                    current: (runtime.data.bytes / 1e6).toFixed(1),
+                    total: megabytes,
+                  })}
+                </span>
+                {job ? (
+                  <Button
+                    shape="round"
+                    onClick={() =>
+                      void invoke("jobs.cancel", { jobId: job.id })
+                    }
+                  >
+                    {t("python.cancelDownload")}
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="px-python-actions">
+                <Button
+                  type="primary"
+                  shape="round"
+                  loading={starting}
+                  onClick={() => void download()}
+                >
+                  {t(
+                    job?.state === "failed" || job?.state === "cancelled"
+                      ? "python.retryDownload"
+                      : "python.downloadAction",
+                    { size: megabytes },
+                  )}
+                </Button>
+                {job?.state === "failed" ? (
+                  <span className="small" role="alert">
+                    {t("python.downloadFailed")}
+                  </span>
+                ) : null}
+              </div>
+            )}
+          </div>
+        ) : null}
         <p className="small">{t("python.sessionFiles")}</p>
         <Input.TextArea
           aria-label={t("python.code")}
@@ -60,22 +133,14 @@ export function PythonPage() {
             type="primary"
             shape="round"
             loading={busy}
+            disabled={!ready}
             onClick={() => void run()}
           >
             {t("python.run")}
           </Button>
           {busy ? (
             <span className="meta" role="status">
-              {runtime.data?.phase === "downloading"
-                ? t("python.download", {
-                    current: (runtime.data.bytes / 1e6).toFixed(1),
-                    total: (runtime.data.totalBytes / 1e6).toFixed(1),
-                  })
-                : t(
-                    runtime.data?.phase === "ready"
-                      ? "python.running"
-                      : "python.preparing",
-                  )}
+              {t("python.running")}
             </span>
           ) : null}
         </div>

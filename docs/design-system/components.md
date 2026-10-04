@@ -283,3 +283,15 @@ The quoted card above the composer.
 **Consumer provides** an excerpt and a remove label.
 
 - Two lines at most. The remove control is an icon button.
+
+## Feature layouts added after the initial gallery
+
+- `ExportButton` opens the shared export dialog from plans, lessons, cards, quizzes and simulations. Format selection is keyboard accessible. Progress and original-source inclusion are explicit choices. Native save cancellation leaves the dialog usable.
+- `LessonMap` uses React Flow with tree/radial layouts, map collection selection, pinned node positions, undo and validated model edits. Graph labels and controls retain keyboard access.
+- `ProgressPage` uses Preparation, Simulations and Pace tabs. Mastery/target charts have accessible descriptions and keyboard focus. Gaps lead back to cited source passages and quizzes; heatmaps use five local-calendar weeks.
+- `CardsPage` keeps citation links outside the flip button, preserves a visible focus indicator and uses consistent action/rating rows.
+- `UpdatesPanel` displays the current version, latest check and manual release link. `AppUpdateNotice` is dismissible and bounds long release notes inside a focusable scrolling detail area.
+- `AboutPanel` loads third-party license text on demand. Search and bounded, labeled license regions keep large notices usable by keyboard.
+- Workspace controls expose move progress, cancellation, recovery errors and the exact selected path.
+
+These layouts reuse the existing color, spacing and radius tokens. Error, empty and loading states belong to their feature rather than appearing as decorative status badges.

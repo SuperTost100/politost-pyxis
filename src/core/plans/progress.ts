@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
 import { flaggedIds } from "../study/flags";
+import { gapMisses } from "../study/gapInsight";
+import { newCard, retrievability, type ScheduleState } from "../study/schedule";
 import { uuidv7 } from "../../shared/ids";
 import { masteryFor, type MasteryEvent } from "../study/mastery";
 import {
@@ -8,6 +10,7 @@ import {
   openGaps,
   paceFacts,
   weeklyCounts,
+  seriesEvidence,
   type SeriesEvent,
 } from "../study/series";
 
@@ -19,53 +22,66 @@ export function planMastery(
   const topics = db
     .prepare(`SELECT id, title FROM topics WHERE plan_id = ? ORDER BY position`)
     .all(planId) as Array<{ id: string; title: string }>;
-  const rows = db
-    .prepare(
-      `SELECT topic_id, kind, payload_json, created_at FROM learning_events
-       WHERE plan_id = ? AND topic_id IS NOT NULL`,
-    )
-    .all(planId) as Array<{
-    topic_id: string;
-    kind: string;
-    payload_json: string;
-    created_at: number;
-  }>;
-  const blocked = flaggedIds(db, "exercise");
-  const events: MasteryEvent[] = rows.flatMap((row) => {
-    if (
-      row.kind === "active_time" ||
-      row.kind === "gap_opened" ||
-      row.kind === "gap_closed"
-    ) {
-      return [];
-    }
-    const payload = scorePayload(row.payload_json, blocked);
-    if (!payload) return [];
-    return [
-      {
-        topicId: row.topic_id,
-        kind:
-          row.kind === "card_rated"
-            ? "card"
-            : row.kind === "answer_given"
-              ? "quiz"
-              : "lesson",
-        score:
-          typeof payload.score === "number"
-            ? payload.score
-            : row.kind === "lesson_completed"
-              ? 1
-              : 0.5,
-        at: row.created_at,
-      },
-    ];
-  });
+  const events = masteryEvidence(db, planId, now);
   const scores = masteryFor(events, now);
   return topics.map((topic) => ({
     id: topic.id,
     title: topic.title,
     mastery: scores[topic.id] ?? 0,
   }));
+}
+
+function masteryEvidence(
+  db: Database.Database,
+  planId: string,
+  now: number,
+): MasteryEvent[] {
+  const events = seriesEvidence(
+    readSeries(db, planId).filter((event) => event.at <= now),
+  );
+  const cards = db
+    .prepare(
+      `
+    SELECT c.id, c.topic_id,
+      (SELECT cr.state_json FROM card_reviews cr WHERE cr.card_id=c.id AND cr.reviewed_at<=?
+       ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS state_json
+    FROM cards c WHERE c.plan_id=? AND c.topic_id IS NOT NULL AND c.created_at<=?
+      AND c.suspended=0 AND c.removed=0
+  `,
+    )
+    .all(now, planId, now) as Array<{
+    id: string;
+    topic_id: string;
+    state_json: string | null;
+  }>;
+  for (const card of cards) {
+    const state = card.state_json
+      ? (JSON.parse(card.state_json) as ScheduleState)
+      : newCard(now);
+    events.push({
+      topicId: card.topic_id,
+      kind: "card",
+      cardId: card.id,
+      score: retrievability(state, now),
+      at: now,
+    });
+  }
+  return events;
+}
+
+/** A topic without passages contributes zero weight, including untouched topics with passages. */
+export function weightedPlanMastery(
+  topics: Array<{ id: string; mastery: number }>,
+  passageCounts: ReadonlyMap<string, number>,
+): number {
+  let weighted = 0;
+  let count = 0;
+  for (const topic of topics) {
+    const passages = passageCounts.get(topic.id) ?? 0;
+    weighted += topic.mastery * passages;
+    count += passages;
+  }
+  return count ? weighted / count : 0;
 }
 
 function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
@@ -81,6 +97,56 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
     created_at: number;
   }>;
   const blocked = flaggedIds(db, "exercise");
+  const questionKinds = new Map<string, string>();
+  const itemBodies = db
+    .prepare(
+      "SELECT body_json FROM items WHERE plan_id=? AND kind IN ('quiz','diagnostic','review','simulation')",
+    )
+    .all(planId) as { body_json: string }[];
+  for (const item of itemBodies) {
+    const body = JSON.parse(item.body_json) as {
+      questions?: Array<{ id: string; answer?: { kind: string } }>;
+    };
+    for (const question of body.questions ?? [])
+      if (question.answer?.kind)
+        questionKinds.set(question.id, question.answer.kind);
+  }
+  // Older simulation events have no discriminator; recover it only from the matching saved attempt.
+  const legacySimulations = db
+    .prepare(
+      `
+    SELECT aa.created_at, aa.payload_json, i.body_json FROM attempt_answers aa
+    JOIN attempts a ON a.id=aa.attempt_id JOIN items i ON i.id=a.item_id
+    WHERE a.plan_id=? AND i.kind='simulation' AND a.submitted_at IS NOT NULL
+  `,
+    )
+    .all(planId) as Array<{
+    created_at: number;
+    payload_json: string;
+    body_json: string;
+  }>;
+  const simulationEvidence = legacySimulations.flatMap((attempt) => {
+    const body = JSON.parse(attempt.body_json) as {
+      questions?: Array<{ id: string; topicId?: string }>;
+    };
+    const result = JSON.parse(attempt.payload_json) as {
+      results?: Array<{ id: string; score: number }>;
+    };
+    const topics = new Map<string, number[]>();
+    for (const question of body.questions ?? []) {
+      const answer = result.results?.find((row) => row.id === question.id);
+      if (!question.topicId || !answer) continue;
+      const scores = topics.get(question.topicId) ?? [];
+      scores.push(answer.score);
+      topics.set(question.topicId, scores);
+    }
+    return [...topics].map(([topicId, scores]) => ({
+      topicId,
+      scores,
+      at: attempt.created_at,
+      span: topics.size,
+    }));
+  });
   return rows.flatMap((row): SeriesEvent[] => {
     if (row.kind === "gap_opened" || row.kind === "gap_closed") return [];
     const payload = scorePayload(row.payload_json, blocked);
@@ -97,6 +163,16 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
       ];
     }
     if (!row.topic_id) return [];
+    const legacySimulation =
+      !payload.evidenceKind &&
+      !payload.questionScores &&
+      simulationEvidence.some(
+        (attempt) =>
+          attempt.topicId === row.topic_id &&
+          row.created_at >= attempt.at &&
+          row.created_at < attempt.at + attempt.span &&
+          JSON.stringify(attempt.scores) === JSON.stringify(payload.scores),
+      );
     const kind =
       row.kind === "card_rated"
         ? "card"
@@ -114,6 +190,13 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
             : row.kind === "lesson_completed"
               ? 1
               : 0.5,
+        evidenceKind:
+          payload.evidenceKind ?? (legacySimulation ? "simulation" : undefined),
+        answerKinds: payload.questionScores?.map(
+          (answer) =>
+            answer.kind ??
+            (answer.id ? questionKinds.get(answer.id) : undefined),
+        ),
         scores: Array.isArray(payload.scores)
           ? payload.scores.filter((score) => typeof score === "number")
           : undefined,
@@ -150,6 +233,10 @@ export function syncGaps(
          AND p.source_id = sb.source_id`,
     )
     .all(planId) as Array<{ topic_id: string }>;
+  const generatedFlags = db.prepare(`SELECT DISTINCT t.id AS topic_id FROM flags f JOIN exercises e ON e.id=f.target_id AND f.target_kind='exercise' JOIN topics t ON t.id=json_extract(e.locator_json,'$.topicId') WHERE t.plan_id=? AND e.smartbook_id IS NULL
+    UNION SELECT DISTINCT i.topic_id AS topic_id FROM flags f JOIN items i ON i.id=f.target_id AND f.target_kind='item' WHERE i.plan_id=? AND i.topic_id IS NOT NULL
+    UNION SELECT DISTINCT tp.topic_id FROM flags f JOIN topic_passages tp ON tp.passage_id=f.target_id AND f.target_kind='passage' JOIN topics t ON t.id=tp.topic_id WHERE t.plan_id=?`).all(planId,planId,planId) as {topic_id:string}[];
+  for (const row of generatedFlags) if (!flagged.some(existing => existing.topic_id === row.topic_id)) flagged.push(row);
   for (const row of flagged) still.add(row.topic_id);
   for (const row of existing) {
     if (row.closed_at == null && row.topic_id && !still.has(row.topic_id)) {
@@ -192,25 +279,24 @@ export function planSeries(
   const plan = db.prepare("SELECT target FROM plans WHERE id=?").get(planId) as
     { target: number } | undefined;
   const target = plan?.target ?? 0.8;
-  const ids = topics.map((topic) => topic.id);
-  const average = (rows: ReturnType<typeof planMastery>) =>
-    rows.reduce((sum, row) => sum + row.mastery, 0) / Math.max(1, rows.length);
-  const preparation = average(topics);
+  const passageCounts = new Map(
+    (
+      db
+        .prepare(
+          `
+    SELECT t.id, count(tp.passage_id) AS count FROM topics t
+    LEFT JOIN topic_passages tp ON tp.topic_id=t.id WHERE t.plan_id=? GROUP BY t.id
+  `,
+        )
+        .all(planId) as Array<{ id: string; count: number }>
+    ).map((row) => [row.id, row.count]),
+  );
+  const preparation = weightedPlanMastery(topics, passageCounts);
   const historicalAverage = (at: number) => {
-    const scores = masteryFor(
-      studied
-        .filter((event) => event.at <= at)
-        .map((event) => ({
-          topicId: event.topicId,
-          kind: event.kind,
-          score: event.score,
-          at: event.at,
-        })),
-      at,
-    );
-    return (
-      ids.reduce((sum, id) => sum + (scores[id] ?? 0), 0) /
-      Math.max(1, ids.length)
+    const scores = masteryFor(masteryEvidence(db, planId, at), at);
+    return weightedPlanMastery(
+      topics.map((topic) => ({ id: topic.id, mastery: scores[topic.id] ?? 0 })),
+      passageCounts,
     );
   };
   const chart = chartPoints(events, now).map((point) => {
@@ -276,6 +362,9 @@ export function planSeries(
   const rankedGaps = gaps
     .map((gap) => ({
       ...gap,
+      misses: gapMisses(db, planId, gap.topicId, gap.openedAt, 2).map(
+        ({ passageIds: _passageIds, ...miss }) => miss,
+      ),
       severity:
         (topics.find((topic) => topic.id === gap.topicId)?.mastery ?? 0) <
         target / 2
@@ -345,24 +434,31 @@ export function planSeries(
   };
 }
 
-function scorePayload(
-  raw: string,
-  blocked: Set<string>,
-): { score?: number; scores?: number[]; seconds?: number } | null {
-  const payload = JSON.parse(raw) as {
-    score?: number;
-    scores?: number[];
-    seconds?: number;
-    questionScores?: Array<{ id: string; sourceIds: string[]; score: number }>;
-  };
+type ScorePayload = {
+  score?: number;
+  scores?: number[];
+  seconds?: number;
+  evidenceKind?: "quiz" | "simulation";
+  questionScores?: Array<{
+    id?: string;
+    sourceIds?: string[];
+    kind?: string;
+    score: number;
+  }>;
+};
+
+function scorePayload(raw: string, blocked: Set<string>): ScorePayload | null {
+  const payload = JSON.parse(raw) as ScorePayload;
   if (!payload.questionScores) return payload;
   const rows = payload.questionScores.filter(
     (row) =>
-      !blocked.has(row.id) && !row.sourceIds.some((id) => blocked.has(id)),
+      (!row.id || !blocked.has(row.id)) &&
+      !(row.sourceIds ?? []).some((id) => blocked.has(id)),
   );
   if (!rows.length) return null;
   return {
     ...payload,
+    questionScores: rows,
     scores: rows.map((row) => row.score),
     score: rows.reduce((sum, row) => sum + row.score, 0) / rows.length,
   };
@@ -426,6 +522,16 @@ function flaggedContent(db: Database.Database, planId: string) {
   for (const e of exercises)
     if (!labels.has(key("exercise", e.id)))
       labels.set(key("exercise", e.id), { label: e.prompt.slice(0, 200) });
+  const generated = db
+    .prepare(
+      "SELECT id,prompt,json_extract(locator_json,'$.topicId') AS topicId FROM exercises WHERE smartbook_id IS NULL AND json_extract(locator_json,'$.topicId') IN (SELECT id FROM topics WHERE plan_id = ?)",
+    )
+    .all(planId) as { id: string; prompt: string; topicId: string }[];
+  for (const exercise of generated)
+    labels.set(key("exercise", exercise.id), {
+      label: exercise.prompt.slice(0, 200),
+      topicId: exercise.topicId,
+    });
   const flags = db
     .prepare(
       "SELECT id,target_kind AS targetKind,target_id AS targetId,reason,created_at AS createdAt FROM flags ORDER BY created_at DESC,id",

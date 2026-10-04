@@ -1,9 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Button, Input, Slider } from "antd";
+import { Button, Input, InputNumber, Select, Slider } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
 import { MarkdownView } from "../../components/MarkdownView";
 import { ExportButton } from "../share/ExportButton";
@@ -13,6 +14,15 @@ import "./QuizPage.css";
 
 const KINDS = ["mcq", "completion", "matching", "tf", "open"] as const;
 type Kind = (typeof KINDS)[number];
+const SCOPES = ["topic", "plan", "page"] as const;
+type Scope = (typeof SCOPES)[number];
+function clock(ms: number): string {
+  const total = Math.ceil(ms / 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return total >= 3600
+    ? `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`
+    : `${Math.floor(total / 60)}:${pad(total % 60)}`;
+}
 type Result = {
   id: string;
   score: number;
@@ -54,17 +64,31 @@ export function QuizPage() {
   const navigate = useNavigate();
   const diagnostic = !topicId;
   const [searchParams, setSearchParams] = useSearchParams();
-  const savedAttempt = diagnostic ? null : searchParams.get("attempt");
+  const urlAttempt = searchParams.get("attempt");
+  const savedAttempt = urlAttempt;
   const restoredAttempt = useRef<string | null>(null);
   const [hydratedAttempt, setHydratedAttempt] = useState<string | null>(null);
   const draftToSave = useRef<{
     attemptId: string;
+    planId?: string;
     picks: Record<string, string>;
     index: number;
   } | null>(null);
   const [count, setCount] = useState(20);
   const [types, setTypes] = useState<Kind[]>([...KINDS]);
   const [feedback, setFeedback] = useState(true);
+  const [scope, setScope] = useState<Scope>("topic");
+  const [pageSource, setPageSource] = useState<string>();
+  const [page, setPage] = useState<number | null>(1);
+  const [timerOn, setTimerOn] = useState(false);
+  const [timerMinutes, setTimerMinutes] = useState<number | null>(20);
+  const library = useQuery({
+    queryKey: ["sources"],
+    queryFn: () => invoke("sources.list", {}),
+    enabled: scope === "page",
+  });
+  const pageReady = scope !== "page" || (Boolean(pageSource) && Boolean(page));
+  const timerReady = !timerOn || Boolean(timerMinutes);
   const [index, setIndex] = useState(0);
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<Record<string, Result>>({});
@@ -75,21 +99,27 @@ export function QuizPage() {
       topicId
         ? invoke("study.quizStart", {
             planId: planId ?? "",
-            topicId,
+            scope,
+            ...(scope === "topic" ? { topicId } : {}),
+            ...(scope === "page"
+              ? { sourceId: pageSource, page: page ?? undefined }
+              : {}),
             count,
             types,
             feedback,
+            ...(timerOn && timerMinutes ? { timerMinutes } : {}),
           })
         : invoke("study.diagnosticStart", { planId: planId ?? "" }),
     onSuccess: (session) => {
-      if (!diagnostic) setSearchParams({ attempt: session.attemptId });
+      if (session.attemptId)
+        setSearchParams({ attempt: session.attemptId }, { replace: true });
     },
   });
   const attemptId = savedAttempt ?? start.data?.attemptId ?? "";
   const session = useQuery({
     queryKey: ["quiz-session", attemptId],
-    queryFn: () => invoke("study.quizRead", { attemptId }),
-    enabled: !diagnostic && Boolean(attemptId),
+    queryFn: () => invoke("study.quizRead", { attemptId, planId }),
+    enabled: Boolean(attemptId),
     refetchInterval: (query) =>
       query.state.data &&
       ["succeeded", "failed", "cancelled", "interrupted"].includes(
@@ -177,22 +207,81 @@ export function QuizPage() {
     onSuccess: (result) =>
       setChecked((current) => ({ ...current, [result.id]: result })),
   });
+  // Open answers are graded by a persistent job; results exist only once it has finished.
+  const grading = useQuery({
+    queryKey: ["quiz-grading", attemptId],
+    queryFn: () => invoke("study.quizGrading", { attemptId }),
+    enabled: Boolean(attemptId),
+    refetchInterval: (query) =>
+      ["queued", "running"].includes(query.state.data?.state ?? "")
+        ? 500
+        : false,
+  });
   const submit = useMutation({
     mutationFn: () =>
       invoke("study.quizSubmit", {
         attemptId,
         picks,
       }),
+    onSuccess: () => void grading.refetch(),
   });
-  const finalResult = submit.data ?? session.data?.result;
+  const control = useMutation({
+    mutationFn: async (
+      action: "jobs.cancel" | "jobs.retry" | "jobs.resume",
+    ) => {
+      if (!grading.data?.jobId) return;
+      await invoke(action, { jobId: grading.data.jobId });
+      await grading.refetch();
+    },
+  });
+  const inlineResult = submit.data?.results
+    ? { score: submit.data.score ?? 0, results: submit.data.results }
+    : undefined;
+  const finalResult =
+    inlineResult ?? grading.data?.result ?? session.data?.result;
+  const gradeState = grading.data?.state ?? "none";
+  const gradingStopped = ["failed", "cancelled", "interrupted"].includes(
+    gradeState,
+  );
+  const gradingStarted =
+    !finalResult &&
+    (submit.isPending || Boolean(submit.data?.jobId) || gradeState !== "none");
+  // The deadline is persisted by main; the page only renders it and submits through the normal grading job.
+  const deadlineAt = session.data?.deadlineAt;
+  const timed = Boolean(session.data?.timerMinutes);
+  const [now, setNow] = useState(() => Date.now());
+  const running = Boolean(deadlineAt) && !finalResult && !gradingStarted;
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+  const msLeft = deadlineAt ? Math.max(0, deadlineAt - now) : undefined;
+  const expired = msLeft === 0;
+  const autoSubmitted = useRef(false);
+  useEffect(() => {
+    if (
+      !expired ||
+      !running ||
+      !canFinish ||
+      hydratedAttempt !== attemptId ||
+      submit.isPending ||
+      autoSubmitted.current
+    )
+      return;
+    autoSubmitted.current = true;
+    submit.mutate();
+  }, [expired, running, canFinish, hydratedAttempt, attemptId]);
   useEffect(() => {
     draftToSave.current =
-      !diagnostic &&
       attemptId &&
       hydratedAttempt === attemptId &&
       !finalResult &&
+      !gradingStarted &&
+      !expired &&
       session.data?.submittedAt == null
-        ? { attemptId, picks, index }
+        ? { attemptId, planId, picks, index }
         : null;
     if (!draftToSave.current) return;
     const timer = window.setTimeout(() => {
@@ -202,10 +291,12 @@ export function QuizPage() {
   }, [
     attemptId,
     hydratedAttempt,
-    diagnostic,
     picks,
     index,
     finalResult,
+    gradingStarted,
+    expired,
+    canFinish,
     session.data?.submittedAt,
   ]);
   useEffect(
@@ -220,6 +311,8 @@ export function QuizPage() {
     if (!draft) return;
     try {
       await invoke("study.quizDraft", draft);
+      // The first save after the quiz is ready starts the timer; pick up its deadline.
+      if (timed && !deadlineAt && canFinish) void session.refetch();
     } catch {
       setActionError(true);
     }
@@ -229,7 +322,13 @@ export function QuizPage() {
     navigate(`/plans/${planId ?? ""}`);
   }
   const result = question ? checked[question.id] : undefined;
-  const locked = Boolean(result) || check.isPending || submit.isPending;
+  const locked =
+    Boolean(result) ||
+    check.isPending ||
+    submit.isPending ||
+    gradingStarted ||
+    expired ||
+    (Boolean(attemptId) && hydratedAttempt !== attemptId);
   const [remaining, setRemaining] = useState(10);
   useEffect(() => {
     setRemaining(10);
@@ -254,7 +353,10 @@ export function QuizPage() {
     if (index + 1 < questions.length) {
       check.reset();
       setIndex(index + 1);
-    } else if (canFinish) submit.mutate();
+    } else if (canFinish && !gradingStarted) submit.mutate();
+  }
+  function finishNow() {
+    if (canFinish && !gradingStarted && !submit.isPending) submit.mutate();
   }
   function answerText(id: string): string {
     const item = questions.find((row) => row.id === id);
@@ -322,11 +424,14 @@ export function QuizPage() {
     retry.error ||
     check.error ||
     submit.error ||
+    control.error ||
     actionError;
   const errorKey =
     error && typeof error === "object" && "messageKey" in error
       ? String(error.messageKey)
-      : "quiz.error";
+      : start.error?.message.includes("page-empty")
+        ? "quiz.pageEmpty"
+        : "quiz.error";
   return (
     <FocusLayout
       title={t("quiz.title")}
@@ -355,6 +460,7 @@ export function QuizPage() {
               {t("quiz.available", {
                 available: questions.length,
                 total: requestedCount,
+                count: requestedCount,
               })}
             </p>
           ) : null}
@@ -384,10 +490,62 @@ export function QuizPage() {
           ) : null}
         </div>
       ) : null}
-      {!start.data && !savedAttempt ? (
+      {!start.data &&
+      !savedAttempt &&
+      !(diagnostic && urlAttempt && !start.error) ? (
         <section className="px-quiz-setup">
           {!diagnostic ? (
             <>
+              <fieldset className="px-quiz-types">
+                <legend className="body-strong">{t("quiz.scope")}</legend>
+                <div className="px-quiz-pills">
+                  {SCOPES.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className={
+                        scope === item ? "choice is-selected" : "choice"
+                      }
+                      aria-pressed={scope === item}
+                      disabled={start.isPending}
+                      onClick={() => setScope(item)}
+                    >
+                      {t(`quiz.scopes.${item}`)}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              {scope === "page" ? (
+                <div className="px-quiz-page">
+                  <label className="px-quiz-field">
+                    <span className="small">{t("quiz.pageSource")}</span>
+                    <Select
+                      value={pageSource}
+                      onChange={setPageSource}
+                      disabled={start.isPending}
+                      loading={library.isLoading}
+                      placeholder={t("quiz.pageSourcePlaceholder")}
+                      options={(library.data ?? [])
+                        .filter((source) => source.status === "ready")
+                        .map((source) => ({
+                          value: source.id,
+                          label: source.title,
+                        }))}
+                    />
+                  </label>
+                  <label className="px-quiz-field">
+                    <span className="small">{t("quiz.pageNumber")}</span>
+                    <InputNumber
+                      min={1}
+                      max={100000}
+                      precision={0}
+                      value={page}
+                      onChange={setPage}
+                      disabled={start.isPending}
+                    />
+                  </label>
+                </div>
+              ) : null}
               <div className="px-quiz-count">
                 <label htmlFor="quiz-count" className="body-strong">
                   {t("quiz.count")}
@@ -444,6 +602,30 @@ export function QuizPage() {
                 />
                 <span>{t("quiz.feedback")}</span>
               </label>
+              <div className="px-quiz-timer-setup">
+                <label className="px-quiz-toggle">
+                  <input
+                    type="checkbox"
+                    checked={timerOn}
+                    disabled={start.isPending}
+                    onChange={(event) => setTimerOn(event.target.checked)}
+                  />
+                  <span>{t("quiz.timerOption")}</span>
+                </label>
+                {timerOn ? (
+                  <label className="px-quiz-field">
+                    <span className="small">{t("quiz.timerMinutes")}</span>
+                    <InputNumber
+                      min={1}
+                      max={180}
+                      precision={0}
+                      value={timerMinutes}
+                      onChange={setTimerMinutes}
+                      disabled={start.isPending}
+                    />
+                  </label>
+                ) : null}
+              </div>
             </>
           ) : (
             <p className="body">{t("quiz.diagnostic")}</p>
@@ -451,7 +633,9 @@ export function QuizPage() {
           <Button
             type="primary"
             shape="round"
-            disabled={!diagnostic && !types.length}
+            disabled={
+              !diagnostic && (!types.length || !pageReady || !timerReady)
+            }
             loading={start.isPending}
             onClick={() => start.mutate()}
           >
@@ -486,6 +670,7 @@ export function QuizPage() {
               correct: finalResult.results.filter((row) => row.score === 1)
                 .length,
               total: finalResult.results.length,
+              count: finalResult.results.length,
             })}
           </p>
           {finalResult.results.map((answer) => {
@@ -536,8 +721,92 @@ export function QuizPage() {
             />
           </div>
         </section>
+      ) : gradingStarted ? (
+        <section className="px-quiz-setup" aria-busy={!gradingStopped}>
+          <p className="body-strong">{t("quiz.gradingTitle")}</p>
+          <StepLines
+            label={t("quiz.gradingTitle")}
+            steps={[
+              {
+                id: "grading",
+                label: grading.data?.total
+                  ? t("quiz.gradingProgress", {
+                      done: grading.data.done,
+                      total: grading.data.total,
+                      count: grading.data.total,
+                    })
+                  : t("quiz.gradingTitle"),
+                state: gradingStopped ? "failed" : "running",
+              },
+            ]}
+          />
+          <p className="small" role={gradingStopped ? "alert" : "status"}>
+            {t(
+              !gradingStopped
+                ? "quiz.gradingSaved"
+                : gradeState === "cancelled"
+                  ? "quiz.gradingCancelled"
+                  : "quiz.gradingStopped",
+            )}
+          </p>
+          {gradingStopped && grading.data?.error ? (
+            <Notice tone="danger" details={grading.data.error.slice(0, 2000)}>
+              {t("quiz.gradingStopped")}
+            </Notice>
+          ) : null}
+          {gradingStopped && gradeState !== "cancelled" ? (
+            <Button shape="round" onClick={() => navigate("/settings/engines")}>
+              {t("engines.title")}
+            </Button>
+          ) : null}
+          {grading.data?.model ? (
+            <p className="meta">
+              {t("quiz.gradedBy", { model: grading.data.model })}
+            </p>
+          ) : null}
+          <div className="px-quiz-actions">
+            {gradingStopped ? (
+              <Button
+                type="primary"
+                shape="round"
+                loading={control.isPending}
+                onClick={() =>
+                  control.mutate(
+                    gradeState === "interrupted" ? "jobs.resume" : "jobs.retry",
+                  )
+                }
+              >
+                {t(
+                  gradeState === "interrupted"
+                    ? "quiz.gradeResume"
+                    : "quiz.gradeRetry",
+                )}
+              </Button>
+            ) : (
+              <Button
+                shape="round"
+                disabled={!grading.data?.jobId || control.isPending}
+                onClick={() => control.mutate("jobs.cancel")}
+              >
+                {t("quiz.gradeCancel")}
+              </Button>
+            )}
+          </div>
+        </section>
       ) : question ? (
         <section className="px-quiz-question">
+          {msLeft !== undefined ? (
+            <div className="px-quiz-timer">
+              <output role="timer" aria-label={t("quiz.timer")}>
+                {clock(msLeft)}
+              </output>
+              {expired || msLeft <= 60000 ? (
+                <p className="small" role="status">
+                  {t(expired ? "quiz.timeUp" : "quiz.timeLow")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div ref={heading} tabIndex={-1} className="px-quiz-stem">
             <MarkdownView>{question.stem}</MarkdownView>
           </div>
@@ -578,6 +847,7 @@ export function QuizPage() {
                         : "choice"
                     }
                     aria-pressed={picks[question.id] === value}
+                    aria-label={`${String.fromCharCode(65 + optionIndex)}. ${option.replace(/\$/g, "")}`}
                     disabled={locked}
                     onClick={() => pick(value)}
                   >
@@ -710,7 +980,7 @@ export function QuizPage() {
             </p>
           ) : null}
           <div className="px-quiz-actions">
-            {immediate && !result ? (
+            {immediate && !result && !expired ? (
               <Button
                 type="primary"
                 shape="round"
@@ -725,15 +995,17 @@ export function QuizPage() {
                 type="primary"
                 shape="round"
                 loading={submit.isPending}
-                onClick={next}
+                onClick={expired ? finishNow : next}
                 disabled={index + 1 >= questions.length && !canFinish}
               >
                 {t(
-                  index + 1 < questions.length
-                    ? "quiz.next"
-                    : canFinish
-                      ? "quiz.finish"
-                      : "quiz.waitingBatch",
+                  expired
+                    ? "quiz.finish"
+                    : index + 1 < questions.length
+                      ? "quiz.next"
+                      : canFinish
+                        ? "quiz.finish"
+                        : "quiz.waitingBatch",
                 )}
               </Button>
             )}

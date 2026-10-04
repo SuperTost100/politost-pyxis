@@ -4,6 +4,7 @@ import { uuidv7 } from "../../shared/ids";
 import { listPlans, nextLesson } from "./create";
 import { planMastery, planSeries } from "./progress";
 import { flagTarget } from "../study/flags";
+import { newCard, review, retrievability } from "../study/schedule";
 import { listSimulations } from "../study/simulation";
 
 describe("planMastery", () => {
@@ -27,14 +28,14 @@ describe("planMastery", () => {
         ],
       }),
     );
-    expect(planMastery(db, "p", 1000)[0]!.mastery).toBe(0.125);
+    expect(planMastery(db, "p", 1000)[0]!.mastery).toBe(0.2);
     flagTarget(db, "exercise", "exercise");
     expect(planMastery(db, "p", 1000)[0]!.mastery).toBe(0.25);
     flagTarget(db, "exercise", "correct");
     expect(planMastery(db, "p", 1000)[0]!.mastery).toBe(0);
     db.close();
   });
-  it("shrinks one finished lesson toward the empty prior", () => {
+  it("does not treat a finished lesson as mastery", () => {
     const db = openDatabase(":memory:");
     const now = 1_700_000_000_000;
     const planId = uuidv7(1);
@@ -50,7 +51,7 @@ describe("planMastery", () => {
        VALUES (?, 'lesson_completed', ?, ?, '{}', ?)`,
     ).run(uuidv7(3), planId, topicId, now);
     const rows = planMastery(db, planId, now);
-    expect(rows).toEqual([{ id: topicId, title: "Moti", mastery: 0.25 }]);
+    expect(rows).toEqual([{ id: topicId, title: "Moti", mastery: 0 }]);
   });
 
   it("lists a plan with its subject, days and mastery", () => {
@@ -143,7 +144,7 @@ describe("planMastery", () => {
     expect(series.chart).toHaveLength(14);
     expect(series.chart[13]?.count).toBe(1);
     expect(series.gaps).toEqual([
-      { topicId, openedAt: now, severity: "severe", wrongAnswers: 2 },
+      { topicId, openedAt: now, severity: "severe", wrongAnswers: 2, misses: [] },
     ]);
     expect(series.pace.week).toBe(1);
     const again = planSeries(db, planId, now);
@@ -170,7 +171,7 @@ describe("planMastery", () => {
        VALUES (?, 'active_time', ?, NULL, ?, ?)`,
     ).run(uuidv7(4), planId, JSON.stringify({ seconds: 120 }), now);
     const series = planSeries(db, planId, now);
-    expect(series.topics[0]?.mastery).toBe(0.25);
+    expect(series.topics[0]?.mastery).toBe(0);
     expect(series.minutes).toBe(2);
   });
 });
@@ -183,6 +184,12 @@ describe("M12 preparation data", () => {
     ).run();
     db.prepare(
       "INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('a','p','Motion',0,1),('b','p','Force',1,1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO passages(id,text,created_at) VALUES('pa','Motion',1),('pb','Force',1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO topic_passages(topic_id,passage_id) VALUES('a','pa'),('b','pb')",
     ).run();
     let n = 0;
     return {
@@ -361,6 +368,108 @@ describe("M12 preparation data", () => {
       ["b", "severe", 3],
       ["a", "minor", 2],
     ]);
+    db.close();
+  });
+});
+
+describe("specified mastery evidence", () => {
+  function fixture() {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO plans(id,title,status,created_at,updated_at) VALUES('p','Physics','ready',1,1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('a','p','Motion',0,1),('b','p','Force',1,1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO passages(id,text,created_at) VALUES('pa','One',1),('pb','Two',1),('pc','Three',1),('pd','Four',1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO topic_passages(topic_id,passage_id) VALUES('a','pa'),('b','pb'),('b','pc'),('b','pd')",
+    ).run();
+    return db;
+  }
+  it("weights each answer and excludes reading, and includes untouched passage weights", () => {
+    const db = fixture();
+    const now = 1000;
+    db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('e','answer_given','p','a',?,?)",
+    ).run(
+      JSON.stringify({
+        questionScores: [
+          { id: "q", kind: "open", score: 1 },
+          { id: "r", kind: "mcq", score: 0 },
+        ],
+      }),
+      now,
+    );
+    db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('l','lesson_completed','p','a','{}',?)",
+    ).run(now);
+    const mastery = 1.5 / (3 + 1.5 + 1);
+    expect(planMastery(db, "p", now)[0]!.mastery).toBeCloseTo(mastery);
+    const series = planSeries(db, "p", now);
+    expect(series.preparation.mastery).toBeCloseTo(mastery / 4);
+    expect(series.chart.at(-1)!.mastery).toBeCloseTo(mastery / 4);
+    db.close();
+  });
+  it("recovers missing answer kinds and simulation weights from saved historical attempts", () => {
+    const db = fixture();
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES('quiz','p','a','quiz',?,1),('sim','p',NULL,'simulation',?,1)",
+    ).run(
+      JSON.stringify({ questions: [{ id: "open", answer: { kind: "open" } }] }),
+      JSON.stringify({
+        questions: [
+          { id: "sim-answer", topicId: "a", answer: { kind: "open" } },
+        ],
+      }),
+    );
+    db.prepare(
+      "INSERT INTO attempts(id,plan_id,item_id,started_at,submitted_at) VALUES('attempt','p','sim',1,1000)",
+    ).run();
+    db.prepare(
+      "INSERT INTO attempt_answers(id,attempt_id,payload_json,created_at) VALUES('answer','attempt',?,1000)",
+    ).run(JSON.stringify({ results: [{ id: "sim-answer", score: 1 }] }));
+    db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('e','answer_given','p','a',?,1000),('q','answer_given','p','a',?,1000)",
+    ).run(
+      JSON.stringify({ score: 1, scores: [1] }),
+      JSON.stringify({ questionScores: [{ id: "open", score: 1 }] }),
+    );
+    expect(planMastery(db, "p", 1000)[0]!.mastery).toBeCloseTo(3.5 / 6.5);
+    db.close();
+  });
+  it("uses one current FSRS value per card and replays historical review states", () => {
+    const db = fixture();
+    const at = new Date(2026, 0, 1, 12).getTime();
+    db.prepare(
+      "INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('card','p','a','Q','A',?)",
+    ).run(at);
+    let state = newCard(at);
+    for (let i = 0; i < 20; i++) {
+      state = review(state, "good", at + i * 600000);
+      db.prepare(
+        "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,'card','good',?,?)",
+      ).run(`r${i}`, JSON.stringify(state), at + i * 600000);
+      db.prepare(
+        "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES(?,'card_rated','p','a',?,?)",
+      ).run(`e${i}`, JSON.stringify({ score: 1 }), at + i * 600000);
+    }
+    const now = at + 20 * 600000;
+    expect(planMastery(db, "p", now)[0]!.mastery).toBeCloseTo(
+      (0.5 * retrievability(state, now)) / 3.5,
+    );
+    expect(planMastery(db, "p", at - 1)[0]!.mastery).toBe(0);
+    const initial = review(newCard(at), "good", at);
+    expect(planMastery(db, "p", at)[0]!.mastery).toBeCloseTo(
+      (0.5 * retrievability(initial, at)) / 3.5,
+    );
+    expect(planMastery(db, "p", now + 30 * 86400000)[0]!.mastery).toBeLessThan(
+      planMastery(db, "p", now)[0]!.mastery,
+    );
+    db.prepare("UPDATE cards SET removed=1 WHERE id='card'").run();
+    expect(planMastery(db, "p", now)[0]!.mastery).toBe(0);
     db.close();
   });
 });

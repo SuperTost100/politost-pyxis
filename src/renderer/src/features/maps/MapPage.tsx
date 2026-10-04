@@ -7,6 +7,7 @@ import {
   Palette,
   Scan,
   Undo2,
+  Redo2,
   Download,
   Pencil,
 } from "lucide-react";
@@ -25,7 +26,7 @@ import {
   type ReactFlowInstance,
   type NodeChange,
 } from "@xyflow/react";
-import { toPng } from "html-to-image";
+import { toPng, toSvg } from "html-to-image";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
 import { invoke } from "../../lib/ipc";
@@ -238,13 +239,13 @@ export function MapPage() {
       setBusy(false);
     }
   }
-  async function exportPng() {
+  async function exportMap(format: "png" | "svg") {
     if (!canvas.current) return;
     setBusy(true);
     setNotice("");
     try {
       await document.fonts.ready;
-      const url = await toPng(canvas.current, {
+      const url = await (format === "png" ? toPng : toSvg)(canvas.current, {
         backgroundColor: getComputedStyle(document.documentElement)
           .getPropertyValue("--bg")
           .trim(),
@@ -258,7 +259,7 @@ export function MapPage() {
       });
       const link = document.createElement("a");
       link.href = url;
-      link.download = "map.png";
+      link.download = `map.${format}`;
       link.click();
     } catch {
       setNotice(t("map.exportFailed"));
@@ -338,10 +339,28 @@ export function MapPage() {
                 }
               />
               <Button
+                shape="circle"
+                aria-label={t("map.redo")}
+                disabled={disabled || !graph.redo}
+                icon={<Redo2 size={18} />}
+                onClick={() =>
+                  void commit(() =>
+                    invoke("maps.redo", { planId, topicId, mapId: activeId }),
+                  )
+                }
+              />
+              <Button
+                shape="round"
+                disabled={disabled}
+                onClick={() => void exportMap("svg")}
+              >
+                {t("map.svg")}
+              </Button>
+              <Button
                 shape="round"
                 disabled={disabled}
                 icon={<Download size={18} />}
-                onClick={() => void exportPng()}
+                onClick={() => void exportMap("png")}
               >
                 {t("map.png")}
               </Button>
@@ -403,9 +422,6 @@ export function MapPage() {
                   )?.dataset.id;
                   if (id) {
                     setSelected(id);
-                    setNodes((current) =>
-                      current.map((n) => ({ ...n, selected: n.id === id })),
-                    );
                   }
                 }}
                 onNodeClick={(_, node) => setSelected(node.id)}
@@ -426,9 +442,6 @@ export function MapPage() {
                   setSelected(node.id);
                   setLabel(node.data.label);
                   setDialog("rename");
-                }}
-                onSelectionChange={({ nodes }) => {
-                  if (nodes.length === 1) setSelected(nodes[0]!.id);
                 }}
                 onKeyDown={(event) => {
                   if (

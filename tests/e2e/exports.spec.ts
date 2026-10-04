@@ -65,7 +65,11 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     );
     insert.run(
       "latest-quiz",
-      JSON.stringify({ questions: [{ stem: "WRONG LATEST ITEM", answer: {kind:"tf",correct:true} }] }),
+      JSON.stringify({
+        questions: [
+          { stem: "WRONG LATEST ITEM", answer: { kind: "tf", correct: true } },
+        ],
+      }),
       2,
     );
     db.exec(
@@ -169,13 +173,18 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       location.hash = "/plans/export-plan";
     });
     await page
+      .getByRole("button", { name: /^(Impostazioni del piano|Plan settings)$/ })
+      .click();
+    await page
       .getByRole("button", { name: /^(Esporta|Export)$/, exact: true })
       .click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: /^(Salva file|Save file)$/, exact: true })
       .click();
-    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: /^(Esporta|Export)$/ }),
+    ).not.toBeVisible();
     const planFile = JSON.parse(readFileSync(saved, "utf8"));
     expect(planFile.version).toBe(2);
     expect(planFile.cards).toHaveLength(2);

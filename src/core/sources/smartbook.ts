@@ -31,8 +31,21 @@ export type ImportedSmartbook = {
 
 export type ParsedSmartbook = {
   config: SmartbookConfig;
-  paragraphs: Array<{ text: string; chapter: number; paragraph: string; section: string; start: number; end: number }>;
-  exercises: Array<{ question: string; solution: string | null; chapter: number | null; id: string; kind: string }>;
+  paragraphs: Array<{
+    text: string;
+    chapter: number;
+    paragraph: string;
+    section: string;
+    start: number;
+    end: number;
+  }>;
+  exercises: Array<{
+    question: string;
+    solution: string | null;
+    chapter: number | null;
+    id: string;
+    kind: string;
+  }>;
 };
 
 export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
@@ -53,7 +66,8 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
   const configKey = Object.keys(entries).find(
     (key) => key.endsWith("smartbook.json") && !key.includes("__MACOSX"),
   );
-  if (!configKey || !entries[configKey]) throw new Error("smartbook-json-missing");
+  if (!configKey || !entries[configKey])
+    throw new Error("smartbook-json-missing");
   const prefix = configKey.slice(0, -"smartbook.json".length);
   const config = JSON.parse(strFromU8(entries[configKey])) as SmartbookConfig;
   if (config.access === "licensed") throw new Error("licensed-smartbook");
@@ -65,9 +79,17 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
     const parsed = parseChapterMarkdown(strFromU8(raw), chapter.number);
     for (const paragraph of parsed.paragraphs) {
       const text = withFormulas(paragraph.content, parsed.formulas);
-      if (text) for (const chunk of text.length > 2800 ? chunkText(text) : [{ text, start: 0, end: text.length }]) {
-        paragraphs.push({ ...chunk, chapter: chapter.number, paragraph: paragraph.id, section: `${chapter.number}. ${chapter.title}` });
-      }
+      if (text)
+        for (const chunk of text.length > 2800
+          ? chunkText(text)
+          : [{ text, start: 0, end: text.length }]) {
+          paragraphs.push({
+            ...chunk,
+            chapter: chapter.number,
+            paragraph: paragraph.id,
+            section: `${chapter.number}. ${chapter.title}`,
+          });
+        }
     }
   }
   const exercises: ParsedSmartbook["exercises"] = [];
@@ -76,17 +98,32 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
     if (!raw) continue;
     const kind = name === "esami.md" ? "esame" : "esercizio";
     for (const exercise of parseExercises(strFromU8(raw), kind)) {
-      exercises.push({ question: exercise.question, solution: exercise.solution ?? null, chapter: exercise.chapter ?? null, id: exercise.id, kind });
+      exercises.push({
+        question: exercise.question,
+        solution: exercise.solution ?? null,
+        chapter: exercise.chapter ?? null,
+        id: exercise.id,
+        kind,
+      });
     }
   }
   return { config, paragraphs, exercises };
 }
 
-export function importSmartbook(db: Database.Database, bytes: Uint8Array, now = Date.now()): ImportedSmartbook {
+export function importSmartbook(
+  db: Database.Database,
+  bytes: Uint8Array,
+  now = Date.now(),
+): ImportedSmartbook {
   return storeSmartbook(db, parseSmartbook(bytes), now);
 }
 
-export function storeSmartbook(db: Database.Database, parsed: ParsedSmartbook, now = Date.now(), existingId?: string): ImportedSmartbook {
+export function storeSmartbook(
+  db: Database.Database,
+  parsed: ParsedSmartbook,
+  now = Date.now(),
+  existingId?: string,
+): ImportedSmartbook {
   const { config } = parsed;
   const sourceId = existingId ?? uuidv7(now);
   const documentId = uuidv7(now + 1);
@@ -113,20 +150,47 @@ export function storeSmartbook(db: Database.Database, parsed: ParsedSmartbook, n
     db.prepare(
       `INSERT INTO source_documents (id, source_id, version, tree_json, created_at)
        VALUES (?, ?, 1, ?, ?)`,
-    ).run(documentId, sourceId, JSON.stringify({ chapters: config.chapters }), now);
+    ).run(
+      documentId,
+      sourceId,
+      JSON.stringify({ chapters: config.chapters }),
+      now,
+    );
     db.prepare(
       `INSERT INTO smartbooks (id, source_id, meta_json, created_at) VALUES (?, ?, ?, ?)`,
     ).run(smartbookId, sourceId, JSON.stringify(config), now);
 
     for (const paragraph of parsed.paragraphs) {
-      insertPassage.run(uuidv7(now + passages + 3), sourceId, documentId, paragraph.text,
-        JSON.stringify({ chapter: paragraph.chapter, paragraph: paragraph.paragraph }),
-        paragraph.section, paragraph.start, paragraph.end, now);
+      insertPassage.run(
+        uuidv7(now + passages + 3),
+        sourceId,
+        documentId,
+        paragraph.text,
+        JSON.stringify({
+          chapter: paragraph.chapter,
+          paragraph: paragraph.paragraph,
+        }),
+        paragraph.section,
+        paragraph.start,
+        paragraph.end,
+        now,
+      );
       passages += 1;
     }
     for (const exercise of parsed.exercises) {
-      insertExercise.run(uuidv7(now + 10000 + exercises), smartbookId, null, exercise.question,
-        exercise.solution, JSON.stringify({ chapter: exercise.chapter, exercise: exercise.id, kind: exercise.kind }), now);
+      insertExercise.run(
+        uuidv7(now + 10000 + exercises),
+        smartbookId,
+        null,
+        exercise.question,
+        exercise.solution,
+        JSON.stringify({
+          chapter: exercise.chapter,
+          exercise: exercise.id,
+          kind: exercise.kind,
+        }),
+        now,
+      );
       exercises += 1;
     }
   });
@@ -142,8 +206,10 @@ export function storeSmartbook(db: Database.Database, parsed: ParsedSmartbook, n
 
 function displayLatex(latex: string): string {
   let body = latex.trim();
-  if (body.startsWith("$$") && body.endsWith("$$")) body = body.slice(2, -2).trim();
-  else if (body.startsWith("\\[") && body.endsWith("\\]")) body = body.slice(2, -2).trim();
+  if (body.startsWith("$$") && body.endsWith("$$"))
+    body = body.slice(2, -2).trim();
+  else if (body.startsWith("\\[") && body.endsWith("\\]"))
+    body = body.slice(2, -2).trim();
   return `\n$$\n${body}\n$$\n`;
 }
 
@@ -204,7 +270,10 @@ export function searchPassages(
 export function listSources(db: Database.Database) {
   return db
     .prepare(
-      `SELECT id, title, kind, status, blob_sha AS blobSha FROM sources
+      `SELECT id, title, kind, status, blob_sha AS blobSha,
+         (SELECT count(*) FROM passages p WHERE p.source_id = sources.id) AS sections,
+         (SELECT count(*) FROM plan_sources ps WHERE ps.source_id = sources.id) AS planCount
+       FROM sources
        WHERE status != 'removed' AND library = 1
        ORDER BY created_at DESC`,
     )
@@ -214,6 +283,8 @@ export function listSources(db: Database.Database) {
     kind: string;
     status: string;
     blobSha: string | null;
+    sections: number;
+    planCount: number;
   }>;
 }
 
@@ -230,7 +301,10 @@ function mapPassages(
     id: row.id,
     text: row.text,
     sectionPath: row.section_path,
-    locator: JSON.parse(row.locator_json) as { chapter: number; paragraph: string },
+    locator: JSON.parse(row.locator_json) as {
+      chapter: number;
+      paragraph: string;
+    },
   }));
 }
 
@@ -255,7 +329,10 @@ export function sourcePassages(db: Database.Database, sourceId: string) {
     char_start: number;
     char_end: number;
   }>;
-  return mergeViewerParagraphs(mapPassages(rows), rows.map((row) => row.char_start));
+  return mergeViewerParagraphs(
+    mapPassages(rows),
+    rows.map((row) => row.char_start),
+  );
 }
 
 export function chapterPassages(
@@ -283,7 +360,10 @@ export function chapterPassages(
     char_start: number;
     char_end: number;
   }>;
-  return mergeViewerParagraphs(mapPassages(rows), rows.map((row) => row.char_start));
+  return mergeViewerParagraphs(
+    mapPassages(rows),
+    rows.map((row) => row.char_start),
+  );
 }
 
 export function passagesAround(db: Database.Database, passageId: string) {
@@ -299,17 +379,26 @@ export function passagesAround(db: Database.Database, passageId: string) {
         locator_json: string | null;
       }
     | undefined;
-  if (!row?.source_id) return [];
+  if (!row) return [];
   const locator = row.locator_json
     ? (JSON.parse(row.locator_json) as PassageHit["locator"])
     : {};
   const filter =
-    locator.chapter != null
-      ? { sql: `json_extract(locator_json, '$.chapter') = ?`, value: locator.chapter }
-      : locator.page != null
-        ? { sql: `json_extract(locator_json, '$.page') = ?`, value: locator.page }
-        : locator.slide != null
-          ? { sql: `json_extract(locator_json, '$.slide') = ?`, value: locator.slide }
+    row.source_id && locator.chapter != null
+      ? {
+          sql: `json_extract(locator_json, '$.chapter') = ?`,
+          value: locator.chapter,
+        }
+      : row.source_id && locator.page != null
+        ? {
+            sql: `json_extract(locator_json, '$.page') = ?`,
+            value: locator.page,
+          }
+        : row.source_id && locator.slide != null
+          ? {
+              sql: `json_extract(locator_json, '$.slide') = ?`,
+              value: locator.slide,
+            }
           : null;
   const docClause = row.document_id ? "AND document_id = ?" : "";
   const docArgs = row.document_id ? [row.document_id] : [];
@@ -334,26 +423,41 @@ export function passagesAround(db: Database.Database, passageId: string) {
     locator_json: string | null;
     char_start?: number;
   }>;
-  return mergeViewerParagraphs(rows.map((item) => ({
-    id: item.id,
-    sourceId: row.source_id ?? "",
-    text: item.text,
-    sectionPath: item.section_path,
-    locator: item.locator_json
-      ? (JSON.parse(item.locator_json) as PassageHit["locator"])
-      : {},
-    current: item.id === passageId,
-  })), rows.map((item) => item.char_start ?? 0));
+  return mergeViewerParagraphs(
+    rows.map((item) => ({
+      id: item.id,
+      sourceId: row.source_id ?? "",
+      text: item.text,
+      sectionPath: item.section_path,
+      locator: item.locator_json
+        ? (JSON.parse(item.locator_json) as PassageHit["locator"])
+        : {},
+      current: item.id === passageId,
+    })),
+    rows.map((item) => item.char_start ?? 0),
+  );
 }
 
-function mergeViewerParagraphs<T extends { text: string; locator: { chapter?: number; paragraph?: string }; sectionPath?: string | null; current?: boolean }>(rows: T[], starts: number[]): T[] {
+function mergeViewerParagraphs<
+  T extends {
+    text: string;
+    locator: { chapter?: number; paragraph?: string };
+    sectionPath?: string | null;
+    current?: boolean;
+  },
+>(rows: T[], starts: number[]): T[] {
   const result: T[] = [];
   let end = 0;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!;
     const start = starts[i] ?? 0;
     const previous = result.at(-1);
-    if (start > 0 && previous && JSON.stringify(previous.locator) === JSON.stringify(row.locator) && previous.sectionPath === row.sectionPath) {
+    if (
+      start > 0 &&
+      previous &&
+      JSON.stringify(previous.locator) === JSON.stringify(row.locator) &&
+      previous.sectionPath === row.sectionPath
+    ) {
       const overlap = Math.max(0, end - start);
       previous.text += (start > end ? "\n" : "") + row.text.slice(overlap);
       if (row.current) previous.current = true;
@@ -370,7 +474,9 @@ const knownSpecs = new Set(["1", "1.1"]);
 
 export function smartbookMeta(db: Database.Database, sourceId: string) {
   const row = db
-    .prepare(`SELECT b.meta_json FROM smartbooks b JOIN sources s ON s.id = b.source_id WHERE b.source_id = ? AND s.kind = 'smartbook'`)
+    .prepare(
+      `SELECT b.meta_json FROM smartbooks b JOIN sources s ON s.id = b.source_id WHERE b.source_id = ? AND s.kind = 'smartbook'`,
+    )
     .get(sourceId) as { meta_json: string } | undefined;
   if (!row) return null;
   const meta = JSON.parse(row.meta_json) as SmartbookConfig & {
@@ -380,15 +486,22 @@ export function smartbookMeta(db: Database.Database, sourceId: string) {
     specVersion?: unknown;
   };
   const authors = Array.isArray(meta.authors)
-    ? meta.authors.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    ? meta.authors.filter(
+        (item): item is string =>
+          typeof item === "string" && item.trim() !== "",
+      )
     : typeof meta.author === "string" && meta.author.trim() !== ""
       ? [meta.author]
       : [];
-  const spec = meta.specVersion == null || meta.specVersion === "" ? null : String(meta.specVersion);
+  const spec =
+    meta.specVersion == null || meta.specVersion === ""
+      ? null
+      : String(meta.specVersion);
   return {
     title: meta.title,
     authors,
-    version: meta.version == null || meta.version === "" ? null : String(meta.version),
+    version:
+      meta.version == null || meta.version === "" ? null : String(meta.version),
     specVersion: spec,
     knownSpec: spec == null || knownSpecs.has(spec),
   };
@@ -396,7 +509,9 @@ export function smartbookMeta(db: Database.Database, sourceId: string) {
 
 export function smartbookChapters(db: Database.Database, sourceId: string) {
   const row = db
-    .prepare(`SELECT b.meta_json FROM smartbooks b JOIN sources s ON s.id = b.source_id WHERE b.source_id = ? AND s.kind = 'smartbook'`)
+    .prepare(
+      `SELECT b.meta_json FROM smartbooks b JOIN sources s ON s.id = b.source_id WHERE b.source_id = ? AND s.kind = 'smartbook'`,
+    )
     .get(sourceId) as { meta_json: string } | undefined;
   if (!row) return [];
   const meta = JSON.parse(row.meta_json) as SmartbookConfig;

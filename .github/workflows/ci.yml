@@ -1,0 +1,132 @@
+name: Check and package
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pyxis-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mac-arm64
+            runner: macos-15
+            builder: --mac --arm64
+          - target: mac-x64
+            runner: macos-15-intel
+            builder: --mac --x64
+          - target: windows-x64
+            runner: windows-2025
+            builder: --win --x64
+          - target: linux-x64
+            runner: ubuntu-24.04
+            builder: --linux --x64
+    defaults:
+      run:
+        shell: bash
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 26
+          cache: npm
+      - name: Install Linux display and Electron libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libfuse2 apparmor
+      - run: npm ci
+      - name: Allow the Electron test binary to use its namespace sandbox
+        if: runner.os == 'Linux'
+        run: |
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            binary="$(node -p "require('electron')")"
+            sudo tee /etc/apparmor.d/pyxis-ci >/dev/null <<EOF
+          profile pyxis-ci "$binary" flags=(unconfined) {
+            userns,
+          }
+          EOF
+            sudo apparmor_parser -r /etc/apparmor.d/pyxis-ci
+          fi
+      - run: npm run typecheck
+      - name: Unit checks
+        run: npm test
+      - name: Recorded Electron end-to-end checks
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a npm run test:e2e
+          else
+            npm run test:e2e
+          fi
+      - name: Package without publishing
+        run: npm run dist -- ${{ matrix.builder }} --publish never
+      - name: Collect installers and SHA-256 checksums
+        run: |
+          node --input-type=module <<'JS'
+          import { readdirSync, mkdirSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { join } from 'node:path';
+          const output = 'release-artifacts';
+          mkdirSync(output);
+          const names = readdirSync('dist', { withFileTypes: true })
+            .filter(entry => entry.isFile() && /\.(?:dmg|zip|exe|AppImage|deb|blockmap)$/.test(entry.name))
+            .map(entry => entry.name).sort();
+          if (!names.some(name => /\.(?:dmg|exe|AppImage|deb)$/.test(name))) throw new Error('No installer built');
+          const checksums = names.map(name => {
+            copyFileSync(join('dist', name), join(output, name));
+            return `${createHash('sha256').update(readFileSync(join(output, name))).digest('hex')}  ${name}`;
+          });
+          writeFileSync(join(output, 'SHA256SUMS'), checksums.join('\n') + '\n');
+          JS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pyxis-${{ matrix.target }}
+          path: release-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve failed test report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: test-report-${{ matrix.target }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  attest:
+    name: Attest packaged artifacts
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: pyxis-*
+          path: artifacts
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/**/*

@@ -3,7 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { _electron as electron, type ElectronApplication, type Page } from "playwright";
+import {
+  _electron as electron,
+  type ElectronApplication,
+  type Page,
+} from "playwright";
 
 const require = createRequire(import.meta.url);
 const electronPath = require("electron") as string;
@@ -23,7 +27,9 @@ writeFileSync(
         chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
       }),
     ),
-    "chapters/01.md": strToU8("## p1 | Energia\nIl vettore posizione descrive il punto.\n"),
+    "chapters/01.md": strToU8(
+      "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
+    ),
     "esercizi.md": strToU8(
       ':::exercise{id="e1" chapter="1"}\nQuanto vale il lavoro?\n:::solution\nW = F s.\n:::\n:::\n',
     ),
@@ -36,6 +42,20 @@ const routes = [
   "#/exams/get",
   "#/ask",
   "#/settings",
+  ...[
+    "profile",
+    "subjects",
+    "engines",
+    "tutor",
+    "reading",
+    "appearance",
+    "language",
+    "data",
+    "privacy",
+    "updates",
+    "about",
+    "diagnostics",
+  ].map((section) => `#/settings/${section}`),
   "#/dev/gallery",
   "#/plans/new",
   "#/tools/graph",
@@ -62,14 +82,17 @@ async function setLocale(page: Page, locale: "it" | "en"): Promise<void> {
     page.waitForEvent("load"),
     page.evaluate((lng) => {
       localStorage.setItem("pyxis.lang", lng);
-      (globalThis as unknown as { location: { reload: () => void } }).location.reload();
+      (
+        globalThis as unknown as { location: { reload: () => void } }
+      ).location.reload();
     }, locale),
   ]);
 }
 
 async function hashOf(page: Page): Promise<string> {
   return page.evaluate(
-    () => (globalThis as unknown as { location: { hash: string } }).location.hash,
+    () =>
+      (globalThis as unknown as { location: { hash: string } }).location.hash,
   );
 }
 
@@ -77,12 +100,24 @@ async function shootStudy(page: Page): Promise<void> {
   await setLocale(page, "it");
   await setTheme(page, "dark");
   await openRoute(page, "#/exams/library");
-  await page.getByRole("button", { name: "Aggiungi fonti" }).click();
+  await page
+    .getByRole("button", { name: "Aggiungi fonti", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Scegli un file", exact: true })
+    .click();
   await page.getByRole("button", { name: "Demo" }).waitFor();
   await openRoute(page, "#/exams");
   await page.getByRole("button", { name: "Nuovo piano" }).click();
   await page.locator("#plan-title").fill("Fisica");
-  await page.getByRole("button", { name: "Demo" }).click();
+  for (let step = 0; step < 3; step++) {
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
+  }
+  await page.getByRole("button", { name: "Demo", exact: true }).click();
+  for (let step = 0; step < 2; step++) {
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
+  }
   await page.getByRole("button", { name: "Crea il piano" }).click();
   await page.getByRole("button", { name: "Apri il piano" }).click();
   await page.locator("h1", { hasText: "Fisica" }).waitFor();
@@ -106,8 +141,10 @@ async function shootStudy(page: Page): Promise<void> {
   await page.getByRole("button", { name: /Esercizi/ }).click();
   await page.getByRole("button", { name: "Ho letto" }).click();
   await page.getByRole("button", { name: /Carte/ }).click();
-  await page.waitForFunction(
-    () => (globalThis as unknown as { location: { hash: string } }).location.hash.includes("/cards/"),
+  await page.waitForFunction(() =>
+    (
+      globalThis as unknown as { location: { hash: string } }
+    ).location.hash.includes("/cards/"),
   );
   await page.locator("main").waitFor();
   const cards = await hashOf(page);
@@ -129,7 +166,9 @@ async function shootStudy(page: Page): Promise<void> {
       for (const [name, hash] of studyRoutes) {
         await openRoute(page, hash);
         await waitStudy(page, name);
-        await page.screenshot({ path: join(shots, `${name}-${locale}-${theme}-1280.png`) });
+        await page.screenshot({
+          path: join(shots, `${name}-${locale}-${theme}-1280.png`),
+        });
       }
     }
   }
@@ -147,7 +186,9 @@ async function waitStudy(page: Page, name: string): Promise<void> {
   } else if (name === "cards") {
     await page.getByRole("button", { name: /^(Gira|Flip)$/ }).waitFor();
   } else if (name === "simulation") {
-    await page.getByRole("button", { name: /Inizia i 30 minuti|Start the 30 minutes/ }).waitFor();
+    await page
+      .getByRole("button", { name: /Inizia i 30 minuti|Start the 30 minutes/ })
+      .waitFor();
   } else if (name === "map") {
     await page.locator("svg text").first().waitFor();
   }
@@ -155,7 +196,8 @@ async function waitStudy(page: Page, name: string): Promise<void> {
 
 async function openRoute(page: Page, hash: string): Promise<void> {
   await page.evaluate((next) => {
-    (globalThis as unknown as { location: { hash: string } }).location.hash = next;
+    (globalThis as unknown as { location: { hash: string } }).location.hash =
+      next;
   }, hash);
   await page.waitForTimeout(200);
 }
@@ -173,7 +215,8 @@ try {
   });
   const page = await app.firstWindow();
   page.on("console", (msg) => {
-    if (msg.type() === "error" || msg.type() === "warning") errors.push(msg.text());
+    if (msg.type() === "error" || msg.type() === "warning")
+      errors.push(msg.text());
   });
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.setViewportSize({ width: 1280, height: 832 });
@@ -200,6 +243,31 @@ try {
         await openRoute(page, route);
         const name = `${route.slice(2).replaceAll("/", "-")}-${locale}-${theme}-1280.png`;
         await page.screenshot({ path: join(shots, name) });
+        if (route === "#/plans/new") {
+          await page
+            .locator("#plan-title")
+            .fill(locale === "it" ? "Fisica" : "Physics");
+          for (let step = 1; step < 6; step++) {
+            await page
+              .getByRole("button", { name: /^(Continua|Continue)$/ })
+              .click();
+            await page.screenshot({
+              path: join(
+                shots,
+                `wizard-step-${step + 1}-${locale}-${theme}-1280.png`,
+              ),
+            });
+          }
+        } else if (route === "#/exams/library") {
+          await page
+            .getByRole("button", { name: /^(Aggiungi fonti|Add sources)$/ })
+            .click();
+          await page.getByRole("dialog").waitFor();
+          await page.screenshot({
+            path: join(shots, `library-import-${locale}-${theme}-1280.png`),
+          });
+          await page.locator(".ant-modal-close").click();
+        }
       }
     }
   }
@@ -219,7 +287,9 @@ try {
     await jobs.waitFor({ timeout: 3000 });
     await jobs.click();
     await page.waitForTimeout(200);
-    await page.screenshot({ path: join(shots, "jobs-running-it-dark-1280.png") });
+    await page.screenshot({
+      path: join(shots, "jobs-running-it-dark-1280.png"),
+    });
   }
 
   await shootStudy(page);

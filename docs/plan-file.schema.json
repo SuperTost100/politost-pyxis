@@ -178,11 +178,106 @@
             "properties": {
               "rating": {
                 "type": "string",
-                "maxLength": 100
+                "enum": [
+                  "again",
+                  "hard",
+                  "good",
+                  "easy"
+                ]
               },
-              "state": {},
+              "state": {
+                "type": "object",
+                "properties": {
+                  "intervalDays": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 365000
+                  },
+                  "ease": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 10
+                  },
+                  "dueAt": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8640000000000000
+                  },
+                  "fsrs": {
+                    "type": "object",
+                    "properties": {
+                      "due": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "stability": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 365000
+                      },
+                      "difficulty": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 10
+                      },
+                      "elapsed_days": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 365000
+                      },
+                      "scheduled_days": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 365000
+                      },
+                      "learning_steps": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "reps": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "lapses": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "state": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 3
+                      },
+                      "last_review": {
+                        "type": "string",
+                        "maxLength": 40
+                      }
+                    },
+                    "required": [
+                      "due",
+                      "stability",
+                      "difficulty",
+                      "elapsed_days",
+                      "scheduled_days",
+                      "learning_steps",
+                      "reps",
+                      "lapses",
+                      "state"
+                    ]
+                  }
+                },
+                "required": [
+                  "intervalDays",
+                  "ease",
+                  "dueAt"
+                ]
+              },
               "at": {
-                "type": "number"
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8640000000000000
               }
             },
             "required": [
@@ -658,6 +753,117 @@
                       }
                     },
                     "undo": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "nodes": {
+                              "maxItems": 25,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  },
+                                  "parent": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 160
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "pinned": {
+                                    "type": "boolean"
+                                  },
+                                  "color": {
+                                    "type": "string",
+                                    "pattern": "^(?:surface-raised|primary-soft|mastery-soft|star-soft|danger-soft|#[a-fA-F0-9]{6})$"
+                                  },
+                                  "sources": {
+                                    "maxItems": 500,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 160
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "label",
+                                  "parent",
+                                  "x",
+                                  "y",
+                                  "pinned"
+                                ]
+                              }
+                            },
+                            "edges": {
+                              "maxItems": 150,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "from": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "to": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "maxLength": 160
+                                  }
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ]
+                              }
+                            },
+                            "layout": {
+                              "type": "string",
+                              "enum": [
+                                "tree",
+                                "radial"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "nodes",
+                            "edges"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "redo": {
                       "anyOf": [
                         {
                           "type": "object",

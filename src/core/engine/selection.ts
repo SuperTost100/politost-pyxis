@@ -1,3 +1,4 @@
+import { IpcError } from "../../shared/ipc";
 import type Database from "better-sqlite3";
 import type { ProviderId } from "./funnel";
 
@@ -5,11 +6,7 @@ export type StoredSelection = {
   provider: ProviderId;
   model: string;
   effort?: string;
-};
-
-const fallback: StoredSelection = {
-  provider: "claude",
-  model: "claude-sonnet-5",
+  fast?: boolean;
 };
 
 export function selectionFor(
@@ -21,5 +18,5 @@ export function selectionFor(
     .get(feature) as { selection_json: string } | undefined;
   if (row) return JSON.parse(row.selection_json) as StoredSelection;
   if (feature !== "default") return selectionFor(db, "default");
-  return fallback;
+  throw new IpcError("engine-missing", "engines.errors.engine-missing");
 }

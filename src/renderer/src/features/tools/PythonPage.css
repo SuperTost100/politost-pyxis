@@ -24,6 +24,18 @@
 .px-python-actions .ant-btn {
   white-space: nowrap;
 }
+.px-python-consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+}
+.px-python-consent > p {
+  margin: 0;
+}
 .px-python pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

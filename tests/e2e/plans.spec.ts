@@ -1,3 +1,4 @@
+import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -60,10 +61,9 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await expect(
       page.getByRole("heading", { name: "Esami", exact: true }),
     ).toBeVisible();
-    const source = (await page.evaluate(
-      (path) => window.pyxis.invoke("sources.import", { path }),
-      file,
-    )) as { sourceId: string };
+    const source = (await importPickedSource(page, app, file)) as {
+      sourceId: string;
+    };
     await expect
       .poll(async () => {
         const rows = (await page.evaluate(() =>
@@ -121,7 +121,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await page
       .getByRole("button", { name: "Apri il piano", exact: true })
       .click();
-    await page.getByRole("button", { name: "Argomenti", exact: true }).click();
+    await page.getByText("Argomenti", { exact: true }).click();
     await page.getByText("Moto", { exact: true }).first().click();
     await expect(
       page.getByText("Accelerazione", { exact: true }),
@@ -134,7 +134,11 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
       nodes: Array<{ kind: string; id: string }>;
     };
     expect(result.topics).toHaveLength(1);
-    await page.getByRole("button", { name: /Lezione consigliata/ }).click();
+    await page.locator(".px-plan-page .px-seg-wrap").getByText("Percorso", { exact: true }).click();
+    await page
+      .locator(".px-plan-dock")
+      .getByRole("button", { name: "Continua", exact: true })
+      .click();
     await expect(
       page.getByText("Studierai velocità e accelerazione", { exact: false }),
     ).toBeVisible();
@@ -142,7 +146,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     expect(
       (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
     ).toEqual([]);
-    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Continua", exact: true }).click();
     const diagnostic = (await page.evaluate(
       (planId) => window.pyxis.invoke("study.diagnosticStart", { planId }),
       created.planId,
@@ -171,8 +175,9 @@ test("PLAN-21 live Claude builds the owner's smartbook plan", async () => {
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    const imported = (await page.evaluate(
-      (path) => window.pyxis.invoke("sources.import", { path }),
+    const imported = (await importPickedSource(
+      page,
+      app,
       "/Users/tost1/Documents/Personal/Vibecode/PoliTost/books/ptt-fisica1.ptsb",
     )) as { sourceId: string };
     await expect

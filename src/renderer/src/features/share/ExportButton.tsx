@@ -20,12 +20,14 @@ function textBase64(text: string): string {
 export function ExportButton({
   planId,
   topicId,
+  wording,
   attemptId,
   kind,
   disabled = false,
 }: {
   planId: string;
   topicId?: string;
+  wording?: "simple" | "balanced" | "technical";
   attemptId?: string;
   kind: Kind;
   disabled?: boolean;
@@ -76,6 +78,7 @@ export function ExportButton({
           planId,
           topicId,
           kind,
+          wording,
           answers,
           attemptId,
         });

@@ -44,6 +44,137 @@ afterEach(() => {
 });
 
 describe("job runner", () => {
+  it("does not start queued work before initial credentials are applied", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, undefined, true);
+    let called = false;
+    runner.register("credentials", {
+      jobClass: "model-api",
+      steps: [
+        {
+          name: "run",
+          label: "run",
+          run: async () => {
+            called = true;
+          },
+        },
+      ],
+    });
+    const job = runner.start("credentials");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(called).toBe(false);
+    expect(stateOf(database, job)).toBe("queued");
+    runner.activate();
+    await until(database, job, ["succeeded"]);
+    expect(called).toBe(true);
+  });
+
+  it("reacquires the local limit after two passive steps finish together", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, {
+      "model-cli": 2,
+      "model-api": 4,
+      local: 1,
+      demo: 1,
+    });
+    let releasePassive!: () => void,
+      releaseLocal!: () => void,
+      firstLocal!: () => void;
+    const passive = new Promise<void>((resolve) => {
+      releasePassive = resolve;
+    });
+    const local = new Promise<void>((resolve) => {
+      releaseLocal = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      firstLocal = resolve;
+    });
+    let waiting = 0,
+      working = 0,
+      maximum = 0;
+    runner.register("handoff", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "wait",
+          label: "wait",
+          jobClass: null,
+          run: async () => {
+            waiting++;
+            await passive;
+          },
+        },
+        {
+          name: "local",
+          label: "local",
+          run: async () => {
+            working++;
+            maximum = Math.max(maximum, working);
+            firstLocal();
+            await local;
+            working--;
+          },
+        },
+      ],
+    });
+    const first = runner.start("handoff"),
+      second = runner.start("handoff");
+    while (waiting < 2) await new Promise((resolve) => setTimeout(resolve, 5));
+    releasePassive();
+    await entered;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(maximum).toBe(1);
+    releaseLocal();
+    await until(database, first, ["succeeded"]);
+    await until(database, second, ["succeeded"]);
+    expect(maximum).toBe(1);
+  });
+
+  it("keeps insertion order when queued jobs share a timestamp", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, {
+      "model-cli": 2,
+      "model-api": 4,
+      local: 1,
+      demo: 1,
+    });
+    const entered: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const insert = database.prepare(
+      "INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES (?, 'fifo', ?, 'queued', 0, 100, 100)",
+    );
+    for (const id of ["z-first", "a-second"]) {
+      insert.run(id, JSON.stringify({ id }));
+      database
+        .prepare(
+          "INSERT INTO job_steps (id, job_id, name, position, label, state) VALUES (?, ?, 'hold', 0, 'hold', 'pending')",
+        )
+        .run(uuidv7(), id);
+    }
+    runner.register("fifo", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "hold",
+          label: "hold",
+          run: async ({ params }) => {
+            entered.push((params as { id: string }).id);
+            if (entered.length === 1) await gate;
+          },
+        },
+      ],
+    });
+    await until(database, "z-first", ["running"]);
+    expect(entered).toEqual(["z-first"]);
+    expect(stateOf(database, "a-second")).toBe("queued");
+    release();
+    await until(database, "a-second", ["succeeded"]);
+    expect(entered).toEqual(["z-first", "a-second"]);
+  });
+
   it("runs three steps, skips finished ones on retry, and keeps the limit", async () => {
     const database = db();
     const calls = { one: 0, two: 0, three: 0 };
@@ -210,4 +341,132 @@ describe("job runner", () => {
     expect(seen).toEqual(["cancelled"]);
     expect(runner.list().some((job) => job.id === jobId)).toBe(false);
   });
+});
+
+it("waiting local source steps leave model slots available and rolled-back jobs never run", async () => {
+  const database = db();
+  const runner = createRunner(database, () => {}, {
+    local: 3,
+    "model-cli": 1,
+    "model-api": 1,
+    demo: 1,
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let entered = 0;
+  runner.register("waiting-source", {
+    jobClass: "local",
+    steps: [
+      {
+        name: "source",
+        label: "source",
+        run: async () => {
+          entered++;
+          await gate;
+        },
+      },
+      {
+        name: "model",
+        label: "model",
+        jobClass: "model-cli",
+        run: async () => "built",
+      },
+    ],
+  });
+  runner.register("grading", {
+    jobClass: "model-cli",
+    steps: [{ name: "grade", label: "grade", run: async () => "graded" }],
+  });
+  const first = runner.start("waiting-source");
+  const second = runner.start("waiting-source");
+  await until(database, first, ["running"]);
+  expect(entered).toBe(2);
+  const grade = runner.start("grading");
+  expect(await until(database, grade, ["succeeded"])).toBe("succeeded");
+  let phantomRuns = 0;
+  runner.register("phantom", {
+    jobClass: "model-cli",
+    steps: [
+      {
+        name: "work",
+        label: "work",
+        run: async () => {
+          phantomRuns++;
+        },
+      },
+    ],
+  });
+  expect(() =>
+    database.transaction(() => {
+      runner.start("phantom");
+      throw new Error("rollback");
+    })(),
+  ).toThrow("rollback");
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(phantomRuns).toBe(0);
+  release();
+  await until(database, first, ["succeeded"]);
+  await until(database, second, ["succeeded"]);
+});
+
+it("a source-wait step releases the only local slot for the source import it needs", async () => {
+  const database = db();
+  const runner = createRunner(database, () => {}, {
+    local: 1,
+    "model-cli": 1,
+    "model-api": 1,
+    demo: 1,
+  });
+  let imported!: () => void;
+  const sourceReady = new Promise<void>((resolve) => {
+    imported = resolve;
+  });
+  runner.register("plan-wait", {
+    jobClass: "local",
+    steps: [
+      {
+        name: "source",
+        label: "source",
+        jobClass: null,
+        run: async () => sourceReady,
+      },
+    ],
+  });
+  runner.register("source-import", {
+    jobClass: "local",
+    steps: [
+      {
+        name: "extract",
+        label: "extract",
+        run: async () => {
+          imported();
+        },
+      },
+    ],
+  });
+  const plan = runner.start("plan-wait");
+  const source = runner.start("source-import");
+  expect(await until(database, source, ["succeeded"])).toBe("succeeded");
+  expect(await until(database, plan, ["succeeded"])).toBe("succeeded");
+});
+
+it("dismisses an interrupted study build without deleting its resume checkpoint", async () => {
+  const database = db();
+  const runner = createRunner(database, () => {}, undefined, true);
+  runner.register("cards-build", {
+    jobClass: "local",
+    steps: [{ name: "cards", label: "jobs.cards", run: async () => true }],
+  });
+  const job = runner.start("cards-build", { planId: "p", topicId: "t" });
+  database.prepare("UPDATE jobs SET state='interrupted' WHERE id=?").run(job);
+  runner.dismiss(job);
+  expect(runner.list()).toEqual([]);
+  expect(
+    database.prepare("SELECT state,dismissed FROM jobs WHERE id=?").get(job),
+  ).toEqual({ state: "interrupted", dismissed: 1 });
+  runner.resume(job);
+  runner.activate();
+  await until(database, job, ["succeeded"]);
 });

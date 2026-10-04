@@ -12,7 +12,9 @@ import { startTopicQuiz, submitAttempt } from "./topicQuiz";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
-    Object.fromEntries(Object.entries(files).map(([name, text]) => [name, strToU8(text)])),
+    Object.fromEntries(
+      Object.entries(files).map(([name, text]) => [name, strToU8(text)]),
+    ),
   );
 }
 
@@ -49,24 +51,42 @@ describe("mixed quiz", () => {
     expect(kinds.has("open")).toBe(true);
 
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(db, pack(book));
-    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
-    const topic = db.prepare(`SELECT id FROM topics WHERE plan_id = ?`).get(plan.planId) as {
+    const plan = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [imported.sourceId],
+    });
+    const topic = db
+      .prepare(`SELECT id FROM topics WHERE plan_id = ?`)
+      .get(plan.planId) as {
       id: string;
     };
     const started = startTopicQuiz(db, plan.planId, topic.id);
-    const tf = started.questions.find((question) => question.grade.kind === "tf");
+    const tf = started.questions.find(
+      (question) => question.grade.kind === "tf",
+    );
     expect(tf).toBeTruthy();
-    const scored = submitAttempt(db, started.attemptId, { [tf?.id ?? ""]: "true" });
-    expect(scored.results.find((row) => row.id === tf?.id)?.score).toBeTypeOf("number");
+    const scored = submitAttempt(db, started.attemptId, {
+      [tf?.id ?? ""]: "true",
+    });
+    expect(scored.results.find((row) => row.id === tf?.id)?.score).toBeTypeOf(
+      "number",
+    );
     flagTarget(db, "exercise", tf?.sourceId ?? "");
     syncGaps(db, plan.planId);
-    const gaps = db.prepare(`SELECT COUNT(*) AS n FROM gaps WHERE plan_id = ? AND closed_at IS NULL`).get(
-      plan.planId,
-    ) as { n: number };
+    const gaps = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM gaps WHERE plan_id = ? AND closed_at IS NULL`,
+      )
+      .get(plan.planId) as { n: number };
     expect(gaps.n).toBe(1);
     const other = createPlan(db, { title: "Altro", sourceIds: [] });
-    expect(() => startTopicQuiz(db, other.planId, topic.id)).toThrow(/topic-missing/);
+    expect(() => startTopicQuiz(db, other.planId, topic.id)).toThrow(
+      /topic-missing/,
+    );
     const blank = startTopicQuiz(db, plan.planId, topic.id);
     const blankScore = submitAttempt(db, blank.attemptId, {});
     expect(blankScore.results.every((row) => row.score === 0)).toBe(true);
@@ -75,9 +95,17 @@ describe("mixed quiz", () => {
 
   it("stores a model lesson and builds a review from the book", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(db, pack(book));
-    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
-    const topic = db.prepare(`SELECT id FROM topics WHERE plan_id = ?`).get(plan.planId) as {
+    const plan = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [imported.sourceId],
+    });
+    const topic = db
+      .prepare(`SELECT id FROM topics WHERE plan_id = ?`)
+      .get(plan.planId) as {
       id: string;
     };
     const lesson = await writeLesson(db, plan.planId, topic.id, async () => ({
@@ -96,24 +124,39 @@ describe("mixed quiz", () => {
     expect(again.markdown).toBe(lesson.markdown);
     const review = startReview(db, plan.planId);
     expect(review.questions.length).toBeGreaterThan(0);
-    const first = new Set(review.questions.flatMap((question) => question.sourceId ? [question.sourceId] : []));
+    const first = new Set(
+      review.questions.flatMap((question) =>
+        question.sourceId ? [question.sourceId] : [],
+      ),
+    );
     const stored = db
-      .prepare(`SELECT body_json FROM items WHERE plan_id = ? AND kind = 'review'`)
+      .prepare(
+        `SELECT body_json FROM items WHERE plan_id = ? AND kind = 'review'`,
+      )
       .all(plan.planId) as Array<{ body_json: string }>;
     const remembered = stored.flatMap((row) => {
-      const body = JSON.parse(row.body_json) as { questions?: Array<{ sourceIds?: string[] }> };
-      return (body.questions ?? []).flatMap((question) => question.sourceIds ?? []);
+      const body = JSON.parse(row.body_json) as {
+        questions?: Array<{ sourceIds?: string[] }>;
+      };
+      return (body.questions ?? []).flatMap(
+        (question) => question.sourceIds ?? [],
+      );
     });
     expect(remembered.length).toBeGreaterThan(1);
     const nextReview = startReview(db, plan.planId);
     expect(nextReview.questions.length).toBeGreaterThan(0);
     expect(
-      nextReview.questions.every((question) => !question.sourceId || !first.has(question.sourceId)),
+      nextReview.questions.every(
+        (question) => !question.sourceId || !first.has(question.sourceId),
+      ),
     ).toBe(true);
   });
 
   it("does not spread a flag or a perfect score onto another book", () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const first = importSmartbook(db, pack(book));
     const second = importSmartbook(
       db,
@@ -126,7 +169,7 @@ describe("mixed quiz", () => {
         }),
         "chapters/01.md": "## p1 | Altro\nUn testo diverso.\n",
         "esercizi.md":
-          ":::exercise{id=\"z0\" chapter=\"1\"}\nDomanda?\n:::solution\nrisposta\n:::\n:::\n",
+          ':::exercise{id="z0" chapter="1"}\nDomanda?\n:::solution\nrisposta\n:::\n:::\n',
       }),
     );
     const plan = createPlan(db, {
@@ -155,9 +198,11 @@ describe("mixed quiz", () => {
       )
       .all(second.sourceId) as Array<{ id: string }>;
     const foreignIds = new Set(foreign.map((row) => row.id));
-    expect(review.questions.some((question) => question.sourceId && foreignIds.has(question.sourceId))).toBe(
-      false,
-    );
+    expect(
+      review.questions.some(
+        (question) => question.sourceId && foreignIds.has(question.sourceId),
+      ),
+    ).toBe(false);
     const own = db
       .prepare(
         `SELECT e.id FROM exercises e
@@ -168,16 +213,26 @@ describe("mixed quiz", () => {
     flagTarget(db, "exercise", own.id);
     syncGaps(db, plan.planId);
     const gaps = db
-      .prepare(`SELECT topic_id FROM gaps WHERE plan_id = ? AND closed_at IS NULL`)
+      .prepare(
+        `SELECT topic_id FROM gaps WHERE plan_id = ? AND closed_at IS NULL`,
+      )
       .all(plan.planId) as Array<{ topic_id: string }>;
     expect(gaps.map((row) => row.topic_id)).toEqual([topics[0]?.id]);
   });
 
   it("does not review a topic whose latest score is perfect", () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(db, pack(book));
-    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
-    const topic = db.prepare(`SELECT id FROM topics WHERE plan_id = ?`).get(plan.planId) as {
+    const plan = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [imported.sourceId],
+    });
+    const topic = db
+      .prepare(`SELECT id FROM topics WHERE plan_id = ?`)
+      .get(plan.planId) as {
       id: string;
     };
     const insert = db.prepare(
@@ -211,11 +266,18 @@ describe("mixed quiz", () => {
         .join("\n"),
     };
     for (const number of chapters) {
-      files[`chapters/0${number}.md`] = `## p1 | Tema ${number}\nTesto ${number}.\n`;
+      files[`chapters/0${number}.md`] =
+        `## p1 | Tema ${number}\nTesto ${number}.\n`;
     }
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(db, pack(files));
-    const plan = createPlan(db, { title: "Sei", sourceIds: [imported.sourceId] });
+    const plan = createPlan(db, {
+      title: "Sei",
+      sourceIds: [imported.sourceId],
+    });
     const topics = db
       .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
       .all(plan.planId) as Array<{ id: string }>;
@@ -227,7 +289,13 @@ describe("mixed quiz", () => {
     expect(frontier).toBeTruthy();
     insert.run("evt-frontier", plan.planId, frontier?.id, '{"score":1}', 1);
     topics.slice(1).forEach((topic, index) => {
-      insert.run(`evt-weak-${index}`, plan.planId, topic.id, '{"score":0}', 10 + index);
+      insert.run(
+        `evt-weak-${index}`,
+        plan.planId,
+        topic.id,
+        '{"score":0}',
+        10 + index,
+      );
     });
     const frontierExercises = new Set(
       (
@@ -240,17 +308,28 @@ describe("mixed quiz", () => {
     );
     const review = startReview(db, plan.planId);
     expect(
-      review.questions.some((question) => question.sourceId && frontierExercises.has(question.sourceId)),
+      review.questions.some(
+        (question) =>
+          question.sourceId && frontierExercises.has(question.sourceId),
+      ),
     ).toBe(false);
   });
 
   it("does not treat a perfect topic as new when newer weak events fill the window", () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(db, pack(book));
-    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
-    const frontier = db.prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position LIMIT 1`).get(
-      plan.planId,
-    ) as { id: string };
+    const plan = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [imported.sourceId],
+    });
+    const frontier = db
+      .prepare(
+        `SELECT id FROM topics WHERE plan_id = ? ORDER BY position LIMIT 1`,
+      )
+      .get(plan.planId) as { id: string };
     const other = "topic-other";
     db.prepare(
       `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, ?, 'Altro', 5, 1)`,
@@ -261,7 +340,13 @@ describe("mixed quiz", () => {
     );
     insert.run("evt-perfect", plan.planId, frontier.id, '{"score":1}', 1);
     for (let index = 0; index < 20; index += 1) {
-      insert.run(`evt-weak-${index}`, plan.planId, other, '{"score":0}', 10 + index);
+      insert.run(
+        `evt-weak-${index}`,
+        plan.planId,
+        other,
+        '{"score":0}',
+        10 + index,
+      );
     }
     const own = new Set(
       (
@@ -269,9 +354,11 @@ describe("mixed quiz", () => {
       ).map((row) => row.id),
     );
     const review = startReview(db, plan.planId);
-    expect(review.questions.some((question) => question.sourceId && own.has(question.sourceId))).toBe(
-      false,
-    );
+    expect(
+      review.questions.some(
+        (question) => question.sourceId && own.has(question.sourceId),
+      ),
+    ).toBe(false);
     const tied = db.prepare(
       `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
        VALUES (?, 'answer_given', ?, ?, ?, 1000)`,
@@ -303,11 +390,18 @@ describe("mixed quiz", () => {
         .join("\n"),
     };
     for (const number of chapters) {
-      files[`chapters/0${number}.md`] = `## p1 | Tema ${number}\nTesto ${number}.\n`;
+      files[`chapters/0${number}.md`] =
+        `## p1 | Tema ${number}\nTesto ${number}.\n`;
     }
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const imported = importSmartbook(db, pack(files));
-    const plan = createPlan(db, { title: "Tre", sourceIds: [imported.sourceId] });
+    const plan = createPlan(db, {
+      title: "Tre",
+      sourceIds: [imported.sourceId],
+    });
     const topics = db
       .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
       .all(plan.planId) as Array<{ id: string }>;
@@ -322,13 +416,17 @@ describe("mixed quiz", () => {
     const third = new Set(
       (
         db
-          .prepare(`SELECT id FROM exercises WHERE json_extract(locator_json, '$.chapter') = 3`)
+          .prepare(
+            `SELECT id FROM exercises WHERE json_extract(locator_json, '$.chapter') = 3`,
+          )
           .all() as Array<{ id: string }>
       ).map((row) => row.id),
     );
     const review = startReview(db, plan.planId);
-    expect(review.questions.some((question) => question.sourceId && third.has(question.sourceId))).toBe(
-      true,
-    );
+    expect(
+      review.questions.some(
+        (question) => question.sourceId && third.has(question.sourceId),
+      ),
+    ).toBe(true);
   });
 });

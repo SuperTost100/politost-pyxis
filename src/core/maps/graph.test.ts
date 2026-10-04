@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applyOps, layoutGraph, undoGraph, type ConceptGraph } from "./graph";
+import {
+  applyOps,
+  layoutGraph,
+  undoGraph,
+  redoGraph,
+  type ConceptGraph,
+} from "./graph";
 
 function sample(): ConceptGraph {
   return layoutGraph({
@@ -96,4 +102,28 @@ describe("concept map", () => {
       applyOps(sample(), [{ op: "rename", id: "missing", label: "x" }]),
     ).toThrow(/map-missing/);
   });
+});
+
+it("redos an undone patch and discards redo when a new edit branches", () => {
+  const graph: ConceptGraph = {
+    layout: "tree",
+    nodes: [
+      { id: "root", parent: null, label: "Before", x: 14, y: 9, pinned: true },
+    ],
+    edges: [],
+    undo: null,
+  };
+  const edited = applyOps(graph, [
+    { op: "rename", id: "root", label: "After" },
+  ]);
+  const undone = undoGraph(edited);
+  expect(undone.nodes[0]?.label).toBe("Before");
+  const redone = redoGraph(undone);
+  expect(redone.nodes).toEqual(edited.nodes);
+  expect(redone.redo).toBeNull();
+  const branch = applyOps(undone, [
+    { op: "rename", id: "root", label: "Branch" },
+  ]);
+  expect(branch.redo).toBeNull();
+  expect(redoGraph(branch).nodes[0]?.label).toBe("Branch");
 });

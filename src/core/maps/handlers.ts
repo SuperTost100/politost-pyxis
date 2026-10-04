@@ -16,6 +16,7 @@ import {
   patchTopicMap,
   setTopicLayout,
   undoTopicMap,
+  redoTopicMap,
 } from "./store";
 export function mapHandlers(
   db: Database.Database,
@@ -97,6 +98,9 @@ export function mapHandlers(
         input.ops,
         input.mapId,
       );
+    },
+    redo(input: { planId: string; topicId: string; mapId?: string }) {
+      return redoTopicMap(db, input.planId, input.topicId, input.mapId);
     },
     undo(input: { planId: string; topicId: string; mapId?: string }) {
       return undoTopicMap(db, input.planId, input.topicId, input.mapId);

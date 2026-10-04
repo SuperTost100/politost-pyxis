@@ -1,3 +1,5 @@
+import { EngineDisclosure } from "../components/EngineDisclosure";
+import { UpdateNotice } from "../features/settings/UpdatesPanel";
 import { PrintPage } from "../features/share/PrintPage";
 import { App as AntApp, ConfigProvider } from "antd";
 import { ProConfigProvider } from "@ant-design/pro-components";
@@ -14,6 +16,8 @@ import { SourceViewer } from "../components/SourceViewer";
 import { JobsSync } from "../features/jobs/queries";
 import { AppStateContext } from "./app-state";
 import { router } from "./router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { invoke } from "../lib/ipc";
 
 export function App() {
   return window.location.hash.startsWith("#/print") ? (
@@ -31,6 +35,36 @@ function StudyApp() {
     resolved: "dark",
   });
   const [ready, setReady] = useState(false);
+  const client = useQueryClient();
+  const profile = useQuery({
+    queryKey: ["profile"],
+    queryFn: () => invoke("profile.get", {}),
+    retry: 10,
+    retryDelay: 300,
+  });
+  useEffect(
+    () =>
+      window.pyxis.onPort(() => {
+        void client.invalidateQueries({ queryKey: ["profile"] });
+      }),
+    [client],
+  );
+  useEffect(() => {
+    document.documentElement.dataset.dyslexia = profile.data?.dyslexia
+      ? "on"
+      : "off";
+    document.documentElement.dataset.text = profile.data?.textSize ?? "md";
+  }, [profile.data]);
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.platform = window.pyxis.platform;
@@ -63,13 +97,23 @@ function StudyApp() {
   return (
     <AppStateContext.Provider value={{ appearance, setTheme }}>
       <ConfigProvider
-        theme={pyxisTheme(appearance.resolved)}
+        theme={pyxisTheme(
+          appearance.resolved,
+          reducedMotion,
+          profile.data?.textSize === "lg"
+            ? 1.12
+            : profile.data?.textSize === "sm"
+              ? 0.94
+              : 1,
+        )}
         locale={locale === "it" ? itIT : enUS}
       >
         <ProConfigProvider dark={appearance.resolved === "dark"} hashed={false}>
           <AntApp>
             <JobsSync />
-              <CoreNotice />
+            <EngineDisclosure />
+            <UpdateNotice />
+            <CoreNotice />
             <RouterProvider router={router} />
             <SourceViewer />
           </AntApp>

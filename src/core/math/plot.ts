@@ -1,7 +1,10 @@
 // ponytail: recursive descent for + - * / ^, x, and sin/cos/tan/exp/log/sqrt/abs.
 // Upgrade path is math.js when the grammar needs assignments or matrices.
 
-type Tok = { kind: "num"; value: number } | { kind: "id"; value: string } | { kind: "op"; value: string };
+type Tok =
+  | { kind: "num"; value: number }
+  | { kind: "id"; value: string }
+  | { kind: "op"; value: string };
 
 export function evalExpr(source: string, x: number): number {
   const tokens = tokenize(source);
@@ -18,7 +21,10 @@ export function evalExpr(source: string, x: number): number {
   }
   function parseExpr(): number {
     let left = parseTerm();
-    while (peek()?.kind === "op" && (peek()?.value === "+" || peek()?.value === "-")) {
+    while (
+      peek()?.kind === "op" &&
+      (peek()?.value === "+" || peek()?.value === "-")
+    ) {
       const op = eat().value;
       const right = parseTerm();
       left = op === "+" ? left + right : left - right;
@@ -27,7 +33,10 @@ export function evalExpr(source: string, x: number): number {
   }
   function parseTerm(): number {
     let left = parseUnary();
-    while (peek()?.kind === "op" && (peek()?.value === "*" || peek()?.value === "/")) {
+    while (
+      peek()?.kind === "op" &&
+      (peek()?.value === "*" || peek()?.value === "/")
+    ) {
       const op = eat().value;
       const right = parseUnary();
       left = op === "*" ? left * right : left / right;
@@ -65,6 +74,8 @@ export function evalExpr(source: string, x: number): number {
     if (tok.kind === "id") {
       eat();
       if (tok.value === "x") return x;
+      if (tok.value === "pi") return Math.PI;
+      if (tok.value === "e") return Math.E;
       eat("(");
       const arg = parseExpr();
       eat(")");
@@ -82,7 +93,12 @@ export function derivative(source: string, x: number, h = 1e-4): number {
 }
 
 export function secondDerivative(source: string, x: number, h = 1e-4): number {
-  return (evalExpr(source, x + h) - 2 * evalExpr(source, x) + evalExpr(source, x - h)) / (h * h);
+  return (
+    (evalExpr(source, x + h) -
+      2 * evalExpr(source, x) +
+      evalExpr(source, x - h)) /
+    (h * h)
+  );
 }
 
 export function simpson(source: string, a: number, b: number, n = 200): number {
@@ -96,7 +112,12 @@ export function simpson(source: string, a: number, b: number, n = 200): number {
   return (sum * h) / 3;
 }
 
-export function sample(source: string, a: number, b: number, n = 240): Array<{ x: number; y: number }> {
+export function sample(
+  source: string,
+  a: number,
+  b: number,
+  n = 240,
+): Array<{ x: number; y: number }> {
   const points: Array<{ x: number; y: number }> = [];
   for (let i = 0; i <= n; i += 1) {
     const x = a + ((b - a) * i) / n;
@@ -150,7 +171,10 @@ function connects(
   }
   if (!Number.isFinite(mid)) return false;
   const chord = (prev.y + point.y) / 2;
-  const scale = Math.max(1e-9, Math.min(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid)));
+  const scale = Math.max(
+    1e-9,
+    Math.min(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid)),
+  );
   const span = Math.max(Math.abs(prev.y), Math.abs(point.y), Math.abs(mid));
   if (Math.abs(mid - chord) <= 0.25 * scale && span <= 8 * scale) return true;
   if (depth >= 16) return !unresolvedPole(prev, point, mid, at, root);

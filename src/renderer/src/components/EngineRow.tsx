@@ -22,6 +22,7 @@ export function EngineRow({
   onAction,
   actionLabel,
   actionDisabled,
+  onDetails,
 }: {
   kind: "cli" | "api" | "local" | "remote";
   name: string;
@@ -32,6 +33,7 @@ export function EngineRow({
   onAction?: () => void;
   actionLabel?: string;
   actionDisabled?: boolean;
+  onDetails?: () => void;
 }) {
   const { t } = useTranslation();
   const statusLabels = {
@@ -46,15 +48,32 @@ export function EngineRow({
         <Icon name={ENG_ICON[kind] ?? "cpu"} size={18} />
       </span>
       <div className="px-engine-main">
-        <div className="px-engine-name">
-          {name}
-          {isDefault ? (
-            <span style={{ marginLeft: 8 }}>
-              <Tag>{t("components.engine.default")}</Tag>
+        {onDetails ? (
+          <button
+            type="button"
+            className="px-engine-open"
+            onClick={onDetails}
+            aria-label={t("engines.openDetails", { name })}
+          >
+            <span className="px-engine-name">
+              {name}
+              {isDefault ? <Tag>{t("components.engine.default")}</Tag> : null}
             </span>
-          ) : null}
-        </div>
-        <div className="px-engine-model">{model}</div>
+            <span className="px-engine-model">{model}</span>
+          </button>
+        ) : (
+          <>
+            <div className="px-engine-name">
+              {name}
+              {isDefault ? (
+                <span style={{ marginLeft: 8 }}>
+                  <Tag>{t("components.engine.default")}</Tag>
+                </span>
+              ) : null}
+            </div>
+            <div className="px-engine-model">{model}</div>
+          </>
+        )}
       </div>
       <span className={["px-status", `is-${status}`].join(" ")}>
         <i />

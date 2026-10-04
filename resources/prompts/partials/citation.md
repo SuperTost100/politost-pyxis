@@ -1,0 +1,1 @@
+Cite only the supplied passages, using exactly the labels or IDs you were given: inline as [P1], [P2] in prose, and the supplied passage IDs in JSON source fields. Never invent, renumber or alter a passage reference, and cite a passage only for a statement it supports.

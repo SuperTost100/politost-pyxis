@@ -47,3 +47,8 @@
   word-break: break-word;
   opacity: 0.9;
 }
+.px-notice-text a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}

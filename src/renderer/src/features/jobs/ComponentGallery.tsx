@@ -86,7 +86,10 @@ export function ComponentGallery() {
       </Section>
 
       <Section eyebrow={t("gallery.sections.foundations")} title="Icon">
-        <div className="gallery-row" style={{ color: "var(--ink-muted)", gap: 20 }}>
+        <div
+          className="gallery-row"
+          style={{ color: "var(--ink-muted)", gap: 20 }}
+        >
           {iconNames.map((name) => (
             <span key={name} title={name}>
               <Icon name={name} size={22} />
@@ -111,7 +114,12 @@ export function ComponentGallery() {
       <Section eyebrow={t("gallery.sections.actions")} title="IconButton">
         <IconButton icon="arrow-left" label={t("nav.back")} />
         <IconButton icon="settings" label={t("nav.settings")} variant="ghost" />
-        <IconButton icon="send" label={t("components.composer.send")} variant="primary" size="sm" />
+        <IconButton
+          icon="send"
+          label={t("components.composer.send")}
+          variant="primary"
+          size="sm"
+        />
         <IconButton icon="x" label={t("nav.close")} size="sm" />
       </Section>
 
@@ -139,7 +147,11 @@ export function ComponentGallery() {
         />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.forms")} title="TextField" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.forms")}
+        title="TextField"
+        layout="col"
+      >
         <TextField icon="search" placeholder={t("settings.title")} />
         <TextField size="lg" placeholder="Analisi 2" defaultValue="Analisi 2" />
       </Section>
@@ -163,14 +175,26 @@ export function ComponentGallery() {
         <p className="px-msg-text" style={{ maxWidth: 560 }}>
           {t("components.citationSamples.sentence")}{" "}
           <CitationChip>{t("components.citationSamples.sb")}</CitationChip>{" "}
-          <CitationChip kind="pdf">{t("components.citationSamples.pdf")}</CitationChip>
+          <CitationChip kind="pdf">
+            {t("components.citationSamples.pdf")}
+          </CitationChip>
         </p>
       </Section>
 
-      <Section eyebrow={t("gallery.sections.progress")} title="MasteryBar" layout="col">
-        <MasteryBar value={23} target={75} />
-        <MasteryBar value={82} target={75} />
-        <MasteryBar value={23} target={80} tone="primary" showValue={false} />
+      <Section
+        eyebrow={t("gallery.sections.progress")}
+        title="MasteryBar"
+        layout="col"
+      >
+        <MasteryBar value={23} target={75} label={t("progress.preparation")} />
+        <MasteryBar value={82} target={75} label={t("progress.preparation")} />
+        <MasteryBar
+          value={23}
+          target={80}
+          tone="primary"
+          showValue={false}
+          label={t("progress.preparation")}
+        />
       </Section>
 
       <Section eyebrow={t("gallery.sections.content")} title="PlanCard">
@@ -192,7 +216,11 @@ export function ComponentGallery() {
         />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.progress")} title="StatTile" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.progress")}
+        title="StatTile"
+        layout="col"
+      >
         <div style={{ width: "100%", maxWidth: 640 }}>
           <StatTile
             label={t("components.stat.label")}
@@ -207,10 +235,17 @@ export function ComponentGallery() {
         </div>
       </Section>
 
-      <Section eyebrow={t("gallery.sections.content")} title="LessonTile" layout="grid2">
+      <Section
+        eyebrow={t("gallery.sections.content")}
+        title="LessonTile"
+        layout="grid2"
+      >
         <LessonTile icon="pencil-line" label={t("components.path.exercises")} />
         <LessonTile icon="list-checks" label={t("gallery.lessonQuiz")} />
-        <LessonTile icon="square-split-horizontal" label={t("gallery.trueFalse")} />
+        <LessonTile
+          icon="square-split-horizontal"
+          label={t("gallery.trueFalse")}
+        />
         <LessonTile
           icon="repeat"
           label={t("components.path.review")}
@@ -221,9 +256,21 @@ export function ComponentGallery() {
       </Section>
 
       <Section eyebrow={t("gallery.sections.studyPath")} title="PathNode">
-        <PathNode icon="book-open" label={t("components.path.intro")} state="done" />
-        <PathNode icon="pencil-line" label={t("components.path.exercises")} state="available" />
-        <PathNode icon="repeat" label={t("components.path.review")} state="current" />
+        <PathNode
+          icon="book-open"
+          label={t("components.path.intro")}
+          state="done"
+        />
+        <PathNode
+          icon="pencil-line"
+          label={t("components.path.exercises")}
+          state="available"
+        />
+        <PathNode
+          icon="repeat"
+          label={t("components.path.review")}
+          state="current"
+        />
         <PathNode
           icon="file-pen"
           label={t("components.path.sim")}
@@ -232,7 +279,11 @@ export function ComponentGallery() {
         />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.progress")} title="GapItem" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.progress")}
+        title="GapItem"
+        layout="col"
+      >
         <GapItem
           severity="severe"
           topic={t("components.gapSamples.topic1")}
@@ -255,16 +306,29 @@ export function ComponentGallery() {
         </GapItem>
       </Section>
 
-      <Section eyebrow={t("gallery.sections.ask")} title="Composer" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.ask")}
+        title="Composer"
+        layout="col"
+      >
         <Composer subject="Fisica" sources={["Fisica 1"]} />
         <Composer streaming />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.ask")} title="ChatMessage" layout="col">
-        <ChatMessage role="user">{t("components.chatSamples.user")}</ChatMessage>
+      <Section
+        eyebrow={t("gallery.sections.ask")}
+        title="ChatMessage"
+        layout="col"
+      >
+        <ChatMessage role="user">
+          {t("components.chatSamples.user")}
+        </ChatMessage>
         <ChatMessage
           engine="claude-code · claude-sonnet-4-6"
-          suggestions={[t("components.chatSamples.s1"), t("components.chatSamples.s2")]}
+          suggestions={[
+            t("components.chatSamples.s1"),
+            t("components.chatSamples.s2"),
+          ]}
         >
           {t("components.chatSamples.tutor")}{" "}
           <CitationChip>{t("components.chatSamples.cite")}</CitationChip>
@@ -272,14 +336,28 @@ export function ComponentGallery() {
         <ChatMessage general>{t("components.chatSamples.tutor")}</ChatMessage>
       </Section>
 
-      <Section eyebrow={t("gallery.sections.practice")} title="QuizOption" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.practice")}
+        title="QuizOption"
+        layout="col"
+      >
         <QuizOption letter="A">{t("components.quizSamples.a")}</QuizOption>
-        <QuizOption letter="B" state="selected">{t("components.quizSamples.b")}</QuizOption>
-        <QuizOption letter="C" state="correct">{t("components.quizSamples.c")}</QuizOption>
-        <QuizOption letter="D" state="wrong">{t("components.quizSamples.d")}</QuizOption>
+        <QuizOption letter="B" state="selected">
+          {t("components.quizSamples.b")}
+        </QuizOption>
+        <QuizOption letter="C" state="correct">
+          {t("components.quizSamples.c")}
+        </QuizOption>
+        <QuizOption letter="D" state="wrong">
+          {t("components.quizSamples.d")}
+        </QuizOption>
       </Section>
 
-      <Section eyebrow={t("gallery.sections.practice")} title="Flashcard" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.practice")}
+        title="Flashcard"
+        layout="col"
+      >
         <Flashcard
           flipped
           front={t("components.flashcardSample.front")}
@@ -288,8 +366,18 @@ export function ComponentGallery() {
         />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.engine")} title="EngineRow" layout="col">
-        <EngineRow kind="cli" name="Claude Code" model="claude-sonnet-4-6" status="ok" isDefault />
+      <Section
+        eyebrow={t("gallery.sections.engine")}
+        title="EngineRow"
+        layout="col"
+      >
+        <EngineRow
+          kind="cli"
+          name="Claude Code"
+          model="claude-sonnet-4-6"
+          status="ok"
+          isDefault
+        />
         <EngineRow kind="cli" name="Codex" model="gpt-5-codex" status="warn" />
         <EngineRow
           kind="local"
@@ -298,10 +386,19 @@ export function ComponentGallery() {
           status="ok"
           statusText={t("components.engine.statusIdle")}
         />
-        <EngineRow kind="remote" name="LM Studio" model="http://192.168.1.20:1234/v1" status="error" />
+        <EngineRow
+          kind="remote"
+          name="LM Studio"
+          model="http://192.168.1.20:1234/v1"
+          status="error"
+        />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.layout")} title="FocusBar" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.layout")}
+        title="FocusBar"
+        layout="col"
+      >
         <FocusBar
           title={t("gallery.focusTitle")}
           meta={t("gallery.focusMeta")}
@@ -322,7 +419,11 @@ export function ComponentGallery() {
         />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.layout")} title="Notice" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.layout")}
+        title="Notice"
+        layout="col"
+      >
         <Notice tone="info">{t("gallery.noticeInfo")}</Notice>
         <Notice tone="warning">{t("gallery.noticeWarn")}</Notice>
         <Notice
@@ -334,18 +435,35 @@ export function ComponentGallery() {
         </Notice>
       </Section>
 
-      <Section eyebrow={t("gallery.sections.layout")} title="StepLines" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.layout")}
+        title="StepLines"
+        layout="col"
+      >
         <div className="gallery-mark-wrap">
           <BuildingMark inner={1} middle={0.4} outer={0} />
           <h2 className="title-2">{t("gallery.buildingTitle")}</h2>
           <StepLines
             label={t("gallery.buildingTitle")}
             steps={[
-              { id: "1", label: t("components.steps.read"), state: "done", meta: t("components.steps.metaRead") },
-              { id: "2", label: t("components.steps.topics"), state: "running" },
+              {
+                id: "1",
+                label: t("components.steps.read"),
+                state: "done",
+                meta: t("components.steps.metaRead"),
+              },
+              {
+                id: "2",
+                label: t("components.steps.topics"),
+                state: "running",
+              },
               { id: "3", label: t("components.steps.link"), state: "pending" },
               { id: "4", label: t("components.steps.path"), state: "pending" },
-              { id: "5", label: t("components.steps.lessons"), state: "pending" },
+              {
+                id: "5",
+                label: t("components.steps.lessons"),
+                state: "pending",
+              },
             ]}
           />
         </div>
@@ -364,27 +482,45 @@ export function ComponentGallery() {
       </Section>
 
       <Section eyebrow={t("gallery.sections.layout")} title="CheckBadge">
-        <CheckBadge state="verified" verifiedLabel={t("gallery.checkVerified")} failedLabel={t("gallery.checkFailed")} />
+        <CheckBadge
+          state="verified"
+          verifiedLabel={t("gallery.checkVerified")}
+          failedLabel={t("gallery.checkFailed")}
+        />
         <CheckBadge
           state="failed"
           reason={t("gallery.checkReason")}
           verifiedLabel={t("gallery.checkVerified")}
           failedLabel={t("gallery.checkFailed")}
         />
-        <CheckBadge state="none" verifiedLabel={t("gallery.checkVerified")} failedLabel={t("gallery.checkFailed")} />
+        <CheckBadge
+          state="none"
+          verifiedLabel={t("gallery.checkVerified")}
+          failedLabel={t("gallery.checkFailed")}
+        />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.layout")} title="ContextBlock" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.layout")}
+        title="ContextBlock"
+        layout="col"
+      >
         <ContextBlock
           excerpt={t("gallery.contextExcerpt")}
           removeLabel={t("nav.close")}
         />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.rendering")} title="MarkdownView" layout="col">
+      <Section
+        eyebrow={t("gallery.sections.rendering")}
+        title="MarkdownView"
+        layout="col"
+      >
         <MarkdownView
           citationResolver={(id) =>
-            id === 1 ? t("components.citationSamples.sb") : t("components.citationSamples.pdf")
+            id === 1
+              ? t("components.citationSamples.sb")
+              : t("components.citationSamples.pdf")
           }
           onRunPython={() => {}}
         >

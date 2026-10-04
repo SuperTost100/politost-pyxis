@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { app } from "electron";
+import { recoverInterruptedRestore } from "../core/share/backup";
 
 type ConfigFile = { workspacePath?: string };
 
@@ -26,6 +27,7 @@ export function ensureWorkspace(): string {
     saved?.workspacePath && isAbsolute(saved.workspacePath)
       ? saved.workspacePath
       : join(app.getPath("userData"), "workspace");
+  recoverInterruptedRestore(workspace);
   ensureWorkspaceDirs(workspace);
   if (saved?.workspacePath !== workspace) {
     writeFileSync(

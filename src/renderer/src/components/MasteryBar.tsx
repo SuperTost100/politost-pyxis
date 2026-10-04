@@ -11,7 +11,7 @@ export function MasteryBar({
   target?: number;
   tone?: "mastery" | "primary";
   showValue?: boolean;
-  label?: string;
+  label: string;
 }) {
   const v = Math.max(0, Math.min(100, value));
   return (
@@ -25,22 +25,20 @@ export function MasteryBar({
     >
       <div className="px-mbar-track">
         <div
-          className={[
-            "px-mbar-fill",
-            tone === "primary" && "is-primary",
-          ]
+          className={["px-mbar-fill", tone === "primary" && "is-primary"]
             .filter(Boolean)
             .join(" ")}
           style={{ width: `${v}%` }}
         />
-        {tone !== "primary" ? (
-          <div className="px-mbar-knob" style={{ left: `${v}%` }} />
-        ) : null}
         {target != null ? (
           <div
             className="px-mbar-target"
-            style={{ left: `${target}%` }}
-            title={target != null ? `${target}%` : undefined}
+            style={{ left: `${Math.max(0, Math.min(100, target))}%` }}
+            title={
+              target != null
+                ? `${Math.max(0, Math.min(100, target))}%`
+                : undefined
+            }
           />
         ) : null}
       </div>

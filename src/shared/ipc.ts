@@ -24,6 +24,8 @@ export const simulationViewSchema = z.object({
   leftMs: z.number(),
   submitted: z.boolean(),
   locked: z.boolean(),
+  blocked: z.string().optional(),
+  generated: z.object({ provider: z.string(), model: z.string() }).optional(),
   questions: z.array(z.object({ id: z.string(), stem: z.string() })),
   picks: z.record(z.string(), z.string()),
   topics: z.array(
@@ -167,17 +169,46 @@ export const requests = {
         loggedIn: z.boolean(),
         disabled: z.boolean(),
         version: z.string(),
+        path: z.string(),
+        withinTestedRange: z.boolean(),
+        capabilities: z.object({ effort: z.boolean(), fast: z.boolean() }),
       }),
     ),
   },
   "engines.models": {
     input: z.object({ provider: z.string() }),
-    output: z.array(z.object({ id: z.string(), name: z.string() })),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        efforts: z.array(z.object({ id: z.string(), label: z.string() })),
+        defaultEffort: z.string().optional(),
+        fast: z.boolean(),
+      }),
+    ),
+  },
+  "engines.acknowledge": {
+    input: z.object({
+      provider: z.enum(["claude", "codex", "anthropic-api", "openai-api"]),
+    }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "engines.disclosurePending": {
+    input: z.object({}),
+    output: z.object({ providers: z.array(z.string()) }),
+  },
+  "engines.disclosureCancel": {
+    input: z.object({
+      provider: z.enum(["claude", "codex", "anthropic-api", "openai-api"]),
+    }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "engines.test": {
     input: z.object({
       provider: z.string(),
       model: z.string().optional(),
+      effort: z.string().optional(),
+      fast: z.boolean().optional(),
     }),
     output: z.object({
       ok: z.literal(true),
@@ -187,7 +218,9 @@ export const requests = {
     }),
   },
   "engines.clearFeature": {
-    input: z.object({ feature: z.literal("chat") }),
+    input: z.object({
+      feature: z.enum(["chat", "plan", "lesson", "grading", "map", "vision"]),
+    }),
     output: z.object({ ok: z.literal(true) }),
   },
   "engines.setFeature": {
@@ -203,6 +236,8 @@ export const requests = {
       ]),
       provider: z.string(),
       model: z.string(),
+      effort: z.string().optional(),
+      fast: z.boolean().optional(),
     }),
     output: z.object({ warning: z.string().nullable() }),
   },
@@ -210,8 +245,25 @@ export const requests = {
     input: z.object({}),
     output: z.record(
       z.string(),
-      z.object({ provider: z.string(), model: z.string() }),
+      z.object({
+        provider: z.string(),
+        model: z.string(),
+        effort: z.string().optional(),
+        fast: z.boolean().optional(),
+      }),
     ),
+  },
+  "engines.remove": {
+    input: z.object({ provider: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "engines.logout": {
+    input: z.object({ provider: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "engines.update": {
+    input: z.object({ provider: z.string() }),
+    output: z.object({ changed: z.boolean(), version: z.string() }),
   },
   "engines.login": {
     input: z.object({ provider: z.string() }),
@@ -219,6 +271,7 @@ export const requests = {
       type: z.string(),
       url: z.string().optional(),
       message: z.string().optional(),
+      command: z.array(z.string()).optional(),
     }),
   },
   "engines.capability": {
@@ -233,8 +286,22 @@ export const requests = {
     output: z.object({}),
   },
   "study.lesson": {
-    input: z.object({ planId: z.string(), topicId: z.string() }),
-    output: z.object({ markdown: z.string(), passageIds: z.array(z.string()) }),
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      wording: z.enum(["simple", "balanced", "technical"]).optional(),
+      regenerate: z.boolean().optional(),
+    }),
+    output: z.object({
+      markdown: z.string(),
+      passageIds: z.array(z.string()),
+      fallback: z.boolean().optional(),
+      /** Lesson row to flag with study.flag { targetKind: "item" }. */
+      itemId: z.string().optional(),
+      wording: z.enum(["simple", "balanced", "technical"]).optional(),
+      /** Written from the model's general knowledge, not the sources. */
+      general: z.boolean().optional(),
+    }),
   },
   "study.markdown": {
     input: z.object({
@@ -242,6 +309,7 @@ export const requests = {
       kind: z.enum(["lesson", "cards", "quiz", "simulation"]),
       attemptId: z.string().optional(),
       topicId: z.string().optional(),
+      wording: z.enum(["simple", "balanced", "technical"]).optional(),
       answers: z.boolean().optional(),
     }),
     output: z.object({ filename: z.string(), markdown: z.string() }),
@@ -279,7 +347,11 @@ export const requests = {
   "study.quizStart": {
     input: z.object({
       planId: z.string(),
-      topicId: z.string(),
+      topicId: z.string().optional(),
+      scope: z.enum(["topic", "plan", "page"]).optional(),
+      sourceId: z.string().min(1).optional(),
+      page: z.number().int().min(1).max(100000).optional(),
+      timerMinutes: z.number().int().min(1).max(180).optional(),
       feedback: z.boolean().optional(),
       count: z.number().int().min(10).max(100).optional(),
       types: z
@@ -306,13 +378,14 @@ export const requests = {
   "study.quizDraft": {
     input: z.object({
       attemptId: z.string(),
+      planId: z.string().optional(),
       picks: z.record(z.string(), z.string().max(20000)),
       index: z.number().int().min(0).max(99),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
   "study.quizRead": {
-    input: z.object({ attemptId: z.string() }),
+    input: z.object({ attemptId: z.string(), planId: z.string().optional() }),
     output: z.object({
       draft: z
         .object({ picks: z.record(z.string(), z.string()), index: z.number() })
@@ -348,6 +421,9 @@ export const requests = {
       error: z.string().optional(),
       requestedCount: z.number(),
       feedback: z.boolean(),
+      // Optional quiz timer: minutes configured, and the persisted wall-clock end once the quiz is ready.
+      timerMinutes: z.number().optional(),
+      deadlineAt: z.number().optional(),
       checked: z.array(
         z.object({
           id: z.string(),
@@ -381,16 +457,46 @@ export const requests = {
       attemptId: z.string(),
       picks: z.record(z.string(), z.string()),
     }),
+    // A grading job id means results are not final; follow it with study.quizGrading.
     output: z.object({
-      score: z.number(),
-      results: z.array(
-        z.object({
-          id: z.string(),
+      jobId: z.string().optional(),
+      score: z.number().optional(),
+      results: z
+        .array(
+          z.object({
+            id: z.string(),
+            score: z.number(),
+            expected: z.string(),
+            explanation: z.string(),
+          }),
+        )
+        .optional(),
+    }),
+  },
+  "study.quizGrading": {
+    input: z.object({ attemptId: z.string() }),
+    output: z.object({
+      state: z.string(),
+      jobId: z.string().optional(),
+      error: z.string().optional(),
+      done: z.number(),
+      total: z.number(),
+      provider: z.string().optional(),
+      model: z.string().optional(),
+      result: z
+        .object({
           score: z.number(),
-          expected: z.string(),
-          explanation: z.string(),
-        }),
-      ),
+          picks: z.record(z.string(), z.string()),
+          results: z.array(
+            z.object({
+              id: z.string(),
+              score: z.number(),
+              expected: z.string(),
+              explanation: z.string(),
+            }),
+          ),
+        })
+        .optional(),
     }),
   },
   "study.flag": {
@@ -425,6 +531,10 @@ export const requests = {
       ),
     }),
   },
+  "study.activeSimulation": {
+    input: z.object({}),
+    output: z.object({ attemptId: z.string(), planId: z.string() }).nullable(),
+  },
   "study.simulationOpen": {
     input: z.object({ planId: z.string() }),
     output: simulationViewSchema.nullable(),
@@ -442,6 +552,32 @@ export const requests = {
       deadline: z.number(),
       questions: z.array(z.object({ id: z.string(), stem: z.string() })),
     }),
+  },
+  "study.simulationPrepare": {
+    input: z.object({
+      planId: z.string(),
+      minutes: z
+        .union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)])
+        .optional(),
+      source: z.enum(["exam", "mixed"]).optional(),
+    }),
+    output: z.object({
+      attemptId: z.string().optional(),
+      jobId: z.string().optional(),
+    }),
+  },
+  "study.simulationBuild": {
+    input: z.object({ planId: z.string() }),
+    output: z
+      .object({
+        jobId: z.string(),
+        state: JobState,
+        error: z.string().nullable(),
+        progress: z.number(),
+        provider: z.string().optional(),
+        model: z.string().optional(),
+      })
+      .nullable(),
   },
   "study.simulationRead": {
     input: z.object({ attemptId: z.string() }),
@@ -489,6 +625,28 @@ export const requests = {
       }),
     ),
   },
+  "study.cardsGenerate": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({ jobId: z.string().nullable() }),
+  },
+  "study.cardsBuild": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({ jobId: z.string(), state: z.string() }).nullable(),
+  },
+  "study.gapDrillStart": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({ jobId: z.string() }),
+  },
+  "study.gapDrillRead": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z
+      .object({
+        jobId: z.string(),
+        state: z.string(),
+        attemptId: z.string().nullable(),
+      })
+      .nullable(),
+  },
   "study.queue": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.object({
@@ -531,14 +689,50 @@ export const requests = {
     }),
   },
   "study.exercises": {
-    input: z.object({ topicId: z.string() }),
-    output: z.array(
-      z.object({
-        id: z.string(),
-        prompt: z.string(),
-        answer: z.string().nullable(),
-      }),
-    ),
+    input: z.object({
+      topicId: z.string(),
+      planId: z.string().optional(),
+      /** Start the grounded exercise job when the topic has no exercises yet. */
+      generate: z.boolean().optional(),
+    }),
+    output: z.object({
+      exercises: z.array(
+        z.object({
+          id: z.string(),
+          prompt: z.string(),
+          answer: z.string().nullable(),
+          generated: z.boolean(),
+          steps: z.array(
+            z.object({
+              text: z.string(),
+              check: z
+                .object({
+                  kind: z.enum([
+                    "equal",
+                    "derivative",
+                    "integral",
+                    "solve",
+                    "simplify",
+                  ]),
+                  expr: z.string(),
+                  claimed: z.string(),
+                  vars: z.array(z.string()).optional(),
+                  step: z.string(),
+                })
+                .optional(),
+            }),
+          ),
+          hints: z.array(z.string()),
+        }),
+      ),
+      job: z
+        .object({
+          jobId: z.string(),
+          state: z.string(),
+          error: z.string().nullable(),
+        })
+        .nullable(),
+    }),
   },
   "tools.check": {
     input: checkClaimSchema,
@@ -555,6 +749,10 @@ export const requests = {
       totalBytes: z.number(),
       error: z.string().optional(),
     }),
+  },
+  "tools.runtimeDownload": {
+    input: z.object({}),
+    output: z.object({ jobId: z.string() }),
   },
   "tools.python": {
     input: z.object({ code: z.string().max(8000) }),
@@ -647,6 +845,14 @@ export const requests = {
     }),
     output: conceptGraph,
   },
+  "maps.redo": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      mapId: z.string().optional(),
+    }),
+    output: conceptGraph,
+  },
   "plans.list": {
     input: z.object({}),
     output: z.array(
@@ -657,6 +863,10 @@ export const requests = {
         subject: z.string().nullable(),
         daysToExam: z.number().nullable(),
         mastery: z.number(),
+        target: z.number(),
+        imported: z.boolean(),
+        alignedTopics: z.number().int(),
+        totalTopics: z.number().int(),
       }),
     ),
   },
@@ -690,12 +900,29 @@ export const requests = {
         title: z.string(),
         status: z.string(),
         target: z.number(),
+        examAt: z.number().nullable(),
+        contentLanguage: z.string().nullable(),
+        subject: z.string().nullable(),
+        imported: z.boolean(),
+        needsRebuild: z.boolean(),
         topics: z.array(
           z.object({
             id: z.string(),
             title: z.string(),
             position: z.number(),
             summary: z.string(),
+            sourceIds: z.array(z.string()),
+            passageCount: z.number().int().nonnegative(),
+            itemCount: z.number().int().nonnegative(),
+            firstPassageId: z.string().nullable(),
+            chapter: z.number().nullable(),
+            items: z.array(
+              z.object({
+                id: z.string(),
+                kind: z.string(),
+                createdAt: z.number(),
+              }),
+            ),
             subtopics: z.array(z.string()),
           }),
         ),
@@ -707,11 +934,52 @@ export const requests = {
             topicId: z.string().nullable(),
             position: z.number(),
             state: z.enum(["locked", "current", "done"]),
+            unlockReason: z.string(),
           }),
         ),
-        sources: z.array(z.object({ id: z.string(), title: z.string() })),
+        sources: z.array(
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            kind: z.string(),
+            status: z.string(),
+          }),
+        ),
       })
       .nullable(),
+  },
+  "plans.attachSources": {
+    input: z.object({
+      planId: z.string(),
+      sourceIds: z.array(z.string()).min(1).max(1000),
+    }),
+    output: z.object({ ok: z.boolean() }),
+  },
+  "plans.removeSource": {
+    input: z.object({ planId: z.string(), sourceId: z.string() }),
+    output: z.object({ ok: z.boolean() }),
+  },
+  "plans.item": {
+    input: z.object({ planId: z.string(), itemId: z.string() }),
+    output: z.object({
+      id: z.string(),
+      kind: z.string(),
+      bodyJson: z.string(),
+      passageIds: z.array(z.string()),
+    }),
+  },
+  "plans.openQuiz": {
+    input: z.object({ planId: z.string(), itemId: z.string() }),
+    output: z.object({ attemptId: z.string() }),
+  },
+  "plans.settings": {
+    input: z.object({
+      planId: z.string().min(1),
+      title: z.string().trim().min(1).max(200),
+      target: z.number().finite().min(0.5).max(1),
+      examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable(),
+    }),
+    output: z.object({ ok: z.boolean() }),
   },
   "plans.delete": {
     input: z.object({ planId: z.string() }),
@@ -726,7 +994,10 @@ export const requests = {
     output: planFileSchema,
   },
   "plans.import": {
-    input: planFileSchema,
+    // libraryFor: source index in the file -> library source whose stored original stands in for the missing one (SHR-05).
+    input: planFileSchema.extend({
+      libraryFor: z.record(z.string().regex(/^\d+$/), z.string()).optional(),
+    }),
     output: z.object({ planId: z.string() }),
   },
   "plans.mastery": {
@@ -770,6 +1041,13 @@ export const requests = {
           openedAt: z.number(),
           severity: z.enum(["severe", "minor"]),
           wrongAnswers: z.number(),
+          misses: z.array(
+            z.object({
+              question: z.string(),
+              expected: z.string(),
+              explanation: z.string(),
+            }),
+          ),
         }),
       ),
       preparation: z.object({
@@ -933,6 +1211,9 @@ export const requests = {
         kind: z.string(),
         status: z.string(),
         blobSha: z.string().nullable(),
+        bytes: z.number().nullable(),
+        sections: z.number().int().nonnegative(),
+        planCount: z.number().int().nonnegative(),
       }),
     ),
   },
@@ -1132,6 +1413,15 @@ export const requests = {
       exercises: z.number(),
     }),
   },
+  "sources.linkPreview": {
+    input: z.object({ url: z.string().url().max(4000) }),
+    output: z.object({
+      title: z.string(),
+      excerpt: z.string(),
+      kind: z.enum(["pdf", "web"]),
+      bytes: z.number().nullable(),
+    }),
+  },
   "sources.link": {
     input: z.object({ url: z.string() }),
     output: z.object({
@@ -1259,6 +1549,7 @@ export const streams = {} as const;
 
 export const broadcasts = {
   "job.updated": JobView,
+  "engine.disclosure": z.object({ provider: z.string(), pending: z.boolean() }),
   "engine.login": z.object({
     provider: z.string(),
     type: z.string(),

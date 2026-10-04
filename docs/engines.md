@@ -1,11 +1,34 @@
 # Engines
 
-Every model call goes through `generate()` in `src/core/engine/generate.ts`. The only module that imports `cli-funnel` is `src/core/engine/funnel.ts`.
+Model calls go through `generate()` in `src/core/engine/generate.ts`. `src/core/engine/funnel.ts` is the only adapter that imports `cli-funnel`. It runs providers with `access: "none"` and an isolated scratch working directory.
 
-`generate({ prompt, system, selection, schema, signal })` runs one turn. When `schema` is set, the call asks for JSON and parses it. A failed parse can be repaired with the original prompt, the bad answer and the validation issues. `signal` aborts the turn.
+```ts
+const result = await generate({
+  prompt,
+  system,
+  selection: selectionFor(db, "lesson"),
+  schema: lessonSchema,
+  signal,
+});
+```
 
-`selectionFor(db, feature)` reads `feature_engines`. An empty table falls back to Claude, model `claude-sonnet-4-6`. A missing feature row uses the `default` row. Known features include `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`.
+The result carries text, provider, model and input-token usage. Structured requests convert the Zod schema to JSON Schema, disallow unknown object properties and parse the response again with Zod. Invalid output triggers at most two repair turns. Final failure becomes `invalid-output`. `onDelta` streams text; `signal` cancels a turn. Supported image attachments have explicit media types and data.
 
-Providers: `claude`, `codex`, `agent`, `antigravity`, `anthropic-api`, `openai-api`. Cursor Agent and Antigravity stay disabled. API keys are ciphertext in `userData/keys.json`, not in the workspace database.
+`selectionFor(db, feature)` reads `feature_engines`. An unset feature uses `default`; an unset default currently falls back to provider `claude`, model `claude-sonnet-5`. This is a fallback ID, not a guarantee that the account can access it. The engine screen discovers available models and tests the selected one.
 
-HTTP 401 becomes `engines.errors.refused`. HTTP 429, a spend limit, a usage limit or a quota becomes `engines.errors.quota`.
+Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`. Enabled providers are `claude`, `codex`, `anthropic-api` and `openai-api`. Cursor `agent` and `antigravity` remain disabled. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
+
+## Templates and schemas
+
+Feature modules own their prompt templates, version constants and Zod output schemas. Lessons include their prompt version in cache identity. Generated content saves provider/model/template/version/grounding provenance. Maps request validated operations rather than evaluating arbitrary patch code; simulation grading saves the actual grading model with checkpoints.
+
+Model capability hints come from `resources/model-capabilities.json`; unknown capabilities show a warning. Hints cannot guarantee runtime access or valid output. Authentication failures map to `engines.errors.refused`; quota, usage or spend limits map to `engines.errors.quota`. Keep error detail free of credentials and source passages.
+
+To add a feature key:
+
+1. Add it to the feature list in `engine/handlers.ts`, shared IPC validation/types and engine-setting labels in both languages.
+2. Call `selectionFor(db, key)` in the feature and send all turns through `generate()`.
+3. Define and validate a schema for structured output. Save prompt version and actual result model in provenance.
+4. Add recorded checks for success, repair, rejection and cancellation. Use a durable job when the operation needs restart/retry checkpoints.
+
+CLI-provider login belongs to the installed CLI. API usage is billed by the chosen provider. Do not claim offline model generation just because the database and search index are local.

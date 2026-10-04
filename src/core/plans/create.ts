@@ -1,10 +1,11 @@
+import { planOrigin, topicContent, topicTree } from "./views";
 import { addSubject } from "./subjects";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { bestRecommendation, pathState, type Stage } from "./path";
 import { dueCards } from "../study/cards";
-import { planMastery } from "./progress";
+import { planMastery, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
 
 export type BuildTopic = {
@@ -269,9 +270,17 @@ export function rebuildPlan(
     ).n;
   const run = db.transaction(() => {
     for (const sourceId of sourceIds) {
-      if (linked.has(sourceId)) continue;
+      if (
+        linked.has(sourceId) &&
+        db
+          .prepare(
+            "SELECT 1 FROM topic_passages tp JOIN topics t ON t.id=tp.topic_id JOIN passages p ON p.id=tp.passage_id WHERE t.plan_id=? AND p.source_id=? LIMIT 1",
+          )
+          .get(planId, sourceId)
+      )
+        continue;
       db.prepare(
-        `INSERT INTO plan_sources (plan_id, source_id) VALUES (?, ?)`,
+        `INSERT OR IGNORE INTO plan_sources (plan_id, source_id) VALUES (?, ?)`,
       ).run(planId, sourceId);
       const chapters = smartbookChapters(db, sourceId);
       const groups: Array<{
@@ -444,9 +453,20 @@ export function completeCurrentStage(
 
 export function readPlan(db: Database.Database, planId: string) {
   const plan = db
-    .prepare(`SELECT id, title, status, target FROM plans WHERE id = ?`)
+    .prepare(
+      `SELECT p.id, p.title, p.status, p.target, p.exam_at AS examAt, p.content_language AS contentLanguage, s.name AS subject FROM plans p LEFT JOIN subjects s ON s.id=p.subject_id WHERE p.id = ?`,
+    )
     .get(planId) as
-    { id: string; title: string; status: string; target: number } | undefined;
+    | {
+        id: string;
+        title: string;
+        status: string;
+        target: number;
+        examAt: number | null;
+        contentLanguage: string | null;
+        subject: string | null;
+      }
+    | undefined;
   if (!plan) return null;
   const topics = db
     .prepare(
@@ -460,9 +480,8 @@ export function readPlan(db: Database.Database, planId: string) {
   }>;
   const topicViews = topics.map(({ tree_json, ...topic }) => ({
     ...topic,
-    ...(tree_json
-      ? (JSON.parse(tree_json) as { summary: string; subtopics: string[] })
-      : { summary: "", subtopics: [] }),
+    ...topicContent(db, planId, topic.id),
+    ...topicTree(tree_json),
   }));
   const rows = db
     .prepare(
@@ -511,6 +530,7 @@ export function readPlan(db: Database.Database, planId: string) {
     kind: row.kind,
     topicId: row.topic_id,
     position: row.position,
+    unlockReason: states.find((item) => item.id === row.id)?.reason ?? "",
     state:
       plan.status === "building"
         ? "locked"
@@ -518,16 +538,22 @@ export function readPlan(db: Database.Database, planId: string) {
   }));
   return {
     ...plan,
+    ...planOrigin(db, planId),
     topics: topicViews,
     nodes,
     sources: db
       .prepare(
-        `SELECT s.id, s.title FROM sources s
+        `SELECT s.id, s.title, s.kind, s.status FROM sources s
        JOIN plan_sources ps ON ps.source_id = s.id
        WHERE ps.plan_id = ?
        ORDER BY s.title`,
       )
-      .all(planId) as Array<{ id: string; title: string }>,
+      .all(planId) as Array<{
+      id: string;
+      title: string;
+      kind: string;
+      status: string;
+    }>,
   };
 }
 
@@ -542,16 +568,20 @@ function daysUntil(examAt: number, now: number): number {
 export function listPlans(db: Database.Database, now = Date.now()) {
   const rows = db
     .prepare(
-      `SELECT p.id, p.title, p.status, p.exam_at, s.name AS subject
+      `SELECT p.id, p.title, p.status, p.exam_at, p.target, s.name AS subject,
+       EXISTS(SELECT 1 FROM settings x WHERE x.key = 'plan-import:' || p.id) AS imported
        FROM plans p
        LEFT JOIN subjects s ON s.id = p.subject_id
-       ORDER BY p.updated_at DESC`,
+       ORDER BY CASE WHEN p.exam_at < ? THEN 2 WHEN p.exam_at IS NULL THEN 1 ELSE 0 END,
+                p.exam_at ASC, p.updated_at DESC`,
     )
-    .all() as Array<{
+    .all(new Date(now).setHours(0, 0, 0, 0)) as Array<{
     id: string;
     title: string;
     status: string;
     exam_at: number | null;
+    target: number;
+    imported: number;
     subject: string | null;
   }>;
   return rows.map((row) => {
@@ -567,13 +597,22 @@ export function listPlans(db: Database.Database, now = Date.now()) {
            )`,
       )
       .get(row.id);
-    const levels = topics.map((topic) =>
-      simulationDone ? topic.mastery : Math.min(topic.mastery, 0.5),
+    const counts = new Map(
+      (
+        db
+          .prepare(
+            "SELECT t.id, count(tp.passage_id) AS n FROM topics t LEFT JOIN topic_passages tp ON tp.topic_id=t.id WHERE t.plan_id=? GROUP BY t.id",
+          )
+          .all(row.id) as { id: string; n: number }[]
+      ).map((t) => [t.id, t.n]),
     );
-    const mastery =
-      levels.length === 0
-        ? 0
-        : levels.reduce((sum, level) => sum + level, 0) / levels.length;
+    const mastery = weightedPlanMastery(
+      topics.map((topic) => ({
+        ...topic,
+        mastery: simulationDone ? topic.mastery : Math.min(topic.mastery, 0.5),
+      })),
+      counts,
+    );
     return {
       id: row.id,
       title: row.title,
@@ -581,6 +620,11 @@ export function listPlans(db: Database.Database, now = Date.now()) {
       subject: row.subject,
       daysToExam: row.exam_at == null ? null : daysUntil(row.exam_at, now),
       mastery,
+      target: row.target,
+      imported: Boolean(row.imported),
+      alignedTopics: topics.filter((topic) => topic.mastery >= row.target)
+        .length,
+      totalTopics: topics.length,
     };
   });
 }

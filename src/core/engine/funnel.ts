@@ -1,3 +1,5 @@
+import type Database from "better-sqlite3";
+import { createDisclosure } from "./disclosure";
 import {
   createFunnel,
   FunnelError,
@@ -23,6 +25,22 @@ type Keys = { anthropic?: string; openai?: string };
 let keys: Keys = {};
 let funnel: Funnel | null = null;
 let scratch = "";
+let disclosure: ReturnType<typeof createDisclosure> | undefined;
+export function configureDisclosure(
+  db: Database.Database,
+  notify: (provider: string, pending: boolean) => void,
+) {
+  disclosure = createDisclosure(db, notify);
+}
+export function acknowledgeProvider(provider: string) {
+  disclosure?.acknowledge(provider);
+}
+export function cancelDisclosure(provider: string) {
+  disclosure?.cancel(provider);
+}
+export function pendingDisclosures(): string[] {
+  return disclosure?.pending() ?? [];
+}
 
 export function setScratch(path: string): void {
   scratch = path;
@@ -51,6 +69,7 @@ export async function runTurn(input: {
     data: string;
   }>;
 }): Promise<EngineResult> {
+  await disclosure?.ensure(input.selection.provider, input.signal);
   const selection = {
     ...input.selection,
     cwd: input.selection.cwd || scratch,

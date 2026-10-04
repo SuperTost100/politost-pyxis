@@ -1,6 +1,7 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import {
@@ -21,7 +22,9 @@ import { StatTile } from "../../components/StatTile";
 import { MasteryBar } from "../../components/MasteryBar";
 import { GapItem } from "../../components/GapItem";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
+import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
+import { invoke } from "../../lib/ipc";
 import "./PlanProgress.css";
 
 type Progress = RequestOutput<"plans.series">;
@@ -43,8 +46,47 @@ export function PlanProgress({
   ) => new Date(at).toLocaleDateString(i18n.language, options);
   const summary = progress.preparation;
   const gaps = progress.gaps;
-  const fill = (topicId: string) =>
-    navigate(`/plans/${planId}/quiz/${topicId}`);
+  const client = useQueryClient();
+  // A gap opens a targeted drill built by a durable job; the page watches it and then opens the quiz.
+  const [drill, setDrill] = useState<string | null>(null);
+  const [drillFailed, setDrillFailed] = useState(false);
+  const drillRead = useQuery({
+    queryKey: ["gap-drill", planId, drill],
+    enabled: Boolean(drill),
+    gcTime: 0,
+    queryFn: () =>
+      invoke("study.gapDrillRead", { planId, topicId: drill ?? "" }),
+    refetchInterval: (query) =>
+      ["queued", "running"].includes(query.state.data?.state ?? "queued")
+        ? 1500
+        : false,
+  });
+  const drillState = drill ? (drillRead.data?.state ?? "queued") : null;
+  const preparing = drillState === "queued" || drillState === "running";
+  const drillStopped =
+    drillFailed ||
+    drillState === "failed" ||
+    drillState === "cancelled" ||
+    drillState === "interrupted";
+  const readyAttempt =
+    drill && drillState === "succeeded" ? drillRead.data?.attemptId : null;
+  useEffect(() => {
+    if (!drill || !readyAttempt) return;
+    setDrill(null);
+    navigate(`/plans/${planId}/quiz/${drill}?attempt=${readyAttempt}`);
+  }, [drill, readyAttempt, planId]);
+  async function fill(topicId: string) {
+    if (preparing) return;
+    setDrillFailed(false);
+    setDrill(topicId);
+    try {
+      await invoke("study.gapDrillStart", { planId, topicId });
+      await client.invalidateQueries({ queryKey: ["gap-drill", planId] });
+    } catch {
+      setDrill(null);
+      setDrillFailed(true);
+    }
+  }
   const target = Math.round(summary.target * 100);
   const chart = progress.chart.map((point) => ({
     ...point,
@@ -180,12 +222,51 @@ export function PlanProgress({
                 <Button
                   type="primary"
                   shape="round"
-                  onClick={() => fill(gaps[0]!.topicId)}
+                  disabled={preparing}
+                  onClick={() => void fill(gaps[0]!.topicId)}
                 >
                   {t("progress.fillWorst")}
                 </Button>
               )}
             </div>
+            {preparing ? (
+              <Notice
+                tone="info"
+                action={
+                  drillRead.data
+                    ? {
+                        label: t("jobs.cancel"),
+                        onClick: () =>
+                          void invoke("jobs.cancel", {
+                            jobId: drillRead.data?.jobId ?? "",
+                          }).then(() =>
+                            client.invalidateQueries({
+                              queryKey: ["gap-drill", planId],
+                            }),
+                          ),
+                      }
+                    : undefined
+                }
+              >
+                {t("progress.drillBuilding")}
+              </Notice>
+            ) : drillStopped && drill ? (
+              <Notice
+                tone={drillState === "cancelled" ? "info" : "danger"}
+                action={{
+                  label: t("progress.drillRetry"),
+                  onClick: () => void fill(drill),
+                }}
+              >
+                {t(
+                  drillState === "cancelled"
+                    ? "progress.drillCancelled"
+                    : "progress.drillFailed",
+                )}
+              </Notice>
+            ) : drillFailed ? (
+              <Notice tone="danger">{t("progress.drillFailed")}</Notice>
+            ) : null}
             {gaps.length ? (
               gaps.map((gap) => (
                 <GapItem
@@ -195,14 +276,25 @@ export function PlanProgress({
                       ?.title ?? gap.topicId
                   }
                   severity={gap.severity}
-                  onFill={() => fill(gap.topicId)}
+                  onFill={() => void fill(gap.topicId)}
                   fillLabel={t("progress.fillGap")}
+                  fillDisabled={preparing}
                   severitySevereLabel={t("progress.severe")}
                   severityMinorLabel={t("progress.minor")}
                 >
-                  {gap.wrongAnswers > 0
-                    ? t("progress.gapAnswers", { count: gap.wrongAnswers })
-                    : t("progress.gapReported")}
+                  {gap.misses[0]
+                    ? gap.misses[0].explanation
+                      ? t("progress.gapMissExplained", {
+                          question: gap.misses[0].question,
+                          explanation: gap.misses[0].explanation,
+                        })
+                      : t("progress.gapMiss", {
+                          question: gap.misses[0].question,
+                          expected: gap.misses[0].expected,
+                        })
+                    : gap.wrongAnswers > 0
+                      ? t("progress.gapAnswers", { count: gap.wrongAnswers })
+                      : t("progress.gapReported")}
                 </GapItem>
               ))
             ) : (
@@ -251,10 +343,11 @@ export function PlanProgress({
                   <div>
                     <span className="body-strong">{topic.title}</span>
                     <p className="meta">
-                      {t("progress.topicActivity", {
-                        exercises: topic.exercisesSolved,
-                        lessons: topic.lessons,
-                      })}
+                      {t("progress.topicExercises", {
+                        count: topic.exercisesSolved,
+                      })}{" "}
+                      ·{" "}
+                      {t("progress.topicLessons", { count: topic.lessons })}
                     </p>
                     <p className="meta">
                       {topic.lastStudied

@@ -1,3 +1,4 @@
+import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
@@ -34,6 +35,13 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
   );
   const fixture = {
     markdown: { markdown: "## Studio\nIl moto e l’energia [P1]." },
+    quizQuestions: { questions: Array.from({length:10}, (_,i) => ({
+      kind: ["mcq","tf","completion"][i%3],
+      stem: `Drill ${i}${i%3===2 ? " {{1}}" : ""}`,
+      passageIds:["{{passage:0}}"],
+      explanation:"La grandezza fisica.",
+      ...(i%3===0 ? {options:["a","b","c","d"],correct:0} : i%3===1 ? {correct:true} : {accepted:["energia"]}),
+    })) },
     questions: {
       questions: Array.from({ length: 10 }, (_, i) => ({
         stem: `Diagnosi ${i}`,
@@ -61,10 +69,9 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
-    const source = (await page.evaluate(
-      (path) => window.pyxis.invoke("sources.import", { path }),
-      file,
-    )) as { sourceId: string };
+    const source = (await importPickedSource(page, app, file)) as {
+      sourceId: string;
+    };
     await expect
       .poll(
         async () =>
@@ -156,7 +163,7 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
       passage.passage_id,
     );
     await page.evaluate((planId) => {
-      window.location.hash = `/plans/${planId}`;
+      window.location.hash = `/plans/${planId}/progress`;
     }, created.planId);
     mkdirSync(".shots", { recursive: true });
     for (const [language, theme, width] of [

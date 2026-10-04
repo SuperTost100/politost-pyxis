@@ -1,3 +1,4 @@
+import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
@@ -82,10 +83,9 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    const source = (await page.evaluate(
-      (path) => window.pyxis.invoke("sources.import", { path }),
-      file,
-    )) as { sourceId: string };
+    const source = (await importPickedSource(page, app, file)) as {
+      sourceId: string;
+    };
     await expect
       .poll(
         async () =>
@@ -226,12 +226,33 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await expect(
       page.getByRole("heading", { name: "Grading your exam" }),
     ).toBeVisible();
-    await expect.poll(async () => {
-      const next = await page.evaluate(attemptId => window.pyxis.invoke("study.simulationRead", {attemptId}),run.attemptId) as {grading?: {progress:number;state:string;error:string|null}};
-      return (next.grading?.progress ?? 0) >= .5 || next.grading?.state === "failed";
-    }, {timeout:90000}).toBe(true);
-    const grading = await page.evaluate(attemptId => window.pyxis.invoke("study.simulationRead", {attemptId}),run.attemptId) as {grading?: {state:string;error:string|null}};
-    expect(grading.grading?.state,grading.grading?.error ?? "grading did not start").not.toBe("failed");
+    await expect
+      .poll(
+        async () => {
+          const next = (await page.evaluate(
+            (attemptId) =>
+              window.pyxis.invoke("study.simulationRead", { attemptId }),
+            run.attemptId,
+          )) as {
+            grading?: { progress: number; state: string; error: string | null };
+          };
+          writeFileSync(".tmp/m15-simulation-grading-poll.json", JSON.stringify(next, null, 2));
+          return (
+            (next.grading?.progress ?? 0) >= 0.5 ||
+            next.grading?.state === "failed"
+          );
+        },
+        { timeout: 90000 },
+      )
+      .toBe(true);
+    const grading = (await page.evaluate(
+      (attemptId) => window.pyxis.invoke("study.simulationRead", { attemptId }),
+      run.attemptId,
+    )) as { grading?: { state: string; error: string | null } };
+    expect(
+      grading.grading?.state,
+      grading.grading?.error ?? "grading did not start",
+    ).not.toBe("failed");
     await app.close();
     app = await launch();
     page = await app.firstWindow();
@@ -248,7 +269,9 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
         return next?.grading?.state ?? "done";
       })
       .not.toBe("running");
-    if (await retry.isVisible()) await retry.click();
+    const reopened = await page.evaluate((attemptId) => window.pyxis.invoke("study.simulationRead", { attemptId }), run.attemptId);
+    if (reopened.grading && ["interrupted", "failed", "cancelled"].includes(reopened.grading.state))
+      await retry.click();
     await expect
       .poll(
         async () =>

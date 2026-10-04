@@ -3,6 +3,7 @@ import { openDatabase } from "../db/connection";
 import { askTurn, readChat } from "./turn";
 import { solverChecks, splitChecks } from "./checks";
 import type { GenerateInput } from "../engine/generate";
+import { systemPrompt } from "../engine/prompts";
 
 const selection = { provider: "claude" as const, model: "fixture" };
 const step = "The derivative is $2*x*sin(x) + x**2*cos(x)$.";
@@ -26,10 +27,17 @@ function response(structured: unknown) {
 describe("Solver check metadata", () => {
   it("extracts and persists a derivative claim from an ordinary reply without a fence", async () => {
     const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     const selections: string[] = [];
     const run: GenerateInput["run"] = async (input) => {
       selections.push(input.selection.model);
-      if (input.responseSchema) return response({ checks: [claim] });
+      if (input.responseSchema) {
+        // Structured check extraction renders the checks template unchanged, with no placeholders.
+        expect(input.system).toBe(systemPrompt("chat.checks"));
+        return response({ checks: [claim] });
+      }
       input.onDelta?.(step);
       return {
         text: step,

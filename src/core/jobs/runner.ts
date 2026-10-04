@@ -1,3 +1,4 @@
+import { setTimeout as wait } from "node:timers/promises";
 import { availableParallelism } from "node:os";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -13,6 +14,8 @@ export type StepContext = {
 };
 
 export type StepSpec = {
+  /** null releases all execution slots while awaiting another job. */
+  jobClass?: JobClass | null;
   name: string;
   label: string;
   run: (ctx: StepContext) => Promise<unknown>;
@@ -21,6 +24,8 @@ export type StepSpec = {
 export type JobSpec = {
   jobClass: JobClass;
   steps: StepSpec[];
+  /** Refresh settings only on an explicit retry; interruption resume keeps its snapshot. */
+  retryParams?: (params: unknown) => unknown;
 };
 
 export type Limits = Record<JobClass, number>;
@@ -54,6 +59,7 @@ const defaultLimits = (): Limits => ({
 });
 
 export type Runner = {
+  activate: () => void;
   register: (kind: string, spec: JobSpec) => void;
   start: (kind: string, params?: unknown) => string;
   cancel: (jobId: string) => void;
@@ -67,11 +73,13 @@ export function createRunner(
   db: Database.Database,
   onUpdate: (job: JobView) => void,
   limits: Limits = defaultLimits(),
+  paused = false,
 ): Runner {
+  let enabled = !paused;
   const specs = new Map<string, JobSpec>();
   const active = new Map<
     string,
-    { controller: AbortController; jobClass: JobClass }
+    { controller: AbortController; jobClass: JobClass | null }
   >();
 
   const jobStmt = db.prepare(
@@ -132,6 +140,7 @@ export function createRunner(
     const spec = job ? specs.get(job.kind) : undefined;
     if (!entry || !job || !spec) {
       active.delete(jobId);
+      queueMicrotask(kick);
       return;
     }
     const now = Date.now();
@@ -158,6 +167,21 @@ export function createRunner(
         const specStep = spec.steps.find((item) => item.name === step.name);
         if (!specStep) throw new Error(`missing-step:${step.name}`);
         try {
+          const desired =
+            specStep.jobClass === undefined ? spec.jobClass : specStep.jobClass;
+          if (entry.jobClass !== desired) {
+            entry.jobClass = null;
+            queueMicrotask(kick);
+          }
+          while (
+            desired !== null &&
+            entry.jobClass !== desired &&
+            slotsUsed(desired) >= limits[desired]
+          ) {
+            await wait(25, undefined, { signal: entry.controller.signal });
+          }
+          entry.jobClass = desired;
+          queueMicrotask(kick);
           const output = await specStep.run({
             name: step.name,
             signal: entry.controller.signal,
@@ -175,6 +199,8 @@ export function createRunner(
             `UPDATE job_steps SET state = 'succeeded', output_json = ?, error = NULL WHERE id = ?`,
           ).run(JSON.stringify(output ?? null), step.id);
           step.output_json = JSON.stringify(output ?? null);
+          entry.jobClass = null;
+          queueMicrotask(kick);
         } catch (err) {
           if (entry.controller.signal.aborted || isAbort(err)) {
             db.prepare(
@@ -210,9 +236,10 @@ export function createRunner(
   }
 
   function kick(): void {
+    if (!enabled) return;
     const queued = db
       .prepare(
-        `SELECT id, kind FROM jobs WHERE state = 'queued' ORDER BY created_at, id`,
+        `SELECT id, kind FROM jobs WHERE state = 'queued' ORDER BY created_at, rowid`,
       )
       .all() as Array<{ id: string; kind: string }>;
     for (const job of queued) {
@@ -223,7 +250,7 @@ export function createRunner(
         controller: new AbortController(),
         jobClass: spec.jobClass,
       });
-      void execute(job.id);
+      queueMicrotask(() => void execute(job.id));
     }
   }
 
@@ -235,6 +262,10 @@ export function createRunner(
   ).run(Date.now());
 
   return {
+    activate() {
+      enabled = true;
+      kick();
+    },
     register(kind, spec) {
       specs.set(kind, spec);
       kick();
@@ -258,8 +289,10 @@ export function createRunner(
         });
       });
       insert();
-      publish(jobId);
-      kick();
+      queueMicrotask(() => {
+        publish(jobId);
+        kick();
+      });
       return jobId;
     },
     cancel(jobId) {
@@ -270,12 +303,35 @@ export function createRunner(
       }
       const changed = db
         .prepare(
-          `UPDATE jobs SET state = 'cancelled', updated_at = ? WHERE id = ? AND state = 'queued'`,
+          `UPDATE jobs SET state = 'cancelled', updated_at = ? WHERE id = ? AND state IN ('queued', 'interrupted')`,
         )
         .run(Date.now(), jobId);
       if (changed.changes > 0) publish(jobId);
     },
     retry(jobId) {
+      const job = db
+        .prepare(
+          "SELECT kind, params_json FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled')",
+        )
+        .get(jobId) as { kind: string; params_json: string } | undefined;
+      if (!job) return;
+      const refresh = specs.get(job.kind)?.retryParams;
+      if (refresh) {
+        try {
+          const params = refresh(JSON.parse(job.params_json));
+          db.prepare("UPDATE jobs SET params_json = ? WHERE id = ?").run(
+            JSON.stringify(params),
+            jobId,
+          );
+        } catch (error) {
+          db.prepare("UPDATE jobs SET error = ? WHERE id = ?").run(
+            error instanceof Error ? error.message : "failed",
+            jobId,
+          );
+          publish(jobId);
+          return;
+        }
+      }
       const changed = db
         .prepare(
           `UPDATE jobs SET state = 'queued', dismissed = 0, error = NULL, updated_at = ? WHERE id = ? AND state IN ('failed', 'cancelled')`,
@@ -303,11 +359,16 @@ export function createRunner(
       if (active.has(jobId)) return;
       const view = viewOf(jobId);
       if (
-        (view?.kind === "plan-build" ||
+        (view?.kind === "cards-build" ||
+          view?.kind === "gap-drill" ||
+          view?.kind === "exercise-build" ||
+          view?.kind === "plan-build" ||
           view?.kind === "quiz-build" ||
+          view?.kind === "quiz-grade" ||
+          view?.kind === "simulation-build" ||
           view?.kind === "map-build" ||
           view?.kind === "simulation-grade") &&
-        ["failed", "cancelled", "succeeded"].includes(view.state)
+        ["failed", "cancelled", "succeeded", "interrupted"].includes(view.state)
       ) {
         db.prepare("UPDATE jobs SET dismissed = 1 WHERE id = ?").run(jobId);
         publish(jobId);
@@ -315,7 +376,7 @@ export function createRunner(
       }
       const changed = db
         .prepare(
-          `DELETE FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled', 'succeeded')`,
+          `DELETE FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled', 'succeeded', 'interrupted')`,
         )
         .run(jobId);
       if (changed.changes > 0 && view)
