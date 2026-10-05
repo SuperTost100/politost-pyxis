@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       windows_trace:
-        description: Run only Windows units and the OCR/release checks, without packaging
+        description: Run only Windows OCR/release diagnostics, without units or packaging
         type: boolean
         default: false
 
@@ -64,6 +64,7 @@ jobs:
       - run: npm run test:fixtures
       - run: npm run build
       - name: Unit checks
+        if: ${{ !inputs.windows_trace }}
         run: npm test -- --maxWorkers=2
       - name: Windows worker lifecycle with parent PDF engine
         if: runner.os == 'Windows' && !inputs.windows_trace

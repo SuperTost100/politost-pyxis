@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { PNG } from "pngjs";
 import { putBlob } from "../../src/core/blobs";
@@ -1835,6 +1835,7 @@ test("M14 every application route in both languages, themes and supported widths
   expect(auditRoutes.length).toBeGreaterThan(0);
   mkdirSync(".shots/m14", { recursive: true });
   mkdirSync(".tmp", { recursive: true });
+  mkdirSync(dirname(recordFile), { recursive: true });
   try {
     const page = await app.firstWindow();
     page.setDefaultTimeout(7000);
