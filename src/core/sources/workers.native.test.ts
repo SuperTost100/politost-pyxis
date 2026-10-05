@@ -58,6 +58,21 @@ describe.skipIf(!have)("built extract worker", () => {
   }, 60_000);
 });
 
+describe.skipIf(!have)("built extract worker beside a parent that has loaded pdf.js", () => {
+  // core.js imports sources/documents, and pdf.js loads @napi-rs/canvas the moment it is imported, so in the app the
+  // canvas addon is already mapped on the core thread when each one-shot worker loads it again and is then terminated.
+  // The other tests here start workers from a parent that never imported pdf.js. A native crash (Windows 0xC0000005)
+  // takes the whole test process down, which is how this shows up.
+  it("decodes a HEIC photo in repeated one-shot workers", async () => {
+    await import("./documents");
+    const photo = resolve("tests/fixtures/synthetic-note.heic");
+    for (let run = 0; run < 5; run += 1) {
+      const png = await runSourceWorker<Uint8Array>("extract-worker", { path: photo, ext: ".heic", mode: "pixels" });
+      expect(Buffer.from(png).subarray(1, 4).toString()).toBe("PNG");
+    }
+  });
+});
+
 describe.skipIf(!have)("built extract worker, local OCR", () => {
   it("refuses a picture that declares a huge size before the recognizer decodes it, and honours a cancel", async () => {
     const bomb = new Uint8Array(PNG.sync.write(new PNG({ width: 1, height: 1 })));

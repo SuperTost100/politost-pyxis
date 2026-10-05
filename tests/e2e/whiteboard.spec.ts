@@ -19,7 +19,14 @@ import { PNG } from "pngjs";
 async function draw(page: Page) {
   // A freshly routed board has no layout box yet; measuring it earlier throws "canvas-missing".
   await expect(page.locator(".px-whiteboard canvas")).toBeVisible();
-  const rect = await page.locator(".px-whiteboard canvas").boundingBox();
+  // Routing can replace the canvas between visibility and measurement.
+  let rect = await page.locator(".px-whiteboard canvas").boundingBox();
+  await expect
+    .poll(async () => {
+      rect = await page.locator(".px-whiteboard canvas").boundingBox();
+      return Boolean(rect && rect.width > 0 && rect.height > 0);
+    })
+    .toBe(true);
   if (!rect) throw new Error("canvas-missing");
   await page.mouse.move(rect.x + 100, rect.y + 200);
   await page.mouse.down();
@@ -162,7 +169,9 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
       ]),
     ).toEqual([null, null]);
     // The preview survives a visit to another view of Ask only while the file is pending, and Remove drops both.
-    await page.getByRole("button", { name: /^(Remove|Rimuovi) .*\.png$/ }).click();
+    await page
+      .getByRole("button", { name: /^(Remove|Rimuovi) .*\.png$/ })
+      .click();
     await expect(page.getByAltText("Lavagna")).toHaveCount(0);
     // A board that was only saved never shows up in Ask, even next to a later attachment.
     await page.evaluate(() => {

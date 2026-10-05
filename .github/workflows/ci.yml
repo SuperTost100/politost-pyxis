@@ -71,6 +71,16 @@ jobs:
       - run: npm run build
       - name: Unit checks
         run: npm test -- --maxWorkers=2
+      - name: Windows worker lifecycle with parent PDF engine
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        timeout-minutes: 3
+        run: npx electron scripts/repro-extract-lifecycle.mjs --mode=full --runs=20
+      - name: Windows worker lifecycle without parent PDF engine
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        timeout-minutes: 3
+        run: npx electron scripts/repro-extract-lifecycle.mjs --mode=full --runs=20 --parent=none
       - name: Recorded Electron end-to-end checks
         run: |
           run_e2e() {
@@ -165,6 +175,13 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+      - name: Report Windows application fault modules
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000; StartTime=(Get-Date).AddMinutes(-50)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match '(?i)electron|politost|pyxis' } |
+            Select-Object -First 5 -ExpandProperty Message
 
   attest:
     name: Attest packaged artifacts

@@ -18,7 +18,7 @@ When the remote exists, run the workflow and inspect all four results before pub
 
 ## Owner release loop
 
-For desktop checks while using the computer, run `PYXIS_E2E_HIDDEN=1 npm run test:e2e -- --workers=1`. The test window stays hidden and macOS activation is disabled; the renderer continues painting and running timers. Playwright still captures screenshots and sends keyboard input to the renderer. This mode checks application keyboard behavior, while OS window activation and native-dialog behavior require visible checks. Packaged test launches additionally require `PYXIS_E2E=1`; ordinary installs ignore the hidden flag. Use disposable, healthy profiles, since workspace recovery can still show its error dialog.
+For desktop checks while using the computer, run `PYXIS_E2E_HIDDEN=1 npm run test:e2e -- --workers=1`. The test window stays hidden and macOS activation is disabled; offscreen rendering keeps frames and timers running without an OS window. Playwright still captures screenshots and sends keyboard input to the renderer. This mode checks application keyboard behavior, while OS window activation and native-dialog behavior require visible checks. Packaged test launches additionally require `PYXIS_E2E=1`; ordinary installs ignore the hidden flag. Use disposable, healthy profiles, since workspace recovery can still show its error dialog.
 
 1. Run `npm run typecheck`, `npm test` and `npm run test:e2e`. Review skips and supply pinned runtime fixtures for Python/SymPy and real local embeddings.
 2. Run `npm run dist -- --publish never` on the release machine. Verify the app's native modules and downloaded-runtime license notices.

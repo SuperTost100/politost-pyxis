@@ -611,12 +611,15 @@ describe("restore validation and interruption recovery", () => {
       restoreWorkspace(f.archive, f.live);
       expect(title(f.live)).toBe("Backup");
       expect(
-        readFileSync(join(f.live, "blobs", first.sha.slice(0, 2), first.sha)),
-      ).toEqual(Buffer.from(random));
+        readFileSync(
+          join(f.live, "blobs", first.sha.slice(0, 2), first.sha),
+        ).equals(Buffer.from(random)),
+      ).toBe(true);
       expect(
-        readFileSync(join(f.live, "blobs", second.sha.slice(0, 2), second.sha))
-          .length,
-      ).toBe(zeros.length);
+        readFileSync(
+          join(f.live, "blobs", second.sha.slice(0, 2), second.sha),
+        ).equals(Buffer.from(zeros)),
+      ).toBe(true);
     } finally {
       rmSync(f.root, { recursive: true, force: true });
     }

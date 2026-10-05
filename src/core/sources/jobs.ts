@@ -74,7 +74,9 @@ export function visionSelection(
  */
 export async function assertLocalOcrReady(db: Database.Database, workspace: string, ext: string): Promise<void> {
   if (!IMAGE_EXTS.includes(ext) || visionSelection(db, ext)) return;
+  if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: OCR readiness start");
   const { state } = await ocrDataStatus(join(workspace, "runtimes", "tesseract"));
+  if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: OCR readiness", state);
   if (state !== "ready") throw new Error(`ocr-data-${state}`);
 }
 
@@ -556,7 +558,9 @@ export function enqueueSourceData(
       : kind === "image"
         ? imageMime(ext)
         : mimeFor(ext);
+  if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: import blob start");
   const sha = putBlob(workspace, bytes, mime, ext.slice(1));
+  if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: import transaction start");
   const jobId = db.transaction(() => {
     if (existingId) {
       if (
@@ -594,5 +598,6 @@ export function enqueueSourceData(
       ...(vision ? { vision } : {}),
     } satisfies ImportParams);
   })();
+  if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: import transaction committed");
   return { sourceId, jobId, title, chapters: 0, passages: 0, exercises: 0 };
 }

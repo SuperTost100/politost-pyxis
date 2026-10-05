@@ -248,7 +248,7 @@ function createWindow(): void {
       sandbox: true,
       nodeIntegration: false,
       webSecurity: true,
-      ...(hiddenTest ? { backgroundThrottling: false } : {}),
+      ...(hiddenTest ? { backgroundThrottling: false, offscreen: true } : {}),
     },
   });
 

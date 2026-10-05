@@ -121,6 +121,33 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       ).toEqual([{ visible: false, focused: false }]);
     }
     await page.emulateMedia({ reducedMotion: "reduce" });
+    if (process.env.PYXIS_E2E_HIDDEN === "1") {
+      console.log(
+        "release: hidden rendering",
+        await app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().map((window) => ({
+            offscreen: window.webContents.isOffscreen(),
+            frameRate: window.webContents.getFrameRate(),
+          })),
+        ),
+      );
+      console.log(
+        "release: frame sample",
+        await page.evaluate(
+          () =>
+            new Promise<number>((resolve) => {
+              let frames = 0;
+              const start = performance.now();
+              const tick = () => {
+                frames++;
+                if (performance.now() - start >= 1000) resolve(frames);
+                else requestAnimationFrame(tick);
+              };
+              requestAnimationFrame(tick);
+            }),
+        ),
+      );
+    }
     await expect(
       page.getByRole("heading", { name: "Iniziamo", exact: true }),
     ).toBeVisible();
