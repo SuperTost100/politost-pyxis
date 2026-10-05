@@ -22,7 +22,7 @@ jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -76,6 +76,21 @@ jobs:
         continue-on-error: true
         timeout-minutes: 3
         run: npx electron scripts/repro-extract-lifecycle.mjs --mode=full --runs=20 --parent=none
+      - name: Windows preview workers beside the core native modules
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        timeout-minutes: 3
+        run: npx electron scripts/repro-extract-lifecycle.mjs --parent=core --mode=quality --runs=20 --hash-between-runs=true
+      - name: Compare Windows OCR retries with inherited core streams
+        if: inputs.windows_trace
+        continue-on-error: true
+        env:
+          PYXIS_E2E_CORE_STDIO: inherit
+        run: npx playwright test tests/e2e/ocr-data.spec.ts --grep 'OCR data: a refused photo' --repeat-each=3 --workers=1
+      - name: Compare Windows OCR retries with piped core streams
+        if: inputs.windows_trace
+        continue-on-error: true
+        run: npx playwright test tests/e2e/ocr-data.spec.ts --grep 'OCR data: a refused photo' --repeat-each=3 --workers=1
       - name: Recorded Electron end-to-end checks
         run: |
           run_e2e() {

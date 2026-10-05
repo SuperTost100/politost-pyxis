@@ -392,11 +392,12 @@ function waitForCoreReady(
 
 function startCore(strict = false): Promise<void> {
   let startupFailed = false;
+  const captureLogs = e2eSeam() && process.env.PYXIS_E2E === "1" && process.env.PYXIS_E2E_CORE_STDIO !== "inherit";
   const child = utilityProcess.fork(join(import.meta.dirname, "core.js"), [], {
     serviceName: "pyxis-core",
-    stdio: e2eSeam() && process.env.PYXIS_E2E === "1" ? "pipe" : "inherit",
+    stdio: captureLogs ? "pipe" : "inherit",
   });
-  if (e2eSeam() && process.env.PYXIS_E2E === "1") {
+  if (captureLogs) {
     child.stdout?.on("data", (chunk) => process.stdout.write(chunk));
     child.stderr?.on("data", (chunk) => process.stderr.write(chunk));
   }

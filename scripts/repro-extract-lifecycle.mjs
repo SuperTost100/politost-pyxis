@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
+import { createHash } from "node:crypto";
 
 const args = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith("--")).map((a) => a.slice(2).split("=")));
 const parentMode = args.parent ?? "pdfjs";
@@ -29,10 +30,17 @@ const loaded = () =>
 
 async function work() {
   log(`electron ${process.versions.electron ?? "-"} node ${process.versions.node} ${process.platform}-${process.arch}`);
-  if (parentMode === "pdfjs") {
+  if (parentMode !== "none") {
     // What `core.js` does through `sources/documents.ts`: the import itself loads @napi-rs/canvas.
     log("parent: import pdfjs-dist/legacy/build/pdf.mjs");
     await import(pathToFileURL(join(root, "node_modules/pdfjs-dist/legacy/build/pdf.mjs")).href);
+  }
+  let database;
+  if (parentMode === "core") {
+    const { default: Database } = await import("better-sqlite3");
+    const { load } = await import("sqlite-vec");
+    database = new Database(":memory:");
+    load(database);
   }
   log(`parent native modules: ${JSON.stringify(loaded())}`);
   const tess = mkdtempSync(join(tmpdir(), "pyxis-repro-"));
@@ -48,6 +56,10 @@ async function work() {
   try {
     for (let run = 1; run <= runs; run += 1) {
       const scratch = join(tess, "scratch", `run-${run}`);
+      if (args["hash-between-runs"] === "true") {
+        log(`run ${run}: hash pinned OCR data before preview`);
+        for (const code of ["eng", "ita"]) createHash("sha256").update(readFileSync(join(root, ".tmp/tessdata-fast", `${code}.traineddata`))).digest("hex");
+      }
       log(`run ${run}/${runs}: spawn extract-worker (${mode})`);
       const reply = await new Promise((resolveRun, reject) => {
         const worker = new Worker(join(root, "out/main/extract-worker.js"), {
@@ -56,7 +68,7 @@ async function work() {
             ext: ".heic",
             tess,
             scratch,
-            ...(mode === "pixels" ? { mode: "pixels" } : {}),
+            ...(["pixels", "quality"].includes(mode) ? { mode } : {}),
           },
           resourceLimits: { maxOldGenerationSizeMb: 2048, maxYoungGenerationSizeMb: 64 },
         });
@@ -73,6 +85,7 @@ async function work() {
     }
     log(`done: ${runs} runs, no crash`);
   } finally {
+    database?.close();
     rmSync(tess, { recursive: true, force: true });
   }
 }
@@ -87,6 +100,7 @@ if (process.type === "utility" || !process.versions.electron || process.env.ELEC
   // Main process: fork this same file as the utility process, the way `startCore` forks core.js.
   // No top-level await here: Electron holds `ready` back until an ES-module entry has finished evaluating.
   import("electron").then(({ app, utilityProcess }) => {
+    app.setActivationPolicy?.("prohibited");
     app.dock?.hide();
     void app.whenReady().then(() => {
       const child = utilityProcess.fork(fileURLToPath(import.meta.url), process.argv.slice(2), { serviceName: "pyxis-repro", stdio: "inherit" });
