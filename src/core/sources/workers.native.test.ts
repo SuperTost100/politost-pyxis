@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import jpeg from "jpeg-js";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { extractPdf, onePagePdf } from "./documents";
+import { manyPagePdf, onePagePdf } from "./documents";
 import { embeddingReady, embedTexts } from "./embed";
 import { ocrDataDir } from "./ocr-data";
 import { hashFiles } from "./quality";
@@ -62,26 +62,83 @@ describe.skipIf(!have)("built extract worker", () => {
 });
 
 describe.skipIf(!have)("built extract worker, native addons", () => {
-  it("loads no pdf.js canvas or font addon until a PDF is read", () => {
-    // The probe records every addon the built worker's module graph maps, in a fresh process so nothing is cached.
-    const probe = `const seen = [], open = process.dlopen;
-      process.dlopen = function (m, file, ...rest) { seen.push(file); return open.call(this, m, file, ...rest); };
-      await import(${JSON.stringify(pathToFileURL(join(built, "extract-worker.js")).href)});
-      console.log(JSON.stringify(seen));`;
-    const run = spawnSync(process.execPath, ["--input-type=module", "-e", probe], { encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+  // Every probe runs the built worker in a fresh process, with process.dlopen hooked inside the worker thread itself
+  // (a parent's hook does not reach a worker), so it records each addon that thread maps.
+  const wrapper = `import { parentPort, workerData } from "node:worker_threads";
+    const seen = [], open = process.dlopen;
+    process.dlopen = function (m, file, ...rest) { seen.push(file); return open.call(this, m, file, ...rest); };
+    const post = parentPort.postMessage.bind(parentPort);
+    parentPort.postMessage = (message) => post({ ...message, seen });
+    await import(workerData.target);`;
+  const probe = (jobs: Array<{ target: string; path?: string; paths?: string[]; maxBytes?: number; ext?: string; mode?: string }>) => {
+    const script = `import { Worker } from "node:worker_threads";
+      const jobs = ${JSON.stringify(jobs)};
+      const results = [];
+      for (const job of jobs) {
+        const worker = new Worker(new URL(${JSON.stringify("data:text/javascript," + encodeURIComponent(wrapper))}), { workerData: job });
+        const message = await new Promise((resolve, reject) => { worker.once("message", resolve); worker.once("error", reject); });
+        await new Promise((resolve) => (worker.once("exit", resolve), worker.terminate()));
+        results.push(message);
+      }
+      console.log(JSON.stringify(results));`;
+    const run = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", timeout: 60_000, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
     expect(run.status, run.stderr).toBe(0);
-    const addons = JSON.parse(run.stdout.trim().split("\n").pop()!) as string[];
-    expect(addons.filter((file) => /napi-rs[\\/]canvas|systemfonts/.test(file))).toEqual([]);
+    return JSON.parse(run.stdout.trim().split("\n").pop()!) as Array<{ value?: { document: { pages: Array<{ text: string }>; scanned: boolean } }; error?: string; seen: string[] }>;
+  };
+  const canvasOrFonts = (files: string[]) => files.filter((file) => /napi-rs[\\/]canvas|systemfonts/.test(file));
+  const worker = pathToFileURL(join(built, "extract-worker.js")).href;
+
+  it("loads no canvas or font addon for a hash job", () => {
+    const [idle] = probe([{ target: worker, paths: [join(dir, "a.txt")], maxBytes: 1000, mode: "hash" }]);
+    expect(idle!.error).toBeUndefined();
+    expect(canvasOrFonts(idle!.seen)).toEqual([]);
   });
+
+  it("reads real PDFs, text and scanned, in repeated workers without mapping the canvas or font addon", () => {
+    // An image-only page exercises the scanned-PDF path with actual embedded pixels.
+    const paint = "q 200 0 0 100 0 0 cm /Im1 Do Q";
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>",
+      `<< /Length ${paint.length} >>\nstream\n${paint}\nendstream`,
+      "<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /ASCIIHexDecode /Length 7 >>\nstream\nff0000>\nendstream",
+    ];
+    let pdf = "%PDF-1.4\n";
+    const offsets = objects.map((object, index) => {
+      const offset = pdf.length;
+      pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+      return offset;
+    });
+    const xref = pdf.length;
+    pdf += `xref\n0 6\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    const files = [
+      ["text.pdf", onePagePdf("probe words long enough to count as text")],
+      ["pages.pdf", manyPagePdf(4, "page words long enough to count as text")],
+      ["scan.pdf", new Uint8Array(Buffer.from(pdf))],
+    ] as const;
+    for (const [name, bytes] of files) writeFileSync(join(dir, name), bytes);
+    const results = probe(Array.from({ length: 10 }, () => files).flat().map(([name]) => ({ target: worker, path: join(dir, name), ext: ".pdf", mode: "extract" })));
+    for (const result of results) {
+      expect(result.error).toBeUndefined();
+      expect(canvasOrFonts(result.seen)).toEqual([]);
+    }
+    const docs = results.map((result) => result.value!.document);
+    expect(docs.map((doc) => doc.pages.length)).toEqual(Array.from({ length: 10 }, () => [1, 4, 1]).flat());
+    // The one-page fixture clips its last characters, the same under the legacy build.
+    expect(docs[0]!.pages[0]!.text).toMatch(/^probe words long enough to count a/);
+    expect(docs[1]!.pages.map((page) => page.text)).toEqual([1, 2, 3, 4].map((n) => `page words long enough to count as text ${n}`));
+    expect(docs.map((doc) => doc.scanned)).toEqual(Array.from({ length: 10 }, () => [false, false, true]).flat());
+  }, 65_000);
 });
 
 describe.skipIf(!have)("built extract worker beside a parent that has loaded pdf.js", () => {
-  // pdf.js loads @napi-rs/canvas the moment it is imported, which documents.ts now does only when a PDF is read. So in
-  // the app, after a PDF import, photo workers run beside a core thread that already has the canvas addon mapped.
-  // The other tests here start workers from a parent that never imported pdf.js. A native crash (Windows 0xC0000005)
-  // takes the whole test process down, which is how this shows up.
+  // The legacy pdf.js build loads @napi-rs/canvas the moment it is imported. documents.ts no longer uses it, but the
+  // renderer's build and other hosts do, so this keeps the control: photo workers beside a thread that has the canvas
+  // addon mapped. The other tests here start workers from a parent that never loaded it. A native crash (Windows
+  // 0xC0000005) takes the whole test process down, which is how this shows up.
   it("decodes a HEIC photo in repeated one-shot workers", async () => {
-    await extractPdf(onePagePdf("parent"));
+    await import("pdfjs-dist/legacy/build/pdf.mjs");
     const photo = resolve("tests/fixtures/synthetic-note.heic");
     for (let run = 0; run < 5; run += 1) {
       const png = await runSourceWorker<Uint8Array>("extract-worker", { path: photo, ext: ".heic", mode: "pixels" });

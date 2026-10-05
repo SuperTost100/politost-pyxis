@@ -46,8 +46,9 @@ const emptyPage = 30;
 export async function extractPdf(
   bytes: Uint8Array,
 ): Promise<ExtractedDocument> {
-  // Loaded here, not at module top, so jobs that never read a PDF do not load pdfjs's native canvas and font addons.
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // The modern build loads canvas only for page rendering. Text-only workers must avoid the legacy build's
+  // eager native addon load: on Windows its Tokio thread can outlive the DLL when the worker stops.
+  const { getDocument } = await import("pdfjs-dist");
   const doc = await getDocument({
     data: bytes,
     disableWorker: true,
