@@ -109,6 +109,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
       env,
     });
     page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.evaluate((id) => {
       window.location.hash = `/plans/new?build=${id}`;
     }, created.planId);
@@ -140,7 +141,6 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await expect(
       page.getByText("Studierai velocità e accelerazione", { exact: false }),
     ).toBeVisible();
-    await page.waitForTimeout(250); // Let the modal finish its entrance before measuring contrast.
     expect(
       (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
     ).toEqual([]);

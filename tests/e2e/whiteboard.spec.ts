@@ -17,6 +17,8 @@ import { join } from "node:path";
 import { PNG } from "pngjs";
 
 async function draw(page: Page) {
+  // A freshly routed board has no layout box yet; measuring it earlier throws "canvas-missing".
+  await expect(page.locator(".px-whiteboard canvas")).toBeVisible();
   const rect = await page.locator(".px-whiteboard canvas").boundingBox();
   if (!rect) throw new Error("canvas-missing");
   await page.mouse.move(rect.x + 100, rect.y + 200);
@@ -49,6 +51,8 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
   });
   try {
     const page = await app.firstWindow();
+    // Hidden windows on Windows and Linux can stall CSS/JS motion mid-way (stuck modal leave, half-faded colors); the app honors this setting.
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     mkdirSync(".shots", { recursive: true });

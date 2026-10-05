@@ -143,6 +143,7 @@ test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results"
     await page.getByRole("button", { name: "A. Vero", exact: true }).click();
     await page.getByRole("button", { name: "Correggi", exact: true }).click();
     await expect(page.getByText("Corretto", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Avanti", exact: true })).toBeFocused();
     await page.screenshot({
       path: ".shots/m8-tf-feedback-it-light-960.png",
       animations: "disabled",

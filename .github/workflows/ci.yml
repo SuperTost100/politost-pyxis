@@ -80,7 +80,8 @@ jobs:
               npx playwright test "$@" --workers=1
             fi
           }
-          run_e2e --grep-invert 'M14 every application'
+          run_e2e tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
+          run_e2e --grep-invert 'M14 every application|OCR data:|release loop:'
           for combo in it-dark-1280 it-dark-960 it-light-1280 it-light-960 en-dark-1280 en-dark-960 en-light-1280 en-light-960; do
             export PYXIS_UI_COMBO="$combo"
             export PYXIS_UI_RECORD="ci-audit/audit-$combo.json"
@@ -102,6 +103,35 @@ jobs:
           retention-days: 14
       - name: Package without publishing
         run: npm run dist -- ${{ matrix.builder }} --publish never
+      - name: Check the packaged application
+        run: |
+          export PYXIS_DIST_APP="$(node --input-type=module <<'JS'
+          import { existsSync } from 'node:fs';
+          import { resolve } from 'node:path';
+          const candidates = process.platform === 'darwin'
+            ? ['dist/mac-arm64/PoliTost Pyxis.app/Contents/MacOS/PoliTost Pyxis', 'dist/mac/PoliTost Pyxis.app/Contents/MacOS/PoliTost Pyxis']
+            : [process.platform === 'win32' ? 'dist/win-unpacked/PoliTost Pyxis.exe' : 'dist/linux-unpacked/politost-pyxis'];
+          const found = candidates.filter(existsSync);
+          if (found.length !== 1) throw new Error('Expected one packaged application');
+          console.log(resolve(found[0]));
+          JS
+          )"
+          if [ "$RUNNER_OS" = Linux ]; then
+            if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+              sudo tee /etc/apparmor.d/pyxis-ci-packaged >/dev/null <<EOF
+          profile pyxis-ci-packaged "$PYXIS_DIST_APP" flags=(unconfined) {
+            userns,
+          }
+          EOF
+              sudo apparmor_parser -r /etc/apparmor.d/pyxis-ci-packaged
+            fi
+            xvfb-run -a npx playwright test tests/e2e/window.spec.ts --workers=1
+          else
+            if [ "$RUNNER_OS" = macOS ]; then
+              codesign --verify --deep --strict "$(dirname "$(dirname "$(dirname "$PYXIS_DIST_APP")")")"
+            fi
+            npx playwright test tests/e2e/window.spec.ts --workers=1
+          fi
       - name: Collect installers and SHA-256 checksums
         run: |
           node --input-type=module <<'JS'

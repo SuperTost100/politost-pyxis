@@ -1,4 +1,4 @@
-PoliTost Pyxis 0.1.0
+PoliTost Pyxis 0.1.1
 
 MIT License
 

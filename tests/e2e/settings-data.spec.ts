@@ -14,6 +14,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+const packageVersion = JSON.parse(
+  readFileSync(join(process.cwd(), "package.json"), "utf8"),
+).version as string;
+
 test("SET-05/06 verified workspace move, failed move recovery and daily release notice", async () => {
   test.setTimeout(90000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-settings-data-"));
@@ -78,7 +82,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
     await expect(
       page.getByText("Workspace spostato.", { exact: true }),
     ).toBeVisible();
-    const moved = realpathSync(join(parent, "Pyxis workspace"));
+    const moved = realpathSync.native(join(parent, "Pyxis workspace"));
     expect(await page.evaluate(() => window.pyxis.workspacePath())).toBe(moved);
     expect(existsSync(original)).toBe(false);
     expect(
@@ -172,7 +176,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       });
       const update = await page.evaluate(() => window.pyxis.checkUpdates());
       expect(update.state).toBe("available");
-      expect(update.current).toBe("0.1.0");
+      expect(update.current).toBe(packageVersion);
     }
     await app.close();
     app = await electron.launch({

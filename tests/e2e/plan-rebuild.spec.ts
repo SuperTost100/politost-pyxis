@@ -9,6 +9,7 @@ import { manyPagePdf } from "../../src/core/sources/documents";
 
 // Seeded responses only: the app runs its real jobs against recorded replies, no model is called.
 
+// A hidden window never finishes a modal's leave animation, so every page here asks for reduced motion.
 function launch(userData: string, replies: unknown) {
   const env = {
     ...process.env,
@@ -62,6 +63,7 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
   });
   try {
     const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await skipOnboarding(page);
     await page.evaluate(() => {
       window.location.hash = "/plans/new";
@@ -194,6 +196,7 @@ test("PLAN-13 rebuild is reviewed, durable across restart, and applies exactly w
   let first = await launch(userData, reply([moto]));
   try {
     const page = await first.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await skipOnboarding(page);
     const a = await importSource(
       page,
@@ -242,6 +245,7 @@ test("PLAN-13 rebuild is reviewed, durable across restart, and applies exactly w
   );
   try {
     const page = await first.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
     const before = (await page.evaluate(
       (id) => window.pyxis.invoke("plans.read", { planId: id }),
       planId,

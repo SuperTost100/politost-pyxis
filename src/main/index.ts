@@ -355,6 +355,7 @@ function connectRenderer(): void {
     return;
   }
   rendererPortFor = coreChild;
+  if (e2eSeam()) console.error("pyxis-e2e: renderer connected", coreChild.pid);
   const { port1, port2 } = new MessageChannelMain();
   coreChild.postMessage({ type: "renderer-port" }, [port1]);
   mainWindow.webContents.postMessage("pyxis:port", null, [port2]);

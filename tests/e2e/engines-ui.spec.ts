@@ -24,6 +24,10 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
         for (const canSave of [false, true]) {
           await app.evaluate(({ safeStorage }, enabled) => {
             safeStorage.isEncryptionAvailable = () => enabled;
+            // Linux also refuses the plain-text fallback, which is what a runner without a keyring reports.
+            if (process.platform === "linux")
+              safeStorage.getSelectedStorageBackend = () =>
+                enabled ? "gnome_libsecret" : "basic_text";
           }, canSave);
           await page.evaluate(
             async ({ language, theme }) => {

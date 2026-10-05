@@ -105,6 +105,8 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       ? { executablePath: packaged, args: ["--use-mock-keychain"], env }
       : { args: [join(process.cwd(), "out/main/index.js")], env },
   );
+  if (!live)
+    app.process().stderr?.on("data", (chunk) => console.error(String(chunk)));
   try {
     console.log("release: window");
     const page = await app.firstWindow();

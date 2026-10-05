@@ -29,6 +29,7 @@ async function launch(reply?: string) {
     env,
   });
   const page = await app.firstWindow();
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();
   await expect(page).toHaveURL(/\/exams/);
   return { app, page, userData };

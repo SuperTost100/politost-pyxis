@@ -61,14 +61,40 @@ test("MATH-02 MATH-06 Pyodide limits, network isolation and independent SymPy ve
     expect(await page.evaluate(() => window.pyxis.invoke("tools.check", { kind: "equal", expr: "x", claimed: "1.00000001*x" }))).toMatchObject({ state: "failed" });
     const forged = await run("from js import self, Object\nfrom pyodide.ffi import to_js\nfor i in range(1,100):\n    self.postMessage(to_js({'type':'done','id':i}, dict_converter=Object.fromEntries))\nwhile True:\n    pass");
     expect(forged.timedOut).toBe(true);
+    // Each Python run gets a fresh worker. Measure its execution ceiling after
+    // cold package loading, at the actual worker dispatch, rather than charging
+    // runtime startup against the ten-second code limit on slower CI machines.
+    const runtimeId = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().find((window) =>
+        window.webContents.getURL().startsWith("pyxis-runtime:"),
+      )!.webContents.id,
+    );
+    await app.evaluate(async ({ webContents }, id) => {
+      await webContents.fromId(id)!.executeJavaScript(`
+        window.__testPythonStartedAt = 0;
+        const originalPost = Worker.prototype.postMessage;
+        Worker.prototype.postMessage = function(message, ...args) {
+          if (message?.type === 'run' && message.payload === 'while True:\\n    pass') {
+            window.__testPythonStartedAt = Date.now();
+            Worker.prototype.postMessage = originalPost;
+          }
+          return originalPost.call(this, message, ...args);
+        };
+        void 0;
+      `);
+    }, runtimeId);
     const began = Date.now();
     const hung = run("while True:\n    pass");
     expect(await check("2*x*sin(x)+x**2*cos(x)")).toMatchObject({
       state: "verified",
     });
     expect((await hung).timedOut).toBe(true);
-    expect(Date.now() - began).toBeGreaterThanOrEqual(10000);
-    expect(Date.now() - began).toBeLessThan(15000);
+    const startedAt = await app.evaluate(async ({ webContents }, id) =>
+      webContents.fromId(id)!.executeJavaScript("window.__testPythonStartedAt") as Promise<number>,
+    runtimeId);
+    expect(startedAt).toBeGreaterThanOrEqual(began);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(10000);
+    expect(Date.now() - startedAt).toBeLessThan(15000);
     expect((await run("print(6 * 7)")).stdout).toContain("42");
     const network = await run(
       "import urllib.request\nurllib.request.urlopen('https://example.com')",

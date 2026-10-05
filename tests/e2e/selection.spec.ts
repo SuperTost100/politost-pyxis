@@ -19,6 +19,7 @@ test("selected source text opens a scoped tutor context and Escape dismisses its
   const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
   try {
     const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     const { sourceId } = await importPickedSource(page, app, file) as { sourceId: string };
@@ -43,6 +44,9 @@ test("selected source text opens a scoped tutor context and Escape dismisses its
     await expect(menu).toBeVisible();
     expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
     await page.screenshot({ path: ".shots/selection-menu-it.png" });
+    // Hosted Linux and Windows lose the menu somewhere after the audit; a scroll, resize or cleared selection closes it by design, so select again.
+    await select();
+    await expect(menu).toBeVisible();
     await menu.getByRole("button", { name: "Chiedi al tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\//);
     const scope = await page.evaluate(() => window.pyxis.invoke("chats.read", { chatId: window.location.hash.split("/").at(-1)! })) as { sourceIds: string[]; context: { body: string } };

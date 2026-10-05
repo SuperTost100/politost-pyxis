@@ -112,6 +112,8 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
   });
   try {
     const page = await app.firstWindow();
+    // Hidden windows on Windows and Linux can stall CSS/JS motion mid-way (stuck modal leave, half-faded colors); the app honors this setting.
+    await page.emulateMedia({ reducedMotion: "reduce" });
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
@@ -186,6 +188,16 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     );
     const nodeId = initial.nodes.find((n) => n.parent)!.id;
     const actual = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
+    // React Flow measures nodes and fits the view after they mount; drag only once the box stops moving.
+    let seen = "";
+    await expect
+      .poll(async () => {
+        const next = JSON.stringify(await actual.boundingBox());
+        const settled = next !== "null" && next === seen;
+        seen = next;
+        return settled;
+      })
+      .toBe(true);
     const box = await actual.boundingBox();
     expect(box).not.toBeNull();
     await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);

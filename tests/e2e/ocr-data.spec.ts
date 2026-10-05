@@ -45,7 +45,12 @@ async function launch(
     ...extra,
   };
   delete env.ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  const app = await electron.launch({ args: [MAIN], env });
+  // Keep core failure and port diagnostics in the recorded run log.
+  app.process().stderr?.on("data", (chunk) => {
+    console.error(String(chunk));
+  });
+  return app;
 }
 
 async function start(

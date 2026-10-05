@@ -1052,6 +1052,7 @@ export function QuizPage() {
           <div className="px-quiz-actions">
             {immediate && !result && !expired ? (
               <Button
+                key="check"
                 type="primary"
                 shape="round"
                 loading={check.isPending}
@@ -1062,6 +1063,8 @@ export function QuizPage() {
               </Button>
             ) : (
               <Button
+                key="next"
+                autoFocus={immediate && Boolean(result)}
                 type="primary"
                 shape="round"
                 loading={submit.isPending}
