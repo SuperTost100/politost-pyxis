@@ -132,14 +132,28 @@ function oneShot<T>(name: string, input: unknown, signal?: AbortSignal): Promise
     const scratch = name === "extract-worker" && typeof tess === "string" && tess ? join(ocrScratchRoot(tess), randomUUID()) : undefined;
     const worker = spawn(name, scratch ? { ...(input as object), scratch } : input);
     let settled = false;
+    // The first outcome (answer, failure, cancel or exit) is the result, but it is only handed back once the thread has
+    // really stopped: the caller cannot consume this worker's answer, and its decode-gate slot is not released, while the
+    // worker is still tearing down its heap, wasm memory and native addons. `terminate()` resolves on the worker's exit
+    // and has no timeout here: a thread stuck in native code keeps its gate slot (and the caller waits) instead of being
+    // reported as stopped. If `terminate()` itself rejects, the stop is unconfirmed, so even a good answer is refused
+    // with "source-worker-stop-failed", and the scratch folder is left alone because the worker may still use it.
     const finish = (error: unknown, value?: T) => {
       if (settled) return;
       settled = true;
       signal?.removeEventListener("abort", abort);
-      const stopped = worker.terminate();
-      if (scratch) void Promise.resolve(stopped).finally(() => rm(scratch, { recursive: true, force: true })).catch(() => undefined);
-      if (error) reject(error);
-      else resolve(value as T);
+      void (async () => {
+        let stopError: Error | undefined;
+        try {
+          await worker.terminate();
+        } catch (cause) {
+          stopError = new Error("source-worker-stop-failed", { cause });
+        }
+        if (scratch && !stopError) await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+        if (error) reject(error);
+        else if (stopError) reject(stopError);
+        else resolve(value as T);
+      })();
     };
     const abort = () => finish(new DOMException("Cancelled", "AbortError"));
     signal?.addEventListener("abort", abort, { once: true });

@@ -78,17 +78,17 @@ jobs:
         if: ${{ !inputs.windows_trace }}
         run: npm test -- --maxWorkers=2
       - name: Windows worker lifecycle with parent PDF engine
-        if: runner.os == 'Windows' && !inputs.windows_trace
+        if: runner.os == 'Windows' && inputs.windows_trace
         continue-on-error: true
         timeout-minutes: 3
         run: npx electron scripts/repro-extract-lifecycle.mjs --mode=full --runs=20
       - name: Windows worker lifecycle without parent PDF engine
-        if: runner.os == 'Windows' && !inputs.windows_trace
+        if: runner.os == 'Windows' && inputs.windows_trace
         continue-on-error: true
         timeout-minutes: 3
         run: npx electron scripts/repro-extract-lifecycle.mjs --mode=full --runs=20 --parent=none
       - name: Windows preview workers beside the core native modules
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && inputs.windows_trace
         continue-on-error: true
         timeout-minutes: 3
         run: npx electron scripts/repro-extract-lifecycle.mjs --parent=core --mode=quality --runs=20 --hash-between-runs=true
@@ -117,7 +117,7 @@ jobs:
             fi
           }
           if [ "${{ inputs.windows_trace }}" = true ]; then
-            run_e2e tests/e2e/ocr-data.spec.ts --grep "OCR data: a refused photo" --repeat-each=3
+            run_e2e tests/e2e/ocr-data.spec.ts --grep "OCR data: a refused photo" --repeat-each=5
           fi
           run_e2e tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
           if [ "${{ inputs.windows_trace }}" = true ]; then exit 0; fi
