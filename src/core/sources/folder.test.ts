@@ -14,10 +14,10 @@ describe("folder import", () => {
     writeFileSync(join(root, "photo.png"), "x");
     writeFileSync(join(root, "skip.exe"), "no");
     const listed = listImportable(root);
-    expect(listed.files.map((file) => file.slice(root.length))).toEqual([
-      "/notes/chapter.txt",
-      "/photo.png",
-      "/slide.pptx",
+    expect(listed.files).toEqual([
+      join(root, "notes", "chapter.txt"),
+      join(root, "photo.png"),
+      join(root, "slide.pptx"),
     ]);
     expect(listed).toMatchObject({ cappedFiles: false, cappedDepth: false });
   });

@@ -17,12 +17,9 @@ export function writeKeyStore(
   const temporary = mkdtempSync(join(dirname(path), ".keys-"));
   const file = join(temporary, "keys.json");
   try {
-    writeFileSync(file, JSON.stringify(ciphertext), {
-      mode: 0o600,
-      flag: "wx",
-    });
-    const fd = openSync(file, "r");
+    const fd = openSync(file, "wx", 0o600);
     try {
+      writeFileSync(fd, JSON.stringify(ciphertext));
       fsyncSync(fd);
     } finally {
       closeSync(fd);

@@ -1,6 +1,7 @@
 import { constants, type Stats } from "node:fs";
 import { createHash } from "node:crypto";
 import {
+  type FileHandle,
   lstat,
   mkdir,
   mkdtemp,
@@ -32,11 +33,44 @@ function inside(parent: string, child: string): boolean {
   );
 }
 
-function sameFile(
-  a: { dev: number; ino: number },
-  b: { dev: number; ino: number },
-): boolean {
-  return a.dev === b.dev && a.ino === b.ino;
+type Identity = Pick<Stats, "dev" | "ino" | "birthtimeMs">;
+
+/**
+ * dev/ino alone is not an identity: Linux file systems reuse a freed inode for
+ * the next mkdir, so a replacement folder can look like the one it replaced.
+ * On POSIX the move holds an open descriptor on each folder (see `pin`), which
+ * keeps its inode allocated and makes dev/ino unique for the move's lifetime.
+ * Windows cannot open directories, but NTFS file IDs carry a sequence number
+ * and creation time stays fixed; ctime/mtime change on normal edits, so never
+ * compare those.
+ */
+function sameFile(a: Identity, b: Identity): boolean {
+  return (
+    a.dev === b.dev &&
+    a.ino === b.ino &&
+    (process.platform !== "win32" || a.birthtimeMs === b.birthtimeMs)
+  );
+}
+
+/** Keep a folder's inode allocated, even if the path is deleted and recreated. */
+async function pin(
+  path: string,
+  expected: Identity,
+): Promise<FileHandle | undefined> {
+  if (process.platform === "win32" || constants.O_DIRECTORY === undefined)
+    return undefined;
+  const handle = await open(
+    path,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
+  try {
+    if (!sameFile(expected, await handle.stat()))
+      throw new Error("workspace-move-path-changed");
+    return handle;
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
 }
 
 async function hashFile(path: string): Promise<string> {
@@ -131,50 +165,70 @@ export async function stageWorkspaceMove(
   const original = await lstat(oldPath);
   if (!original.isDirectory() || original.isSymbolicLink())
     throw new Error("workspace-move-source-invalid");
-  const source = await realpath(oldPath);
-  const parent = await realpath(dirname(targetPath));
-  const target = join(parent, basename(targetPath));
-  if (inside(source, target) || inside(target, source))
-    throw new Error("workspace-move-path-overlap");
-  const exists = await lstat(target).then(
-    () => true,
-    (error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return false;
-      throw error;
-    },
-  );
-  if (exists) throw new Error("workspace-move-destination-exists");
-  // mkdir below reserves the destination without ever replacing an existing folder.
-  const staging = await mkdtemp(join(parent, ".pyxis-move-"));
-  let reservation: Stats | undefined;
+  const pins: (FileHandle | undefined)[] = [await pin(oldPath, original)];
+  let released = false;
+  async function release(): Promise<void> {
+    released = true;
+    await Promise.all(pins.splice(0).map((handle) => handle?.close()));
+  }
+  let source: string;
+  let target: string;
+  let copied: Stats;
   try {
-    await copyTree(source, staging);
-    verifyDatabase(staging);
-    if (!sameFile(original, await lstat(source)))
-      throw new Error("workspace-move-source-changed");
-    await mkdir(target, { mode: 0o700 });
-    reservation = await lstat(target);
-    if (process.platform === "win32") {
-      // Windows rename refuses any existing destination directory, including
-      // our empty reservation. A competing directory still makes rename fail.
-      await rmdir(target);
-      reservation = undefined;
-    }
-    await rename(staging, target);
-  } catch (error) {
-    await rm(staging, { recursive: true, force: true });
-    if (reservation) {
-      // A competing writer may have populated our reservation. Remove it only
-      // when it remains the same empty directory; never delete their files.
-      try {
-        if (sameFile(reservation, await lstat(target))) await rmdir(target);
-      } catch {
-        /* Preserve a populated or replaced reservation. */
+    source = await realpath(oldPath);
+    const parent = await realpath(dirname(targetPath));
+    target = join(parent, basename(targetPath));
+    if (inside(source, target) || inside(target, source))
+      throw new Error("workspace-move-path-overlap");
+    const exists = await lstat(target).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      },
+    );
+    if (exists) throw new Error("workspace-move-destination-exists");
+    // mkdir below reserves the destination without ever replacing an existing folder.
+    const staging = await mkdtemp(join(parent, ".pyxis-move-"));
+    let reservation: Stats | undefined;
+    try {
+      const staged = await lstat(staging);
+      pins.push(await pin(staging, staged));
+      await copyTree(source, staging);
+      verifyDatabase(staging);
+      if (!sameFile(original, await lstat(source)))
+        throw new Error("workspace-move-source-changed");
+      await mkdir(target, { mode: 0o700 });
+      reservation = await lstat(target);
+      if (process.platform === "win32") {
+        // Windows rename refuses any existing destination directory, including
+        // our empty reservation. A competing directory still makes rename fail.
+        await rmdir(target);
+        reservation = undefined;
       }
+      await rename(staging, target);
+      copied = await lstat(target);
+      // NTFS name tunneling can change birthtime on rename. Compare file IDs
+      // here, then retain the post-rename birthtime for later replacement checks.
+      if (staged.dev !== copied.dev || staged.ino !== copied.ino)
+        throw new Error("workspace-move-path-changed");
+    } catch (error) {
+      await rm(staging, { recursive: true, force: true });
+      if (reservation) {
+        // A competing writer may have populated our reservation. Remove it only
+        // when it remains the same empty directory; never delete their files.
+        try {
+          if (sameFile(reservation, await lstat(target))) await rmdir(target);
+        } catch {
+          /* Preserve a populated or replaced reservation. */
+        }
+      }
+      throw error;
     }
+  } catch (error) {
+    await release();
     throw error;
   }
-  const copied = await lstat(target);
   let state: "staged" | "committed" | "rolled-back" = "staged";
   let oldRemoved = false;
   async function healthy(path: string, expected: Stats): Promise<boolean> {
@@ -189,24 +243,32 @@ export async function stageWorkspaceMove(
       return false;
     }
   }
+  /** Both folders must still be the exact directories this move created and copied. */
+  async function requireUnchanged(): Promise<void> {
+    if (released) throw new Error("workspace-move-path-changed");
+    const [now, old] = await Promise.all([lstat(target), lstat(source)]);
+    if (sameFile(copied, now) && sameFile(original, old)) return;
+    // Identity is lost for good: refuse every later delete, even if a look-alike returns.
+    await release();
+    throw new Error("workspace-move-path-changed");
+  }
   return {
     path: target,
     async recoveryPath() {
       // A committed move may have partially removed the old tree during cleanup.
       if (state !== "committed" && (await healthy(source, original)))
         return source;
-      if (await healthy(target, copied)) return target;
+      // Choosing the copy (or nothing) ends the move: rollback must not delete it.
+      const copy = await healthy(target, copied);
+      await release();
+      if (copy) return target;
       throw new Error("workspace-move-recovery-unavailable");
     },
     async commit() {
       if (state === "committed") return oldRemoved;
       if (state !== "staged")
         throw new Error("workspace-move-already-rolled-back");
-      if (
-        !sameFile(copied, await lstat(target)) ||
-        !sameFile(original, await lstat(source))
-      )
-        throw new Error("workspace-move-path-changed");
+      await requireUnchanged();
       // Once cleanup begins, rollback must never delete the only complete copy.
       state = "committed";
       try {
@@ -215,20 +277,19 @@ export async function stageWorkspaceMove(
         return true;
       } catch {
         return false;
+      } finally {
+        await release();
       } // New workspace remains active; old files can be removed later.
     },
     async rollback() {
       if (state === "rolled-back") return;
       if (state !== "staged")
         throw new Error("workspace-move-already-committed");
-      if (
-        !sameFile(copied, await lstat(target)) ||
-        !sameFile(original, await lstat(source))
-      )
-        throw new Error("workspace-move-path-changed");
+      await requireUnchanged();
       verifyDatabase(source);
       await rm(target, { recursive: true });
       state = "rolled-back";
+      await release();
     },
   };
 }

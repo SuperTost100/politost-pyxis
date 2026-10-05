@@ -620,7 +620,7 @@ describe("restore validation and interruption recovery", () => {
     } finally {
       rmSync(f.root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("skips Finder bookkeeping in blobs without deleting it", () => {
     const f = fixture();

@@ -1,4 +1,5 @@
 import {
+  lstat,
   mkdtemp,
   mkdir,
   readFile,
@@ -184,6 +185,46 @@ describe("workspace move", () => {
     );
     expect(await readFile(join(target, "unrelated"), "utf8")).toBe("keep");
     expect(await move.recoveryPath()).toBe(await realpath(old));
+  });
+
+  it.skipIf(process.platform === "win32")("keeps the copied folder's inode allocated so a replacement can never impersonate it", async () => {
+    const { root, old, target } = await fixture();
+    const move = await stageWorkspaceMove(old, target);
+    const copied = await lstat(target);
+    await rm(target, { recursive: true });
+    // Linux file systems hand out a freed inode to the next mkdir. Unpinned,
+    // one of these would reuse the copy's dev/ino and pass an identity check.
+    for (let index = 0; index < 200; index++) {
+      const created = join(root, `churn-${index}`);
+      await mkdir(created);
+      const info = await lstat(created);
+      expect(info.dev === copied.dev && info.ino === copied.ino).toBe(false);
+    }
+    await mkdir(target);
+    await writeFile(join(target, "unrelated"), "keep");
+    await expect(move.commit()).rejects.toThrow("workspace-move-path-changed");
+    await expect(move.rollback()).rejects.toThrow(
+      "workspace-move-path-changed",
+    );
+    expect(await readFile(join(target, "unrelated"), "utf8")).toBe("keep");
+    expect(await readFile(join(old, "models", "weights.bin"))).toEqual(
+      Buffer.alloc(130_001, 0x61),
+    );
+  });
+
+  it("refuses commit and rollback when another folder replaces the original", async () => {
+    const { old, target } = await fixture();
+    const move = await stageWorkspaceMove(old, target);
+    await rm(old, { recursive: true });
+    await mkdir(old);
+    await writeFile(join(old, "unrelated"), "keep");
+    await expect(move.commit()).rejects.toThrow("workspace-move-path-changed");
+    await expect(move.rollback()).rejects.toThrow(
+      "workspace-move-path-changed",
+    );
+    expect(await readFile(join(old, "unrelated"), "utf8")).toBe("keep");
+    expect(await move.recoveryPath()).toBe(await realpath(target));
+    expect(await readFile(join(target, "pyxis.db"))).toBeDefined();
   });
 
   it("keeps the complete new copy if the original disappears before rollback", async () => {

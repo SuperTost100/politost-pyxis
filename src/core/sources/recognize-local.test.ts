@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { PNG } from "pngjs";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -65,7 +65,7 @@ describe("OCR hands tesseract.js only local, verified data", () => {
     expect(call?.langs).toBe("eng+ita");
     expect(call?.options).toMatchObject({ cacheMethod: "none", gzip: false });
     // A path, never a URL, so tesseract.js has nothing to fetch and no CDN default to fall back on.
-    expect(String(call?.options.langPath)).toMatch(/^[/\\]/);
+    expect(isAbsolute(String(call?.options.langPath))).toBe(true);
     expect(call?.options.langPath).not.toMatch(/^https?:/);
     expect(String(call?.options.langPath).startsWith(join(tess, "scratch"))).toBe(true);
     expect(call?.files).toEqual({

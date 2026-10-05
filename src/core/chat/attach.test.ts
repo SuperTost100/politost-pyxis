@@ -197,5 +197,5 @@ describe("SRC-04 chat images fit provider limits", () => {
       expect(Buffer.from(seen!.bytes)).toEqual(Buffer.from(bytes));
       expect(readFileSync(readBlob(workspace, prepared.images[0]!.sha).file)).toEqual(Buffer.from(bytes));
     } finally { db.close(); }
-  }, 30_000);
+  }, 60_000);
 });

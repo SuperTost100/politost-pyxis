@@ -187,5 +187,11 @@ describe.skipIf(!have || !embeddingReady(model))("built embed worker", () => {
     controller.abort();
     await expectation;
     expect(await embedTexts(model, ["passage: dopo"])).toHaveLength(1);
+    // Once every embed worker has exited, a new one must still load the addon. Node forgets an addon when the last
+    // thread that loaded it closes, but glibc and macOS keep onnxruntime_binding.node mapped, so without the pin in
+    // worker-client.ts this fails with "Module did not self-register".
+    closeSourceWorkers();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(await embedTexts(model, ["passage: ancora"])).toHaveLength(1);
   }, 120_000);
 });

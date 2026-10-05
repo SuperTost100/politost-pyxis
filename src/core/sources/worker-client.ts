@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { Worker } from "node:worker_threads";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
@@ -21,6 +22,29 @@ const spawnShared = (name: string, data?: unknown) => {
   worker.unref();
   return worker;
 };
+
+/**
+ * Holds the ONNX Runtime addon open on this thread for the life of the process.
+ *
+ * Node keeps a process-wide table of the addons that worker threads have loaded and drops an addon's entry when the
+ * last thread that loaded it closes (nodejs/node#48353, closed as not planned). `onnxruntime_binding.node` registers
+ * itself from a static constructor, and the OS does not really unload it when Node asks: glibc pins an object that
+ * defines a GNU_UNIQUE symbol (it has `Ort::Global<void>::api_`), and macOS dyld pins one that has thread-local
+ * variables (libonnxruntime has them). So once every embed worker had exited, for instance a cancelled call followed by the
+ * idle close, the next worker found the addon still mapped, no entry and no constructor run, and failed with
+ * "Module did not self-register". Loading it here first keeps one reference, so every worker finds the entry.
+ * It must run before the first embed worker is spawned. It only maps the addon: no session or environment is created.
+ */
+let pinnedAddon = false;
+function pinInferenceAddon(): void {
+  if (pinnedAddon) return;
+  try {
+    createRequire(join(workerDirectory, "embed-worker.js"))("onnxruntime-node/dist/binding.js");
+    pinnedAddon = true;
+  } catch {
+    // Not installed here, such as a test pointing at stand-in workers. A real worker reports its own load error.
+  }
+}
 
 /**
  * Caps how many one-shot workers of a kind run at once, so a burst of requests queues instead of spawning a thread
@@ -76,6 +100,7 @@ export function closeSourceWorkers(): void {
 export function runSourceWorker<T>(name: "extract-worker" | "embed-worker", input: unknown, signal?: AbortSignal): Promise<T> {
   if (name === "embed-worker") {
     const { dir, texts } = input as { dir: string; texts: string[] };
+    pinInferenceAddon();
     if (embedder?.dir !== dir) {
       embedder?.worker.close();
       embedder = { dir, worker: new ReusableWorker(() => spawnShared("embed-worker", { dir })) };

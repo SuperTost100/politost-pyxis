@@ -70,7 +70,7 @@ jobs:
       - run: npm run test:fixtures
       - run: npm run build
       - name: Unit checks
-        run: npm test
+        run: npm test -- --maxWorkers=2
       - name: Recorded Electron end-to-end checks
         run: |
           run_e2e() {
