@@ -1,0 +1,38 @@
+.px-python-block textarea {
+  font: 400 calc(14px * var(--text-scale))/1.6 var(--font-mono);
+  tab-size: 4;
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+.px-python-block-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.px-python-block-actions .ant-btn {
+  white-space: nowrap;
+}
+.px-python-block-out {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font: 400 calc(13px * var(--text-scale))/1.6 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.px-python-block-plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: var(--space-2);
+  border-radius: var(--radius-md);
+}
+.px-python-block-out.is-error {
+  color: var(--danger);
+}

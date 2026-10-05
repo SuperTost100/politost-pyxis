@@ -14,6 +14,13 @@
   gap: var(--space-3);
   margin-top: var(--space-4);
 }
+.px-plan-origin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-3) 0 0;
+}
 .px-plan-page > .px-seg-wrap {
   display: flex;
   justify-content: center;
@@ -213,4 +220,39 @@
 }
 .px-plan-source-table .ant-table-cell {
   overflow-wrap: anywhere;
+}
+
+.px-rebuild-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-top: var(--space-3);
+}
+.px-rebuild-diff h2 {
+  margin: 0 0 var(--space-2);
+}
+.px-rebuild-diff ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.px-rebuild-diff li {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.px-plan-education {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+.px-plan-education p {
+  margin: 0;
+}
+.px-plan-topic-tag {
+  margin-left: var(--space-2);
 }

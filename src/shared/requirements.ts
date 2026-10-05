@@ -1,5 +1,36 @@
-/** IDs whose behavior exists in this repo. The comment is the file that implements it. */
+/** Code traceability, not milestone acceptance. Each comment names the implementing file. */
 export const implemented = [
+  "ENG-13", // src/renderer/src/features/settings/EnginesPanel.tsx
+  "SRC-22", // src/core/study/quizJobs.ts
+  "PLAN-07", // src/renderer/src/features/plans/PlanFrames.tsx
+  "PLAN-20", // src/core/plans/jobs.ts
+  "PLAN-24", // src/renderer/src/features/plans/PlanOverview.tsx
+  "PLAN-25", // src/renderer/src/features/plans/PlanOverview.tsx
+  "LES-01", // src/core/study/openLesson.ts
+  "LES-02", // src/core/study/cardsFromBook.ts
+  "LES-03", // src/core/study/gapDrill.ts
+  "LES-04", // src/core/maps/generate.ts
+  "LES-20", // src/core/study/simulation.ts
+  "LES-21", // src/core/study/simulation.ts
+  "LES-22", // src/core/plans/progress.ts
+  "LES-23", // src/renderer/src/features/study/SimulationPage.tsx
+  "LES-30", // src/core/study/openLesson.ts
+  "LES-32", // src/renderer/src/features/study/LessonPage.tsx
+  "FC-01", // src/core/study/cardsFromBook.ts
+  "MAP-05", // src/core/maps/generate.ts
+  "PRO-09", // src/core/plans/file.ts
+  "SHR-08", // src/renderer/src/features/plans/PlanOverview.tsx
+  "EXP-01", // src/renderer/src/features/share/PrintPage.tsx
+  "NFR-01", // docs/architecture.md
+  "NFR-02", // src/core/sources/worker-client.ts
+  "NFR-03", // src/core/jobs/runner.ts
+  "NFR-06", // src/core/engine/disclosure.ts
+  "NFR-07", // electron-builder.yml
+  "NFR-09", // tests/e2e/ui-audit.spec.ts
+  "ASK-01", // src/core/plans/subjects.ts
+  "ASK-03", // src/core/chat/prompts.ts
+  "ASK-07", // src/core/chat/turn.ts
+  "ASK-09", // src/core/plans/education.ts
   "ASK-02", // src/core/chat/turn.ts
   "ASK-05", // src/renderer/src/features/tools/WhiteboardPage.tsx
   "ASK-04", // src/core/chat/attach.ts
@@ -60,6 +91,7 @@ export const implemented = [
   "PER-01", // src/core/profile/profile.ts
   "PER-02", // src/core/profile/profile.ts
   "PER-03", // src/renderer/src/features/settings/SettingsPage.tsx
+  "PER-04", // src/core/profile/context.ts
   "PER-05", // src/renderer/src/features/settings/SettingsPage.tsx
   "PER-06", // src/renderer/src/features/onboarding/OnboardingPage.tsx
   "PLAN-01", // src/renderer/src/features/plans/PlanFrames.tsx
@@ -68,6 +100,10 @@ export const implemented = [
   "PLAN-04", // src/renderer/src/features/plans/PlanFrames.tsx
   "PLAN-05", // src/renderer/src/features/plans/PlanFrames.tsx
   "PLAN-06", // src/renderer/src/features/plans/PlanFrames.tsx
+  "PLAN-10", // src/renderer/src/features/plans/GuidedPlan.tsx
+  "PLAN-11", // src/renderer/src/features/plans/PlanOverview.tsx
+  "PLAN-12", // src/renderer/src/features/plans/draftTree.ts
+  "PLAN-13", // src/core/plans/rebuild.ts
   "PLAN-21", // src/core/plans/create.ts
   "PLAN-22", // src/core/plans/path.ts
   "PLAN-23", // src/core/plans/create.ts
@@ -75,7 +111,7 @@ export const implemented = [
   "PLAN-30", // src/renderer/src/features/home/HomePages.tsx
   "PLAN-31", // src/renderer/src/features/home/HomePages.tsx
   "PRO-01", // src/core/plans/progress.ts
-  "PRO-02", // src/core/study/series.ts
+  "PRO-02", // src/core/study/series.ts, src/core/study/gapInsight.ts
   "PRO-03", // src/core/plans/progress.ts
   "PRO-04", // src/core/study/series.ts
   "PRO-05", // src/core/study/simulation.ts
@@ -95,6 +131,7 @@ export const implemented = [
   "SET-03", // src/renderer/src/features/settings/SettingsPage.tsx
   "SET-04", // src/renderer/src/features/settings/SettingsPage.tsx
   "SET-05", // src/core/share/usage.ts
+  "SET-06", // src/main/updates.ts
   "SET-08", // src/renderer/src/features/settings/SettingsPage.tsx
   "SET-07", // src/core/profile/profile.ts
   "SHR-01", // src/core/plans/file.ts
@@ -111,8 +148,8 @@ export const implemented = [
   "SRC-05", // src/core/sources/paste.ts
   "SRC-06", // src/core/sources/link.ts
   "SRC-07", // src/core/sources/folder.ts
-  "SRC-08", // src/core/sources/quality.ts
-  "SRC-12", // src/core/sources/manage.ts
+  "SRC-08", // src/core/sources/syllabus.ts
+  "SRC-12", // src/core/sources/jobs.ts
   "SRC-21", // src/core/sources/embed.ts
   "SRC-10", // src/core/sources/smartbook.ts
   "SRC-11", // src/core/sources/smartbook.ts

@@ -1,6 +1,8 @@
 # Release checks
 
-The owner has not created the GitHub repository yet. CI and attestations are configured locally and have not run on GitHub. Packaging produces local artifacts and never publishes automatically.
+The public repository is https://github.com/SuperTost100/politost-pyxis. Hosted checks start on push; their results must be inspected before claiming other-platform packages verified. Packaging never publishes automatically.
+
+The package homepage points to the repository. Linux maintainer metadata uses the authenticated owner SuperTost100 and their GitHub noreply address.
 
 ## Build targets
 
@@ -13,6 +15,8 @@ Installers and their SHA-256 checksums are uploaded as separate per-target artif
 When the remote exists, run the workflow and inspect all four results before publishing. Validate YAML with `actionlint` when installed. Actions are pinned to full commit SHAs resolved from their upstream release tags. Review new action versions before updating those pins.
 
 ## Owner release loop
+
+For desktop checks while using the computer, run `PYXIS_E2E_HIDDEN=1 npm run test:e2e -- --workers=1`. The test window stays hidden and macOS activation is disabled; the renderer continues painting and running timers. Playwright still captures screenshots and sends keyboard input to the renderer. This mode checks application keyboard behavior, while OS window activation and native-dialog behavior require visible checks. Packaged test launches additionally require `PYXIS_E2E=1`; ordinary installs ignore the hidden flag. Use disposable, healthy profiles, since workspace recovery can still show its error dialog.
 
 1. Run `npm run typecheck`, `npm test` and `npm run test:e2e`. Review skips and supply pinned runtime fixtures for Python/SymPy and real local embeddings.
 2. Run `npm run dist -- --publish never` on the release machine. Verify the app's native modules and downloaded-runtime license notices.

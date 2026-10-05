@@ -79,6 +79,8 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
       system: input.system,
       responseSchema,
       signal: input.signal,
+      // A repair of a reply about a picture still needs the picture.
+      attachments: input.attachments,
     });
     data = parsed(input.schema, result);
   }

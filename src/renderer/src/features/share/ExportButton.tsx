@@ -41,6 +41,7 @@ export function ExportButton({
   const [answers, setAnswers] = useState(false);
   const [progress, setProgress] = useState(false);
   const [embed, setEmbed] = useState(false);
+  const [author, setAuthor] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const formats: Format[] =
@@ -56,7 +57,12 @@ export function ExportButton({
     try {
       let result: "saved" | "cancelled";
       if (kind === "plan") {
-        const file = await invoke("plans.export", { planId, progress, embed });
+        const file = await invoke("plans.export", {
+          planId,
+          progress,
+          embed,
+          author,
+        });
         result = await window.pyxis.saveArtifact({
           filename: `${file.title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ").trim() || "plan"}.pyxis`,
           base64: textBase64(JSON.stringify(file, null, 2)),
@@ -155,6 +161,13 @@ export function ExportButton({
                 onChange={(event) => setProgress(event.target.checked)}
               >
                 {t("plans.includeProgress")}
+              </Checkbox>
+              <Checkbox
+                disabled={busy}
+                checked={author}
+                onChange={(event) => setAuthor(event.target.checked)}
+              >
+                {t("plans.includeAuthor")}
               </Checkbox>
               <Checkbox
                 disabled={busy}

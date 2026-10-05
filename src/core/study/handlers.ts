@@ -17,6 +17,7 @@ import {
   seedExerciseCards,
 } from "./cardsFromBook";
 import { enqueueGapDrill, readGapDrill, registerGapJobs } from "./gapDrill";
+import { registerGapInsightJobs } from "./gapInsight";
 import { exerciseView, topicExercises } from "./exercises";
 import {
   enqueueExercises,
@@ -27,6 +28,7 @@ import { requireTopic, writeLesson, type Wording } from "./openLesson";
 import type { Rating } from "./schedule";
 import { runTurn } from "../engine/funnel";
 import {
+  activeSimulation,
   enqueueSimulation,
   openSimulation,
   readSimulation,
@@ -37,7 +39,7 @@ import {
   registerSimulationJobs,
 } from "./simulation";
 import { flagTarget } from "./flags";
-import { startReview } from "./review";
+import { discardReview, readReview, reviewWaiting, skipDrill, startReview } from "./review";
 import { startDiagnostic } from "./topicQuiz";
 import { exportAnki } from "../share/anki";
 import { exportCardsCsv, exportMarkdown } from "../share/markdown";
@@ -51,6 +53,7 @@ import {
   readQuizGrading,
   registerQuizGradingJobs,
   submitQuiz,
+  timedPicks,
 } from "./quizGrading";
 import { startConfiguredQuiz, type QuizInput } from "./configuredQuiz";
 
@@ -76,13 +79,15 @@ export function studyHandlers(
     registerSimulationJobs(db, runner, simulationRun);
     registerCardJobs(db, runner, run);
     registerGapJobs(db, runner, run);
+    registerGapInsightJobs(db, runner, run);
   }
   return {
     exercises(input: { topicId: string; planId?: string; generate?: boolean }) {
       const scope = input.planId
         ? { planId: input.planId, topicId: input.topicId }
         : null;
-      if (input.generate && scope && runner) enqueueExercises(db, runner, scope);
+      if (input.generate && scope && runner)
+        enqueueExercises(db, runner, scope);
       return {
         exercises: topicExercises(db, input.topicId).map(exerciseView),
         job: scope ? exerciseJob(db, scope) : null,
@@ -101,13 +106,11 @@ export function studyHandlers(
         onPassages?: (passageIds: string[]) => void;
       },
     ) {
-      return writeLesson(
-        db,
-        input.planId,
-        input.topicId,
-        run ?? runTurn,
-        { ...options, wording: input.wording, regenerate: input.regenerate },
-      );
+      return writeLesson(db, input.planId, input.topicId, run ?? runTurn, {
+        ...options,
+        wording: input.wording,
+        regenerate: input.regenerate,
+      });
     },
     markdown(input: {
       planId: string;
@@ -134,8 +137,20 @@ export function studyHandlers(
       flagTarget(db, input.targetKind, input.targetId, input.reason ?? "");
       return { ok: true as const };
     },
-    review(input: { planId: string }) {
-      return startReview(db, input.planId);
+    review(input: { planId: string; count?: number }) {
+      return startReview(db, input.planId, { count: input.count, runner });
+    },
+    reviewSession(input: { planId: string }) {
+      return readReview(db, input.planId);
+    },
+    reviewDiscard(input: { planId: string }) {
+      return discardReview(db, input.planId);
+    },
+    reviewSkipDrill(input: { planId: string; jobId: string }) {
+      // Only this plan's own unadopted drill is stopped: a queued or running one stops costing model calls, a failed one
+      // has nothing to stop. Any other job id, or another plan's drill, is left alone.
+      if (skipDrill(db, input.planId, input.jobId)) runner?.cancel(input.jobId);
+      return { ok: true as const };
     },
     quizStart(input: QuizInput) {
       return runner
@@ -193,32 +208,34 @@ export function studyHandlers(
           }
         | undefined;
       if (gate?.kind === "simulation") throw new Error("use-simulation-submit");
-      const modelGraded = gate?.kind === "quiz" || gate?.kind === "diagnostic";
+      // A gap drill that is still building (or needs recovery) adds questions to this review first.
+      if (gate?.kind === "review" && gate.submitted_at == null && reviewWaiting(db, input.attemptId))
+        throw new Error("review-drills-pending");
+      const modelGraded =
+        gate?.kind === "quiz" ||
+        gate?.kind === "diagnostic" ||
+        gate?.kind === "review";
       // Model grading is a persistent job; the page watches it through quizGrading.
       if (runner && modelGraded)
         return submitQuiz(db, runner, input.attemptId, input.picks);
       // ponytail: without a runner (unit tests) grade inline; the app always has one.
+      const picks = timedPicks(db, input.attemptId, input.picks);
       const finalize = (
         graded?: Awaited<ReturnType<typeof gradeConfiguredAttempt>>,
-      ) => finalizeAttempt(db, input.attemptId, input.picks, graded);
+      ) => finalizeAttempt(db, input.attemptId, picks, graded);
       if (gate?.kind === "quiz" && JSON.parse(gate.body_json).config)
-        return gradeConfiguredAttempt(
-          db,
-          input.attemptId,
-          input.picks,
-          run,
-        ).then(finalize);
-      if (modelGraded)
-        return gradeOpenAnswers(db, input.attemptId, input.picks, run).then(
+        return gradeConfiguredAttempt(db, input.attemptId, picks, run).then(
           finalize,
         );
+      if (modelGraded)
+        return gradeOpenAnswers(db, input.attemptId, picks, run).then(finalize);
       return finalize();
     },
     quizGrading(input: { attemptId: string }) {
       return readQuizGrading(db, input.attemptId);
     },
     // Reads never generate: building cards is a durable job started by cardsGenerate.
-    cards(input: { planId: string; topicId: string }) {
+    cards(input: { planId: string; topicId?: string }) {
       return dueCards(db, input.planId, Date.now(), input.topicId);
     },
     queue(input: { planId: string; topicId: string }) {
@@ -235,12 +252,12 @@ export function studyHandlers(
     cardsBuild(input: { planId: string; topicId: string }) {
       return readCardsBuild(db, input);
     },
-    gapDrillStart(input: { planId: string; topicId: string }) {
+    gapDrillStart(input: { planId: string; topicId: string; gapId?: string }) {
       if (!runner) throw new Error("jobs-unavailable");
       return enqueueGapDrill(db, runner, input);
     },
-    gapDrillRead(input: { planId: string; topicId: string }) {
-      return readGapDrill(db, input.planId, input.topicId);
+    gapDrillRead(input: { planId: string; topicId: string; gapId?: string }) {
+      return readGapDrill(db, input.planId, input.topicId, input.gapId);
     },
     save(input: {
       planId: string;
@@ -263,14 +280,7 @@ export function studyHandlers(
       return suspendedCards(db, input.planId, input.topicId);
     },
     activeSimulation() {
-      return (
-        (db
-          .prepare(
-            // Once answers are frozen the tutor unlocks, even while grading runs or has failed.
-            "SELECT a.id AS attemptId, a.plan_id AS planId FROM attempts a JOIN items i ON i.id=a.item_id WHERE i.kind='simulation' AND a.submitted_at IS NULL AND json_extract(i.body_json,'$.gradingStartedAt') IS NULL ORDER BY a.started_at DESC LIMIT 1",
-          )
-          .get() as { attemptId: string; planId: string } | undefined) ?? null
-      );
+      return activeSimulation(db);
     },
     simulationOpen(input: { planId: string }) {
       return openSimulation(db, input.planId);
@@ -280,10 +290,13 @@ export function studyHandlers(
       minutes?: number;
       source?: "exam" | "mixed";
     }) {
+      // No length asked for leaves a prepared exam at the length it was prepared with.
       const minutes =
-        input.minutes === 60 || input.minutes === 90 || input.minutes === 120
-          ? input.minutes
-          : 30;
+        input.minutes === undefined
+          ? undefined
+          : input.minutes === 60 || input.minutes === 90 || input.minutes === 120
+            ? input.minutes
+            : 30;
       return startSimulation(
         db,
         input.planId,

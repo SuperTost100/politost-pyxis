@@ -272,9 +272,9 @@ The one renderer for model output.
 
 The result of a SymPy check next to a step.
 
-**Consumer provides** `state` (`verified` | `failed` | `none`) and, when failed, a reason.
+**Consumer provides** `state` (`verified` | `failed` | `none`), verified and failed labels, an optional unchecked label and, when failed, a reason.
 
-- Verified uses mastery text. Failed uses danger, with the reason on hover and focus. `none` renders nothing.
+- Verified uses mastery text. Failed uses danger and puts the core reason code in the native `title` tooltip. The failed badge is keyboard focusable, but tooltip display depends on the platform. `none` shows the unchecked label when supplied; otherwise it renders nothing. MarkdownView supplies that label.
 
 ## ContextBlock
 

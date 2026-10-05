@@ -2,6 +2,7 @@ import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan } from "../plans/create";
+import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
 import { createRunner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
@@ -72,13 +73,11 @@ const writer: GenerateInput["run"] = async (input) => {
     inputTokens: 1,
   };
 };
+/** Waits for the question build to be ready, then starts the exam the way the Start button does. */
 async function built(db: ReturnType<typeof openDatabase>, planId: string) {
-  for (let i = 0; i < 400; i++) {
-    const view = openSimulation(db, planId);
-    if (view) return view;
-    await new Promise((r) => setTimeout(r, 5));
-  }
-  throw new Error(JSON.stringify(readSimulationBuild(db, planId)));
+  await buildState(db, planId, "succeeded");
+  startSimulation(db, planId);
+  return openSimulation(db, planId)!;
 }
 async function buildState(
   db: ReturnType<typeof openDatabase>,
@@ -428,6 +427,7 @@ describe("M11 model-graded simulations", () => {
     expect(() => startSimulation(db, planId, 30, Date.now(), "exam")).toThrow(
       "simulation-needs-build",
     );
+    saveProfile(db, { interests: ["ciclismo"], interestsOn: true });
     const queued = enqueueSimulation(db, planId, 60) as { jobId: string };
     expect(enqueueSimulation(db, planId, 60)).toEqual(queued);
     expect(count(db, "attempts")).toBe(0);
@@ -446,6 +446,7 @@ describe("M11 model-graded simulations", () => {
     expect(systems.at(-1)).toContain("Write all output in Italian.");
     expect(systems.at(-1)).toContain("Cite only the supplied passages");
     expect(systems.at(-1)).not.toMatch(/\{\{[A-Za-z>]/);
+    expect(systems.at(-1)).toContain("prefer contexts from: ciclismo");
     const item = db
       .prepare(
         "SELECT grounding, engine_provider, model_id, prompt_template, prompt_version FROM items WHERE kind='simulation'",
@@ -504,6 +505,113 @@ describe("M11 model-graded simulations", () => {
     expect(calls).toBe(3);
     db.close();
   });
+  it("keeps a finished build ready, with no clock and no tutor lock, until the student starts it", async () => {
+    const { db, planId } = notesFixture();
+    const runner = createRunner(db, () => {});
+    registerSimulationJobs(db, runner, writer);
+    const study = studyHandlers(db, runner, run, writer);
+    const { jobId } = enqueueSimulation(db, planId, 30) as { jobId: string };
+    const ready = await buildState(db, planId, "succeeded");
+    expect(ready).toMatchObject({ jobId, minutes: 30, progress: 1 });
+    // Long past the would-be deadline: nothing started, nothing expired, nothing graded.
+    expect(openSimulation(db, planId, Date.now() + 5 * 3600_000)).toBeNull();
+    expect(count(db, "attempts")).toBe(0);
+    expect(count(db, "learning_events")).toBe(0);
+    expect(study.activeSimulation()).toBeNull();
+    // Asking again, or reopening the app, finds the same prepared exam instead of rebuilding.
+    expect(enqueueSimulation(db, planId, 60)).toEqual({ jobId });
+    const reopened = createRunner(db, () => {});
+    registerSimulationJobs(db, reopened, writer);
+    expect(readSimulationBuild(db, planId)).toMatchObject({
+      jobId,
+      state: "succeeded",
+    });
+    // Start is explicit: the clock begins now and the tutor locks only from here.
+    const at = Date.now() + 3600_000;
+    const started = startSimulation(db, planId, 30, at);
+    expect(started.deadline).toBe(at + 30 * 60_000);
+    expect(started.questions).toHaveLength(20);
+    expect(study.activeSimulation()).toMatchObject({
+      attemptId: started.attemptId,
+    });
+    expect(readSimulationBuild(db, planId)).toBeNull();
+    // One build starts one exam.
+    expect(() => startSimulation(db, planId)).toThrow("simulation-needs-build");
+    expect(count(db, "attempts")).toBe(1);
+    db.close();
+  });
+  it("starts the prepared exam even when exercises were added after it was built", async () => {
+    const { db, planId } = notesFixture();
+    const runner = createRunner(db, () => {});
+    registerSimulationJobs(db, runner, writer);
+    const { jobId } = enqueueSimulation(db, planId) as { jobId: string };
+    await buildState(db, planId, "succeeded");
+    db.prepare(
+      `INSERT INTO exercises (id, prompt, answer, locator_json, created_at)
+       VALUES ('late', 'Esercizio nuovo', 'risposta', ?, 2)`,
+    ).run(JSON.stringify({ kind: "generated", topicId: "t0" }));
+    expect(readSimulationBuild(db, planId)).toMatchObject({
+      jobId,
+      state: "succeeded",
+    });
+    const started = startSimulation(db, planId);
+    expect(started.questions).toHaveLength(20);
+    expect(started.questions.every((q) => q.stem.startsWith("Domanda scritta"))).toBe(true);
+    expect(readSimulationBuild(db, planId)).toBeNull();
+    // With the build consumed, the next start uses the new exercise.
+    const next = startSimulation(db, planId);
+    expect(next.questions.map((q) => q.stem)).toEqual(["Esercizio nuovo"]);
+    db.close();
+  });
+  it("starts a prepared exam with the length asked for now, and a new request updates the prepared length", async () => {
+    const { db, planId } = notesFixture();
+    const runner = createRunner(db, () => {});
+    registerSimulationJobs(db, runner, writer);
+    const { jobId } = enqueueSimulation(db, planId, 30) as { jobId: string };
+    await buildState(db, planId, "succeeded");
+    // A later prepare with another length reuses the questions and shows the length the student chose last.
+    expect(enqueueSimulation(db, planId, 90)).toEqual({ jobId });
+    expect(readSimulationBuild(db, planId)).toMatchObject({ jobId, minutes: 90 });
+    // Start with a length uses it; start with none keeps the prepared one.
+    const at = Date.now();
+    expect(startSimulation(db, planId, 120, at).deadline).toBe(at + 120 * 60_000);
+    await (async () => {
+      const again = enqueueSimulation(db, planId, 60) as { jobId: string };
+      expect(again.jobId).not.toBe(jobId);
+      await buildState(db, planId, "succeeded");
+    })();
+    expect(startSimulation(db, planId, undefined, at).deadline).toBe(at + 60 * 60_000);
+    db.close();
+  });
+  it("does not start a prepared exam whose topics or cited passages changed, and offers a fresh build", async () => {
+    for (const change of [
+      (db: ReturnType<typeof openDatabase>) => db.prepare("UPDATE topics SET archived_at = 5 WHERE id = 't0'").run(),
+      // A re-extract: the topic now holds new passage rows, so the cited ones are gone from it.
+      (db: ReturnType<typeof openDatabase>) => {
+        db.prepare("DELETE FROM topic_passages WHERE topic_id = 't1'").run();
+        db.prepare("INSERT INTO passages (id, text, created_at) VALUES ('fresh', 'Nuovo', 2)").run();
+        db.prepare("INSERT INTO topic_passages (topic_id, passage_id) VALUES ('t1', 'fresh')").run();
+      },
+    ]) {
+      const { db, planId } = notesFixture();
+      const runner = createRunner(db, () => {});
+      registerSimulationJobs(db, runner, writer);
+      const { jobId } = enqueueSimulation(db, planId, 30) as { jobId: string };
+      await buildState(db, planId, "succeeded");
+      change(db);
+      // Nothing to start: the prepared exam is not offered, and Start refuses with the existing "build first" error.
+      expect(readSimulationBuild(db, planId)).toBeNull();
+      expect(() => startSimulation(db, planId)).toThrow("simulation-needs-build");
+      expect(count(db, "attempts")).toBe(0);
+      // Preparing again writes new questions from what the plan holds now.
+      const next = enqueueSimulation(db, planId, 30) as { jobId: string };
+      expect(next.jobId).not.toBe(jobId);
+      await buildState(db, planId, "succeeded");
+      const view = startSimulation(db, planId);
+      expect(view.questions).toHaveLength(20);
+      db.close();
+    }
+  });
   it("retries a failed question build from its checkpoint and writes no attempt until it succeeds", async () => {
     const { db, planId } = notesFixture();
     const runner = createRunner(db, () => {});
@@ -518,8 +626,10 @@ describe("M11 model-graded simulations", () => {
     expect(failed.progress).toBe(0.5);
     expect(count(db, "attempts")).toBe(0);
     runner.retry(jobId);
-    const view = await built(db, planId);
+    await buildState(db, planId, "succeeded");
     expect(calls).toBe(3);
+    expect(count(db, "attempts")).toBe(0);
+    const view = await built(db, planId);
     expect(view.questions).toHaveLength(20);
     expect(count(db, "attempts")).toBe(1);
     db.close();

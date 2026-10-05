@@ -20,6 +20,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { Notice } from "../../components/Notice";
+import { OcrDataCard } from "../../components/OcrData";
 import "./SettingsPage.css";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -28,6 +29,16 @@ import { useAppState } from "../../app/app-state";
 import { invoke } from "../../lib/ipc";
 import { i18n, setLanguage, type Locale } from "../../locales/i18n";
 import { EnginesPanel } from "./EnginesPanel";
+
+const levels = [
+  "primary",
+  "lower-secondary",
+  "upper-secondary",
+  "technical",
+  "vocational",
+  "university",
+  "other",
+] as const;
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -50,6 +61,7 @@ export function SettingsPage() {
   const [draftInterests, setDraftInterests] = useState<string | null>(null);
   const [dataNote, setDataNote] = useState<string | null>(null);
   const [wipeArmed, setWipeArmed] = useState(false);
+  const [restoreArmed, setRestoreArmed] = useState(false);
   const [moving, setMoving] = useState(false);
   const place = useQuery({
     queryKey: ["workspace-path"],
@@ -62,6 +74,9 @@ export function SettingsPage() {
 
   async function patch(input: {
     displayName?: string;
+    educationLevel?: (typeof levels)[number];
+    year?: string;
+    followups?: boolean;
     school?: string;
     course?: string;
     dyslexia?: boolean;
@@ -81,6 +96,9 @@ export function SettingsPage() {
       setSaveError(true);
     }
   }
+  const workspaceName =
+    place.data?.split(/[\\/]/).filter(Boolean).at(-1) ??
+    t("settings.workspaceThis");
   const labels: Record<string, string> = {
     profile: t("settings.profile"),
     subjects: t("ask.subject"),
@@ -95,6 +113,21 @@ export function SettingsPage() {
     about: t("settings.about"),
     diagnostics: t("settings.diagnostics"),
   };
+  const levelChoices = (
+    <>
+      <div className="label section-label">{t("settings.level")}</div>
+      <div className="choice-list px-profile-levels">
+        {levels.map((item) => (
+          <Choice
+            key={item}
+            label={t(`onboarding.levels.${item}`)}
+            selected={(profile.data?.educationLevel ?? "university") === item}
+            onClick={() => void patch({ educationLevel: item })}
+          />
+        ))}
+      </div>
+    </>
+  );
   const groups = [
     {
       name: t("settings.groups.profile"),
@@ -198,6 +231,16 @@ export function SettingsPage() {
             onClick={() => void patch({ tutorMode: "socratic" })}
           />
         </div>
+        <div className="choice-list">
+          <Choice
+            label={t("settings.followups")}
+            selected={profile.data?.followups !== false}
+            onClick={() =>
+              void patch({ followups: profile.data?.followups === false })
+            }
+          />
+        </div>
+        {levelChoices}
       </>
     ),
     subjects: (
@@ -210,7 +253,7 @@ export function SettingsPage() {
     profile: (
       <>
         <div className="px-settings-profile-fields">
-          {(["displayName", "school", "course"] as const).map((field) => (
+          {(["displayName", "year", "school", "course"] as const).map((field) => (
             <label className="px-form-field" key={field}>
               <span className="label">
                 {t(
@@ -228,7 +271,8 @@ export function SettingsPage() {
               />
             </label>
           ))}
-        </div>{" "}
+        </div>
+        {levelChoices}
         <div className="label section-label">{t("settings.interests")}</div>
         <div className="choice-list">
           <Choice
@@ -345,6 +389,8 @@ export function SettingsPage() {
           {t("settings.move")}
         </Button>
         <p className="small section-hint">{t("settings.moveHint")}</p>
+        <div className="label section-label">{t("settings.ocr")}</div>
+        <OcrDataCard />
         <ul className="choice-list">
           {(usage.data ?? []).map((plan) => (
             <li key={plan.id} className="small">
@@ -375,20 +421,37 @@ export function SettingsPage() {
           </Button>
           <Button
             disabled={moving}
+            danger={restoreArmed}
             onClick={() => {
+              if (!restoreArmed) {
+                setRestoreArmed(true);
+                return;
+              }
+              setRestoreArmed(false);
               setDataNote(null);
               void window.pyxis
                 .restoreWorkspace()
                 .then((status) => {
-                  if (status === "restored") window.location.reload();
+                  if (status === "restored") {
+                    // Drafts, board strokes and staged files belong to the replaced workspace.
+                    sessionStorage.clear();
+                    window.location.reload();
+                  }
                 })
                 .catch(() => {
                   setDataNote(t("settings.restoreFailed"));
                 });
             }}
           >
-            {t("settings.restore")}
+            {restoreArmed
+              ? t("settings.restoreReplace", { workspace: workspaceName })
+              : t("settings.restore")}
           </Button>
+          {restoreArmed ? (
+            <Button type="text" onClick={() => setRestoreArmed(false)}>
+              {t("wizard.cancel")}
+            </Button>
+          ) : null}
         </div>
         <div className="px-settings-danger">
           <p className="small ink-muted">{t("settings.wipeHint")}</p>
@@ -404,11 +467,21 @@ export function SettingsPage() {
               void window.pyxis
                 .wipeWorkspace()
                 .then(() => {
+                  // The reload keeps sessionStorage, so clear drafts, board data and last paths of the deleted workspace first.
+                  sessionStorage.clear();
                   window.location.reload();
                 })
-                .catch(() => {
+                .catch((error: unknown) => {
                   setWipeArmed(false);
-                  setDataNote(t("settings.wipeFailed"));
+                  // Main tags the failure that came after the engine keys were cleared. Any other failure left them in place.
+                  setDataNote(
+                    t(
+                      error instanceof Error &&
+                        error.message.includes("wipe-after-keys")
+                        ? "settings.wipeKeysCleared"
+                        : "settings.wipeFailed",
+                    ),
+                  );
                 });
             }}
           >
@@ -420,6 +493,11 @@ export function SettingsPage() {
             </Button>
           ) : null}
         </div>
+        {restoreArmed ? (
+          <p className="small section-hint" role="alert">
+            {t("settings.restoreConfirm", { workspace: workspaceName })}
+          </p>
+        ) : null}
         {dataNote ? (
           <p className="small section-hint" role="status">
             {dataNote}
@@ -483,6 +561,7 @@ export function SettingsPage() {
           onClick={() => {
             navigate("/settings");
             setWipeArmed(false);
+            setRestoreArmed(false);
           }}
         >
           {t("settings.back")}

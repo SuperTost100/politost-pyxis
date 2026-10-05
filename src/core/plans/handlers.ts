@@ -1,12 +1,20 @@
 import {
   attachPlanSources,
   removePlanSource,
-  finishSourceRebuild,
   readPlanItem,
   openPlanQuiz,
 } from "./views";
 import { savePlanSettings } from "./settings";
-import { enqueuePlan, planBuildState, registerPlanJobs } from "./jobs";
+import {
+  applyStoredRebuild,
+  enqueuePlan,
+  planBuildState,
+  rebuildState,
+  registerPlanJobs,
+  startRebuild,
+} from "./jobs";
+import { educationKey, planEducation, setPlanEducation } from "./education";
+import type { EducationLevel } from "../profile/profile";
 import type { Runner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
 import { addSubject, reorderSubjects, removeSubject } from "./subjects";
@@ -19,10 +27,12 @@ import {
   listSubjects,
   nextLesson,
   readPlan,
-  rebuildPlan,
 } from "./create";
+import { proposeModules, proposeTree } from "./guided";
 import { withLibraryOriginals } from "./libraryOriginals";
 import { exportPlan, importPlan } from "./file";
+import { queueSyllabusChecks } from "../sources/syllabus";
+import { readProfile } from "../profile/profile";
 import { planMastery, planSeries } from "./progress";
 import { planDiskUsage } from "../share/usage";
 import { listSimulations } from "../study/simulation";
@@ -35,6 +45,11 @@ export function planHandlers(
   run?: GenerateInput["run"],
 ) {
   if (runner) registerPlanJobs(db, runner, run);
+  // SRC-08: what a plan edit changes is what the stored source comparison depends on, so it is queued again, once.
+  const recheck = <T>(planId: string, result: T): T => {
+    if (runner) queueSyllabusChecks(db, runner, planId);
+    return result;
+  };
   return {
     list() {
       return listPlans(db);
@@ -82,19 +97,50 @@ export function planHandlers(
         return createPlan(db, { ...input, signal });
       })();
     },
-    rebuild(input: { planId: string; sourceIds: string[] }) {
-      const result = rebuildPlan(db, input.planId, input.sourceIds);
-      finishSourceRebuild(db, input.planId, input.sourceIds);
-      return result;
+    proposeModules(
+      input: Parameters<typeof proposeModules>[1],
+      signal?: AbortSignal,
+    ) {
+      return proposeModules(db, input, signal, run);
+    },
+    proposeTree(
+      input: Parameters<typeof proposeTree>[1],
+      signal?: AbortSignal,
+    ) {
+      return proposeTree(db, input, signal, run);
+    },
+    rebuildState(input: { planId: string }) {
+      return rebuildState(db, input.planId);
+    },
+    rebuildStart(input: { planId: string }) {
+      if (!runner) throw new Error("rebuild-unavailable");
+      return startRebuild(db, runner, input.planId);
+    },
+    rebuildApply(input: { planId: string; jobId: string }) {
+      return recheck(input.planId, applyStoredRebuild(db, input.planId, input.jobId));
+    },
+    rebuildDiscard(input: { planId: string }) {
+      const job = rebuildState(db, input.planId);
+      if (job) {
+        runner?.cancel(job.jobId);
+        db.prepare("DELETE FROM jobs WHERE id = ?").run(job.jobId);
+      }
+      return { ok: true as const };
+    },
+    education(input: { planId: string }) {
+      return { level: planEducation(db, input.planId) };
+    },
+    setEducation(input: { planId: string; level: EducationLevel }) {
+      return { level: setPlanEducation(db, input.planId, input.level) };
     },
     settings(input: Parameters<typeof savePlanSettings>[1]) {
-      return savePlanSettings(db, input);
+      return recheck(input.planId, savePlanSettings(db, input));
     },
     attachSources(input: { planId: string; sourceIds: string[] }) {
-      return attachPlanSources(db, input.planId, input.sourceIds);
+      return recheck(input.planId, attachPlanSources(db, input.planId, input.sourceIds));
     },
     removeSource(input: { planId: string; sourceId: string }) {
-      return removePlanSource(db, input.planId, input.sourceId);
+      return recheck(input.planId, removePlanSource(db, input.planId, input.sourceId));
     },
     item(input: { planId: string; itemId: string }) {
       return readPlanItem(db, input.planId, input.itemId);
@@ -108,8 +154,10 @@ export function planHandlers(
     delete(input: { planId: string }) {
       const job = planBuildState(db, input.planId);
       if (job) runner?.cancel(job.jobId);
+      const rebuild = rebuildState(db, input.planId);
+      if (rebuild) runner?.cancel(rebuild.jobId);
       db.prepare(
-        "DELETE FROM jobs WHERE kind = 'plan-build' AND json_extract(params_json, '$.planId') = ?",
+        "DELETE FROM jobs WHERE kind IN ('plan-build', 'plan-rebuild') AND json_extract(params_json, '$.planId') = ?",
       ).run(input.planId);
       const quizJobs = db
         .prepare(
@@ -121,28 +169,36 @@ export function planHandlers(
         "DELETE FROM jobs WHERE (kind IN ('quiz-build', 'map-build', 'exercise-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind IN ('simulation-grade', 'simulation-build', 'cards-build', 'gap-drill', 'exercise-build') AND json_extract(params_json, '$.planId') = ?) OR (kind IN ('quiz-grade', 'quiz-check') AND json_extract(params_json, '$.attemptId') IN (SELECT id FROM attempts WHERE plan_id = ?))",
       ).run(input.planId, input.planId, input.planId);
       deletePlan(db, input.planId);
-      db.prepare("DELETE FROM settings WHERE key IN (?,?)").run(
+      db.prepare("DELETE FROM settings WHERE key IN (?,?,?)").run(
         `plan-material:${input.planId}`,
         `plan-import:${input.planId}`,
+        educationKey(input.planId),
       );
       return { ok: true };
     },
-    export(input: { planId: string; progress?: boolean; embed?: boolean }) {
+    export(input: {
+      planId: string;
+      progress?: boolean;
+      embed?: boolean;
+      author?: boolean;
+    }) {
+      const author =
+        input.author === false ? "" : readProfile(db)?.displayName.trim();
       return exportPlan(db, input.planId, {
         progress: input.progress === true,
         embed: input.embed === true,
+        ...(author ? { author } : {}),
         workspace,
       });
     },
     import(input: PlanFile & { libraryFor?: Record<string, string> }) {
-      return {
-        planId: importPlan(
-          db,
-          withLibraryOriginals(db, workspace, input),
-          Date.now(),
-          workspace,
-        ),
-      };
+      const planId = importPlan(
+        db,
+        withLibraryOriginals(db, workspace, input),
+        Date.now(),
+        workspace,
+      );
+      return recheck(planId, { planId });
     },
     mastery(input: { planId: string }) {
       return planMastery(db, input.planId);

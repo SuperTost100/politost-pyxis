@@ -11,10 +11,20 @@ import {
   templateVersion,
 } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
-import type { Runner, StepContext } from "../jobs/runner";
-import { createPlan, type BuildTopic } from "./create";
+import type { Runner, StepContext, StepSpec } from "../jobs/runner";
+import { createPlan, draftTree, type BuildTopic } from "./create";
 import { acrossTopics } from "../study/topicQuiz";
 import { addSubject } from "./subjects";
+import { snapshotPlanEducation } from "./education";
+import { buildSegments, passagesByTopic, SEGMENT_LIMIT } from "./segments";
+import {
+  applyRebuild,
+  computeRebuild,
+  reviewRebuild,
+  type RebuildPlan,
+} from "./rebuild";
+import { embedWithModel } from "../sources/retrieve";
+import { queueSyllabusChecks } from "../sources/syllabus";
 
 export type PlanInput = Omit<
   Parameters<typeof createPlan>[1],
@@ -36,6 +46,8 @@ type Params = {
   introId?: string;
   diagnosticId?: string;
   synopses?: Record<string, string>;
+  /** plan-rebuild only: the reviewed match that apply writes. */
+  rebuild?: RebuildPlan;
 };
 type Passage = {
   id: string;
@@ -44,8 +56,6 @@ type Passage = {
   section_path: string | null;
   locator_json: string;
 };
-const sectionKey = (sourceId: string, section: string) =>
-  JSON.stringify([sourceId, section]);
 const sectionOf = (p: Passage) => p.section_path ?? "Material";
 const abort = (ctx: StepContext) => ctx.signal.throwIfAborted();
 const topicSchema = z.object({
@@ -55,9 +65,8 @@ const topicSchema = z.object({
         title: z.string().min(1).max(160),
         summary: z.string().min(1).max(1200),
         subtopics: z.array(z.string().min(1).max(160)).max(30),
-        sourceSections: z
-          .array(z.object({ sourceId: z.string(), section: z.string() }))
-          .max(2000),
+        // Bounded by SEGMENT_LIMIT: the model names segments, it never echoes every page.
+        segmentIds: z.array(z.string()).max(SEGMENT_LIMIT),
       }),
     )
     .min(1)
@@ -117,6 +126,10 @@ function checkpoint(
     save();
     ctx.setParams(params);
   })();
+}
+function generatedTemplate(params: Params): "plan.topics" | "plan.tree" | null {
+  if (draftTree(params.input)) return "plan.tree";
+  return params.tree?.some((topic) => topic.provider) ? "plan.topics" : null;
 }
 export function diagnosticTopics(tree: BuildTopic[]): number[] {
   const grounded = tree.some((topic) => topic.passageIds.length > 0);
@@ -204,236 +217,248 @@ export function registerPlanJobs(
   runner: Runner,
   run?: GenerateInput["run"],
 ) {
+  const sourcesStep: StepSpec = {
+    name: "sources",
+    jobClass: null,
+    label: "wizard.stepSources",
+    async run(ctx) {
+      const params = ctx.params as Params;
+      if (params.snapshots) return true;
+      for (;;) {
+        abort(ctx);
+        requirePlan(db, params.planId);
+        const states = params.input.sourceIds.map(
+          (id) =>
+            db
+              .prepare("SELECT id, kind, status FROM sources WHERE id = ?")
+              .get(id) as
+              { id: string; kind: string; status: string } | undefined,
+        );
+        if (
+          states.some(
+            (s) =>
+              !s ||
+              [
+                "failed",
+                "removed",
+                "cancelled",
+                "interrupted",
+                "needs-ocr",
+              ].includes(s.status),
+          )
+        )
+          throw new IpcError("source-not-ready", "wizard.sourceNotReady");
+        if (states.every((s) => s?.status === "ready")) break;
+        await delay(100, undefined, { signal: ctx.signal });
+      }
+      params.snapshots = params.input.sourceIds.map((sourceId) => {
+        const doc = db
+          .prepare(
+            `SELECT d.id, d.tree_json, s.kind FROM source_documents d JOIN sources s ON s.id = d.source_id WHERE d.source_id = ? ORDER BY d.version DESC LIMIT 1`,
+          )
+          .get(sourceId) as
+          | { id: string; tree_json: string | null; kind: string }
+          | undefined;
+        if (!doc)
+          throw new IpcError("source-not-ready", "wizard.sourceNotReady");
+        const tree = doc.tree_json
+          ? (JSON.parse(doc.tree_json) as {
+              chapters?: Snapshot["chapters"];
+            })
+          : {};
+        return {
+          sourceId,
+          documentId: doc.id,
+          kind: doc.kind,
+          chapters: tree.chapters,
+        };
+      });
+      checkpoint(db, ctx, params, () => undefined);
+      return true;
+    },
+  };
+  const topicsStep: StepSpec = {
+    name: "topics",
+    jobClass: "model-cli",
+    label: "wizard.stepTopics",
+    async run(ctx) {
+      const params = ctx.params as Params;
+      if (params.tree) return true;
+      const draft = draftTree(params.input);
+      if (draft) {
+        params.tree = draft;
+        checkpoint(db, ctx, params, () => undefined);
+        return true;
+      }
+      const rows = passages(db, params);
+      const book =
+        params.snapshots?.length === 1 &&
+        params.snapshots[0]?.kind === "smartbook"
+          ? params.snapshots[0]
+          : undefined;
+      if (book?.chapters?.length) {
+        params.tree = book.chapters.map((chapter) => {
+          const chapterRows = rows.filter(
+            (row) =>
+              (JSON.parse(row.locator_json) as { chapter?: number })
+                .chapter === chapter.number,
+          );
+          return {
+            title: `${chapter.number}. ${chapter.title}`,
+            summary: chapter.title,
+            subtopics: paragraphTitles(chapterRows),
+            passageIds: chapterRows.map((row) => row.id),
+          };
+        });
+      } else {
+        const segments = buildSegments(rows);
+        const known = new Map(
+          segments.map((segment) => [segment.id, segment]),
+        );
+        const schema = topicSchema.superRefine((value, ctx) => {
+          const named = new Set<string>();
+          value.topics.forEach((topic, i) =>
+            topic.segmentIds.forEach((id, j) => {
+              if (!known.has(id))
+                ctx.addIssue({
+                  code: "custom",
+                  message: "Unknown source segment",
+                  path: ["topics", i, "segmentIds", j],
+                });
+              named.add(id);
+            }),
+          );
+          // Segments the model leaves out are attached later, but each source needs one anchor.
+          for (const sourceId of new Set(
+            segments.map((segment) => segment.sourceId),
+          ))
+            if (
+              !segments.some(
+                (segment) =>
+                  segment.sourceId === sourceId && named.has(segment.id),
+              )
+            )
+              ctx.addIssue({
+                code: "custom",
+                message: `No topic uses source ${sourceId}`,
+              });
+          if (
+            known.size &&
+            value.topics.some((topic) => !topic.segmentIds.length)
+          )
+            ctx.addIssue({
+              code: "custom",
+              message: "Every grounded topic needs a source segment",
+            });
+        });
+        // Folded sources keep only a sample per segment, so a synopsis restores the course sequence.
+        const outline = segments.map((segment) => ({
+          segmentId: segment.id,
+          sourceId: segment.sourceId,
+          label: segment.label,
+          passages: segment.passageIds.length,
+          sample: segment.sample,
+        }));
+        const sampleBudget = Math.max(
+          1,
+          Math.floor(48000 / Math.max(outline.length, 1)),
+        );
+        const packed = new Set(
+          segments
+            .filter((segment) => segment.packed)
+            .map((segment) => segment.sourceId),
+        );
+        for (const snapshot of params.snapshots ?? []) {
+          params.synopses ??= {};
+          if (
+            !packed.has(snapshot.sourceId) ||
+            params.synopses[snapshot.documentId]
+          )
+            continue;
+          const sourceRows = rows.filter(
+            (row) => row.source_id === snapshot.sourceId,
+          );
+          const count = Math.min(80, sourceRows.length);
+          const sampled = Array.from(
+            { length: count },
+            (_, i) =>
+              sourceRows[
+                Math.floor(
+                  (i * (sourceRows.length - 1)) / Math.max(count - 1, 1),
+                )
+              ]!,
+          );
+          const summary = await generate({
+            selection: params.selection,
+            signal: ctx.signal,
+            run,
+            schema: z.object({ synopsis: z.string().min(1).max(4000) }),
+            system: systemPrompt("plan.synopsis", {
+              contentLanguage: planLanguage(db, params.planId),
+            }),
+            prompt: JSON.stringify({
+              language: params.input.language ?? "it",
+              sourceId: snapshot.sourceId,
+              passages: sampled.map((row) => ({
+                section: sectionOf(row),
+                text: row.text.slice(0, 500),
+              })),
+            }),
+          });
+          params.synopses[snapshot.documentId] = (
+            summary.data as { synopsis: string }
+          ).synopsis;
+          checkpoint(db, ctx, params, () => undefined);
+        }
+        const result = await generate({
+          selection: params.selection,
+          signal: ctx.signal,
+          run,
+          schema,
+          system: systemPrompt("plan.topics", {
+            contentLanguage: planLanguage(db, params.planId),
+          }),
+          prompt: JSON.stringify({
+            title: params.input.title,
+            subject: params.input.subject,
+            language: params.input.language ?? "it",
+            sourceSynopses: params.snapshots?.flatMap((snapshot) => {
+              const synopsis = params.synopses?.[snapshot.documentId];
+              return synopsis
+                ? [{ sourceId: snapshot.sourceId, synopsis }]
+                : [];
+            }),
+            sources: outline.map((section) => ({
+              ...section,
+              sample: section.sample.slice(0, sampleBudget),
+            })),
+          }),
+        });
+        const tree = result.data as z.infer<typeof topicSchema>;
+        const passageIds = passagesByTopic(
+          segments,
+          tree.topics.map((topic) => topic.segmentIds),
+        );
+        params.tree = tree.topics.map((topic, i) => ({
+          title: topic.title,
+          summary: topic.summary,
+          subtopics: topic.subtopics,
+          passageIds: passageIds[i]!,
+          provider: result.provider,
+          model: result.model,
+        }));
+      }
+      checkpoint(db, ctx, params, () => undefined);
+      return true;
+    },
+  };
+
   runner.register("plan-build", {
     retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "plan") }),
     jobClass: "local",
     steps: [
-      {
-        name: "sources",
-        jobClass: null,
-        label: "wizard.stepSources",
-        async run(ctx) {
-          const params = ctx.params as Params;
-          if (params.snapshots) return true;
-          for (;;) {
-            abort(ctx);
-            requirePlan(db, params.planId);
-            const states = params.input.sourceIds.map(
-              (id) =>
-                db
-                  .prepare("SELECT id, kind, status FROM sources WHERE id = ?")
-                  .get(id) as
-                  { id: string; kind: string; status: string } | undefined,
-            );
-            if (
-              states.some(
-                (s) =>
-                  !s ||
-                  [
-                    "failed",
-                    "removed",
-                    "cancelled",
-                    "interrupted",
-                    "needs-ocr",
-                  ].includes(s.status),
-              )
-            )
-              throw new IpcError("source-not-ready", "wizard.sourceNotReady");
-            if (states.every((s) => s?.status === "ready")) break;
-            await delay(100, undefined, { signal: ctx.signal });
-          }
-          params.snapshots = params.input.sourceIds.map((sourceId) => {
-            const doc = db
-              .prepare(
-                `SELECT d.id, d.tree_json, s.kind FROM source_documents d JOIN sources s ON s.id = d.source_id WHERE d.source_id = ? ORDER BY d.version DESC LIMIT 1`,
-              )
-              .get(sourceId) as
-              | { id: string; tree_json: string | null; kind: string }
-              | undefined;
-            if (!doc)
-              throw new IpcError("source-not-ready", "wizard.sourceNotReady");
-            const tree = doc.tree_json
-              ? (JSON.parse(doc.tree_json) as {
-                  chapters?: Snapshot["chapters"];
-                })
-              : {};
-            return {
-              sourceId,
-              documentId: doc.id,
-              kind: doc.kind,
-              chapters: tree.chapters,
-            };
-          });
-          checkpoint(db, ctx, params, () => undefined);
-          return true;
-        },
-      },
-      {
-        name: "topics",
-        jobClass: "model-cli",
-        label: "wizard.stepTopics",
-        async run(ctx) {
-          const params = ctx.params as Params;
-          if (params.tree) return true;
-          const rows = passages(db, params);
-          const book =
-            params.snapshots?.length === 1 &&
-            params.snapshots[0]?.kind === "smartbook"
-              ? params.snapshots[0]
-              : undefined;
-          if (book?.chapters?.length) {
-            params.tree = book.chapters.map((chapter) => {
-              const chapterRows = rows.filter(
-                (row) =>
-                  (JSON.parse(row.locator_json) as { chapter?: number })
-                    .chapter === chapter.number,
-              );
-              return {
-                title: `${chapter.number}. ${chapter.title}`,
-                summary: chapter.title,
-                subtopics: paragraphTitles(chapterRows),
-                passageIds: chapterRows.map((row) => row.id),
-              };
-            });
-          } else {
-            const sections = new Map<
-              string,
-              { sourceId: string; section: string; sample: string }
-            >();
-            for (const row of rows) {
-              const key = sectionKey(row.source_id, sectionOf(row));
-              if (!sections.has(key))
-                sections.set(key, {
-                  sourceId: row.source_id,
-                  section: sectionOf(row),
-                  sample: row.text.slice(0, 250),
-                });
-            }
-            const known = new Set(sections.keys());
-            const schema = topicSchema.superRefine((value, ctx) => {
-              const covered = new Set<string>();
-              value.topics.forEach((topic, i) =>
-                topic.sourceSections.forEach((section, j) => {
-                  const key = sectionKey(section.sourceId, section.section);
-                  if (!known.has(key))
-                    ctx.addIssue({
-                      code: "custom",
-                      message: "Unknown source section",
-                      path: ["topics", i, "sourceSections", j],
-                    });
-                  covered.add(key);
-                }),
-              );
-              for (const key of known)
-                if (!covered.has(key))
-                  ctx.addIssue({
-                    code: "custom",
-                    message: `Missing source section ${key}`,
-                  });
-              if (
-                known.size &&
-                value.topics.some((topic) => !topic.sourceSections.length)
-              )
-                ctx.addIssue({
-                  code: "custom",
-                  message: "Every grounded topic needs a source section",
-                });
-            });
-            // Limit sampled text while retaining every section reference, including long PDFs.
-            const outline = [...sections.values()];
-            const sampleBudget = Math.max(
-              1,
-              Math.floor(48000 / Math.max(outline.length, 1)),
-            );
-            if (JSON.stringify(outline).length > 64000) {
-              params.synopses ??= {};
-              for (const snapshot of params.snapshots ?? []) {
-                if (params.synopses[snapshot.documentId]) continue;
-                const sourceRows = rows.filter(
-                  (row) => row.source_id === snapshot.sourceId,
-                );
-                const count = Math.min(80, sourceRows.length);
-                const sampled = Array.from(
-                  { length: count },
-                  (_, i) =>
-                    sourceRows[
-                      Math.floor(
-                        (i * (sourceRows.length - 1)) / Math.max(count - 1, 1),
-                      )
-                    ]!,
-                );
-                const summary = await generate({
-                  selection: params.selection,
-                  signal: ctx.signal,
-                  run,
-                  schema: z.object({ synopsis: z.string().min(1).max(4000) }),
-                  system: systemPrompt("plan.synopsis", {
-                    contentLanguage: planLanguage(db, params.planId),
-                  }),
-                  prompt: JSON.stringify({
-                    language: params.input.language ?? "it",
-                    sourceId: snapshot.sourceId,
-                    passages: sampled.map((row) => ({
-                      section: sectionOf(row),
-                      text: row.text.slice(0, 500),
-                    })),
-                  }),
-                });
-                params.synopses[snapshot.documentId] = (
-                  summary.data as { synopsis: string }
-                ).synopsis;
-                checkpoint(db, ctx, params, () => undefined);
-              }
-            }
-            const result = await generate({
-              selection: params.selection,
-              signal: ctx.signal,
-              run,
-              schema,
-              system: systemPrompt("plan.topics", {
-                contentLanguage: planLanguage(db, params.planId),
-              }),
-              prompt: JSON.stringify({
-                title: params.input.title,
-                subject: params.input.subject,
-                language: params.input.language ?? "it",
-                sourceSynopses: params.snapshots?.flatMap((snapshot) => {
-                  const synopsis = params.synopses?.[snapshot.documentId];
-                  return synopsis
-                    ? [{ sourceId: snapshot.sourceId, synopsis }]
-                    : [];
-                }),
-                sources: outline.map((section) => ({
-                  ...section,
-                  sample: section.sample.slice(0, sampleBudget),
-                })),
-              }),
-            });
-            const tree = result.data as z.infer<typeof topicSchema>;
-            params.tree = tree.topics.map((topic) => {
-              const sectionIds = new Set(
-                topic.sourceSections.map((section) =>
-                  sectionKey(section.sourceId, section.section),
-                ),
-              );
-              return {
-                title: topic.title,
-                summary: topic.summary,
-                subtopics: topic.subtopics,
-                passageIds: rows
-                  .filter((row) =>
-                    sectionIds.has(sectionKey(row.source_id, sectionOf(row))),
-                  )
-                  .map((row) => row.id),
-                provider: result.provider,
-                model: result.model,
-              };
-            });
-          }
-          checkpoint(db, ctx, params, () => undefined);
-          return true;
-        },
-      },
+      sourcesStep,
+      topicsStep,
       {
         name: "path",
         label: "wizard.stepPath",
@@ -589,23 +614,56 @@ export function registerPlanJobs(
           checkpoint(db, ctx, params, () =>
             db
               .prepare(
-                "UPDATE plans SET status = 'ready', engine_provider = ?, model_id = ?, model_source = 'selected', prompt_template = ?, prompt_version = ?, updated_at = ? WHERE id = ?",
+                "UPDATE plans SET status = ?, engine_provider = ?, model_id = ?, model_source = 'selected', prompt_template = ?, prompt_version = ?, updated_at = ? WHERE id = ?",
               )
               .run(
+                // PLAN-11: with no material the plan stays a draft after the build.
+                params.input.sourceIds.length === 0 ? "draft" : "ready",
                 params.selection.provider,
                 params.selection.model,
                 // A model-written topic tree is the plan's generated structure; smartbook chapters are not.
-                params.tree?.some((topic) => topic.provider)
-                  ? "plan.topics"
-                  : null,
-                params.tree?.some((topic) => topic.provider)
-                  ? templateVersion("plan.topics")
+                generatedTemplate(params),
+                generatedTemplate(params)
+                  ? templateVersion(generatedTemplate(params)!)
                   : null,
                 Date.now(),
                 params.planId,
               ),
           );
+          // SRC-08: the plan now has a title, subject and topics, so its sources can be compared with it.
+          queueSyllabusChecks(db, runner, params.planId);
           return { planId: params.planId };
+        },
+      },
+    ],
+  });
+  // PLAN-13: the same sources and topics steps build a fresh tree, then one more step matches it to the plan.
+  runner.register("plan-rebuild", {
+    retryParams: (params) => ({
+      ...(params as Params),
+      selection: selectionFor(db, "plan"),
+    }),
+    jobClass: "local",
+    steps: [
+      sourcesStep,
+      topicsStep,
+      {
+        name: "match",
+        label: "planOverview.rebuildStepMatch",
+        async run(ctx) {
+          const params = ctx.params as Params;
+          if (params.rebuild) return true;
+          abort(ctx);
+          requirePlan(db, params.planId);
+          params.rebuild = await computeRebuild(
+            db,
+            params.planId,
+            params.tree ?? [],
+            (text) => embedWithModel(text, ctx.signal),
+            ctx.signal,
+          );
+          checkpoint(db, ctx, params, () => undefined);
+          return true;
         },
       },
     ],
@@ -636,6 +694,7 @@ export function enqueuePlan(
       Date.now(),
       Date.now(),
     );
+    snapshotPlanEducation(db, planId);
     for (const sourceId of new Set(input.sourceIds))
       db.prepare(
         "INSERT INTO plan_sources (plan_id, source_id) VALUES (?, ?)",
@@ -681,4 +740,120 @@ export function planBuildState(db: Database.Database, planId: string) {
         }>,
       }
     : null;
+}
+
+type RebuildRow = {
+  id: string;
+  state: string;
+  progress: number;
+  step_label: string | null;
+  error: string | null;
+  params_json: string;
+};
+function latestRebuild(db: Database.Database, planId: string) {
+  return db
+    .prepare(
+      "SELECT id, state, progress, step_label, error, params_json FROM jobs WHERE kind = 'plan-rebuild' AND json_extract(params_json, '$.planId') = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+    )
+    .get(planId) as RebuildRow | undefined;
+}
+
+/** Starts one rebuild job per plan. A running or reviewable job is returned as is; a finished stale one is replaced. */
+export function startRebuild(
+  db: Database.Database,
+  runner: Runner,
+  planId: string,
+) {
+  const plan = db
+    .prepare(
+      "SELECT title, content_language AS language, style, s.name AS subject FROM plans p LEFT JOIN subjects s ON s.id = p.subject_id WHERE p.id = ? AND p.status != 'building'",
+    )
+    .get(planId) as
+    | {
+        title: string;
+        language: string | null;
+        style: PlanInput["style"];
+        subject: string | null;
+      }
+    | undefined;
+  if (!plan) throw new IpcError("plan-missing", "errors.notAvailable");
+  const sourceIds = (
+    db
+      .prepare(
+        "SELECT source_id AS id FROM plan_sources WHERE plan_id = ? ORDER BY source_id",
+      )
+      .all(planId) as Array<{ id: string }>
+  ).map((row) => row.id);
+  if (!sourceIds.length) throw new IpcError("no-sources", "errors.notAvailable");
+  const current = latestRebuild(db, planId);
+  if (current) {
+    const params = JSON.parse(current.params_json) as Params;
+    const live = ["queued", "running", "interrupted"].includes(current.state);
+    const reviewable =
+      current.state === "succeeded" &&
+      params.rebuild &&
+      !reviewRebuild(db, planId, params.rebuild).stale;
+    if (live || reviewable) return { jobId: current.id };
+    db.prepare("DELETE FROM jobs WHERE id = ?").run(current.id);
+  }
+  const input: PlanInput = {
+    title: plan.title,
+    sourceIds,
+    ...(plan.subject ? { subject: plan.subject } : {}),
+    ...(plan.language === "en" || plan.language === "it"
+      ? { language: plan.language }
+      : {}),
+    ...(plan.style ? { style: plan.style } : {}),
+  };
+  return {
+    jobId: runner.start("plan-rebuild", {
+      planId,
+      input,
+      selection: selectionFor(db, "plan"),
+    } satisfies Params),
+  };
+}
+
+export function rebuildState(db: Database.Database, planId: string) {
+  const row = latestRebuild(db, planId);
+  if (!row) return null;
+  const params = JSON.parse(row.params_json) as Params;
+  return {
+    jobId: row.id,
+    state: row.state,
+    progress: row.progress,
+    stepLabel: row.step_label,
+    error: row.error,
+    steps: db
+      .prepare(
+        "SELECT name, label, state FROM job_steps WHERE job_id = ? ORDER BY position",
+      )
+      .all(row.id) as Array<{
+      name: string;
+      label: string;
+      state: "pending" | "running" | "succeeded" | "failed";
+    }>,
+    review:
+      row.state === "succeeded" && params.rebuild
+        ? reviewRebuild(db, planId, params.rebuild)
+        : null,
+  };
+}
+
+/** Applies the stored match of a finished job, then removes the job. */
+export function applyStoredRebuild(
+  db: Database.Database,
+  planId: string,
+  jobId: string,
+) {
+  const row = latestRebuild(db, planId);
+  if (!row || row.id !== jobId || row.state !== "succeeded")
+    throw new IpcError("rebuild-missing", "errors.notAvailable");
+  const params = JSON.parse(row.params_json) as Params;
+  if (!params.rebuild) throw new IpcError("rebuild-missing", "errors.notAvailable");
+  return db.transaction(() => {
+    const result = applyRebuild(db, planId, params.rebuild!);
+    db.prepare("DELETE FROM jobs WHERE id = ?").run(jobId);
+    return result;
+  })();
 }

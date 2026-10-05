@@ -8,6 +8,7 @@ import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
 import { completeCurrentStage } from "../plans/create";
 import { syncGaps } from "../plans/progress";
+import { enqueueGapInsights } from "./gapInsight";
 import {
   answerOf,
   expectedText,
@@ -40,6 +41,41 @@ export function checkedAnswer(
   return row
     ? (JSON.parse(row.payload_json) as { check: CheckedAnswer }).check
     : undefined;
+}
+/** Answers sent this long after the saved deadline are not kept (absorbs a save already in flight). */
+export const DRAFT_GRACE_MS = 5_000;
+/** The saved draft, and the deadline that its first save started, when the quiz is timed. */
+export function quizDraft(db: Database.Database, attemptId: string) {
+  const row = db
+    .prepare(
+      "SELECT payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object' LIMIT 1",
+    )
+    .get(attemptId) as { payload_json: string } | undefined;
+  return row
+    ? (JSON.parse(row.payload_json) as {
+        draft: { picks: Record<string, string> };
+        deadlineAt?: number;
+      })
+    : undefined;
+}
+export function quizExpired(
+  db: Database.Database,
+  attemptId: string,
+  now = Date.now(),
+) {
+  const deadlineAt = quizDraft(db, attemptId)?.deadlineAt;
+  return deadlineAt != null && now > deadlineAt + DRAFT_GRACE_MS;
+}
+/** After the deadline the saved draft is the answer sheet; whatever the caller sends is ignored. */
+export function timedPicks(
+  db: Database.Database,
+  attemptId: string,
+  picks: Record<string, string>,
+  now = Date.now(),
+) {
+  return quizExpired(db, attemptId, now)
+    ? (quizDraft(db, attemptId)?.draft.picks ?? {})
+    : picks;
 }
 export function quizAttempt(db: Database.Database, attemptId: string) {
   const row = db
@@ -129,7 +165,11 @@ export async function gradeOpenAnswers(
   run?: GenerateInput["run"],
 ): Promise<Map<string, CheckedAnswer> | undefined> {
   const attempt = quizAttempt(db, attemptId);
-  if (attempt.kind !== "quiz" && attempt.kind !== "diagnostic")
+  if (
+    attempt.kind !== "quiz" &&
+    attempt.kind !== "diagnostic" &&
+    attempt.kind !== "review"
+  )
     return undefined;
   const grades = new Map<string, CheckedAnswer>();
   for (const question of attempt.body.questions) {
@@ -270,6 +310,7 @@ export function finalizeAttempt(
         row.plan_id,
         row.topic_id,
         JSON.stringify({
+          attemptId,
           score: scored.score,
           scores: scored.results.map((result) => result.score),
           questionScores:
@@ -296,9 +337,11 @@ export function finalizeAttempt(
     } else if (
       row.kind === "simulation" ||
       row.kind === "diagnostic" ||
+      row.kind === "review" ||
       row.kind === "quiz"
     ) {
-      if (row.kind !== "quiz")
+      // A review is practice, not a path stage: it records topic scores like a quiz and completes nothing.
+      if (row.kind !== "quiz" && row.kind !== "review")
         completeCurrentStage(db, row.plan_id, row.kind, now + 1);
       // Every diagnostic question carries its answer kind so open answers keep their 1.5 weight.
       recordTopicScores(
@@ -313,6 +356,7 @@ export function finalizeAttempt(
         scored.results,
         now,
         row.kind === "simulation" ? "simulation" : "quiz",
+        attemptId,
       );
       syncGaps(db, row.plan_id, now);
     }
@@ -402,6 +446,7 @@ export function registerQuizGradingJobs(
           }
           ctx.signal.throwIfAborted();
           finishGrading(db, params);
+          enqueueGapInsights(db, runner, params.attemptId);
           return true;
         },
       },
@@ -481,7 +526,8 @@ export function submitQuiz(
   db: Database.Database,
   runner: Runner,
   attemptId: string,
-  rawPicks: Record<string, string>,
+  sentPicks: Record<string, string>,
+  now = Date.now(),
 ): { jobId: string } {
   const existing = gradingJob(db, attemptId);
   if (existing) {
@@ -491,11 +537,17 @@ export function submitQuiz(
     return { jobId: existing.id };
   }
   const attempt = quizAttempt(db, attemptId);
-  if (attempt.kind !== "quiz" && attempt.kind !== "diagnostic")
+  if (
+    attempt.kind !== "quiz" &&
+    attempt.kind !== "diagnostic" &&
+    attempt.kind !== "review"
+  )
     throw new Error("grading-unavailable");
   const config = attempt.kind === "quiz" ? attempt.body.config : undefined;
   if (config && attempt.body.complete === false)
     throw new Error("quiz-building");
+  const expired = quizExpired(db, attemptId, now);
+  const rawPicks = timedPicks(db, attemptId, sentPicks, now);
   const picks: Record<string, string> = {};
   const pending: string[] = [];
   for (const question of attempt.body.questions) {
@@ -505,8 +557,12 @@ export function submitQuiz(
     // Configured quizzes treat a missing answer as blank; others keep only what was sent.
     const pick = given ?? checked?.pick ?? (config ? "" : undefined);
     if (pick === undefined) continue;
-    if (checked && checked.pick !== pick && config?.feedback)
-      throw new Error("answer-locked");
+    // Late, a checked answer stays as it was checked rather than failing the forced submit.
+    if (checked && checked.pick !== pick && config?.feedback) {
+      if (!expired) throw new Error("answer-locked");
+      picks[question.id] = checked.pick;
+      continue;
+    }
     picks[question.id] = pick;
     if (needsModel(question, pick) && checked?.pick !== pick)
       pending.push(question.id);
@@ -529,8 +585,10 @@ export async function checkQuestion(
   attemptId: string,
   questionId: string,
   pick: string,
+  now = Date.now(),
 ): Promise<CheckedAnswer> {
   const attempt = quizAttempt(db, attemptId);
+  if (quizExpired(db, attemptId, now)) throw new Error("attempt-closed");
   const question = attempt.body.questions.find((row) => row.id === questionId);
   const stored = checkedAnswer(db, attemptId, questionId);
   if (

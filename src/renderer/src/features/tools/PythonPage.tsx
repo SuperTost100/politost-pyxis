@@ -3,6 +3,7 @@ import { Button, Input } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { pythonMaxChars } from "../../components/pythonRun";
 import { invoke } from "../../lib/ipc";
 import { useJobs } from "../jobs/queries";
 import "./PythonPage.css";
@@ -28,6 +29,7 @@ export function PythonPage() {
         : false,
   });
   const ready = runtime.data?.phase === "ready";
+  const tooLong = code.length > pythonMaxChars;
   const megabytes = ((runtime.data?.totalBytes ?? 0) / 1e6).toFixed(1);
   async function download() {
     setStarting(true);
@@ -133,7 +135,7 @@ export function PythonPage() {
             type="primary"
             shape="round"
             loading={busy}
-            disabled={!ready}
+            disabled={!ready || tooLong}
             onClick={() => void run()}
           >
             {t("python.run")}
@@ -141,6 +143,11 @@ export function PythonPage() {
           {busy ? (
             <span className="meta" role="status">
               {t("python.running")}
+            </span>
+          ) : null}
+          {tooLong ? (
+            <span className="small" role="alert">
+              {t("python.tooLong", { count: pythonMaxChars })}
             </span>
           ) : null}
         </div>

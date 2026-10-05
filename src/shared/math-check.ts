@@ -32,7 +32,7 @@ export function anchoredChecks(
 
 export function fencedChecks(body: string): AnchoredCheck[] {
   const checks: AnchoredCheck[] = [];
-  for (const match of body.matchAll(/```check\s*\n([\s\S]*?)\n```/g)) {
+  for (const match of body.matchAll(/```(?:check|json)\s*\n([\s\S]*?)\n```/g)) {
     if (checks.length === 12) break;
     try {
       const raw: unknown = JSON.parse(match[1]!);
@@ -58,4 +58,16 @@ export function fencedChecks(body: string): AnchoredCheck[] {
     }
   }
   return anchoredChecks(body, checks);
+}
+
+/** Hide check transport data while keeping ordinary JSON examples visible. */
+export function stripCheckFences(body: string): string {
+  return body.replace(/```(check|json)\s*\n([\s\S]*?)\n```/g, (fence, language: string, content: string) => {
+    if (language === "check") return "";
+    try {
+      return checkClaimSchema.safeParse(JSON.parse(content)).success ? "" : fence;
+    } catch {
+      return fence;
+    }
+  });
 }

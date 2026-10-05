@@ -58,6 +58,26 @@ def _compare(difference, symbols):
         except (ValueError, TypeError, ZeroDivisionError, OverflowError): continue
     return {'state': 'none', 'reason': 'indeterminate'}
 
+def _same(a, b):
+    difference = s.simplify(a - b)
+    return True if difference == 0 else difference.equals(0)
+
+def _solve(expr, symbol, roots):
+    if isinstance(expr, list): raise ValueError('unsupported-expression')
+    # Every claimed value must be a root, and the list must be the whole real solution set.
+    for root in roots:
+        answer = _compare(expr.subs(symbol, root), {symbol.name: symbol})
+        if answer['state'] != 'verified': return answer
+    if any(root.is_real is not True for root in roots): return {'state': 'none', 'reason': 'unsupported-complex-roots'}
+    found = s.solveset(expr, symbol, s.S.Reals)
+    if not isinstance(found, s.FiniteSet) or len(found) > 20 or any(root.is_real is not True for root in found):
+        return {'state': 'none', 'reason': 'completeness-unresolved'}
+    for root in found:
+        matches = [_same(root, claimed) for claimed in roots]
+        if True in matches: continue
+        return {'state': 'none', 'reason': 'completeness-unresolved'} if None in matches else {'state': 'failed', 'reason': 'incomplete-solution-set'}
+    return {'state': 'verified', 'reason': 'real-solution-set'}
+
 def check_claim(raw):
     try:
         claim = json.loads(raw)
@@ -70,10 +90,7 @@ def check_claim(raw):
             if len(names) != 1: raise ValueError('unsupported-multivariate-solve')
             roots = _parse(claimed_text if claimed_text.strip().startswith('[') else '[' + claimed_text + ']', symbols)
             if not isinstance(roots, list) or not roots: raise ValueError('unsupported-roots')
-            for root in roots:
-                answer = _compare(expr.subs(symbols[names[0]], root), symbols)
-                if answer['state'] != 'verified': return json.dumps(answer)
-            return json.dumps({'state': 'verified', 'reason': 'roots-substituted'})
+            return json.dumps(_solve(expr, symbols[names[0]], roots))
         claimed = _parse(claimed_text, symbols)
         if isinstance(expr, list) or isinstance(claimed, list): raise ValueError('unsupported-expression')
         if claim['kind'] in ('equal', 'simplify'): difference = expr - claimed

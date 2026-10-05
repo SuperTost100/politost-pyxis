@@ -8,6 +8,9 @@ export type SeriesEvent = {
   scores?: number[];
   answerKinds?: Array<string | undefined>;
   evidenceKind?: "quiz" | "simulation";
+  /** The attempt this event came from and its answers by question id, when recorded; links wrong answers to gaps. */
+  attemptId?: string;
+  answers?: Array<{ id?: string; score: number }>;
   kind: "quiz" | "card" | "lesson" | "active";
   seconds?: number;
 };
@@ -138,32 +141,70 @@ export function activeMinutes(events: SeriesEvent[], now: number, days = 14) {
   return { bars, weekSeconds: week };
 }
 
-export function openGaps(events: SeriesEvent[]): OpenGap[] {
+/** A gap row the replay already knows: persisted (it has an id) or opened by the replay itself. */
+export type TrackedGap = OpenGap & { id?: string; closedAt: number | null; fresh: boolean };
+
+/**
+ * Replays a plan's quiz events against its gap rows. A gap opens on an attempt that qualifies (`shouldOpen`) while no
+ * gap on the topic is open, and closes at the first session where `shouldClose` holds. `scoresFor` says which of an
+ * event's answers count for a gap (a wrong answer linked to another gap does not). Known rows keep their ids and any
+ * closing time; the result lists them again with the ones that opened (`fresh`) or closed during the replay.
+ */
+export function replayGaps(
+  events: SeriesEvent[],
+  known: Array<OpenGap & { id: string; closedAt: number | null }> = [],
+  scoresFor: (gap: TrackedGap, event: SeriesEvent) => number[] = (_gap, event) =>
+    event.scores ?? [event.score],
+): TrackedGap[] {
   const byTopic = new Map<string, SeriesEvent[]>();
   for (const event of events) {
     if (event.kind !== "quiz") continue;
-    const list = byTopic.get(event.topicId) ?? [];
-    list.push(event);
-    byTopic.set(event.topicId, list);
+    byTopic.set(event.topicId, [...(byTopic.get(event.topicId) ?? []), event]);
   }
-  const open: OpenGap[] = [];
+  for (const gap of known) if (!byTopic.has(gap.topicId)) byTopic.set(gap.topicId, []);
+  const tracked: TrackedGap[] = [];
   for (const [topicId, list] of byTopic) {
     list.sort((a, b) => a.at - b.at);
-    const attempts = list.map((event) => ({
-      topicId,
-      at: event.at,
-      scores: event.scores ?? [event.score],
-    }));
-    let gap: OpenGap | null = null;
-    for (let index = 0; index < attempts.length; index++) {
-      const attempt = attempts[index];
-      if (!attempt) continue;
-      if (gap && shouldClose(gap, attempts.slice(0, index + 1))) gap = null;
-      if (!gap && shouldOpen(attempt, false))
-        gap = { topicId, openedAt: attempt.at };
+    const attemptsFor = (gap: TrackedGap) =>
+      list.map((event) => ({ topicId, at: event.at, scores: scoresFor(gap, event) }));
+    /** When the gap first satisfied the closing rule, or null. */
+    const closeTime = (gap: TrackedGap) => {
+      const attempts = attemptsFor(gap);
+      for (let index = 0; index < attempts.length; index++)
+        if (shouldClose(gap, attempts.slice(0, index + 1))) return attempts[index]!.at;
+      return null;
+    };
+    const mine: TrackedGap[] = known
+      .filter((gap) => gap.topicId === topicId)
+      .map((gap) => {
+        const row: TrackedGap = { ...gap, fresh: false };
+        row.closedAt = gap.closedAt ?? closeTime(row);
+        return row;
+      });
+    for (const event of list) {
+      const covered = mine.some(
+        (gap) => gap.openedAt <= event.at && (gap.closedAt == null || gap.closedAt > event.at),
+      );
+      const attempt = {
+        topicId,
+        at: event.at,
+        scores: event.scores ?? [event.score],
+        openScores: (event.scores ?? [event.score]).filter(
+          (_score, index) => event.answerKinds?.[index] === "open",
+        ),
+      };
+      if (covered || mine.some((gap) => gap.openedAt === event.at) || !shouldOpen(attempt, false)) continue;
+      const row: TrackedGap = { topicId, openedAt: event.at, closedAt: null, fresh: true };
+      row.closedAt = closeTime(row);
+      mine.push(row);
     }
-    if (gap && shouldClose(gap, attempts)) gap = null;
-    if (gap) open.push(gap);
+    tracked.push(...mine);
   }
-  return open;
+  return tracked;
+}
+
+export function openGaps(events: SeriesEvent[]): OpenGap[] {
+  return replayGaps(events)
+    .filter((gap) => gap.closedAt == null)
+    .map(({ topicId, openedAt }) => ({ topicId, openedAt }));
 }

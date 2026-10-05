@@ -19,6 +19,7 @@
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
 }
 .px-library .ant-table-cell {
   border-color: var(--border) !important;
@@ -36,10 +37,17 @@
 .px-library-name span {
   overflow-wrap: anywhere;
 }
+.px-library-flag {
+  margin: 0;
+  color: var(--warning);
+}
 .px-library-status {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+.px-library-kind {
+  white-space: nowrap;
 }
 .px-library-status svg {
   flex-shrink: 0;
@@ -75,6 +83,10 @@
   flex-direction: column;
   gap: var(--space-4);
   text-align: center;
+}
+.px-library-upload.is-dragging {
+  border-color: var(--primary);
+  background: var(--primary-soft);
 }
 .px-library-upload > svg {
   color: var(--ink-muted);

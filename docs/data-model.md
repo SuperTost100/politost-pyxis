@@ -19,8 +19,13 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 10             | Saved chat context and source library visibility                                    |
 | 11             | Reorderable subject position                                                        |
 | 12             | Topic `tree_json` and dismissible jobs                                              |
+| 13             | `topics.archived_at`. A rebuild archives unmatched topics instead of deleting them  |
+| 14             | `gaps.misconception` and `gaps.severity` (`severe` or `minor`), from the model analysis |
+| 15             | `gaps.origin`, `gaps.comparison`, `gaps.merged_into` and the `gap_answers` table    |
 
-Current version is 12. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
+
+Current version is 15. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table            | A row is                                                                                |
 | ---------------- | --------------------------------------------------------------------------------------- |
@@ -47,8 +52,9 @@ Current version is 12. A restored backup is migrated on a staging copy before it
 | card_reviews     | One rating of a card.                                                                   |
 | attempts         | A quiz or exercise attempt.                                                             |
 | attempt_answers  | One answer inside an attempt.                                                           |
-| gaps             | An open or closed knowledge gap.                                                        |
-| gap_items        | Items attached to a gap.                                                                |
+| gaps             | An open or closed knowledge gap. A topic can have several, one per misconception.       |
+| gap_items        | The drill quiz built for a gap.                                                         |
+| gap_answers      | A wrong answer (attempt and question) that counts for a gap.                            |
 | maps             | A concept map.                                                                          |
 | chats            | A tutor conversation.                                                                   |
 | messages         | One turn in a chat.                                                                     |
@@ -66,9 +72,9 @@ Schema declarations are in `src/core/db/migrations/0001_init.sql`; later changes
 
 Subjects have a stable saved position. Source documents and passages retain extraction and locator information; the blob hash identifies original bytes. Deleting cited passages is constrained by references. Flags have a target kind as well as an ID so a flagged exercise cannot accidentally suppress a card with the same ID.
 
-`learning_events` is the input for derived mastery, activity and gap calculations. Active-time events count time rather than evidence of knowledge. Flagged exercise evidence is excluded by progress queries. Graph and heatmap buckets use local calendar boundaries. Gap closure's distinct-day rule currently uses UTC day buckets in `study/gaps.ts`.
+`learning_events` is the input for derived mastery, activity and gap calculations. Active-time events count time rather than evidence of knowledge. Flagged exercise evidence is excluded by progress queries. Graph and heatmap buckets use local calendar boundaries. Gap closure's distinct-day rule uses local calendar days too (`study/gaps.ts`). Each gap writes one `gap_opened` and one `gap_closed` event; see [mastery](mastery.md).
 
-Plan files are a portability format, not a database dump. Version 2 includes study content and cited source excerpts, remaps IDs on import and optionally carries progress/original sources. See [plan file](plan-file.md). Workspace backups preserve the study database and source blobs. They exclude provider keys, runtime/model caches, scratch files and the exports folder. Restore preserves runtime/model caches already downloaded in the destination workspace; a fresh workspace can download them again. Restore validates and migrates a staging copy before replacing the active workspace.
+Plan files are a portability format, not a database dump. Version 2 includes study content and cited source excerpts, remaps IDs on import and optionally carries progress/original sources. With progress it also carries the gap rows, the attempts events name, the wrong answers each gap owns and its drill quiz. See [plan file](plan-file.md). Workspace backups preserve the study database and source blobs. They exclude provider keys, runtime/model caches, scratch files and the exports folder. Restore preserves runtime/model caches already downloaded in the destination workspace; a fresh workspace can download them again. Restore validates and migrates a staging copy before replacing the active workspace.
 
 ## Restore safety
 

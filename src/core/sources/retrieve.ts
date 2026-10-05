@@ -24,6 +24,14 @@ export function setRetrievalModel(embed: typeof modelEmbed): void {
   modelEmbed = embed;
 }
 
+/** The local model's vector for a short text, or null when the model is unavailable. */
+export async function embedWithModel(
+  text: string,
+  signal?: AbortSignal,
+): Promise<Float32Array | null> {
+  return modelEmbed ? modelEmbed(text, signal) : null;
+}
+
 export async function retrieveWithModel(
   db: Database.Database,
   query: string,
@@ -52,7 +60,19 @@ type Row = {
   rank: number;
 };
 
+/** Passages this near (L2 on normalized e5 vectors) join the fused ranking. Recall only; coverage uses the stricter bound below. */
 const VECTOR_MAX_DISTANCE = 0.8;
+/**
+ * SRC-23: the best vector alone calls a question covered at or under this L2 distance (cosine about 0.82).
+ * ponytail: measured, not tuned to a target. With the pinned multilingual-e5-small on 3 small sources, short passages and
+ * 1,400-character chunks (`retrieve-real-model.test.ts`): same-language related questions in Italian and English
+ * landed at 0.37-0.58, obviously unrelated ones (cooking, history, sport, marketing, geography) at 0.66-0.75, so 0.60
+ * splits those with room on both sides. The old 0.8 admitted all of them. Limits: a question in the other language than
+ * the source (0.59-0.67) and a neighbouring subject (maths asked of a physics source, 0.59-0.66) fall in the same
+ * band, so the former can read as "not covered" and the latter as covered. A larger source probably pulls unrelated
+ * questions nearer (not measured). The model's own NOT_COVERED reply is the backstop, and "answer from general knowledge" the way out.
+ */
+const VECTOR_COVERED_MAX_DISTANCE = 0.6;
 
 export function fuseRanks(lists: string[][], k = 60): string[] {
   const scores = new Map<string, number>();
@@ -297,7 +317,8 @@ export function retrieve(
       -row.rank >= 1e-7 && matches >= Math.max(1, Math.ceil(words.length * 0.4))
     );
   });
-  const vectorOk = bestDistance != null && bestDistance <= VECTOR_MAX_DISTANCE;
+  const vectorOk =
+    bestDistance != null && bestDistance <= VECTOR_COVERED_MAX_DISTANCE;
   const covered = options?.embed ? lexicalOk || vectorOk : lexicalOk;
   const hits = trimToBudget(
     fuseRanks(lists)

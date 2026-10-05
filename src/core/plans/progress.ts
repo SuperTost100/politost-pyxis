@@ -1,13 +1,21 @@
 import type Database from "better-sqlite3";
 import { flaggedIds } from "../study/flags";
 import { gapMisses } from "../study/gapInsight";
+import {
+  backfillGapEvents,
+  closeGap,
+  insertGap,
+  linkWrongAnswers,
+  readLinks,
+  scoresForGap,
+} from "../study/gapRows";
 import { newCard, retrievability, type ScheduleState } from "../study/schedule";
 import { uuidv7 } from "../../shared/ids";
 import { masteryFor, type MasteryEvent } from "../study/mastery";
 import {
   activeMinutes,
   chartPoints,
-  openGaps,
+  replayGaps,
   paceFacts,
   weeklyCounts,
   seriesEvidence,
@@ -20,7 +28,9 @@ export function planMastery(
   now = Date.now(),
 ) {
   const topics = db
-    .prepare(`SELECT id, title FROM topics WHERE plan_id = ? ORDER BY position`)
+    .prepare(
+      `SELECT id, title FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position`,
+    )
     .all(planId) as Array<{ id: string; title: string }>;
   const events = masteryEvidence(db, planId, now);
   const scores = masteryFor(events, now);
@@ -67,6 +77,15 @@ function masteryEvidence(
     });
   }
   return events;
+}
+
+/** The model proposes the severity; Pyxis forces "severe" when mastery is under half the target. */
+export function gapSeverity(
+  proposed: "severe" | "minor" | null,
+  mastery: number,
+  target: number,
+): "severe" | "minor" {
+  return proposed === "severe" || mastery < target / 2 ? "severe" : "minor";
 }
 
 /** A topic without passages contributes zero weight, including untouched topics with passages. */
@@ -190,6 +209,8 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
             : row.kind === "lesson_completed"
               ? 1
               : 0.5,
+        attemptId: payload.attemptId,
+        answers: payload.questionScores?.map(({ id, score }) => ({ id, score })),
         evidenceKind:
           payload.evidenceKind ?? (legacySimulation ? "simulation" : undefined),
         answerKinds: payload.questionScores?.map(
@@ -205,20 +226,30 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   });
 }
 
+/**
+ * Brings the plan's gap rows in line with its events (PRO-02, PRO-08): opens a gap where an attempt qualifies and none is
+ * open on the topic, closes each gap by its own linked answers, and writes one gap_opened and one gap_closed event per
+ * gap. Flagged content keeps a gap open on its topic. Safe to repeat; a second call changes nothing.
+ */
 export function syncGaps(
   db: Database.Database,
   planId: string,
   now = Date.now(),
 ) {
-  const open = openGaps(readSeries(db, planId));
-  const existing = db
-    .prepare(`SELECT id, topic_id, closed_at FROM gaps WHERE plan_id = ?`)
-    .all(planId) as Array<{
-    id: string;
-    topic_id: string | null;
-    closed_at: number | null;
-  }>;
-  const still = new Set(open.map((gap) => gap.topicId));
+  db.transaction(() => {
+    backfillGapEvents(db, planId);
+    const events = readSeries(db, planId);
+    const rows = db
+      .prepare(
+        `SELECT id, topic_id AS topicId, opened_at AS openedAt, closed_at AS closedAt, origin FROM gaps WHERE plan_id = ?`,
+      )
+      .all(planId) as Array<{
+      id: string;
+      topicId: string | null;
+      openedAt: number;
+      closedAt: number | null;
+      origin: string;
+    }>;
   const flagged = db
     .prepare(
       `SELECT DISTINCT t.id AS topic_id
@@ -237,31 +268,49 @@ export function syncGaps(
     UNION SELECT DISTINCT i.topic_id AS topic_id FROM flags f JOIN items i ON i.id=f.target_id AND f.target_kind='item' WHERE i.plan_id=? AND i.topic_id IS NOT NULL
     UNION SELECT DISTINCT tp.topic_id FROM flags f JOIN topic_passages tp ON tp.passage_id=f.target_id AND f.target_kind='passage' JOIN topics t ON t.id=tp.topic_id WHERE t.plan_id=?`).all(planId,planId,planId) as {topic_id:string}[];
   for (const row of generatedFlags) if (!flagged.some(existing => existing.topic_id === row.topic_id)) flagged.push(row);
-  for (const row of flagged) still.add(row.topic_id);
-  for (const row of existing) {
-    if (row.closed_at == null && row.topic_id && !still.has(row.topic_id)) {
-      db.prepare(`UPDATE gaps SET closed_at = ? WHERE id = ?`).run(now, row.id);
+    const flaggedTopics = new Set(flagged.map((row) => row.topic_id));
+    const links = readLinks(db, planId);
+    const tracked = replayGaps(
+      events,
+      rows
+        .filter((row) => row.topicId && row.origin !== "flag")
+        .map((row) => ({ id: row.id, topicId: row.topicId!, openedAt: row.openedAt, closedAt: row.closedAt })),
+      (gap, event) => scoresForGap(event, gap.id, links),
+    );
+    for (const gap of tracked) {
+      if (gap.id) {
+        // A flagged topic keeps its open gap however well the answers go.
+        if (gap.closedAt != null && !rows.find((row) => row.id === gap.id)?.closedAt && !flaggedTopics.has(gap.topicId))
+          closeGap(db, gap.id, Math.min(gap.closedAt, now), "answers");
+        continue;
+      }
+      const flagRow = rows.find(
+        (row) => row.topicId === gap.topicId && row.origin === "flag" && row.closedAt == null,
+      );
+      if (flagRow && gap.closedAt == null) {
+        // The flag-only gap becomes the answers gap: one open gap for the topic, as before.
+        db.prepare("UPDATE gaps SET origin = 'answers', opened_at = MIN(opened_at, ?) WHERE id = ?").run(
+          gap.openedAt,
+          flagRow.id,
+        );
+        flagRow.origin = "answers";
+        continue;
+      }
+      const id = insertGap(db, { planId, topicId: gap.topicId, openedAt: gap.openedAt, origin: "answers" });
+      if (gap.closedAt != null) closeGap(db, id, Math.min(gap.closedAt, now), "answers");
     }
-  }
-  for (const gap of open) {
-    const live = existing.find(
-      (row) => row.topic_id === gap.topicId && row.closed_at == null,
-    );
-    if (live) continue;
-    db.prepare(
-      `INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES (?, ?, ?, ?)`,
-    ).run(uuidv7(gap.openedAt), planId, gap.topicId, gap.openedAt);
-  }
-  for (const row of flagged) {
-    if (open.some((gap) => gap.topicId === row.topic_id)) continue;
-    const live = existing.find(
-      (item) => item.topic_id === row.topic_id && item.closed_at == null,
-    );
-    if (live) continue;
-    db.prepare(
-      `INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES (?, ?, ?, ?)`,
-    ).run(uuidv7(now), planId, row.topic_id, now);
-  }
+    const open = db
+      .prepare("SELECT id, topic_id AS topicId, origin FROM gaps WHERE plan_id = ? AND closed_at IS NULL")
+      .all(planId) as Array<{ id: string; topicId: string | null; origin: string }>;
+    for (const row of open)
+      if (row.origin === "flag" && row.topicId && !flaggedTopics.has(row.topicId))
+        closeGap(db, row.id, now, "flag");
+    for (const topicId of flaggedTopics) {
+      if (open.some((row) => row.topicId === topicId)) continue;
+      insertGap(db, { planId, topicId, openedAt: now, origin: "flag" });
+    }
+    linkWrongAnswers(db, planId, events);
+  })();
 }
 
 export function planSeries(
@@ -355,34 +404,50 @@ export function planSeries(
   );
   const gaps = db
     .prepare(
-      `SELECT topic_id AS topicId, opened_at AS openedAt FROM gaps
-       WHERE plan_id = ? AND closed_at IS NULL AND topic_id IS NOT NULL`,
+      `SELECT g.id AS gapId, g.topic_id AS topicId, g.opened_at AS openedAt, g.misconception, g.severity, g.comparison,
+         (SELECT count(*) FROM gap_answers ga WHERE ga.gap_id = g.id) AS linked
+       FROM gaps g
+       WHERE g.plan_id = ? AND g.closed_at IS NULL AND g.topic_id IN (SELECT id FROM topics WHERE archived_at IS NULL)`,
     )
-    .all(planId) as Array<{ topicId: string; openedAt: number }>;
+    .all(planId) as Array<{
+    gapId: string;
+    topicId: string;
+    openedAt: number;
+    misconception: string | null;
+    severity: "severe" | "minor" | null;
+    comparison: "unchecked" | null;
+    linked: number;
+  }>;
   const rankedGaps = gaps
-    .map((gap) => ({
+    .map(({ linked, comparison, ...gap }) => ({
       ...gap,
-      misses: gapMisses(db, planId, gap.topicId, gap.openedAt, 2).map(
-        ({ passageIds: _passageIds, ...miss }) => miss,
+      // True while this misconception could not be compared with the topic's other gaps, so it may repeat one of them.
+      unmerged: comparison === "unchecked",
+      misses: gapMisses(db, gap.gapId, 2).map(
+        ({ passageIds: _passageIds, answer: _answer, ...miss }) => miss,
       ),
-      severity:
-        (topics.find((topic) => topic.id === gap.topicId)?.mastery ?? 0) <
-        target / 2
-          ? ("severe" as const)
-          : ("minor" as const),
-      wrongAnswers: studied
-        .filter(
-          (event) =>
-            event.kind === "quiz" &&
-            event.topicId === gap.topicId &&
-            event.at >= gap.openedAt,
-        )
-        .reduce(
-          (sum, event) =>
-            sum +
-            (event.scores ?? [event.score]).filter((score) => score < 1).length,
-          0,
-        ),
+      severity: gapSeverity(
+        gap.severity,
+        topics.find((topic) => topic.id === gap.topicId)?.mastery ?? 0,
+        target,
+      ),
+      // PRO-02: the number of wrong answers linked to this gap. Gaps written before links existed count the topic's misses since they opened.
+      wrongAnswers:
+        linked ||
+        studied
+          .filter(
+            (event) =>
+              event.kind === "quiz" &&
+              event.topicId === gap.topicId &&
+              event.at >= gap.openedAt,
+          )
+          .reduce(
+            (sum, event) =>
+              sum +
+              (event.scores ?? [event.score]).filter((score) => score < 1)
+                .length,
+            0,
+          ),
     }))
     .sort(
       (a, b) =>
@@ -435,6 +500,7 @@ export function planSeries(
 }
 
 type ScorePayload = {
+  attemptId?: string;
   score?: number;
   scores?: number[];
   seconds?: number;

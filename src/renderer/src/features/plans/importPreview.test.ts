@@ -38,6 +38,19 @@ describe("plan import preview", () => {
     const preview = previewPlan(file, [{ id: "lib", blobSha: HELLO_SHA }]);
     expect(preview.counts).toMatchObject({ topics: 1, cards: 1, lessons: 0 });
     expect(preview.progress).toBe(false);
+    expect(preview.generalTopics).toBe(0);
+    const draft = previewPlan(
+      {
+        ...file,
+        topics: [
+          { title: "Moto", position: 0, grounding: "general" },
+          { title: "Old", position: 1, grounding: "general", archived: true },
+        ],
+      },
+      [],
+    );
+    // Archived topics are history; only active general ones raise the notice.
+    expect(draft.generalTopics).toBe(1);
     expect(preview.sources.map((s) => s.embedded)).toEqual([false, true]);
     expect(preview.missing).toHaveLength(1);
     expect(defaultChoices(preview)).toEqual({ 0: "library" });

@@ -11,6 +11,7 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
+import { ReviewProgress, useReviewSession } from "./ReviewProgress";
 
 import { review } from "../../../../core/study/schedule";
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
@@ -21,6 +22,9 @@ const RATINGS = ["again", "hard", "good", "easy"] as const;
 export function CardsPage() {
   const { t } = useTranslation();
   const { planId, topicId } = useParams();
+  // Without a topic this is the Review session: its stored cards, then its questions.
+  const reviewing = !topicId;
+  const reviewQueue = useReviewSession(planId, reviewing);
   useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -38,9 +42,9 @@ export function CardsPage() {
   const [armedDelete, setArmedDelete] = useState(false);
   const cards = useQuery({
     queryKey: ["cards", planId, topicId],
-    enabled: Boolean(planId && topicId),
+    enabled: Boolean(planId) && !reviewing,
     queryFn: () =>
-      invoke("study.cards", { planId: planId ?? "", topicId: topicId ?? "" }),
+      invoke("study.cards", { planId: planId ?? "", topicId }),
   });
   const parked = useQuery({
     queryKey: ["card-suspended", planId, topicId],
@@ -107,10 +111,13 @@ export function CardsPage() {
   const node = (plan.data?.nodes ?? []).find(
     (item) =>
       item.kind === "cards" &&
+      Boolean(topicId) &&
       item.topicId === topicId &&
       item.state === "current",
   );
-  const card = cards.data?.[0];
+  const card = reviewing ? reviewQueue.data?.cards[0] : cards.data?.[0];
+  // Editing needs a topic; a review card brings its own.
+  const cardTopicId = topicId ?? card?.topicId ?? undefined;
   useEffect(() => {
     setArmedDelete(false);
     setEditing(false);
@@ -122,6 +129,7 @@ export function CardsPage() {
   async function refresh() {
     await Promise.all([
       client.invalidateQueries({ queryKey: ["cards", planId, topicId] }),
+      client.invalidateQueries({ queryKey: ["review-session", planId] }),
       client.invalidateQueries({ queryKey: ["card-queue", planId, topicId] }),
       client.invalidateQueries({
         queryKey: ["card-suspended", planId, topicId],
@@ -181,7 +189,7 @@ export function CardsPage() {
 
   return (
     <FocusLayout
-      title={t("cards.title")}
+      title={t(reviewing ? "cards.reviewTitle" : "cards.title")}
       secondary={
         <Button
           type="text"
@@ -221,7 +229,12 @@ export function CardsPage() {
             {t(buildState === "cancelled" ? "cards.buildCancelled" : "cards.buildFailed")}
           </Notice>
         ) : null}
-        <ExportButton planId={planId ?? ""} topicId={topicId} kind="cards" />
+        {reviewing ? null : (
+          <ExportButton planId={planId ?? ""} topicId={topicId} kind="cards" />
+        )}
+        {reviewing && reviewQueue.data ? (
+          <ReviewProgress progress={reviewQueue.data.progress} />
+        ) : null}
         {queue.data ? (
           <p className="small">
             {t("cards.fresh", { count: queue.data.fresh })}
@@ -277,10 +290,10 @@ export function CardsPage() {
                   type="primary"
                   shape="round"
                   onClick={() => {
-                    if (!planId || !topicId) return;
+                    if (!planId || !cardTopicId) return;
                     void invoke("study.save", {
                       planId,
-                      topicId,
+                      topicId: cardTopicId,
                       cardId: card.id,
                       front: draftFront,
                       back: draftBack,
@@ -380,7 +393,7 @@ export function CardsPage() {
                 </div>
                 <div className="px-cards-actions px-cards-manage">
                   <Button
-                    disabled={ratingPending}
+                    disabled={ratingPending || !cardTopicId}
                     shape="round"
                     onClick={() => {
                       setDraftFront(card.front);
@@ -445,6 +458,30 @@ export function CardsPage() {
             </Button>
           </p>
         ))}
+        {reviewing && reviewQueue.data?.next === "questions" && !card ? (
+          <Button
+            type="primary"
+            shape="round"
+            onClick={() =>
+              navigate(
+                `/plans/${planId ?? ""}/diagnostic?attempt=${encodeURIComponent(reviewQueue.data?.attemptId ?? "")}`,
+              )
+            }
+          >
+            {t("cards.reviewQuestions")}
+          </Button>
+        ) : null}
+        {reviewing && reviewQueue.data?.next === "waiting" && !card ? (
+          <Notice
+            tone="info"
+            action={{
+              label: t("cards.reviewWaitingOpen"),
+              onClick: () => navigate(`/plans/${planId ?? ""}/review`),
+            }}
+          >
+            {t("cards.reviewWaiting", { count: reviewQueue.data.progress.questionsPending })}
+          </Notice>
+        ) : null}
         {seen.length > 0 && !card ? (
           <p className="body">
             {t("cards.summary", {
@@ -456,6 +493,7 @@ export function CardsPage() {
             })}
           </p>
         ) : null}
+        {reviewing ? null : (
         <section className="px-cards-add" aria-label={t("cards.add")}>
           <h2 className="body-strong">{t("cards.add")}</h2>
           <label className="small" htmlFor="new-front">
@@ -499,6 +537,7 @@ export function CardsPage() {
             {t("cards.save")}
           </Button>
         </section>
+        )}
       </section>
     </FocusLayout>
   );

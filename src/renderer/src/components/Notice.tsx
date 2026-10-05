@@ -14,11 +14,14 @@ export function Notice({
   tone,
   children,
   action,
+  secondary,
   details,
 }: {
   tone: keyof typeof tones;
   children: ReactNode;
   action?: { label: string; onClick: () => void };
+  /** A second, quieter choice beside the main action, such as going on without it. */
+  secondary?: { label: string; onClick: () => void };
   details?: string;
 }) {
   const { t } = useTranslation();
@@ -55,6 +58,11 @@ export function Notice({
       {action ? (
         <Button type="text" size="small" onClick={action.onClick}>
           {action.label}
+        </Button>
+      ) : null}
+      {secondary ? (
+        <Button type="text" size="small" onClick={secondary.onClick}>
+          {secondary.label}
         </Button>
       ) : null}
     </div>

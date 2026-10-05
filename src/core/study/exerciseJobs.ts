@@ -1,3 +1,5 @@
+import { interestsLine } from "../profile/context";
+import { planEducation } from "../plans/education";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
@@ -21,6 +23,8 @@ type Params = {
   topic: string;
   language: string;
   education: string;
+  /** PER-04 line captured when the job is prepared, so a resumed job keeps the same choice. */
+  interests?: string;
   passages: Array<{ id: string; text: string }>;
 };
 
@@ -54,7 +58,12 @@ const generatedSchema = z.object({
 });
 
 function system(params: Params): string {
-  return `${systemPrompt("exercise.generate", { contentLanguage: params.language })}\nReader education level: ${params.education}.`;
+  return [
+    `${systemPrompt("exercise.generate", { contentLanguage: params.language })}\nReader education level: ${params.education}.`,
+    params.interests,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function prepareExercises(db: Database.Database, input: Input): Params {
@@ -81,16 +90,14 @@ export function prepareExercises(db: Database.Database, input: Input): Params {
     size += text.length;
   }
   if (!passages.length) throw new Error("exercises-no-sources");
-  const profile = db
-    .prepare("SELECT education_level FROM profile LIMIT 1")
-    .get() as { education_level: string | null } | undefined;
   return {
     input,
     selection: selectionFor(db, "lesson"),
     batchId: uuidv7(),
     topic: topic.title,
     language: contentLanguage(db, topic.language),
-    education: profile?.education_level?.trim() || "university",
+    education: planEducation(db, input.planId) ?? "university",
+    interests: interestsLine(db) || undefined,
     passages,
   };
 }

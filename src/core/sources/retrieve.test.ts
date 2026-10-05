@@ -73,6 +73,26 @@ describe("retrieve", () => {
     expect(found.hits).toHaveLength(0);
   });
 
+  it("SRC-23 calls a question covered by the vectors only up to the coverage bound, not up to the candidate bound", () => {
+    // Unit vectors at an L2 distance d from unit(0): cos = 1 - d^2 / 2.
+    const at = (d: number) => {
+      const vector = new Float32Array(384);
+      vector[0] = 1 - (d * d) / 2;
+      vector[1] = Math.sqrt(1 - vector[0] ** 2);
+      return vector;
+    };
+    const db = openDatabase(":memory:");
+    const id = passage(db, "la velocità è la derivata dello spazio", unit(0));
+    const near = retrieve(db, "fotosintesi", { embed: () => at(0.55) });
+    expect(near.covered).toBe(true);
+    const between = retrieve(db, "fotosintesi", { embed: () => at(0.7) });
+    // Still a candidate for the fused ranking, but not enough to say the material answers the question.
+    expect(between.usedVectors).toBe(true);
+    expect(between.hits.map((hit) => hit.id)).toEqual([id]);
+    expect(between.covered).toBe(false);
+    expect(retrieve(db, "fotosintesi", { embed: () => at(0.85) }).usedVectors).toBe(false);
+  });
+
   it("SRC-21 scopes before KNN ranking even when 30 other vectors are nearer", () => {
     const db = openDatabase(":memory:");
     db.exec(`INSERT INTO sources (id, kind, title, created_at, updated_at) VALUES ('s1', 'text', 'Physics', 1, 1);

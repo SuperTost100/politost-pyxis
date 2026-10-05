@@ -24,6 +24,21 @@ function unpack(bytes: Uint8Array) {
 }
 
 describe("Anki package", () => {
+  it("leaves the cards of an archived topic out of the deck", () => {
+    const { db, add } = fixture();
+    db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at, archived_at) VALUES ('old', 'plan', 'Old', 1, 1, 5)").run();
+    add("live", "Live front", "Live back");
+    db.prepare("INSERT INTO cards (id, plan_id, topic_id, front, back, created_at) VALUES ('gone', 'plan', 'old', 'Old front', 'Old back', 1)").run();
+    const output = exportAnki(db, "plan", { now: 1800000000000 });
+    expect(output.noteCount).toBe(1);
+    const col = unpack(output.bytes);
+    try {
+      expect((col.prepare("SELECT flds FROM notes").all() as Array<{ flds: string }>).map((note) => note.flds)).toEqual(["Live front\x1fLive back"]);
+    } finally {
+      col.close();
+    }
+  });
+
   it("round trips legacy SQLite with Basic and numbered Cloze cards, fresh scheduling and math", () => {
     const { db, add } = fixture();
     add("basic", "Forza $F=ma$\nseconda riga", "$$\\frac{1}{\\frac{2}{3}}$$");

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { askTurn, chatContext, chatScope, chatSubject, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat } from "./turn";
+import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat } from "./turn";
 
 export function chatHandlers(db: Database.Database, workspace = "", fixtureReply?: string) {
   return {
@@ -12,7 +12,8 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
     },
     read(input: { chatId: string }) {
       return {
-        sourceIds: chatScope(db, input.chatId),
+        sourceIds: chatPickedSources(db, input.chatId),
+        planId: chatPlan(db, input.chatId),
         subject: chatSubject(db, input.chatId),
         context: chatContext(db, input.chatId),
         held: heldSources(db, input.chatId),
@@ -20,6 +21,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       };
     },
     seed(input: {
+      planId?: string;
       kind: "answer" | "passage";
       title: string;
       body: string;
@@ -40,12 +42,13 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       return { ok: true as const };
     },
     remove(input: { chatId: string }) {
-      deleteChat(db, input.chatId);
+      deleteChat(db, workspace, input.chatId);
       return { ok: true as const };
     },
     regenerate(input: {
       chatId: string;
       sourceIds?: string[];
+      planId?: string | null;
       mode?: "solver" | "socratic";
       allowGeneral?: boolean;
       signal?: AbortSignal;
@@ -70,6 +73,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       chatId?: string;
       text: string;
       sourceIds?: string[];
+      planId?: string | null;
       mode?: "solver" | "socratic";
       allowGeneral?: boolean;
       signal?: AbortSignal;

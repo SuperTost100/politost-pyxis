@@ -99,7 +99,32 @@ function bookExercises(db: Database.Database, topicId: string): ExerciseRow[] {
     kind: string | null;
     passage_id: string | null;
   }>;
-  return rows.map((row) => ({
+  // Plan import stamps planId on book exercises whose source was skipped; their quoted passages stay with no source.
+  const detached = db
+    .prepare(
+      `SELECT e.id, e.prompt, e.answer, json_extract(e.locator_json, '$.kind') AS kind,
+        COALESCE(e.passage_id, (
+          SELECT p.id FROM passages p
+          JOIN topic_passages tp ON tp.passage_id = p.id
+          WHERE tp.topic_id = t.id
+            AND p.source_id IS NULL
+            AND json_extract(p.locator_json, '$.chapter') = json_extract(e.locator_json, '$.chapter')
+          ORDER BY p.created_at
+          LIMIT 1
+        )) AS passage_id
+       FROM exercises e
+       JOIN topics t ON t.id = ?
+       WHERE e.smartbook_id IS NULL
+         AND json_extract(e.locator_json, '$.planId') = t.plan_id
+         AND json_extract(e.locator_json, '$.chapter') IN (
+           SELECT json_extract(p.locator_json, '$.chapter') FROM passages p
+           JOIN topic_passages tp ON tp.passage_id = p.id
+           WHERE tp.topic_id = t.id AND p.source_id IS NULL
+         )
+       ORDER BY e.created_at, e.rowid`,
+    )
+    .all(topicId) as typeof rows;
+  return [...rows, ...detached].map((row) => ({
     id: row.id,
     prompt: row.prompt,
     answer: row.answer,

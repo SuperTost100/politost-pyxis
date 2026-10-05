@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { readPlan, rebuildPlan } from "./create";
+import { readPlan } from "./create";
+import { applyRebuild, computeRebuild } from "./rebuild";
 import {
   attachPlanSources,
   finishSourceRebuild,
@@ -38,7 +39,7 @@ describe("plan views and material", () => {
       ),
     ).toEqual({ summary: "", subtopics: ["Velocity"] });
   });
-  it("attaches library material transactionally, then rebuilds newly attached sources", () => {
+  it("attaches library material transactionally, then rebuilds newly attached sources", async () => {
     const db = fixture();
     expect(() => attachPlanSources(db, "p", ["s", "unready"])).toThrow(
       "source-not-ready",
@@ -47,9 +48,16 @@ describe("plan views and material", () => {
     attachPlanSources(db, "p", ["s", "s"]);
     expect(planOrigin(db, "p")).toEqual({
       imported: false,
+      importedFrom: null,
       needsRebuild: true,
     });
-    rebuildPlan(db, "p", ["s"]);
+    applyRebuild(
+      db,
+      "p",
+      await computeRebuild(db, "p", [
+        { title: "Motion", summary: "", subtopics: [], passageIds: ["passage"] },
+      ]),
+    );
     finishSourceRebuild(db, "p", ["s"]);
     expect(topicContent(db, "p", "t").passageCount).toBe(1);
     expect(planOrigin(db, "p").needsRebuild).toBe(false);

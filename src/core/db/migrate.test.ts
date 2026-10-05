@@ -58,6 +58,7 @@ describe("migrate", () => {
       "attempt_answers",
       "gaps",
       "gap_items",
+      "gap_answers",
       "maps",
       "chats",
       "messages",
@@ -71,7 +72,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(12);
+    expect(db.pragma("user_version", { simple: true })).toBe(15);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -86,7 +87,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(12);
+    expect(again.pragma("user_version", { simple: true })).toBe(15);
   });
 
   it("inserts and queries a vector", () => {

@@ -2,12 +2,28 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
 import { listPlans, nextLesson } from "./create";
-import { planMastery, planSeries } from "./progress";
+import { planMastery, planSeries, syncGaps } from "./progress";
+import { assignAnswers, insertGap } from "../study/gapRows";
 import { flagTarget } from "../study/flags";
 import { newCard, review, retrievability } from "../study/schedule";
 import { listSimulations } from "../study/simulation";
 
 describe("planMastery", () => {
+  it("persists a gap from one weak open-answer event", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('p','Physics','ready',1,1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','Motion',0,1);
+    `);
+    db.prepare(
+      "INSERT INTO learning_events (id,kind,plan_id,topic_id,payload_json,created_at) VALUES ('e','answer_given','p','t',?,1000)",
+    ).run(JSON.stringify({ score: 0.2, scores: [0.2], questionScores: [{ id: "q", score: 0.2, kind: "open" }] }));
+    expect(planSeries(db, "p", 1000).gaps).toHaveLength(1);
+    expect(planSeries(db, "p", 1000).gaps).toHaveLength(1);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM gaps").get()).toEqual({ n: 1 });
+    db.close();
+  });
+
   it("removes flagged quiz questions from mastery even when flagged after submission", () => {
     const db = openDatabase(":memory:");
     db.prepare(
@@ -72,6 +88,30 @@ describe("planMastery", () => {
     expect(row?.mastery).toBe(0);
   });
 
+  it("shows the same mastery in the plan list before the simulation", () => {
+    const db = openDatabase(":memory:");
+    const now = 1_700_000_000_000;
+    db.prepare(
+      "INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Physics', 'ready', 1, 1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t', 'p', 'Motion', 0, 1)",
+    ).run();
+    db.exec(`
+      INSERT INTO sources (id,title,kind,status,created_at,updated_at) VALUES ('s','Notes','txt','ready',1,1);
+      INSERT INTO source_documents (id,source_id,version,tree_json,created_at) VALUES ('d','s',1,'{}',1);
+      INSERT INTO passages (id,source_id,document_id,text,created_at) VALUES ('passage','s','d','Motion',1);
+      INSERT INTO topic_passages (topic_id,passage_id) VALUES ('t','passage');
+    `);
+    db.prepare(
+      "INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at) VALUES ('e', 'answer_given', 'p', 't', ?, ?)",
+    ).run(JSON.stringify({ score: 1, scores: Array(10).fill(1) }), now);
+    const mastery = planMastery(db, "p", now)[0]!.mastery;
+    expect(mastery).toBeGreaterThan(0.5);
+    expect(listPlans(db, now)[0]!.mastery).toBe(mastery);
+    db.close();
+  });
+
   it("lists a finished simulation with its score and minutes", () => {
     const db = openDatabase(":memory:");
     const planId = uuidv7(1);
@@ -119,6 +159,43 @@ describe("planMastery", () => {
     });
   });
 
+  describe("the recommended lesson counts severe gaps only", () => {
+    const T0 = Date.UTC(2026, 0, 14, 12);
+    function planWithNode() {
+      const db = openDatabase(":memory:");
+      db.exec(`
+        INSERT INTO plans (id,title,status,target,created_at,updated_at) VALUES ('p','Fisica','ready',0.8,1,1);
+        INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','Moti',0,1);
+        INSERT INTO path_nodes (id,plan_id,topic_id,kind,position,title,created_at) VALUES ('n','p','t','intro',0,'Moti',1);
+      `);
+      return db;
+    }
+    const answers = (db: ReturnType<typeof openDatabase>, id: string, scores: number[], at: number) =>
+      db
+        .prepare("INSERT INTO learning_events (id,kind,plan_id,topic_id,payload_json,created_at) VALUES (?, 'answer_given','p','t',?,?)")
+        .run(id, JSON.stringify({ score: scores.reduce((a, b) => a + b, 0) / scores.length, scores }), at);
+
+    it("does not call minor gaps severe, and counts a severe one once", () => {
+      const db = planWithNode();
+      answers(db, "good", [1, 1, 1, 1, 1, 1], T0);
+      insertGap(db, { planId: "p", topicId: "t", openedAt: T0 + 1, origin: "answers", misconception: "slip", severity: "minor" });
+      insertGap(db, { planId: "p", topicId: "t", openedAt: T0 + 2, origin: "misconception", misconception: "other slip", severity: "minor" });
+      expect(nextLesson(db, "p", T0 + 10)).toEqual({ nodeId: "n", reason: "next", count: 0 });
+      insertGap(db, { planId: "p", topicId: "t", openedAt: T0 + 3, origin: "misconception", misconception: "real misunderstanding", severity: "severe" });
+      expect(nextLesson(db, "p", T0 + 10)).toEqual({ nodeId: "n", reason: "gaps", count: 1 });
+      db.close();
+    });
+
+    it("syncs the gap rows with the answers before counting", () => {
+      const db = planWithNode();
+      answers(db, "bad", [0, 0], T0);
+      expect(db.prepare("SELECT count(*) AS n FROM gaps").get()).toEqual({ n: 0 });
+      expect(nextLesson(db, "p", T0 + 10)).toEqual({ nodeId: "n", reason: "gaps", count: 1 });
+      expect(db.prepare("SELECT count(*) AS n FROM gaps").get()).toEqual({ n: 1 });
+      db.close();
+    });
+  });
+
   it("stores an open gap from two misses in one quiz", () => {
     const db = openDatabase(":memory:");
     const planId = uuidv7(1);
@@ -144,7 +221,16 @@ describe("planMastery", () => {
     expect(series.chart).toHaveLength(14);
     expect(series.chart[13]?.count).toBe(1);
     expect(series.gaps).toEqual([
-      { topicId, openedAt: now, severity: "severe", wrongAnswers: 2, misses: [] },
+      {
+        gapId: expect.any(String),
+        topicId,
+        misconception: null,
+        unmerged: false,
+        openedAt: now,
+        severity: "severe",
+        wrongAnswers: 2,
+        misses: [],
+      },
     ]);
     expect(series.pace.week).toBe(1);
     const again = planSeries(db, planId, now);
@@ -470,6 +556,166 @@ describe("specified mastery evidence", () => {
     );
     db.prepare("UPDATE cards SET removed=1 WHERE id='card'").run();
     expect(planMastery(db, "p", now)[0]!.mastery).toBe(0);
+    db.close();
+  });
+});
+
+
+describe("gap lifecycle (PRO-08, 4.7)", () => {
+  const DAY = 86_400_000;
+  const T0 = Date.UTC(2026, 2, 2, 12);
+
+  function plan(topics = ["a"]) {
+    const db = openDatabase(":memory:");
+    db.prepare("INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Physics', 'ready', 1, 1)").run();
+    for (const [index, id] of topics.entries())
+      db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, 'p', ?, ?, 1)").run(id, id, index);
+    return db;
+  }
+
+  /** What grading saves for one topic's answers: the item, the submitted attempt with its results, and the event. Then the sync grading runs. */
+  function grade(db: ReturnType<typeof plan>, id: string, topicId: string, day: number, scores: number[]) {
+    const at = T0 + day * DAY;
+    const questions = scores.map((_score, index) => ({
+      id: `${id}-q${index}`,
+      topicId,
+      stem: `Question ${id}-${index}`,
+      answer: { kind: "tf", correct: true },
+    }));
+    db.prepare("INSERT INTO items (id, plan_id, kind, body_json, grounding, created_at) VALUES (?, 'p', 'review', ?, 'sources', ?)").run(
+      `item-${id}`,
+      JSON.stringify({ questions }),
+      at,
+    );
+    db.prepare("INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES (?, 'p', ?, ?, ?)").run(id, `item-${id}`, at - 1, at);
+    db.prepare("INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)").run(
+      `ans-${id}`,
+      id,
+      JSON.stringify({ picks: {}, results: scores.map((score, index) => ({ id: `${id}-q${index}`, score, expected: "true", explanation: "" })) }),
+      at,
+    );
+    db.prepare("INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at) VALUES (?, 'answer_given', 'p', ?, ?, ?)").run(
+      `ev-${id}`,
+      topicId,
+      JSON.stringify({
+        attemptId: id,
+        evidenceKind: "quiz",
+        score: scores.reduce((sum, score) => sum + score, 0) / scores.length,
+        scores,
+        questionScores: scores.map((score, index) => ({ id: `${id}-q${index}`, kind: "tf", score })),
+      }),
+      at,
+    );
+    syncGaps(db, "p", at);
+  }
+
+  const gaps = (db: ReturnType<typeof plan>, topicId = "a") =>
+    db.prepare("SELECT id, opened_at, closed_at FROM gaps WHERE topic_id = ? ORDER BY opened_at, id").all(topicId) as Array<{
+      id: string;
+      opened_at: number;
+      closed_at: number | null;
+    }>;
+  const events = (db: ReturnType<typeof plan>, kind: string) =>
+    db.prepare("SELECT payload_json FROM learning_events WHERE kind = ? ORDER BY created_at, rowid").all(kind) as Array<{ payload_json: string }>;
+
+  it("closes after a later miss: opened day 0, missed again on day 1, clean on days 2 to 5", () => {
+    const db = plan();
+    grade(db, "d0", "a", 0, [0, 0]);
+    grade(db, "d1", "a", 1, [0, 1, 1, 1]);
+    // The day-1 miss does not close or reopen anything; it only restarts the count.
+    expect(gaps(db)).toHaveLength(1);
+    expect(gaps(db)[0]!.closed_at).toBeNull();
+    grade(db, "d2", "a", 2, [1]);
+    expect(gaps(db)[0]!.closed_at).toBeNull();
+    grade(db, "d3", "a", 3, [1]);
+    // Two clean days after the last miss: closed at the second one.
+    expect(gaps(db)).toEqual([{ id: expect.any(String), opened_at: T0, closed_at: T0 + 3 * DAY }]);
+    grade(db, "d4", "a", 4, [1]);
+    grade(db, "d5", "a", 5, [1]);
+    expect(gaps(db)).toHaveLength(1);
+    expect(planSeries(db, "p", T0 + 5 * DAY).gaps).toEqual([]);
+    // One gap_opened and one gap_closed, each written once however often the sync ran.
+    const id = gaps(db)[0]!.id;
+    expect(events(db, "gap_opened").map((row) => JSON.parse(row.payload_json))).toEqual([{ gapId: id, origin: "answers" }]);
+    expect(events(db, "gap_closed").map((row) => JSON.parse(row.payload_json))).toEqual([{ gapId: id, reason: "answers" }]);
+    syncGaps(db, "p", T0 + 9 * DAY);
+    expect(events(db, "gap_opened")).toHaveLength(1);
+    expect(events(db, "gap_closed")).toHaveLength(1);
+    db.close();
+  });
+
+  it("is not held open by a miss from before the last clean stretch, nor by another topic's miss", () => {
+    const db = plan(["a", "b"]);
+    grade(db, "a0", "a", 0, [0, 0]);
+    // The same review also missed a question of another topic, and later reviews miss it again: topic a is unaffected.
+    grade(db, "b1", "b", 1, [0]);
+    grade(db, "a1", "a", 1, [1, 1]);
+    grade(db, "b2", "b", 2, [0, 1]);
+    grade(db, "a2", "a", 2, [1]);
+    expect(gaps(db)[0]!.closed_at).toBe(T0 + 2 * DAY);
+    db.close();
+  });
+
+  it("counts different calendar days, not 24-hour spans", () => {
+    const db = plan();
+    grade(db, "d0", "a", 0, [0, 0]);
+    // Two clean sessions an hour apart on the same day are one day.
+    const at = T0 + DAY;
+    for (const [id, offset] of [["x", 0], ["y", 3_600_000]] as const) {
+      db.prepare("INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at) VALUES (?, 'answer_given', 'p', 'a', ?, ?)").run(
+        id,
+        JSON.stringify({ score: 1, scores: [1] }),
+        at + offset,
+      );
+    }
+    syncGaps(db, "p", at + 3_600_000);
+    expect(gaps(db)[0]!.closed_at).toBeNull();
+    db.close();
+  });
+
+  it("closes each gap by its own wrong answers: a miss assigned to another gap on the topic does not hold it open", () => {
+    const db = plan();
+    grade(db, "a0", "a", 0, [0, 0]);
+    const first = gaps(db)[0]!.id;
+    // Day 1: a second misconception on the same topic opens its own gap and takes that attempt's wrong answers.
+    grade(db, "a1", "a", 1, [0, 0]);
+    const second = insertGap(db, { planId: "p", topicId: "a", openedAt: T0 + DAY, origin: "misconception", misconception: "Another idea." });
+    assignAnswers(db, second, "a1", ["a1-q0", "a1-q1"]);
+    // Day 2: one more miss of the second idea; the first idea answers well.
+    grade(db, "a2", "a", 2, [1, 0, 1]);
+    assignAnswers(db, second, "a2", ["a2-q1"]);
+    grade(db, "a3", "a", 3, [1]);
+    const [one, two] = [first, second].map((id) => db.prepare("SELECT closed_at FROM gaps WHERE id = ?").get(id) as { closed_at: number | null });
+    // The first closes on day 3 (clean on days 2 and 3 for its own answers); the second is reset by its day-2 miss.
+    expect(one!.closed_at).toBe(T0 + 3 * DAY);
+    expect(two!.closed_at).toBeNull();
+    // The second needs two clean days after its day-2 miss: days 3 and 4.
+    grade(db, "a4", "a", 4, [1]);
+    expect((db.prepare("SELECT closed_at FROM gaps WHERE id = ?").get(second) as { closed_at: number }).closed_at).toBe(T0 + 4 * DAY);
+    expect(events(db, "gap_closed")).toHaveLength(2);
+    db.close();
+  });
+
+  it("opens a new gap for a fresh run of misses after the first one closed", () => {
+    const db = plan();
+    grade(db, "d0", "a", 0, [0, 0]);
+    grade(db, "d1", "a", 1, [1]);
+    grade(db, "d2", "a", 2, [1]);
+    expect(gaps(db)[0]!.closed_at).toBe(T0 + 2 * DAY);
+    grade(db, "d6", "a", 6, [0, 0]);
+    expect(gaps(db)).toHaveLength(2);
+    expect(gaps(db)[1]!.closed_at).toBeNull();
+    expect(events(db, "gap_opened")).toHaveLength(2);
+    db.close();
+  });
+
+  it("writes missing opened and closed events once for gaps from before events were written", () => {
+    const db = plan();
+    db.prepare("INSERT INTO gaps (id, plan_id, topic_id, opened_at, closed_at) VALUES ('old', 'p', 'a', ?, ?)").run(T0, T0 + DAY);
+    syncGaps(db, "p", T0 + 5 * DAY);
+    syncGaps(db, "p", T0 + 6 * DAY);
+    expect(events(db, "gap_opened").map((row) => JSON.parse(row.payload_json).gapId)).toEqual(["old"]);
+    expect(events(db, "gap_closed").map((row) => JSON.parse(row.payload_json).gapId)).toEqual(["old"]);
     db.close();
   });
 });

@@ -35,13 +35,20 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
   );
   const fixture = {
     markdown: { markdown: "## Studio\nIl moto e l’energia [P1]." },
-    quizQuestions: { questions: Array.from({length:10}, (_,i) => ({
-      kind: ["mcq","tf","completion"][i%3],
-      stem: `Drill ${i}${i%3===2 ? " {{1}}" : ""}`,
-      passageIds:["{{passage:0}}"],
-      explanation:"La grandezza fisica.",
-      ...(i%3===0 ? {options:["a","b","c","d"],correct:0} : i%3===1 ? {correct:true} : {accepted:["energia"]}),
-    })) },
+    explanation: { explanation: "Rileggi la definizione di energia e lavoro." },
+    quizQuestions: {
+      questions: Array.from({ length: 5 }, (_, i) => ({
+        kind: ["mcq", "tf", "completion"][i % 3],
+        stem: `Drill ${i}${i % 3 === 2 ? " {{1}}" : ""}`,
+        passageIds: ["{{passage:0}}"],
+        explanation: "La grandezza fisica.",
+        ...(i % 3 === 0
+          ? { options: ["a", "b", "c", "d"], correct: 0 }
+          : i % 3 === 1
+            ? { correct: true }
+            : { accepted: ["energia"] }),
+      })),
+    },
     questions: {
       questions: Array.from({ length: 10 }, (_, i) => ({
         stem: `Diagnosi ${i}`,

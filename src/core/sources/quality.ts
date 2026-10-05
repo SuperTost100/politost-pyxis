@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import type Database from "better-sqlite3";
 
 /** Below this Laplacian variance a photo is treated as blurry. */
@@ -34,6 +36,35 @@ export function laplacianVariance(
 
 export function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * SHA-256 of each file by streaming, so a folder of large PDFs never sits in memory or blocks the caller.
+ * A file that is missing, not a regular file, or over `maxBytes` gets null.
+ */
+export async function hashFiles(paths: string[], maxBytes: number): Promise<Array<string | null>> {
+  const out: Array<string | null> = [];
+  for (const path of paths) {
+    try {
+      const info = await stat(path);
+      if (!info.isFile() || info.size > maxBytes) {
+        out.push(null);
+        continue;
+      }
+      const hash = createHash("sha256");
+      let seen = 0;
+      for await (const chunk of createReadStream(path)) {
+        seen += (chunk as Buffer).length;
+        // A file that grows while it is read stops at the cap.
+        if (seen > maxBytes) throw new Error("source-too-big");
+        hash.update(chunk as Buffer);
+      }
+      out.push(hash.digest("hex"));
+    } catch {
+      out.push(null);
+    }
+  }
+  return out;
 }
 
 export function isDuplicateBlob(db: Database.Database, sha: string): boolean {

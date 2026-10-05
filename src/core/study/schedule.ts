@@ -1,8 +1,8 @@
 /**
  * FSRS scheduler (`ts-fsrs`, default parameters, retention 0.9, fuzz off).
  *
- * Button map, matching the plan's Easy = FSRS Good choice:
- * again -> Again, hard -> Hard, good -> Good, easy -> Good.
+ * Button map (the labels are Impossible, Hard, Easy, Very easy):
+ * again -> Again, hard -> Hard, good -> Good, easy -> Easy.
  *
  * `intervalDays` is FSRS `scheduled_days`. `ease` keeps the last difficulty
  * so older rows still parse. The full card lives on `fsrs`.
@@ -13,10 +13,11 @@ import {
   fsrs,
   generatorParameters,
   Rating as FsrsRating,
+  State as FsrsState,
   type Card,
 } from "ts-fsrs";
 
-/** A card counts as mastered once its interval reaches this many days. */
+/** A card counts as mastered once its FSRS stability reaches this many days. */
 export const masteredAfterDays = 21;
 
 export type RatingName = "again" | "hard" | "good" | "easy";
@@ -89,7 +90,9 @@ export function review(
       ? preview[FsrsRating.Again].card
       : rating === "hard"
         ? preview[FsrsRating.Hard].card
-        : preview[FsrsRating.Good].card;
+        : rating === "good"
+          ? preview[FsrsRating.Good].card
+          : preview[FsrsRating.Easy].card;
   const saved = store(next);
   return {
     intervalDays: Math.max(0, saved.scheduled_days),
@@ -97,6 +100,20 @@ export function review(
     dueAt: new Date(saved.due).getTime(),
     fsrs: saved,
   };
+}
+
+/**
+ * Queue bucket from FSRS state: `Review` cards with stability of
+ * `masteredAfterDays` or more are mastered, everything else reviewed is
+ * learning. Rows saved before FSRS have no card state, so they fall back to
+ * their interval.
+ */
+export function isMastered(state: ScheduleState): boolean {
+  if (!state.fsrs) return state.intervalDays >= masteredAfterDays;
+  return (
+    state.fsrs.state === FsrsState.Review &&
+    state.fsrs.stability >= masteredAfterDays
+  );
 }
 
 /** Current recall probability, rather than a rating counted as another success. */

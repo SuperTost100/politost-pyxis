@@ -20,6 +20,7 @@ export function JobsSync() {
       void client.invalidateQueries({ queryKey: ["source-chapters"] });
       void client.invalidateQueries({ queryKey: ["source-meta"] });
       void client.invalidateQueries({ queryKey: ["embedding"] });
+      void client.invalidateQueries({ queryKey: ["ocr-data"] });
       void client.invalidateQueries({ queryKey: ["jobs"] });
     });
     const offPort = window.pyxis.onPort(() => {

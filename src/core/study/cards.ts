@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import {
-  masteredAfterDays,
+  isMastered,
   newCard,
   review,
   type Rating,
@@ -78,6 +78,8 @@ export function dueCards(
   planId: string,
   now: number,
   topicId?: string,
+  /** Only these cards (a stored review queue); they still have to be due and active; cards of an archived topic are never due. */
+  ids?: string[],
 ): DueCard[] {
   const rows = db
     .prepare(
@@ -100,7 +102,9 @@ export function dueCards(
        WHERE c.plan_id = ?
          AND c.suspended = 0
          AND c.removed = 0
+         AND (c.topic_id IS NULL OR c.topic_id NOT IN (SELECT id FROM topics WHERE archived_at IS NOT NULL))
          AND (? IS NULL OR c.topic_id = ?)
+         AND (? IS NULL OR c.id IN (SELECT value FROM json_each(?)))
          AND COALESCE(
            CAST(json_extract(
              (SELECT cr.state_json FROM card_reviews cr
@@ -112,7 +116,16 @@ export function dueCards(
        ORDER BY due_at ASC
        LIMIT 20`,
     )
-    .all(now, planId, topicId ?? null, topicId ?? null, now, now) as Array<{
+    .all(
+      now,
+      planId,
+      topicId ?? null,
+      topicId ?? null,
+      ids ? JSON.stringify(ids) : null,
+      ids ? JSON.stringify(ids) : null,
+      now,
+      now,
+    ) as Array<{
     id: string;
     front: string;
     back: string;
@@ -217,7 +230,7 @@ export function queueCounts(
       continue;
     }
     const state = JSON.parse(row.state_json) as ScheduleState;
-    if (state.intervalDays >= masteredAfterDays) mastered += 1;
+    if (isMastered(state)) mastered += 1;
     else learning += 1;
   }
   return { fresh, learning, mastered };

@@ -22,6 +22,7 @@ import { invoke } from "../../lib/ipc";
 import { MasteryBar } from "../../components/MasteryBar";
 import { PathNode } from "../../components/PathNode";
 import { Dock } from "../../components/Dock";
+import { PlanEducationLevel } from "./PlanEducationLevel";
 import { Icon } from "../../components/Icon";
 import { Tag } from "../../components/Tag";
 import { LibraryPanel } from "../home/LibraryPanel";
@@ -34,6 +35,7 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { ExportButton } from "../share/ExportButton";
 import { PlanProgress } from "./PlanProgress";
+import { RebuildDialog } from "./RebuildDialog";
 import "./PlanPage.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -95,6 +97,7 @@ export function PlanPage() {
   });
   const [introOpen, setIntroOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rebuildOpen, setRebuildOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [proposal, setProposal] = useState<string | null>(null);
@@ -203,12 +206,16 @@ export function PlanPage() {
       navigate(`/plans/${planId}/${node.kind}`);
       return;
     }
+    if (node.kind === "gaps" && node.topicId) {
+      navigate(`/plans/${planId}/progress?drill=${encodeURIComponent(node.topicId)}`);
+      return;
+    }
     if (
       node.topicId &&
-      ["learn", "practice", "cards", "gaps"].includes(node.kind)
+      ["learn", "practice", "cards"].includes(node.kind)
     ) {
       navigate(
-        `/plans/${planId}/${node.kind === "learn" ? "lesson" : node.kind === "gaps" ? "quiz" : node.kind}/${node.topicId}`,
+        `/plans/${planId}/${node.kind === "learn" ? "lesson" : node.kind}/${node.topicId}`,
       );
       return;
     }
@@ -315,17 +322,27 @@ export function PlanPage() {
   return (
     <div className="px-plan-page">
       {modalContext}
+      <RebuildDialog
+        planId={planId}
+        sourceIds={plan.data?.sources.map((source) => source.id) ?? []}
+        open={rebuildOpen}
+        onClose={() => setRebuildOpen(false)}
+        onDone={async () => {
+          await refresh();
+          setSettingsOpen(false);
+        }}
+      />
       <header className="px-plan-header">
         {plan.data?.subject && (
           <p className="label ink-muted">{plan.data.subject}</p>
         )}
         <h1 className="title-1">{plan.data?.title ?? t("wizard.title")}</h1>
         <p className="meta ink-muted">
-          {plan.data?.examAt
+          {plan.data?.examAt != null
             ? t("exams.days", {
                 count: Math.max(
                   0,
-                  Math.ceil((plan.data.examAt - Date.now()) / 86400000),
+                  dayjs(plan.data.examAt).startOf("day").diff(dayjs().startOf("day"), "day"),
                 ),
               })
             : t("plans.noExam")}{" "}
@@ -341,6 +358,13 @@ export function PlanPage() {
           label={t("progress.title")}
         />
         <div className="px-plan-header-actions">
+          <Button
+            shape="round"
+            onClick={() => navigate(`/plans/${planId}/review`)}
+            disabled={!plan.data}
+          >
+            {t("cards.reviewTitle")}
+          </Button>
           <IconButton
             icon="settings"
             label={t("planOverview.settings")}
@@ -355,8 +379,25 @@ export function PlanPage() {
             {t("planOverview.create")}
           </Button>
         </div>
-        {plan.data?.imported && <Tag>{t("planOverview.imported")}</Tag>}
-        {plan.data?.status === "draft" && (
+        {plan.data?.imported && (
+          <p className="px-plan-origin">
+            <Tag>{t("planOverview.imported")}</Tag>
+            <span className="small ink-muted">
+              {[
+                plan.data.importedFrom?.author,
+                new Date(
+                  plan.data.importedFrom?.exportedAt ??
+                    plan.data.importedFrom?.importedAt ??
+                    0,
+                ).toLocaleDateString(i18n.language),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </p>
+        )}
+        {(plan.data?.status === "draft" ||
+          plan.data?.topics.some((topic) => topic.grounding === "general")) && (
           <Notice tone="warning">{t("plans.draft")}</Notice>
         )}
       </header>
@@ -540,6 +581,11 @@ export function PlanPage() {
                           <Icon name="book-marked" size={16} />
                         )}{" "}
                         {topic.title}
+                        {topic.grounding === "general" && (
+                          <span className="px-plan-topic-tag">
+                            <Tag>{t("components.tags.ai")}</Tag>
+                          </span>
+                        )}
                       </span>
                       <span className="meta ink-muted px-plan-topic-meta">
                         {t("planOverview.topicPassages", {
@@ -641,15 +687,7 @@ export function PlanPage() {
               tone="info"
               action={{
                 label: t("plans.rebuild"),
-                onClick: () =>
-                  void action(async () => {
-                    await invoke("plans.rebuild", {
-                      planId,
-                      sourceIds:
-                        plan.data?.sources.map((source) => source.id) ?? [],
-                    });
-                    await refresh();
-                  }),
+                onClick: () => setRebuildOpen(true),
               }}
             >
               {t("planOverview.rebuildSuggested")}
@@ -929,26 +967,12 @@ export function PlanPage() {
                 : (plan.data?.contentLanguage ?? i18n.language)}
           </p>
         </Form>
+        <PlanEducationLevel planId={planId} disabled={busy} />
         <section className="px-plan-settings-tools">
           <ExportButton planId={planId} kind="plan" disabled={busy} />
           <Button
             disabled={busy || !plan.data?.sources.length}
-            onClick={() =>
-              modal.confirm({
-                title: t("plans.rebuild"),
-                content: t("planOverview.rebuildConfirm"),
-                onOk: () =>
-                  action(async () => {
-                    await invoke("plans.rebuild", {
-                      planId,
-                      sourceIds:
-                        plan.data?.sources.map((source) => source.id) ?? [],
-                    });
-                    await refresh();
-                    setSettingsOpen(false);
-                  }),
-              })
-            }
+            onClick={() => setRebuildOpen(true)}
           >
             {t("plans.rebuild")}
           </Button>

@@ -42,7 +42,7 @@ No gradients. Astra's warm glows are replaced by one defined effect, `glow-star`
 - `reading` (17/28) for tutor replies, smart text and flashcards, max 68ch. `body` (15/22) for UI; `small` (13/18) for metadata.
 - `label` is mono UPPERCASE with 0.08em tracking: tabs, section eyebrows ("PREVISIONE PER L'ESAME"), badges. `meta` is lowercase mono for values. `code` for code blocks.
 - `stat` (56px) is the one big number of a page.
-- Dyslexia-friendly mode (PER-03) adds `letter-spacing: 0.05em` and `line-height: 1.9` to `reading`, and raises `body` to 16/26. It never changes the family.
+- Dyslexia-friendly mode (PER-03) adds `letter-spacing: 0.05em`, `word-spacing: 0.16em` and `line-height: 1.8` to chat text, Markdown and source passages. It keeps the selected body text size and font family.
 - LaTeX renders with KaTeX in its default fonts, sized to the surrounding text.
 
 ## Spacing, radius, size

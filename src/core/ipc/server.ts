@@ -1,6 +1,7 @@
 import { MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "../chat/attach";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, extname, join } from "node:path";
+import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import {
   configureDisclosure,
@@ -67,6 +68,8 @@ export function attachRendererPort(next: CorePort): void {
     // The previous renderer port is already gone after a reload.
   }
   port = next;
+  // A reload drops the page-by-page scan the old window drove, and its replies are lost with its port.
+  sources?.ocrStopAll();
   next.start();
   next.on("message", (event) => {
     void onRendererMessage(next, event.data);
@@ -141,15 +144,17 @@ async function dispatch(
   const paths = parsed?.path ? [parsed.path] : (parsed?.files ?? []);
   if (!paths.length) return dispatchValidated(name, input, signal, emit);
   let temporary: string | undefined;
+  const attachment = name === "chats.ask" || name === "chats.regenerate";
   try {
-    const attachment = name === "chats.ask" || name === "chats.regenerate";
     if (attachment && paths.length > MAX_FILES)
       throw new Error("attach-too-many");
     let remaining = MAX_TOTAL_BYTES;
     const bytes = paths.map((path) => {
       const bytes = fileGrants.read(
         path,
-        attachment ? Math.min(MAX_FILE_BYTES, remaining) : Infinity,
+        attachment
+          ? Math.min(MAX_FILE_BYTES, remaining)
+          : maxSourceBytes(extname(path)),
       );
       remaining -= bytes.length;
       return bytes;
@@ -168,6 +173,8 @@ async function dispatch(
   } catch (error) {
     if (error instanceof Error && error.message === "file-access-denied")
       throw new IpcError("file-access-denied", "errors.fileAccessDenied");
+    if (error instanceof Error && error.message === "attach-too-big" && !attachment)
+      throw new IpcError("source-too-big", "sources.tooBig");
     if (
       error instanceof Error &&
       ["attach-too-big", "attach-too-many"].includes(error.message)
@@ -310,6 +317,20 @@ async function dispatchValidated(
       return study?.flag(requests["study.flag"].input.parse(input));
     case "study.review":
       return study?.review(requests["study.review"].input.parse(input));
+    case "study.reviewSession":
+      return (
+        study?.reviewSession(
+          requests["study.reviewSession"].input.parse(input),
+        ) ?? null
+      );
+    case "study.reviewDiscard":
+      return study?.reviewDiscard(
+        requests["study.reviewDiscard"].input.parse(input),
+      );
+    case "study.reviewSkipDrill":
+      return study?.reviewSkipDrill(
+        requests["study.reviewSkipDrill"].input.parse(input),
+      );
     case "study.activeSimulation":
       requests["study.activeSimulation"].input.parse(input);
       return study?.activeSimulation();
@@ -481,8 +502,39 @@ async function dispatchValidated(
       return plans?.read(requests["plans.read"].input.parse(input)) ?? null;
     case "plans.create":
       return plans?.create(requests["plans.create"].input.parse(input), signal);
-    case "plans.rebuild":
-      return plans?.rebuild(requests["plans.rebuild"].input.parse(input));
+    case "plans.proposeModules":
+      return plans?.proposeModules(
+        requests["plans.proposeModules"].input.parse(input),
+        signal,
+      );
+    case "plans.proposeTree":
+      return plans?.proposeTree(
+        requests["plans.proposeTree"].input.parse(input),
+        signal,
+      );
+    case "plans.rebuildState":
+      return (
+        plans?.rebuildState(requests["plans.rebuildState"].input.parse(input)) ??
+        null
+      );
+    case "plans.rebuildStart":
+      return plans?.rebuildStart(
+        requests["plans.rebuildStart"].input.parse(input),
+      );
+    case "plans.rebuildApply":
+      return plans?.rebuildApply(
+        requests["plans.rebuildApply"].input.parse(input),
+      );
+    case "plans.rebuildDiscard":
+      return plans?.rebuildDiscard(
+        requests["plans.rebuildDiscard"].input.parse(input),
+      );
+    case "plans.education":
+      return plans?.education(requests["plans.education"].input.parse(input));
+    case "plans.setEducation":
+      return plans?.setEducation(
+        requests["plans.setEducation"].input.parse(input),
+      );
     case "profile.get":
       requests["profile.get"].input.parse(input);
       return profile?.get() ?? null;
@@ -545,19 +597,37 @@ async function dispatchValidated(
     case "sources.scanFolder":
       return sources?.scanFolder(
         requests["sources.scanFolder"].input.parse(input),
+        signal,
       );
     case "sources.preview":
-      return sources?.preview(requests["sources.preview"].input.parse(input));
+      return sources?.preview(
+        requests["sources.preview"].input.parse(input),
+        signal,
+      );
     case "sources.rename":
       return sources?.rename(requests["sources.rename"].input.parse(input));
     case "sources.replace":
       return sources?.replace(requests["sources.replace"].input.parse(input));
+    case "sources.syllabus":
+      return sources?.syllabus(requests["sources.syllabus"].input.parse(input), signal);
+    case "sources.reextract":
+      return sources?.reextract(requests["sources.reextract"].input.parse(input));
     case "sources.remove":
       return sources?.remove(requests["sources.remove"].input.parse(input));
     case "sources.promote":
       return sources?.promote(requests["sources.promote"].input.parse(input));
     case "sources.ocrImage":
-      return sources?.ocrImage(requests["sources.ocrImage"].input.parse(input));
+      return sources?.ocrImage(
+        requests["sources.ocrImage"].input.parse(input),
+        signal,
+      );
+    case "sources.ocrStop":
+      return sources?.ocrStop(requests["sources.ocrStop"].input.parse(input));
+    case "sources.ocrDataState":
+      requests["sources.ocrDataState"].input.parse(input);
+      return sources?.ocrDataState();
+    case "sources.ocrData":
+      return sources?.ocrData(requests["sources.ocrData"].input.parse(input));
     case "sources.embedState":
       requests["sources.embedState"].input.parse(input);
       return sources?.embedState();
@@ -641,6 +711,6 @@ export function bindSources(
 ): void {
   fileScratch = join(workspace, "scratch");
   sources = sourceHandlers(db, workspace, runner, (path) =>
-    fileGrants.read(path),
+    fileGrants.file(path),
   );
 }

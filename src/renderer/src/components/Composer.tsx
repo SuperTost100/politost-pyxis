@@ -9,7 +9,7 @@ import "./Composer.css";
 export function Composer({
   subject,
   sources,
-  mode: initialMode = "solver",
+  mode: modeProp,
   placeholder,
   streaming,
   value,
@@ -33,7 +33,8 @@ export function Composer({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [mode, setMode] = useState(initialMode);
+  const [localMode, setMode] = useState<"solver" | "socratic">("solver");
+  const mode = modeProp ?? localMode;
   const [draft, setDraft] = useState("");
   const text = value ?? draft;
   function setText(next: string) {

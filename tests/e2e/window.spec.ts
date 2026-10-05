@@ -108,6 +108,16 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
   try {
     console.log("release: window");
     const page = await app.firstWindow();
+    if (process.env.PYXIS_E2E_HIDDEN === "1") {
+      expect(
+        await app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().map((window) => ({
+            visible: window.isVisible(),
+            focused: window.isFocused(),
+          })),
+        ),
+      ).toEqual([{ visible: false, focused: false }]);
+    }
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(
       page.getByRole("heading", { name: "Iniziamo", exact: true }),
@@ -268,7 +278,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .fill("Displacement divided by elapsed time.");
     await page.getByRole("button", { name: "Salva", exact: true }).click();
     await page.getByRole("button", { name: /^Gira\b/ }).click();
-    await page.getByRole("button", { name: /^Bene\b/ }).click();
+    await page.getByRole("button", { name: /^Facile\b/ }).click();
     await expect
       .poll(
         async () =>
@@ -351,9 +361,10 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       await page.evaluate(() => window.pyxis.invoke("plans.list", {})),
     ).toHaveLength(0);
     console.log("release: restore");
+    await page.getByRole("button", { name: "Ripristina", exact: true }).click();
     await Promise.all([
       page.waitForEvent("load"),
-      page.getByRole("button", { name: "Ripristina", exact: true }).click(),
+      page.getByRole("button", { name: /^Sostituisci / }).click(),
     ]);
     await expect
       .poll(async () =>
@@ -365,7 +376,10 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     await page.evaluate(() => {
       window.location.hash = "/ask";
     });
-    await page.getByRole("button", { name: "Motion", exact: true }).click();
+    await page
+      .getByRole("group", { name: "Piano", exact: true })
+      .getByRole("button", { name: "Motion", exact: true })
+      .click();
     await page
       .getByRole("textbox", { name: "Messaggio", exact: true })
       .fill("What is velocity?");

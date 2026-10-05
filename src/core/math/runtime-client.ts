@@ -36,7 +36,14 @@ export function runtimeRequest(
     }, timeoutMs);
     pending.set(id, { resolve, reject, timer });
     try {
-      sender!({ type: "runtime-request", id, operation, payload });
+      // The deadline lets main drop a request that is still queued when this caller has given up.
+      sender!({
+        type: "runtime-request",
+        id,
+        operation,
+        payload,
+        deadline: Date.now() + timeoutMs,
+      });
     } catch (error) {
       pending.delete(id);
       clearTimeout(timer);

@@ -12,12 +12,31 @@ import {
 } from "lucide-react";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import "./LibraryPanel.css";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
+import { OcrDataCard } from "../../components/OcrData";
+import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
+import {
+  MAX_FOLDER_DEPTH,
+  REPLACE_EXTENSIONS,
+  SOURCE_EXTENSIONS,
+} from "@shared/source-types";
+
+const messageKeyOf = (err: unknown): string =>
+  err && typeof err === "object" && "messageKey" in err
+    ? String((err as { messageKey: unknown }).messageKey)
+    : "sources.importFailed";
+
+const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
+const sizeText = (bytes: number) =>
+  bytes >= 1024 * 1024
+    ? `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024)} MB`
+    : `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024)} KB`;
 
 export function LibraryPanel({
   importOnly = false,
@@ -51,8 +70,20 @@ export function LibraryPanel({
     Awaited<ReturnType<typeof invoke<"sources.search">>>
   >([]);
   const [error, setError] = useState<string | null>(null);
+  // The action local OCR data refused, kept so the student can run it again once the data is ready.
+  const [again, setAgain] = useState<{ label: string; run: () => void } | null>(
+    null,
+  );
   const [warning, setWarning] = useState<string | null>(null);
-  const [ocrFor, setOcrFor] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  // The scan being read page by page, and whether the student has asked it to stop.
+  const [ocrFor, setOcrFor] = useState<{
+    id: string;
+    stopping: boolean;
+  } | null>(null);
+  const scanRun = useRef<AbortController | null>(null);
+  // Leaving the Library stops the scan between pages. The pages already read are kept.
+  useEffect(() => () => scanRun.current?.abort(), []);
   const [pickedPassage, setPickedPassage] = useState<string | null>(null);
   const [searchPicked, setSearchPicked] = useState(false);
   const [preferOpened, setPreferOpened] = useState(
@@ -65,6 +96,12 @@ export function LibraryPanel({
   const [folderFiles, setFolderFiles] = useState<
     Array<{ path: string; name: string; duplicate: boolean; selected: boolean }>
   >([]);
+  // A folder scan stops at a file count and a depth. The student is told when it did.
+  const [folderCut, setFolderCut] = useState<{
+    files: boolean;
+    depth: boolean;
+    limit: number;
+  } | null>(null);
 
   const meta = useQuery({
     queryKey: ["source-meta", sourceId],
@@ -75,6 +112,24 @@ export function LibraryPanel({
     queryKey: ["source-chapters", sourceId],
     enabled: sourceId != null,
     queryFn: () => invoke("sources.chapters", { sourceId: sourceId ?? "" }),
+  });
+  const detailSource = (list.data ?? []).find(
+    (source) => source.id === sourceId,
+  );
+  // SRC-08: which sections of this source sit off the syllabus of the plans that use it. Local vectors only.
+  const syllabus = useQuery({
+    queryKey: [
+      "source-syllabus",
+      sourceId,
+      detailSource?.status,
+      detailSource?.sections,
+    ],
+    enabled:
+      detailsOpen &&
+      detailSource != null &&
+      detailSource.planCount > 0 &&
+      detailSource.status === "ready",
+    queryFn: () => invoke("sources.syllabus", { sourceId: sourceId ?? "" }),
   });
   const passageId = searchPicked ? pickedPassage : params.get("passage");
   const opened = useQuery({
@@ -116,61 +171,84 @@ export function LibraryPanel({
       openSourceViewer({ passageId, sourceId: sourceId ?? undefined });
   }, [page.data, opened.data]);
 
+  const [dragging, setDragging] = useState(false);
+  // One path for the picker and for a drop. A drop gets its grant from main before core sees a path.
   const add = useMutation({
-    mutationFn: async () => {
-      const picked = await window.pyxis.showOpenDialog({
-        properties: ["openFile"],
-        filters: [
-          {
-            name: "Fonti",
-            extensions: [
-              "ptsb",
-              "pdf",
-              "docx",
-              "pptx",
-              "txt",
-              "md",
-              "png",
-              "jpg",
-              "jpeg",
-              "webp",
+    mutationFn: async (input: { dropped?: File[]; paths?: string[] }) => {
+      setWarning(null);
+      setError(null);
+      setAgain(null);
+      let paths: string[];
+      let skipped = 0;
+      if (input.dropped) {
+        const granted = await window.pyxis.grantDroppedFiles(input.dropped);
+        paths = granted.paths;
+        skipped = granted.skipped;
+      } else if (input.paths) {
+        paths = input.paths;
+      } else {
+        paths =
+          (await window.pyxis.showOpenDialog({
+            properties: ["openFile"],
+            filters: [
+              { name: t("exams.sources"), extensions: [...SOURCE_EXTENSIONS] },
             ],
-          },
-        ],
-      });
-      const path = picked?.[0];
-      if (!path) return null;
-      const preview = await invoke("sources.preview", { path });
-      const notes = [
-        preview.duplicate ? t("sources.duplicate") : "",
-        preview.blurry ? t("sources.blurry") : "",
-      ].filter(Boolean);
-      setWarning(notes.length ? notes.join(" ") : null);
-      return invoke("sources.import", { path });
+          })) ?? [];
+      }
+      const notes: string[] = [];
+      let last: { sourceId: string } | null = null;
+      let at = 0;
+      try {
+        for (const [index, path] of paths.entries()) {
+          at = index;
+          const preview = await invoke("sources.preview", { path });
+          const found = [
+            preview.duplicate ? t("sources.duplicate") : "",
+            preview.blurry ? t("sources.blurry") : "",
+          ].filter(Boolean);
+          notes.push(
+            ...(paths.length > 1
+              ? found.map((note) => `${fileName(path)}: ${note}`)
+              : found),
+          );
+          last = await invoke("sources.import", { path });
+        }
+      } catch (err) {
+        // The files from the refused one on stay chosen, so nothing has to be picked or dropped again.
+        if (isOcrRefusal(messageKeyOf(err))) {
+          const rest = paths.slice(at);
+          setAgain({
+            label: t("sources.ocrData.again.import", { count: rest.length }),
+            run: () => add.mutate({ paths: rest }),
+          });
+        }
+        throw err;
+      } finally {
+        if (last) void client.invalidateQueries({ queryKey: ["sources"] });
+      }
+      if (!paths.length && skipped) throw { messageKey: "sources.dropSkipped" };
+      return last ? { last, notes, skipped } : null;
     },
     onSuccess: (value) => {
-      setError(null);
       if (!value) return;
-      void client.invalidateQueries({ queryKey: ["sources"] });
-      setSourceId(value.sourceId);
+      setSourceId(value.last.sourceId);
       setChapter(null);
-      closeAdd();
+      const notes = value.skipped
+        ? [...value.notes, t("sources.dropSkipped")]
+        : value.notes;
+      // A warning stays on screen. Closing the dialog would hide it.
+      if (notes.length) setWarning(notes.join(" "));
+      else closeAdd();
     },
-    onError: (err: unknown) => {
-      const key =
-        err && typeof err === "object" && "messageKey" in err
-          ? String((err as { messageKey: unknown }).messageKey)
-          : "sources.importFailed";
-      setError(key);
-    },
+    onError: (err: unknown) => setError(messageKeyOf(err)),
   });
 
-  function fail(err: unknown): void {
-    const key =
-      err && typeof err === "object" && "messageKey" in err
-        ? String((err as { messageKey: unknown }).messageKey)
-        : "sources.importFailed";
-    setError(key);
+  function fail(
+    err: unknown,
+    retry?: { label: string; run: () => void },
+  ): void {
+    setError(messageKeyOf(err));
+    setAgain(retry ?? null);
   }
 
   async function importPath(path: string): Promise<void> {
@@ -186,14 +264,35 @@ export function LibraryPanel({
     setChapter(null);
   }
 
-  async function readScan(source: {
-    id: string;
-    kind: string;
-    blobSha: string | null;
-  }): Promise<void> {
+  /** The ticked files go in one by one. A file that local OCR refused, and those after it, stay ticked to run again. */
+  function importChosen(
+    files = folderFiles.filter((file) => file.selected),
+  ): void {
+    setError(null);
+    setAgain(null);
+    let left = files;
+    void (async () => {
+      while (left.length) {
+        await importPath(left[0]!.path);
+        left = left.slice(1);
+      }
+      setFolderFiles([]);
+    })().catch((err: unknown) => {
+      const rest = left;
+      fail(err, {
+        label: t("sources.ocrData.again.importChosen"),
+        run: () => importChosen(rest),
+      });
+    });
+  }
+
+  async function readScan(
+    source: { id: string; kind: string; blobSha: string | null },
+    signal: AbortSignal,
+  ): Promise<void> {
     if (source.kind === "pdf" && source.blobSha) {
       const { ocrPdfBlob } = await import("./ocrScan");
-      await ocrPdfBlob(source.id, source.blobSha);
+      await ocrPdfBlob(source.id, source.blobSha, signal);
       return;
     }
     if (source.kind === "image" && source.blobSha) {
@@ -214,6 +313,42 @@ export function LibraryPanel({
     await invoke("sources.ocr", { sourceId: source.id });
   }
 
+  /** Reads a scan with local OCR. A refusal for missing data leaves the scan listed, with a way to run this again. */
+  function scan(source: {
+    id: string;
+    kind: string;
+    blobSha: string | null;
+  }): void {
+    // One scan at a time, and a new one only after the last has fully stopped, so a late stop cannot cut it short.
+    if (scanRun.current) return;
+    setError(null);
+    setAgain(null);
+    const run = new AbortController();
+    scanRun.current = run;
+    setOcrFor({ id: source.id, stopping: false });
+    void (async () => {
+      try {
+        await readScan(source, run.signal);
+      } catch (err) {
+        // A stop the student asked for is not an error.
+        if (!run.signal.aborted)
+          fail(err, { label: t("sources.offerOcr"), run: () => scan(source) });
+      } finally {
+        // The list is read again before the marker goes, so the row never shows a stale state in between.
+        await client
+          .invalidateQueries({ queryKey: ["sources"] })
+          .catch(() => undefined);
+        scanRun.current = null;
+        setOcrFor(null);
+      }
+    })();
+  }
+
+  function cancelScan(): void {
+    scanRun.current?.abort();
+    setOcrFor((current) => (current ? { ...current, stopping: true } : null));
+  }
+
   const linkPreview = useMutation({
     mutationFn: async () => {
       const url = linkUrl.trim();
@@ -221,7 +356,7 @@ export function LibraryPanel({
       return { ...preview, url };
     },
     onSuccess: () => setError(null),
-    onError: fail,
+    onError: (err: unknown) => fail(err),
   });
   const linkPreviewMatches = linkPreview.data?.url === linkUrl.trim();
   const linkSave = useMutation({
@@ -233,7 +368,7 @@ export function LibraryPanel({
       linkPreview.reset();
       closeAdd();
     },
-    onError: fail,
+    onError: (err: unknown) => fail(err),
   });
 
   const embedding = useQuery({
@@ -249,32 +384,69 @@ export function LibraryPanel({
     setChapter(null);
     setParagraph(undefined);
   }
-  async function replace(source: SourceRow) {
-    const picked = await window.pyxis.showOpenDialog({
-      properties: ["openFile"],
-      filters: [
-        {
-          name: t("exams.addSources"),
-          extensions: [
-            "ptsb",
-            "pdf",
-            "docx",
-            "pptx",
-            "txt",
-            "md",
-            "png",
-            "jpg",
-            "jpeg",
-            "webp",
-          ],
-        },
-      ],
-    });
-    if (!picked?.[0]) return;
-    await invoke("sources.replace", { sourceId: source.id, path: picked[0] });
+  async function replace(sourceId: string, chosen?: string) {
+    setError(null);
+    setAgain(null);
+    let path = chosen;
+    if (!path) {
+      const used = sources.find((item) => item.id === sourceId)?.planCount ?? 0;
+      // Items made from the old file keep their citations but go out of date, so a source that plans use asks first.
+      if (
+        used > 0 &&
+        !window.confirm(t("sources.replaceInUse", { count: used }))
+      )
+        return;
+      const picked = await window.pyxis.showOpenDialog({
+        properties: ["openFile"],
+        filters: [
+          { name: t("exams.sources"), extensions: [...REPLACE_EXTENSIONS] },
+        ],
+      });
+      path = picked?.[0];
+      if (!path) return;
+    }
+    const file = path;
+    try {
+      await invoke("sources.replace", { sourceId, path: file });
+    } catch (err) {
+      if (!isOcrRefusal(messageKeyOf(err))) throw err;
+      // The chosen file is kept, so the student is not asked to pick it again.
+      return fail(err, {
+        label: t("sources.ocrData.again.replace"),
+        run: () => void replace(sourceId, file).catch(fail),
+      });
+    }
+    void client.invalidateQueries({ queryKey: ["sources"] });
+  }
+  /** SRC-12: read the stored file again as a new version. A source that plans use asks first, as removal does. */
+  async function reextract(source: SourceRow, confirmed = false) {
+    setInfo(null);
+    setError(null);
+    setAgain(null);
+    let result;
+    try {
+      result = await invoke("sources.reextract", {
+        sourceId: source.id,
+        confirmed,
+      });
+    } catch (err) {
+      if (!isOcrRefusal(messageKeyOf(err))) throw err;
+      return fail(err, {
+        label: t("sources.ocrData.again.reextract"),
+        run: () => void reextract(source, confirmed).catch(fail),
+      });
+    }
+    if (!result.started && result.inUse > 0) {
+      if (!window.confirm(t("sources.reextractInUse", { count: result.inUse })))
+        return;
+      return reextract(source, true);
+    }
+    if (result.started)
+      setInfo(t("sources.reextractStarted", { title: source.title }));
     void client.invalidateQueries({ queryKey: ["sources"] });
   }
   async function remove(source: SourceRow) {
+    if (!window.confirm(`${t("sources.remove")} "${source.title}"?`)) return;
     const result = await invoke("sources.remove", {
       sourceId: source.id,
       confirmed: false,
@@ -293,32 +465,39 @@ export function LibraryPanel({
       width: 230,
       fixed: "left",
       render: (_, source) => (
-        <Button
-          type="text"
-          className="px-library-name"
-          aria-label={source.title}
-          onClick={() => {
-            select(source);
-            setDetailsOpen(true);
-          }}
-          icon={
-            source.kind === "smartbook" ? (
-              <BookMarked size={18} />
-            ) : (
-              <FileText size={18} />
-            )
-          }
-        >
-          {source.title}
-        </Button>
+        <>
+          <Button
+            type="text"
+            className="px-library-name"
+            aria-label={source.title}
+            onClick={() => {
+              select(source);
+              setDetailsOpen(true);
+            }}
+            icon={
+              source.kind === "smartbook" ? (
+                <BookMarked size={18} />
+              ) : (
+                <FileText size={18} />
+              )
+            }
+          >
+            {source.title}
+          </Button>
+          {source.syllabusOff ? (
+            <p className="small px-library-flag">
+              {t("sources.offSyllabusListed", { count: source.syllabusOff })}
+            </p>
+          ) : null}
+        </>
       ),
     },
     {
       title: t("sources.typeColumn"),
       dataIndex: "kind",
-      width: 70,
+      width: 95,
       render: (_, source) => (
-        <span className="meta">
+        <span className="meta px-library-kind">
           {t(`sources.kind.${source.kind}`, { defaultValue: source.kind })}
         </span>
       ),
@@ -326,7 +505,7 @@ export function LibraryPanel({
     {
       title: t("sources.sizeColumn"),
       dataIndex: "bytes",
-      width: 80,
+      width: 105,
       render: (_, source) => (
         <span className="meta">
           {source.bytes == null
@@ -379,11 +558,18 @@ export function LibraryPanel({
               { key: "details", label: t("sources.details") },
               { key: "rename", label: t("sources.rename") },
               { key: "replace", label: t("sources.replace") },
+              {
+                key: "reextract",
+                label: t("sources.reextract"),
+                // A smartbook is read from its package and has no stored file to read again.
+                disabled: source.kind === "smartbook" || !source.blobSha,
+              },
               { key: "remove", label: t("sources.remove"), danger: true },
             ],
             onClick: ({ key }) => {
               select(source);
-              if (key === "replace") void replace(source).catch(fail);
+              if (key === "replace") void replace(source.id).catch(fail);
+              else if (key === "reextract") void reextract(source).catch(fail);
               else if (key === "remove") void remove(source).catch(fail);
               else setDetailsOpen(true);
             },
@@ -402,6 +588,32 @@ export function LibraryPanel({
     setAddOpen(false);
     onClose?.();
   }
+  // A refusal for lack of OCR data gets the download card. Anything else is a plain notice.
+  const errorView = isOcrRefusal(error) ? (
+    <OcrDataCard
+      refusal={t(error)}
+      onLater={() => {
+        setError(null);
+        setAgain(null);
+      }}
+      readyAction={
+        again ? (
+          <Button
+            type="primary"
+            shape="round"
+            onClick={() => {
+              setError(null);
+              again.run();
+            }}
+          >
+            {again.label}
+          </Button>
+        ) : null
+      }
+    />
+  ) : error ? (
+    <Notice tone="danger">{t(error)}</Notice>
+  ) : null;
   const addModal = (
     <Modal
       open={addOpen}
@@ -442,21 +654,47 @@ export function LibraryPanel({
         ]}
       />
       {warning ? <Notice tone="warning">{warning}</Notice> : null}
-      {error ? <Notice tone="danger">{t(error)}</Notice> : null}
+      {errorView}
       {addTab === "file" ? (
-        <div className="px-library-upload">
+        <div
+          className={
+            dragging ? "px-library-upload is-dragging" : "px-library-upload"
+          }
+          onDragEnter={(event) => {
+            if (!event.dataTransfer.types.includes("Files")) return;
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragOver={(event) => {
+            if (!event.dataTransfer.types.includes("Files")) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node))
+              setDragging(false);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            const files = Array.from(event.dataTransfer.files);
+            if (files.length && !add.isPending) add.mutate({ dropped: files });
+          }}
+        >
           <FileText size={28} />
-          <p className="body">{t("sources.fileHint")}</p>
+          <p className="body">
+            {dragging ? t("sources.dropActive") : t("sources.fileHint")}
+          </p>
           <Button
             type="primary"
             shape="round"
             loading={add.isPending}
-            onClick={() => add.mutate()}
+            onClick={() => add.mutate({})}
           >
             {t("sources.chooseFiles")}
           </Button>
           <p className="small ink-muted">
-            PDF, PTSB, DOCX, PPTX, TXT, Markdown, PNG, JPEG, WebP
+            PDF, PTSB, DOCX, PPTX, TXT, Markdown, PNG, JPEG, WebP, HEIC, HEIF
           </p>
         </div>
       ) : null}
@@ -469,11 +707,20 @@ export function LibraryPanel({
                 .showOpenDialog({ properties: ["openDirectory"] })
                 .then(async (picked) => {
                   if (!picked?.[0]) return;
-                  const files = await invoke("sources.scanFolder", {
+                  const scan = await invoke("sources.scanFolder", {
                     path: picked[0],
                   });
+                  setFolderCut(
+                    scan.cappedFiles || scan.cappedDepth
+                      ? {
+                          files: scan.cappedFiles,
+                          depth: scan.cappedDepth,
+                          limit: scan.limit,
+                        }
+                      : null,
+                  );
                   setFolderFiles(
-                    files.map((file) => ({
+                    scan.files.map((file) => ({
                       ...file,
                       selected: !file.duplicate,
                     })),
@@ -484,6 +731,16 @@ export function LibraryPanel({
           >
             {t("sources.folder")}
           </Button>
+          {folderCut?.files ? (
+            <Notice tone="warning">
+              {t("sources.folderCappedFiles", { count: folderCut.limit })}
+            </Notice>
+          ) : null}
+          {folderCut?.depth ? (
+            <Notice tone="warning">
+              {t("sources.folderCappedDepth", { depth: MAX_FOLDER_DEPTH })}
+            </Notice>
+          ) : null}
           <ul className="choice-list">
             {folderFiles.map((file) => (
               <li key={file.path}>
@@ -514,13 +771,7 @@ export function LibraryPanel({
             <Button
               type="primary"
               disabled={!folderFiles.some((file) => file.selected)}
-              onClick={() => {
-                const chosen = folderFiles.filter((file) => file.selected);
-                void (async () => {
-                  for (const file of chosen) await importPath(file.path);
-                  setFolderFiles([]);
-                })().catch(fail);
-              }}
+              onClick={() => importChosen()}
             >
               {t("sources.importChosen")}
             </Button>
@@ -671,25 +922,28 @@ export function LibraryPanel({
           {t("exams.addSources")}
         </Button>
       </div>
-      <ProTable<SourceRow>
-        rowKey="id"
-        columns={columns}
-        dataSource={sources.filter(
-          (source) =>
-            (filterType === "all" || source.kind === filterType) &&
-            source.title
-              .toLocaleLowerCase()
-              .includes(filterText.trim().toLocaleLowerCase()),
-        )}
-        loading={list.isPending}
-        search={false}
-        options={false}
-        pagination={false}
-        scroll={{ x: 700 }}
-        rowClassName={(source) =>
-          source.id === sourceId ? "px-library-selected" : ""
-        }
-      />
+      {/* An empty table is a scroll area with nothing to focus, and the empty state above already says so. */}
+      {sources.length > 0 || list.isPending ? (
+        <ProTable<SourceRow>
+          rowKey="id"
+          columns={columns}
+          dataSource={sources.filter(
+            (source) =>
+              (filterType === "all" || source.kind === filterType) &&
+              source.title
+                .toLocaleLowerCase()
+                .includes(filterText.trim().toLocaleLowerCase()),
+          )}
+          loading={list.isPending}
+          search={false}
+          options={false}
+          pagination={false}
+          scroll={{ x: 700 }}
+          rowClassName={(source) =>
+            source.id === sourceId ? "px-library-selected" : ""
+          }
+        />
+      ) : null}
       <h2 className="title-3 px-library-search-title">
         {t("sources.searchPassages")}
       </h2>
@@ -704,28 +958,50 @@ export function LibraryPanel({
       >
         {t(embedding.data?.ready ? "sources.embedReady" : "sources.embedAsk")}
       </Button>
-      {error ? <Notice tone="danger">{t(error)}</Notice> : null}
+      {errorView}
+      {info ? <Notice tone="info">{info}</Notice> : null}
       {sources
-        .filter((source) => source.status === "needs-ocr")
+        .filter(
+          (source) =>
+            source.status === "needs-ocr" ||
+            (source.status === "ocr-queued" && ocrFor?.id === source.id),
+        )
         .map((source) => (
           <Notice key={source.id} tone="warning">
-            {t("sources.scanned", { title: source.title })}{" "}
-            {ocrFor === source.id ? (
-              t("sources.ocrQueued")
+            {!source.blobSha ? (
+              <>
+                {t("sources.scannedNoFile", { title: source.title })}{" "}
+                <button
+                  type="button"
+                  onClick={() => void replace(source.id).catch(fail)}
+                >
+                  {t("sources.replace")}
+                </button>
+              </>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setOcrFor(source.id);
-                  void readScan(source)
-                    .then(() =>
-                      client.invalidateQueries({ queryKey: ["sources"] }),
-                    )
-                    .catch(fail);
-                }}
-              >
-                {t("sources.offerOcr")}
-              </button>
+              <>
+                {t("sources.scanned", { title: source.title })}{" "}
+                {ocrFor?.id === source.id ? (
+                  <>
+                    {t(
+                      ocrFor.stopping
+                        ? "sources.ocrCancelling"
+                        : "sources.ocrQueued",
+                    )}{" "}
+                    <button
+                      type="button"
+                      disabled={ocrFor.stopping}
+                      onClick={cancelScan}
+                    >
+                      {t("sources.ocrCancel")}
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => scan(source)}>
+                    {t("sources.offerOcr")}
+                  </button>
+                )}
+              </>
             )}
           </Notice>
         ))}
@@ -818,6 +1094,80 @@ export function LibraryPanel({
               .join(" · ")}
           </p>
         ) : null}
+        {meta.data?.extractor ? (
+          <p className="small section-hint">
+            {meta.data.extractor.path === "vision"
+              ? t("sources.readByVision", {
+                  model: meta.data.extractor.model,
+                })
+              : meta.data.extractor.after
+                ? t("sources.readByOcrAfter")
+                : t("sources.readByOcr")}
+          </p>
+        ) : null}
+        {meta.data?.extractor?.path === "vision" && meta.data.extractor.sent ? (
+          <p className="small section-hint">
+            {(() => {
+              const sent = meta.data.extractor.sent;
+              const size = sizeText(sent.bytes);
+              if (sent.resizedFrom && sent.width && sent.height)
+                return [
+                  t("sources.sentResized", {
+                    fromWidth: sent.resizedFrom.width,
+                    fromHeight: sent.resizedFrom.height,
+                    fromSize: sizeText(sent.resizedFrom.bytes),
+                    width: sent.width,
+                    height: sent.height,
+                    size,
+                  }),
+                  sent.orientation ? t("sources.sentUpright") : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+              return sent.width && sent.height
+                ? t("sources.sentAsIs", {
+                    width: sent.width,
+                    height: sent.height,
+                    size,
+                  })
+                : t("sources.sentAsIsSize", { size });
+            })()}
+          </p>
+        ) : null}
+        {detailSource && detailSource.planCount > 0
+          ? (syllabus.data ?? []).map((check) =>
+              check.state === "checked" && check.off > 0 ? (
+                <Notice key={check.planId} tone="warning">
+                  {t("sources.offSyllabus", {
+                    count: check.off,
+                    total: check.sections,
+                    plan: check.planTitle,
+                    sections: check.worst
+                      .map((entry) => entry.section)
+                      .join(", "),
+                  })}
+                </Notice>
+              ) : check.state === "checked" ? (
+                <p key={check.planId} className="small section-hint">
+                  {t("sources.syllabusFits", {
+                    total: check.sections,
+                    plan: check.planTitle,
+                  })}
+                </p>
+              ) : check.state === "unindexed" ? (
+                <p key={check.planId} className="small section-hint">
+                  {t("sources.syllabusUnindexed", { plan: check.planTitle })}
+                </p>
+              ) : null,
+            )
+          : null}
+        {detailSource &&
+        detailSource.planCount > 0 &&
+        (syllabus.data ?? []).some((check) => check.state === "unavailable") ? (
+          <p className="small section-hint">
+            {t("sources.syllabusUnavailable")}
+          </p>
+        ) : null}
         {meta.data && !meta.data.knownSpec ? (
           <Notice tone="warning">{t("sources.specUnknown")}</Notice>
         ) : null}
@@ -841,51 +1191,27 @@ export function LibraryPanel({
             </Button>
             <Button
               shape="round"
-              onClick={() => {
-                void window.pyxis
-                  .showOpenDialog({
-                    properties: ["openFile"],
-                    filters: [
-                      {
-                        name: "Fonti",
-                        extensions: ["pdf", "docx", "pptx", "txt", "md"],
-                      },
-                    ],
-                  })
-                  .then(async (picked) => {
-                    const path = picked?.[0];
-                    if (!path) return;
-                    await invoke("sources.replace", { sourceId, path });
-                    void client.invalidateQueries({ queryKey: ["sources"] });
-                  })
-                  .catch(fail);
-              }}
+              onClick={() => void replace(sourceId).catch(fail)}
             >
               {t("sources.replace")}
             </Button>
             <Button
               shape="round"
+              disabled={
+                detailSource?.kind === "smartbook" || !detailSource?.blobSha
+              }
+              onClick={() => {
+                if (detailSource) void reextract(detailSource).catch(fail);
+              }}
+            >
+              {t("sources.reextract")}
+            </Button>
+            <Button
+              shape="round"
               danger
               onClick={() => {
-                void invoke("sources.remove", {
-                  sourceId,
-                  confirmed: false,
-                }).then((result) => {
-                  if (!result.removed && result.inUse) {
-                    const again = window.confirm(t("sources.inUse"));
-                    if (!again) return;
-                    void invoke("sources.remove", {
-                      sourceId,
-                      confirmed: true,
-                    }).then(() => {
-                      setSourceId(null);
-                      void client.invalidateQueries({ queryKey: ["sources"] });
-                    });
-                    return;
-                  }
-                  setSourceId(null);
-                  void client.invalidateQueries({ queryKey: ["sources"] });
-                });
+                const source = sources.find((item) => item.id === sourceId);
+                if (source) void remove(source).catch(fail);
               }}
             >
               {t("sources.remove")}

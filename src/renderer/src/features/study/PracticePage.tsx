@@ -27,7 +27,7 @@ function ExerciseCard({ exercise }: { exercise: Exercise }) {
       <Tag tone={exercise.generated ? "neutral" : "smartbook"}>
         {t(exercise.generated ? "components.tags.ai" : "components.tags.smartbook")}
       </Tag>
-      <MarkdownView>{exercise.prompt}</MarkdownView>
+      <MarkdownView runnable>{exercise.prompt}</MarkdownView>
       <Input.TextArea
         value={answer}
         rows={2}
@@ -43,6 +43,7 @@ function ExerciseCard({ exercise }: { exercise: Exercise }) {
       {exercise.steps.slice(0, steps).map((step, index) => (
         <MarkdownView
           key={index}
+          runnable
           checks={step.check ? [step.check] : undefined}
         >
           {step.text}
@@ -51,7 +52,7 @@ function ExerciseCard({ exercise }: { exercise: Exercise }) {
       {allSteps && steps > 0 && exercise.answer ? (
         <>
           <p className="meta">{t("practice.finalAnswer")}</p>
-          <MarkdownView>{exercise.answer}</MarkdownView>
+          <MarkdownView runnable>{exercise.answer}</MarkdownView>
         </>
       ) : null}
       <div className="gallery-row">

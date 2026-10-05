@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Chip } from "./Chip";
 import { IconButton } from "./IconButton";
 import { Logo } from "./Logo";
+import { RunnablePython } from "./PythonBlock";
 import { Tag } from "./Tag";
 import "./ChatMessage.css";
 
@@ -50,7 +51,9 @@ export function ChatMessage({
             <Tag tone="general">{t("components.chat.generalTag")}</Tag>
           </div>
         ) : null}
-        <div className="px-msg-text">{children}</div>
+        <div className="px-msg-text">
+          <RunnablePython.Provider value>{children}</RunnablePython.Provider>
+        </div>
         <div className="px-msg-foot">
           <IconButton
             icon="copy"

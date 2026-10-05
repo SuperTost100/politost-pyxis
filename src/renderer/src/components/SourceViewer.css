@@ -13,13 +13,6 @@
   border-left-color: var(--star);
   animation: source-position 2s ease-out forwards;
 }
-.source-viewer-selection {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--surface-overlay);
-  border-radius: var(--radius-xl);
-}
 @keyframes source-position {
   from {
     background: var(--star-soft);

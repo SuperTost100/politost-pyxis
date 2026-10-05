@@ -10,7 +10,7 @@ Import course material, build a study plan around your exam date, and work throu
 
 ## Install
 
-A public release repository has not been created yet. There is no published download URL. Build from source below, or use an installer supplied by the owner after checking its SHA-256 checksum.
+Download the verified macOS Apple Silicon installer from [GitHub releases](https://github.com/SuperTost100/politost-pyxis/releases). Check SHA256SUMS before installation. Other-platform packages await hosted CI validation.
 
 - **macOS:** use the DMG for Apple Silicon `arm64` or Intel `x64`. Open it, drag PoliTost Pyxis to Applications, and open the app. Builds are ad-hoc signed, without Apple notarization. If macOS blocks a verified build, use System Settings → Privacy & Security → Open Anyway. Do not disable Gatekeeper globally.
 - **Windows:** run the NSIS `.exe` installer. Unsigned builds may show SmartScreen. For a build whose origin and checksum you have verified, choose More info → Run anyway.

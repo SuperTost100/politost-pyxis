@@ -147,8 +147,11 @@ export function WhiteboardPage() {
       }
       baseline.current = strokes;
       dirty.current = false;
-      sessionStorage.setItem("pyxis-board-png", url);
-      if (attach) navigate("/ask");
+      // Only Attach hands the image to Ask, and Ask takes it together with the staged file.
+      if (attach) {
+        sessionStorage.setItem("pyxis-board-png", url);
+        navigate("/ask");
+      }
     } catch {
       setError(true);
     } finally {

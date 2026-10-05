@@ -22,6 +22,7 @@ export function OnboardingPage() {
   const client = useQueryClient();
   const [name, setName] = useState("");
   const [level, setLevel] = useState<(typeof levels)[number]>("university");
+  const [year, setYear] = useState("");
   const [school, setSchool] = useState("");
   const [course, setCourse] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,6 +40,7 @@ export function OnboardingPage() {
           : {
               displayName: name.trim(),
               educationLevel: level,
+              year: year.trim(),
               school: school.trim(),
               course: course.trim(),
               contentLanguage: t("onboarding.contentLanguage"),
@@ -82,6 +84,16 @@ export function OnboardingPage() {
         ))}
       </div>
       <div className="px-form-grid">
+        <div className="px-form-field">
+          <label className="label" htmlFor="profile-year">
+            {t("onboarding.year")}
+          </label>
+          <Input
+            id="profile-year"
+            value={year}
+            onChange={(event) => setYear(event.target.value)}
+          />
+        </div>
         <div className="px-form-field">
           <label className="label" htmlFor="profile-school">
             {t("onboarding.school")}

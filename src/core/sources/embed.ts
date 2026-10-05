@@ -126,9 +126,11 @@ export async function indexModelVectors(db: Database.Database, dir: string, sign
       const insert = db.prepare(`INSERT INTO passages_vec (passage_rowid, embedding) VALUES (?, ?)`);
       const indexed = db.prepare(`SELECT 1 FROM passages_vec WHERE passage_rowid = ?`);
       rows.forEach((row, index) => {
-        // A source may have been removed while inference was running.
+        // A source may have been removed, or replaced or read again, while inference was running. A batch that was read
+        // from a version that is no longer the latest writes nothing, so a late job never indexes superseded text.
         if (!indexed.get(BigInt(row.n)) && db.prepare(`SELECT 1 FROM passages p LEFT JOIN sources s ON s.id = p.source_id
-          WHERE p.rowid = ? AND (p.source_id IS NULL OR s.status != 'removed')`).get(row.n)) {
+          WHERE p.rowid = ? AND (p.source_id IS NULL OR (s.status != 'removed' AND p.document_id = (SELECT id FROM source_documents
+            WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))`).get(row.n)) {
           insert.run(BigInt(row.n), Buffer.from(vectors[index]!.buffer));
         }
       });

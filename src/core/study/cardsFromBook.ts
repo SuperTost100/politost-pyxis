@@ -1,3 +1,4 @@
+import { interestsLine } from "../profile/context";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
@@ -189,9 +190,12 @@ export async function generateTopicCards(
 ) {
   requireTopic(db, input.planId, input.topicId);
   const selection = input.selection ?? selectionFor(db, "lesson");
-  const system = systemPrompt(TEMPLATE, {
-    contentLanguage: planLanguage(db, input.planId),
-  });
+  const system = [
+    systemPrompt(TEMPLATE, { contentLanguage: planLanguage(db, input.planId) }),
+    interestsLine(db),
+  ]
+    .filter(Boolean)
+    .join("\n");
   const attempted = new Set<string>();
   while (!signal?.aborted) {
     const batch = pendingPassages(db, input, attempted, BATCH);

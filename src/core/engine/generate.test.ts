@@ -57,4 +57,26 @@ describe("generate", () => {
     ).rejects.toMatchObject({ code: "invalid-output" });
     expect(calls).toBe(3);
   });
+
+  it("keeps the image attachments on every schema-repair retry", async () => {
+    const attachments = [{ type: "image" as const, mediaType: "image/png" as const, data: "aGk=" }];
+    const seen: unknown[] = [];
+    let calls = 0;
+    const output = await generate({
+      selection,
+      prompt: "read the board",
+      schema: z.object({ text: z.string() }),
+      attachments,
+      run: async (input) => {
+        seen.push(input.attachments);
+        calls += 1;
+        return calls < 3
+          ? result({ text: "not json", structuredError: "bad" })
+          : result({ structured: { text: "x^2" }, text: '{"text":"x^2"}' });
+      },
+    });
+    expect(output.data).toEqual({ text: "x^2" });
+    // The first call and both repairs carry the same picture. The run is a stub, so no provider is called.
+    expect(seen).toEqual([attachments, attachments, attachments]);
+  });
 });

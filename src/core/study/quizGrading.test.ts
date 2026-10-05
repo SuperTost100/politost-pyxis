@@ -11,7 +11,9 @@ import {
   readQuizGrading,
   registerQuizGradingJobs,
   submitQuiz,
+  timedPicks,
 } from "./quizGrading";
+import { saveQuizDraft } from "./quizJobs";
 
 type Db = ReturnType<typeof openDatabase>;
 const open = (id: string, reference = "ten"): QuizQuestion => ({
@@ -152,19 +154,40 @@ describe("quiz grading job", () => {
 
   it("credits whole-plan questions to their topics exactly once", async () => {
     const { db, attemptId } = fixture([mcq, { ...mcq, id: "second" }], "quiz");
-    db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('other', 'plan', 'Forces', 1, 1)").run();
-    const item = db.prepare("SELECT i.id, i.body_json FROM items i JOIN attempts a ON a.item_id = i.id WHERE a.id = ?").get(attemptId) as { id: string; body_json: string };
+    db.prepare(
+      "INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('other', 'plan', 'Forces', 1, 1)",
+    ).run();
+    const item = db
+      .prepare(
+        "SELECT i.id, i.body_json FROM items i JOIN attempts a ON a.item_id = i.id WHERE a.id = ?",
+      )
+      .get(attemptId) as { id: string; body_json: string };
     const body = JSON.parse(item.body_json);
-    body.config = { scope: "plan", count: 10, feedback: false }; body.complete = true;
+    body.config = { scope: "plan", count: 10, feedback: false };
+    body.complete = true;
     body.questions[1].topicId = "other";
-    db.prepare("UPDATE items SET body_json = ? WHERE id = ?").run(JSON.stringify(body), item.id);
+    db.prepare("UPDATE items SET body_json = ? WHERE id = ?").run(
+      JSON.stringify(body),
+      item.id,
+    );
     const runner = createRunner(db, () => {});
-    registerQuizGradingJobs(db, runner, async () => { throw new Error("Closed answers need no model"); });
+    registerQuizGradingJobs(db, runner, async () => {
+      throw new Error("Closed answers need no model");
+    });
     submitQuiz(db, runner, attemptId, { m: "0", second: "1" });
     await until(db, attemptId, (view) => view.state === "succeeded");
     submitQuiz(db, runner, attemptId, { m: "0", second: "1" });
-    const rows = db.prepare("SELECT topic_id, payload_json FROM learning_events WHERE kind = 'answer_given' ORDER BY topic_id").all() as Array<{ topic_id: string; payload_json: string }>;
-    expect(rows.map((r) => [r.topic_id, JSON.parse(r.payload_json).score])).toEqual([["other", 0], ["topic", 1]]);
+    const rows = db
+      .prepare(
+        "SELECT topic_id, payload_json FROM learning_events WHERE kind = 'answer_given' ORDER BY topic_id",
+      )
+      .all() as Array<{ topic_id: string; payload_json: string }>;
+    expect(
+      rows.map((r) => [r.topic_id, JSON.parse(r.payload_json).score]),
+    ).toEqual([
+      ["other", 0],
+      ["topic", 1],
+    ]);
     db.close();
   });
 
@@ -368,6 +391,89 @@ describe("quiz grading job", () => {
     // Finished checks leave no job rows behind.
     expect(db.prepare("SELECT count(*) AS n FROM jobs").get()).toEqual({
       n: 0,
+    });
+    db.close();
+  });
+
+  it("refuses checks after the timer and grades the saved draft, not late input", async () => {
+    const { db, attemptId } = fixture([open("cfg"), open("two")], "quiz");
+    const item = db
+      .prepare("SELECT id, body_json FROM items WHERE kind = 'quiz'")
+      .get() as { id: string; body_json: string };
+    const body = JSON.parse(item.body_json);
+    body.config.timerMinutes = 1;
+    db.prepare("UPDATE items SET body_json = ? WHERE id = ?").run(
+      JSON.stringify(body),
+      item.id,
+    );
+    const seen: string[] = [];
+    const runner = createRunner(db, () => {});
+    const run: GenerateInput["run"] = async (input) => {
+      seen.push(answerOf(input));
+      return reply(1);
+    };
+    registerQuizGradingJobs(db, runner, run);
+    const t0 = 1_000_000;
+    // The first save starts the one-minute clock.
+    saveQuizDraft(db, attemptId, { cfg: "early" }, 0, undefined, t0);
+    await checkQuestion(
+      db,
+      runner,
+      run,
+      attemptId,
+      "cfg",
+      "early",
+      t0 + 30_000,
+    );
+    saveQuizDraft(
+      db,
+      attemptId,
+      { cfg: "early", two: "draft-two" },
+      1,
+      undefined,
+      t0 + 40_000,
+    );
+    const late = t0 + 60_000 + 6_000;
+    await expect(
+      checkQuestion(db, runner, run, attemptId, "two", "late", late),
+    ).rejects.toThrow("attempt-closed");
+    expect(() =>
+      saveQuizDraft(db, attemptId, { two: "late" }, 1, undefined, late),
+    ).toThrow("attempt-closed");
+    const { jobId } = submitQuiz(
+      db,
+      runner,
+      attemptId,
+      { cfg: "late", two: "late" },
+      late,
+    );
+    const done = await until(
+      db,
+      attemptId,
+      (view) => view.state === "succeeded" && view.jobId === jobId,
+    );
+    expect(done.result!.picks).toEqual({ cfg: "early", two: "draft-two" });
+    expect(seen).toEqual(["early", "draft-two"]);
+    db.close();
+  });
+
+  it("still accepts the final answers sent inside the save grace", () => {
+    const { db, attemptId } = fixture([open("cfg")], "quiz");
+    const item = db
+      .prepare("SELECT id, body_json FROM items WHERE kind = 'quiz'")
+      .get() as { id: string; body_json: string };
+    const body = JSON.parse(item.body_json);
+    body.config.timerMinutes = 1;
+    db.prepare("UPDATE items SET body_json = ? WHERE id = ?").run(
+      JSON.stringify(body),
+      item.id,
+    );
+    saveQuizDraft(db, attemptId, { cfg: "saved" }, 0, undefined, 0);
+    expect(timedPicks(db, attemptId, { cfg: "last" }, 60_000 + 3_000)).toEqual({
+      cfg: "last",
+    });
+    expect(timedPicks(db, attemptId, { cfg: "last" }, 60_000 + 6_000)).toEqual({
+      cfg: "saved",
     });
     db.close();
   });

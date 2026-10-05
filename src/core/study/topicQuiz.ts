@@ -79,12 +79,13 @@ export function startDiagnostic(db: Database.Database, planId: string) {
     .get(planId) as { id: string } | undefined;
   if (generated) return startAttempt(db, planId, generated.id);
   const topics = db
-    .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
+    .prepare(`SELECT id FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position`)
     .all(planId) as Array<{ id: string }>;
+  const blocked = flaggedIds(db, "exercise");
   const questions = acrossTopics(
     topics.map((topic) =>
       topicExercises(db, topic.id)
-        .filter((row) => row.answer && row.answer.trim())
+        .filter((row) => row.answer && row.answer.trim() && !blocked.has(row.id))
         .map((row) => ({
           id: row.id,
           topicId: topic.id,

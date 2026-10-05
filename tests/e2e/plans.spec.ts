@@ -23,9 +23,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
           title: "Moto",
           summary: "Velocità e accelerazione",
           subtopics: ["Velocità", "Accelerazione"],
-          sourceSections: [
-            { sourceId: "{{source:0}}", section: "{{section:0}}" },
-          ],
+          segmentIds: ["{{segment:0}}"],
         },
       ],
     },

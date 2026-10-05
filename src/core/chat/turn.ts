@@ -1,3 +1,4 @@
+import { activeSimulation } from "../study/simulation";
 import { splitChecks, solverChecks } from "./checks";
 import type { AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
@@ -8,8 +9,11 @@ import { capabilityWarning } from "../engine/capabilities";
 import { selectionFor } from "../engine/selection";
 import type { Embedder, PassageHit } from "../sources/retrieve";
 import { contentWords, retrieveWithModel } from "../sources/retrieve";
-import { prepareFiles, savedImages, type PreparedFiles } from "./attach";
-import { contentLanguage } from "../engine/prompts";
+import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
+import { deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
+import { contentLanguage, planLanguage } from "../engine/prompts";
+import { profileContext } from "../profile/context";
+import { readProfile } from "../profile/profile";
 import {
   type ChatTemplateId,
   chatProvenance,
@@ -50,12 +54,16 @@ export type AskResult = {
   chatId: string;
   covered: boolean;
   message: ChatMessageView | null;
+  /** Saved images this turn could not send, with why. The student is told, since the reply did not see them. */
+  skippedImages?: SkippedImage[];
 };
 
 type AskInput = {
   chatId?: string;
   text: string;
   sourceIds?: string[];
+  /** ASK-07: a plan scopes the chat to the plan's sources; null clears it, undefined keeps it. */
+  planId?: string | null;
   mode?: "solver" | "socratic";
   allowGeneral?: boolean;
   subject?: string;
@@ -67,23 +75,6 @@ type AskInput = {
   onDelta?: (text: string) => void;
   run?: Parameters<typeof generate>[0]["run"];
 };
-
-function profileContext(db: Database.Database): string {
-  const row = db
-    .prepare(
-      `SELECT display_name, education_level, course, content_language FROM profile LIMIT 1`,
-    )
-    .get() as
-    | {
-        display_name: string | null;
-        education_level: string | null;
-        course: string | null;
-        content_language: string | null;
-      }
-    | undefined;
-  if (!row) return "";
-  return `Student: ${row.display_name ?? ""}. Level: ${row.education_level ?? ""}. Course: ${row.course ?? ""}.`;
-}
 
 function splitFollowups(text: string): { body: string; followups: string[] } {
   const match = text.match(/<followups>([\s\S]*?)<\/followups>/i);
@@ -132,15 +123,76 @@ function isFollowUp(text: string): boolean {
   return words.length === 0 || words.every((word) => FOLLOW.has(word));
 }
 
-export function chatScope(db: Database.Database, chatId: string): string[] {
+type Scope = { planId: string | null; ids: string[] };
+
+/** scope_json holds a source ID array, or { planId, sourceIds } for a plan-scoped chat. */
+function readScope(db: Database.Database, chatId: string): Scope {
   const row = db
     .prepare(`SELECT scope_json FROM chats WHERE id = ?`)
     .get(chatId) as { scope_json: string } | undefined;
-  if (!row) return [];
+  if (!row) return { planId: null, ids: [] };
   const parsed = JSON.parse(row.scope_json) as unknown;
-  return Array.isArray(parsed)
-    ? parsed.filter((id) => typeof id === "string")
-    : [];
+  const strings = (value: unknown) =>
+    Array.isArray(value)
+      ? value.filter((id): id is string => typeof id === "string")
+      : [];
+  if (Array.isArray(parsed)) return { planId: null, ids: strings(parsed) };
+  const object = (parsed ?? {}) as { planId?: unknown; sourceIds?: unknown };
+  const planId =
+    typeof object.planId === "string" &&
+    db.prepare(`SELECT 1 FROM plans WHERE id = ?`).get(object.planId)
+      ? object.planId
+      : null;
+  return { planId, ids: strings(object.sourceIds) };
+}
+
+function planSourceIds(db: Database.Database, planId: string): string[] {
+  return (
+    db
+      .prepare(`SELECT source_id FROM plan_sources WHERE plan_id = ?`)
+      .all(planId) as Array<{ source_id: string }>
+  ).map((row) => row.source_id);
+}
+
+function effectiveSources(db: Database.Database, scope: Scope): string[] {
+  return [
+    ...new Set([
+      ...(scope.planId ? planSourceIds(db, scope.planId) : []),
+      ...scope.ids,
+    ]),
+  ];
+}
+
+/** Every source the chat retrieves from: the plan's sources plus chosen and attached ones. */
+export function chatScope(db: Database.Database, chatId: string): string[] {
+  return effectiveSources(db, readScope(db, chatId));
+}
+
+export function chatPlan(db: Database.Database, chatId: string): string | null {
+  return readScope(db, chatId).planId;
+}
+
+/** Sources picked by hand or attached, without the plan's own. */
+export function chatPickedSources(db: Database.Database, chatId: string): string[] {
+  return readScope(db, chatId).ids;
+}
+
+/** ASK-09: the plan's language and name, falling back to the profile for an unscoped chat. */
+function chatPrompt(db: Database.Database, planId: string | null) {
+  const plan = planId
+    ? (db
+        .prepare(
+          `SELECT p.title, s.name AS subject FROM plans p
+           LEFT JOIN subjects s ON s.id = p.subject_id WHERE p.id = ?`,
+        )
+        .get(planId) as { title: string; subject: string | null } | undefined)
+    : undefined;
+  return {
+    language: planId ? planLanguage(db, planId) : contentLanguage(db),
+    planLine: plan
+      ? `Plan: ${plan.title}.${plan.subject ? ` Subject: ${plan.subject}.` : ""}`
+      : "",
+  };
 }
 
 function priorPassages(
@@ -234,10 +286,18 @@ async function gather(
   return found;
 }
 
+function requireTutorAvailable(db: Database.Database) {
+  if (activeSimulation(db))
+    throw new IpcError("exam-active", "simulation.tutorLocked");
+}
+
 export function seedChat(
   db: Database.Database,
-  input: ChatContext & { sourceIds?: string[]; subject?: string },
+  input: ChatContext & { sourceIds?: string[]; subject?: string; planId?: string },
 ): { chatId: string } {
+  requireTutorAvailable(db);
+  if (input.planId && !db.prepare("SELECT 1 FROM plans WHERE id = ?").get(input.planId))
+    throw new IpcError("plan-missing", "errors.internal");
   const now = Date.now();
   const chatId = uuidv7(now);
   const context: ChatContext = {
@@ -251,7 +311,7 @@ export function seedChat(
   ).run(
     chatId,
     input.title.slice(0, 80),
-    JSON.stringify(input.sourceIds ?? []),
+    JSON.stringify(input.planId ? { planId: input.planId, sourceIds: input.sourceIds ?? [] } : input.sourceIds ?? []),
     input.subject ?? null,
     JSON.stringify(context),
     now,
@@ -283,15 +343,23 @@ export async function askTurn(
   input: AskInput,
   replacing?: { assistantId: string; userId: string },
 ): Promise<AskResult> {
+  requireTutorAvailable(db);
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
   const now = Date.now();
   const chatId = ensureChat(db, input.chatId, input.text, now);
-  let sourceIds = input.sourceIds ?? chatScope(db, chatId);
-  let notes: string[] = [];
-  let images: PreparedFiles["images"] = [];
+  const prior = readScope(db, chatId);
+  const planId = input.planId === undefined ? prior.planId : input.planId;
+  if (
+    planId &&
+    !db.prepare(`SELECT 1 FROM plans WHERE id = ?`).get(planId)
+  )
+    throw new IpcError("plan-missing", "errors.internal");
+  const picked0 =
+    input.sourceIds ?? (planId === prior.planId ? prior.ids : []);
+  let staged: StagedFiles | undefined;
   if (input.files && input.files.length > 0 && input.workspace) {
     try {
-      const prepared = await prepareFiles(
+      staged = await stageFiles(
         db,
         input.workspace,
         input.files,
@@ -299,9 +367,6 @@ export async function askTurn(
         input.recognize,
         input.signal,
       );
-      sourceIds = [...new Set([...sourceIds, ...prepared.sourceIds])];
-      notes = prepared.notes;
-      images = prepared.images;
     } catch (err) {
       if (
         err instanceof Error &&
@@ -312,49 +377,71 @@ export async function askTurn(
       throw err;
     }
   }
-  const storedSubject = (
-    db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
-      { subject: string | null } | undefined
-  )?.subject;
-  const subject =
-    input.subject === undefined ? (storedSubject ?? "") : input.subject.trim();
-  if (input.sourceIds || sourceIds.length > 0) {
+  const notes: string[] = staged?.notes ?? [];
+  const images: PreparedFiles["images"] = staged?.images ?? [];
+  // The files were read while the chat could be deleted, so it is checked again here, in the one transaction that stores
+  // the attached sources with the turn's scope, message and photos. A failure anywhere in it leaves none of them.
+  const persist = (attachedIds: string[]) => {
+    if (!db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(chatId)) throw new Error("chat-missing");
+    // The chat's own hidden documents stay in its scope whatever the client sends: a picker that lists only library
+    // sources, or a `picked` list loaded before an earlier turn attached one, cannot remove them. The scope is read
+    // again here, in the transaction, so a turn stored since `prior` was read is not overwritten either.
+    const hidden = readScope(db, chatId).ids.filter((id) =>
+      db.prepare(`SELECT 1 FROM sources WHERE id = ? AND library = 0`).get(id),
+    );
+    const picked = [...new Set([...picked0, ...hidden, ...attachedIds])];
+    const sourceIds = effectiveSources(db, { planId, ids: picked });
+    const storedSubject = (
+      db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
+        { subject: string | null } | undefined
+    )?.subject;
+    const subject =
+      input.subject === undefined ? (storedSubject ?? "") : input.subject.trim();
     db.prepare(`UPDATE chats SET scope_json = ?, subject = ? WHERE id = ?`).run(
-      JSON.stringify(sourceIds),
+      JSON.stringify(planId ? { planId, sourceIds: picked } : picked),
       subject || null,
       chatId,
     );
-  } else if (input.subject !== undefined) {
-    db.prepare(`UPDATE chats SET subject = ? WHERE id = ?`).run(
-      subject || null,
-      chatId,
+    const userBody =
+      notes.length > 0 ? `${input.text}\n\n${notes.join("\n")}` : input.text;
+    const pending = db
+      .prepare(
+        `SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(chatId) as { id: string; role: string; body: string } | undefined;
+    let userMessageId =
+      replacing?.userId ||
+      (pending?.role === "user" && pending.body === userBody ? pending.id : "");
+    if (!userMessageId) {
+      userMessageId = uuidv7(now + 1);
+      db.prepare(
+        `INSERT INTO messages (id, chat_id, role, body, created_at) VALUES (?, ?, 'user', ?, ?)`,
+      ).run(userMessageId, chatId, userBody, now);
+    }
+    // A retried turn reuses its user message, so a photo already recorded on it is not recorded twice.
+    const hasAttachment = db.prepare(
+      `SELECT 1 FROM attachments WHERE message_id = ? AND blob_sha = ? AND mime = ?`,
     );
-  }
-  const userBody =
-    notes.length > 0 ? `${input.text}\n\n${notes.join("\n")}` : input.text;
-  const pending = db
-    .prepare(
-      `SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(chatId) as { id: string; role: string; body: string } | undefined;
-  let userMessageId =
-    replacing?.userId ||
-    (pending?.role === "user" && pending.body === userBody ? pending.id : "");
-  if (!userMessageId) {
-    userMessageId = uuidv7(now + 1);
-    db.prepare(
-      `INSERT INTO messages (id, chat_id, role, body, created_at) VALUES (?, ?, 'user', ?, ?)`,
-    ).run(userMessageId, chatId, userBody, now);
-  }
-  const attach = db.prepare(
-    `INSERT INTO attachments (id, message_id, blob_sha, mime, created_at) VALUES (?, ?, ?, ?, ?)`,
-  );
-  for (const image of images) {
-    attach.run(uuidv7(now + 3), userMessageId, image.sha, image.mediaType, now);
-    if (image.original)
-      attach.run(uuidv7(now + 4), userMessageId, image.original.sha, image.original.mime, now);
-  }
-  db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
+    const insertAttachment = db.prepare(
+      `INSERT INTO attachments (id, message_id, blob_sha, mime, created_at) VALUES (?, ?, ?, ?, ?)`,
+    );
+    const attach = {
+      run: (id: string, messageId: string, sha: string, mime: string, at: number) => {
+        if (!hasAttachment.get(messageId, sha, mime))
+          insertAttachment.run(id, messageId, sha, mime, at);
+      },
+    };
+    for (const image of images) {
+      attach.run(uuidv7(now + 3), userMessageId, image.sha, image.mediaType, now);
+      if (image.original)
+        attach.run(uuidv7(now + 4), userMessageId, image.original.sha, image.original.mime, now);
+    }
+    db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
+    return { sourceIds, subject };
+  };
+  const { sourceIds, subject } = staged
+    ? commitStaged(db, input.workspace!, staged, persist).value
+    : db.transaction(() => persist([]))();
 
   const seesImage =
     Boolean(input.workspace) &&
@@ -364,7 +451,9 @@ export async function askTurn(
   const found =
     input.allowGeneral || (thisTurnFile && sourceIds.length === 0)
       ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
-      : await gather(db, chatId, input.text, sourceIds, input.embed);
+      : planId && sourceIds.length === 0
+        ? { hits: [] as PassageHit[], covered: false, usedVectors: false }
+        : await gather(db, chatId, input.text, sourceIds, input.embed);
   if (!input.allowGeneral && !found.covered && !thisTurnFile) {
     return { chatId, covered: false, message: null };
   }
@@ -390,22 +479,36 @@ export async function askTurn(
     : "";
   const attachedBlock =
     notes.length > 0 ? `Attached text:\n${notes.join("\n")}\n\n` : "";
-  const template = chatTemplateId(input);
-  const system = `${chatSystemPrompt(template, contentLanguage(db))}\n${profileContext(db)}\n${subjectLine}`;
+  const profile = readProfile(db);
+  const mode = input.mode ?? profile?.tutorMode ?? "solver";
+  const template = chatTemplateId({ ...input, mode });
+  const where = chatPrompt(db, planId);
+  const system = [
+    chatSystemPrompt(template, where.language, profile?.followups !== false),
+    profileContext(db, planId),
+    where.planLine,
+    subjectLine,
+  ]
+    .filter(Boolean)
+    .join("\n");
   const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}\n\nEarlier turns:\n${historyText(db, chatId, replacing?.assistantId)}\n\nQuestion:\n${input.text}`;
   const selection = selectionFor(db, "chat");
   let streamed = "";
   let result;
+  // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
+  const saved =
+    input.workspace && capabilityWarning(selection.model, "vision") == null
+      ? await savedImages(db, input.workspace, chatId, input.signal)
+      : null;
+  const skippedImages = saved?.skipped.length ? { skippedImages: saved.skipped } : {};
   try {
     result = await generate({
       prompt,
       system,
       selection,
-      attachments:
-        input.workspace &&
-        capabilityWarning(selectionFor(db, "chat").model, "vision") == null
-          ? savedImages(db, input.workspace, chatId)
-          : images
+      attachments: saved
+        ? saved.images
+        : images
               .filter((image) => image.data)
               .map((image) => ({
                 type: "image" as const,
@@ -415,25 +518,30 @@ export async function askTurn(
       signal: input.signal,
       run: input.run,
       onDelta: (text) => {
+        requireTutorAvailable(db);
         streamed = text;
         input.onDelta?.(text.replace(/<followups>[\s\S]*$/, "").trim());
       },
     });
   } catch (err) {
+    requireTutorAvailable(db);
     if (
       (isAbort(err) || (err instanceof Error && err.name === "AbortError")) &&
       streamed.trim()
     ) {
-      return finishReply(db, chatId, streamed, {
-        provider: selection.provider,
-        model: selection.model,
-        grounding: input.allowGeneral ? "general" : "sources",
-        template,
-        citations,
-        allowGeneral: input.allowGeneral === true,
-        stopped: true,
-        now,
-      });
+      return {
+        ...finishReply(db, chatId, streamed, {
+          provider: selection.provider,
+          model: selection.model,
+          grounding: input.allowGeneral ? "general" : "sources",
+          template,
+          citations,
+          allowGeneral: input.allowGeneral === true,
+          stopped: true,
+          now,
+        }),
+        ...skippedImages,
+      };
     }
     throw err;
   }
@@ -441,8 +549,9 @@ export async function askTurn(
     return { chatId, covered: false, message: null };
   }
   const parsed = splitFollowups(result.text);
+  if (profile?.followups === false) parsed.followups = [];
   const checks =
-    input.mode !== "socratic"
+    mode !== "socratic"
       ? await solverChecks(parsed.body, {
           selection,
           signal: input.signal,
@@ -450,6 +559,7 @@ export async function askTurn(
         })
       : [];
 
+  requireTutorAvailable(db);
   const stored = `${parsed.body}${
     parsed.followups.length > 0
       ? `\n<followups>\n${parsed.followups.join("\n")}\n</followups>`
@@ -483,7 +593,7 @@ export async function askTurn(
     !input.allowGeneral &&
     linked.length === 0 &&
     !thisTurnFile &&
-    !(input.mode === "socratic" && parsed.body.trim().endsWith("?"))
+    !(mode === "socratic" && parsed.body.trim().endsWith("?"))
   ) {
     db.prepare(`DELETE FROM messages WHERE id = ?`).run(messageId);
     return { chatId, covered: false, message: null };
@@ -507,6 +617,7 @@ export async function askTurn(
       stopped: false,
       checks,
     },
+    ...skippedImages,
   };
 }
 
@@ -637,9 +748,46 @@ export function renameChat(
   if (info.changes === 0) throw new Error("chat-missing");
 }
 
-export function deleteChat(db: Database.Database, chatId: string) {
-  const info = db.prepare(`DELETE FROM chats WHERE id = ?`).run(chatId);
-  if (info.changes === 0) throw new Error("chat-missing");
+/**
+ * Deletes a chat for good: its messages and citations, the hidden documents it attached (unless another chat, a plan or
+ * anything built from them still uses one, or the student promoted it to the library), and the photo and document
+ * files nothing else names. The rows go in one transaction; the files are removed after it commits.
+ */
+export function deleteChat(db: Database.Database, workspace: string, chatId: string) {
+  const hashes = db.transaction(() => {
+    const mine = readScope(db, chatId).ids;
+    const shared = new Set(
+      (db.prepare(`SELECT id FROM chats WHERE id != ?`).all(chatId) as Array<{ id: string }>).flatMap(
+        (row) => readScope(db, row.id).ids,
+      ),
+    );
+    const photos = db
+      .prepare(`SELECT a.blob_sha AS sha FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.chat_id = ?`)
+      .all(chatId) as Array<{ sha: string }>;
+    // A hidden document this chat cited but no longer lists (a scope an older turn overwrote), read before the delete
+    // removes the citations. `deleteHiddenSources` still keeps it if any other chat, plan or study row uses it.
+    const cited = (
+      db
+        .prepare(
+          `SELECT DISTINCT p.source_id AS id FROM message_passages mp
+           JOIN messages m ON m.id = mp.message_id
+           JOIN passages p ON p.id = mp.passage_id
+           JOIN sources s ON s.id = p.source_id
+           WHERE m.chat_id = ? AND s.library = 0`,
+        )
+        .all(chatId) as Array<{ id: string }>
+    ).map((row) => row.id);
+    const info = db.prepare(`DELETE FROM chats WHERE id = ?`).run(chatId);
+    if (info.changes === 0) throw new Error("chat-missing");
+    return [
+      ...photos.map((row) => row.sha),
+      ...deleteHiddenSources(
+        db,
+        [...new Set([...mine, ...cited])].filter((id) => !shared.has(id)),
+      ),
+    ];
+  })();
+  removeUnreferencedBlobs(db, workspace, hashes);
 }
 
 export function listChats(db: Database.Database) {
@@ -690,6 +838,7 @@ export function readChat(
     reaction: string | null;
     stopped: number;
   }>;
+  const chips = readProfile(db)?.followups !== false;
   const links = db.prepare(
     `SELECT mp.label, mp.passage_id, p.source_id, p.section_path, p.locator_json
      FROM message_passages mp
@@ -730,7 +879,7 @@ export function readChat(
       modelId: row.model_id,
       provider: row.engine_provider,
       grounding: row.grounding,
-      followups: parsed.followups,
+      followups: chips ? parsed.followups : [],
       citations,
       reaction:
         row.reaction === "up" || row.reaction === "down" ? row.reaction : null,

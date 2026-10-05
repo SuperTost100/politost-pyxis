@@ -14,6 +14,7 @@ export type PreviewSource = {
 };
 export type PlanPreview = {
   title: string;
+  author?: string;
   createdAt?: number;
   language?: "it" | "en" | null;
   counts: Record<
@@ -21,6 +22,8 @@ export type PlanPreview = {
     number
   >;
   progress: boolean;
+  /** Active topics the model wrote without source material (PLAN-11). */
+  generalTopics: number;
   sources: PreviewSource[];
   missing: PreviewSource[];
 };
@@ -57,6 +60,7 @@ export function previewPlan(
   });
   return {
     title: file.title,
+    author: file.author,
     createdAt: file.createdAt,
     language: file.language,
     counts: {
@@ -68,6 +72,9 @@ export function previewPlan(
       exercises: (file.exercises ?? []).length,
     },
     progress: (file.progress ?? []).length > 0,
+    generalTopics: file.topics.filter(
+      (topic) => !topic.archived && topic.grounding === "general",
+    ).length,
     sources,
     missing: sources.filter((source) => !source.embedded),
   };

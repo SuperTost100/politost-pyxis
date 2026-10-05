@@ -3,12 +3,12 @@ import { invoke } from "../lib/ipc";
 import {
   anchoredChecks,
   fencedChecks,
+  stripCheckFences,
   type AnchoredCheck,
   type MathCheck,
 } from "@shared/math-check";
-import { Button } from "antd";
 import type { ComponentPropsWithoutRef } from "react";
-import { isValidElement, useMemo } from "react";
+import { isValidElement, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -22,6 +22,7 @@ import {
 } from "../markdown/normalizeMathDelimiters";
 import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
+import { PythonBlock, RunnablePython } from "./PythonBlock";
 import "./MarkdownView.css";
 
 export type CitationResolver = (passageId: number) => string | undefined;
@@ -41,7 +42,7 @@ export function MarkdownView({
   variant = "reading",
   citationResolver,
   onCitationClick,
-  onRunPython,
+  runnable,
   checks,
 }: {
   children: string;
@@ -49,15 +50,17 @@ export function MarkdownView({
   variant?: "reading" | "body";
   citationResolver?: CitationResolver;
   onCitationClick?: (passageId: number) => void;
-  onRunPython?: (code: string) => void;
+  /** Python blocks get an editor and a Run button; defaults to on inside tutor messages. */
+  runnable?: boolean;
 }) {
-  const { t } = useTranslation();
+  const inherited = useContext(RunnablePython);
+  const canRun = runnable ?? inherited;
   const claims = useMemo(
     () => anchoredChecks(children, checks ?? fencedChecks(children)),
     [children, checks],
   );
   const source = useMemo(() => {
-    let body = children.replace(/```check\s*\n[\s\S]*?\n```/g, "");
+    let body = stripCheckFences(children);
     const inserts = new Map<number, string[]>();
     claims.forEach((claim, index) => {
       const start = body.indexOf(claim.step);
@@ -122,23 +125,13 @@ export function MarkdownView({
               lang = props.className?.replace("language-", "") ?? "";
               codeText = String(props.children ?? "").replace(/\n$/, "");
             }
-            const isPython = lang === "python";
+            if (lang === "python" && canRun)
+              return <PythonBlock code={codeText} />;
             return (
               <div className="px-code-block">
-                <pre className="px-code-pre" {...rest}>
+                <pre className="px-code-pre" tabIndex={0} {...rest}>
                   {preChildren}
                 </pre>
-                {isPython && onRunPython ? (
-                  <Button
-                    type="default"
-                    shape="round"
-                    size="small"
-                    className="px-code-run"
-                    onClick={() => onRunPython(codeText)}
-                  >
-                    {t("components.markdown.run")}
-                  </Button>
-                ) : null}
               </div>
             );
           },

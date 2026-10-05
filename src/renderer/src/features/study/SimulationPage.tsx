@@ -52,6 +52,8 @@ export function SimulationPage() {
     queryFn: () => invoke("study.simulationBuild", { planId }),
   });
   const building = build.data;
+  // A finished build is only prepared: no attempt exists and no clock runs until Start.
+  const ready = building?.state === "succeeded";
   const buildStopped = ["failed", "cancelled", "interrupted"].includes(
     building?.state ?? "",
   );
@@ -67,6 +69,21 @@ export function SimulationPage() {
     );
     setNoEngine(text.includes("engine-missing"));
   }
+  function begin(request: Promise<{ attemptId: string }>) {
+    setBusy(true);
+    setNotice("");
+    setNoEngine(false);
+    return request
+      .then(async ({ attemptId: next }) => {
+        setStarted(next);
+        navigate(`/plans/${planId}/exam/${next}`, { replace: true });
+        await client.invalidateQueries({
+          queryKey: ["simulation-build", planId],
+        });
+      })
+      .catch(startFailed)
+      .finally(() => setBusy(false));
+  }
   async function control(action: "jobs.cancel" | "jobs.retry" | "jobs.resume") {
     if (!building) return;
     await invoke(action, { jobId: building.jobId }).catch(() =>
@@ -74,6 +91,9 @@ export function SimulationPage() {
     );
     await client.invalidateQueries({ queryKey: ["simulation-build", planId] });
   }
+  useEffect(() => {
+    if (building) setLength(building.minutes as typeof length);
+  }, [building?.jobId, building?.minutes]);
   useEffect(() => {
     if (run && !started) {
       setStarted(run.attemptId);
@@ -251,7 +271,13 @@ export function SimulationPage() {
             onChange={(value) => setSource(value as typeof source)}
           />
           <Notice tone="info">{t("simulation.tutorLocked")}</Notice>
-          {building && !buildStopped && (
+          {ready && (
+            <>
+              <h3 className="body-strong">{t("simulation.readyTitle")}</h3>
+              <Notice tone="info">{t("simulation.readyInfo")}</Notice>
+            </>
+          )}
+          {building && !buildStopped && !ready && (
             <>
               <h3 className="body-strong">{t("simulation.buildTitle")}</h3>
               <Notice tone="info">{t("simulation.buildInfo")}</Notice>
@@ -286,37 +312,56 @@ export function SimulationPage() {
               {t("simulation.buildFailed")}
             </Notice>
           )}
-          <Button
-            type="primary"
-            shape="round"
-            loading={busy}
-            disabled={open.isPending || (Boolean(building) && !buildStopped)}
-            onClick={() => {
-              setBusy(true);
-              setNotice("");
-              setNoEngine(false);
-              void invoke("study.simulationPrepare", {
-                planId,
-                minutes: length,
-                source,
-              })
-                .then(async (next) => {
-                  if (next.attemptId) {
-                    setStarted(next.attemptId);
-                    navigate(`/plans/${planId}/exam/${next.attemptId}`, {
-                      replace: true,
-                    });
-                  } else
-                    await client.invalidateQueries({
-                      queryKey: ["simulation-build", planId],
-                    });
+          {ready ? (
+            <Button
+              type="primary"
+              shape="round"
+              loading={busy}
+              onClick={() =>
+                void begin(
+                  invoke("study.simulationStart", {
+                    planId,
+                    minutes: (building?.minutes ?? length) as typeof length,
+                    source,
+                  }),
+                )
+              }
+            >
+              {t("simulation.startNow")}
+            </Button>
+          ) : (
+            <Button
+              type="primary"
+              shape="round"
+              loading={busy}
+              disabled={open.isPending || (Boolean(building) && !buildStopped)}
+              onClick={() => {
+                setBusy(true);
+                setNotice("");
+                setNoEngine(false);
+                void invoke("study.simulationPrepare", {
+                  planId,
+                  minutes: length,
+                  source,
                 })
-                .catch(startFailed)
-                .finally(() => setBusy(false));
-            }}
-          >
-            {t("simulation.start")}
-          </Button>
+                  .then(async (next) => {
+                    if (next.attemptId) {
+                      setStarted(next.attemptId);
+                      navigate(`/plans/${planId}/exam/${next.attemptId}`, {
+                        replace: true,
+                      });
+                    } else
+                      await client.invalidateQueries({
+                        queryKey: ["simulation-build", planId],
+                      });
+                  })
+                  .catch(startFailed)
+                  .finally(() => setBusy(false));
+              }}
+            >
+              {t("simulation.start")}
+            </Button>
+          )}
         </section>
       ) : run.submitted ? (
         <section className="px-sim-results">
@@ -491,12 +536,12 @@ export function SimulationPage() {
           )}
         </section>
       )}
-      {(!run || run.submitted) && (
+      {run?.submitted && (
         <div className="px-sim-export">
           <ExportButton
             planId={planId}
             kind="simulation"
-            attemptId={run?.attemptId}
+            attemptId={run.attemptId}
           />
         </div>
       )}

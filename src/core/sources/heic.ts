@@ -66,12 +66,14 @@ async function loadLibheif(): Promise<HeifApi> {
   return api;
 }
 
-function shrink(
-  rgba: Uint8ClampedArray,
+/** Box-average RGBA down so the long edge is at most `edge`. The output is opaque. */
+export function shrink(
+  rgba: Uint8Array | Uint8ClampedArray,
   width: number,
   height: number,
+  edge = HEIC_PNG_EDGE,
 ): { data: Buffer; width: number; height: number } {
-  const scale = Math.max(1, Math.max(width, height) / HEIC_PNG_EDGE);
+  const scale = Math.max(1, Math.max(width, height) / edge);
   const outW = Math.max(1, Math.round(width / scale));
   const outH = Math.max(1, Math.round(height / scale));
   const out = Buffer.alloc(outW * outH * 4);

@@ -74,6 +74,38 @@ describe("study series", () => {
     );
   });
 
+  it("opens a gap on a single weak open answer, but not one closed-answer miss", () => {
+    const event = { topicId: "a", at: now, score: 0.2, scores: [0.2], kind: "quiz" as const };
+    expect(openGaps([{ ...event, answerKinds: ["open"] }])).toEqual([
+      { topicId: "a", openedAt: now },
+    ]);
+    expect(openGaps([{ ...event, answerKinds: ["mcq"] }])).toEqual([]);
+    expect(openGaps([{ ...event, score: 0.3, scores: [0.3], answerKinds: ["open"] }])).toEqual([]);
+    expect(openGaps([{ ...event, score: 0.6, scores: [1, 0.2], answerKinds: ["mcq", "open"] }])).toEqual([
+      { topicId: "a", openedAt: now },
+    ]);
+  });
+
+  it("closes a gap after a later miss: day 0 opens, day 1 misses, days 2 to 5 are clean (R8 #1)", () => {
+    const openedAt = Date.UTC(2026, 0, 1, 12);
+    const event = (days: number, scores: number[]) => ({
+      topicId: "a",
+      at: openedAt + days * DAY,
+      score: scores.reduce((sum, score) => sum + score, 0) / scores.length,
+      scores,
+      kind: "quiz" as const,
+    });
+    const history = [event(0, [0, 0]), event(1, [0, 1, 1, 1])];
+    expect(openGaps(history)).toEqual([{ topicId: "a", openedAt }]);
+    expect(openGaps([...history, event(2, [1])])).toEqual([{ topicId: "a", openedAt }]);
+    expect(openGaps([...history, event(2, [1]), event(3, [1])])).toEqual([]);
+    expect(openGaps([...history, event(2, [1]), event(3, [1]), event(4, [1]), event(5, [1])])).toEqual([]);
+    // A fresh run of misses after the close is a new gap.
+    expect(openGaps([...history, event(2, [1]), event(3, [1]), event(6, [0, 0])])).toEqual([
+      { topicId: "a", openedAt: openedAt + 6 * DAY },
+    ]);
+  });
+
   it("opens a gap on two misses and closes it after two clean days", () => {
     const openedAt = Date.UTC(2026, 0, 1, 12);
     const miss = {

@@ -28,7 +28,7 @@ export function recordedPlanRun(
         : (Object.keys(schema?.properties ?? {})[0] ?? "markdown");
     const context = JSON.parse(input.prompt) as {
       passages?: Array<{ id: string }>;
-      sources?: Array<{ sourceId: string; section: string }>;
+      sources?: Array<{ sourceId: string; section: string; segmentId?: string }>;
       previousQuestions?: string[];
     };
     const text = JSON.stringify(replies[key])
@@ -41,7 +41,7 @@ export function recordedPlanRun(
         JSON.stringify((context as { title?: string }).title ?? "Map"),
       )
       .replace(
-        /\{\{(passage|source|section|question):(\d+)\}\}/g,
+        /\{\{(passage|source|section|segment|question):(\d+)\}\}/g,
         (_, kind: string, raw: string) => {
           const i = Number(raw);
           return kind === "question"
@@ -50,7 +50,9 @@ export function recordedPlanRun(
               ? (context.passages?.[i]?.id ?? "missing")
               : kind === "source"
                 ? (context.sources?.[i]?.sourceId ?? "missing")
-                : (context.sources?.[i]?.section ?? "missing");
+                : kind === "segment"
+                  ? (context.sources?.[i]?.segmentId ?? "missing")
+                  : (context.sources?.[i]?.section ?? "missing");
         },
       );
     return {

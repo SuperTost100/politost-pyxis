@@ -1,3 +1,4 @@
+import { interestsLine } from "../profile/context";
 import { randomInt } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -78,6 +79,8 @@ export type QuizInput = {
   count?: number;
   feedback?: boolean;
   types?: Array<(typeof quizKinds)[number]>;
+  /** A gap drill (LES-03) is five questions. That size is the drill's own; a quiz a student configures keeps its minimum of ten. */
+  drill?: boolean;
 };
 export type QuizSnapshot = {
   config: z.infer<typeof quizConfig>;
@@ -87,6 +90,10 @@ export type QuizSnapshot = {
   language: string;
   selection: ReturnType<typeof selectionFor>;
   grounding: "sources" | "general";
+  /** A gap drill's short explanation of the misunderstanding, shown above its questions. */
+  explanation?: string;
+  /** PER-04 line captured at preparation; gap drills reuse this builder, so they carry it too. */
+  interests?: string;
   provenance?: { provider: string; model: string };
 };
 
@@ -94,7 +101,8 @@ export function prepareQuiz(
   db: Database.Database,
   input: QuizInput,
 ): QuizSnapshot {
-  const config = quizConfig.parse(input);
+  const config = quizConfig.parse(input.drill ? { ...input, count: undefined } : input);
+  if (input.drill) config.count = Math.min(10, Math.max(1, input.count ?? 5));
   if (config.scope === "topic") {
     if (!input.topicId) throw new Error("topic-missing");
     requireTopic(db, input.planId, input.topicId);
@@ -131,7 +139,7 @@ export function prepareQuiz(
       : db
           .prepare(
             `SELECT DISTINCT p.id, p.text, p.created_at FROM topics t JOIN topic_passages tp ON tp.topic_id = t.id JOIN passages p ON p.id = tp.passage_id
-             WHERE t.plan_id = ? AND (? = 'plan' OR (p.source_id = ? AND json_extract(p.locator_json, '$.page') = ?))
+             WHERE t.plan_id = ? AND t.archived_at IS NULL AND (? = 'plan' OR (p.source_id = ? AND json_extract(p.locator_json, '$.page') = ?))
              ORDER BY p.created_at, p.id`,
           )
           .all(
@@ -155,7 +163,7 @@ export function prepareQuiz(
   const passageTopics: Record<string, string> = {};
   const memberships = db
     .prepare(
-      "SELECT tp.passage_id,t.id FROM topic_passages tp JOIN topics t ON t.id=tp.topic_id WHERE t.plan_id=? ORDER BY t.position,t.id",
+      "SELECT tp.passage_id,t.id FROM topic_passages tp JOIN topics t ON t.id=tp.topic_id WHERE t.plan_id=? AND t.archived_at IS NULL ORDER BY t.position,t.id",
     )
     .all(input.planId) as { passage_id: string; id: string }[];
   for (const membership of memberships)
@@ -173,6 +181,7 @@ export function prepareQuiz(
     language: plan.language,
     selection,
     grounding: allPassages.length ? "sources" : "general",
+    interests: interestsLine(db) || undefined,
   };
 }
 
@@ -277,9 +286,14 @@ export async function generateQuiz(
       run,
       signal,
       schema,
-      system: systemPrompt("quiz.batch", {
-        contentLanguage: languageName(plan.language),
-      }),
+      system: [
+        systemPrompt("quiz.batch", {
+          contentLanguage: languageName(plan.language),
+        }),
+        snapshot.interests,
+      ]
+        .filter(Boolean)
+        .join("\n"),
       prompt: JSON.stringify({
         count: batchCount,
         types: config.types,
@@ -368,6 +382,7 @@ export function saveQuizSnapshot(
     const id = existingId ?? saveQuiz(db, input.planId, []);
     const body = {
       config: { ...snapshot.config, feedback: input.feedback ?? true },
+      ...(snapshot.explanation ? { explanation: snapshot.explanation } : {}),
       complete: snapshot.questions.length === snapshot.config.count,
       questions: snapshot.questions.map(({ grade, ...question }) => ({
         ...question,

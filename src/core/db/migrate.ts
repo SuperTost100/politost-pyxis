@@ -54,6 +54,30 @@ UPDATE subjects SET position = (SELECT COUNT(*) FROM subjects s WHERE s.name < s
   },
   { version: 12, sql: `ALTER TABLE topics ADD COLUMN tree_json TEXT CHECK (tree_json IS NULL OR json_valid(tree_json));
 ALTER TABLE jobs ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0;` },
+  // PLAN-13: a rebuild archives topics that match nothing instead of deleting them, so progress history stays attached.
+  { version: 13, sql: `ALTER TABLE topics ADD COLUMN archived_at INTEGER;` },
+  // PRO-02: one model analysis of a gap's grouped mistakes; both stay null until it lands.
+  {
+    version: 14,
+    sql: `ALTER TABLE gaps ADD COLUMN misconception TEXT;
+ALTER TABLE gaps ADD COLUMN severity TEXT CHECK (severity IS NULL OR severity IN ('severe', 'minor'));`,
+  },
+  // PRO-02 / PRO-08: a distinct misconception is its own gap. `origin` says how a gap opened, `comparison` is 'unchecked'
+  // while it could not be compared with its siblings, `merged_into` names the gap that absorbed it, and `gap_answers`
+  // links each wrong answer (attempt + question) to the gap it counts for, for ranking and closing.
+  {
+    version: 15,
+    sql: `ALTER TABLE gaps ADD COLUMN origin TEXT NOT NULL DEFAULT 'answers' CHECK (origin IN ('answers', 'flag', 'misconception'));
+ALTER TABLE gaps ADD COLUMN comparison TEXT CHECK (comparison IS NULL OR comparison = 'unchecked');
+ALTER TABLE gaps ADD COLUMN merged_into TEXT REFERENCES gaps(id) ON DELETE SET NULL;
+CREATE TABLE gap_answers (
+  gap_id TEXT NOT NULL REFERENCES gaps(id) ON DELETE CASCADE,
+  attempt_id TEXT NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL,
+  PRIMARY KEY (gap_id, attempt_id, question_id)
+);
+CREATE INDEX gap_answers_attempt ON gap_answers (attempt_id, question_id);`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

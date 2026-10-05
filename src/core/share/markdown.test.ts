@@ -6,6 +6,7 @@ import { importSmartbook } from "../sources/smartbook";
 import {
   cardsCsv,
   cardsMarkdown,
+  exportCardsCsv,
   exportMarkdown,
   lessonMarkdown,
   quizMarkdown,
@@ -95,6 +96,24 @@ describe("markdown export", () => {
     ]);
     expect(speech).toContain("&#91;anki:tts lang=en_US]");
     expect(speech).not.toContain("[anki:");
+  });
+
+  it("leaves the cards of an archived topic out of the markdown and CSV exports", () => {
+    const db = openDatabase(":memory:");
+    db.prepare("INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('plan', 'Fisica', 'ready', 1, 1)").run();
+    db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at, archived_at) VALUES ('old', 'plan', 'Old', 0, 1, 5), ('live', 'plan', 'Live', 1, 1, NULL)").run();
+    const add = (id: string, topic: string | null) =>
+      db.prepare("INSERT INTO cards (id, plan_id, topic_id, front, back, created_at) VALUES (?, 'plan', ?, ?, 'b', 1)").run(id, topic, `front ${id}`);
+    add("c1", "old");
+    add("c2", "live");
+    add("c3", null);
+    const csv = exportCardsCsv(db, { planId: "plan" }).csv;
+    expect(csv).toContain("front c2");
+    expect(csv).toContain("front c3");
+    expect(csv).not.toContain("front c1");
+    const markdown = exportMarkdown(db, { planId: "plan", kind: "cards" }).markdown;
+    expect(markdown).toContain("front c2");
+    expect(markdown).not.toContain("front c1");
   });
 
   it("exports a lesson, its cards, and a quiz from the plan", () => {

@@ -112,6 +112,7 @@ function planCards(db: Database.Database, planId: string, topicId?: string) {
        FROM cards c
        LEFT JOIN passages p ON p.id = c.passage_id
        WHERE c.plan_id = ? AND c.removed = 0 AND (? IS NULL OR c.topic_id = ?)
+         AND (c.topic_id IS NULL OR NOT EXISTS (SELECT 1 FROM topics t WHERE t.id = c.topic_id AND t.archived_at IS NOT NULL))
        ORDER BY c.created_at`,
     )
     .all(planId, topicId ?? null, topicId ?? null) as Array<{

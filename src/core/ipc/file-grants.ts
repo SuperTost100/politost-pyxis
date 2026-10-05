@@ -4,11 +4,12 @@ import {
   fstatSync,
   lstatSync,
   openSync,
-  readFileSync,
+  readSync,
   realpathSync,
   statSync,
 } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { MAX_SOURCE_BYTES } from "../../shared/source-types";
 
 export type FileGrant = {
   path: string;
@@ -31,6 +32,25 @@ export function pickedFileGrant(path: string): FileGrant {
     dev: stat.dev,
     ino: stat.ino,
   };
+}
+
+/**
+ * A file the user dropped on the window. Preload reads its path from the real `File`, so only a drop can name one.
+ * ponytail: main cannot see the drag itself. The ceiling is a regular file with a supported extension, never a folder. Upgrade path is a one-time token minted by a trusted drop event.
+ */
+export function droppedFileGrant(
+  path: string,
+  extensions: ReadonlySet<string>,
+): FileGrant {
+  if (!path || !isAbsolute(path)) throw new Error("file-access-denied");
+  const grant = pickedFileGrant(path);
+  if (
+    grant.directory ||
+    !extensions.has(extname(path).toLowerCase()) ||
+    !extensions.has(extname(grant.path).toLowerCase())
+  )
+    throw new Error("file-access-denied");
+  return grant;
 }
 
 export class FileGrants {
@@ -92,7 +112,7 @@ export class FileGrants {
   file(path: string): string {
     return this.authorize(path, false);
   }
-  read(path: string, maxBytes = Infinity): Buffer {
+  read(path: string, maxBytes = MAX_SOURCE_BYTES): Buffer {
     const canonical = this.file(path);
     const expected = statSync(canonical);
     const fd = openSync(
@@ -108,10 +128,17 @@ export class FileGrants {
         this.file(path) !== canonical
       )
         throw new Error("file-access-denied");
+      // The size is checked before the buffer exists. One spare byte shows a file that grew past the cap.
       if (opened.size > maxBytes) throw new Error("attach-too-big");
-      const bytes = readFileSync(fd);
-      if (bytes.length > maxBytes) throw new Error("attach-too-big");
-      return bytes;
+      const buffer = Buffer.allocUnsafe(opened.size + 1);
+      let length = 0;
+      for (;;) {
+        const read = readSync(fd, buffer, length, buffer.length - length, null);
+        if (read === 0) break;
+        length += read;
+        if (length === buffer.length) throw new Error("attach-too-big");
+      }
+      return buffer.subarray(0, length);
     } finally {
       closeSync(fd);
     }

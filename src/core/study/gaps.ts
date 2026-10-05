@@ -7,10 +7,10 @@ export type AttemptScore = {
 
 export type OpenGap = { topicId: string; openedAt: number };
 
-const DAY = 86_400_000;
-
 function day(at: number): number {
-  return Math.floor(at / DAY);
+  const date = new Date(at);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
 }
 
 export function shouldOpen(attempt: AttemptScore, alreadyOpen: boolean): boolean {
@@ -20,6 +20,11 @@ export function shouldOpen(attempt: AttemptScore, alreadyOpen: boolean): boolean
   return wrong >= 2 || weakOpen;
 }
 
+/**
+ * 4.7: a gap closes when answers are correct in two sessions on different (local) days after it opened, with no wrong
+ * answer between them. A miss therefore only resets the count: the sessions that count are those after the last one.
+ * The caller passes only the answers that count for this gap; a miss linked to another gap is left out.
+ */
 export function shouldClose(
   gap: OpenGap,
   later: AttemptScore[],
@@ -27,12 +32,10 @@ export function shouldClose(
   const after = later
     .filter((attempt) => attempt.topicId === gap.topicId && attempt.at > gap.openedAt)
     .sort((a, b) => a.at - b.at);
+  const lastMiss = after.findLastIndex((attempt) => attempt.scores.some((score) => score < 1));
   const goodDays = new Set<number>();
-  for (const attempt of after) {
-    if (attempt.scores.some((score) => score < 1)) return false;
-    if (attempt.scores.length > 0 && attempt.scores.every((score) => score >= 1)) {
-      goodDays.add(day(attempt.at));
-    }
+  for (const attempt of after.slice(lastMiss + 1)) {
+    if (attempt.scores.length > 0) goodDays.add(day(attempt.at));
   }
   return goodDays.size >= 2;
 }

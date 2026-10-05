@@ -136,11 +136,17 @@ async function sandbox(): Promise<BrowserWindow> {
     window = created;
     created.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     created.webContents.on("will-navigate", (event) => event.preventDefault());
-    created.on("closed", () => {
+    const forget = () => {
       if (window === created) {
         window = null;
         opening = null;
       }
+    };
+    created.on("closed", forget);
+    // A crashed renderer is replaced by a fresh window on the next request.
+    created.webContents.on("render-process-gone", () => {
+      forget();
+      if (!created.isDestroyed()) created.destroy();
     });
     try {
       await created.loadURL(ORIGIN + "index.html");
@@ -156,13 +162,41 @@ async function sandbox(): Promise<BrowserWindow> {
   })();
   return opening;
 }
-async function execute(
+const tails: Record<"run" | "check", Promise<unknown>> = {
+  run: Promise.resolve(),
+  check: Promise.resolve(),
+};
+// One request per lane at a time, so the ceiling below starts when the request
+// itself runs and its stop can only reach the operation it started. A request
+// waiting its turn is dropped, not run, when the runtime was disposed since it
+// was queued (backup, restore, move, wipe, quit) or when its requester's
+// `deadline` has passed, so queued work never opens the sandbox again or runs
+// for a caller that already gave up.
+function execute(
+  operation: "run" | "check",
+  payload: unknown,
+  timeoutMs?: number,
+  deadline?: number,
+): Promise<unknown> {
+  const epoch = generation;
+  const turn = tails[operation].then(() => {
+    if (epoch !== generation) throw new Error("runtime-disposed");
+    if (deadline !== undefined && Date.now() >= deadline)
+      throw new Error("runtime-expired");
+    return dispatch(operation, payload, timeoutMs);
+  });
+  tails[operation] = turn.catch(() => undefined);
+  return turn;
+}
+async function dispatch(
   operation: "run" | "check",
   payload: unknown,
   timeoutMs?: number,
 ): Promise<unknown> {
   const target = await sandbox();
+  if (target.isDestroyed()) throw new Error("runtime-crashed");
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let onClosed: (() => void) | undefined;
   try {
     return await Promise.race([
       target.webContents.executeJavaScript(
@@ -178,14 +212,20 @@ async function execute(
           reject(new Error("runtime-timeout"));
         }, 45000);
       }),
+      new Promise((_, reject) => {
+        onClosed = () => reject(new Error("runtime-crashed"));
+        target.once("closed", onClosed);
+      }),
     ]);
   } finally {
     if (timer) clearTimeout(timer);
+    if (onClosed) target.removeListener("closed", onClosed);
   }
 }
 export async function handleRuntimeRequest(
   operation: string,
   payload: unknown,
+  deadline?: number,
 ): Promise<unknown> {
   if (operation === "status") return currentRuntimeStatus(workspace);
   if (operation === "download") {
@@ -199,7 +239,12 @@ export async function handleRuntimeRequest(
   }
   if (operation === "check") {
     try {
-      return await execute("check", checkClaimSchema.parse(payload));
+      return await execute(
+        "check",
+        checkClaimSchema.parse(payload),
+        undefined,
+        deadline,
+      );
     } catch {
       return { state: "none", reason: "runtime-unavailable" };
     }
@@ -221,6 +266,7 @@ export async function handleRuntimeRequest(
       "run",
       payload.code,
       Math.max(100, Math.min(10000, requested)),
+      deadline,
     );
   }
   throw new Error("runtime-operation-invalid");

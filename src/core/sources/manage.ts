@@ -28,11 +28,34 @@ export function promoteSource(db: Database.Database, sourceId: string): void {
   if (result.changes === 0) throw new Error("source-missing");
 }
 
-export function sourceInUse(db: Database.Database, sourceId: string): boolean {
+/** How many plans use the source. Removing, replacing or re-reading it changes what their items cite. */
+export function plansUsing(db: Database.Database, sourceId: string): number {
   const row = db
     .prepare(`SELECT COUNT(*) AS n FROM plan_sources WHERE source_id = ?`)
     .get(sourceId) as { n: number };
-  return row.n > 0;
+  return row.n;
+}
+
+export function sourceInUse(db: Database.Database, sourceId: string): boolean {
+  return plansUsing(db, sourceId) > 0;
+}
+
+const EXT_FOR_MIME: Record<string, string> = {
+  "application/pdf": ".pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+  "text/markdown": ".md",
+  "text/plain": ".txt",
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/heic": ".heic",
+  "image/heif": ".heif",
+};
+
+/** The extension a stored original had, from the type kept on its source row. The blob store names files by hash. */
+export function extForMime(mime: string | null): string | null {
+  return (mime && EXT_FOR_MIME[mime]) || null;
 }
 
 /** Hide the source. Passages stay so old citations still have their text. */
@@ -50,6 +73,7 @@ export function removeSource(
   const now = Date.now();
   db.transaction(() => {
     db.prepare(`DELETE FROM plan_sources WHERE source_id = ?`).run(sourceId);
+    db.prepare(`DELETE FROM settings WHERE key = ?`).run(`syllabus.${sourceId}`);
     db.prepare(`UPDATE sources SET status = 'removed', updated_at = ? WHERE id = ?`).run(
       now,
       sourceId,

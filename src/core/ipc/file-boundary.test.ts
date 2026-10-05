@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  truncateSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +18,7 @@ const importFile = vi.hoisted(() =>
   })),
 );
 vi.mock("../sources/handlers", () => ({
-  sourceHandlers: () => ({ importFile }),
+  sourceHandlers: () => ({ importFile, ocrStopAll() {} }),
 }));
 import {
   addFileGrants,
@@ -26,6 +27,7 @@ import {
   setJobHandlers,
 } from "./server";
 import { pickedFileGrant } from "./file-grants";
+import { MAX_IMAGE_BYTES } from "../../shared/source-types";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -94,4 +96,16 @@ it("renderer requests cannot mint grants and authorized imports use private temp
     code: "attach-too-big",
     messageKey: "errors.attachTooBig",
   });
+  // Imports are capped by size before any buffer exists. A sparse file costs nothing to make.
+  const photo = join(root, "huge.png");
+  writeFileSync(photo, "");
+  truncateSync(photo, MAX_IMAGE_BYTES + 1);
+  addFileGrants([pickedFileGrant(photo)]);
+  importFile.mockClear();
+  for (const name of ["sources.import", "sources.preview"]) {
+    const refused = await request(name, { path: photo });
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toMatchObject({ code: "source-too-big", messageKey: "sources.tooBig" });
+  }
+  expect(importFile).not.toHaveBeenCalled();
 });

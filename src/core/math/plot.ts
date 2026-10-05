@@ -295,12 +295,9 @@ function tokenize(source: string): Tok[] {
       continue;
     }
     if (/[0-9.]/.test(ch)) {
-      let raw = ch;
-      i += 1;
-      while (i < source.length && /[0-9.]/.test(source[i] ?? "")) {
-        raw += source[i];
-        i += 1;
-      }
+      const raw = source.slice(i).match(/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/)?.[0];
+      if (!raw) throw new Error("expr-number");
+      i += raw.length;
       tokens.push({ kind: "num", value: Number(raw) });
       continue;
     }

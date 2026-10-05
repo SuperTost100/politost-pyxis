@@ -27,20 +27,47 @@ function savePending(
     "INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
   ).run(materialKey(planId), JSON.stringify(ids), now);
 }
+export type ImportedFrom = {
+  author: string | null;
+  /** When the plan file was exported. */
+  exportedAt: number | null;
+  importedAt: number;
+};
 export function markPlanImported(
   db: Database.Database,
   planId: string,
   now: number,
+  from?: { author?: string; exportedAt?: number },
 ) {
   db.prepare(
-    "INSERT INTO settings(key,value_json,updated_at) VALUES(?,'true',?)",
-  ).run(importKey(planId), now);
+    "INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,?)",
+  ).run(
+    importKey(planId),
+    JSON.stringify({
+      author: from?.author ?? null,
+      exportedAt: from?.exportedAt ?? null,
+    }),
+    now,
+  );
 }
 export function planOrigin(db: Database.Database, planId: string) {
+  const row = db
+    .prepare("SELECT value_json,updated_at FROM settings WHERE key=?")
+    .get(importKey(planId)) as
+    { value_json: string; updated_at: number } | undefined;
+  // Older rows hold the bare flag `true`; they carry no author or file date.
+  const stored: { author?: unknown; exportedAt?: unknown } =
+    row && row.value_json !== "true" ? JSON.parse(row.value_json) : {};
   return {
-    imported: !!db
-      .prepare("SELECT 1 FROM settings WHERE key=? AND value_json='true'")
-      .get(importKey(planId)),
+    imported: !!row,
+    importedFrom: row
+      ? ({
+          author: typeof stored.author === "string" ? stored.author : null,
+          exportedAt:
+            typeof stored.exportedAt === "number" ? stored.exportedAt : null,
+          importedAt: row.updated_at,
+        } satisfies ImportedFrom)
+      : null,
     needsRebuild: pending(db, planId).length > 0,
   };
 }

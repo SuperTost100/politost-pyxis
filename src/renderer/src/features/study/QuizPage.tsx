@@ -6,10 +6,13 @@ import { useNavigate, useParams, useSearchParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
+import { Tag } from "../../components/Tag";
+import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
 import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
+import { useReviewSession } from "./ReviewProgress";
 import "./QuizPage.css";
 
 const KINDS = ["mcq", "completion", "matching", "tf", "open"] as const;
@@ -128,6 +131,18 @@ export function QuizPage() {
         ? false
         : 500,
   });
+  const reviewQueue = useReviewSession(planId, Boolean(session.data?.review));
+  // A gap drill still owes this review questions; the core adds them to this attempt when it finishes.
+  const owed = reviewQueue.data?.progress.questionsPending ?? 0;
+  const queued = reviewQueue.data?.progress.questionsTotal;
+  useEffect(() => {
+    if (queued != null && queued !== session.data?.questions.length) void session.refetch();
+  }, [queued]);
+  // LES-03: a gap drill opens with its short explanation; in a Review, each delivered drill brings its own.
+  const drillNotes = [
+    session.data?.explanation,
+    ...(reviewQueue.data?.explanations ?? []).map((note) => `**${note.title}.** ${note.text}`),
+  ].filter((note): note is string => Boolean(note));
   const questions = session.data?.questions ?? start.data?.questions ?? [];
   const requestedCount = diagnostic
     ? questions.length
@@ -142,8 +157,8 @@ export function QuizPage() {
     !generationFailed &&
     session.data?.state !== "succeeded";
   const canFinish =
-    diagnostic ||
-    (session.data?.state === "succeeded" && questions.length >= requestedCount);
+    (diagnostic && owed === 0) ||
+    (!diagnostic && session.data?.state === "succeeded" && questions.length >= requestedCount);
   const retry = useMutation({
     mutationFn: async () => {
       if (!session.data?.jobId) return;
@@ -432,19 +447,31 @@ export function QuizPage() {
       : start.error?.message.includes("page-empty")
         ? "quiz.pageEmpty"
         : "quiz.error";
+  // A mixed review counts its cards and questions as one queue, so the position and bar cover both.
+  const wholeReview =
+    session.data?.review && reviewQueue.data
+      ? reviewQueue.data.progress
+      : undefined;
   return (
     <FocusLayout
       title={t("quiz.title")}
       meta={
         question && !finalResult
-          ? t("quiz.position", { current: index + 1, total: requestedCount })
+          ? wholeReview
+            ? t("cards.reviewPosition", {
+                current: wholeReview.cardsTotal + index + 1,
+                total: wholeReview.total,
+              })
+            : t("quiz.position", { current: index + 1, total: requestedCount })
           : undefined
       }
       progress={
         questions.length
           ? finalResult
             ? 1
-            : index / requestedCount
+            : wholeReview
+              ? (wholeReview.cardsTotal + index) / wholeReview.total
+              : index / requestedCount
           : undefined
       }
       secondary={
@@ -453,6 +480,18 @@ export function QuizPage() {
         </Button>
       }
     >
+      {owed > 0 && !finalResult ? (
+        <Notice
+          tone="info"
+          action={{
+            label: t("quiz.drillOwedOpen"),
+            onClick: () =>
+              void flushDraft().then(() => navigate(`/plans/${planId ?? ""}/review`)),
+          }}
+        >
+          {t("quiz.drillOwed", { count: owed })}
+        </Notice>
+      ) : null}
       {!diagnostic && attemptId ? (
         <div className="px-quiz-generation">
           {generating ? (
@@ -740,15 +779,17 @@ export function QuizPage() {
               },
             ]}
           />
-          <p className="small" role={gradingStopped ? "alert" : "status"}>
-            {t(
-              !gradingStopped
-                ? "quiz.gradingSaved"
-                : gradeState === "cancelled"
-                  ? "quiz.gradingCancelled"
-                  : "quiz.gradingStopped",
-            )}
-          </p>
+          {!(gradingStopped && grading.data?.error) ? (
+            <p className="small" role={gradingStopped ? "alert" : "status"}>
+              {t(
+                !gradingStopped
+                  ? "quiz.gradingSaved"
+                  : gradeState === "cancelled"
+                    ? "quiz.gradingCancelled"
+                    : "quiz.gradingStopped",
+              )}
+            </p>
+          ) : null}
           {gradingStopped && grading.data?.error ? (
             <Notice tone="danger" details={grading.data.error.slice(0, 2000)}>
               {t("quiz.gradingStopped")}
@@ -794,7 +835,19 @@ export function QuizPage() {
           </div>
         </section>
       ) : question ? (
-        <section className="px-quiz-question">
+        <section className="px-quiz-question" onKeyDown={(event) => {
+          if (event.altKey || event.ctrlKey || event.metaKey || event.repeat ||
+              (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable=true]"))) return;
+          if (!/^[1-4]$/.test(event.key)) return;
+          const option = Number(event.key) - 1;
+          if (question.grade.kind === "tf" && option < 2) {
+            event.preventDefault();
+            pick(option === 0 ? "true" : "false");
+          } else if (question.grade.kind === "mcq" && option < (question.options?.length ?? 0)) {
+            event.preventDefault();
+            pick(String(option));
+          }
+        }}>
           {msLeft !== undefined ? (
             <div className="px-quiz-timer">
               <output role="timer" aria-label={t("quiz.timer")}>
@@ -806,6 +859,21 @@ export function QuizPage() {
                 </p>
               ) : null}
             </div>
+          ) : null}
+          {session.data?.general ? (
+            <div>
+              <Tag tone="general">{t("components.tags.general")}</Tag>
+            </div>
+          ) : null}
+          {index === 0 && drillNotes.length ? (
+            <section className="px-quiz-explain" aria-labelledby="quiz-explain">
+              <h2 id="quiz-explain" className="label">
+                {t("quiz.drillExplanation")}
+              </h2>
+              {drillNotes.map((note) => (
+                <MarkdownView key={note}>{note}</MarkdownView>
+              ))}
+            </section>
           ) : null}
           <div ref={heading} tabIndex={-1} className="px-quiz-stem">
             <MarkdownView>{question.stem}</MarkdownView>
@@ -847,6 +915,7 @@ export function QuizPage() {
                         : "choice"
                     }
                     aria-pressed={picks[question.id] === value}
+                    aria-keyshortcuts={optionIndex < 4 ? String(optionIndex + 1) : undefined}
                     aria-label={`${String.fromCharCode(65 + optionIndex)}. ${option.replace(/\$/g, "")}`}
                     disabled={locked}
                     onClick={() => pick(value)}
@@ -854,7 +923,8 @@ export function QuizPage() {
                     <span className="px-quiz-letter" aria-hidden>
                       {String.fromCharCode(65 + optionIndex)}
                     </span>
-                    <MarkdownView>{option}</MarkdownView>
+                    <InlineMarkdown>{option}</InlineMarkdown>
+                    {optionIndex < 4 ? <kbd className="meta px-quiz-key" aria-hidden>{optionIndex + 1}</kbd> : null}
                   </button>
                 );
               })}
@@ -863,7 +933,7 @@ export function QuizPage() {
             <div className="px-quiz-matching">
               {question.left?.map((left, leftIndex) => (
                 <label key={leftIndex}>
-                  <MarkdownView>{left}</MarkdownView>
+                  <InlineMarkdown>{left}</InlineMarkdown>
                   <select
                     aria-label={t("quiz.matchFor", { item: left })}
                     disabled={locked}

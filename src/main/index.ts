@@ -2,7 +2,12 @@ import { decryptKeys } from "./decrypt-keys";
 import { spawn } from "node:child_process";
 import { writeKeyStore } from "./key-store";
 import { randomUUID } from "node:crypto";
-import { pickedFileGrant, type FileGrant } from "../core/ipc/file-grants";
+import {
+  droppedFileGrant,
+  pickedFileGrant,
+  type FileGrant,
+} from "../core/ipc/file-grants";
+import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { fetchPlanText } from "./plan-fetch";
 import { stageWorkspaceMove } from "./workspace-move";
 import { renameSync } from "node:fs";
@@ -221,6 +226,7 @@ function savedWindowBounds(): {
 }
 
 function createWindow(): void {
+  const hiddenTest = e2eSeam() && process.env["PYXIS_E2E_HIDDEN"] === "1";
   const bounds = savedWindowBounds();
   const theme = resolvedTheme();
   mainWindow = new BrowserWindow({
@@ -242,10 +248,11 @@ function createWindow(): void {
       sandbox: true,
       nodeIntegration: false,
       webSecurity: true,
+      ...(hiddenTest ? { backgroundThrottling: false } : {}),
     },
   });
 
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  if (!hiddenTest) mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.webContents.on("did-finish-load", () => {
     pageReady = true;
     rendererPortFor = null;
@@ -313,7 +320,9 @@ function deliverKeys(removedProvider?: string): Promise<void> {
 
 const pickedGrants = new Map<string, FileGrant>();
 async function grantPickedPaths(paths: string[]): Promise<void> {
-  const grants = paths.map(pickedFileGrant);
+  return grantFiles(paths.map(pickedFileGrant));
+}
+async function grantFiles(grants: FileGrant[]): Promise<void> {
   for (const grant of grants) pickedGrants.set(grant.path, grant);
   const child = coreChild;
   if (!child || exitedCores.has(child)) throw new Error("core-busy");
@@ -408,6 +417,7 @@ function startCore(strict = false): Promise<void> {
       id?: string;
       operation?: string;
       payload?: unknown;
+      deadline?: unknown;
     }) => {
       if (
         childExited ||
@@ -419,7 +429,11 @@ function startCore(strict = false): Promise<void> {
         !data.operation
       )
         return;
-      void handleRuntimeRequest(data.operation, data.payload).then(
+      void handleRuntimeRequest(
+        data.operation,
+        data.payload,
+        typeof data.deadline === "number" ? data.deadline : undefined,
+      ).then(
         (result) =>
           runtimeReply({ type: "runtime-result", id: data.id, result }),
         (error: unknown) =>
@@ -635,6 +649,29 @@ function registerIpc(): void {
       return result.filePaths;
     },
   );
+  ipcMain.handle(mainChannels.dropGrant, async (event, paths: unknown) => {
+    requireMainSender(event, "picker-untrusted-sender");
+    if (
+      !Array.isArray(paths) ||
+      paths.length > MAX_DROPPED_FILES ||
+      paths.some((path) => typeof path !== "string")
+    )
+      throw new Error("drop-invalid");
+    const extensions = new Set(SOURCE_EXTENSIONS.map((ext) => `.${ext}`));
+    const grants: FileGrant[] = [];
+    for (const path of paths as string[]) {
+      try {
+        grants.push(droppedFileGrant(path, extensions));
+      } catch {
+        // Counted below. Folders, unsupported types and unreadable paths are reported, not imported.
+      }
+    }
+    if (grants.length) await grantFiles(grants);
+    return {
+      paths: grants.map((grant) => grant.selectedPath),
+      skipped: paths.length - grants.length,
+    };
+  });
   const metadata = packageMetadata as { repository?: unknown; version: string };
   const releaseFixture =
     e2eSeam() && process.env["PYXIS_E2E_RELEASE"]
@@ -733,6 +770,7 @@ function registerIpc(): void {
   });
   ipcMain.handle(mainChannels.keysRemove, async (event, raw: unknown) => {
     authorizeKeys(event.sender.id);
+    if (workspaceBusy) throw new Error("workspace-busy");
     const provider = keyProvider(raw);
     const stored =
       readJson<Record<string, string>>(userFile("keys.json")) ?? {};
@@ -752,6 +790,7 @@ function registerIpc(): void {
     mainChannels.keysSet,
     async (event, raw: unknown, key: unknown) => {
       authorizeKeys(event.sender.id);
+      if (workspaceBusy) throw new Error("workspace-busy");
       const provider = keyProvider(raw);
       if (typeof key !== "string" || !key.trim() || key.length > 4096)
         throw new Error("invalid-key");
@@ -917,7 +956,13 @@ function registerIpc(): void {
     const release = occupyWorkspace();
     try {
       await pauseCore();
+      let keysCleared = false;
       try {
+        // SET-05: clear credentials before deleting study data, so an interrupted wipe cannot leave usable keys.
+        // A later workspace deletion failure still leaves keys cleared, in keeping with the user's delete-all request.
+        await keysChain;
+        writeKeyStore(userFile("keys.json"), {});
+        keysCleared = true;
         wipeWorkspace(workspacePath);
         return "wiped" as const;
       } catch (err) {
@@ -926,7 +971,7 @@ function registerIpc(): void {
         } catch {
           // The copy is still in .wipe. Core stays stopped until a later launch can finish.
         }
-        throw err;
+        throw keysCleared ? new Error("wipe-after-keys", { cause: err }) : err;
       } finally {
         if (!existsSync(join(workspacePath, ".wipe"))) {
           ensureWorkspaceDirs(workspacePath);
@@ -945,6 +990,12 @@ function registerProtocols(): void {
 }
 
 app.whenReady().then(() => {
+  if (
+    process.platform === "darwin" &&
+    e2eSeam() &&
+    process.env["PYXIS_E2E_HIDDEN"] === "1"
+  )
+    app.setActivationPolicy("prohibited");
   mkdirSync(app.getPath("userData"), { recursive: true });
   try {
     workspacePath = ensureWorkspace();

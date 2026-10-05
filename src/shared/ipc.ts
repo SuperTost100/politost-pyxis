@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { planFileSchema } from "./plan-file";
+import { MAX_IMAGE_BASE64 } from "./source-types";
 
 import {
   conceptGraphSchema as conceptGraph,
@@ -16,6 +17,72 @@ export const JobState = z.enum([
   "cancelled",
   "interrupted",
 ]);
+
+const dueCardSchema = z.object({
+  id: z.string(),
+  front: z.string(),
+  back: z.string(),
+  topicId: z.string().nullable(),
+  sectionPath: z.string().nullable(),
+  passageId: z.string().nullable(),
+  sourceId: z.string().nullable(),
+  chapter: z.number().nullable(),
+  state: z.object({
+    intervalDays: z.number(),
+    ease: z.number(),
+    dueAt: z.number(),
+  }),
+});
+
+/** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
+const reviewSessionSchema = z.object({
+  sessionId: z.string(),
+  cards: z.array(dueCardSchema),
+  attemptId: z.string(),
+  questions: z.array(
+    z.object({
+      id: z.string(),
+      sourceId: z.string().optional(),
+      stem: z.string(),
+      grade: z.object({ kind: z.string() }),
+      options: z.array(z.string()).optional(),
+      left: z.array(z.string()).optional(),
+      right: z.array(z.string()).optional(),
+    }),
+  ),
+  progress: z.object({
+    done: z.number(),
+    total: z.number(),
+    cardsDone: z.number(),
+    cardsTotal: z.number(),
+    questionsDone: z.number(),
+    questionsTotal: z.number(),
+    // Questions a gap drill still owes: expected, not done, and part of `total`.
+    questionsPending: z.number(),
+  }),
+  next: z.enum(["cards", "questions", "waiting", "done"]),
+  // Gap drills that have not delivered; delivered ones are already among the questions.
+  // `state` is the drill job's state, or "skipped" after the student chose to go on without it; a skipped drill is not waited for.
+  drills: z.array(
+    z.object({
+      topicId: z.string(),
+      gapId: z.string().optional(),
+      title: z.string(),
+      jobId: z.string(),
+      state: z.string(),
+      want: z.number(),
+    }),
+  ),
+  // LES-03: the short explanation of each drill whose questions are already in the review.
+  explanations: z.array(
+    z.object({
+      topicId: z.string(),
+      gapId: z.string().optional(),
+      title: z.string(),
+      text: z.string(),
+    }),
+  ),
+});
 
 export const simulationViewSchema = z.object({
   attemptId: z.string(),
@@ -135,6 +202,22 @@ export function isAbort(err: unknown): boolean {
     (err as { name?: string }).name === "AbortError"
   );
 }
+
+const guidedContext = z.object({
+  subject: z.string().trim().min(1).max(200),
+  semesters: z.array(z.string().trim().min(1).max(40)).min(1).max(12),
+  language: z.enum(["it", "en"]),
+});
+
+const EducationLevelSchema = z.enum([
+  "primary",
+  "lower-secondary",
+  "upper-secondary",
+  "technical",
+  "vocational",
+  "university",
+  "other",
+]);
 
 export const requests = {
   "jobs.list": { input: z.object({}), output: z.array(JobView) },
@@ -387,6 +470,8 @@ export const requests = {
   "study.quizRead": {
     input: z.object({ attemptId: z.string(), planId: z.string().optional() }),
     output: z.object({
+      // LES-03: a gap drill's short explanation, shown above its questions.
+      explanation: z.string().optional(),
       draft: z
         .object({ picks: z.record(z.string(), z.string()), index: z.number() })
         .optional(),
@@ -417,8 +502,10 @@ export const requests = {
         }),
       ),
       jobId: z.string().optional(),
+      review: z.boolean().optional(),
       state: z.string(),
       error: z.string().optional(),
+      general: z.boolean().optional(),
       requestedCount: z.number(),
       feedback: z.boolean(),
       // Optional quiz timer: minutes configured, and the persisted wall-clock end once the quiz is ready.
@@ -508,28 +595,26 @@ export const requests = {
     output: z.object({ ok: z.literal(true) }),
   },
   "study.review": {
-    input: z.object({ planId: z.string() }),
-    output: z.object({
-      cards: z.array(
-        z.object({
-          id: z.string(),
-          front: z.string(),
-          topicId: z.string().nullable(),
-        }),
-      ),
-      attemptId: z.string(),
-      questions: z.array(
-        z.object({
-          id: z.string(),
-          sourceId: z.string().optional(),
-          stem: z.string(),
-          grade: z.object({ kind: z.string() }),
-          options: z.array(z.string()).optional(),
-          left: z.array(z.string()).optional(),
-          right: z.array(z.string()).optional(),
-        }),
-      ),
+    // Starts a mixed review, or returns the unfinished one. `count` sizes a new review's cards.
+    input: z.object({
+      planId: z.string(),
+      count: z.number().int().min(1).max(20).optional(),
     }),
+    output: reviewSessionSchema,
+  },
+  "study.reviewSession": {
+    input: z.object({ planId: z.string() }),
+    output: reviewSessionSchema.nullable(),
+  },
+  "study.reviewDiscard": {
+    // Drops the unfinished review so a new one can start; cards, answers and events stay.
+    input: z.object({ planId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "study.reviewSkipDrill": {
+    // Goes on without one gap drill; the choice is stored in the review, whatever happens to the job.
+    input: z.object({ planId: z.string(), jobId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "study.activeSimulation": {
     input: z.object({}),
@@ -574,6 +659,7 @@ export const requests = {
         state: JobState,
         error: z.string().nullable(),
         progress: z.number(),
+        minutes: z.number(),
         provider: z.string().optional(),
         model: z.string().optional(),
       })
@@ -606,24 +692,9 @@ export const requests = {
     output: z.object({ ok: z.boolean() }),
   },
   "study.cards": {
-    input: z.object({ planId: z.string(), topicId: z.string() }),
-    output: z.array(
-      z.object({
-        id: z.string(),
-        front: z.string(),
-        back: z.string(),
-        topicId: z.string().nullable(),
-        sectionPath: z.string().nullable(),
-        passageId: z.string().nullable(),
-        sourceId: z.string().nullable(),
-        chapter: z.number().nullable(),
-        state: z.object({
-          intervalDays: z.number(),
-          ease: z.number(),
-          dueAt: z.number(),
-        }),
-      }),
-    ),
+    // Without a topic the whole plan's due cards come back, for the Review session.
+    input: z.object({ planId: z.string(), topicId: z.string().optional() }),
+    output: z.array(dueCardSchema),
   },
   "study.cardsGenerate": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
@@ -634,11 +705,12 @@ export const requests = {
     output: z.object({ jobId: z.string(), state: z.string() }).nullable(),
   },
   "study.gapDrillStart": {
-    input: z.object({ planId: z.string(), topicId: z.string() }),
+    // `gapId` names one of the topic's gaps; without it the topic's top gap is drilled.
+    input: z.object({ planId: z.string(), topicId: z.string(), gapId: z.string().optional() }),
     output: z.object({ jobId: z.string() }),
   },
   "study.gapDrillRead": {
-    input: z.object({ planId: z.string(), topicId: z.string() }),
+    input: z.object({ planId: z.string(), topicId: z.string(), gapId: z.string().optional() }),
     output: z
       .object({
         jobId: z.string(),
@@ -904,6 +976,13 @@ export const requests = {
         contentLanguage: z.string().nullable(),
         subject: z.string().nullable(),
         imported: z.boolean(),
+        importedFrom: z
+          .object({
+            author: z.string().nullable(),
+            exportedAt: z.number().nullable(),
+            importedAt: z.number(),
+          })
+          .nullable(),
         needsRebuild: z.boolean(),
         topics: z.array(
           z.object({
@@ -916,6 +995,7 @@ export const requests = {
             itemCount: z.number().int().nonnegative(),
             firstPassageId: z.string().nullable(),
             chapter: z.number().nullable(),
+            grounding: z.enum(["sources", "mixed", "general"]).nullable(),
             items: z.array(
               z.object({
                 id: z.string(),
@@ -990,6 +1070,8 @@ export const requests = {
       planId: z.string(),
       progress: z.boolean().optional(),
       embed: z.boolean().optional(),
+      /** Names the profile's display name as the author; on unless false. */
+      author: z.boolean().optional(),
     }),
     output: planFileSchema,
   },
@@ -1037,10 +1119,16 @@ export const requests = {
       counts: z.record(z.string(), z.array(z.number())),
       gaps: z.array(
         z.object({
+          // PRO-02: a stable id per gap; one topic can have several, each with its own misconception.
+          gapId: z.string(),
           topicId: z.string(),
           openedAt: z.number(),
           severity: z.enum(["severe", "minor"]),
+          // True while the misconception could not be compared with the topic's other gaps, so it may repeat one.
+          unmerged: z.boolean().optional(),
           wrongAnswers: z.number(),
+          // PRO-02: the model's one-sentence reading of the grouped mistakes; null until it lands, when `misses` carries the fallback.
+          misconception: z.string().nullable().optional(),
           misses: z.array(
             z.object({
               question: z.string(),
@@ -1126,6 +1214,18 @@ export const requests = {
       language: z.enum(["it", "en"]).optional(),
       style: z.enum(["read", "practice", "decide"]).optional(),
       topicTitles: z.array(z.string()).optional(),
+      // The guided flow's edited tree; used only when sourceIds is empty (PLAN-12).
+      draftTopics: z
+        .array(
+          z.object({
+            title: z.string().trim().min(1).max(160),
+            summary: z.string().max(1200).optional(),
+            subtopics: z.array(z.string().trim().min(1).max(160)).max(30).optional(),
+          }),
+        )
+        .min(1)
+        .max(40)
+        .optional(),
     }),
     output: z.object({
       planId: z.string(),
@@ -1134,9 +1234,98 @@ export const requests = {
       pathNodes: z.number(),
     }),
   },
-  "plans.rebuild": {
-    input: z.object({ planId: z.string(), sourceIds: z.array(z.string()) }),
-    output: z.object({ topics: z.number() }),
+  "plans.proposeModules": {
+    input: guidedContext,
+    output: z.object({
+      modules: z.array(z.object({ title: z.string(), summary: z.string() })),
+    }),
+  },
+  "plans.proposeTree": {
+    input: guidedContext.extend({
+      style: z.enum(["read", "practice", "decide"]),
+      modules: z
+        .array(
+          z.object({
+            title: z.string().min(1).max(160),
+            summary: z.string().max(600),
+            focus: z.boolean(),
+          }),
+        )
+        .min(1)
+        .max(12),
+    }),
+    output: z.object({
+      topics: z.array(
+        z.object({
+          title: z.string(),
+          summary: z.string(),
+          subtopics: z.array(z.string()),
+        }),
+      ),
+    }),
+  },
+  "plans.rebuildState": {
+    input: z.object({ planId: z.string() }),
+    output: z
+      .object({
+        jobId: z.string(),
+        state: JobState,
+        progress: z.number(),
+        stepLabel: z.string().nullable(),
+        error: z.string().nullable(),
+        steps: z.array(JobStepView),
+        /** Present once the job succeeded: what applying would change. */
+        review: z
+          .object({
+            stale: z.boolean(),
+            kept: z.array(
+              z.object({
+                id: z.string(),
+                title: z.string(),
+                /** The title the rebuilt tree gave this topic, which it does not take. */
+                newTitle: z.string().optional(),
+                reason: z.enum(["passages", "title"]),
+                score: z.number(),
+              }),
+            ),
+            added: z.array(
+              z.object({ title: z.string(), passages: z.number() }),
+            ),
+            archived: z.array(
+              z.object({
+                id: z.string(),
+                title: z.string(),
+                progress: z.boolean(),
+              }),
+            ),
+          })
+          .nullable(),
+      })
+      .nullable(),
+  },
+  "plans.rebuildStart": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({ jobId: z.string() }),
+  },
+  "plans.rebuildApply": {
+    input: z.object({ planId: z.string(), jobId: z.string() }),
+    output: z.object({
+      kept: z.number(),
+      added: z.number(),
+      archived: z.number(),
+    }),
+  },
+  "plans.rebuildDiscard": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({ ok: z.boolean() }),
+  },
+  "plans.education": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({ level: EducationLevelSchema.nullable() }),
+  },
+  "plans.setEducation": {
+    input: z.object({ planId: z.string(), level: EducationLevelSchema }),
+    output: z.object({ level: EducationLevelSchema }),
   },
   "profile.get": {
     input: z.object({}),
@@ -1152,12 +1341,14 @@ export const requests = {
           "university",
           "other",
         ]),
+        year: z.string(),
         school: z.string(),
         course: z.string(),
         tutorMode: z.enum(["solver", "socratic"]),
         contentLanguage: z.string(),
         interests: z.array(z.string()),
         interestsOn: z.boolean(),
+        followups: z.boolean(),
         dyslexia: z.boolean(),
         textSize: z.enum(["sm", "md", "lg"]),
         crashReports: z.boolean(),
@@ -1178,12 +1369,14 @@ export const requests = {
           "other",
         ])
         .optional(),
+      year: z.string().optional(),
       school: z.string().optional(),
       course: z.string().optional(),
       tutorMode: z.enum(["solver", "socratic"]).optional(),
       contentLanguage: z.string().optional(),
       interests: z.array(z.string()).optional(),
       interestsOn: z.boolean().optional(),
+      followups: z.boolean().optional(),
       dyslexia: z.boolean().optional(),
       textSize: z.enum(["sm", "md", "lg"]).optional(),
       crashReports: z.boolean().optional(),
@@ -1191,12 +1384,14 @@ export const requests = {
     output: z.object({
       displayName: z.string(),
       educationLevel: z.string(),
+      year: z.string(),
       school: z.string(),
       course: z.string(),
       tutorMode: z.enum(["solver", "socratic"]),
       contentLanguage: z.string(),
       interests: z.array(z.string()),
       interestsOn: z.boolean(),
+      followups: z.boolean(),
       dyslexia: z.boolean(),
       textSize: z.enum(["sm", "md", "lg"]),
       crashReports: z.boolean(),
@@ -1214,6 +1409,8 @@ export const requests = {
         bytes: z.number().nullable(),
         sections: z.number().int().nonnegative(),
         planCount: z.number().int().nonnegative(),
+        /** Sections a stored comparison flags as off the syllabus of the plans that use the source. Absent when none or not yet compared. */
+        syllabusOff: z.number().int().positive().optional(),
       }),
     ),
   },
@@ -1256,6 +1453,33 @@ export const requests = {
         version: z.string().nullable(),
         specVersion: z.string().nullable(),
         knownSpec: z.boolean(),
+        /** For a photo: whether the vision engine or local OCR read it. */
+        extractor: z
+          .object({
+            path: z.enum(["vision", "ocr"]),
+            provider: z.string().optional(),
+            model: z.string().optional(),
+            after: z.string().optional(),
+            /** For a vision read: the image the model got, and what it was resized from. */
+            sent: z
+              .object({
+                mediaType: z.string(),
+                bytes: z.number(),
+                width: z.number().optional(),
+                height: z.number().optional(),
+                resizedFrom: z
+                  .object({
+                    width: z.number(),
+                    height: z.number(),
+                    bytes: z.number(),
+                  })
+                  .optional(),
+                /** The EXIF orientation that was applied to the copy sent. */
+                orientation: z.number().optional(),
+              })
+              .optional(),
+          })
+          .optional(),
       })
       .nullable(),
   },
@@ -1271,6 +1495,7 @@ export const requests = {
     input: z.object({
       chatId: z.string(),
       sourceIds: z.array(z.string()).optional(),
+      planId: z.string().nullable().optional(),
       mode: z.enum(["solver", "socratic"]).optional(),
       allowGeneral: z.boolean().optional(),
       subject: z.string().optional(),
@@ -1279,6 +1504,9 @@ export const requests = {
     output: z.object({
       chatId: z.string(),
       covered: z.boolean(),
+      skippedImages: z
+        .array(z.enum(["too-large", "unreadable", "over-limit"]))
+        .optional(),
     }),
   },
   "chats.rate": {
@@ -1302,6 +1530,7 @@ export const requests = {
     input: z.object({ chatId: z.string() }),
     output: z.object({
       sourceIds: z.array(z.string()),
+      planId: z.string().nullable(),
       subject: z.string().nullable(),
       context: z
         .object({
@@ -1348,6 +1577,7 @@ export const requests = {
       title: z.string(),
       body: z.string(),
       sourceIds: z.array(z.string()).optional(),
+      planId: z.string().optional(),
       subject: z.string().optional(),
     }),
     output: z.object({ chatId: z.string() }),
@@ -1361,6 +1591,7 @@ export const requests = {
       chatId: z.string().optional(),
       text: z.string(),
       sourceIds: z.array(z.string()).optional(),
+      planId: z.string().nullable().optional(),
       mode: z.enum(["solver", "socratic"]).optional(),
       allowGeneral: z.boolean().optional(),
       subject: z.string().optional(),
@@ -1396,6 +1627,10 @@ export const requests = {
           ),
         })
         .nullable(),
+      /** Saved images the reply did not see, with why. */
+      skippedImages: z
+        .array(z.enum(["too-large", "unreadable", "over-limit"]))
+        .optional(),
     }),
   },
   "sources.ocr": {
@@ -1435,9 +1670,16 @@ export const requests = {
   },
   "sources.scanFolder": {
     input: z.object({ path: z.string() }),
-    output: z.array(
-      z.object({ path: z.string(), name: z.string(), duplicate: z.boolean() }),
-    ),
+    output: z.object({
+      files: z.array(
+        z.object({ path: z.string(), name: z.string(), duplicate: z.boolean() }),
+      ),
+      /** More importable files exist than the `limit` listed. */
+      cappedFiles: z.boolean(),
+      /** Subfolders nested too deep were not read. */
+      cappedDepth: z.boolean(),
+      limit: z.number(),
+    }),
   },
   "sources.preview": {
     input: z.object({ path: z.string() }),
@@ -1458,6 +1700,28 @@ export const requests = {
       exercises: z.number(),
     }),
   },
+  "sources.syllabus": {
+    input: z.object({ sourceId: z.string() }),
+    output: z.array(
+      z.object({
+        planId: z.string(),
+        planTitle: z.string(),
+        state: z.enum(["checked", "unavailable", "unindexed", "no-context"]),
+        sections: z.number(),
+        off: z.number(),
+        worst: z.array(z.object({ section: z.string(), similarity: z.number() })),
+      }),
+    ),
+  },
+  "sources.reextract": {
+    input: z.object({ sourceId: z.string(), confirmed: z.boolean() }),
+    output: z.object({
+      started: z.boolean(),
+      /** Plans that use the source. Above zero and unconfirmed, nothing started. */
+      inUse: z.number(),
+      jobId: z.string().optional(),
+    }),
+  },
   "sources.remove": {
     input: z.object({ sourceId: z.string(), confirmed: z.boolean() }),
     output: z.object({ removed: z.boolean(), inUse: z.boolean() }),
@@ -1466,14 +1730,43 @@ export const requests = {
     input: z.object({ sourceId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
   },
+  /** Stops a scan the renderer cannot finish. The source goes back to `needs-ocr`, its pages kept. Never throws for a source that is not queued. */
+  "sources.ocrStop": {
+    input: z.object({ sourceId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "sources.ocrImage": {
     input: z.object({
       sourceId: z.string(),
-      pngBase64: z.string(),
+      pngBase64: z.string().max(MAX_IMAGE_BASE64),
       page: z.number(),
       last: z.boolean(),
     }),
     output: z.object({ status: z.enum(["ready", "failed", "ocr-queued"]) }),
+  },
+  /**
+   * Local OCR language data (English and Italian, one pinned download). Disk truth: `ready` only when every file matches
+   * its pinned hash, `integrity` when a file is there but altered or cut short, `missing` otherwise. `consent` is the
+   * student's saved answer to the download; nothing is fetched without it.
+   */
+  "sources.ocrDataState": {
+    input: z.object({}),
+    output: z.object({
+      consent: z.boolean(),
+      state: z.enum(["ready", "missing", "integrity"]),
+      totalBytes: z.number(),
+      languages: z.array(z.string()),
+      /** The download job while it is queued or running, so a reopened screen can show its progress. */
+      jobId: z.string().optional(),
+    }),
+  },
+  /** Saves the consent. `true` starts, or re-attaches to, the `ocr-data-download` job (cancel and retry are the job's). */
+  "sources.ocrData": {
+    input: z.object({ consent: z.boolean() }),
+    output: z.object({
+      state: z.enum(["off", "ready", "missing"]),
+      jobId: z.string().optional(),
+    }),
   },
   "sources.embedState": {
     input: z.object({}),

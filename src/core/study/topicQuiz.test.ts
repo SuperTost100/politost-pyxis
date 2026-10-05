@@ -11,6 +11,7 @@ import { importSmartbook } from "../sources/smartbook";
 import { studyHandlers } from "./handlers";
 import { readQuiz } from "./quizJobs";
 import { submitAttempt } from "./topicQuiz";
+import { flagTarget } from "./flags";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -115,7 +116,7 @@ describe("diagnostic", () => {
     ).toBe("done");
   });
 
-  it("takes questions from each topic and only from that topic's book", () => {
+  it("takes unflagged questions from each topic and only from that topic's book", () => {
     const db = openDatabase(":memory:");
     const many = Array.from(
       { length: 20 },
@@ -157,12 +158,15 @@ describe("diagnostic", () => {
       title: "Mix",
       sourceIds: [first.sourceId, second.sourceId],
     });
+    const rejected = db.prepare("SELECT id FROM exercises WHERE prompt = 'A0'").get() as { id: string };
+    flagTarget(db, "exercise", rejected.id, "Wrong answer");
     const intro = readPlan(db, plan.planId)?.nodes.find(
       (node) => node.kind === "intro",
     );
     completeNode(db, plan.planId, intro?.id ?? "");
     const started = studyHandlers(db).diagnosticStart({ planId: plan.planId });
     const stems = started.questions.map((question) => question.stem);
+    expect(stems).not.toContain("A0");
     expect(stems).toContain("FROM2");
     expect(stems).toContain("OTHER");
     expect(stems.filter((stem) => stem === "OTHER")).toHaveLength(1);

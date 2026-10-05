@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
+import { interestsLine } from "../profile/context";
 import { uuidv7 } from "../../shared/ids";
 import { syncGaps } from "../plans/progress";
+import { enqueueGapInsights } from "./gapInsight";
 import { z } from "zod";
 import { generate, type GenerateInput } from "../engine/generate";
 import {
@@ -24,6 +26,8 @@ type Stored = {
   result?: { score: number; results: SimulationGrade[] };
   /** Set when the model wrote the questions from topic passages, not the book's exam exercises. */
   generated?: { provider: string; model: string };
+  /** The prepared build this attempt was started from, so one build starts one exam. */
+  buildJobId?: string;
   questions: Array<{
     id: string;
     sourceId?: string;
@@ -78,7 +82,7 @@ function smartbookQuestions(
   source: "exam" | "mixed",
 ): Stored["questions"] {
   const topics = db
-    .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
+    .prepare(`SELECT id FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position`)
     .all(planId) as Array<{ id: string }>;
   return acrossTopics(
     topics.map((topic) =>
@@ -144,7 +148,7 @@ function insertAttempt(
 
 function topicPassages(db: Database.Database, planId: string) {
   const topics = db
-    .prepare(`SELECT id FROM topics WHERE plan_id = ? ORDER BY position`)
+    .prepare(`SELECT id FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position`)
     .all(planId) as Array<{ id: string }>;
   return topics
     .map((topic) => ({
@@ -158,23 +162,45 @@ function topicPassages(db: Database.Database, planId: string) {
     .filter((topic) => topic.passages.length > 0);
 }
 
-/** Smartbook exam exercises only; plans without them go through enqueueSimulation. */
+/**
+ * Starts the exam now: from a model-written build that is ready and has not been
+ * started, otherwise from smartbook exercises. The clock starts here, never when a build finishes.
+ */
 export function startSimulation(
   db: Database.Database,
   planId: string,
-  minutes = 30,
+  minutes?: number,
   now = Date.now(),
   source: "exam" | "mixed" = "mixed",
 ) {
   selectionFor(db, "grading");
-  const questions = smartbookQuestions(db, planId, source);
-  if (questions.length === 0)
-    throw new Error(
-      topicPassages(db, planId).length
-        ? "simulation-needs-build"
-        : "simulation-empty",
+  // A prepared exam is what the screen offered, so it wins over book exercises added since. The questions do not depend on
+  // the length, so the length asked for at Start is the one the clock uses; with none given, the prepared one stands.
+  const ready = readyBuild(db, planId);
+  if (ready)
+    return insertAttempt(
+      db,
+      planId,
+      {
+        minutes: minutes ?? ready.params.minutes,
+        questions: ready.params.questions,
+        generated: {
+          provider: ready.params.provider ?? "",
+          model: ready.params.model ?? "",
+        },
+        buildJobId: ready.jobId,
+      },
+      now,
+      [...new Set(ready.params.questions.flatMap((q) => q.passageIds ?? []))],
     );
-  return insertAttempt(db, planId, { minutes, questions }, now);
+  const questions = smartbookQuestions(db, planId, source);
+  if (questions.length > 0)
+    return insertAttempt(db, planId, { minutes: minutes ?? 30, questions }, now);
+  throw new Error(
+    topicPassages(db, planId).length
+      ? "simulation-needs-build"
+      : "simulation-empty",
+  );
 }
 
 type BuildParams = {
@@ -183,6 +209,8 @@ type BuildParams = {
   /** Chosen at start so a later engine change cannot alter a running build. */
   selection: StoredSelection;
   language: string;
+  /** PER-04 line captured at start, so a retry writes the same kind of problems. */
+  interests?: string;
   batches: Array<{
     topicId: string;
     count: number;
@@ -192,6 +220,7 @@ type BuildParams = {
   questions: Stored["questions"];
   provider?: string;
   model?: string;
+  /** Older builds started their own attempt; newer ones leave the exam ready until Start. */
   attemptId?: string;
 };
 const questionsSchema = (count: number) =>
@@ -233,7 +262,8 @@ function buildBatches(db: Database.Database, planId: string) {
 
 /**
  * Starts the attempt at once from smartbook exercises, or queues a cancellable,
- * retryable job that has the model write questions from topic passages.
+ * retryable job that has the model write questions from topic passages. A finished
+ * build is returned as it is; the student starts it with startSimulation.
  */
 export function enqueueSimulation(
   db: Database.Database,
@@ -249,6 +279,16 @@ export function enqueueSimulation(
     return {
       attemptId: startSimulation(db, planId, minutes, now, source).attemptId,
     };
+  const ready = readyBuild(db, planId);
+  if (ready) {
+    // The prepared questions stand; the length is only a time budget, so the latest request is the one that applies.
+    if (ready.params.minutes !== minutes)
+      db.prepare("UPDATE jobs SET params_json = json_set(params_json, '$.minutes', ?) WHERE id = ?").run(
+        minutes,
+        ready.jobId,
+      );
+    return { jobId: ready.jobId };
+  }
   const batches = buildBatches(db, planId);
   if (!batches.length) throw new Error("simulation-empty");
   const running = buildJob(db, planId);
@@ -261,6 +301,7 @@ export function enqueueSimulation(
     minutes,
     selection: selectionFor(db, "lesson"),
     language: planLanguage(db, planId),
+    interests: interestsLine(db) || undefined,
     batches,
     next: 0,
     questions: [],
@@ -286,15 +327,57 @@ function buildJob(db: Database.Database, planId: string) {
     : undefined;
 }
 
-/** Latest question build that has not produced an attempt; null once it has. */
+/**
+ * Whether a prepared exam still matches the plan: each question's topic is active and still holds the passages it cites.
+ * A rebuild that archived a topic, or re-extracted a source so its passages changed, leaves the old questions behind.
+ */
+function buildCurrent(db: Database.Database, planId: string, questions: Stored["questions"]): boolean {
+  const holds = db.prepare(
+    `SELECT 1 FROM topic_passages tp JOIN topics t ON t.id = tp.topic_id
+     WHERE tp.topic_id = ? AND tp.passage_id = ? AND t.plan_id = ? AND t.archived_at IS NULL`,
+  );
+  const live = db.prepare("SELECT 1 FROM topics WHERE id = ? AND plan_id = ? AND archived_at IS NULL");
+  return questions.every(
+    (question) =>
+      !question.topicId ||
+      (live.get(question.topicId, planId) != null &&
+        (question.passageIds ?? []).every((id) => holds.get(question.topicId, id, planId) != null)),
+  );
+}
+
+/** The latest build whose questions are done, are still current, and which no attempt has started from. */
+function readyBuild(db: Database.Database, planId: string) {
+  const job = buildJob(db, planId);
+  if (
+    !job ||
+    job.state !== "succeeded" ||
+    job.params.attemptId ||
+    !job.params.questions.length
+  )
+    return undefined;
+  const started = db
+    .prepare(
+      "SELECT 1 FROM items WHERE plan_id=? AND kind='simulation' AND json_extract(body_json,'$.buildJobId')=?",
+    )
+    .get(planId, job.jobId);
+  if (started || !buildCurrent(db, planId, job.params.questions)) return undefined;
+  return job;
+}
+
+/**
+ * Latest question build that has not been started as an exam. State "succeeded"
+ * means the exam is prepared and waiting for an explicit start; null once started.
+ */
 export function readSimulationBuild(db: Database.Database, planId: string) {
   const job = buildJob(db, planId);
-  if (!job || job.params.attemptId || job.state === "succeeded") return null;
+  if (!job || job.params.attemptId) return null;
+  if (job.state === "succeeded" && !readyBuild(db, planId)) return null;
   return {
     jobId: job.jobId,
     state: job.state,
     error: job.error,
     progress: job.params.next / Math.max(1, job.params.batches.length),
+    minutes: job.params.minutes,
     provider: job.params.provider,
     model: job.params.model,
   };
@@ -352,7 +435,10 @@ export function registerSimulationJobs(
 ) {
   runtimes.set(db, runner);
   runner.register("simulation-build", {
-    retryParams: (params) => ({ ...(params as BuildParams), selection: selectionFor(db, "lesson") }),
+    retryParams: (params) => ({
+      ...(params as BuildParams),
+      selection: selectionFor(db, "lesson"),
+    }),
     jobClass: "model-cli",
     steps: [
       {
@@ -389,9 +475,14 @@ export function registerSimulationJobs(
               signal: ctx.signal,
               selection: params.selection,
               schema,
-              system: systemPrompt("simulation.questions", {
-                contentLanguage: languageName(params.language),
-              }),
+              system: [
+                systemPrompt("simulation.questions", {
+                  contentLanguage: languageName(params.language),
+                }),
+                params.interests,
+              ]
+                .filter(Boolean)
+                .join("\n"),
               prompt: JSON.stringify({
                 count: batch.count,
                 passages: batch.passages,
@@ -413,36 +504,17 @@ export function registerSimulationJobs(
             ctx.setParams(params);
           }
           ctx.signal.throwIfAborted();
-          if (!params.attemptId)
-            db.transaction(() => {
-              // The clock starts when the questions exist, not when the build was requested.
-              params.attemptId = insertAttempt(
-                db,
-                params.planId,
-                {
-                  minutes: params.minutes,
-                  questions: params.questions,
-                  generated: {
-                    provider: params.provider ?? "",
-                    model: params.model ?? "",
-                  },
-                },
-                Date.now(),
-                [
-                  ...new Set(
-                    params.questions.flatMap((q) => q.passageIds ?? []),
-                  ),
-                ],
-              ).attemptId;
-              ctx.setParams(params);
-            })();
+          // The exam stays prepared in these params; startSimulation creates the attempt and starts the clock.
           return true;
         },
       },
     ],
   });
   runner.register("simulation-grade", {
-    retryParams: (params) => ({ ...(params as GradeParams), selection: selectionFor(db, "grading") }),
+    retryParams: (params) => ({
+      ...(params as GradeParams),
+      selection: selectionFor(db, "grading"),
+    }),
     jobClass: "model-cli",
     steps: [
       {
@@ -544,6 +616,8 @@ export function registerSimulationJobs(
               params.questions,
               params.results,
               now,
+              "simulation",
+              params.attemptId,
             );
             completeCurrentStage(
               db,
@@ -553,6 +627,7 @@ export function registerSimulationJobs(
             );
             syncGaps(db, params.planId, now);
           })();
+          enqueueGapInsights(db, runner, params.attemptId);
           return true;
         },
       },
@@ -614,6 +689,19 @@ function freezeSimulation(
       row.item_id,
     );
   })();
+}
+/**
+ * The exam whose answers are still open, if any. Once answers are frozen the tutor
+ * unlocks, even while grading runs or has failed. Chat checks this before answering.
+ */
+export function activeSimulation(db: Database.Database) {
+  return (
+    (db
+      .prepare(
+        "SELECT a.id AS attemptId, a.plan_id AS planId FROM attempts a JOIN items i ON i.id=a.item_id WHERE i.kind='simulation' AND a.submitted_at IS NULL AND json_extract(i.body_json,'$.gradingStartedAt') IS NULL ORDER BY a.started_at DESC LIMIT 1",
+      )
+      .get() as { attemptId: string; planId: string } | undefined) ?? null
+  );
 }
 export function readSimulation(
   db: Database.Database,
@@ -723,6 +811,7 @@ export function recordTopicScores(
   results: Array<{ score: number }>,
   now: number,
   evidenceKind: "simulation" | "quiz" = "simulation",
+  attemptId?: string,
 ): void {
   const byTopic = new Map<
     string,
@@ -747,7 +836,7 @@ export function recordTopicScores(
       uuidv7(at),
       planId,
       topicId,
-      JSON.stringify({ score, scores, evidenceKind, questionScores }),
+      JSON.stringify({ score, scores, evidenceKind, questionScores, attemptId }),
       at,
     );
     at += 1;
@@ -778,6 +867,7 @@ export function listSimulations(db: Database.Database, planId: string) {
        FROM attempts a
        JOIN items i ON i.id = a.item_id
        WHERE a.plan_id = ? AND i.kind = 'simulation' AND a.submitted_at IS NOT NULL
+         AND EXISTS (SELECT 1 FROM attempt_answers aa WHERE aa.attempt_id = a.id)
        ORDER BY a.submitted_at DESC`,
     )
     .all(planId) as Array<{

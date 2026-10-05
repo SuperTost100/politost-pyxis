@@ -43,9 +43,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
           title: "Derivate",
           summary: "Regole di derivazione",
           subtopics: ["Prodotto", "Catena"],
-          sourceSections: [
-            { sourceId: "{{source:0}}", section: "{{section:0}}" },
-          ],
+          segmentIds: ["{{segment:0}}"],
         },
       ],
     },
@@ -109,7 +107,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
   };
   delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
+    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
     env,
   });
   try {

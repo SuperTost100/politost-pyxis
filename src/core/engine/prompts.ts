@@ -1,6 +1,9 @@
+import sourceTranscribe from "../../../resources/prompts/source.transcribe.md?raw";
 import exerciseGenerate from "../../../resources/prompts/exercise.generate.md?raw";
 import cardsGenerate from "../../../resources/prompts/cards.generate.md?raw";
 import gapDrill from "../../../resources/prompts/gap.drill.md?raw";
+import gapExplain from "../../../resources/prompts/gap.explain.md?raw";
+import gapInsight from "../../../resources/prompts/gap.insight.md?raw";
 import chatChecks from "../../../resources/prompts/chat.checks.md?raw";
 import chatGeneral from "../../../resources/prompts/chat.general.md?raw";
 import chatSocratic from "../../../resources/prompts/chat.socratic.md?raw";
@@ -9,6 +12,8 @@ import lessonWrite from "../../../resources/prompts/lesson.write.md?raw";
 import mapEdit from "../../../resources/prompts/map.edit.md?raw";
 import mapGenerate from "../../../resources/prompts/map.generate.md?raw";
 import planDiagnostic from "../../../resources/prompts/plan.diagnostic.md?raw";
+import planModules from "../../../resources/prompts/plan.modules.md?raw";
+import planTree from "../../../resources/prompts/plan.tree.md?raw";
 import planIntro from "../../../resources/prompts/plan.intro.md?raw";
 import planSynopsis from "../../../resources/prompts/plan.synopsis.md?raw";
 import planTopics from "../../../resources/prompts/plan.topics.md?raw";
@@ -27,9 +32,12 @@ export const PARTIAL_SOURCES = {
 export type PartialId = keyof typeof PARTIAL_SOURCES;
 
 export const TEMPLATE_SOURCES = {
+  "source.transcribe": sourceTranscribe,
   "exercise.generate": exerciseGenerate,
   "cards.generate": cardsGenerate,
   "gap.drill": gapDrill,
+  "gap.explain": gapExplain,
+  "gap.insight": gapInsight,
   "chat.checks": chatChecks,
   "chat.general": chatGeneral,
   "chat.socratic": chatSocratic,
@@ -40,6 +48,8 @@ export const TEMPLATE_SOURCES = {
   "plan.diagnostic": planDiagnostic,
   "plan.intro": planIntro,
   "plan.synopsis": planSynopsis,
+  "plan.modules": planModules,
+  "plan.tree": planTree,
   "plan.topics": planTopics,
   "quiz.batch": quizBatch,
   "quiz.open-grade": quizOpenGrade,

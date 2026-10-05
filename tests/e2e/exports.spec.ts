@@ -169,6 +169,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     await expect(modal).not.toBeVisible();
     const entries = unzipSync(new Uint8Array(readFileSync(saved)));
     expect(Object.keys(entries).sort()).toEqual(["collection.anki2", "media"]);
+    if (process.env.PYXIS_ANKI_PROOF)
+      writeFileSync(process.env.PYXIS_ANKI_PROOF, readFileSync(saved));
     await page.evaluate(() => {
       location.hash = "/plans/export-plan";
     });

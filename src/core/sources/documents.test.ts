@@ -59,6 +59,31 @@ describe("document extract", () => {
     expect(reversed.pages[0]?.text).toBe("R&D");
   });
 
+  it("reads a pptx whose XML repeats open tags without closing them in linear time", () => {
+    // Every `<p:sldId`, `<Relationship` and `<a:t` here starts a match that never completes. A pattern that scans to the end of the
+    // part for each start takes quadratic time on this; one that stops at the next `<` does not.
+    const hostile = (tag: string) => strToU8(tag.repeat(60_000));
+    const started = performance.now();
+    const extracted = extractPptx(
+      zipSync({
+        "ppt/presentation.xml": hostile("<p:sldId "),
+        "ppt/_rels/presentation.xml.rels": hostile("<Relationship "),
+        "ppt/slides/slide1.xml": hostile("<a:t "),
+      }),
+    );
+    expect(extracted.pages).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(1500);
+    // Valid slides still read the same: the id after other attributes, and text with attributes on its tag.
+    const real = extractPptx(
+      zipSync({
+        "ppt/presentation.xml": strToU8(`<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId9"/></p:sldIdLst></p:presentation>`),
+        "ppt/_rels/presentation.xml.rels": strToU8(`<Relationships><Relationship Type="x" Id="rId9" Target="slides/slide1.xml"/></Relationships>`),
+        "ppt/slides/slide1.xml": strToU8(`<p:sld><a:t xml:space="preserve">lavoro</a:t></p:sld>`),
+      }),
+    );
+    expect(real.pages[0]?.text).toBe("lavoro");
+  });
+
   it("splits markdown on headings", () => {
     const extracted = extractPlain("# Energia\n\nIl calore.\n\n# Lavoro\n\nIl lavoro.", true);
     expect(extracted.pages).toHaveLength(2);

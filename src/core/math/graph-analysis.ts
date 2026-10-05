@@ -41,10 +41,16 @@ export function graphExpression(input: string): string {
   }
   source = fragment();
   source = source
+    .replace(/\|([^|]+)\|/g, "abs($1)")
+    .replace(/\b(sin|cos|tan|exp|log|sqrt|abs)\^(\d+)\(([^()]*)\)/g, "($1($3))^$2")
+    .replace(/\b(sin|cos|tan|exp|log|sqrt|abs)\s+(x|pi|e)\b/g, "$1($2)");
+  source = source
     .replace(/\*\*/g, "^")
     .replace(/\s+/g, "")
-    .replace(/(\d)(?=x|pi|sin|cos|tan|exp|log|sqrt|abs|\()/g, "$1*")
-    .replace(/\)(?=x|pi|\d|\()/g, ")*")
+    .replace(/(\d)(?=x|pi|e\b(?![+-]?\d)|sin|cos|tan|exp|log|sqrt|abs|\()/g, "$1*")
+    .replace(/\)(?=x|pi|e\b|sin|cos|tan|exp|log|sqrt|abs|\d|\()/g, ")*")
+    .replace(/x(?=pi|e\b|sin|cos|tan|exp|log|sqrt|abs)/g, "x*")
+    .replace(/pi(?=x|e\b|sin|cos|tan|exp|log|sqrt|abs|\()/g, "pi*")
     .replace(/\bx(?=\()/g, "x*");
   // Unknown names and trailing tokens are rejected by the same evaluator used for curves.
   evalExpr(source, 0.37);

@@ -20,11 +20,18 @@ export function chatTemplateId(input: {
       : "chat.solver";
 }
 
+/** ASK-03: with the switch off, the follow-up instruction is left out of the template. */
 export function chatSystemPrompt(
   id: ChatTemplateId,
   contentLanguage: string,
+  followups = true,
 ): string {
-  return systemPrompt(id, { contentLanguage });
+  const text = systemPrompt(id, { contentLanguage });
+  if (followups) return text;
+  return text
+    .split("\n")
+    .filter((line) => !line.includes("<followups>"))
+    .join("\n");
 }
 
 /** Stored with each assistant message: the template ID and its own version. */

@@ -1,4 +1,5 @@
 const BASE = "pyxis-runtime://sandbox/";
+const LOAD_TIMEOUT_MS = 30000;
 const lanes = new Map();
 let nextId = 0;
 function lane(kind) {
@@ -6,17 +7,22 @@ function lane(kind) {
   if (!value) {
     const worker = new Worker(BASE + (kind === "python" ? "python-worker.js" : "check-worker.js"));
     const buffer = typeof SharedArrayBuffer === "function" ? new Uint8Array(new SharedArrayBuffer(1)) : null;
+    let abort;
     const ready = new Promise((resolve, reject) => {
-      worker.addEventListener("message", (event) => { if (event.data?.type === "ready") resolve(); if (event.data?.type === "load-error") reject(new Error(String(event.data.error).slice(0, 2000))); });
-      worker.addEventListener("error", () => reject(new Error("runtime-worker-error")), { once: true });
+      abort = reject;
+      const timer = setTimeout(() => reject(new Error("runtime-load-timeout")), LOAD_TIMEOUT_MS);
+      worker.addEventListener("message", (event) => { if (event.data?.type === "ready") { clearTimeout(timer); resolve(); } if (event.data?.type === "load-error") { clearTimeout(timer); reject(new Error(String(event.data.error).slice(0, 2000))); } });
+      worker.addEventListener("error", () => { clearTimeout(timer); reject(new Error("runtime-worker-error")); }, { once: true });
     });
+    ready.catch(() => undefined);
     worker.postMessage({ type: "init", buffer });
-    value = { worker, buffer, ready, tail: Promise.resolve() };
+    value = { worker, buffer, ready, abort, tail: Promise.resolve() };
     lanes.set(kind, value);
   }
   return value;
 }
-function reset(kind, current) { current.worker.terminate(); if (lanes.get(kind) === current) lanes.delete(kind); }
+// Aborting also settles a load that the terminated worker will never finish.
+function reset(kind, current) { current.worker.terminate(); current.abort(new Error("runtime-reset")); if (lanes.get(kind) === current) lanes.delete(kind); }
 async function execute(kind, payload, timeoutMs) {
   const current = lane(kind);
   const operation = async () => {

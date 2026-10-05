@@ -1,0 +1,24 @@
+.px-ocr {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  margin-block: var(--space-2);
+}
+.px-ocr > p {
+  margin: 0;
+}
+.px-ocr > .ant-progress,
+.px-ocr > .px-notice {
+  align-self: stretch;
+}
+.px-ocr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}

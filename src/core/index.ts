@@ -23,6 +23,7 @@ import { demoJob } from "./jobs/demo";
 import { createRunner } from "./jobs/runner";
 
 import { setSourceWorkerDirectory } from "./sources/worker-client";
+import { markStoppedImport } from "./sources/jobs";
 
 setSourceWorkerDirectory(import.meta.dirname);
 
@@ -101,16 +102,7 @@ if (!parent) {
     const runner = createRunner(
       db,
       (job) => {
-        if (
-          job.kind === "source-import" &&
-          ["failed", "cancelled", "interrupted"].includes(job.state)
-        ) {
-          db.prepare(
-            `UPDATE sources SET status = ?, updated_at = ?
-            WHERE id = (SELECT json_extract(params_json, '$.sourceId') FROM jobs WHERE id = ?)
-              AND status != 'removed'`,
-          ).run(job.state, Date.now(), job.id);
-        }
+        markStoppedImport(db, job);
         broadcast("job.updated", job);
       },
       undefined,

@@ -1,0 +1,52 @@
+.px-guided-pills {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+.px-guided-module {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-right: var(--space-4);
+}
+.px-guided-tree {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+.px-guided-tree .ant-tree {
+  width: 100%;
+  background: transparent;
+}
+.px-guided-node {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 36px;
+}
+.px-guided-node .ant-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 0;
+}
+.px-guided-node .ant-input:hover,
+.px-guided-node .ant-input:focus {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.px-guided-actions {
+  display: flex;
+  gap: var(--space-1);
+  opacity: 0;
+}
+.px-guided-node:hover .px-guided-actions,
+.px-guided-node:focus-within .px-guided-actions {
+  opacity: 1;
+}
+/* No hover on touch screens, so the actions stay visible there. */
+@media (hover: none) {
+  .px-guided-actions {
+    opacity: 1;
+  }
+}

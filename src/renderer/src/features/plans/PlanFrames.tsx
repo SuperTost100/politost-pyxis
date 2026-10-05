@@ -10,13 +10,14 @@ import { LibraryPanel } from "../home/LibraryPanel";
 import "./PlanWizard.css";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
 import { invoke } from "../../lib/ipc";
 import { examInstant, type PlanFile } from "@shared/plan-file";
 import { ImportReview } from "./ImportReview";
 import { parsePlanText, type ImportRequest } from "./importPreview";
+import { isWizardSeed, type WizardSeed } from "./wizardSeed";
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();
@@ -30,16 +31,22 @@ export function WizardFrame() {
     queryKey: ["subjects"],
     queryFn: () => invoke("subjects.list", {}),
   });
-  const [wizardStep, setWizardStep] = useState(0);
+  // Back from the guided flow returns here with the answers already given.
+  const location = useLocation();
+  const back = (location.state as { wizard?: unknown; step?: number } | null) ?? {};
+  const seed = isWizardSeed(back.wizard) ? back.wizard : null;
+  const [wizardStep, setWizardStep] = useState(seed ? (back.step ?? 3) : 0);
   const [addSourcesOpen, setAddSourcesOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [subject, setSubject] = useState("");
+  const [title, setTitle] = useState(seed?.title ?? "");
+  const [subject, setSubject] = useState(seed?.subject ?? "");
   const [picked, setPicked] = useState<string[]>([]);
-  const [examChoice, setExamChoice] = useState<"1" | "2" | "3" | "10">("10");
-  const [date, setDate] = useState("");
-  const [target, setTarget] = useState(75);
+  const [examChoice, setExamChoice] = useState<"1" | "2" | "3" | "10">(
+    seed?.examChoice ?? "10",
+  );
+  const [date, setDate] = useState(seed?.date ?? "");
+  const [target, setTarget] = useState(seed?.target ?? 75);
   const [language, setLanguage] = useState(
-    i18n.language.startsWith("en") ? "en" : "it",
+    seed?.language ?? (i18n.language.startsWith("en") ? "en" : "it"),
   );
   const [style, setStyle] = useState<"read" | "practice" | "decide">("decide");
   const [starting, setStarting] = useState(false);
@@ -116,6 +123,19 @@ export function WizardFrame() {
     } finally {
       setStarting(false);
     }
+  }
+
+  // PLAN-10: no material leads to the guided flow, which asks its own questions.
+  function startGuided() {
+    const answers: WizardSeed = {
+      title: title.trim(),
+      subject,
+      examChoice,
+      date,
+      target,
+      language: language === "en" ? "en" : "it",
+    };
+    navigate("/plans/new/guided", { state: answers });
   }
 
   if (buildPlanId || busy || built || failed) {
@@ -257,7 +277,11 @@ export function WizardFrame() {
             type="primary"
             shape="round"
             disabled={wizardStep === 0 && !title.trim()}
-            onClick={() => setWizardStep(wizardStep + 1)}
+            onClick={() =>
+              wizardStep === 3 && picked.length === 0
+                ? startGuided()
+                : setWizardStep(wizardStep + 1)
+            }
           >
             {t("wizard.continue")}
           </Button>
@@ -493,7 +517,12 @@ export function WizardFrame() {
               ) : null}
             </div>
             {picked.length === 0 ? (
-              <p className="small">{t("wizard.noMaterial")}</p>
+              <p className="small">
+                {t("wizard.noMaterial")}{" "}
+                <Button type="link" size="small" onClick={startGuided}>
+                  {t("wizard.noMaterialLink")}
+                </Button>
+              </p>
             ) : null}
             {blockedSource ? (
               <p className="small" role="alert">
@@ -573,6 +602,7 @@ export function WizardFrame() {
 }
 
 export { PlanPage } from "./PlanOverview";
+export { GuidedPlanPage } from "./GuidedPlan";
 
 export function SharedPlanPage() {
   const { t } = useTranslation();

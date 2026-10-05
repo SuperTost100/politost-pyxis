@@ -18,9 +18,7 @@ test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results"
           title: "Moto",
           summary: "Velocità",
           subtopics: ["Tempo"],
-          sourceSections: [
-            { sourceId: "{{source:0}}", section: "{{section:0}}" },
-          ],
+          segmentIds: ["{{segment:0}}"],
         },
       ],
     },
@@ -54,7 +52,7 @@ test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results"
   };
   delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
+    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
     env,
   });
   try {
@@ -245,7 +243,7 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.PYXIS_E2E_PLAN_REPLIES;
   const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
+    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
     env,
   });
   const startedAt = Date.now();

@@ -9,7 +9,10 @@ import { ChatMessage } from "../../components/ChatMessage";
 import { Composer } from "../../components/Composer";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
+import { OcrDataCard } from "../../components/OcrData";
+import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
+import { fileName, takeBoardAttachment } from "./attachments";
 
 export function AskPage() {
   const { t } = useTranslation();
@@ -19,23 +22,36 @@ export function AskPage() {
   const [draft, setDraft] = useState(
     () => sessionStorage.getItem("pyxis-draft") ?? "",
   );
-  const [mode, setMode] = useState<"solver" | "socratic">("solver");
+  const profile = useQuery({
+    queryKey: ["profile"],
+    queryFn: () => invoke("profile.get", {}),
+  });
+  const defaultMode = profile.data?.tutorMode ?? "solver";
+  const [mode, setMode] = useState<"solver" | "socratic">(defaultMode);
   const [picked, setPicked] = useState<string[]>([]);
+  const [planId, setPlanId] = useState<string | null>(null);
   const loadedFor = useRef<string | undefined>(undefined);
   const [uncovered, setUncovered] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState("");
   const [subject, setSubject] = useState("");
   const [files, setFiles] = useState<string[]>([]);
+  // Whiteboard images staged by Attach, keyed by the file they belong to.
+  const [previews, setPreviews] = useState<Record<string, string>>({});
   useEffect(() => {
-    const path = sessionStorage.getItem("pyxis-board-file");
-    if (!path) return;
-    sessionStorage.removeItem("pyxis-board-file");
+    const board = takeBoardAttachment(sessionStorage);
+    if (!board) return;
     setFiles((current) =>
-      current.includes(path) ? current : [...current, path],
+      current.includes(board.path) ? current : [...current, board.path],
     );
+    const { path, preview } = board;
+    if (preview) setPreviews((current) => ({ ...current, [path]: preview }));
   }, []);
   const [error, setError] = useState<string | null>(null);
+  // Saved photos the last answer did not see, so a shorter context is never silent.
+  const [skipped, setSkipped] = useState<
+    Array<"too-large" | "unreadable" | "over-limit">
+  >([]);
   const stop = useRef<(() => void) | null>(null);
 
   const history = useQuery({
@@ -48,6 +64,10 @@ export function AskPage() {
   const sources = useQuery({
     queryKey: ["sources"],
     queryFn: () => invoke("sources.list", {}),
+  });
+  const plans = useQuery({
+    queryKey: ["plans"],
+    queryFn: () => invoke("plans.list", {}),
   });
 
   const thread = useQuery({
@@ -62,38 +82,53 @@ export function AskPage() {
   useEffect(() => {
     if (chatId) return;
     setPicked([]);
+    setPlanId(null);
     setSubject("");
     setUncovered(null);
     setHistoryOpen(false);
     loadedFor.current = undefined;
   }, [chatId]);
 
+  // ASK-02: a new conversation starts in the mode chosen in Settings.
+  useEffect(() => {
+    if (!chatId) setMode(defaultMode);
+  }, [chatId, defaultMode]);
+
   useEffect(() => {
     if (!chatId || !thread.data) return;
     if (loadedFor.current === chatId) return;
     loadedFor.current = chatId;
     setPicked(thread.data.sourceIds);
+    setPlanId(thread.data.planId);
     setSubject(thread.data.subject ?? "");
   }, [chatId, thread.data]);
 
-  async function send(text: string, allowGeneral?: boolean) {
+  // A suggestion chip or "Answer generally" sends only its own text: the typed draft and pending photos stay in the composer, unsent.
+  async function send(
+    text: string,
+    options: { allowGeneral?: boolean; textOnly?: boolean } = {},
+  ) {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
     if (chatId && loadedFor.current !== chatId) return;
     setBusy(true);
     setLive("");
     setError(null);
+    setSkipped([]);
+    const attached = options.textOnly ? [] : files;
     const handle = window.pyxis.stream(
       "chats.ask",
       {
         chatId,
         text: trimmed,
         sourceIds: picked,
+        planId,
         mode,
         subject,
-        files: files.length > 0 ? files : undefined,
+        files: attached.length > 0 ? attached : undefined,
         allowGeneral:
-          allowGeneral === true || (picked.length === 0 && files.length === 0),
+          options.allowGeneral === true ||
+          (!planId && picked.length === 0 && attached.length === 0),
       },
       (event) => {
         const data = event as { text?: string };
@@ -106,10 +141,14 @@ export function AskPage() {
         ReturnType<typeof invoke<"chats.ask">>
       >;
       if (!result) return;
-      setDraft("");
-      setFiles([]);
-      sessionStorage.removeItem("pyxis-draft");
+      if (!options.textOnly) {
+        setDraft("");
+        setFiles([]);
+        setPreviews({});
+        sessionStorage.removeItem("pyxis-draft");
+      }
       setUncovered(result.covered ? null : trimmed);
+      setSkipped(result.skippedImages ?? []);
       void client.invalidateQueries({ queryKey: ["chat", result.chatId] });
       void client.invalidateQueries({ queryKey: ["chats"] });
       if (result.chatId !== chatId) navigate(`/ask/${result.chatId}`);
@@ -130,9 +169,15 @@ export function AskPage() {
   const lastTutor = [...messages]
     .reverse()
     .find((row) => row.role === "assistant");
-  const titles = (sources.data ?? [])
-    .filter((source) => picked.includes(source.id))
-    .map((source) => source.title);
+  const planTitle = (plans.data ?? []).find(
+    (plan) => plan.id === planId,
+  )?.title;
+  const titles = [
+    ...(planTitle ? [planTitle] : []),
+    ...(sources.data ?? [])
+      .filter((source) => picked.includes(source.id))
+      .map((source) => source.title),
+  ];
 
   const historyList =
     (history.data ?? []).length > 0 ? (
@@ -210,7 +255,9 @@ export function AskPage() {
         <div className="ask-greeting">
           <h1 className="display">{t("ask.greeting")}</h1>
           <p className="body">
-            {picked.length === 0 ? t("ask.scopeEmpty") : t("ask.scopeReady")}
+            {picked.length === 0 && !planId
+              ? t("ask.scopeEmpty")
+              : t("ask.scopeReady")}
           </p>
         </div>
       ) : (
@@ -244,6 +291,7 @@ export function AskPage() {
                           {
                             chatId,
                             sourceIds: picked,
+                            planId,
                             mode,
                             subject,
                             allowGeneral: row.grounding === "general",
@@ -260,6 +308,7 @@ export function AskPage() {
                             const reply = result as Awaited<
                               ReturnType<typeof invoke<"chats.regenerate">>
                             >;
+                            setSkipped(reply.skippedImages ?? []);
                             setUncovered(
                               reply.covered
                                 ? null
@@ -275,8 +324,12 @@ export function AskPage() {
                           })
                           .catch((err: unknown) => {
                             const key =
-                              err && typeof err === "object" && "key" in err
-                                ? String(err.key)
+                              err &&
+                              typeof err === "object" &&
+                              "messageKey" in err
+                                ? String(
+                                    (err as { messageKey: unknown }).messageKey,
+                                  )
                                 : "errors.internal";
                             if (key !== "errors.aborted") setError(key);
                           })
@@ -291,7 +344,7 @@ export function AskPage() {
                 suggestions={
                   row.id === lastTutor?.id ? row.followups : undefined
                 }
-                onSuggest={(text) => send(text)}
+                onSuggest={(text) => send(text, { textOnly: true })}
                 onReact={(reaction) => {
                   void invoke("chats.rate", {
                     messageId: row.id,
@@ -342,14 +395,65 @@ export function AskPage() {
           ) : null}
         </div>
       )}
-      {error ? <Notice tone="danger">{t(error)}</Notice> : null}
+      {isOcrRefusal(error) ? (
+        // The message and attached photos stay in the composer. Sending again is the student's call, since it asks the tutor.
+        <OcrDataCard
+          refusal={t(error)}
+          onLater={() => setError(null)}
+          readyAction={
+            <Button
+              type="primary"
+              shape="round"
+              disabled={busy}
+              onClick={() => void send(draft)}
+            >
+              {t("sources.ocrData.again.send")}
+            </Button>
+          }
+        />
+      ) : error ? (
+        <Notice tone="danger">{t(error)}</Notice>
+      ) : null}
+      {(["too-large", "unreadable"] as const).map((reason) => {
+        const count = skipped.filter((item) => item === reason).length;
+        return count > 0 ? (
+          <Notice key={reason} tone="warning">
+            {t(
+              reason === "too-large"
+                ? "ask.skippedTooLarge"
+                : "ask.skippedUnreadable",
+              { count },
+            )}
+          </Notice>
+        ) : null;
+      })}
+      {skipped.includes("over-limit") ? (
+        <Notice tone="warning">{t("ask.skippedOverLimit")}</Notice>
+      ) : null}
       {uncovered ? (
         <Notice tone="warning">
           {t("ask.notCovered")}{" "}
-          <button type="button" onClick={() => send(uncovered, true)}>
+          <button type="button" onClick={() =>
+              send(uncovered, { allowGeneral: true, textOnly: true })
+            }>
             {t("ask.answerGeneral")}
           </button>
         </Notice>
+      ) : null}
+      {(plans.data ?? []).length > 0 ? (
+        <div className="choice-list" role="group" aria-label={t("ask.plan")}>
+          {(plans.data ?? []).map((plan) => (
+            <button
+              key={plan.id}
+              type="button"
+              className={planId === plan.id ? "choice is-selected" : "choice"}
+              aria-pressed={planId === plan.id}
+              onClick={() => setPlanId(planId === plan.id ? null : plan.id)}
+            >
+              {plan.title}
+            </button>
+          ))}
+        </div>
       ) : null}
       <div className="choice-list" role="group" aria-label={t("ask.sources")}>
         {(sources.data ?? []).map((source) => (
@@ -372,13 +476,6 @@ export function AskPage() {
           </button>
         ))}
       </div>
-      {sessionStorage.getItem("pyxis-board-png") ? (
-        <img
-          alt={t("tools.whiteboardTitle")}
-          src={sessionStorage.getItem("pyxis-board-png") ?? ""}
-          style={{ maxWidth: 280 }}
-        />
-      ) : null}
       <SubjectPicker value={subject} onChange={setSubject} disabled={busy} />
       {thread.data?.context ? (
         <div className="passage">
@@ -413,9 +510,45 @@ export function AskPage() {
         </Button>
       ))}
       {files.length > 0 ? (
-        <p className="small">
-          {files.map((file) => file.split("/").pop()).join(", ")}
-        </p>
+        <ul className="ask-attachments">
+          {files.map((file) => {
+            const name = fileName(file);
+            return (
+              <li key={file}>
+                {previews[file] ? (
+                  <img
+                    alt={t("tools.whiteboardTitle")}
+                    src={previews[file]}
+                    className="ask-attachment-preview"
+                  />
+                ) : null}
+                <span className="small">{name}</span>
+                <Button
+                  type="text"
+                  shape="round"
+                  size="small"
+                  disabled={busy}
+                  aria-label={t("ask.removeAttachment", {
+                    name,
+                    defaultValue: "Remove {{name}}",
+                  })}
+                  onClick={() => {
+                    setFiles((current) =>
+                      current.filter((item) => item !== file),
+                    );
+                    setPreviews((current) =>
+                      Object.fromEntries(
+                        Object.entries(current).filter(([key]) => key !== file),
+                      ),
+                    );
+                  }}
+                >
+                  {t("ask.contextRemove")}
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
       ) : null}
       <Composer
         subject={subject || undefined}
@@ -424,6 +557,7 @@ export function AskPage() {
           setDraft(next);
           sessionStorage.setItem("pyxis-draft", next);
         }}
+        mode={mode}
         onModeChange={setMode}
         sources={titles}
         streaming={busy}

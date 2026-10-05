@@ -107,10 +107,16 @@ describe("askTurn", () => {
       }),
     ).rejects.toThrow("offline");
     expect(readChat(db, first.chatId)).toEqual(before);
-    await expect(regenerateTurn(db, {
-      chatId: first.chatId, allowGeneral: true,
-      run: async input => { input.onDelta?.("Partial replacement"); throw new DOMException("Aborted", "AbortError"); },
-    })).rejects.toMatchObject({ name: "AbortError" });
+    await expect(
+      regenerateTurn(db, {
+        chatId: first.chatId,
+        allowGeneral: true,
+        run: async (input) => {
+          input.onDelta?.("Partial replacement");
+          throw new DOMException("Aborted", "AbortError");
+        },
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
     expect(readChat(db, first.chatId)).toEqual(before);
     await regenerateTurn(db, {
       chatId: first.chatId,
@@ -222,7 +228,7 @@ describe("askTurn", () => {
     renameChat(db, result.chatId, "Moti");
     expect(listChats(db)[0]?.title).toBe("Moti");
     expect(() => renameChat(db, result.chatId, "  ")).toThrow(/chat-title/);
-    deleteChat(db, result.chatId);
+    deleteChat(db, "", result.chatId);
     expect(listChats(db)).toEqual([]);
     expect(readChat(db, result.chatId)).toEqual([]);
   });
@@ -392,8 +398,9 @@ describe("askTurn", () => {
         return reply;
       },
     });
-    expect(system).toContain("Ada");
-    expect(system).toContain("Fisica 1");
+    // The level and course go in; the student's name does not.
+    expect(system).not.toContain("Ada");
+    expect(system).toContain("Level: university. Course: Fisica 1.");
     expect(system).toContain("Write all output in Italian.");
     // General answers have no passages, so they do not carry the citation rule.
     expect(system).not.toContain(partialText("citation"));
@@ -683,4 +690,77 @@ describe("askTurn", () => {
       }),
     ).rejects.toMatchObject({ messageKey: "errors.attachTooBig" });
   });
+});
+
+it("blocks tutor writes before creating a chat during an active exam and unlocks after freeze", async () => {
+  const db = openDatabase(":memory:");
+  try {
+    db.exec(`
+      INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('p','Physics','ready',1,1);
+      INSERT INTO items (id,plan_id,kind,body_json,created_at) VALUES ('exam','p','simulation','{"minutes":30,"questions":[]}',1);
+      INSERT INTO attempts (id,plan_id,item_id,started_at) VALUES ('attempt','p','exam',1);
+    `);
+    let called = false;
+    await expect(
+      askTurn(db, {
+        text: "Help me",
+        allowGeneral: true,
+        run: async () => {
+          called = true;
+          return reply;
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "exam-active",
+      messageKey: "simulation.tutorLocked",
+    });
+    expect(() =>
+      seedChat(db, { kind: "answer", title: "Exam", body: "Help" }),
+    ).toThrow();
+    expect(called).toBe(false);
+    expect(listChats(db)).toEqual([]);
+    db.prepare(
+      "UPDATE items SET body_json=json_set(body_json,'$.gradingStartedAt',2) WHERE id='exam'",
+    ).run();
+    expect(
+      seedChat(db, { kind: "answer", title: "Review", body: "Frozen answers" })
+        .chatId,
+    ).toBeTruthy();
+  } finally {
+    db.close();
+  }
+});
+
+it("does not stream or save a tutor reply when an exam starts during generation", async () => {
+  const db = openDatabase(":memory:");
+  try {
+    db.exec(`
+      INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('p','Physics','ready',1,1);
+      INSERT INTO items (id,plan_id,kind,body_json,created_at) VALUES ('exam','p','simulation','{"minutes":30,"questions":[]}',1);
+      INSERT INTO feature_engines (feature,selection_json,updated_at) VALUES ('default','{"provider":"claude","model":"test"}',1);
+    `);
+    const seen: string[] = [];
+    await expect(
+      askTurn(db, {
+        text: "Help me",
+        allowGeneral: true,
+        onDelta: (text) => seen.push(text),
+        run: async (input) => {
+          db.prepare(
+            "INSERT INTO attempts (id,plan_id,item_id,started_at) VALUES ('attempt','p','exam',1)",
+          ).run();
+          input.onDelta?.("Late tutor answer");
+          return reply;
+        },
+      }),
+    ).rejects.toMatchObject({ code: "exam-active" });
+    expect(seen).toEqual([]);
+    expect(
+      db
+        .prepare("SELECT count(*) AS n FROM messages WHERE role='assistant'")
+        .get(),
+    ).toEqual({ n: 0 });
+  } finally {
+    db.close();
+  }
 });

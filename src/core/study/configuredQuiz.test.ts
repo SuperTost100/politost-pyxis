@@ -387,6 +387,27 @@ describe("configured quizzes", () => {
   });
 });
 
+it("marks a quiz written without the plan's sources as general knowledge", async () => {
+  const db = fixture();
+  const ask = { planId: "plan", topicId: "topic", count: 10, types: ["tf" as const] };
+  const sourced = await startConfiguredQuiz(db, ask, tfRun);
+  expect(readQuiz(db, sourced.attemptId).general).toBeUndefined();
+  db.prepare("DELETE FROM topic_passages").run();
+  const general = await startConfiguredQuiz(db, ask, async () =>
+    reply({
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        kind: "tf",
+        stem: `Statement ${i}`,
+        explanation: "Known background.",
+        passageIds: [],
+        correct: true,
+      })),
+    }),
+  );
+  expect(readQuiz(db, general.attemptId).general).toBe(true);
+  db.close();
+});
+
 it("retains each batch model after retrying with another engine", async () => {
   const db = fixture(); const input = { planId: "plan", topicId: "topic", count: 20, types: ["tf" as const] };
   const snapshot = prepareQuiz(db, input);

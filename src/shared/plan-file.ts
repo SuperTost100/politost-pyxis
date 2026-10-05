@@ -101,11 +101,12 @@ const portableItem = z
     const parsed = schema.safeParse(item.body);
     if (parsed.success && (item.kind === "lesson" || item.kind === "intro")) {
       const ordered = (parsed.data as z.infer<typeof proseBody>).passageIds;
+      const cited = new Set(item.passageIds);
       if (
         ordered &&
         (new Set(ordered).size !== ordered.length ||
           ordered.length !== item.passageIds.length ||
-          ordered.some((id) => !item.passageIds.includes(id)))
+          ordered.some((id) => !cited.has(id)))
       ) {
         ctx.addIssue({
           code: "custom",
@@ -127,6 +128,8 @@ export const planFileSchema = z.object({
   version: z.union([z.literal(1), z.literal(2)]),
   id: id.optional(),
   createdAt: z.number().finite().optional(),
+  /** Exporter's profile display name, written only when they have one. Never inferred. */
+  author: z.string().min(1).max(200).optional(),
   title: z.string().max(500),
   topics: z
     .array(
@@ -136,6 +139,10 @@ export const planFileSchema = z.object({
         position: index,
         tree: json.optional(),
         passageIds: z.array(id).max(10000).optional(),
+        /** Where the topic's content comes from. Files from before it existed omit it. */
+        grounding: z.enum(["sources", "mixed", "general"]).nullable().optional(),
+        /** A rebuild set this topic aside. It stays for history and is hidden from the active plan. */
+        archived: z.boolean().optional(),
       }),
     )
     .max(1000),
@@ -241,6 +248,18 @@ export const planFileSchema = z.object({
   target: z.number().min(0.5).max(1).optional(),
   language: z.enum(["it", "en"]).nullable().optional(),
   style: z.enum(["read", "practice", "decide"]).optional(),
+  /** Education level the plan's tutor answers at. Older files omit it and take the importer's profile level. */
+  educationLevel: z
+    .enum([
+      "primary",
+      "lower-secondary",
+      "upper-secondary",
+      "technical",
+      "vocational",
+      "university",
+      "other",
+    ])
+    .optional(),
   progress: z
     .array(
       z.object({
@@ -259,6 +278,54 @@ export const planFileSchema = z.object({
         at: z.number(),
       }),
     )
+    .max(100000)
+    .optional(),
+  /**
+   * Progress-only gap state, written with `progress` and never otherwise. Optional and additive, so version 2 stays valid:
+   * a file without `gaps` is replayed from its answers, as before. Gap IDs are remapped on import and every reference
+   * (`mergedInto`, `gapAnswers`, `gapItems`, gap events and an adopted question's `gapId`) must name a row in the file.
+   */
+  gaps: z
+    .array(
+      z.object({
+        id,
+        topic: index.nullable(),
+        openedAt: index,
+        closedAt: index.nullable(),
+        origin: z.enum(["answers", "flag", "misconception"]),
+        misconception: z.string().max(1000).nullable(),
+        severity: z.enum(["severe", "minor"]).nullable(),
+        /** "unchecked" while the gap could not be compared with its siblings. */
+        comparison: z.literal("unchecked").nullable(),
+        /** The gap that absorbed this one; set only on a closed gap. */
+        mergedInto: id.nullable(),
+      }),
+    )
+    .max(100000)
+    .optional(),
+  /**
+   * Submitted attempts that progress events or gap answers name. Answers themselves are not carried. `item` is null
+   * only when the attempt's quiz is not in the file (deleted); otherwise it is a quiz, diagnostic or simulation.
+   */
+  attempts: z
+    .array(
+      z.object({
+        id,
+        item: id.nullable(),
+        startedAt: index,
+        submittedAt: index,
+      }),
+    )
+    .max(100000)
+    .optional(),
+  /** Wrong answers (attempt and question) that count for a gap. */
+  gapAnswers: z
+    .array(z.object({ gap: id, attempt: id, question: id }))
+    .max(100000)
+    .optional(),
+  /** The drill quiz built for a gap. */
+  gapItems: z
+    .array(z.object({ gap: id, item: id }))
     .max(100000)
     .optional(),
   sources: z

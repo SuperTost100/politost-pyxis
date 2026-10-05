@@ -10,7 +10,7 @@
   margin: 0;
 }
 .px-python textarea {
-  font: 400 14px/1.7 var(--font-mono);
+  font: 400 calc(14px * var(--text-scale))/1.7 var(--font-mono);
   tab-size: 4;
   border-radius: var(--radius-md);
   padding: var(--space-4);
@@ -43,7 +43,7 @@
   border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius-md);
-  font: 400 13px/1.6 var(--font-mono);
+  font: 400 calc(13px * var(--text-scale))/1.6 var(--font-mono);
   max-height: 400px;
   overflow-y: auto;
 }

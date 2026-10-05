@@ -1,7 +1,8 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { extname } from "node:path";
 import type Database from "better-sqlite3";
-import { strFromU8, unzipSync } from "fflate";
+import { strFromU8 } from "fflate";
+import { openZip } from "./zip-bounded";
 import {
   parseChapterMarkdown,
   parseExercises,
@@ -53,28 +54,19 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
     throw new Error("encrypted-smartbook");
   }
   if (bytes.length > 80 * 1024 * 1024) throw new Error("archive-too-large");
-  // ponytail: refuse a member whose declared size blows the cap before inflate. A header that lies about originalSize can still expand; switch to a streaming unzip that counts output bytes.
-  let declared = 0;
-  const maxExpanded = 256 * 1024 * 1024;
-  const entries = unzipSync(bytes, {
-    filter(file) {
-      declared += file.originalSize;
-      return declared <= maxExpanded;
-    },
-  });
-  if (declared > maxExpanded) throw new Error("archive-too-large");
-  const configKey = Object.keys(entries).find(
+  // Real output is counted, not the size the headers declare, and a member that is never read is never inflated.
+  const entries = openZip(bytes, { maxEntries: 20_000, maxEntryBytes: 64 * 1024 * 1024, maxTotalBytes: 256 * 1024 * 1024 });
+  const configKey = entries.names.find(
     (key) => key.endsWith("smartbook.json") && !key.includes("__MACOSX"),
   );
-  if (!configKey || !entries[configKey])
-    throw new Error("smartbook-json-missing");
+  if (!configKey) throw new Error("smartbook-json-missing");
   const prefix = configKey.slice(0, -"smartbook.json".length);
-  const config = JSON.parse(strFromU8(entries[configKey])) as SmartbookConfig;
+  const config = JSON.parse(strFromU8(entries.read(configKey)!)) as SmartbookConfig;
   if (config.access === "licensed") throw new Error("licensed-smartbook");
 
   const paragraphs: ParsedSmartbook["paragraphs"] = [];
   for (const chapter of config.chapters) {
-    const raw = entries[`${prefix}chapters/${chapter.file}`];
+    const raw = entries.read(`${prefix}chapters/${chapter.file}`);
     if (!raw) throw new Error("chapter-missing");
     const parsed = parseChapterMarkdown(strFromU8(raw), chapter.number);
     for (const paragraph of parsed.paragraphs) {
@@ -94,7 +86,7 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
   }
   const exercises: ParsedSmartbook["exercises"] = [];
   for (const name of ["esercizi.md", "esami.md"] as const) {
-    const raw = entries[`${prefix}${name}`];
+    const raw = entries.read(`${prefix}${name}`);
     if (!raw) continue;
     const kind = name === "esami.md" ? "esame" : "esercizio";
     for (const exercise of parseExercises(strFromU8(raw), kind)) {

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
   mainChannels,
   type Appearance,
@@ -31,6 +31,7 @@ const aborted = {
 // ponytail: a replacement port replays reads only. A write that died with the core is rejected so it cannot run twice. Upgrade path is a request id stored in the core.
 const replayable = new Set([
   "study.quizRead",
+  "study.reviewSession",
   "plans.build",
   "plans.intro",
   "jobs.list",
@@ -183,6 +184,11 @@ const bridge: PyxisBridge = {
     ipcRenderer.invoke(mainChannels.openDialog, options),
   showSaveDialog: (options: SaveDialogOptions) =>
     ipcRenderer.invoke(mainChannels.saveDialog, options),
+  grantDroppedFiles: (files: File[]) => {
+    // A file built in script has no path on disk and comes back empty.
+    const paths = Array.from(files, (file) => webUtils.getPathForFile(file));
+    return ipcRenderer.invoke(mainChannels.dropGrant, paths);
+  },
   openTerminal: () => ipcRenderer.invoke(mainChannels.terminalOpen),
   keys: {
     set: (provider: string, key: string) =>

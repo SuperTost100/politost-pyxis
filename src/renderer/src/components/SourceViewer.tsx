@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button, Drawer, Skeleton } from "antd";
+import { Drawer, Skeleton } from "antd";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../lib/ipc";
 import { MarkdownView } from "./MarkdownView";
 import { Notice } from "./Notice";
+import { SelectionMenu } from "./SelectionMenu";
 import "./SourceViewer.css";
 
 const PdfSourcePage = lazy(() => import("./PdfSourcePage"));
@@ -18,13 +19,11 @@ export function openSourceViewer(location: SourceLocation): void {
 export function SourceViewer() {
   const { t } = useTranslation();
   const [location, setLocation] = useState<SourceLocation | null>(null);
-  const [quote, setQuote] = useState("");
   const body = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const open = (event: Event) => {
       trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setQuote("");
       setLocation((event as CustomEvent<SourceLocation>).detail);
     };
     window.addEventListener(eventName, open);
@@ -46,7 +45,6 @@ export function SourceViewer() {
   }, [passages.data]);
   function close(): void {
     setLocation(null);
-    setQuote("");
   }
   return (
     <Drawer open={location != null} onClose={close} placement="right" size="min(560px, calc(100vw - 80px))"
@@ -54,15 +52,8 @@ export function SourceViewer() {
       afterOpenChange={(open) => { if (!open) trigger.current?.focus(); }}>
       {passages.isPending ? <Skeleton active /> : null}
       {passages.isError ? <Notice tone="danger">{t("sources.importFailed")}</Notice> : null}
-      <div ref={body} className="source-viewer-chapter" onMouseUp={() => setQuote(window.getSelection()?.toString().trim() ?? "")}
-        onKeyUp={() => setQuote(window.getSelection()?.toString().trim() ?? "")}>
-        {quote ? <div className="source-viewer-selection">
-          <Button type="text" onClick={() => {
-            void invoke("chats.seed", { kind: "passage", title: quote.slice(0, 80), body: quote, sourceIds: sourceId ? [sourceId] : [] })
-              .then(({ chatId }) => { close(); window.location.hash = `/ask/${chatId}`; });
-          }}>{t("ask.askTutor")}</Button>
-          <Button type="text" onClick={() => void navigator.clipboard.writeText(quote)}>{t("sources.copySelection")}</Button>
-        </div> : null}
+      <SelectionMenu sourceIds={sourceId ? [sourceId] : []} onAsk={(chatId) => { close(); window.location.hash = `/ask/${chatId}`; }}>
+      <div ref={body} className="source-viewer-chapter">
         {source.data?.kind === "pdf" && source.data.blobSha ?
           <Suspense fallback={<Skeleton active />}><PdfSourcePage sha={source.data.blobSha} initialPage={current?.locator.page ?? 1} excerpt={source.data.excerpt ?? current?.text ?? ""} /></Suspense>
           : rows.map((row) => <section key={row.id} className={row.current ? "source-viewer-paragraph is-current" : "source-viewer-paragraph"}
@@ -70,6 +61,7 @@ export function SourceViewer() {
           <MarkdownView>{row.text}</MarkdownView>
         </section>)}
       </div>
+      </SelectionMenu>
     </Drawer>
   );
 }

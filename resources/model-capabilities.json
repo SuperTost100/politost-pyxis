@@ -6,7 +6,7 @@
     "contextTokens": 200000
   },
   {
-    "pattern": "^gpt-",
+    "pattern": "^gpt-(?:4o(?:-mini)?|4\\.1(?:-mini|-nano)?|5(?:-mini|-nano|\\.1|\\.2|\\.4(?:-mini|-nano)?|\\.5|\\.6-(?:sol|terra|luna))?|6-astra)(?:-\\d{4}-\\d{2}-\\d{2})?$",
     "vision": true,
     "structured": true,
     "contextTokens": 128000

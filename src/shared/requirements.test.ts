@@ -36,6 +36,12 @@ describe("requirements registry", () => {
     }
   });
 
+  it("traces every current requirement or explicit omission", () => {
+    if (doc == null) return;
+    const traced = new Set<string>(all);
+    expect([...documented].filter((id) => !traced.has(id))).toEqual([]);
+  });
+
   it("never lists an ID from a Later line", () => {
     if (doc == null) return;
     const later = new Set<string>();

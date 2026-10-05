@@ -90,6 +90,7 @@ export function exportAnki(
   const rows = db.prepare(`SELECT c.id, c.front, c.back, c.suspended, p.section_path AS source
     FROM cards c LEFT JOIN passages p ON p.id = c.passage_id
     WHERE c.plan_id = ? AND c.removed = 0 AND (? IS NULL OR c.topic_id = ?)
+      AND (c.topic_id IS NULL OR NOT EXISTS (SELECT 1 FROM topics t WHERE t.id = c.topic_id AND t.archived_at IS NOT NULL))
     ORDER BY c.created_at, c.id`).all(planId, options.topicId ?? null, options.topicId ?? null) as
     Array<{ id: string; front: string; back: string; suspended: number; source: string | null }>;
   const now = options.now ?? Date.now();

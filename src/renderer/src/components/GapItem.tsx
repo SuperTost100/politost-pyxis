@@ -10,6 +10,7 @@ export function GapItem({
   onFill,
   fillLabel = "Colma",
   fillDisabled = false,
+  fillName,
   severitySevereLabel = "grave",
   severityMinorLabel = "lieve",
 }: {
@@ -19,6 +20,8 @@ export function GapItem({
   onFill?: () => void;
   fillLabel?: string;
   fillDisabled?: boolean;
+  /** What the fill button is named after, when the topic alone does not say which gap it is. */
+  fillName?: string;
   severitySevereLabel?: string;
   severityMinorLabel?: string;
 }) {
@@ -34,7 +37,7 @@ export function GapItem({
       </div>
       {onFill ? (
         <Button
-          aria-label={`${fillLabel} · ${topic}`}
+          aria-label={`${fillLabel} · ${fillName ?? topic}`}
           size="sm"
           variant="secondary"
           onClick={onFill}

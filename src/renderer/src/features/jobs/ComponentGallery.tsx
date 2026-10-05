@@ -522,7 +522,7 @@ export function ComponentGallery() {
               ? t("components.citationSamples.sb")
               : t("components.citationSamples.pdf")
           }
-          onRunPython={() => {}}
+          runnable
         >
           {t("gallery.markdownSample")}
         </MarkdownView>

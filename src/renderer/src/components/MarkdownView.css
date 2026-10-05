@@ -36,7 +36,3 @@
   background: var(--surface-raised);
   overflow-x: auto;
 }
-
-.px-code-run {
-  margin-top: var(--space-2);
-}

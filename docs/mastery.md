@@ -17,9 +17,21 @@ Before the simulation is complete, the path caps each topic's usable mastery at 
 
 ## Knowledge gaps
 
-A topic opens a gap after at least two imperfect answers in one attempt, or an open-answer score below `0.3`. A second open gap for the same topic is suppressed. Closure requires perfect later attempts on two distinct UTC days. Any imperfect later attempt keeps the gap open. Flagged source exercises can also keep a relevant gap open.
+Gap rows follow the answers. Reading Progress or the recommendation syncs them first, and a second sync changes nothing.
 
-Preparation labels a gap severe when topic mastery is below half the plan target. It warns about a below-target topic after 21 days without study. The standalone `idleTopics()` helper defaults to seven days; the Preparation screen uses its own 21-day rule.
+**Opening.** A topic opens a gap when one attempt has at least two imperfect answers on it, or one open answer scores below `0.3`, and no gap on that topic is open at that moment. Flagged source exercises open or keep a separate flag-only gap on their topic. When a real gap opens on a topic that already has a flag-only gap, the flag gap becomes it.
+
+**More than one gap per topic.** After a graded attempt that qualifies, one model call reads the wrong answers and returns a misconception sentence and a severity. A local embedding model compares the sentence with the topic's other open gaps. A close reading (cosine similarity of at least 0.9) merges into the older gap. A different reading opens its own gap with its own id, wrong answers and drill. If the local model cannot compare, the new gap stays separate and is marked unchecked, and a later analysis retries it and merges it when the model answers. The same mark is set when readings kept arriving during the comparison and some were never compared. The 0.9 threshold is untuned and has only been tested with injected vectors.
+
+**Closing.** A gap closes after two clean sessions on different local calendar days after its last miss, so day 0 open, day 1 miss, then clean sessions on days 2 and 3 closes it on day 3. A miss resets the count, it does not keep the gap open for ever. A session is clean for a gap when it has at least one correct answer and no wrong answer that counts for that gap. A gap that is still flagged stays open however well the answers go. Closing writes one `gap_closed` event, and opening writes one `gap_opened` event, in the same transaction as the row.
+
+**Which wrong answers count for which gap.** A drill question counts for the gap its drill was built for. A wrong answer from an analysed attempt counts for the gap the analysis put it on. Any other wrong answer, such as a single miss that never reached an analysis, counts for every gap open on its topic at that time. This is an approximation. A lone miss cannot be pinned on one misconception without a model call per miss, and Pyxis does not guess. The cost is that a stray miss resets every open gap on the topic, so closing is slower when a topic has several gaps. The reverse choice would let a gap close while the student still misses the topic. A session with wrong answers that count for a different gap can count as clean for this one.
+
+**Severity.** The model proposes `severe` or `minor`. Pyxis also labels a gap severe when topic mastery is below half the plan target, and a gap with no proposal and mastery at or above that line is minor. Progress ranks gaps by severity, then by the number of linked wrong answers, then by age.
+
+**Merging.** The older gap keeps its id. The absorbed gap closes with `merged_into` pointing at the survivor, its wrong answers and drill items move to the survivor, and a severe reading stays severe. A merge is not a learning close. It writes a `gap_closed` event with reason `merged`, and a drill built for the absorbed gap is offered for the survivor.
+
+Preparation warns about a below-target topic after 21 days without study. The standalone `idleTopics()` helper defaults to seven days; the Preparation screen uses its own 21-day rule.
 
 ## Recommendation score
 
@@ -28,10 +40,10 @@ Preparation labels a gap severe when topic mastery is below half the plan target
 ```text
 urgency = 1 + 2 / max(days_to_exam, 1)
 deficit = max(0, target - topic_mastery)
-score = 3 * due_cards + 4 * gap_count
+score = 3 * due_cards + 4 * severe_gap_count
       + 2 * deficit * urgency + days_idle + style_match
 ```
 
-For two due cards, one gap, target `0.75`, mastery `0.5`, five days to the exam, two idle days and a matching style, the score is `6 + 4 + 0.7 + 2 + 1 = 13.7`. The explanation prefers due cards, then gaps, then the next lesson. Equal scores keep the first candidate.
+For two due cards, one severe gap, target `0.75`, mastery `0.5`, five days to the exam, two idle days and a matching style, the score is `6 + 4 + 0.7 + 2 + 1 = 13.7`. The explanation prefers due cards, then gaps, then the next lesson. Equal scores keep the first candidate.
 
-The current caller passes all open topic gaps as `gap_count`, despite the parameter's name `severeGaps`. It considers only current path nodes, so the score does not unlock or skip a locked lesson. Recommendation weights are rules in code, not a predictive model. Progress forecasts are estimates and never promise an exam result.
+The caller syncs the gap rows first, then passes only the open gaps that Progress would call severe (see Severity above) as `severeGaps`; a minor gap does not count. It considers only current path nodes, so the score does not unlock or skip a locked lesson. Recommendation weights are rules in code, not a predictive model. Progress forecasts are estimates and never promise an exam result.

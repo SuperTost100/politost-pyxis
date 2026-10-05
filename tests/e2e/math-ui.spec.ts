@@ -63,7 +63,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
       await app.evaluate(
         ({ BrowserWindow }, width) =>
           BrowserWindow.getAllWindows()
-            .find((w) => w.isVisible())!
+            .find((w) => w.webContents.getURL().includes("#/tools/python"))!
             .setSize(width, 800),
         width,
       );

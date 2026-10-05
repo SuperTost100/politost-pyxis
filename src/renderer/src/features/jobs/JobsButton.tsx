@@ -3,6 +3,7 @@ import { ListChecks, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { JobView } from "@shared/ipc";
 import { Notice } from "../../components/Notice";
+import { ocrErrorKey } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
 import { useJobs } from "./queries";
 
@@ -11,11 +12,24 @@ function stepText(label: string, t: (key: string) => string): string {
 }
 
 function errorText(error: string, t: (key: string) => string): string {
+  const ocr = ocrErrorKey(error);
   return error === "demo-step-failed"
     ? t("jobs.demoFailed")
     : error.includes("engine-missing")
       ? t("engines.errors.engine-missing")
-      : t("jobs.failedGeneral");
+      : error === "reextract-no-text"
+        ? t("sources.reextractNoText")
+        : error === "source-changed"
+          ? t("sources.changed")
+          : error === "source-unreadable"
+            ? t("sources.unreadable")
+            : error === "vision-image-unsupported"
+              ? t("sources.imageUnsupported")
+              : error === "vision-image-too-large"
+                ? t("sources.imageTooLarge")
+                : ocr
+                  ? t(ocr)
+                  : t("jobs.failedGeneral");
 }
 
 function JobList({ jobs }: { jobs: JobView[] }) {
@@ -85,6 +99,11 @@ function JobList({ jobs }: { jobs: JobView[] }) {
             <Progress
               percent={Math.round(job.progress * 100)}
               showInfo={false}
+              aria-label={
+                job.stepLabel
+                  ? stepText(job.stepLabel, t)
+                  : t(`jobs.state.${job.state}`)
+              }
               size="small"
               strokeColor="var(--primary)"
             />

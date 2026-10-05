@@ -105,11 +105,20 @@ export function ImportReview({
       <h2 id="import-review-title" className="title-2">
         {preview.title}
       </h2>
-      {preview.createdAt ? (
+      {preview.author || preview.createdAt ? (
         <p className="small ink-muted">
-          {t("shared.review.created", {
-            date: new Date(preview.createdAt).toLocaleDateString(i18n.language),
-          })}
+          {[
+            preview.author,
+            preview.createdAt
+              ? t("shared.review.created", {
+                  date: new Date(preview.createdAt).toLocaleDateString(
+                    i18n.language,
+                  ),
+                })
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
       ) : null}
       <p className="body-strong">{t("shared.review.contains")}</p>
@@ -127,6 +136,9 @@ export function ImportReview({
           )}
         </li>
       </ul>
+      {preview.generalTopics > 0 ? (
+        <Notice tone="warning">{t("plans.draft")}</Notice>
+      ) : null}
       {preview.sources.some((source) => source.embedded) ? (
         <>
           <p className="body-strong">{t("shared.review.embedded")}</p>

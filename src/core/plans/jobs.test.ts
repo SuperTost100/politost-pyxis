@@ -13,6 +13,7 @@ import type { GenerateInput } from "../engine/generate";
 import { partialText, templateVersion } from "../engine/prompts";
 import { startDiagnostic } from "../study/topicQuiz";
 import { readPlan } from "./create";
+import { SEGMENT_LIMIT } from "./segments";
 
 async function until(
   db: ReturnType<typeof openDatabase>,
@@ -222,7 +223,7 @@ describe("PLAN-21 durable plan build", () => {
               title: "Moto",
               summary: "Velocità",
               subtopics: ["Tempo"],
-              sourceSections: [{ sourceId: "pdf", section: "p. 1" }],
+              segmentIds: ["s1"],
             },
           ],
         });
@@ -299,7 +300,7 @@ describe("PLAN-21 durable plan build", () => {
         if (trees === 1) throw new Error("offline");
         const content = JSON.parse(input.prompt) as {
           sourceSynopses: Array<{ sourceId: string; synopsis: string }>;
-          sources: Array<{ sourceId: string; section: string; sample: string }>;
+          sources: Array<{ segmentId: string; sample: string }>;
         };
         expect(content.sourceSynopses).toEqual([
           {
@@ -307,7 +308,8 @@ describe("PLAN-21 durable plan build", () => {
             synopsis: "Course sequence, concepts 0 through 599.",
           },
         ]);
-        expect(content.sources).toHaveLength(600);
+        // 600 pages are folded into a bounded outline; the model never echoes every page.
+        expect(content.sources).toHaveLength(SEGMENT_LIMIT);
         expect(
           content.sources.every((section) => section.sample.length > 0),
         ).toBe(true);
@@ -317,10 +319,7 @@ describe("PLAN-21 durable plan build", () => {
               title: "Course",
               summary: "All concepts",
               subtopics: [],
-              sourceSections: content.sources.map(({ sourceId, section }) => ({
-                sourceId,
-                section,
-              })),
+              segmentIds: ["s1", content.sources.at(-1)!.segmentId],
             },
           ],
         });
@@ -340,6 +339,7 @@ describe("PLAN-21 durable plan build", () => {
     await until(db, built.planId, "succeeded");
     expect(summaries).toBe(1);
     expect(trees).toBe(2);
+    // Segments the topic did not name attach to it, so all 600 pages stay covered.
     expect(
       db.prepare("SELECT COUNT(*) AS n FROM topic_passages").get(),
     ).toEqual({ n: 600 });
@@ -353,6 +353,161 @@ describe("PLAN-21 durable plan build", () => {
     ).toEqual({
       prompt_template: "plan.topics",
       prompt_version: templateVersion("plan.topics"),
+    });
+    db.close();
+  });
+  it("splits a flat pasted or DOCX source so topics do not all link every passage", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    db.prepare(
+      "INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('docx', 'file', 'Appunti', 'ready', 1, 1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES ('doc', 'docx', 1, '{}', 1)",
+    ).run();
+    const insert = db.prepare(
+      "INSERT INTO passages (id, source_id, document_id, text, section_path, created_at) VALUES (?, 'docx', 'doc', ?, 'text', ?)",
+    );
+    for (let i = 0; i < 40; i++) insert.run(`d${i}`, `Paragrafo ${i}`, i);
+    const run: GenerateInput["run"] = async (input) => {
+      if (input.system?.startsWith("Build")) {
+        const content = JSON.parse(input.prompt) as {
+          sources: Array<{ segmentId: string; label: string }>;
+        };
+        // Twenty parts of two passages each. Each topic names one part and inherits the following ones.
+        expect(content.sources).toHaveLength(20);
+        expect(content.sources[0]!.label).toBe("text 1/20");
+        return response({
+          topics: [
+            { title: "Parte uno", summary: "A", subtopics: [], segmentIds: ["s1"] },
+            { title: "Parte due", summary: "B", subtopics: [], segmentIds: ["s11"] },
+          ],
+        });
+      }
+      if (input.system?.startsWith("Write"))
+        return response({ markdown: "Introduzione [P1]." });
+      const content = JSON.parse(input.prompt) as {
+        diagnosticTopicIndices: number[];
+        passages: Array<{ id: string }>;
+      };
+      return response({
+        questions: Array.from({ length: 10 }, (_, i) => {
+          const topicIndex =
+            content.diagnosticTopicIndices[i % content.diagnosticTopicIndices.length]!;
+          return {
+            stem: `Domanda ${i}`,
+            options: ["a", "b", "c", "d"],
+            correct: 0,
+            topicIndex,
+            passageIds: [
+              content.passages.find((p) => Math.floor(Number(p.id.slice(1)) / 20) === topicIndex)!
+                .id,
+            ],
+            explanation: "Spiegazione",
+          };
+        }),
+      });
+    };
+    const runner = createRunner(db, () => {});
+    registerPlanJobs(db, runner, run);
+    const built = enqueuePlan(db, runner, { title: "Appunti", sourceIds: ["docx"] });
+    await until(db, built.planId, "succeeded");
+    const counts = db
+      .prepare(
+        "SELECT t.title, COUNT(*) AS n FROM topic_passages tp JOIN topics t ON t.id = tp.topic_id GROUP BY t.id ORDER BY t.position",
+      )
+      .all();
+    expect(counts).toEqual([
+      { title: "Parte uno", n: 20 },
+      { title: "Parte due", n: 20 },
+    ]);
+    db.close();
+  });
+  it("keeps a plan without material a draft after the build, with every topic tagged general", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const topicCalls: string[] = [];
+    const run: GenerateInput["run"] = async (input) => {
+      if (input.system?.startsWith("Build") || input.system?.startsWith("Draft"))
+        topicCalls.push(input.system.slice(0, 5));
+      if (input.system?.startsWith("Build"))
+        return response({
+          topics: [{ title: "Limiti", summary: "Base", subtopics: ["Serie"], segmentIds: [] }],
+        });
+      if (input.system?.startsWith("Write"))
+        return response({ markdown: "Introduzione" });
+      const { diagnosticTopicIndices } = JSON.parse(input.prompt) as {
+        diagnosticTopicIndices: number[];
+      };
+      return response({
+        questions: Array.from({ length: 10 }, (_, i) => ({
+          stem: `Domanda ${i}`,
+          options: ["a", "b", "c", "d"],
+          correct: 0,
+          topicIndex: diagnosticTopicIndices[i % diagnosticTopicIndices.length],
+          passageIds: [],
+          explanation: "Spiegazione",
+        })),
+      });
+    };
+    const runner = createRunner(db, () => {});
+    registerPlanJobs(db, runner, run);
+
+    // The student's edited tree is used as is: no topic call, plan stays a draft.
+    const edited = enqueuePlan(db, runner, {
+      title: "Analisi",
+      sourceIds: [],
+      draftTopics: [
+        { title: "Derivate", summary: "Pendenza", subtopics: ["Regole"] },
+        { title: "Integrali" },
+      ],
+    });
+    await until(db, edited.planId, "succeeded");
+    expect(topicCalls).toEqual([]);
+    const plan = readPlan(db, edited.planId)!;
+    expect(plan.status).toBe("draft");
+    expect(plan.topics.map((t) => [t.title, t.grounding, t.subtopics])).toEqual([
+      ["Derivate", "general", ["Regole"]],
+      ["Integrali", "general", []],
+    ]);
+    expect(
+      db
+        .prepare("SELECT prompt_template FROM plans WHERE id = ?")
+        .get(edited.planId),
+    ).toEqual({ prompt_template: "plan.tree" });
+    expect(plan.nodes.some((node) => node.state === "current")).toBe(true);
+
+    // With no tree at all the model proposes one, and the result is a draft too.
+    const invented = enqueuePlan(db, runner, { title: "Fisica", sourceIds: [] });
+    await until(db, invented.planId, "succeeded");
+    expect(topicCalls).toEqual(["Build"]);
+    expect(readPlan(db, invented.planId)).toMatchObject({
+      status: "draft",
+      topics: [{ title: "Limiti", grounding: "general" }],
+    });
+    db.close();
+  });
+  it("marks a plan built from material ready", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const sourceId = source(db);
+    const run: GenerateInput["run"] = async (input) =>
+      input.system?.startsWith("Write")
+        ? response({ markdown: "Il moto [P1]." })
+        : response(diagnostic(input.prompt));
+    const runner = createRunner(db, () => {});
+    registerPlanJobs(db, runner, run);
+    const built = enqueuePlan(db, runner, { title: "Fisica", sourceIds: [sourceId] });
+    await until(db, built.planId, "succeeded");
+    expect(readPlan(db, built.planId)).toMatchObject({
+      status: "ready",
+      topics: [{ grounding: "sources" }],
     });
     db.close();
   });

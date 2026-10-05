@@ -19,12 +19,16 @@ export type TextSize = (typeof textSizes)[number];
 export type Profile = {
   displayName: string;
   educationLevel: EducationLevel;
+  /** Free text such as "2nd year" (PER-01). */
+  year: string;
   school: string;
   course: string;
   tutorMode: "solver" | "socratic";
   contentLanguage: string;
   interests: string[];
   interestsOn: boolean;
+  /** Suggested follow-up questions after a tutor reply (ASK-03). */
+  followups: boolean;
   dyslexia: boolean;
   textSize: TextSize;
   crashReports: boolean;
@@ -33,12 +37,14 @@ export type Profile = {
 const empty: Profile = {
   displayName: "",
   educationLevel: "university",
+  year: "",
   school: "",
   course: "",
   tutorMode: "solver",
   contentLanguage: "Italian",
   interests: [],
   interestsOn: true,
+  followups: true,
   dyslexia: false,
   textSize: "md",
   crashReports: false,
@@ -78,6 +84,11 @@ export function readProfile(db: Database.Database): Profile | null {
   const interests = setting(db, "interests") as
     | { on?: boolean; items?: string[] }
     | undefined;
+  // ponytail: year and the follow-up switch live in settings rows, so no migration.
+  // Move them to profile columns if they ever need querying.
+  const tutor = setting(db, "tutor") as
+    | { followups?: boolean; year?: string }
+    | undefined;
   const reading = setting(db, "reading") as
     | { dyslexia?: boolean; textSize?: string }
     | undefined;
@@ -87,12 +98,14 @@ export function readProfile(db: Database.Database): Profile | null {
   return {
     displayName: row.display_name ?? "",
     educationLevel: level,
+    year: typeof tutor?.year === "string" ? tutor.year : "",
     school: row.school ?? "",
     course: row.course ?? "",
     tutorMode: row.tutor_mode === "socratic" ? "socratic" : "solver",
     contentLanguage: row.content_language ?? "Italian",
     interests: interests?.items ?? [],
     interestsOn: interests?.on !== false,
+    followups: tutor?.followups !== false,
     dyslexia: reading?.dyslexia === true,
     textSize: size,
     crashReports: privacy?.crashReports === true,
@@ -137,6 +150,7 @@ export function saveProfile(db: Database.Database, input: Partial<Profile>, now 
     );
   }
   putSetting(db, "interests", { on: next.interestsOn, items: next.interests }, now);
+  putSetting(db, "tutor", { followups: next.followups, year: next.year }, now);
   putSetting(db, "reading", { dyslexia: next.dyslexia, textSize: next.textSize }, now);
   putSetting(db, "privacy", { crashReports: next.crashReports }, now);
   return next;

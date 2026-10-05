@@ -11,7 +11,7 @@ import {
   type QuizSnapshot,
 } from "./configuredQuiz";
 import { startAttempt } from "./attempt";
-import { checkedAnswer } from "./quizGrading";
+import { checkedAnswer, DRAFT_GRACE_MS } from "./quizGrading";
 
 type Params = {
   input: QuizInput;
@@ -83,14 +83,20 @@ export function readQuiz(
 ) {
   const row = db
     .prepare(
-      "SELECT i.kind, i.body_json, a.submitted_at FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ? AND i.kind IN ('quiz', 'diagnostic') AND (? IS NULL OR a.plan_id = ?)",
+      "SELECT i.kind, i.body_json, i.grounding, a.submitted_at FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ? AND i.kind IN ('quiz', 'diagnostic', 'review') AND (? IS NULL OR a.plan_id = ?)",
     )
     .get(attemptId, planId ?? null, planId ?? null) as
-    | { kind: string; body_json: string; submitted_at: number | null }
+    | {
+        kind: string;
+        body_json: string;
+        grounding: string | null;
+        submitted_at: number | null;
+      }
     | undefined;
   if (!row) throw new Error("quiz-missing");
   const body = JSON.parse(row.body_json) as {
     config?: { count: number; feedback: boolean; timerMinutes?: number };
+    explanation?: string;
     complete?: boolean;
     questions: Array<{
       id: string;
@@ -142,6 +148,7 @@ export function readQuiz(
   const draft = savedBody?.draft;
   return {
     draft,
+    explanation: body.explanation,
     timerMinutes: body.config?.timerMinutes,
     deadlineAt: savedBody?.deadlineAt,
     submittedAt: row.submitted_at ?? undefined,
@@ -151,11 +158,15 @@ export function readQuiz(
       grade: { kind: answer.kind },
     })),
     jobId: job?.id,
+    // The quiz screen shows the whole-review progress line for a mixed review's questions.
+    review: row.kind === "review" ? true : undefined,
     state:
-      row.kind === "diagnostic" || body.complete
+      row.kind !== "quiz" || body.complete
         ? "succeeded"
         : (job?.state ?? "failed"),
     error: job?.error ?? undefined,
+    // LES-32: questions the model wrote without the plan's sources carry a visible tag.
+    general: row.grounding === "general" ? true : undefined,
     requestedCount: body.config?.count ?? body.questions.length,
     feedback: body.config?.feedback ?? false,
     checked: body.questions.flatMap((question) => {
@@ -167,17 +178,17 @@ export function readQuiz(
   };
 }
 
-const DRAFT_GRACE_MS = 5_000;
 export function saveQuizDraft(
   db: Database.Database,
   attemptId: string,
   picks: Record<string, string>,
   index: number,
   planId?: string,
+  now = Date.now(),
 ) {
   const row = db
     .prepare(
-      "SELECT a.submitted_at, i.body_json FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ? AND i.kind IN ('quiz', 'diagnostic') AND (? IS NULL OR a.plan_id = ?)",
+      "SELECT a.submitted_at, i.body_json FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ? AND i.kind IN ('quiz', 'diagnostic', 'review') AND (? IS NULL OR a.plan_id = ?)",
     )
     .get(attemptId, planId ?? null, planId ?? null) as
     { submitted_at: number | null; body_json: string } | undefined;
@@ -207,7 +218,6 @@ export function saveQuizDraft(
       "SELECT id, payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object' LIMIT 1",
     )
     .get(attemptId) as { id: string; payload_json: string } | undefined;
-  const now = Date.now();
   // The timer starts at the first save once every question exists, and survives restarts in the draft row.
   let deadlineAt = existing
     ? (JSON.parse(existing.payload_json) as { deadlineAt?: number }).deadlineAt

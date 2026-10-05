@@ -105,6 +105,21 @@ export function putBlob(
   return sha;
 }
 
+/** Whether the stored file for this hash is there now, so a caller can tell which blobs its own write made new. */
+export function hasBlob(workspace: string, sha: string): boolean {
+  return regularFile(location(workspace, sha).file);
+}
+
+/**
+ * Removes a blob and its metadata. Only for a blob this caller has just made new and no row references, to undo its own
+ * write. A blob that was already there, or may be shared, is never removed.
+ */
+export function removeBlob(workspace: string, sha: string): void {
+  const { file, meta } = location(workspace, sha);
+  rmSync(file, { force: true });
+  rmSync(meta, { force: true });
+}
+
 export function readBlob(workspace: string, sha: string): BlobRecord {
   const { file, meta } = location(workspace, sha);
   const parsed = JSON.parse(readFileSync(meta, "utf8")) as { mime?: unknown };

@@ -221,7 +221,7 @@ export function answerOf(expected: Grade, pick: unknown): Grade {
     };
   }
   const answers = Array.isArray(pick)
-    ? (pick as string[])
+    ? pick.every((value) => typeof value === "string") ? pick : []
     : typeof pick === "string"
       ? completionAnswers(pick)
       : [];

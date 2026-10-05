@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   Bar,
   BarChart,
@@ -39,6 +39,9 @@ export function PlanProgress({
 }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedDrill = searchParams.get("drill");
+  const startedDrill = useRef<string | null>(null);
   const [tab, setTab] = useState("preparation");
   const date = (
     at: number,
@@ -48,14 +51,18 @@ export function PlanProgress({
   const gaps = progress.gaps;
   const client = useQueryClient();
   // A gap opens a targeted drill built by a durable job; the page watches it and then opens the quiz.
-  const [drill, setDrill] = useState<string | null>(null);
+  const [drill, setDrill] = useState<{ topicId: string; gapId?: string } | null>(null);
   const [drillFailed, setDrillFailed] = useState(false);
   const drillRead = useQuery({
-    queryKey: ["gap-drill", planId, drill],
+    queryKey: ["gap-drill", planId, drill?.topicId, drill?.gapId],
     enabled: Boolean(drill),
     gcTime: 0,
     queryFn: () =>
-      invoke("study.gapDrillRead", { planId, topicId: drill ?? "" }),
+      invoke("study.gapDrillRead", {
+        planId,
+        topicId: drill?.topicId ?? "",
+        ...(drill?.gapId ? { gapId: drill.gapId } : {}),
+      }),
     refetchInterval: (query) =>
       ["queued", "running"].includes(query.state.data?.state ?? "queued")
         ? 1500
@@ -73,20 +80,25 @@ export function PlanProgress({
   useEffect(() => {
     if (!drill || !readyAttempt) return;
     setDrill(null);
-    navigate(`/plans/${planId}/quiz/${drill}?attempt=${readyAttempt}`);
+    navigate(`/plans/${planId}/quiz/${drill.topicId}?attempt=${readyAttempt}`);
   }, [drill, readyAttempt, planId]);
-  async function fill(topicId: string) {
+  async function fill(topicId: string, gapId?: string) {
     if (preparing) return;
     setDrillFailed(false);
-    setDrill(topicId);
+    setDrill({ topicId, gapId });
     try {
-      await invoke("study.gapDrillStart", { planId, topicId });
+      await invoke("study.gapDrillStart", { planId, topicId, ...(gapId ? { gapId } : {}) });
       await client.invalidateQueries({ queryKey: ["gap-drill", planId] });
     } catch {
       setDrill(null);
       setDrillFailed(true);
     }
   }
+  useEffect(() => {
+    if (!requestedDrill || startedDrill.current === requestedDrill) return;
+    startedDrill.current = requestedDrill;
+    void fill(requestedDrill);
+  }, [requestedDrill]);
   const target = Math.round(summary.target * 100);
   const chart = progress.chart.map((point) => ({
     ...point,
@@ -223,7 +235,7 @@ export function PlanProgress({
                   type="primary"
                   shape="round"
                   disabled={preparing}
-                  onClick={() => void fill(gaps[0]!.topicId)}
+                  onClick={() => void fill(gaps[0]!.topicId, gaps[0]!.gapId)}
                 >
                   {t("progress.fillWorst")}
                 </Button>
@@ -255,7 +267,7 @@ export function PlanProgress({
                 tone={drillState === "cancelled" ? "info" : "danger"}
                 action={{
                   label: t("progress.drillRetry"),
-                  onClick: () => void fill(drill),
+                  onClick: () => void fill(drill.topicId, drill.gapId),
                 }}
               >
                 {t(
@@ -268,21 +280,16 @@ export function PlanProgress({
               <Notice tone="danger">{t("progress.drillFailed")}</Notice>
             ) : null}
             {gaps.length ? (
-              gaps.map((gap) => (
-                <GapItem
-                  key={gap.topicId}
-                  topic={
-                    progress.topics.find((topic) => topic.id === gap.topicId)
-                      ?.title ?? gap.topicId
-                  }
-                  severity={gap.severity}
-                  onFill={() => void fill(gap.topicId)}
-                  fillLabel={t("progress.fillGap")}
-                  fillDisabled={preparing}
-                  severitySevereLabel={t("progress.severe")}
-                  severityMinorLabel={t("progress.minor")}
-                >
-                  {gap.misses[0]
+              gaps.map((gap) => {
+                const topic =
+                  progress.topics.find((item) => item.id === gap.topicId)
+                    ?.title ?? gap.topicId;
+                // PRO-02: a topic can hold several gaps, one per distinct misconception.
+                const several =
+                  gaps.filter((item) => item.topicId === gap.topicId).length > 1;
+                const text = gap.misconception
+                  ? gap.misconception
+                  : gap.misses[0]
                     ? gap.misses[0].explanation
                       ? t("progress.gapMissExplained", {
                           question: gap.misses[0].question,
@@ -294,9 +301,28 @@ export function PlanProgress({
                         })
                     : gap.wrongAnswers > 0
                       ? t("progress.gapAnswers", { count: gap.wrongAnswers })
-                      : t("progress.gapReported")}
-                </GapItem>
-              ))
+                      : t("progress.gapReported");
+                return (
+                  <GapItem
+                    key={gap.gapId}
+                    topic={topic}
+                    severity={gap.severity}
+                    onFill={() => void fill(gap.topicId, gap.gapId)}
+                    fillLabel={t("progress.fillGap")}
+                    fillName={several ? `${topic}: ${text.slice(0, 80)}` : undefined}
+                    fillDisabled={preparing}
+                    severitySevereLabel={t("progress.severe")}
+                    severityMinorLabel={t("progress.minor")}
+                  >
+                    {text}
+                    {gap.unmerged ? (
+                      <span className="small ink-muted px-gap-note">
+                        {t("progress.gapUnmerged")}
+                      </span>
+                    ) : null}
+                  </GapItem>
+                );
+              })
             ) : (
               <p className="small px-progress-empty">{t("progress.noGaps")}</p>
             )}

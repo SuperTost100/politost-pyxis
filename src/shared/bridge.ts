@@ -37,6 +37,8 @@ export interface PyxisBridge {
   openExternal(url: string): Promise<void>;
   showOpenDialog(options: OpenDialogOptions): Promise<string[] | null>;
   showSaveDialog(options: SaveDialogOptions): Promise<string | null>;
+  /** Grants dropped files to core and returns their paths. Only real `File` objects from a drop name a path. */
+  grantDroppedFiles(files: File[]): Promise<{ paths: string[]; skipped: number }>;
   keys: {
     set(provider: string, key: string): Promise<void>;
     status(): Promise<KeyStatus>;
@@ -85,6 +87,7 @@ export const mainChannels = {
   openExternal: "shell:openExternal",
   openDialog: "dialog:open",
   saveDialog: "dialog:save",
+  dropGrant: "dialog:grant-dropped",
   keysSet: "keys:set",
   keysStatus: "keys:status",
   keysRemove: "keys:remove",

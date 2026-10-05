@@ -24,6 +24,8 @@ Feature modules own their prompt templates, version constants and Zod output sch
 
 Model capability hints come from `resources/model-capabilities.json`; unknown capabilities show a warning. Hints cannot guarantee runtime access or valid output. Authentication failures map to `engines.errors.refused`; quota, usage or spend limits map to `engines.errors.quota`. Keep error detail free of credentials and source passages.
 
+GPT image hints use a conservative list checked against the [official vision guide](https://developers.openai.com/api/docs/guides/images-vision) on 2026-10-04, including dated snapshots. Text-only, audio and unknown model IDs do not receive photo attachments; they use local OCR. New supported models need an explicit catalog entry. The context-size hints are metadata and are not used to budget requests.
+
 To add a feature key:
 
 1. Add it to the feature list in `engine/handlers.ts`, shared IPC validation/types and engine-setting labels in both languages.

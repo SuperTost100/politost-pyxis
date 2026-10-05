@@ -11,6 +11,7 @@ import { useActiveTime } from "./activeTime";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { openSourceViewer } from "../../components/SourceViewer";
+import { SelectionMenu } from "../../components/SelectionMenu";
 import { useRef, useState } from "react";
 
 type Wording = "simple" | "balanced" | "technical";
@@ -221,8 +222,10 @@ export function LessonPage() {
           ) : null}
         </Notice>
       ) : null}
+      <SelectionMenu planId={planId} onAsk={(chatId) => navigate(`/ask/${chatId}`)}>
       <article className="passage">
         <MarkdownView
+          runnable
           onCitationClick={(number) => {
             const passageId = (
               lesson.isFetching || cancelled
@@ -237,6 +240,7 @@ export function LessonPage() {
             : (lesson.data?.markdown ?? (cancelled ? live : ""))}
         </MarkdownView>
       </article>
+      </SelectionMenu>
       {node ? (
         <Button
           type="primary"

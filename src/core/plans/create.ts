@@ -1,11 +1,12 @@
 import { planOrigin, topicContent, topicTree } from "./views";
 import { addSubject } from "./subjects";
+import { planEducation } from "./education";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { bestRecommendation, pathState, type Stage } from "./path";
 import { dueCards } from "../study/cards";
-import { planMastery, weightedPlanMastery } from "./progress";
+import { gapSeverity, planMastery, syncGaps, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
 
 export type BuildTopic = {
@@ -16,6 +17,26 @@ export type BuildTopic = {
   provider?: string;
   model?: string;
 };
+
+export type DraftTopic = {
+  title: string;
+  summary?: string;
+  subtopics?: string[];
+};
+
+/** The edited tree from the guided flow, used only when the plan has no material. */
+export function draftTree(input: {
+  sourceIds: string[];
+  draftTopics?: DraftTopic[];
+}): BuildTopic[] | undefined {
+  if (input.sourceIds.length || !input.draftTopics?.length) return undefined;
+  return input.draftTopics.map((topic) => ({
+    title: topic.title,
+    summary: topic.summary ?? "",
+    subtopics: topic.subtopics ?? [],
+    passageIds: [],
+  }));
+}
 
 export type CreatedPlan = {
   planId: string;
@@ -34,6 +55,7 @@ export function createPlan(
     style?: "read" | "practice" | "decide";
     subject?: string;
     topicTitles?: string[];
+    draftTopics?: DraftTopic[];
     signal?: AbortSignal;
     buildId?: string;
     tree?: BuildTopic[];
@@ -84,12 +106,15 @@ export function createPlan(
       now,
       now,
     );
-    if (input.tree) {
+    // ASK-09: the plan keeps the level the profile had when it was made; a build job already stored it.
+    planEducation(db, planId, now);
+    const tree = input.tree ?? draftTree(input);
+    if (tree) {
       for (const sourceId of input.sourceIds)
         db.prepare(
           "INSERT OR IGNORE INTO plan_sources (plan_id, source_id) VALUES (?, ?)",
         ).run(planId, sourceId);
-      for (const topic of input.tree) {
+      for (const topic of tree) {
         const topicId = uuidv7(now + topics + 1);
         insertTopic.run(topicId, planId, topic.title, topics, now);
         db.prepare(
@@ -231,177 +256,6 @@ export function createPlan(
   return { planId, topics, pathNodes };
 }
 
-export function rebuildPlan(
-  db: Database.Database,
-  planId: string,
-  sourceIds: string[],
-  now = Date.now(),
-): { topics: number } {
-  const plan = db
-    .prepare(`SELECT id, title, style FROM plans WHERE id = ?`)
-    .get(planId) as { id: string; title: string; style: string } | undefined;
-  if (!plan) throw new Error("plan-missing");
-  const linked = new Set(
-    (
-      db
-        .prepare(`SELECT source_id FROM plan_sources WHERE plan_id = ?`)
-        .all(planId) as Array<{
-        source_id: string;
-      }>
-    ).map((row) => row.source_id),
-  );
-  const byTitle = new Map(
-    (
-      db
-        .prepare(`SELECT id, title FROM topics WHERE plan_id = ?`)
-        .all(planId) as Array<{
-        id: string;
-        title: string;
-      }>
-    ).map((row) => [row.title, row.id]),
-  );
-  let added = 0;
-  const created: string[] = [];
-  const position = () =>
-    (
-      db
-        .prepare(`SELECT COUNT(*) AS n FROM topics WHERE plan_id = ?`)
-        .get(planId) as { n: number }
-    ).n;
-  const run = db.transaction(() => {
-    for (const sourceId of sourceIds) {
-      if (
-        linked.has(sourceId) &&
-        db
-          .prepare(
-            "SELECT 1 FROM topic_passages tp JOIN topics t ON t.id=tp.topic_id JOIN passages p ON p.id=tp.passage_id WHERE t.plan_id=? AND p.source_id=? LIMIT 1",
-          )
-          .get(planId, sourceId)
-      )
-        continue;
-      db.prepare(
-        `INSERT OR IGNORE INTO plan_sources (plan_id, source_id) VALUES (?, ?)`,
-      ).run(planId, sourceId);
-      const chapters = smartbookChapters(db, sourceId);
-      const groups: Array<{
-        title: string;
-        kind: "chapter" | "section" | "all";
-        key: string;
-      }> =
-        chapters.length > 0
-          ? chapters.map((chapter) => ({
-              title: `${chapter.number}. ${chapter.title}`,
-              kind: "chapter",
-              key: String(chapter.number),
-            }))
-          : (
-              db
-                .prepare(
-                  `SELECT DISTINCT section_path AS section FROM passages
-                   WHERE source_id = ? AND section_path IS NOT NULL AND TRIM(section_path) != ''`,
-                )
-                .all(sourceId) as Array<{ section: string }>
-            ).map((row) => ({
-              title: row.section,
-              kind: "section" as const,
-              key: row.section,
-            }));
-      const rows =
-        groups.length > 0
-          ? groups
-          : [{ title: "", kind: "all" as const, key: "" }];
-      for (const group of rows) {
-        const source = db
-          .prepare(`SELECT title FROM sources WHERE id = ?`)
-          .get(sourceId) as { title: string } | undefined;
-        const title =
-          group.kind === "all" ? (source?.title ?? "Note") : group.title;
-        const existing = byTitle.get(title);
-        const topicId = existing ?? uuidv7(now + added + 1);
-        if (!existing) {
-          db.prepare(
-            `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, ?, ?, ?, ?)`,
-          ).run(topicId, planId, title, position(), now);
-          byTitle.set(title, topicId);
-          added += 1;
-          created.push(topicId);
-        }
-        db.prepare(
-          `INSERT OR IGNORE INTO topic_passages (topic_id, passage_id)
-           SELECT ?, id FROM passages WHERE source_id = ?
-             AND (
-               (? = 'all')
-               OR (? = 'section' AND section_path = ?)
-               OR (? = 'chapter' AND json_extract(locator_json, '$.chapter') = ?)
-             )`,
-        ).run(
-          topicId,
-          sourceId,
-          group.kind,
-          group.kind,
-          group.key,
-          group.kind,
-          Number(group.key),
-        );
-      }
-    }
-    const stages =
-      plan.style === "practice"
-        ? (["practice", "learn", "cards", "gaps"] as const)
-        : (["learn", "practice", "cards", "gaps"] as const);
-    const tail = db
-      .prepare(
-        `SELECT id, position FROM path_nodes
-         WHERE plan_id = ? AND kind IN ('simulation', 'final')
-         ORDER BY position`,
-      )
-      .all(planId) as Array<{ id: string; position: number }>;
-    const insertAt =
-      tail[0]?.position ??
-      (
-        db
-          .prepare(`SELECT COUNT(*) AS n FROM path_nodes WHERE plan_id = ?`)
-          .get(planId) as {
-          n: number;
-        }
-      ).n;
-    if (created.length > 0 && tail.length > 0) {
-      db.prepare(
-        `UPDATE path_nodes SET position = position + ? WHERE plan_id = ? AND position >= ?`,
-      ).run(created.length * stages.length, planId, insertAt);
-    }
-    const insertNode = db.prepare(
-      `INSERT INTO path_nodes (id, plan_id, topic_id, kind, position, title, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    );
-    created.forEach((topicId, topicIndex) => {
-      const title = (
-        db.prepare(`SELECT title FROM topics WHERE id = ?`).get(topicId) as {
-          title: string;
-        }
-      ).title;
-      stages.forEach((stage, stageIndex) => {
-        insertNode.run(
-          uuidv7(now + 1000 + topicIndex * stages.length + stageIndex),
-          planId,
-          topicId,
-          stage,
-          insertAt + topicIndex * stages.length + stageIndex,
-          title,
-          now,
-        );
-      });
-    });
-    if (sourceIds.length > 0) {
-      db.prepare(
-        `UPDATE plans SET status = 'ready', updated_at = ? WHERE id = ?`,
-      ).run(now, planId);
-    }
-  });
-  run();
-  return { topics: added };
-}
-
 export function deletePlan(db: Database.Database, planId: string): void {
   const info = db.prepare(`DELETE FROM plans WHERE id = ?`).run(planId);
   if (info.changes === 0) throw new Error("plan-missing");
@@ -470,13 +324,14 @@ export function readPlan(db: Database.Database, planId: string) {
   if (!plan) return null;
   const topics = db
     .prepare(
-      `SELECT id, title, position, tree_json FROM topics WHERE plan_id = ? ORDER BY position`,
+      `SELECT id, title, position, tree_json, grounding FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position`,
     )
     .all(planId) as Array<{
     id: string;
     title: string;
     position: number;
     tree_json: string | null;
+    grounding: "sources" | "mixed" | "general" | null;
   }>;
   const topicViews = topics.map(({ tree_json, ...topic }) => ({
     ...topic,
@@ -485,7 +340,9 @@ export function readPlan(db: Database.Database, planId: string) {
   }));
   const rows = db
     .prepare(
-      `SELECT id, title, kind, topic_id, position FROM path_nodes WHERE plan_id = ? ORDER BY position`,
+      `SELECT id, title, kind, topic_id, position FROM path_nodes
+       WHERE plan_id = ? AND (topic_id IS NULL OR topic_id IN (SELECT id FROM topics WHERE archived_at IS NULL))
+       ORDER BY position`,
     )
     .all(planId) as Array<{
     id: string;
@@ -586,17 +443,6 @@ export function listPlans(db: Database.Database, now = Date.now()) {
   }>;
   return rows.map((row) => {
     const topics = planMastery(db, row.id, now);
-    const simulationDone = db
-      .prepare(
-        `SELECT 1 AS ok FROM path_nodes n
-         WHERE n.plan_id = ? AND n.kind = 'simulation'
-           AND EXISTS (
-             SELECT 1 FROM learning_events e
-             WHERE e.plan_id = n.plan_id AND e.kind = 'lesson_completed'
-               AND json_extract(e.payload_json, '$.nodeId') = n.id
-           )`,
-      )
-      .get(row.id);
     const counts = new Map(
       (
         db
@@ -606,13 +452,7 @@ export function listPlans(db: Database.Database, now = Date.now()) {
           .all(row.id) as { id: string; n: number }[]
       ).map((t) => [t.id, t.n]),
     );
-    const mastery = weightedPlanMastery(
-      topics.map((topic) => ({
-        ...topic,
-        mastery: simulationDone ? topic.mastery : Math.min(topic.mastery, 0.5),
-      })),
-      counts,
-    );
+    const mastery = weightedPlanMastery(topics, counts);
     return {
       id: row.id,
       title: row.title,
@@ -643,23 +483,29 @@ export function nextLesson(
   if (!meta) return null;
   const daysToExam =
     meta.exam_at == null ? 30 : Math.max(1, daysUntil(meta.exam_at, now));
+  // Gap rows follow the answers only when synced; Progress syncs before it reads them, and so does this.
+  syncGaps(db, planId, now);
+  const masteries = planMastery(db, planId, now);
   const candidates = plan.nodes.flatMap((node) => {
     if (node.state !== "current") return [];
     const due = node.topicId
       ? dueCards(db, planId, now, node.topicId).length
       : 0;
-    const gaps = node.topicId
-      ? (db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM gaps
-             WHERE plan_id = ? AND topic_id = ? AND closed_at IS NULL`,
-          )
-          .get(planId, node.topicId) as { n: number })
-      : { n: 0 };
     const mastery = node.topicId
-      ? (planMastery(db, planId, now).find((topic) => topic.id === node.topicId)
-          ?.mastery ?? 0)
+      ? (masteries.find((topic) => topic.id === node.topicId)?.mastery ?? 0)
       : 0;
+    // Only gaps Progress would call severe count as such; a minor reading is not a severe gap.
+    const gaps = {
+      n: node.topicId
+        ? (
+            db
+              .prepare(
+                `SELECT severity FROM gaps WHERE plan_id = ? AND topic_id = ? AND closed_at IS NULL`,
+              )
+              .all(planId, node.topicId) as Array<{ severity: "severe" | "minor" | null }>
+          ).filter((gap) => gapSeverity(gap.severity, mastery, meta.target) === "severe").length
+        : 0,
+    };
     const last = node.topicId
       ? (db
           .prepare(

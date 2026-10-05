@@ -25,18 +25,18 @@ describe("prompt templates", () => {
   });
 
   it("bumps the version of every template whose wording changed", () => {
-    expect(loadTemplate("lesson.write").version).toBe("model-2");
+    expect(loadTemplate("lesson.write").version).toBe("model-3");
     expect(loadTemplate("quiz.batch").version).toBe("quiz-3");
     for (const id of [
-      "chat.solver",
       "chat.socratic",
       "chat.general",
     ] as const) {
       expect(loadTemplate(id).version, id).toBe("3");
     }
+    expect(loadTemplate("chat.solver").version).toBe("5");
+    expect(loadTemplate("chat.solver").body).toContain("opening line is exactly ```check");
     for (const id of [
       "plan.synopsis",
-      "plan.topics",
       "plan.intro",
       "plan.diagnostic",
       "map.generate",
@@ -45,14 +45,16 @@ describe("prompt templates", () => {
     ] as const) {
       expect(loadTemplate(id).version, id).toBe("2");
     }
-    // Wording unchanged: reference-language grading and structured checks keep version 1.
+    expect(loadTemplate("plan.topics").version).toBe("3");
+    // Reference-language grading is unchanged; solve checks now require every real root.
     expect(loadTemplate("quiz.open-grade").version).toBe("1");
-    expect(loadTemplate("chat.checks").version).toBe("1");
+    expect(loadTemplate("chat.checks").version).toBe("2");
+    expect(loadTemplate("exercise.generate").version).toBe("exercise-2");
   });
 
   it("asks for output in the supplied content language wherever the output is text", () => {
     const withLanguage = ids.filter(
-      (id) => !["quiz.open-grade", "chat.checks"].includes(id),
+      (id) => !["quiz.open-grade", "chat.checks", "source.transcribe"].includes(id),
     );
     for (const id of withLanguage) {
       expect(placeholders(loadTemplate(id)), id).toEqual(["contentLanguage"]);

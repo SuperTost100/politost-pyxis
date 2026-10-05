@@ -8,8 +8,8 @@ import {
   deletePlan,
   listPlans,
   readPlan,
-  rebuildPlan,
 } from "./create";
+import { applyRebuild, computeRebuild } from "./rebuild";
 import { uuidv7 } from "../../shared/ids";
 import { pathState } from "./path";
 
@@ -288,7 +288,7 @@ describe("createPlan", () => {
     expect(readPlan(db, named.planId)?.topics[0]?.title).toBe("Cinematica");
   });
 
-  it("builds one topic per section of a plain document and keeps old topics on rebuild", () => {
+  it("builds one topic per section of a plain document and keeps old topics on rebuild", async () => {
     const db = openDatabase(":memory:");
     const now = Date.now();
     const sourceId = uuidv7(now);
@@ -331,8 +331,25 @@ describe("createPlan", () => {
       `INSERT INTO passages (id, source_id, text, locator_json, section_path, char_start, char_end, created_at)
        VALUES (?, ?, 'ancora forza', '{}', 'Dinamica', 0, 10, ?)`,
     ).run(uuidv7(now + 4), extra, now);
-    const rebuilt = rebuildPlan(db, plan.planId, [extra]);
-    expect(rebuilt.topics).toBe(0);
+    const treeOf = (titles: string[]) =>
+      titles.map((title) => ({
+        title,
+        summary: "",
+        subtopics: [],
+        passageIds: (
+          db
+            .prepare(
+              "SELECT id FROM passages WHERE section_path = ? ORDER BY created_at",
+            )
+            .all(title) as Array<{ id: string }>
+        ).map((row) => row.id),
+      }));
+    const rebuilt = applyRebuild(
+      db,
+      plan.planId,
+      await computeRebuild(db, plan.planId, treeOf(["Cinematica", "Dinamica"])),
+    );
+    expect(rebuilt.added).toBe(0);
     const after =
       readPlan(db, plan.planId)?.topics.map((topic) => topic.id) ?? [];
     expect(after).toEqual(before);
@@ -345,7 +362,17 @@ describe("createPlan", () => {
       `INSERT INTO passages (id, source_id, text, locator_json, section_path, char_start, char_end, created_at)
        VALUES (?, ?, 'lavoro ed energia', '{}', 'Energia', 0, 10, ?)`,
     ).run(uuidv7(now + 6), fresh, now);
-    expect(rebuildPlan(db, plan.planId, [fresh]).topics).toBe(1);
+    expect(
+      applyRebuild(
+        db,
+        plan.planId,
+        await computeRebuild(
+          db,
+          plan.planId,
+          treeOf(["Cinematica", "Dinamica", "Energia"]),
+        ),
+      ).added,
+    ).toBe(1);
     const learn = db
       .prepare(
         `SELECT COUNT(*) AS n FROM path_nodes WHERE plan_id = ? AND kind = 'learn' AND title = 'Energia'`,

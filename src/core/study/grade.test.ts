@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { gradeAnswer } from "./grade";
+import { answerOf } from "./attempt";
 
 describe("gradeAnswer", () => {
+  it("treats malformed completion picks as unanswered", () => {
+    const expected = { kind: "completion" as const, answers: [], accepted: [["10"]] };
+    for (const pick of [[null], [10], [{}], ["10", null]])
+      expect(gradeAnswer(answerOf(expected, pick))).toBe(0);
+    expect(gradeAnswer(answerOf(expected, ["10"]))).toBe(1);
+  });
   it("grades closed questions locally", () => {
     expect(gradeAnswer({ kind: "mcq", picked: 2, correct: 2 })).toBe(1);
     expect(gradeAnswer({ kind: "mcq", picked: 0, correct: 2 })).toBe(0);
