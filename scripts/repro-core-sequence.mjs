@@ -13,7 +13,7 @@
 import { cpSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { createHash, randomUUID } from "node:crypto";
@@ -134,7 +134,7 @@ if (process.type === "utility" || !process.versions.electron || process.env.ELEC
   import("electron").then(({ app, utilityProcess, crashReporter }) => {
     if (process.env.PYXIS_CRASH_DIR) {
       mkdirSync(process.env.PYXIS_CRASH_DIR, { recursive: true });
-      app.setPath("crashDumps", process.env.PYXIS_CRASH_DIR);
+      app.setPath("crashDumps", resolve(process.env.PYXIS_CRASH_DIR));
       crashReporter.start({ uploadToServer: false });
     }
     app.setActivationPolicy?.("prohibited");

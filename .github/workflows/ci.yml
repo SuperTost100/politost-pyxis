@@ -34,7 +34,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       PYXIS_E2E_HIDDEN: "1"
       PYXIS_TEST_E5: .tmp/e5
-      PYXIS_CRASH_DIR: ${{ runner.temp }}/pyxis-crashes
+      PYXIS_CRASH_DIR: .tmp/ci-crashes
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -68,10 +68,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force "$env:PYXIS_CRASH_DIR" | Out-Null
+          $crash = Join-Path (Get-Location) $env:PYXIS_CRASH_DIR
+          New-Item -ItemType Directory -Force $crash | Out-Null
           $key = 'HKLM:\Software\Microsoft\Windows\Windows Error Reporting\LocalDumps\electron.exe'
           New-Item -Path $key -Force | Out-Null
-          New-ItemProperty -Path $key -Name DumpFolder -Value "$env:PYXIS_CRASH_DIR" -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -Value $crash -PropertyType ExpandString -Force | Out-Null
           New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
       - name: Unit checks
         if: ${{ !inputs.windows_trace }}

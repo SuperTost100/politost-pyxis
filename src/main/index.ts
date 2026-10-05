@@ -39,7 +39,7 @@ import {
   type UtilityProcess,
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
 import { recoverInterruptedWipe, wipeWorkspace } from "../core/share/wipe";
@@ -62,7 +62,7 @@ const userDataOverride = process.env["PYXIS_USER_DATA"];
 if (userDataOverride) app.setPath("userData", userDataOverride);
 if (e2eSeam() && process.env.PYXIS_E2E === "1" && process.env.PYXIS_CRASH_DIR) {
   mkdirSync(process.env.PYXIS_CRASH_DIR, { recursive: true });
-  app.setPath("crashDumps", process.env.PYXIS_CRASH_DIR);
+  app.setPath("crashDumps", resolve(process.env.PYXIS_CRASH_DIR));
   crashReporter.start({ uploadToServer: false });
 }
 

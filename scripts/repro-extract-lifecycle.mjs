@@ -102,7 +102,7 @@ if (process.type === "utility" || !process.versions.electron || process.env.ELEC
   import("electron").then(({ app, utilityProcess, crashReporter }) => {
     if (process.env.PYXIS_CRASH_DIR) {
       mkdirSync(process.env.PYXIS_CRASH_DIR, { recursive: true });
-      app.setPath("crashDumps", process.env.PYXIS_CRASH_DIR);
+      app.setPath("crashDumps", resolve(process.env.PYXIS_CRASH_DIR));
       crashReporter.start({ uploadToServer: false });
     }
     app.setActivationPolicy?.("prohibited");
