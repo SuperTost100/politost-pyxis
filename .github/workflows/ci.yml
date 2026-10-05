@@ -77,36 +77,55 @@ jobs:
       - name: Unit checks
         if: ${{ !inputs.windows_trace }}
         run: npm test -- --maxWorkers=2
-      - name: Windows worker lifecycle with parent PDF engine
+      - name: Fetch Sysinternals ProcDump
+        if: runner.os == 'Windows' && inputs.windows_trace
+        shell: pwsh
+        run: |
+          # Pinned to the zip published 2026-07-09; a newer upload fails here and prints its hash.
+          $expected = '68E057587B0FD654EFA095F76D80D633C0E5C60EA26FD3E7C0011C076BB2D00C'
+          $zip = Join-Path $env:RUNNER_TEMP 'Procdump.zip'
+          Invoke-WebRequest -Uri 'https://download.sysinternals.com/files/Procdump.zip' -OutFile $zip
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($actual -ne $expected) { throw "Procdump.zip SHA-256 is $actual" }
+          Expand-Archive $zip -DestinationPath .tmp/procdump -Force
+          $signature = Get-AuthenticodeSignature .tmp/procdump/procdump64.exe
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { throw "procdump64.exe signature: $($signature.Status)" }
+      - name: Windows core sequence with ProcDump on the utility process
         if: runner.os == 'Windows' && inputs.windows_trace
         continue-on-error: true
-        timeout-minutes: 3
-        run: npx electron scripts/repro-extract-lifecycle.mjs --mode=full --runs=20
-      - name: Windows worker lifecycle without parent PDF engine
+        timeout-minutes: 6
+        run: |
+          # Up to three attempts, stopping at the first crash; the dump stays on this runner and only module+offset values are printed.
+          status=0
+          for attempt in 1 2 3; do
+            echo "::group::attempt $attempt"
+            status=0
+            node scripts/procdump-run.mjs .tmp/procdump/procdump64.exe "$PYXIS_CRASH_DIR/procdump" scripts/repro-core-sequence.mjs --runs=10 || status=$?
+            echo "::endgroup::"
+            echo "attempt $attempt: exit $status"
+            [ "$status" = 0 ] || break
+          done
+          node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR/procdump"
+          exit "$status"
+      - name: Windows core sequence one-variable arms
         if: runner.os == 'Windows' && inputs.windows_trace
         continue-on-error: true
-        timeout-minutes: 3
-        run: npx electron scripts/repro-extract-lifecycle.mjs --mode=full --runs=20 --parent=none
-      - name: Windows preview workers beside the core native modules
-        if: runner.os == 'Windows' && inputs.windows_trace
-        continue-on-error: true
-        timeout-minutes: 3
-        run: npx electron scripts/repro-extract-lifecycle.mjs --parent=core --mode=quality --runs=20 --hash-between-runs=true
-      - name: Windows core sequence without waiting for worker shutdown
-        if: inputs.windows_trace
-        continue-on-error: true
-        timeout-minutes: 3
-        run: npx electron scripts/repro-core-sequence.mjs --runs=10 --await-stop=false
-      - name: Windows core sequence waiting for worker shutdown
-        if: inputs.windows_trace
-        continue-on-error: true
-        timeout-minutes: 3
-        run: npx electron scripts/repro-core-sequence.mjs --runs=10 --await-stop=true
-      - name: Windows core sequence with boot-only preview workers
-        if: inputs.windows_trace
-        continue-on-error: true
-        timeout-minutes: 3
-        run: npx electron scripts/repro-core-sequence.mjs --runs=10 --preview-mode=hash
+        timeout-minutes: 12
+        run: |
+          # Each arm changes one thing from the default (download=full, stop=terminate) and runs three times. The utility's own
+          # progress goes to a file, because its stdout is not captured here; the last lines of a crashed attempt are printed.
+          for arm in "--download=full" "--download=no-fetch" "--download=no-write" "--download=none" "--stop=exit" "--stop=keep --runs=6"; do
+            for attempt in 1 2 3; do
+              export PYXIS_REPRO_LOG="$RUNNER_TEMP/arm.log"
+              rm -f "$PYXIS_REPRO_LOG"
+              if npx electron scripts/repro-core-sequence.mjs --runs=10 $arm > /dev/null; then
+                echo "ARM $arm attempt $attempt: pass"
+              else
+                echo "ARM $arm attempt $attempt: CRASH, last steps:"
+                tail -n 4 "$PYXIS_REPRO_LOG" | cut -c1-200
+              fi
+            done
+          done
       - name: Recorded Electron end-to-end checks
         run: |
           run_e2e() {
