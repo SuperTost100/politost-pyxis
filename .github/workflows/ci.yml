@@ -86,11 +86,13 @@ jobs:
         continue-on-error: true
         env:
           PYXIS_E2E_CORE_STDIO: inherit
-        run: npx playwright test tests/e2e/ocr-data.spec.ts --grep 'OCR data: a refused photo' --repeat-each=3 --workers=1
+        run: |
+          npx playwright test tests/e2e/ocr-data.spec.ts --grep 'OCR data: a refused photo' --repeat-each=3 --workers=1
       - name: Compare Windows OCR retries with piped core streams
         if: inputs.windows_trace
         continue-on-error: true
-        run: npx playwright test tests/e2e/ocr-data.spec.ts --grep 'OCR data: a refused photo' --repeat-each=3 --workers=1
+        run: |
+          npx playwright test tests/e2e/ocr-data.spec.ts --grep 'OCR data: a refused photo' --repeat-each=3 --workers=1
       - name: Recorded Electron end-to-end checks
         run: |
           run_e2e() {
