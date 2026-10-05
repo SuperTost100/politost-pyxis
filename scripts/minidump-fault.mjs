@@ -6,7 +6,7 @@
 // the faulting address as `module+offset` (or "outside every module", which is JIT or WebAssembly code, or a heap address),
 // and up to 24 module+offset values found on the faulting thread's stack. The stack list is a scan for values that point
 // into a module, not an unwound stack: it can hold stale entries, so read it as "which modules were nearby".
-// Nothing else from the dump is printed, and the dump is never uploaded or copied.
+// Also prints thread names/start address, unloaded modules and fault-page flags when present. No memory is printed; dumps stay local.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 
@@ -26,6 +26,13 @@ function analyse(file) {
   for (let i = 0, at = view.getUint32(12, true); i < view.getUint32(8, true); i += 1, at += 12)
     streams.set(view.getUint32(at, true), { size: view.getUint32(at + 4, true), rva: view.getUint32(at + 8, true) });
 
+  const stringAt = (rva) => {
+    const bytes = view.getUint32(rva, true);
+    if (bytes > 4096) throw new Error("oversized diagnostic name");
+    let text = "";
+    for (let at = rva + 4; at < rva + 4 + bytes; at += 2) text += String.fromCharCode(view.getUint16(at, true));
+    return text.replace(/[\r\n\x00-\x1f]/g, "?");
+  };
   const modules = [];
   const list = streams.get(4);
   if (list) {
@@ -55,6 +62,49 @@ function analyse(file) {
     const kind = ["read", "write", "", "", "", "", "", "", "execute"][Number(view.getBigUint64(at + 40, true))] ?? "access";
     out.push(`  access violation: ${kind} of ${hex(view.getBigUint64(at + 48, true))}`);
   }
+
+  const names = streams.get(24);
+  if (names) {
+    const named = [];
+    for (let i = 0, t = names.rva + 4; i < view.getUint32(names.rva, true); i += 1, t += 12) {
+      const id = view.getUint32(t, true);
+      const name = stringAt(Number(view.getBigUint64(t + 4, true)));
+      if (id === threadId) out.push(`  faulting thread name: ${name}`);
+      named.push(name);
+    }
+    out.push(`  thread names: ${[...new Set(named)].slice(0, 32).join(", ")}`);
+  }
+  const threadInfo = streams.get(17);
+  if (threadInfo) {
+    const header = view.getUint32(threadInfo.rva, true);
+    const entry = view.getUint32(threadInfo.rva + 4, true);
+    if (header < 12 || entry < 64) throw new Error("invalid thread info");
+    for (let i = 0, t = threadInfo.rva + header; i < view.getUint32(threadInfo.rva + 8, true); i += 1, t += entry)
+      if (view.getUint32(t, true) === threadId) out.push(`  thread start: ${where(view.getBigUint64(t + 48, true))}; flags ${hex(view.getUint32(t + 4, true))}`);
+  } else out.push("  no thread-info stream");
+  const unloaded = streams.get(14);
+  if (unloaded) {
+    const header = view.getUint32(unloaded.rva, true);
+    const entry = view.getUint32(unloaded.rva + 4, true);
+    if (header < 12 || entry < 24) throw new Error("invalid unloaded-module info");
+    for (let i = 0, t = unloaded.rva + header; i < view.getUint32(unloaded.rva + 8, true); i += 1, t += entry) {
+      const base = view.getBigUint64(t, true);
+      const size = BigInt(view.getUint32(t + 8, true));
+      const name = basename(stringAt(view.getUint32(t + 20, true)).replaceAll("\\", "/"));
+      out.push(`  unloaded ${name}: ${hex(base)}..${hex(base + size)}${address >= base && address < base + size ? " CONTAINS FAULT ADDRESS" : ""}`);
+    }
+  } else out.push("  no unloaded-module stream");
+  const memoryInfo = streams.get(16);
+  if (memoryInfo) {
+    const header = view.getUint32(memoryInfo.rva, true);
+    const entry = view.getUint32(memoryInfo.rva + 4, true);
+    if (header < 16 || entry < 48) throw new Error("invalid memory info");
+    for (let i = 0, t = memoryInfo.rva + header; i < Number(view.getBigUint64(memoryInfo.rva + 8, true)); i += 1, t += entry) {
+      const base = view.getBigUint64(t, true);
+      const size = view.getBigUint64(t + 24, true);
+      if (address >= base && address < base + size) out.push(`  fault page: base ${hex(base)}, allocation ${hex(view.getBigUint64(t + 8, true))}, state ${hex(view.getUint32(t + 32, true))}, protect ${hex(view.getUint32(t + 36, true))}, type ${hex(view.getUint32(t + 40, true))}`);
+    }
+  } else out.push("  no memory-info stream");
 
   const threads = streams.get(3);
   if (threads) {

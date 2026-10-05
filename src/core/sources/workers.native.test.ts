@@ -1,9 +1,12 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import jpeg from "jpeg-js";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { extractPdf, onePagePdf } from "./documents";
 import { embeddingReady, embedTexts } from "./embed";
 import { ocrDataDir } from "./ocr-data";
 import { hashFiles } from "./quality";
@@ -58,13 +61,27 @@ describe.skipIf(!have)("built extract worker", () => {
   }, 60_000);
 });
 
+describe.skipIf(!have)("built extract worker, native addons", () => {
+  it("loads no pdf.js canvas or font addon until a PDF is read", () => {
+    // The probe records every addon the built worker's module graph maps, in a fresh process so nothing is cached.
+    const probe = `const seen = [], open = process.dlopen;
+      process.dlopen = function (m, file, ...rest) { seen.push(file); return open.call(this, m, file, ...rest); };
+      await import(${JSON.stringify(pathToFileURL(join(built, "extract-worker.js")).href)});
+      console.log(JSON.stringify(seen));`;
+    const run = spawnSync(process.execPath, ["--input-type=module", "-e", probe], { encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+    expect(run.status, run.stderr).toBe(0);
+    const addons = JSON.parse(run.stdout.trim().split("\n").pop()!) as string[];
+    expect(addons.filter((file) => /napi-rs[\\/]canvas|systemfonts/.test(file))).toEqual([]);
+  });
+});
+
 describe.skipIf(!have)("built extract worker beside a parent that has loaded pdf.js", () => {
-  // core.js imports sources/documents, and pdf.js loads @napi-rs/canvas the moment it is imported, so in the app the
-  // canvas addon is already mapped on the core thread when each one-shot worker loads it again and is then terminated.
+  // pdf.js loads @napi-rs/canvas the moment it is imported, which documents.ts now does only when a PDF is read. So in
+  // the app, after a PDF import, photo workers run beside a core thread that already has the canvas addon mapped.
   // The other tests here start workers from a parent that never imported pdf.js. A native crash (Windows 0xC0000005)
   // takes the whole test process down, which is how this shows up.
   it("decodes a HEIC photo in repeated one-shot workers", async () => {
-    await import("./documents");
+    await extractPdf(onePagePdf("parent"));
     const photo = resolve("tests/fixtures/synthetic-note.heic");
     for (let run = 0; run < 5; run += 1) {
       const png = await runSourceWorker<Uint8Array>("extract-worker", { path: photo, ext: ".heic", mode: "pixels" });

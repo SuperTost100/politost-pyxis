@@ -3,9 +3,11 @@
 import { parentPort } from "node:worker_threads";
 import { pathToFileURL } from "node:url";
 
+if (process.env.PYXIS_REPRO_FORCE_CANVAS === "1") await import("@napi-rs/canvas");
 const post = parentPort.postMessage.bind(parentPort);
 parentPort.postMessage = (message, ...rest) => {
   post(message, ...rest);
+  if (process.env.PYXIS_REPRO_EXIT_DELAY === "") return;
   const delay = Number(process.env.PYXIS_REPRO_EXIT_DELAY ?? 50);
   if (delay === 0) process.exit(0);
   else setTimeout(() => process.exit(0), delay);

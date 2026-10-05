@@ -77,6 +77,9 @@ jobs:
       - name: Unit checks
         if: ${{ !inputs.windows_trace }}
         run: npm test -- --maxWorkers=2
+      - name: Focused source worker checks
+        if: inputs.windows_trace
+        run: npm test -- workers.native.test.ts documents.test.ts heic.test.ts --maxWorkers=2
       - name: Fetch Sysinternals ProcDump
         if: runner.os == 'Windows' && inputs.windows_trace
         shell: pwsh
@@ -100,7 +103,7 @@ jobs:
           for attempt in 1 2 3; do
             echo "::group::attempt $attempt"
             status=0
-            node scripts/procdump-run.mjs .tmp/procdump/procdump64.exe "$PYXIS_CRASH_DIR/procdump" scripts/repro-core-sequence.mjs --runs=10 || status=$?
+            node scripts/procdump-run.mjs .tmp/procdump/procdump64.exe "$PYXIS_CRASH_DIR/procdump" scripts/repro-core-sequence.mjs --runs=10 --force-worker-canvas=true || status=$?
             echo "::endgroup::"
             echo "attempt $attempt: exit $status"
             [ "$status" = 0 ] || break
@@ -114,7 +117,7 @@ jobs:
         run: |
           # Each arm changes one thing from the default (download=full, stop=terminate) and runs three times. The utility's own
           # progress goes to a file, because its stdout is not captured here; the last lines of a crashed attempt are printed.
-          for arm in "--download=full" "--stop=delay" "--stop=exit-now" "--stop=exit" "--liftoff-only=true" "--preview-mode=hash" "--stop=keep --runs=6"; do
+          for arm in "--download=full" "--force-worker-canvas=true"; do
             for attempt in 1 2 3; do
               export PYXIS_REPRO_LOG="$RUNNER_TEMP/arm.log"
               rm -f "$PYXIS_REPRO_LOG"
@@ -136,7 +139,7 @@ jobs:
             fi
           }
           if [ "${{ inputs.windows_trace }}" = true ]; then
-            run_e2e tests/e2e/ocr-data.spec.ts --grep "OCR data: a refused photo" --repeat-each=5
+            run_e2e tests/e2e/ocr-data.spec.ts --grep "OCR data: a refused photo" --repeat-each=10
           fi
           run_e2e tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
           if [ "${{ inputs.windows_trace }}" = true ]; then exit 0; fi

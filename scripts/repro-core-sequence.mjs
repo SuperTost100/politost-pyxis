@@ -48,10 +48,12 @@ const kept = [];
 
 function runWorker(label, data) {
   return new Promise((resolve, reject) => {
-    const shim = stop === "exit" || stop === "exit-now";
+    const selfExit = stop === "exit" || stop === "exit-now";
+    const forceCanvas = args["force-worker-canvas"] === "true";
+    const shim = selfExit || forceCanvas;
     const worker = new Worker(shim ? join(root, "scripts/repro-worker-shim.mjs") : join(root, "out/main/extract-worker.js"), {
       workerData: data,
-      env: shim ? { ...process.env, PYXIS_REPRO_WORKER: join(root, "out/main/extract-worker.js"), PYXIS_REPRO_EXIT_DELAY: stop === "exit-now" ? "0" : "50" } : undefined,
+      env: shim ? { ...process.env, PYXIS_REPRO_WORKER: join(root, "out/main/extract-worker.js"), PYXIS_REPRO_EXIT_DELAY: selfExit ? (stop === "exit-now" ? "0" : "50") : "", PYXIS_REPRO_FORCE_CANVAS: forceCanvas ? "1" : "0" } : undefined,
       resourceLimits: { maxOldGenerationSizeMb: 2048, maxYoungGenerationSizeMb: 64 },
     });
     let done = false;
@@ -59,7 +61,7 @@ function runWorker(label, data) {
     worker.once("message", (message) => {
       if (done) return;
       done = true;
-      if (shim) { answer = message; log(`${label}: answer, waiting for the worker to exit by itself`); return; }
+      if (selfExit) { answer = message; log(`${label}: answer, waiting for the worker to exit by itself`); return; }
       if (stop === "keep") { kept.push(worker); log(`${label}: answer, worker left running`); resolve(message); return; }
       log(`${label}: answer, terminate${awaitStop ? " and wait" : ""}`);
       const stopped = (stop === "delay" ? sleep(50).then(() => worker.terminate()) : worker.terminate()).then(() => log(`${label}: stopped`));
@@ -69,7 +71,7 @@ function runWorker(label, data) {
     worker.once("error", reject);
     worker.once("exit", (code) => {
       if (stop === "keep") log(`${label}: kept worker exited (${code})`);
-      if (shim && done) { log(`${label}: exited by itself (${code})`); resolve(answer); return; }
+      if (selfExit && done) { log(`${label}: exited by itself (${code})`); resolve(answer); return; }
       if (!done && code) reject(new Error(`worker exit ${code}`));
     });
   });

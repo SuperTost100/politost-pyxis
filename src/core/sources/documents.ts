@@ -3,7 +3,6 @@ import { basename, extname } from "node:path";
 import type Database from "better-sqlite3";
 import { strFromU8, zipSync } from "fflate";
 import mammoth from "mammoth";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { chunkText } from "./chunk";
 import { uuidv7 } from "../../shared/ids";
 import { putBlob } from "../blobs";
@@ -47,6 +46,8 @@ const emptyPage = 30;
 export async function extractPdf(
   bytes: Uint8Array,
 ): Promise<ExtractedDocument> {
+  // Loaded here, not at module top, so jobs that never read a PDF do not load pdfjs's native canvas and font addons.
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const doc = await getDocument({
     data: bytes,
     disableWorker: true,
