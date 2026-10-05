@@ -6,6 +6,8 @@ import { pathToFileURL } from "node:url";
 const post = parentPort.postMessage.bind(parentPort);
 parentPort.postMessage = (message, ...rest) => {
   post(message, ...rest);
-  setTimeout(() => process.exit(0), 50);
+  const delay = Number(process.env.PYXIS_REPRO_EXIT_DELAY ?? 50);
+  if (delay === 0) process.exit(0);
+  else setTimeout(() => process.exit(0), delay);
 };
 await import(pathToFileURL(process.env.PYXIS_REPRO_WORKER).href);

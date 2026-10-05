@@ -56,8 +56,10 @@ const release = (why) => {
 };
 let output = "";
 const watch = (stream) => stream.on("data", (chunk) => {
-  process.stdout.write(chunk);
-  output = (output + String(chunk)).slice(-4096);
+  // ProcDump writes UTF-16LE to redirected streams; its readiness banner is ASCII.
+  const text = chunk.toString("latin1").replaceAll("\0", "");
+  process.stdout.write(text);
+  output = (output + text).slice(-4096);
   if (/Press Ctrl-C/i.test(output)) { attachConfirmed = true; release("ProcDump is monitoring"); }
 });
 watch(monitor.stdout);

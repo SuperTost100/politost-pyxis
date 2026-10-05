@@ -28,6 +28,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { createHash, randomUUID } from "node:crypto";
+import { setFlagsFromString } from "node:v8";
 
 const args = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith("--")).map((a) => a.slice(2).split("=")));
 const runs = Number(args.runs ?? 10);
@@ -47,10 +48,10 @@ const kept = [];
 
 function runWorker(label, data) {
   return new Promise((resolve, reject) => {
-    const shim = stop === "exit";
+    const shim = stop === "exit" || stop === "exit-now";
     const worker = new Worker(shim ? join(root, "scripts/repro-worker-shim.mjs") : join(root, "out/main/extract-worker.js"), {
       workerData: data,
-      env: shim ? { ...process.env, PYXIS_REPRO_WORKER: join(root, "out/main/extract-worker.js") } : undefined,
+      env: shim ? { ...process.env, PYXIS_REPRO_WORKER: join(root, "out/main/extract-worker.js"), PYXIS_REPRO_EXIT_DELAY: stop === "exit-now" ? "0" : "50" } : undefined,
       resourceLimits: { maxOldGenerationSizeMb: 2048, maxYoungGenerationSizeMb: 64 },
     });
     let done = false;
@@ -58,16 +59,17 @@ function runWorker(label, data) {
     worker.once("message", (message) => {
       if (done) return;
       done = true;
-      if (stop === "exit") { answer = message; log(`${label}: answer, waiting for the worker to exit by itself`); return; }
+      if (shim) { answer = message; log(`${label}: answer, waiting for the worker to exit by itself`); return; }
       if (stop === "keep") { kept.push(worker); log(`${label}: answer, worker left running`); resolve(message); return; }
       log(`${label}: answer, terminate${awaitStop ? " and wait" : ""}`);
-      const stopped = worker.terminate().then(() => log(`${label}: stopped`));
+      const stopped = (stop === "delay" ? sleep(50).then(() => worker.terminate()) : worker.terminate()).then(() => log(`${label}: stopped`));
       if (awaitStop) void stopped.then(() => resolve(message));
       else resolve(message);
     });
     worker.once("error", reject);
     worker.once("exit", (code) => {
-      if (stop === "exit" && done) { log(`${label}: exited by itself (${code})`); resolve(answer); return; }
+      if (stop === "keep") log(`${label}: kept worker exited (${code})`);
+      if (shim && done) { log(`${label}: exited by itself (${code})`); resolve(answer); return; }
       if (!done && code) reject(new Error(`worker exit ${code}`));
     });
   });
@@ -79,6 +81,10 @@ async function work() {
     for (let waited = 0; !existsSync(`${process.env.PYXIS_REPRO_HANDSHAKE}.go`) && waited < 60000; waited += 50) await sleep(50);
   }
   log(`electron ${process.versions.electron ?? "-"} node ${process.versions.node} ${process.platform}-${process.arch} await-stop=${awaitStop} gap-ms=${gap} download=${download} stop=${stop}`);
+  if (args["liftoff-only"] === "true") {
+    log("diagnostic: disabling WASM tier-up compilation");
+    setFlagsFromString("--liftoff-only");
+  }
   log("parent: import pdfjs-dist/legacy/build/pdf.mjs");
   await import(pathToFileURL(join(root, "node_modules/pdfjs-dist/legacy/build/pdf.mjs")).href);
   const work = mkdtempSync(join(tmpdir(), "pyxis-seq-"));

@@ -114,7 +114,7 @@ jobs:
         run: |
           # Each arm changes one thing from the default (download=full, stop=terminate) and runs three times. The utility's own
           # progress goes to a file, because its stdout is not captured here; the last lines of a crashed attempt are printed.
-          for arm in "--download=full" "--download=no-fetch" "--download=no-write" "--download=none" "--stop=exit" "--stop=keep --runs=6"; do
+          for arm in "--download=full" "--stop=delay" "--stop=exit-now" "--stop=exit" "--liftoff-only=true" "--preview-mode=hash" "--stop=keep --runs=6"; do
             for attempt in 1 2 3; do
               export PYXIS_REPRO_LOG="$RUNNER_TEMP/arm.log"
               rm -f "$PYXIS_REPRO_LOG"
