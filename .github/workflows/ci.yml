@@ -2,8 +2,14 @@ name: Check and package
 
 on:
   push:
+    branches-ignore: [ci/windows-ocr-trace]
   pull_request:
   workflow_dispatch:
+    inputs:
+      windows_trace:
+        description: Run only Windows units and the OCR/release checks, without packaging
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,19 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: mac-arm64
-            runner: macos-15
-            builder: --mac --arm64
-          - target: mac-x64
-            runner: macos-15-intel
-            builder: --mac --x64
-          - target: windows-x64
-            runner: windows-2025
-            builder: --win --x64
-          - target: linux-x64
-            runner: ubuntu-24.04
-            builder: --linux --x64
+        include: ${{ fromJSON(inputs.windows_trace && '[{"target":"windows-x64","runner":"windows-2025","builder":"--win --x64"}]' || '[{"target":"mac-arm64","runner":"macos-15","builder":"--mac --arm64"},{"target":"mac-x64","runner":"macos-15-intel","builder":"--mac --x64"},{"target":"windows-x64","runner":"windows-2025","builder":"--win --x64"},{"target":"linux-x64","runner":"ubuntu-24.04","builder":"--linux --x64"}]') }}
     defaults:
       run:
         shell: bash
@@ -72,12 +66,12 @@ jobs:
       - name: Unit checks
         run: npm test -- --maxWorkers=2
       - name: Windows worker lifecycle with parent PDF engine
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !inputs.windows_trace
         continue-on-error: true
         timeout-minutes: 3
         run: npx electron scripts/repro-extract-lifecycle.mjs --mode=full --runs=20
       - name: Windows worker lifecycle without parent PDF engine
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !inputs.windows_trace
         continue-on-error: true
         timeout-minutes: 3
         run: npx electron scripts/repro-extract-lifecycle.mjs --mode=full --runs=20 --parent=none
@@ -91,6 +85,7 @@ jobs:
             fi
           }
           run_e2e tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
+          if [ "${{ inputs.windows_trace }}" = true ]; then exit 0; fi
           run_e2e --grep-invert 'M14 every application|OCR data:|release loop:'
           for combo in it-dark-1280 it-dark-960 it-light-1280 it-light-960 en-dark-1280 en-dark-960 en-light-1280 en-light-960; do
             export PYXIS_UI_COMBO="$combo"
@@ -104,7 +99,7 @@ jobs:
             fi
           done
       - name: Preserve route audit records
-        if: always()
+        if: always() && !inputs.windows_trace
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ui-audit-${{ matrix.target }}
@@ -112,8 +107,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Package without publishing
+        if: ${{ !inputs.windows_trace }}
         run: npm run dist -- ${{ matrix.builder }} --publish never
       - name: Check the packaged application
+        if: ${{ !inputs.windows_trace }}
         run: |
           export PYXIS_DIST_APP="$(node --input-type=module <<'JS'
           import { existsSync } from 'node:fs';
@@ -143,6 +140,7 @@ jobs:
             npx playwright test tests/e2e/window.spec.ts --workers=1
           fi
       - name: Collect installers and SHA-256 checksums
+        if: ${{ !inputs.windows_trace }}
         run: |
           node --input-type=module <<'JS'
           import { readdirSync, mkdirSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
@@ -161,6 +159,7 @@ jobs:
           writeFileSync(join(output, 'SHA256SUMS'), checksums.join('\n') + '\n');
           JS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ !inputs.windows_trace }}
         with:
           name: pyxis-${{ matrix.target }}
           path: release-artifacts/
@@ -186,7 +185,7 @@ jobs:
   attest:
     name: Attest packaged artifacts
     needs: build
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !inputs.windows_trace
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

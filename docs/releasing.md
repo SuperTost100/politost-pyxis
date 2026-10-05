@@ -12,6 +12,8 @@ These labels follow the [GitHub runner reference](https://docs.github.com/en/act
 
 Installers and their SHA-256 checksums are uploaded as separate per-target artifacts. A follow-up job on push/manual runs generates [build provenance through actions/attest](https://github.com/actions/attest). Pull requests have read-only permissions and do not request attestations. Public repositories support attestations on current GitHub plans; private repositories need Enterprise Cloud. Uploading an Actions artifact does not create a public release.
 
+A manual dispatch with `windows_trace=true` runs Windows units and the recorded OCR/release checks without route audits, packaging or attestations. It is diagnostic coverage, not a release gate.
+
 Recorded import and release-loop checks run first to expose core failures early. After packaging, each target repeats the recorded release loop against its packaged executable. macOS also verifies the bundle signature; Linux grants that executable its own scoped namespace-sandbox profile. Only packages that pass this check are collected for attestation.
 
 When the remote exists, run the workflow and inspect all four results before publishing. Validate YAML with `actionlint` when installed. Actions are pinned to full commit SHAs resolved from their upstream release tags. Review new action versions before updating those pins.

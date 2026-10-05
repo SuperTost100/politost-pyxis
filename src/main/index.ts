@@ -394,8 +394,12 @@ function startCore(strict = false): Promise<void> {
   let startupFailed = false;
   const child = utilityProcess.fork(join(import.meta.dirname, "core.js"), [], {
     serviceName: "pyxis-core",
-    stdio: "inherit",
+    stdio: e2eSeam() && process.env.PYXIS_E2E === "1" ? "pipe" : "inherit",
   });
+  if (e2eSeam() && process.env.PYXIS_E2E === "1") {
+    child.stdout?.on("data", (chunk) => process.stdout.write(chunk));
+    child.stderr?.on("data", (chunk) => process.stderr.write(chunk));
+  }
   coreChild = child;
   configurePythonRuntime(workspacePath);
   let childExited = false;

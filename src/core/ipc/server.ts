@@ -148,6 +148,7 @@ async function dispatch(
   try {
     if (attachment && paths.length > MAX_FILES)
       throw new Error("attach-too-many");
+    if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: file boundary read start", name);
     let remaining = MAX_TOTAL_BYTES;
     const bytes = paths.map((path) => {
       const bytes = fileGrants.read(
@@ -159,6 +160,7 @@ async function dispatch(
       remaining -= bytes.length;
       return bytes;
     });
+    if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: file boundary snapshot start", name);
     temporary = mkdtempSync(join(fileScratch, "picked-"));
     const snapshots = paths.map((path, index) => {
       const directory = join(temporary!, String(index));
@@ -169,6 +171,7 @@ async function dispatch(
     });
     if (parsed?.path) parsed.path = snapshots[0]!;
     else if (parsed) parsed.files = snapshots;
+    if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: file boundary dispatch", name);
     return await dispatchValidated(name, parsed, signal, emit);
   } catch (error) {
     if (error instanceof Error && error.message === "file-access-denied")
