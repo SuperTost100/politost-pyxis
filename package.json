@@ -14,10 +14,11 @@
     "test:e2e": "npm run build && playwright test",
     "shoot": "npm run build && tsx scripts/shoot.ts",
     "dist": "npm run build && node scripts/package.mjs",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "node node_modules/electron/install.js && electron-builder install-app-deps",
     "notices": "node scripts/gen-notices.mjs",
     "prebuild": "npm run notices",
-    "predev": "npm run notices"
+    "predev": "npm run notices",
+    "test:fixtures": "tsx scripts/prepare-fixtures.ts"
   },
   "dependencies": {
     "@ant-design/pro-components": "3.1.15-3",

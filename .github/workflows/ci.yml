@@ -38,6 +38,8 @@ jobs:
         shell: bash
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      PYXIS_E2E_HIDDEN: "1"
+      PYXIS_TEST_E5: .tmp/e5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -65,15 +67,39 @@ jobs:
             sudo apparmor_parser -r /etc/apparmor.d/pyxis-ci
           fi
       - run: npm run typecheck
+      - run: npm run test:fixtures
+      - run: npm run build
       - name: Unit checks
         run: npm test
       - name: Recorded Electron end-to-end checks
         run: |
-          if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a npm run test:e2e
-          else
-            npm run test:e2e
-          fi
+          run_e2e() {
+            if [ "$RUNNER_OS" = Linux ]; then
+              xvfb-run -a npx playwright test "$@" --workers=1
+            else
+              npx playwright test "$@" --workers=1
+            fi
+          }
+          run_e2e --grep-invert 'M14 every application'
+          for combo in it-dark-1280 it-dark-960 it-light-1280 it-light-960 en-dark-1280 en-dark-960 en-light-1280 en-light-960; do
+            export PYXIS_UI_COMBO="$combo"
+            export PYXIS_UI_RECORD="ci-audit/audit-$combo.json"
+            run_e2e tests/e2e/ui-audit.spec.ts
+            if [ "$RUNNER_OS" = macOS ] && [ "${{ matrix.target }}" = mac-arm64 ]; then
+              export PYXIS_UI_LARGE=1
+              export PYXIS_UI_RECORD="ci-audit/audit-$combo-large.json"
+              run_e2e tests/e2e/ui-audit.spec.ts
+              unset PYXIS_UI_LARGE
+            fi
+          done
+      - name: Preserve route audit records
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ui-audit-${{ matrix.target }}
+          path: ci-audit/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Package without publishing
         run: npm run dist -- ${{ matrix.builder }} --publish never
       - name: Collect installers and SHA-256 checksums
