@@ -1642,31 +1642,42 @@ async function openState(page: Page, name: string) {
 }
 
 async function keyboardCheck(page: Page, name: string) {
-  const surface = (await page.getByRole("dialog").count())
-    ? page.getByRole("dialog").last()
-    : page;
-  const first = surface
-    .locator(
-      'button:visible:not([disabled]),input:visible:not([disabled]),textarea:visible:not([disabled]),select:visible:not([disabled]),[tabindex="0"]:visible',
-    )
-    .first();
+  const dialogOpen = (await page.getByRole("dialog").count()) > 0;
+  const surface = dialogOpen ? page.getByRole("dialog").last() : page;
+  const controls = surface.locator(
+    'button:visible:not([disabled]),input:visible:not([disabled]),textarea:visible:not([disabled]),select:visible:not([disabled]),[tabindex="0"]:visible',
+  );
+  const first = controls.first();
   await first.focus();
   await expect(first).toBeFocused();
   await page.keyboard.press("Tab");
-  const next = await page.evaluate(() => {
-    const focused = document.activeElement;
-    // Ant Design radios focus a native zero-width input inside a visible label.
-    const visible =
-      focused?.closest("label,button,a,[role='button'],[role='radio']") ??
-      focused;
-    return {
-      tag: focused?.tagName,
-      hidden:
-        visible instanceof HTMLElement
-          ? visible.getBoundingClientRect().width === 0
-          : true,
-    };
-  });
+  const readNext = () =>
+    page.evaluate(() => {
+      const focused = document.activeElement;
+      // Ant Design radios focus a native zero-width input inside a visible label.
+      const visible =
+        focused?.closest("label,button,a,[role='button'],[role='radio']") ??
+        focused;
+      return {
+        tag: focused?.tagName,
+        hidden:
+          visible instanceof HTMLElement
+            ? visible.getBoundingClientRect().width === 0
+            : true,
+      };
+    });
+  let next = await readNext();
+  // A dialog whose only control is its close button has no later stop. Tab
+  // leaves the page for the window boundary (BODY) and the focus lock pulls
+  // the next Tab back, so that return is what proves the dialog traps focus.
+  if (dialogOpen && next.tag === "BODY" && (await controls.count()) === 1) {
+    await page.keyboard.press("Tab");
+    await expect(
+      first,
+      `${name}: Tab past the only control returns to the dialog`,
+    ).toBeFocused();
+    next = await readNext();
+  }
   expect(next.tag, `${name}: Tab should reach a control`).not.toBe("BODY");
   expect(next.hidden, `${name}: focus should remain visible`).toBe(false);
   const readFocus = () =>

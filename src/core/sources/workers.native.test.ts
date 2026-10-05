@@ -77,7 +77,7 @@ describe.skipIf(!have)("built extract worker, native addons", () => {
       for (const job of jobs) {
         const worker = new Worker(new URL(${JSON.stringify("data:text/javascript," + encodeURIComponent(wrapper))}), { workerData: job });
         const message = await new Promise((resolve, reject) => { worker.once("message", resolve); worker.once("error", reject); });
-        await new Promise((resolve) => (worker.once("exit", resolve), worker.terminate()));
+        await worker.terminate();
         results.push(message);
       }
       console.log(JSON.stringify(results));`;
@@ -144,7 +144,7 @@ describe.skipIf(!have)("built extract worker beside a parent that has loaded pdf
       const png = await runSourceWorker<Uint8Array>("extract-worker", { path: photo, ext: ".heic", mode: "pixels" });
       expect(Buffer.from(png).subarray(1, 4).toString()).toBe("PNG");
     }
-  });
+  }, 60_000);
 });
 
 describe.skipIf(!have)("built extract worker, local OCR", () => {

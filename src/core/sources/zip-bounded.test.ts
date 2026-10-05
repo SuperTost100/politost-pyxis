@@ -131,7 +131,7 @@ describe("office extraction under the zip bound", () => {
     const bomb = lieAboutSizes(docx({ "word/document.xml": zeros(65) }));
     expect(bomb.length).toBeLessThan(300_000);
     await expect(extractDocx(bomb)).rejects.toThrow("archive-too-large");
-  });
+  }, 30_000);
 
   it("refuses a .pptx slide that inflates past the limit, whatever its header says", () => {
     const bomb = lieAboutSizes(

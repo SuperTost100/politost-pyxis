@@ -89,14 +89,14 @@ describe("workspace move", () => {
     const { root, old, target } = await fixture();
     const before = await readFile(join(old, "pyxis.db"));
     const move = await stageWorkspaceMove(old, target);
-    expect(await readFile(join(old, "pyxis.db"))).toEqual(before);
-    expect(await readFile(join(target, "pyxis.db"))).toEqual(before);
+    expect((await readFile(join(old, "pyxis.db"))).equals(before)).toBe(true);
+    expect((await readFile(join(target, "pyxis.db"))).equals(before)).toBe(true);
     expect(await readFile(join(target, "blobs", "nested", "source"))).toEqual(
       Buffer.from([0, 128, 255, 10]),
     );
-    expect(await readFile(join(target, "models", "weights.bin"))).toEqual(
+    expect((await readFile(join(target, "models", "weights.bin"))).equals(
       Buffer.alloc(130_001, 0x61),
-    );
+    )).toBe(true);
     expect(await readdir(join(target, "exports"))).toEqual([]);
     const db = openDatabase(join(move.path, "pyxis.db"));
     expect(db.prepare("SELECT title FROM plans").all()).toEqual([
@@ -117,7 +117,7 @@ describe("workspace move", () => {
     await move.rollback();
     await move.rollback();
     expect(await readdir(root)).toEqual(["old"]);
-    expect(await readFile(join(old, "pyxis.db"))).toEqual(before);
+    expect((await readFile(join(old, "pyxis.db"))).equals(before)).toBe(true);
     await expect(move.commit()).rejects.toThrow(
       "workspace-move-already-rolled-back",
     );
