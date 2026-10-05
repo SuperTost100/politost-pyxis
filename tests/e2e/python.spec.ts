@@ -6,7 +6,9 @@ const manifest = JSON.parse(readFileSync(join(process.cwd(), "resources/pyodide-
 
 test("MATH-02 MATH-06 Pyodide limits, network isolation and independent SymPy verification", async () => {
   test.skip(!existsSync(".tmp/pyodide/pyodide.js"), "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.");
-  test.setTimeout(120000);
+  // Thirteen Python calls each start a fresh runtime worker, in addition to symbolic checks.
+  // Keep the execution-limit assertions below strict; allow the full sequence its cold-load time.
+  test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-python-check-"));
   const pack = join(userData, "workspace/runtimes/pyodide", manifest.version);
   mkdirSync(pack, { recursive: true });
@@ -20,17 +22,23 @@ test("MATH-02 MATH-06 Pyodide limits, network isolation and independent SymPy ve
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    const run = async (code: string) =>
-      page.evaluate(
+    let runNumber = 0;
+    const run = async (code: string) => {
+      const label = `python case ${++runNumber}`;
+      console.time(label);
+      const result = await page.evaluate(
         (code) => window.pyxis.invoke("tools.python", { code }),
         code,
-      ) as Promise<{
+      ) as {
         stdout: string;
         stderr: string;
         timedOut: boolean;
         truncated: boolean;
         images?: string[];
-      }>;
+      };
+      console.timeEnd(label);
+      return result;
+    };
     const [first, concurrent] = await Promise.all([
       run("import sys\nprint(sys.platform)\nprint(1 + 1)"),
       page.evaluate(() => window.pyxis.invoke("tools.check", { kind: "equal", expr: "x+x", claimed: "2*x" })),

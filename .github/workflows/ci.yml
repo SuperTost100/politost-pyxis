@@ -34,6 +34,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       PYXIS_E2E_HIDDEN: "1"
       PYXIS_TEST_E5: .tmp/e5
+      PYXIS_CRASH_DIR: ${{ runner.temp }}/pyxis-crashes
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -63,6 +64,15 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:fixtures
       - run: npm run build
+      - name: Collect Windows native faults locally
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:PYXIS_CRASH_DIR" | Out-Null
+          $key = 'HKLM:\Software\Microsoft\Windows\Windows Error Reporting\LocalDumps\electron.exe'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -Value "$env:PYXIS_CRASH_DIR" -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
       - name: Unit checks
         if: ${{ !inputs.windows_trace }}
         run: npm test -- --maxWorkers=2
@@ -81,18 +91,21 @@ jobs:
         continue-on-error: true
         timeout-minutes: 3
         run: npx electron scripts/repro-extract-lifecycle.mjs --parent=core --mode=quality --runs=20 --hash-between-runs=true
-      - name: Compare Windows OCR retries with inherited core streams
+      - name: Windows core sequence without waiting for worker shutdown
         if: inputs.windows_trace
         continue-on-error: true
-        env:
-          PYXIS_E2E_CORE_STDIO: inherit
-        run: |
-          npx playwright test tests/e2e/ocr-data.spec.ts --grep 'OCR data: a refused photo' --repeat-each=3 --workers=1
-      - name: Compare Windows OCR retries with piped core streams
+        timeout-minutes: 3
+        run: npx electron scripts/repro-core-sequence.mjs --runs=10 --await-stop=false
+      - name: Windows core sequence waiting for worker shutdown
         if: inputs.windows_trace
         continue-on-error: true
-        run: |
-          npx playwright test tests/e2e/ocr-data.spec.ts --grep 'OCR data: a refused photo' --repeat-each=3 --workers=1
+        timeout-minutes: 3
+        run: npx electron scripts/repro-core-sequence.mjs --runs=10 --await-stop=true
+      - name: Windows core sequence with boot-only preview workers
+        if: inputs.windows_trace
+        continue-on-error: true
+        timeout-minutes: 3
+        run: npx electron scripts/repro-core-sequence.mjs --runs=10 --preview-mode=hash
       - name: Recorded Electron end-to-end checks
         run: |
           run_e2e() {
@@ -102,6 +115,9 @@ jobs:
               npx playwright test "$@" --workers=1
             fi
           }
+          if [ "${{ inputs.windows_trace }}" = true ]; then
+            run_e2e tests/e2e/ocr-data.spec.ts --grep "OCR data: a refused photo" --repeat-each=3
+          fi
           run_e2e tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
           if [ "${{ inputs.windows_trace }}" = true ]; then exit 0; fi
           run_e2e --grep-invert 'M14 every application|OCR data:|release loop:'
@@ -192,6 +208,9 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+      - name: Report local crash fault metadata
+        if: always() && runner.os == 'Windows'
+        run: node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR"
       - name: Report Windows application fault modules
         if: failure() && runner.os == 'Windows'
         shell: pwsh

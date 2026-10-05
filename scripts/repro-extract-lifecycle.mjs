@@ -99,7 +99,12 @@ if (process.type === "utility" || !process.versions.electron || process.env.ELEC
 } else {
   // Main process: fork this same file as the utility process, the way `startCore` forks core.js.
   // No top-level await here: Electron holds `ready` back until an ES-module entry has finished evaluating.
-  import("electron").then(({ app, utilityProcess }) => {
+  import("electron").then(({ app, utilityProcess, crashReporter }) => {
+    if (process.env.PYXIS_CRASH_DIR) {
+      mkdirSync(process.env.PYXIS_CRASH_DIR, { recursive: true });
+      app.setPath("crashDumps", process.env.PYXIS_CRASH_DIR);
+      crashReporter.start({ uploadToServer: false });
+    }
     app.setActivationPolicy?.("prohibited");
     app.dock?.hide();
     void app.whenReady().then(() => {
