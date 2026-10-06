@@ -1,6 +1,6 @@
 # Pyxis design system — foundations
 
-Pyxis is a free, open-source study tutor that runs on the student's own computer. The look follows Astra AI's calm, dark study space: a near-black canvas, one centred column, pill controls and small uppercase mono labels. Its own identity comes from the night sky it is named after: **cobalt** for the next step, **star gold** for where you are and where you aim, **aurora mint** for what you have mastered.
+Pyxis is a free, open-source study tutor that runs on the student's own computer. The interface uses a near-black canvas, one centred column, pill controls and small uppercase mono labels. Its identity comes from the night sky it is named after: **cobalt** for the next step, **star gold** for where you are and where you aim, **aurora mint** for what you have mastered.
 
 ## Principles
 
@@ -32,7 +32,7 @@ Dark is the primary theme; light is fully designed, on a warm paper ground. Set 
 - Focus: a 2px solid `focus-ring` outline, 2px offset, on every focusable element. Gold on dark, cobalt on light; both 3:1+ on every surface.
 - Behind modals, the whiteboard and the plan wizard: `scrim`.
 
-No gradients. Astra's warm glows are replaced by one defined effect, `glow-star`, used only on the current node.
+No gradients. The defined effect  `glow-star`, used only on the current node.
 
 ## Typography
 
