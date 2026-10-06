@@ -1,31 +1,86 @@
 {
   "features": {
-    "chat": { "tier": "fast", "weight": 5 },
-    "map": { "tier": "fast", "weight": 2 },
-    "lesson": { "tier": "mid", "weight": 3 },
-    "vision": { "tier": "mid", "weight": 1 },
-    "default": { "tier": "mid", "weight": 1 },
-    "grading": { "tier": "strong", "weight": 2 },
-    "plan": { "tier": "strong", "weight": 1 }
+    "chat": {
+      "tier": "fast",
+      "weight": 5
+    },
+    "map": {
+      "tier": "fast",
+      "weight": 2
+    },
+    "lesson": {
+      "tier": "mid",
+      "weight": 3
+    },
+    "vision": {
+      "tier": "mid",
+      "weight": 1
+    },
+    "default": {
+      "tier": "mid",
+      "weight": 1
+    },
+    "grading": {
+      "tier": "strong",
+      "weight": 2
+    },
+    "plan": {
+      "tier": "strong",
+      "weight": 1
+    }
   },
-  "unknownFeature": { "tier": "mid", "weight": 1 },
-  "tierCost": { "fast": 1, "mid": 2, "strong": 3 },
+  "unknownFeature": {
+    "tier": "mid",
+    "weight": 1
+  },
+  "tierCost": {
+    "fast": 1,
+    "mid": 2,
+    "strong": 3
+  },
   "tierOrder": {
     "fast": ["fast", "mid", "strong"],
     "mid": ["mid", "strong", "fast"],
     "strong": ["strong", "mid", "fast"]
   },
-  "effort": { "fast": "low", "mid": "medium", "strong": "high" },
+  "effort": {
+    "fast": "low",
+    "mid": "medium",
+    "strong": "high"
+  },
   "providerOrder": {
-    "fast": ["codex", "claude", "openai-api", "anthropic-api"],
-    "mid": ["claude", "codex", "anthropic-api", "openai-api"],
-    "strong": ["claude", "codex", "anthropic-api", "openai-api"]
+    "fast": [
+      "antigravity",
+      "codex",
+      "agent",
+      "claude",
+      "openai-api",
+      "anthropic-api"
+    ],
+    "mid": [
+      "claude",
+      "agent",
+      "antigravity",
+      "codex",
+      "anthropic-api",
+      "openai-api"
+    ],
+    "strong": [
+      "claude",
+      "codex",
+      "agent",
+      "antigravity",
+      "anthropic-api",
+      "openai-api"
+    ]
   },
   "family": {
     "claude": "claude",
     "anthropic-api": "claude",
     "codex": "gpt",
-    "openai-api": "gpt"
+    "openai-api": "gpt",
+    "agent": "cursor",
+    "antigravity": "antigravity"
   },
   "patterns": {
     "claude": {
@@ -37,6 +92,28 @@
       "fast": ["-luna$", "-mini$", "-nano$"],
       "mid": ["-terra$", "^gpt-5(?:\\.\\d+)?$"],
       "strong": ["-sol$", "-astra$"]
+    },
+    "cursor": {
+      "fast": [
+        "^gemini-\\d+(?:[.-]\\d+)*-flash$",
+        "^gpt-\\d+(?:[.-]\\d+)*-luna$",
+        "^composer-\\d+(?:[.-]\\d+)*$",
+        "^gpt-\\d+(?:[.-]\\d+)*-(?:mini|nano)$"
+      ],
+      "mid": [
+        "^claude-sonnet-\\d+(?:[.-]\\d+)*$",
+        "^gpt-\\d+(?:[.-]\\d+)*-terra$",
+        "^gemini-\\d+(?:[.-]\\d+)*-pro$"
+      ],
+      "strong": [
+        "^claude-opus-\\d+(?:[.-]\\d+)*$",
+        "^gpt-\\d+(?:[.-]\\d+)*-sol$"
+      ]
+    },
+    "antigravity": {
+      "fast": ["^gemini-\\d+(?:[.-]\\d+)*-flash$"],
+      "mid": ["^gemini-\\d+(?:[.-]\\d+)*-pro$", "^claude-sonnet-"],
+      "strong": ["^gemini-\\d+(?:[.-]\\d+)*-pro$", "^claude-opus-"]
     }
   }
 }

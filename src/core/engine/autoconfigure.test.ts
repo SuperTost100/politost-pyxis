@@ -12,12 +12,18 @@ const efforts = ["low", "medium", "high"].map((id) => ({ id, label: id }));
 type State = { claude: boolean; codex: boolean };
 
 function fakeFunnel(state: State, listing: "ok" | "offline" = "ok") {
-  const row = (id: string, displayName: string, loggedIn: boolean) => ({
+  // Pyxis only offers an engine whose adapter enforces text-only access.
+  const row = (
+    id: string,
+    displayName: string,
+    loggedIn: boolean,
+    access = ["none"],
+  ) => ({
     id,
     displayName,
     installation: { installed: true },
     auth: { loggedIn },
-    capabilities: { effort: true, fast: false },
+    capabilities: { effort: true, fast: false, access },
   });
   const models = {
     claude: ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5"],
@@ -27,7 +33,8 @@ function fakeFunnel(state: State, listing: "ok" | "offline" = "ok") {
     overview: async () => [
       row("claude", "Claude Code", state.claude),
       row("codex", "Codex", state.codex),
-      row("agent", "Cursor Agent", true),
+      // Signed in but without text-only access, so it never gets a feature.
+      row("agent", "Cursor Agent", true, ["full"]),
     ],
     models: async (id: "claude" | "codex") => {
       if (listing === "offline") throw new Error("offline");

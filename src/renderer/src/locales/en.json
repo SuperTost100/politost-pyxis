@@ -1271,6 +1271,7 @@
       "title": "Automatic choice",
       "summary": "Pyxis uses {{parts}}.",
       "part": "{{name}} for {{tasks}}",
+      "split": "Pyxis splits the work across {{count}} engines:",
       "single": "Pyxis uses {{name}} for everything.",
       "cheap": "It picks the cheapest model that is good enough.",
       "none": "No engine is ready.",

@@ -21,10 +21,21 @@ The result carries text, provider, model and input-token usage. Structured reque
 Pyxis picks the engine, model and effort for each feature itself. `planAuto()` in `src/core/engine/auto.ts` is a pure function of the ready providers and the models each one lists. It never calls a model, so it costs no usage. The tiers, weights and model patterns live in `resources/model-tiers.json`.
 
 - Each feature needs a tier: `chat` and `map` fast, `lesson`, `vision` and `default` mid, `grading` and `plan` strong. Vision only considers models that read images (`capabilities.ts`). A feature key missing from the file counts as mid.
-- Model patterns are regular expressions per tier, newest first. Claude: haiku fast, sonnet mid, opus then fable strong. Codex and OpenAI: luna, mini and nano fast, terra mid, sol then astra strong. Within a pattern the highest version the provider lists wins. A tier with no match steps to the neighbouring tier, and the last resort is the first model the provider lists.
+- Model patterns are regular expressions per tier, cheapest sufficient first. Claude: haiku fast, sonnet mid, opus then fable strong. Codex and OpenAI: luna, mini and nano fast, terra mid, sol then astra strong. Antigravity: Gemini Flash fast, Gemini Pro mid and strong (Claude sonnet and opus as fallbacks). Cursor Agent: Gemini Flash, luna, Composer, then mini/nano fast; Claude sonnet, terra, then Gemini Pro mid; Claude opus then sol strong. Cursor's `-thinking` variants and Fable (listed there without zero data retention) never match. Within a pattern the highest version the provider lists wins. A tier with no match steps to the neighbouring tier, and the last resort is the first model the provider lists.
 - Effort follows the tier when the model lists it: fast `low`, mid `medium`, strong `high`.
 - A provider is ready when it is installed, signed in and not disabled. API providers count only with a stored key that the provider accepts. CLIs win: API providers are used only when no CLI is ready, because they bill per token.
-- With two or more ready providers each tier has a preferred one (fast: Codex, mid and strong: Claude Code). Features then move from the busiest provider to the idlest while that narrows the gap. A feature's load is its weight times its tier cost, so frequent chat on a cheap model and rare plans on a strong model each weigh what they cost. With Claude Code and Codex both ready, chat and maps use Codex luna, grading uses Codex sol, lessons, photos and the default use Claude sonnet, and plans use Claude opus.
+- With two or more ready providers each tier has a preference order (fast: Antigravity, Codex, Cursor, Claude Code; mid: Claude Code, Cursor, Antigravity, Codex; strong: Claude Code, Codex, Cursor, Antigravity). Features then move from the busiest provider to the idlest while that narrows the gap. A feature's load is its weight times its tier cost, so frequent chat on a cheap model and rare plans on a strong model each weigh what they cost. Every ready CLI gets at least one feature.
+
+Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.3 model lists:
+
+| Ready CLIs | Chat and maps | Lessons and default | Photos | Plans | Grading |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code + Codex | Codex luna | Claude sonnet | Claude sonnet | Claude opus | Codex sol |
+| Claude Code + Antigravity | Gemini Flash | Claude sonnet | Claude sonnet | Claude opus | Gemini Pro |
+| Claude Code + Cursor | Cursor Gemini Flash | Claude sonnet | Claude sonnet | Claude opus | Cursor opus |
+| Codex + Antigravity | Codex luna (chat), Gemini Flash (maps) | Gemini Pro | Antigravity sonnet | Codex sol | Codex sol |
+| Cursor + Antigravity | Gemini Flash | Cursor sonnet | Cursor sonnet | Cursor opus | Gemini Pro |
+| All four | Gemini Flash | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet | Claude opus | Codex sol |
 
 An automatic row in `feature_engines` carries `"auto": true` in its JSON. A row without it is pinned. `engines.setFeature` pins, and `engines.autoConfigure` with `reset` returns features to automatic. Only automatic rows are rewritten. When no engine is ready they are removed, which brings back `engine-missing`. If every ready engine fails to list models, the current rows stay.
 

@@ -217,3 +217,80 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     rmSync(bin, { recursive: true, force: true });
   }
 });
+
+test("Automatic engines: with all four CLIs ready, the summary gives each engine its own line", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-four-"));
+  const bin = mkdtempSync(join(tmpdir(), "pyxis-engine-bin-"));
+  const fake = (name: string, body: string) => {
+    const path = join(bin, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+    return path;
+  };
+  const env = {
+    ...process.env,
+    PYXIS_USER_DATA: userData,
+    PYXIS_E2E: "1",
+    // Antigravity counts as signed in with a Gemini key and a model list.
+    GEMINI_API_KEY: "test-key",
+    CLI_FUNNEL_CLAUDE_BIN: fake(
+      "claude",
+      `case "$1" in --version) echo "2.1.0";; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac`,
+    ),
+    CLI_FUNNEL_CODEX_BIN: fake(
+      "codex",
+      `case "$1" in --version) echo "codex-cli 0.150.0";; login) echo "Logged in using ChatGPT";; *) exit 1;; esac`,
+    ),
+    CLI_FUNNEL_AGENT_BIN: fake(
+      "agent",
+      `case "$1" in
+  --version) echo "2026.09.28-64d2043";;
+  status) echo '{"isAuthenticated":true}';;
+  about) echo '{}';;
+  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\nclaude-sonnet-5-5 - Claude Sonnet 5.5\\nclaude-opus-5-5 - Claude Opus 5.5\\ngpt-5.6-sol - GPT-5.6 Sol\\n';;
+esac`,
+    ),
+    CLI_FUNNEL_AGY_BIN: fake(
+      "agy",
+      `case "$1" in
+  --version) echo "1.3.0";;
+  models) printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\ngemini-3.1-pro\\tGemini 3.1 Pro\\n';;
+esac`,
+    ),
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({
+    args: [join(process.cwd(), "out/main/index.js")],
+    env,
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await page.waitForFunction(() => location.hash.startsWith("#/exams"));
+    await page.evaluate(() => {
+      localStorage.setItem("pyxis.lang", "en");
+      localStorage.removeItem("pyxis.engines.advanced");
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    const summary = page.locator(".engines-summary");
+    await expect(summary).toContainText(
+      "Pyxis splits the work across 4 engines:",
+      { timeout: 30000 },
+    );
+    const lines = summary.locator(".engines-summary-split li");
+    await expect(lines).toHaveCount(4);
+    for (const name of ["Claude Code", "Codex", "Cursor Agent", "Antigravity"])
+      await expect(lines.filter({ hasText: name })).toHaveCount(1);
+    await expect(lines.filter({ hasText: "Antigravity" })).toContainText(
+      "chat",
+    );
+    await page.screenshot({ path: ".shots/engines-four-en.png" });
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});

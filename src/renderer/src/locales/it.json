@@ -1271,6 +1271,7 @@
       "title": "Scelta automatica",
       "summary": "Pyxis usa {{parts}}.",
       "part": "{{name}} per {{tasks}}",
+      "split": "Pyxis divide il lavoro tra {{count}} motori:",
       "single": "Pyxis usa {{name}} per tutto.",
       "cheap": "Sceglie il modello più economico che basta.",
       "none": "Nessun motore è pronto.",

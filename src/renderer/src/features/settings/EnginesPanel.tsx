@@ -395,9 +395,20 @@ export function EnginesPanel() {
   );
   const engineName = (id: string) =>
     overview.data?.find((row) => row.id === id)?.name ?? id;
+  // Three or more engines read better as one line each than as one long sentence.
+  const summaryLines =
+    !nothingReady && tasksByEngine.size > 2
+      ? [...tasksByEngine].map(([id, tasks]) => ({
+          id,
+          name: engineName(id),
+          tasks: listFormat.format(tasks),
+        }))
+      : [];
   const summaryText = nothingReady
     ? t("engines.auto.none")
-    : tasksByEngine.size === 1
+    : summaryLines.length
+      ? t("engines.auto.split", { count: summaryLines.length })
+      : tasksByEngine.size === 1
       ? t("engines.auto.single", {
           name: engineName([...tasksByEngine.keys()][0]!),
         })
@@ -527,6 +538,16 @@ export function EnginesPanel() {
           <div className="engines-summary-body">
             <h3 className="engines-summary-title">{t("engines.auto.title")}</h3>
             <p>{summaryText}</p>
+            {summaryLines.length ? (
+              <ul className="engines-summary-split">
+                {summaryLines.map((line) => (
+                  <li key={line.id}>
+                    <span className="body-strong">{line.name}</span>:{" "}
+                    {line.tasks}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {!nothingReady ? (
               <p className="small engines-hint">{t("engines.auto.cheap")}</p>
             ) : null}

@@ -183,3 +183,120 @@ describe("automatic engine policy", () => {
     expect(Object.keys(planAuto([claude], ["chat"]))).toEqual(["chat"]);
   });
 });
+
+// Cursor Agent and Antigravity model ids as CLI Funnel 0.3 lists them.
+const agent: AutoProvider = {
+  id: "agent",
+  kind: "cli",
+  effort: false,
+  models: [
+    "gpt-5.3-codex",
+    "composer-2.5",
+    "claude-opus-5-thinking",
+    "gpt-5.6-sol",
+    "claude-fable-5-thinking",
+    "gemini-3.7-flash",
+    "claude-sonnet-5-thinking",
+    "gpt-5.6-luna",
+    "claude-opus-5-5",
+    "claude-opus-5",
+    "claude-fable-5-1",
+    "gemini-3.8-flash",
+    "gpt-5.6-terra",
+    "claude-sonnet-5-5",
+    "claude-sonnet-5",
+    "claude-4.6-sonnet",
+    "gemini-3.1-pro",
+    "gpt-5.4-mini",
+    "kimi-k3",
+  ].map((id) => model(id, [])),
+};
+const antigravity: AutoProvider = {
+  id: "antigravity",
+  kind: "cli",
+  effort: false,
+  models: [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.1-pro",
+    "claude-sonnet-4-6",
+    "claude-opus-4-6-thinking",
+    "gpt-oss-120b-medium",
+  ].map((id) => model(id, [])),
+};
+
+/** provider/model per feature, in the order default chat plan lesson grading map vision. */
+const combinations: Record<string, string> = {
+  agent:
+    "agent/claude-sonnet-5-5 agent/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 agent/claude-opus-5-5 agent/gemini-3.8-flash agent/claude-sonnet-5-5",
+  antigravity:
+    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/claude-sonnet-4-6",
+  "claude+agent":
+    "claude/claude-sonnet-5 agent/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5 agent/claude-opus-5-5 agent/gemini-3.8-flash claude/claude-sonnet-5",
+  "codex+agent":
+    "agent/claude-sonnet-5-5 codex/gpt-6-luna agent/claude-opus-5-5 agent/claude-sonnet-5-5 codex/gpt-6-sol codex/gpt-6-luna agent/claude-sonnet-5-5",
+  "claude+antigravity":
+    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5 antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash claude/claude-sonnet-5",
+  "codex+antigravity":
+    "antigravity/gemini-3.1-pro codex/gpt-6-luna codex/gpt-6-sol antigravity/gemini-3.1-pro codex/gpt-6-sol antigravity/gemini-3.8-flash antigravity/claude-sonnet-4-6",
+  "agent+antigravity":
+    "agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash agent/claude-sonnet-5-5",
+  "claude+codex+agent":
+    "codex/gpt-5.6-terra codex/gpt-6-luna agent/claude-opus-5-5 claude/claude-sonnet-5 agent/claude-opus-5-5 codex/gpt-6-luna claude/claude-sonnet-5",
+  "claude+codex+antigravity":
+    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash codex/gpt-6-sol claude/claude-sonnet-5 codex/gpt-6-sol antigravity/gemini-3.8-flash claude/claude-sonnet-5",
+  "claude+agent+antigravity":
+    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash agent/claude-opus-5-5 claude/claude-sonnet-5 agent/claude-opus-5-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5",
+  "codex+agent+antigravity":
+    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash codex/gpt-6-sol agent/claude-sonnet-5-5 codex/gpt-6-sol antigravity/gemini-3.8-flash agent/claude-sonnet-5-5",
+  "claude+codex+agent+antigravity":
+    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 agent/claude-sonnet-5-5 codex/gpt-6-sol antigravity/gemini-3.8-flash claude/claude-sonnet-5",
+};
+const order = [
+  "default",
+  "chat",
+  "plan",
+  "lesson",
+  "grading",
+  "map",
+  "vision",
+] as const;
+const byId: Record<string, AutoProvider> = {
+  claude,
+  codex,
+  agent,
+  antigravity,
+};
+
+describe("automatic choice with Cursor Agent and Antigravity", () => {
+  it.each(Object.entries(combinations))(
+    "gives %s a balanced default",
+    (combo, expected) => {
+      const plan = planAuto(combo.split("+").map((id) => byId[id]!));
+      expect(
+        order.map((f) => `${plan[f]?.provider}/${plan[f]?.model}`).join(" "),
+      ).toBe(expected);
+    },
+  );
+
+  it("covers every mix of the four CLIs, using each engine and never a thinking or no-retention model", () => {
+    const ids = ["claude", "codex", "agent", "antigravity"];
+    for (let mask = 1; mask < 16; mask++) {
+      const ready = ids
+        .filter((_, i) => mask & (1 << i))
+        .map((id) => byId[id]!);
+      const plan = planAuto(ready);
+      const used = new Set(
+        Object.values(plan).map((choice) => choice!.provider),
+      );
+      expect(Object.keys(plan).sort()).toEqual([...order].sort());
+      expect(used.size).toBe(Math.min(ready.length, 4));
+      for (const choice of Object.values(plan)) {
+        expect(choice!.model).not.toMatch(/thinking|fable/);
+        // Cursor and Antigravity take no effort setting.
+        if (choice!.provider === "agent" || choice!.provider === "antigravity")
+          expect(choice!.effort).toBeUndefined();
+      }
+    }
+  });
+});
