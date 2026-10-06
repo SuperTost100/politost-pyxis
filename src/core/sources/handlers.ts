@@ -44,7 +44,7 @@ import {
 import { importPastedText } from "./paste";
 import { runSourceWorker } from "./worker-client";
 import { sniffImage } from "./vision-image";
-import { isDuplicateBlob, qualityFlags } from "./quality";
+import { existingSourceFor, isDuplicateBlob, qualityFlags } from "./quality";
 import { compareToPlans, storedSyllabus, syllabusFor } from "./syllabus";
 import { maxSourceBytes, MAX_IMAGE_BASE64, MAX_IMAGE_BYTES, MAX_SOURCE_BYTES } from "../../shared/source-types";
 import {
@@ -333,9 +333,12 @@ export function sourceHandlers(
           duplicate: isDuplicateBlob(db, sha),
           variance,
         });
+        const existingSourceId = existingSourceFor(db, sha);
         return {
           duplicate: flags.includes("duplicate"),
           blurry: flags.includes("blurry"),
+          // The source to use instead of importing the same bytes a second time.
+          ...(existingSourceId ? { existingSourceId } : {}),
         };
       } catch (err) {
         sourceError(err);

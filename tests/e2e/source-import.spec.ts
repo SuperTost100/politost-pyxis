@@ -91,17 +91,19 @@ test("SRC-07 picking a folder lists its files, imports the ticked ones and says 
     await expect(rows).toHaveCount(3);
     await expect(dialog.getByText("3 file trovati.")).toBeVisible();
     await expect(dialog.getByText("Già in libreria", { exact: true })).toBeVisible();
-    await expect(
-      dialog.locator("label", { hasText: "cinematica.txt" }).getByRole("checkbox"),
-    ).not.toBeChecked();
-    await expect(
-      dialog.locator("label", { hasText: "dinamica.md" }).getByRole("checkbox"),
-    ).toBeChecked();
-    await dialog.getByRole("button", { name: "Importa 2 file", exact: true }).click();
+    // A file already in the library is ticked too and says so. Adding it uses the source that is there.
+    for (const name of ["cinematica.txt", "dinamica.md", "vecchio.txt"])
+      await expect(
+        dialog.locator("label", { hasText: name }).getByRole("checkbox"),
+      ).toBeChecked();
+    await dialog.getByRole("button", { name: "Aggiungi 3 file", exact: true }).click();
 
     await expect(dialog.getByText("2 file importati.")).toBeVisible();
-    // Imported files leave the checklist, the duplicate stays for the student to decide.
-    await expect(rows).toHaveCount(1);
+    await expect(
+      dialog.getByText(/cinematica\.txt.*Già in libreria: uso quella/),
+    ).toBeVisible();
+    // Every file handled leaves the checklist.
+    await expect(rows).toHaveCount(0);
     await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect
@@ -117,7 +119,7 @@ test("SRC-07 picking a folder lists its files, imports the ticked ones and says 
     dialog = await openAdd(page, "Cartella");
     await dialog.getByRole("button", { name: "Aggiungi una cartella" }).click();
     await expect(dialog.getByText(/Nella cartella vuota non ci sono file/)).toBeVisible();
-    await expect(dialog.getByRole("button", { name: /^Importa/ })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: /^(Importa|Aggiungi) \d+ file/ })).toHaveCount(0);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -132,13 +134,23 @@ test("SRC-07 the file picker takes several files and the result lists them", asy
     await answerPicker(app, [files.cinematica, files.dinamica, files.cinematica]);
     const dialog = await openAdd(page);
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
-    // The same file twice: the second is flagged as already in the library, by name.
-    await expect(dialog.getByText("3 file importati.")).toBeVisible();
+    // The same file twice makes one source. The second is named as already in the library.
+    await expect(dialog.getByText("2 file importati.")).toBeVisible();
     await expect(
-      dialog.getByText(/cinematica\.txt.*già in libreria/),
+      dialog.getByText(/cinematica\.txt.*Già in libreria: uso quella/),
     ).toBeVisible();
     await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
     await expect(dialog).toBeHidden();
+    // Choosing the same file again later changes nothing in the library either.
+    await answerPicker(app, [files.cinematica]);
+    const again = await openAdd(page);
+    await again.getByRole("button", { name: "Scegli i file", exact: true }).click();
+    await expect(again.getByText("Nessun file nuovo.")).toBeVisible();
+    await again.getByRole("button", { name: "Fatto", exact: true }).click();
+    const titles = await page.evaluate(() =>
+      window.pyxis.invoke("sources.list", {}),
+    );
+    expect(titles.map((row) => row.title).sort()).toEqual(["cinematica", "dinamica"]);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -175,8 +187,21 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await expect(list.getByRole("listitem")).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Non ho materiale" })).toHaveCount(0);
 
-    // Taking one out leaves it in the library, where the picker finds it again.
+    // A file already in the library is not copied: its source joins the plan.
+    await answerPicker(app, [files.vecchio]);
+    dialog = await openAdd(page);
+    await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
+    await expect(dialog.getByText("Nessun file nuovo.")).toBeVisible();
+    await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
+    await expect(page.getByText("3 fonti nel piano")).toBeVisible();
+    await expect(list.getByText("vecchio")).toBeVisible();
+    expect(
+      (await page.evaluate(() => window.pyxis.invoke("sources.list", {}))).length,
+    ).toBe(3);
+
+    // Taking them out leaves them in the library, where the picker finds them again.
     await list.getByRole("button", { name: "Togli dinamica dal piano" }).click();
+    await list.getByRole("button", { name: "Togli vecchio dal piano" }).click();
     await expect(page.getByText("1 fonte nel piano")).toBeVisible();
     await page.getByRole("button", { name: "Dalla tua libreria", exact: true }).click();
     dialog = page.getByRole("dialog", { name: "Aggiungi dalla libreria" });

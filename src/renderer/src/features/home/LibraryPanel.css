@@ -179,7 +179,6 @@
 }
 .px-library-file-flag {
   flex-shrink: 0;
-  color: var(--star-text);
 }
 .px-library-progress {
   display: flex;

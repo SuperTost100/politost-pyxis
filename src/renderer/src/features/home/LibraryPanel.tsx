@@ -43,6 +43,7 @@ const sizeText = (bytes: number) =>
 
 /** What an import run did, kept on screen until the student closes it or starts another run. */
 type ImportResult = {
+  /** Files that became new sources. A file already in the library is not counted: its source is reused. */
   imported: number;
   notes: Array<{ name: string; text: string }>;
   failed: Array<{ name: string; key: string }>;
@@ -238,15 +239,24 @@ export function LibraryPanel({
           setProgress({ done: index, total: paths.length, name: fileName(path) });
           try {
             const preview = await invoke("sources.preview", { path });
-            for (const text of [
-              preview.duplicate ? t("sources.duplicate") : "",
-              preview.blurry ? t("sources.blurry") : "",
-            ].filter(Boolean))
-              outcome.notes.push({ name: fileName(path), text });
-            const value = await invoke("sources.import", { path });
-            outcome.ids.push(value.sourceId);
+            if (preview.blurry)
+              outcome.notes.push({
+                name: fileName(path),
+                text: t("sources.blurry"),
+              });
+            if (preview.existingSourceId) {
+              // The same bytes are already in the library. That source is used, no second copy is made.
+              outcome.notes.push({
+                name: fileName(path),
+                text: t("sources.reused"),
+              });
+              outcome.ids.push(preview.existingSourceId);
+            } else {
+              const value = await invoke("sources.import", { path });
+              outcome.ids.push(value.sourceId);
+              outcome.imported += 1;
+            }
             outcome.done.push(path);
-            outcome.imported += 1;
           } catch (err) {
             // The files from the refused one on stay chosen, so nothing has to be picked or dropped again.
             if (isOcrRefusal(messageKeyOf(err))) {
@@ -275,7 +285,7 @@ export function LibraryPanel({
           );
         if (outcome.ids.length) {
           void client.invalidateQueries({ queryKey: ["sources"] });
-          onImported?.(outcome.ids);
+          onImported?.([...new Set(outcome.ids)]);
         }
       }
       // Nothing came in and something failed: the error shows as a notice, with its own recovery.
@@ -327,7 +337,8 @@ export function LibraryPanel({
       );
       setFolderScanned(fileName(folder));
       setFolderFiles(
-        scan.files.map((file) => ({ ...file, selected: !file.duplicate })),
+        // A file already in the library is ticked too: adding it uses the source that is there.
+        scan.files.map((file) => ({ ...file, selected: true })),
       );
     } catch (err) {
       fail(err);
@@ -675,6 +686,9 @@ export function LibraryPanel({
       width={640}
       title={t("exams.addSources")}
       footer={null}
+      // A button that was loading when the dialog closed would keep its hidden "loading" icon, and with it a
+      // wrong accessible name, until the dialog was read again. A fresh dialog each time avoids that.
+      destroyOnHidden
       onCancel={closeAdd}
       className="px-library-add"
     >
@@ -741,7 +755,9 @@ export function LibraryPanel({
         >
           <p className="body-strong">
             <CheckCircle2 size={18} aria-hidden />
-            {t("sources.imported", { count: result.imported })}
+            {result.imported
+              ? t("sources.imported", { count: result.imported })
+              : t("sources.importedNone")}
           </p>
           {result.notes.length || result.failed.length || result.skipped ? (
             <ul className="small px-library-result-notes">
@@ -841,7 +857,7 @@ export function LibraryPanel({
               <p className="small ink-muted" role="status">
                 {t("sources.folderFound", { count: folderFiles.length })}
                 {folderFiles.some((file) => file.duplicate)
-                  ? ` ${t("sources.folderDuplicatesOff")}`
+                  ? ` ${t("sources.folderDuplicatesUsed")}`
                   : ""}
               </p>
               <ul className="px-library-file-list">
@@ -870,7 +886,7 @@ export function LibraryPanel({
                         </span>
                       </span>
                       {file.duplicate ? (
-                        <span className="small px-library-file-flag">
+                        <span className="small ink-muted px-library-file-flag">
                           {t("sources.duplicateShort")}
                         </span>
                       ) : null}
@@ -891,7 +907,7 @@ export function LibraryPanel({
                   })
                 }
               >
-                {t("sources.importFolderFiles", {
+                {t("sources.addFolderFiles", {
                   count: folderFiles.filter((file) => file.selected).length,
                 })}
               </Button>
