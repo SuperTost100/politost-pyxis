@@ -213,7 +213,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       ).toEqual([]);
     }
     // Advance only this temporary exam's stored start; exercise core's real expiry path.
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     db.prepare("UPDATE attempts SET started_at = ? WHERE id = ?").run(
       Date.now() - 30 * 60000 - 1000,
       run.attemptId,

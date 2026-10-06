@@ -16,7 +16,9 @@ test("onboarding save and invalid plan imports remain retryable", async () => {
     const page = await app.firstWindow();
     const skip = page.getByRole("button", { name: "Salta", exact: true });
     await expect(skip).toBeVisible();
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
+      timeout: 10000,
+    });
     try {
       db.exec(
         "CREATE TRIGGER fail_profile BEFORE INSERT ON profile BEGIN SELECT RAISE(FAIL, 'test storage failure'); END;",
