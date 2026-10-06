@@ -1,8 +1,8 @@
 # Release checks
 
-The public repository is https://github.com/SuperTost100/politost-pyxis. Hosted checks start on push; their results must be inspected before claiming other-platform packages verified. Packaging never publishes automatically.
+Releases come from https://github.com/SuperTost100/politost-pyxis. CI checks and packages every push, but packaging never publishes anything. A release is a manual step after the checks below pass.
 
-The package homepage points to the repository. Linux maintainer metadata uses the authenticated owner SuperTost100 and their GitHub noreply address.
+The package homepage points to the repository. Linux maintainer metadata uses the owner SuperTost100 and their GitHub noreply address.
 
 ## Build targets
 
@@ -16,7 +16,7 @@ A manual dispatch with `windows_trace=true` runs the recorded Windows OCR/releas
 
 Recorded import and release-loop checks run first to expose core failures early. After packaging, each target repeats the recorded release loop against its packaged executable. macOS also verifies the bundle signature; Linux grants that executable its own scoped namespace-sandbox profile. Only packages that pass this check are collected for attestation.
 
-When the remote exists, run the workflow and inspect all four results before publishing. Validate YAML with `actionlint` when installed. Actions are pinned to full commit SHAs resolved from their upstream release tags. Review new action versions before updating those pins.
+Inspect all four results before publishing. Validate YAML with `actionlint` when installed. Actions are pinned to full commit SHAs resolved from their upstream release tags. Review new action versions before updating those pins.
 
 ## Owner release loop
 
@@ -28,19 +28,15 @@ For desktop checks while using the computer, run `PYXIS_E2E_HIDDEN=1 npm run tes
 4. Export and reopen a plan, open an Anki deck in Anki, then back up and restore the workspace. Confirm OS key storage works; keep keys out of backups and diagnostics.
 5. Inspect screenshots for every route in both themes/languages, keyboard behavior and axe results. Run the required full-repository reviews and fix their findings before sign-off.
 6. Record platform coverage, skipped checks, unresolved choices and review outcomes in the resources build log. Do not call an untested OS installer verified.
-7. Publish only reviewed artifacts with checksums and provenance. For a created repository, verify provenance with `gh attestation verify FILE --repo OWNER/REPO`.
+7. Publish only reviewed artifacts with checksums and provenance. Verify provenance with `gh attestation verify FILE --repo SuperTost100/politost-pyxis`.
 
 ## Update channel
 
-After creating the repository, add its exact GitHub HTTPS URL to `package.json` under `repository`, then rebuild. Main reads that packaged metadata to query GitHub's latest stable release. The update check is cached for 24 hours, including manual checks, and opens the release page for manual installation. It never installs an update automatically.
+`package.json` names the GitHub repository under `repository`. Main reads that packaged metadata to query GitHub's latest stable release. The update check is cached for 24 hours, including manual checks, and opens the release page for manual installation. It never installs an update automatically.
 
-Use stable semantic-version tags that compare correctly to the installed `package.json` version. Until a repository URL is configured, Settings reports that the release channel is unpublished and makes no request. Do not invent a placeholder owner or repository to hide that state.
+Use stable semantic-version tags that compare correctly to the installed `package.json` version. A fork without a repository URL makes no request, and Settings reports that the release channel is unpublished. Don't invent a placeholder owner or repository to hide that state.
 
-## Restore safety
-
-Restore validates SQLite integrity and foreign-key references before and after migrations. Future schema versions and unexpected ZIP paths are rejected before live data moves. Only canonical hash-named blob files and their metadata accompany the database; restore verifies their hashes and metadata. Existing runtime/model caches are copied into staging and survive both commit and rollback. A fsynced sibling restore journal records the original and staged directory identities. Startup checks that journal before creating workspace folders.
-
-The app keeps the original `.old` workspace until the restored core reports healthy readiness. The archive worker validates the promoted database and commits and cleans up the swap, keeping this work off the main window thread. An interrupted uncommitted swap rolls back to that original. Commitment is recorded before deleting old data; a failed cleanup leaves the committed marker for the next startup and never selects a partly deleted original. A replaced or unexpected directory stops recovery with both copies preserved for inspection.
+## macOS packaging
 
 `npm run dist` builds in a private temporary directory outside synced folders, then copies the completed artifacts into `dist/`. This avoids File Provider adding Finder metadata to the app bundle before the DMG is sealed. Verify the app mounted from the DMG with `codesign --verify --deep --strict`; an unpacked bundle copied into a synced folder can acquire metadata after packaging.
 

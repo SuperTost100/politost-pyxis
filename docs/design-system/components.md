@@ -12,7 +12,7 @@ The Pyxis mark: star trails circling the pole star, the fixed point you steer by
 - Minimum size 16px; below 32px use the two-trail file `pyxis-app-icon-small.svg`.
 - Clear space: half the mark's height on every side. The wordmark sits right of the mark, never below.
 - In the header use `wordmark` at 28px height. The tutor avatar uses the mark alone at 22px.
-- Files: `assets/Logo/` holds the mark (dark, light, mono), lockups with the wordmark outlined, and the app icon (SVG + 1024px PNG).
+- Files: `src/renderer/src/design-system/logo/` holds the mark (dark, light, mono), lockups with the wordmark outlined, and the app icon (SVG + 1024px PNG).
 
 ## Icon
 
@@ -56,7 +56,7 @@ Pill tab switcher with uppercase mono labels.
 - Use for the header doors (Chiedi / Esami), plan pages (Percorso di studio / Argomenti / Fonti / Progressi), the Create lesson groups (Impara / Esercitati / Esame) and Progress tabs.
 - 2–5 items. The active item is an `ink` pill with `on-ink` text in both themes.
 - Labels are written in sentence case in code and uppercased by the style (`label` type style); keep them to one or two words.
-- antd: `<Segmented shape="round" options={…} />` themed through the `Segmented` component token block in `antd/pyxis-theme.ts`.
+- antd: `<Segmented shape="round" options={…} />` themed through the `Segmented` component token block in `theme/pyxis-theme.ts`.
 
 ## TextField
 
@@ -88,7 +88,7 @@ Small mono label that states where content came from or what state it is in.
 - Origin tags are mandatory on generated items (SB-03, PLAN-11, LES-32): users must always know if content came from their sources.
 - Each tone carries an icon so meaning never relies on colour.
 - Lowercase text, except `recommended`, which is uppercase.
-- antd: `<Tag bordered={false} color=…>` with the colours in `antd/pyxis-theme.ts`.
+- antd: `<Tag bordered={false} color=…>` with the colours in `theme/pyxis-theme.ts`.
 
 ## CitationChip
 

@@ -1,5 +1,7 @@
 # Local v0.1.0 validation
 
+This is the record of checks run on the first macOS build. Later releases attach their own `VALIDATION.md`, `SHA256SUMS` and `PROVENANCE.json` to the [GitHub release](https://github.com/SuperTost100/politost-pyxis/releases); v0.1.1 was the first to pass hosted CI on all four targets.
+
 2026-10-05, macOS arm64. Both typechecks pass; 759 unit tests in 129 files pass, zero skips; 5 notice-generator tests pass. Effective recorded native result is 55 passed and three explicitly opt-in live checks. The hidden-window harness failure passed its focused correction rerun.
 
 The route/dialog audit covers 920 normal and 920 largest-text combinations with no outstanding axe, page-error, untranslated-key or horizontal-overflow failure. Failed attempts and focused retries were retained locally; screenshot review covers both themes/languages. Actual Anki 26.09.3 imported and rendered basic math and cloze cards in an offscreen disposable profile.

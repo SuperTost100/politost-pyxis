@@ -13,6 +13,7 @@
     "test": "node scripts/test-electron.mjs",
     "test:e2e": "npm run build && playwright test",
     "shoot": "npm run build && tsx scripts/shoot.ts",
+    "shoot:readme": "npm run build && tsx scripts/readme-shots.ts",
     "dist": "npm run build && node scripts/package.mjs",
     "postinstall": "node node_modules/electron/install.js && electron-builder install-app-deps",
     "notices": "node scripts/gen-notices.mjs",
