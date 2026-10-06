@@ -1,0 +1,19 @@
+/* Popovers opened from the composer chips (subject, sources). */
+.ask-popover .ant-popover-inner { padding: var(--space-2); border-radius: var(--radius-lg); background: var(--surface-overlay); box-shadow: var(--shadow-overlay); border: 1px solid var(--border); }
+.ask-menu { display: flex; flex-direction: column; gap: var(--space-1); width: min(320px, calc(100vw - var(--space-8))); }
+.ask-menu-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); min-height: var(--control-sm); color: var(--ink-muted); }
+.ask-menu-group { margin: var(--space-2) var(--space-2) 0; color: var(--ink-muted); }
+.ask-menu-search { margin: 0 0 var(--space-1); }
+.ask-menu-list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.ask-menu-empty { margin: 0; padding: var(--space-2) var(--space-3); color: var(--ink-muted); }
+.ask-menu-foot { border-top: 1px solid var(--border); margin-top: var(--space-1); padding-top: var(--space-1); }
+.ask-menu-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; min-height: var(--control-sm); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font: 400 calc(15px * var(--text-scale))/calc(20px * var(--text-scale)) var(--font-sans); text-align: left; cursor: pointer; }
+.ask-menu-item > span { min-width: 0; overflow-wrap: anywhere; }
+.ask-menu-foot .ask-menu-item { justify-content: flex-start; color: var(--ink-muted); }
+.ask-menu-item:hover { background: var(--surface-raised); color: var(--ink); }
+.ask-menu-item[aria-pressed="true"] { background: var(--primary-soft); color: var(--primary-text); }
+.ask-menu-icon { flex: none; display: grid; place-items: center; width: var(--control-sm); height: var(--control-sm); border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--ink-muted); cursor: pointer; }
+.ask-menu-icon:hover { background: var(--surface-raised); color: var(--ink); }
+.ask-source-row { display: flex; align-items: center; gap: var(--space-2); padding-left: var(--space-3); border-radius: var(--radius-sm); }
+.ask-source-row:hover { background: var(--surface-raised); }
+.ask-source-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font: 400 calc(15px * var(--text-scale))/calc(20px * var(--text-scale)) var(--font-sans); padding: var(--space-2) 0; }

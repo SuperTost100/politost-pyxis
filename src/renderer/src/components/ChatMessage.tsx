@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Chip } from "./Chip";
 import { IconButton } from "./IconButton";
@@ -101,6 +101,32 @@ export function ChatMessage({
             ))}
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The tutor's turn before any text has streamed: the mark and one status line, so the wait is never blank.
+ * With sources it says it is reading them first, then that it is thinking.
+ */
+export function ThinkingMessage({ usesSources }: { usesSources?: boolean }) {
+  const { t } = useTranslation();
+  const [reading, setReading] = useState(Boolean(usesSources));
+  useEffect(() => {
+    if (!usesSources) return;
+    const timer = setTimeout(() => setReading(false), 1600);
+    return () => clearTimeout(timer);
+  }, [usesSources]);
+  return (
+    <div className="px-msg px-msg-thinking" role="status">
+      <span className="px-msg-avatar" aria-hidden>
+        <Logo size={22} />
+      </span>
+      <div className="px-msg-body">
+        <p className="px-msg-status">
+          {reading ? t("components.chat.readingSources") : t("components.chat.thinking")}
+        </p>
       </div>
     </div>
   );

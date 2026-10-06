@@ -115,6 +115,7 @@ if (!parent) {
       db,
       workspacePath,
       dev ? process.env["PYXIS_E2E_REPLY"] : undefined,
+      dev ? Math.min(Number(process.env["PYXIS_E2E_REPLY_DELAY"]) || 0, 15_000) : 0,
     );
     bindProfile(db);
     const planFixture = dev ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined;

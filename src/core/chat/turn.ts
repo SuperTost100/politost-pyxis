@@ -237,6 +237,15 @@ function priorPassages(
   return hits;
 }
 
+/** A chat is named after its first question: one line, cut at a word near 60 characters. */
+export function chatTitleFrom(text: string, limit = 60): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  if (line.length <= limit) return line;
+  const cut = line.slice(0, limit);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > limit / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
 function ensureChat(
   db: Database.Database,
   chatId: string | undefined,
@@ -252,7 +261,7 @@ function ensureChat(
   const id = uuidv7(now);
   db.prepare(
     `INSERT INTO chats (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-  ).run(id, title.slice(0, 80), now, now);
+  ).run(id, chatTitleFrom(title), now, now);
   return id;
 }
 

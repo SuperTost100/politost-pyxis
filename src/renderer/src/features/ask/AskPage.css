@@ -1,0 +1,97 @@
+/* The Ask page is one column: a bar pinned at the top, messages in between, and the composer docked to the bottom of the viewport. */
+.ask-page {
+  --ask-header: 64px;
+  display: flex;
+  flex-direction: column;
+  /* AskPage.tsx sets the real height and bottom margin from the space around the page. */
+  min-height: 60vh;
+}
+
+.ask-bar {
+  position: sticky;
+  top: var(--ask-header);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  background: var(--bg);
+}
+
+.ask-greeting {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-bottom: 8vh;
+}
+
+.ask-greeting h1 {
+  margin: 0;
+}
+
+.ask-greeting p {
+  margin: var(--space-3) 0 0;
+  color: var(--ink-muted);
+}
+
+.ask-thread {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-4) 0 var(--space-6);
+}
+
+/* Stays at the foot of the viewport; the page background behind it lets messages scroll under it cleanly. */
+.ask-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) 0 var(--space-4);
+  background: var(--bg);
+}
+
+.ask-dock::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 100% 0;
+  height: var(--space-6);
+  background: linear-gradient(to bottom, transparent, var(--bg));
+  pointer-events: none;
+}
+
+.ask-held {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ask-attachments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ask-attachments li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+
+.ask-attachment-preview {
+  max-width: 120px;
+  max-height: 48px;
+  border-radius: var(--radius-sm);
+}

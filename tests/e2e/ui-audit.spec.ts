@@ -148,6 +148,10 @@ const routes = [
   ["library-ocr-ready", "/exams/library"],
   ["ask-ocr-refused", "/ask"],
   ["ask-ocr-ready", "/ask"],
+  // The chat panel, the composer's subject menu and its sources popover.
+  ["ask-panel", "/ask/audit-chat"],
+  ["ask-subject-menu", "/ask/audit-chat"],
+  ["ask-sources-menu", "/ask/audit-chat"],
 ] as const;
 
 /** The pinned OCR files the runtime task downloaded once. The audit stages these bytes, it never fetches them. */
@@ -1115,6 +1119,32 @@ async function openState(page: Page, name: string) {
     case "guided-style":
     case "guided-tree":
       await openGuided(page, name.slice("guided-".length) as "period");
+      break;
+    case "ask-panel":
+      await page
+        .getByRole("button", { name: both("Apri le chat", "Open chats") })
+        .click();
+      await expect(
+        page.getByRole("list", { name: both("Chat", "Chats") }),
+      ).toBeVisible();
+      break;
+    case "ask-subject-menu":
+      await page.getByRole("button", { name: /^(Materia|Subject):/ }).click();
+      await expect(
+        page.getByRole("button", {
+          name: both("Gestisci materie", "Manage subjects"),
+        }),
+      ).toBeVisible();
+      break;
+    case "ask-sources-menu":
+      await page
+        .getByRole("button", { name: both("Fonti", "Sources") })
+        .click();
+      await expect(
+        page.getByRole("button", {
+          name: both("Aggiungi fonti", "Add sources"),
+        }),
+      ).toBeVisible();
       break;
     case "ask-python":
       await expect(
