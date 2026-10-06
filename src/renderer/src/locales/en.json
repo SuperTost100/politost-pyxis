@@ -15,7 +15,7 @@
   },
   "onboarding": {
     "title": "Let's start",
-    "body": "Name, school and course stay on this computer. Then pick an engine.",
+    "body": "Name, school and course stay on this computer. Then we set up AI engines, scans and privacy.",
     "name": "Name",
     "level": "Level",
     "year": "Year",
@@ -34,7 +34,33 @@
       "university": "University",
       "other": "Other"
     },
-    "saveFailed": "Your profile could not be saved. Try again."
+    "saveFailed": "Your profile could not be saved. Try again.",
+    "later": "I'll do it later",
+    "stepCount": "Step {{current}} of {{total}}",
+    "steps": {
+      "profile": "About you",
+      "engines": "AI engines",
+      "photos": "Photos and scans",
+      "privacy": "Privacy"
+    },
+    "engines": {
+      "title": "Connect an AI engine",
+      "body": "Pyxis uses Claude Code or Codex with your account. I check what is already on this computer.",
+      "found": "I found {{names}}.",
+      "foundSignedOut": "I found {{names}}, but you still need to sign in.",
+      "foundNone": "I did not find any engine.",
+      "disclosure": "Later, text, retrieved passages and attachments leave this computer and reach the engine's provider. Right now I send nothing to any model."
+    },
+    "photos": {
+      "title": "Photos and scans",
+      "body": "Pyxis can read the text in a photo or a scan directly on this computer.",
+      "later": "Later",
+      "keepGoing": "The download keeps going if you move on."
+    },
+    "privacy": {
+      "title": "Crash reports",
+      "body": "One choice. You can change it any time in Settings, under Privacy."
+    }
   },
   "ask": {
     "greeting": "Hello",
@@ -860,7 +886,6 @@
     "interestsOn": "Use interests in examples",
     "privacy": "Privacy",
     "crashReports": "Send crash reports",
-    "crashHint": "Off: no report leaves this computer.",
     "reading": "Reading",
     "dyslexia": "Dyslexia spacing",
     "text": {
@@ -908,7 +933,10 @@
       "study": "Study",
       "data": "Data",
       "app": "App"
-    }
+    },
+    "crashOn": "On: if Pyxis closes by mistake, it can use a technical report to fix it. For now Pyxis sends no report: this choice stays on this computer.",
+    "crashOff": "Off: no report leaves this computer.",
+    "crashContents": "A crash report describes the technical state of the app when the error happened: version, system and some portions of memory. Pyxis adds none of your files or chats to it, but memory can hold fragments of what you were using."
   },
   "jobs": {
     "label_one": "{{count}} background task",

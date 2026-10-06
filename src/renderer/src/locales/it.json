@@ -15,7 +15,7 @@
   },
   "onboarding": {
     "title": "Iniziamo",
-    "body": "Nome, scuola e corso restano su questo computer. Poi scegli un motore.",
+    "body": "Nome, scuola e corso restano su questo computer. Poi vediamo i motori AI, le scansioni e la privacy.",
     "name": "Nome",
     "level": "Livello",
     "year": "Anno",
@@ -34,7 +34,33 @@
       "university": "Università",
       "other": "Altro"
     },
-    "saveFailed": "Il profilo non è stato salvato. Riprova."
+    "saveFailed": "Il profilo non è stato salvato. Riprova.",
+    "later": "Lo farò dopo",
+    "stepCount": "Passo {{current}} di {{total}}",
+    "steps": {
+      "profile": "Su di te",
+      "engines": "Motori AI",
+      "photos": "Foto e scansioni",
+      "privacy": "Privacy"
+    },
+    "engines": {
+      "title": "Collega un motore AI",
+      "body": "Pyxis usa Claude Code o Codex con il tuo account. Guardo cosa c'è già su questo computer.",
+      "found": "Ho trovato {{names}}.",
+      "foundSignedOut": "Ho trovato {{names}}, ma serve ancora l'accesso.",
+      "foundNone": "Non ho trovato nessun motore.",
+      "disclosure": "Più avanti, il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore del motore. Adesso non invio nulla a nessun modello."
+    },
+    "photos": {
+      "title": "Foto e scansioni",
+      "body": "Pyxis può leggere il testo di una foto o di una scansione direttamente su questo computer.",
+      "later": "Più tardi",
+      "keepGoing": "Il download continua anche se vai avanti."
+    },
+    "privacy": {
+      "title": "Segnalazioni di crash",
+      "body": "Una sola scelta. Puoi cambiarla quando vuoi in Impostazioni, alla voce Privacy."
+    }
   },
   "ask": {
     "greeting": "Ciao",
@@ -860,7 +886,6 @@
     "interestsOn": "Usa gli interessi negli esempi",
     "privacy": "Privacy",
     "crashReports": "Invia segnalazioni di crash",
-    "crashHint": "Spento: nessun rapporto lascia questo computer.",
     "reading": "Lettura",
     "dyslexia": "Spaziatura per la dislessia",
     "text": {
@@ -908,7 +933,10 @@
       "study": "Studio",
       "data": "Dati",
       "app": "App"
-    }
+    },
+    "crashOn": "Acceso: se Pyxis si chiude per errore, potrà usare un rapporto tecnico per correggerlo. Per ora Pyxis non invia nessun rapporto: la scelta resta su questo computer.",
+    "crashOff": "Spento: nessun rapporto lascia questo computer.",
+    "crashContents": "Un rapporto di crash descrive lo stato tecnico del programma al momento dell'errore: versione, sistema e alcune porzioni di memoria. Pyxis non ci aggiunge i tuoi file né le tue chat, ma la memoria può contenere frammenti di ciò che stavi usando."
   },
   "jobs": {
     "label_one": "{{count}} attività",

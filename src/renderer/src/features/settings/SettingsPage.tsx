@@ -19,6 +19,7 @@ import {
   GraduationCap,
   Terminal,
 } from "lucide-react";
+import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import "./SettingsPage.css";
@@ -302,18 +303,10 @@ export function SettingsPage() {
     ),
     privacy: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.privacy")}</div>
-        <div className="choice-list">
-          <Choice
-            label={t("settings.crashReports")}
-            selected={profile.data?.crashReports === true}
-            onClick={() =>
-              void patch({ crashReports: profile.data?.crashReports !== true })
-            }
-          />
-        </div>
-        <p className="small section-hint">{t("settings.crashHint")}</p>
+        <CrashReportsSwitch
+          checked={profile.data?.crashReports === true}
+          onChange={(value) => void patch({ crashReports: value })}
+        />
       </>
     ),
     reading: (

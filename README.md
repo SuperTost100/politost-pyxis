@@ -22,7 +22,7 @@ On first launch, choose your profile and language, then configure and test an en
 
 Pyxis stores sources, study history and generated content in a local workspace. A model request sends the prompt, selected source passages and any supported attachments to your selected provider. Provider retention and billing rules apply. Importing a link contacts that website. Optional local-model and Python-runtime downloads contact their distributors. There is no Pyxis cloud service.
 
-Crash reporting is off by default; its current switch records a preference and does not submit reports. Backup files and exports may contain private course material. API keys are outside the workspace and excluded from backups. See [SECURITY.md](SECURITY.md) for storage locations and network details.
+First setup shows the crash-report switch already on for a new profile (existing installs keep what they saved, and skipping setup leaves it off). The switch only records a preference today and does not submit reports. Backup files and exports may contain private course material. API keys are outside the workspace and excluded from backups. See [SECURITY.md](SECURITY.md) for storage locations and network details.
 
 ## Build from source
 
