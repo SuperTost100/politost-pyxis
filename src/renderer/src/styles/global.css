@@ -130,10 +130,14 @@ html[data-platform="darwin"] .ant-layout-header {
   color: var(--on-ink) !important;
 }
 
+/* The label sits on top of the pill; a fill of its own would draw a square inside it. */
+.px-doors .ant-segmented-item-label {
+  border-radius: inherit;
+}
 .px-doors .ant-segmented-item-selected .ant-segmented-item-label,
 .px-doors .ant-segmented-item-selected-text .ant-segmented-item-label {
   color: var(--on-ink) !important;
-  background: var(--ink) !important;
+  background: transparent !important;
 }
 
 /* ProLayout lays its content out as a flex child, where auto margins shrink it to its content. */
