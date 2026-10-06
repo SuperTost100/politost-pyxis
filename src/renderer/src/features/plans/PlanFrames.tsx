@@ -336,6 +336,7 @@ export function WizardFrame() {
               </label>
               <Input
                 id="plan-title"
+                placeholder={t("wizard.planTitlePlaceholder")}
                 maxLength={500}
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
@@ -347,6 +348,7 @@ export function WizardFrame() {
               </label>
               <Input
                 id="plan-subject"
+                placeholder={t("wizard.subjectPlaceholder")}
                 list="plan-subjects"
                 value={subject}
                 onChange={(event) => setSubject(event.target.value)}

@@ -695,6 +695,8 @@
     "title": "Nuovo piano",
     "body": "Un capitolo dello smartbook diventa un argomento, senza chiamare un modello.",
     "planTitle": "Titolo",
+    "planTitlePlaceholder": "Per esempio Fisica 1, esame di giugno",
+    "subjectPlaceholder": "Per esempio Fisica",
     "subject": "Materia",
     "create": "Crea il piano",
     "preparing": "Sto preparando {{title}}",

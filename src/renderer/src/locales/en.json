@@ -695,6 +695,8 @@
     "title": "New plan",
     "body": "A smartbook chapter becomes a topic, without a model call.",
     "planTitle": "Title",
+    "planTitlePlaceholder": "For example Physics 1, June exam",
+    "subjectPlaceholder": "For example Physics",
     "subject": "Subject",
     "create": "Create the plan",
     "preparing": "Preparing {{title}}",

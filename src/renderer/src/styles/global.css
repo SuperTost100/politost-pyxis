@@ -153,6 +153,12 @@ html[data-platform="darwin"] .ant-layout-header {
   border: 1px solid var(--border);
 }
 
+/* antd marks the keyboard-focused item itself (never after a mouse click); draw it with the system ring. */
+.ant-segmented .ant-segmented-item-focused {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 /* A disabled control keeps its selection readable: the ink pill dims, its label stays on-ink. */
 .ant-segmented:not(.px-doors)
   .ant-segmented-item-selected.ant-segmented-item-disabled {
