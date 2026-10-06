@@ -6,7 +6,7 @@ import { Button, Input, Modal, Steps, DatePicker, Slider } from "antd";
 import dayjs from "dayjs";
 import dateIt from "antd/es/date-picker/locale/it_IT";
 import dateEn from "antd/es/date-picker/locale/en_GB";
-import { LibraryPanel } from "../home/LibraryPanel";
+import { WizardSources } from "./WizardSources";
 import "./PlanWizard.css";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -26,6 +26,15 @@ export function WizardFrame() {
   const sources = useQuery({
     queryKey: ["sources"],
     queryFn: () => invoke("sources.list", {}),
+    // A source just imported is still being read. Its status follows until it settles.
+    refetchInterval: (query) =>
+      query.state.data?.some((source) =>
+        ["queued", "extracting", "indexing", "ocr-queued"].includes(
+          source.status,
+        ),
+      )
+        ? 1000
+        : false,
   });
   const subjects = useQuery({
     queryKey: ["subjects"],
@@ -36,7 +45,6 @@ export function WizardFrame() {
   const back = (location.state as { wizard?: unknown; step?: number } | null) ?? {};
   const seed = isWizardSeed(back.wizard) ? back.wizard : null;
   const [wizardStep, setWizardStep] = useState(seed ? (back.step ?? 3) : 0);
-  const [addSourcesOpen, setAddSourcesOpen] = useState(false);
   const [title, setTitle] = useState(seed?.title ?? "");
   const [subject, setSubject] = useState(seed?.subject ?? "");
   const [picked, setPicked] = useState<string[]>([]);
@@ -249,11 +257,6 @@ export function WizardFrame() {
   const examAt = date
     ? dayjs(date).hour(12).valueOf()
     : examInstant(Number(examChoice));
-  const material = [...(sources.data ?? [])].sort(
-    (a, b) =>
-      Number(b.kind === "smartbook") - Number(a.kind === "smartbook") ||
-      a.title.localeCompare(b.title),
-  );
   return (
     <FocusLayout
       title={t("wizard.title")}
@@ -471,71 +474,21 @@ export function WizardFrame() {
           </>
         ) : null}
         {wizardStep === 3 ? (
-          <>
-            <p className="small ink-muted" role="status">
-              {t("wizard.selectedSources", { count: picked.length })}
-            </p>
-            <div className="choice-list">
-              {material.map((source) => (
-                <button
-                  key={source.id}
-                  type="button"
-                  className={
-                    picked.includes(source.id) ? "choice is-selected" : "choice"
-                  }
-                  aria-label={source.title}
-                  aria-pressed={picked.includes(source.id)}
-                  onClick={() =>
-                    setPicked((current) =>
-                      current.includes(source.id)
-                        ? current.filter((id) => id !== source.id)
-                        : [...current, source.id],
-                    )
-                  }
-                >
-                  <span className="body-strong">{source.title}</span>
-                  <span className="meta">
-                    {t(`sources.kind.${source.kind}`, {
-                      defaultValue: source.kind,
-                    })}{" "}
-                    ·{" "}
-                    {t(`sources.status.${source.status}`, {
-                      defaultValue: source.status,
-                    })}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div className="px-wizard-material-actions">
-              <Button shape="round" onClick={() => setAddSourcesOpen(true)}>
-                {t("exams.addSources")}
-              </Button>
-              {picked.length ? (
-                <Button type="text" onClick={() => setPicked([])}>
-                  {t("wizard.clearSources")}
-                </Button>
-              ) : null}
-            </div>
-            {picked.length === 0 ? (
-              <p className="small">
-                {t("wizard.noMaterial")}{" "}
-                <Button type="link" size="small" onClick={startGuided}>
-                  {t("wizard.noMaterialLink")}
-                </Button>
-              </p>
-            ) : null}
-            {blockedSource ? (
-              <p className="small" role="alert">
-                {t("wizard.sourceNotReady")}
-              </p>
-            ) : null}
-            {addSourcesOpen ? (
-              <LibraryPanel
-                importOnly
-                onClose={() => setAddSourcesOpen(false)}
-              />
-            ) : null}
-          </>
+          <WizardSources
+            library={sources.data ?? []}
+            picked={picked}
+            onPick={(ids) =>
+              setPicked((current) => [
+                ...current,
+                ...ids.filter((id) => !current.includes(id)),
+              ])
+            }
+            onRemove={(id) =>
+              setPicked((current) => current.filter((item) => item !== id))
+            }
+            onGuided={startGuided}
+            blocked={blockedSource}
+          />
         ) : null}
         {wizardStep === 4 ? (
           <>
@@ -585,7 +538,7 @@ export function WizardFrame() {
             <div className="px-wizard-summary">
               <p className="body-strong">{title}</p>
               <p className="small ink-muted">
-                {t("wizard.selectedSources", { count: picked.length })} ·{" "}
+                {t("wizard.sourcesInPlan", { count: chosenSources.length })} ·{" "}
                 {t("wizard.target", { score: target })}
               </p>
             </div>

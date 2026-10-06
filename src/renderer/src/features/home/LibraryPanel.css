@@ -135,3 +135,101 @@
 .px-library-link-preview .body {
   overflow-wrap: anywhere;
 }
+
+.px-library-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.px-library-file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  min-height: var(--control-lg);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+}
+.px-library-file-row:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-library-file-row input {
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+.px-library-file-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.px-library-file-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-library-file-flag {
+  flex-shrink: 0;
+  color: var(--star-text);
+}
+.px-library-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-library-progress p,
+.px-library-result > p {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+.px-library-progress p {
+  overflow-wrap: anywhere;
+}
+.px-library-progress svg {
+  flex-shrink: 0;
+  animation: px-library-spin 1s linear infinite;
+}
+@keyframes px-library-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-library-progress svg {
+    animation: none;
+  }
+}
+.px-library-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--mastery-soft);
+}
+.px-library-result > p svg {
+  color: var(--mastery-text);
+}
+.px-library-result-notes {
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+.px-library-result-notes .is-failed {
+  color: var(--danger);
+}

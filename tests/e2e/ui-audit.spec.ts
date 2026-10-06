@@ -881,8 +881,18 @@ async function openWizard(page: Page, step: number) {
     .fill("Fisica audit");
   const current = (index: number) => page.locator(".ant-steps-item").nth(index);
   for (let at = 1; at < step; at++) {
-    if (at === 4 && step > 4)
-      await page.getByRole("button", { name: /^Appunti di fisica$/ }).click();
+    if (at === 4 && step > 4) {
+      // The seeded source is in the library, so it comes in through the library picker.
+      await page
+        .getByRole("button", { name: both("Dalla tua libreria", "From your library") })
+        .click();
+      const picker = page.getByRole("dialog");
+      await picker.getByRole("checkbox", { name: /Appunti di fisica/ }).check();
+      await picker
+        .getByRole("button", { name: /^(Aggiungi 1 fonte|Add 1 source)$/ })
+        .click();
+      await expect(picker).toBeHidden();
+    }
     await page
       .getByRole("button", { name: /Continua|Continue/, exact: true })
       .click();
