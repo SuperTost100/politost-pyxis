@@ -59,7 +59,8 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
     const { planId } = await invoke<{ planId: string }>("plans.create", { title: "Fisica", sourceIds: [sourceId] });
     // A lesson cites the first reading's passage: after reading again it must still resolve, marked out of date.
     const [{ id: passageId }] = rows<{ id: string }>(userData, "SELECT id FROM passages WHERE source_id = ? ORDER BY created_at, rowid", sourceId);
-    const seed = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    // The app may still be writing after plan creation; wait for its lock instead of failing at once.
+    const seed = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seed.prepare("INSERT INTO items(id,plan_id,kind,body_json,created_at) VALUES('cites-old',?,'lesson','{}',1)").run(planId);
     seed.prepare("INSERT INTO item_passages(item_id,passage_id) VALUES('cites-old',?)").run(passageId!);
     seed.close();
