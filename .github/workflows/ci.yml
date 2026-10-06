@@ -145,23 +145,14 @@ jobs:
   audit:
     name: route audit ${{ matrix.target }} ${{ matrix.language }}
     if: ${{ !inputs.windows_trace }}
-    runs-on: ${{ matrix.runner }}
+    # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
+    runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         target: [mac-arm64, mac-x64, windows-x64, linux-x64]
         language: [it, en]
-        include:
-          - target: mac-arm64
-            runner: macos-15
-            large: true
-          - target: mac-x64
-            runner: macos-15-intel
-          - target: windows-x64
-            runner: windows-2025
-          - target: linux-x64
-            runner: ubuntu-24.04
         # macOS x64 renders with the same Chromium as macOS arm64; pull requests leave its audit to main.
         exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"target":"mac-x64"}]' || '[]') }}
     defaults:
@@ -188,7 +179,7 @@ jobs:
             export PYXIS_UI_COMBO="$combo"
             export PYXIS_UI_RECORD="ci-audit/audit-$combo.json"
             run_e2e tests/e2e/ui-audit.spec.ts
-            if [ "${{ matrix.large }}" = true ]; then
+            if [ "${{ matrix.target }}" = mac-arm64 ]; then
               export PYXIS_UI_LARGE=1
               export PYXIS_UI_RECORD="ci-audit/audit-$combo-large.json"
               run_e2e tests/e2e/ui-audit.spec.ts
