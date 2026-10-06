@@ -1868,6 +1868,8 @@ export const streams = {} as const;
 export const broadcasts = {
   "job.updated": JobView,
   "engine.disclosure": z.object({ provider: z.string(), pending: z.boolean() }),
+  // Background recomputation of automatic engine choices finished.
+  "engine.auto": z.object({}),
   "engine.login": z.object({
     provider: z.string(),
     type: z.string(),

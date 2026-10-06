@@ -165,7 +165,13 @@ describe("automatic engine choice", () => {
 
   it("recomputes in the background when the engine set changes", async () => {
     const db = openDatabase(":memory:");
-    const handlers = engineHandlers(db, () => undefined, { auto: true });
+    let notified = 0;
+    const handlers = engineHandlers(db, () => undefined, {
+      auto: true,
+      onAuto: () => {
+        notified += 1;
+      },
+    });
     await withFunnel({ claude: true, codex: false }, async () => {
       await handlers.overview();
       await vi.waitFor(() =>
@@ -174,6 +180,10 @@ describe("automatic engine choice", () => {
           auto: true,
         }),
       );
+      // An open engines screen hears about it, so it never shows the old choices.
+      await vi.waitFor(() => expect(notified).toBe(1));
+      await handlers.autoConfigure({});
+      await vi.waitFor(() => expect(notified).toBe(2));
     });
     db.close();
   });

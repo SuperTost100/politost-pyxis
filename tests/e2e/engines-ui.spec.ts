@@ -173,6 +173,8 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping setup navigates to Exams on its own; wait for it so it cannot override the next route.
+    await page.waitForFunction(() => location.hash.startsWith("#/exams"));
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");
       localStorage.removeItem("pyxis.engines.advanced");

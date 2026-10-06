@@ -672,6 +672,7 @@ export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
   );
   engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
     auto: true,
+    onAuto: () => broadcast("engine.auto", {}),
   });
 }
 

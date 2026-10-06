@@ -193,6 +193,14 @@ export function EnginesPanel() {
     () => onBroadcast("engine.login", (event) => loginEvent(event)),
     [client, t],
   );
+  // Pyxis recomputes automatic choices in the background (startup, sign-in, a new CLI); show the result.
+  useEffect(
+    () =>
+      onBroadcast("engine.auto", () => {
+        void client.invalidateQueries({ queryKey: ["engine-features"] });
+      }),
+    [client],
+  );
   const test = useMutation({
     mutationFn: ({
       provider,

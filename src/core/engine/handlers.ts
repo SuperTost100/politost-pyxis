@@ -205,7 +205,7 @@ function readFeatures(db: Database.Database): Record<string, StoredSelection> {
 export function engineHandlers(
   db: Database.Database,
   emit: (event: LoginNotice) => void,
-  options: { auto?: boolean } = {},
+  options: { auto?: boolean; onAuto?: () => void } = {},
 ) {
   // Background recomputation is on in the app and off in unit tests, which
   // check the stored rows right after each call.
@@ -213,7 +213,9 @@ export function engineHandlers(
   let lastAuto = 0;
   function reconfigure(rows?: OverviewRow[]): Promise<unknown> {
     const run = queue.then(() =>
-      autoConfigureEngines(db, { rows }).catch(() => undefined),
+      autoConfigureEngines(db, { rows })
+        .then(() => options.onAuto?.())
+        .catch(() => undefined),
     );
     queue = run;
     return run;
@@ -236,6 +238,8 @@ export function engineHandlers(
       lastAuto = Date.now();
       const run = queue.then(() => autoConfigureEngines(db, input));
       queue = run.catch(() => undefined);
+      // Screens that already read the old choices reload them.
+      void run.then(() => options.onAuto?.()).catch(() => undefined);
       return run;
     },
     async models(input: { provider: ProviderId }) {
