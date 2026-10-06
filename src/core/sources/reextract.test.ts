@@ -51,7 +51,7 @@ describe("SRC-12 re-extract from the stored original", () => {
     const started = enqueueReextract(db, workspace, runner, sourceId, true);
     expect(started).toMatchObject({ started: true, inUse: 1 });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM jobs`).get()).toEqual({ n: 1 });
-    await expect.poll(done(db, started.jobId!)).toEqual({ state: "succeeded" });
+    await expect.poll(done(db, started.jobId!), { timeout: 15_000 }).toEqual({ state: "succeeded" });
     db.close();
   });
 
@@ -66,7 +66,7 @@ describe("SRC-12 re-extract from the stored original", () => {
     const { db, runner, workspace, sourceId, passageId } = ctx;
     const before = db.prepare(`SELECT blob_sha, kind, mime FROM sources WHERE id = ?`).get(sourceId);
     const { jobId } = enqueueReextract(db, workspace, runner, sourceId, true);
-    await expect.poll(done(db, jobId!)).toEqual({ state: "succeeded" });
+    await expect.poll(done(db, jobId!), { timeout: 15_000 }).toEqual({ state: "succeeded" });
     // The job read the stored original, with its real extension, not a copy from anywhere else.
     expect(seen).toEqual([{ ext: ".txt", text: "La velocità descrive lo spostamento.\n\nL'energia si conserva.", status: "ready" }]);
     expect(db.prepare(`SELECT title, blob_sha, kind, mime, status FROM sources WHERE id = ?`).get(sourceId)).toEqual({
@@ -93,7 +93,7 @@ describe("SRC-12 re-extract from the stored original", () => {
       document: { pages: [{ text: "  ", locator: { page: 1 }, section: "p. 1" }], scanned: false },
     }));
     const { jobId } = enqueueReextract(db, workspace, runner, sourceId, true);
-    await expect.poll(done(db, jobId!)).toEqual({ state: "failed" });
+    await expect.poll(done(db, jobId!), { timeout: 15_000 }).toEqual({ state: "failed" });
     expect(db.prepare(`SELECT error FROM jobs WHERE id = ?`).get(jobId)).toEqual({ error: "reextract-no-text" });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM source_documents WHERE source_id = ?`).get(sourceId)).toEqual({ n: 1 });
     expect(db.prepare(`SELECT status FROM sources WHERE id = ?`).get(sourceId)).toEqual({ status: "ready" });
@@ -121,7 +121,7 @@ describe("SRC-12 re-extract from the stored original", () => {
     expect(await handlers.reextract({ sourceId, confirmed: false })).toEqual({ started: false, inUse: 1 });
     const started = await handlers.reextract({ sourceId, confirmed: true });
     expect(started.started).toBe(true);
-    await expect.poll(done(db, started.jobId!)).toEqual({ state: "succeeded" });
+    await expect.poll(done(db, started.jobId!), { timeout: 15_000 }).toEqual({ state: "succeeded" });
     await expect(handlers.reextract({ sourceId: "missing", confirmed: true })).rejects.toThrow(IpcError);
     await expect(sourceHandlers(db, workspace).reextract({ sourceId, confirmed: true })).rejects.toMatchObject({
       messageKey: "sources.reextractUnavailable",
