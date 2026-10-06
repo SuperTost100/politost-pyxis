@@ -8,6 +8,7 @@ import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
 import { Tag } from "../../components/Tag";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
+import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
@@ -991,19 +992,13 @@ export function QuizPage() {
             </div>
           ) : (
             <div className="px-quiz-open">
-              <Input.TextArea
-                aria-label={t("quiz.yourAnswer")}
+              <MathInput
+                ariaLabel={t("quiz.yourAnswer")}
                 rows={6}
                 disabled={locked}
                 value={picks[question.id] ?? ""}
-                onChange={(event) => pick(event.target.value)}
+                onChange={pick}
               />
-              {picks[question.id]?.includes("$") ? (
-                <div className="px-quiz-preview">
-                  <p className="meta">{t("quiz.preview")}</p>
-                  <MarkdownView>{picks[question.id] ?? ""}</MarkdownView>
-                </div>
-              ) : null}
             </div>
           )}
           {result && immediate ? (

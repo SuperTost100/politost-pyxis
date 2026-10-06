@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Modal, Segmented } from "antd";
+import { Button, Modal, Segmented } from "antd";
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { MasteryBar } from "../../components/MasteryBar";
@@ -508,14 +509,14 @@ export function SimulationPage() {
                 })}
               </h2>
               <MarkdownView>{question.stem}</MarkdownView>
-              <Input.TextArea
-                aria-label={t("quiz.yourAnswer")}
+              <MathInput
+                ariaLabel={t("quiz.yourAnswer")}
                 value={shown[question.id] ?? ""}
                 disabled={locked || busy}
                 autoSize={{ minRows: 7, maxRows: 16 }}
                 maxLength={20000}
-                onChange={(event) => {
-                  const next = { ...shown, [question.id]: event.target.value };
+                onChange={(answer) => {
+                  const next = { ...shown, [question.id]: answer };
                   setPicks(next);
                   drafts.current = drafts.current
                     .catch(() => undefined)
@@ -528,10 +529,6 @@ export function SimulationPage() {
                     .catch(() => setNotice(t("simulation.saveFailed")));
                 }}
               />
-              <details className="px-sim-preview">
-                <summary className="small">{t("quiz.preview")}</summary>
-                <MarkdownView>{shown[question.id] ?? ""}</MarkdownView>
-              </details>
             </>
           )}
         </section>

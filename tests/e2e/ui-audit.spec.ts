@@ -152,6 +152,8 @@ const routes = [
   ["ask-panel", "/ask/audit-chat"],
   ["ask-subject-menu", "/ask/audit-chat"],
   ["ask-sources-menu", "/ask/audit-chat"],
+  // The formula keyboard docked in the composer, with a formula already typed.
+  ["ask-formula", "/ask/audit-chat"],
 ] as const;
 
 /** The pinned OCR files the runtime task downloaded once. The audit stages these bytes, it never fetches them. */
@@ -1146,6 +1148,20 @@ async function openState(page: Page, name: string) {
         }),
       ).toBeVisible();
       break;
+    case "ask-formula": {
+      await page
+        .getByRole("button", { name: both("Inserisci formula", "Insert formula") })
+        .click();
+      const keys = page.getByRole("group", {
+        name: both("Tastiera per formule", "Formula keyboard"),
+      });
+      await expect(keys).toBeVisible();
+      await keys
+        .getByRole("button", { name: both("Frazione", "Fraction") })
+        .click();
+      await keys.getByRole("button", { name: "1", exact: true }).click();
+      break;
+    }
     case "ask-python":
       await expect(
         page.getByRole("textbox", {

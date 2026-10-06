@@ -287,6 +287,17 @@ The quoted card above the composer.
 
 - Two lines at most. The remove control is an icon button.
 
+## MathInput and the formula keyboard
+
+A written answer with a sigma button that opens a math field (MathLive) and a four-tab key panel (operations, functions, trigonometry, calculus) inside the layout, under the text. The Composer, quiz open answers, simulation answers and practice answers share it.
+
+**Consumer provides** `value`, `onChange`, `ariaLabel`, and optional `rows` or `autoSize`. The Composer uses the same parts (`FormulaDock`, `MathPreview`, `useFormulaInsert`) around its own textarea.
+
+- "Inserisci" or Enter puts the formula in as `$...$` at the caret and returns focus to the text; Esc closes without inserting. A rendered preview shows while the text holds a closed `$...$` span.
+- Keys are real buttons, so Tab and the arrow keys work: `surface-raised` with `ink`, digits on `surface-overlay`, `radius-md`, the active tab underlined in `primary`. Gold stays out of the panel; keyboard focus uses the system `focus-ring`.
+- MathLive loads on first open (dynamic import). Glyphs use the bundled KaTeX fonts; nothing is fetched and no sounds play, which the CSP requires.
+- Key tooltips and spoken names live under `math.*` in both locale files.
+
 ## Feature layouts added after the initial gallery
 
 - `ExportButton` opens the shared export dialog from plans, lessons, cards, quizzes and simulations. Format selection is keyboard accessible. Progress and original-source inclusion are explicit choices. Native save cancellation leaves the dialog usable.
