@@ -49,7 +49,7 @@ Circular icon-only button for the header, the composer toolbar and message actio
 
 ## SegmentedTabs
 
-Pill tab switcher with UPPERCASE mono labels: the signature Astra-style navigation.
+Pill tab switcher with uppercase mono labels.
 
 **Consumer provides** `items` (`{value, label, icon?, badge?}`), `value` or uncontrolled default, `onChange`, and a `label` for the tablist.
 
@@ -87,7 +87,7 @@ Small mono label that states where content came from or what state it is in.
 
 - Origin tags are mandatory on generated items (SB-03, PLAN-11, LES-32): users must always know if content came from their sources.
 - Each tone carries an icon so meaning never relies on colour.
-- Lowercase text, except `recommended`, which is uppercase like Astra's "CONSIGLIATO".
+- Lowercase text, except `recommended`, which is uppercase.
 - antd: `<Tag bordered={false} color=…>` with the colours in `antd/pyxis-theme.ts`.
 
 ## CitationChip
@@ -150,7 +150,7 @@ A stop on the vertical study path (PLAN-21, PLAN-22).
 
 - Exactly one `current` node, marked by the gold `glow-star`: the student's position.
 - `done` is mint, `locked` is dashed with a lock icon and says what unlocks it.
-- Nodes sit `space-16` apart, joined by 1px `border` connectors that zig-zag like Astra's path; connectors to done nodes use `mastery`.
+- Nodes sit `space-16` apart, joined by 1px `border` connectors that zig-zag; connectors to done nodes use `mastery`.
 - Custom component; antd has no equivalent (Steps is too rigid).
 
 ## GapItem
@@ -198,7 +198,7 @@ An answer option in quizzes and true/false (LES-11, LES-12).
 
 ## Flashcard
 
-A flashcard review with queue counters and the four Algor-style ratings (FC-02…FC-07).
+A flashcard review with queue counters and the four review ratings (FC-02…FC-07).
 
 **Consumer provides** `front`, `back`, `source`, `counters` (`{nuove, apprendimento, padroneggiate}`), `flipped`, and a rating handler.
 

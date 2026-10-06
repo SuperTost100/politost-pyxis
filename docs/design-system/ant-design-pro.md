@@ -33,7 +33,7 @@ Pyxis is built on **Ant Design Pro**: antd v6 plus **ProComponents v3** (`@ant-d
 | --- | --- | --- |
 | App shell | `ProLayout` `layout="top"`, `contentWidth="Fixed"`, `menuRender={false}` | Doors as a centred `Segmented` in `headerContentRender`, settings in `actionsRender` |
 | Page frame | `PageContainer` with `header={{ title: false }}` | Max width 768px, `space-12` top padding |
-| New plan wizard (PLAN-01…07) | `StepsForm` inside a full-screen `Modal` | One question per step, progress bar on top as Astra |
+| New plan wizard (PLAN-01…07) | `StepsForm` inside a full-screen `Modal` | One question per step, progress bar on top |
 | Plan settings, profile, engine form | `ProForm` + `ProFormText`, `ProFormSelect`, `ProFormSlider`, `ProFormDatePicker` | Validation and layout built in |
 | Plan list (PLAN-30/31) | `ProList` with `metas` or a grid of `PlanCard` | Search and subject filter in the toolbar |
 | Sources library (SRC-10…13) | `ProTable` | Type, size, sections, status columns; row actions rename, replace, re-extract |
