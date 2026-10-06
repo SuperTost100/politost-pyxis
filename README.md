@@ -16,7 +16,7 @@ Download the verified macOS Apple Silicon installer from [GitHub releases](https
 - **Windows:** run the NSIS `.exe` installer. Unsigned builds may show SmartScreen. For a build whose origin and checksum you have verified, choose More info → Run anyway.
 - **Linux:** install the `.deb` with your package manager, or make the `.AppImage` executable with `chmod +x` and launch it. Some systems need FUSE for AppImage. Linux API-key storage requires a working OS keyring; Pyxis refuses the plaintext `basic_text` backend.
 
-On first launch, choose your profile and language, then configure and test an engine in Settings. Claude Code and Codex use their installed, authenticated CLIs. Anthropic and OpenAI use an API key saved through OS encryption. Cursor Agent and Antigravity are listed but disabled in this version. Model availability depends on your provider account.
+On first launch, choose your profile and language, then configure and test an engine in Settings. Claude Code, Codex, Cursor Agent and Antigravity use their installed, authenticated CLIs in text-only mode. Anthropic and OpenAI use an API key saved through OS encryption. Model availability depends on your provider account.
 
 ## Privacy
 

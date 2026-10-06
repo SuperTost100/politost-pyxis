@@ -9,6 +9,17 @@ import {
   mapSummarySchema,
 } from "./concept-map";
 
+/** Engines Pyxis offers. Each one runs in CLI Funnel's text-only mode. */
+export const engineProviders = [
+  "claude",
+  "codex",
+  "agent",
+  "antigravity",
+  "anthropic-api",
+  "openai-api",
+] as const;
+export type EngineProvider = (typeof engineProviders)[number];
+
 export const JobState = z.enum([
   "queued",
   "running",
@@ -272,7 +283,7 @@ export const requests = {
   },
   "engines.acknowledge": {
     input: z.object({
-      provider: z.enum(["claude", "codex", "anthropic-api", "openai-api"]),
+      provider: z.enum(engineProviders),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
@@ -282,7 +293,7 @@ export const requests = {
   },
   "engines.disclosureCancel": {
     input: z.object({
-      provider: z.enum(["claude", "codex", "anthropic-api", "openai-api"]),
+      provider: z.enum(engineProviders),
     }),
     output: z.object({ ok: z.literal(true) }),
   },

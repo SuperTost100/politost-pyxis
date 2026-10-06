@@ -42,6 +42,12 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
             page.locator(".engines-list .px-engine").first(),
           ).toBeVisible({ timeout: 30000 });
           await expect(page.locator(".engines-feature-row")).toHaveCount(7);
+          // CLI Funnel enforces text-only access for every offered engine, so none is disabled.
+          for (const name of ["Cursor Agent", "Antigravity"])
+            await expect(
+              page.locator(".engines-list .engines-row", { hasText: name }),
+            ).toHaveCount(1);
+          await expect(page.locator(".engines-row.is-disabled")).toHaveCount(0);
           const details = page.getByRole("button", {
             name:
               language === "en"

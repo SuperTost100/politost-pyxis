@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { IpcError } from "../../shared/ipc";
+import { engineProviders, IpcError } from "../../shared/ipc";
 import { capabilityWarning, type Need } from "./capabilities";
 import { translateEngineError } from "./errors";
 import { getFunnel, runTurn, type ProviderId } from "./funnel";
@@ -13,15 +13,7 @@ const features = [
   "map",
   "vision",
 ] as const;
-const disabled = new Set<ProviderId>(["agent", "antigravity"]);
-const providers = new Set<string>([
-  "claude",
-  "codex",
-  "agent",
-  "antigravity",
-  "anthropic-api",
-  "openai-api",
-]);
+const providers = new Set<string>(engineProviders);
 
 export type LoginNotice = {
   provider: string;
@@ -53,13 +45,26 @@ function kindOf(id: string): "cli" | "api" {
   return id.endsWith("-api") ? "api" : "cli";
 }
 
+/** A CLI runs only when its adapter enforces text-only access. API providers have no machine access. */
+function textOnly(id: string, access: readonly string[] = []): boolean {
+  return kindOf(id) === "api" || access.includes("none");
+}
+
+function disabled(id: string): boolean {
+  const provider = getFunnel().providers[id as ProviderId];
+  return !provider || !textOnly(id, provider.capabilities.access);
+}
+
 export function engineHandlers(
   db: Database.Database,
   emit: (event: LoginNotice) => void,
 ) {
   return {
     async overview() {
-      const rows = await getFunnel().overview();
+      // CLI Funnel also lists providers Pyxis does not offer yet, such as Ollama.
+      const rows = (await getFunnel().overview()).filter((row) =>
+        providers.has(row.id),
+      );
       return Promise.all(
         rows.map(async (row) => {
           let loggedIn = row.auth?.loggedIn ?? false;
@@ -76,7 +81,7 @@ export function engineHandlers(
             kind: kindOf(row.id),
             installed: row.installation.installed,
             loggedIn,
-            disabled: disabled.has(row.id),
+            disabled: !textOnly(row.id, row.capabilities.access),
             version: row.installation.version ?? "",
             path: row.installation.path ?? "",
             withinTestedRange: row.installation.withinTestedRange ?? true,
@@ -104,7 +109,7 @@ export function engineHandlers(
       effort?: string;
       fast?: boolean;
     }) {
-      if (disabled.has(input.provider)) {
+      if (disabled(input.provider)) {
         throw new IpcError("unsupported", "engines.disabled");
       }
       const started = Date.now();
@@ -160,7 +165,9 @@ export function engineHandlers(
           "engines.errors.invalid-selection",
         );
       }
-      const capability = getFunnel().providers[input.provider].capabilities;
+      if (disabled(input.provider))
+        throw new IpcError("unsupported", "engines.disabled");
+      const capability = getFunnel().providers[input.provider]!.capabilities;
       if (
         (input.effort && !capability.effort) ||
         (input.fast && !capability.fast)
@@ -223,7 +230,7 @@ export function engineHandlers(
     async logout(input: { provider: ProviderId }) {
       if (
         !providers.has(input.provider) ||
-        disabled.has(input.provider) ||
+        disabled(input.provider) ||
         input.provider.endsWith("-api")
       )
         throw new IpcError("unsupported", "engines.disabled");
@@ -235,7 +242,7 @@ export function engineHandlers(
     async update(input: { provider: ProviderId }) {
       if (
         !providers.has(input.provider) ||
-        disabled.has(input.provider) ||
+        disabled(input.provider) ||
         input.provider.endsWith("-api")
       )
         throw new IpcError("unsupported", "engines.disabled");
@@ -248,7 +255,7 @@ export function engineHandlers(
     async login(input: { provider: ProviderId }) {
       if (
         !providers.has(input.provider) ||
-        disabled.has(input.provider) ||
+        disabled(input.provider) ||
         input.provider.endsWith("-api")
       )
         throw new IpcError("unsupported", "engines.disabled");
