@@ -2,7 +2,7 @@
 
 ## Report a problem
 
-Don't describe a vulnerability in a public issue. Use [private vulnerability reporting](https://github.com/SuperTost100/politost-pyxis/security/advisories/new) on GitHub if the Security tab offers it. Otherwise open an issue that only asks the maintainer for a private contact, and send the details there.
+Don't describe a vulnerability in a public issue. Report it privately through GitHub: open the repository's Security tab and choose [Report a vulnerability](https://github.com/SuperTost100/politost-pyxis/security/advisories/new). Only the maintainer sees the report.
 
 Include the version shown in Settings → About, the operating system, reproduction steps and a minimal example made from invented content. Do not include API keys, provider authentication files, real source passages or your workspace database.
 
