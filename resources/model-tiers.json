@@ -1,0 +1,42 @@
+{
+  "features": {
+    "chat": { "tier": "fast", "weight": 5 },
+    "map": { "tier": "fast", "weight": 2 },
+    "lesson": { "tier": "mid", "weight": 3 },
+    "vision": { "tier": "mid", "weight": 1 },
+    "default": { "tier": "mid", "weight": 1 },
+    "grading": { "tier": "strong", "weight": 2 },
+    "plan": { "tier": "strong", "weight": 1 }
+  },
+  "unknownFeature": { "tier": "mid", "weight": 1 },
+  "tierCost": { "fast": 1, "mid": 2, "strong": 3 },
+  "tierOrder": {
+    "fast": ["fast", "mid", "strong"],
+    "mid": ["mid", "strong", "fast"],
+    "strong": ["strong", "mid", "fast"]
+  },
+  "effort": { "fast": "low", "mid": "medium", "strong": "high" },
+  "providerOrder": {
+    "fast": ["codex", "claude", "openai-api", "anthropic-api"],
+    "mid": ["claude", "codex", "anthropic-api", "openai-api"],
+    "strong": ["claude", "codex", "anthropic-api", "openai-api"]
+  },
+  "family": {
+    "claude": "claude",
+    "anthropic-api": "claude",
+    "codex": "gpt",
+    "openai-api": "gpt"
+  },
+  "patterns": {
+    "claude": {
+      "fast": ["^claude-haiku-"],
+      "mid": ["^claude-sonnet-"],
+      "strong": ["^claude-opus-", "^claude-fable-"]
+    },
+    "gpt": {
+      "fast": ["-luna$", "-mini$", "-nano$"],
+      "mid": ["-terra$", "^gpt-5(?:\\.\\d+)?$"],
+      "strong": ["-sol$", "-astra$"]
+    }
+  }
+}

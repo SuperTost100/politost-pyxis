@@ -1,6 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { _electron as electron, expect, test } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,6 +38,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           await page.evaluate(
             async ({ language, theme }) => {
               localStorage.setItem("pyxis.lang", language);
+              localStorage.setItem("pyxis.engines.advanced", "1");
               await window.pyxis.setAppearance(theme);
               location.hash = "/settings/engines";
             },
@@ -48,6 +55,15 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
               page.locator(".engines-list .engines-row", { hasText: name }),
             ).toHaveCount(1);
           await expect(page.locator(".engines-row.is-disabled")).toHaveCount(0);
+          // Every function starts automatic. Nothing is pinned on a fresh profile.
+          await expect(
+            page.getByRole("button", {
+              name:
+                language === "en"
+                  ? "Back to automatic choice"
+                  : "Torna alla scelta automatica",
+            }),
+          ).toBeDisabled();
           const details = page.getByRole("button", {
             name:
               language === "en"
@@ -121,5 +137,81 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test("Automatic engines: simple view names who does what, and advanced can pin and return to automatic", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-auto-"));
+  const bin = mkdtempSync(join(tmpdir(), "pyxis-engine-bin-"));
+  // Stand-ins for the two CLIs: they report a version and a signed-in account, nothing more.
+  const fake = (name: string, body: string) => {
+    const path = join(bin, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+    return path;
+  };
+  const env = {
+    ...process.env,
+    PYXIS_USER_DATA: userData,
+    PYXIS_E2E: "1",
+    CLI_FUNNEL_CLAUDE_BIN: fake(
+      "claude",
+      `case "$1" in --version) echo "2.1.0";; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac`,
+    ),
+    CLI_FUNNEL_CODEX_BIN: fake(
+      "codex",
+      `case "$1" in --version) echo "codex-cli 0.150.0";; login) echo "Logged in using ChatGPT";; *) exit 1;; esac`,
+    ),
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({
+    args: [join(process.cwd(), "out/main/index.js")],
+    env,
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await page.evaluate(() => {
+      localStorage.setItem("pyxis.lang", "en");
+      localStorage.removeItem("pyxis.engines.advanced");
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    await expect(page.locator(".engines-summary")).toContainText(
+      "Pyxis uses Codex for chat, maps and grading and Claude Code for plans, lessons and photos.",
+      { timeout: 30000 },
+    );
+    await expect(page.locator(".engines-list .px-engine")).toHaveCount(2);
+    await expect(page.locator(".engines-feature-row")).toHaveCount(0);
+    await page.getByRole("switch", { name: "Advanced options" }).click();
+    await expect(page.locator(".engines-feature-row")).toHaveCount(7);
+    await expect(page.locator(".engines-list .px-engine")).toHaveCount(4);
+    const chat = page
+      .locator(".engines-feature-row")
+      .filter({ has: page.locator('label[for="engine-chat"]') })
+      .locator(".ant-select");
+    await expect(chat).toContainText("Automatic");
+    await expect(page.locator(".engines-auto-model").first()).toBeVisible();
+    // Pin chat to a Claude model, then return everything to automatic.
+    await page.getByRole("combobox", { name: "Chat" }).click();
+    await page
+      .locator(".ant-select-item-option")
+      .filter({ hasText: /claude · /i })
+      .first()
+      .click();
+    await expect(chat).not.toContainText("Automatic");
+    const back = page.getByRole("button", {
+      name: "Back to automatic choice",
+    });
+    await expect(back).toBeEnabled();
+    await back.click();
+    await expect(chat).toContainText("Automatic");
+    await expect(back).toBeDisabled();
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
   }
 });

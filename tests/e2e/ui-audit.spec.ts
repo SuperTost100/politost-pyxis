@@ -531,6 +531,15 @@ const untranslatedKey = new RegExp(
 );
 const both = (it: string, en: string) => new RegExp(`^(${it}|${en})$`);
 
+async function openAdvancedEngines(page: Page) {
+  const toggle = page.getByRole("switch", {
+    name: /^(Opzioni avanzate|Advanced options)$/,
+  });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-checked")) !== "true")
+    await toggle.click();
+}
+
 async function openAddSources(page: Page, tab?: RegExp) {
   await page
     .getByRole("button", { name: both("Aggiungi fonti", "Add sources") })
@@ -1557,6 +1566,7 @@ async function openState(page: Page, name: string) {
       await expect(dialog.getByText(/La forza è il prodotto/)).toBeVisible();
       break;
     case "engine-details":
+      await openAdvancedEngines(page);
       await page
         .getByRole("button", { name: /^(Dettagli di|Details for) / })
         .first()
@@ -1564,6 +1574,7 @@ async function openState(page: Page, name: string) {
       await expect(dialog).toBeVisible();
       break;
     case "engine-details-disabled":
+      await openAdvancedEngines(page);
       await page
         .getByRole("button", {
           name: /^(Dettagli di|Details for) .*(Antigravity)/i,
@@ -1572,12 +1583,14 @@ async function openState(page: Page, name: string) {
       await expect(dialog).toBeVisible();
       break;
     case "engine-add-cli":
+      await openAdvancedEngines(page);
       await page
         .getByRole("button", { name: both("Aggiungi motore", "Add engine") })
         .click();
       await expect(dialog.getByRole("tab", { selected: true })).toBeVisible();
       break;
     case "engine-add-key":
+      await openAdvancedEngines(page);
       await page
         .getByRole("button", { name: both("Aggiungi motore", "Add engine") })
         .click();

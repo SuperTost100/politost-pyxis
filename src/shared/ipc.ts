@@ -230,6 +230,23 @@ const EducationLevelSchema = z.enum([
   "other",
 ]);
 
+const engineFeature = z.enum([
+  "default",
+  "chat",
+  "plan",
+  "lesson",
+  "grading",
+  "map",
+  "vision",
+]);
+const engineSelection = z.object({
+  provider: z.string(),
+  model: z.string(),
+  effort: z.string().optional(),
+  fast: z.boolean().optional(),
+  auto: z.boolean().optional(),
+});
+
 export const requests = {
   "jobs.list": { input: z.object({}), output: z.array(JobView) },
   "jobs.startDemo": {
@@ -319,15 +336,7 @@ export const requests = {
   },
   "engines.setFeature": {
     input: z.object({
-      feature: z.enum([
-        "default",
-        "chat",
-        "plan",
-        "lesson",
-        "grading",
-        "map",
-        "vision",
-      ]),
+      feature: engineFeature,
       provider: z.string(),
       model: z.string(),
       effort: z.string().optional(),
@@ -337,15 +346,20 @@ export const requests = {
   },
   "engines.features": {
     input: z.object({}),
-    output: z.record(
-      z.string(),
-      z.object({
-        provider: z.string(),
-        model: z.string(),
-        effort: z.string().optional(),
-        fast: z.boolean().optional(),
-      }),
-    ),
+    output: z.record(z.string(), engineSelection),
+  },
+  "engines.autoConfigure": {
+    input: z.object({
+      /** Un-pin the listed features (all when omitted) before choosing. */
+      reset: z.boolean().optional(),
+      features: z.array(engineFeature).optional(),
+    }),
+    output: z.object({
+      /** Ids of the engines that are installed, signed in and usable. */
+      ready: z.array(z.string()),
+      /** Feature choices after the update. `auto: true` means Pyxis chose it. */
+      features: z.record(z.string(), engineSelection),
+    }),
   },
   "engines.remove": {
     input: z.object({ provider: z.string() }),

@@ -8,6 +8,7 @@ import {
   attachRendererPort,
   addFileGrants,
   bindEngines,
+  refreshAutoEngines,
   removeEngineSelections,
   bindRunner,
   bindChat,
@@ -82,15 +83,15 @@ if (!parent) {
     setScratch(join(workspacePath, "scratch"));
     // Explicit recorded fixtures may use a deterministic selection in their
     // private test workspace. Normal launches require a confirmed engine.
-    if (
+    const recordedFixture =
       dev &&
       [
         "PYXIS_E2E_PLAN_REPLIES",
         "PYXIS_E2E_MAP_REPLIES",
         "PYXIS_E2E_SIMULATION_REPLIES",
         "PYXIS_E2E_REPLY",
-      ].some((key) => process.env[key])
-    ) {
+      ].some((key) => process.env[key]);
+    if (recordedFixture) {
       db.prepare(
         "INSERT OR IGNORE INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, ?)",
       ).run(
@@ -167,6 +168,8 @@ if (!parent) {
           err instanceof Error ? err.message : "unknown",
         );
       });
+    // Fixture workspaces keep their seeded engine; real ones pick engines from what is ready now.
+    if (!recordedFixture) refreshAutoEngines();
     console.log("pyxis-core ready");
     // Healthy-ready handshake: main waits for this before sending keys/ports.
     port.postMessage({ type: "core-ready" });
@@ -221,6 +224,7 @@ if (!parent) {
           data.removedProvider === "openai-api"
         )
           removeEngineSelections(data.removedProvider);
+        refreshAutoEngines();
         port.postMessage({ type: "keys-applied" });
         jobRunner?.activate();
       })();
