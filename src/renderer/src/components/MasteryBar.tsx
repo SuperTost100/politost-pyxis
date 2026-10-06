@@ -13,7 +13,7 @@ export function MasteryBar({
   showValue?: boolean;
   label: string;
 }) {
-  const v = Math.max(0, Math.min(100, value));
+  const v = Math.round(Math.max(0, Math.min(100, value)));
   return (
     <div
       className="px-mbar"

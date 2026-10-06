@@ -1,6 +1,4 @@
 .px-settings {
-  max-width: 760px;
-  margin-inline: auto;
   padding-bottom: var(--space-12);
 }
 .px-settings > h1 {
@@ -49,11 +47,16 @@
 }
 .px-settings-back {
   margin-bottom: var(--space-5);
+  margin-inline-start: calc(var(--space-3) * -1);
 }
 .px-settings-subpage {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+.px-settings-subpage > .ant-btn,
+.px-settings-subpage .choice-list > .ant-btn {
+  align-self: flex-start;
 }
 .px-settings-subpage .section-label {
   margin-top: var(--space-5);

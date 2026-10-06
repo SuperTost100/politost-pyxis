@@ -99,7 +99,7 @@ export function ReviewPage() {
           <ReviewProgress progress={active.progress} />
         </>
       ) : (
-        <div>
+        <div className="px-review-count">
           <p className="label" id="review-count">
             {t("cards.reviewCount")}
           </p>

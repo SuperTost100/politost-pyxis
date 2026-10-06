@@ -68,3 +68,34 @@
     display: none;
   }
 }
+
+/* Build screen: one centred composition; the step rows stay left-aligned inside their block. */
+.px-build {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  padding-top: var(--space-6);
+  text-align: center;
+}
+.px-build .px-steplines {
+  text-align: left;
+}
+.px-build-status {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-build-notice {
+  width: 100%;
+  max-width: 480px;
+  text-align: left;
+}
+.px-build-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+}
+.px-build-actions:empty {
+  display: none;
+}

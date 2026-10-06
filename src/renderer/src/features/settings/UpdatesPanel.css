@@ -21,3 +21,14 @@
   overflow-y: auto;
   white-space: pre-wrap;
 }
+
+/* The page title already says "Updates"; stack the status lines and actions with one rhythm. */
+.px-updates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.px-updates > p {
+  margin: 0;
+}

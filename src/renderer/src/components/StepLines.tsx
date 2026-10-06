@@ -11,10 +11,13 @@ export type StepLine = {
   meta?: string;
 };
 
-const STATE_ICON: Record<StepLineState, { name: IconName; className?: string }> =
+const STATE_ICON: Record<
+  StepLineState,
+  { name: IconName; className?: string; spin?: boolean }
+> =
   {
     pending: { name: "circle" },
-    running: { name: "loader-circle", className: "px-spin" },
+    running: { name: "loader-circle", spin: true },
     done: { name: "circle-check", className: "is-done" },
     failed: { name: "circle-x", className: "is-failed" },
   };
@@ -38,7 +41,11 @@ export function StepLines({
                 .join(" ")}
               aria-hidden
             >
-              <Icon name={icon.name} size={18} />
+              <Icon
+                name={icon.name}
+                size={18}
+                className={icon.spin ? "px-spin" : undefined}
+              />
             </span>
             <span className="px-stepline-label">{step.label}</span>
             {step.meta ? (

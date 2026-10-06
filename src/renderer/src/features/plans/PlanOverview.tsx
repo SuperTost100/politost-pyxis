@@ -718,7 +718,8 @@ export function PlanPage() {
                 key: "actions",
                 render: (_, source) => (
                   <Button
-                    type="text"
+                    size="small"
+                    shape="round"
                     disabled={busy}
                     onClick={() =>
                       modal.confirm({
@@ -744,7 +745,6 @@ export function PlanPage() {
             ]}
           />
           <Button
-            type="primary"
             onClick={() => {
               setSelectedSources([]);
               setPickerOpen(true);
@@ -956,6 +956,7 @@ export function PlanPage() {
                 i18n.language.startsWith("it") ? "DD/MM/YYYY" : "DD/MM/YYYY"
               }
               disabled={busy}
+              style={{ width: "100%" }}
             />
           </Form.Item>
           <p className="small">
