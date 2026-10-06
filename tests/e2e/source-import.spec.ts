@@ -57,6 +57,8 @@ async function start() {
   });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
+  // Skipping setup navigates to Exams on its own; wait so it cannot override a later route.
+  await expect(page).toHaveURL(/#\/exams$/);
   return { app, page, userData, notes, files };
 }
 
