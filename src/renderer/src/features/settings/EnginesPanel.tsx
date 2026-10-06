@@ -16,13 +16,12 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { RequestOutput } from "@shared/ipc";
+import { engineProviders as providers, type RequestOutput } from "@shared/ipc";
 import { EngineRow } from "../../components/EngineRow";
 import { Notice } from "../../components/Notice";
 import { invoke, onBroadcast } from "../../lib/ipc";
 import "./EnginesPanel.css";
 
-const providers = ["claude", "codex", "anthropic-api", "openai-api"] as const;
 const featureNames = [
   "default",
   "chat",

@@ -559,7 +559,9 @@ let auditUserData = "";
 let auditApp: ElectronApplication | undefined;
 let auditPicked = "";
 function withDb(work: (db: DatabaseSync) => void) {
-  const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"));
+  const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"), {
+    timeout: 10000,
+  });
   try {
     work(db);
   } finally {
@@ -1868,7 +1870,9 @@ test("M14 every application route in both languages, themes and supported widths
         ]),
       ),
     );
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
+      timeout: 10000,
+    });
     seed(db);
     db.close();
     const pageErrors: string[] = [];

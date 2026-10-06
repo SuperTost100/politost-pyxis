@@ -62,7 +62,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       )
       .toBe("ready");
     const original = await page.evaluate(() => window.pyxis.workspacePath());
-    const db = new DatabaseSync(join(original, "pyxis.db"));
+    const db = new DatabaseSync(join(original, "pyxis.db"), { timeout: 10000 });
     db.exec(
       "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('move-plan','Energy','ready',1,1)",
     );

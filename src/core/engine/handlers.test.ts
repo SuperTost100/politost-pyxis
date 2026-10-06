@@ -184,9 +184,11 @@ describe("engine status and login recovery", () => {
         throw new Error("fixture failure");
       },
     };
-    vi.mocked(getFunnel).mockReturnValueOnce({
+    const fake = {
+      providers: { claude: { capabilities: { access: ["none"] } } },
       login: () => session,
-    } as unknown as ReturnType<typeof getFunnel>);
+    } as unknown as ReturnType<typeof getFunnel>;
+    vi.mocked(getFunnel).mockReturnValueOnce(fake).mockReturnValueOnce(fake);
     const handlers = engineHandlers(db, emit);
     await handlers.login({ provider: "claude" });
     await vi.waitFor(() =>
@@ -196,5 +198,73 @@ describe("engine status and login recovery", () => {
       handlers.sendCode({ provider: "claude", code: "fixture" }),
     ).toThrow();
     db.close();
+  });
+});
+
+describe("text-only engines", () => {
+  const row = (id: string, access: string[]) => ({
+    id,
+    displayName: id,
+    installation: { installed: true },
+    auth: { loggedIn: true },
+    capabilities: { effort: false, fast: false, access },
+  });
+
+  it("enables Cursor Agent and Antigravity through the bundled CLI Funnel", () => {
+    const { providers } = getFunnel();
+    expect(providers.agent.capabilities.access).toContain("none");
+    expect(providers.antigravity.capabilities.access).toContain("none");
+    const db = openDatabase(":memory:");
+    engineHandlers(db, () => undefined).setFeature({
+      feature: "default",
+      provider: "antigravity",
+      model: "test",
+    });
+    expect(selectionFor(db, "plan").provider).toBe("antigravity");
+    db.close();
+  });
+
+  it("disables a CLI whose adapter cannot enforce text-only access and hides unsupported providers", async () => {
+    const db = openDatabase(":memory:");
+    const fake = {
+      overview: async () => [
+        row("agent", ["none", "auto", "full"]),
+        row("antigravity", ["accept-edits", "full"]),
+        row("ollama", []),
+      ],
+      providers: { antigravity: { capabilities: { access: ["full"] } } },
+    } as unknown as ReturnType<typeof getFunnel>;
+    const real = vi.mocked(getFunnel).getMockImplementation()!;
+    vi.mocked(getFunnel).mockImplementation(() => fake);
+    try {
+      const handlers = engineHandlers(db, () => undefined);
+      expect(
+        (await handlers.overview()).map(({ id, disabled }) => [id, disabled]),
+      ).toEqual([
+        ["agent", false],
+        ["antigravity", true],
+      ]);
+      await expect(
+        handlers.test({ provider: "antigravity", model: "test" }),
+      ).rejects.toThrow();
+      expect(() =>
+        handlers.setFeature({
+          feature: "default",
+          provider: "antigravity",
+          model: "test",
+        }),
+      ).toThrow();
+      await expect(
+        handlers.login({ provider: "antigravity" }),
+      ).rejects.toThrow();
+      expect(runTurn).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          selection: expect.objectContaining({ provider: "antigravity" }),
+        }),
+      );
+    } finally {
+      vi.mocked(getFunnel).mockImplementation(real);
+      db.close();
+    }
   });
 });

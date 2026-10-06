@@ -112,7 +112,9 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
       (planId) => window.pyxis.invoke("plans.read", { planId }),
       created.planId,
     )) as { topics: Array<{ id: string }> };
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
+      timeout: 10000,
+    });
     const insert = db.prepare(
       "INSERT INTO learning_events (id,kind,plan_id,topic_id,payload_json,created_at) VALUES (?,?,?,?,?,?)",
     );

@@ -16,7 +16,7 @@ The result carries text, provider, model and input-token usage. Structured reque
 
 `selectionFor(db, feature)` reads `feature_engines`. An unset feature uses `default`; an unset default currently falls back to provider `claude`, model `claude-sonnet-5`. This is a fallback ID, not a guarantee that the account can access it. The engine screen discovers available models and tests the selected one.
 
-Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`. Enabled providers are `claude`, `codex`, `anthropic-api` and `openai-api`. Cursor `agent` and `antigravity` remain disabled. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
+Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`. Providers are `claude`, `codex`, Cursor `agent`, `antigravity`, `anthropic-api` and `openai-api`. A CLI provider is disabled unless its CLI Funnel adapter lists `none` in `capabilities.access`. CLI Funnel 0.3 runs Cursor Agent in ask mode from its own workspace, whose `.cursor/cli.json` denies shell, file reads and writes, web fetches and MCP tools. It runs Antigravity with a pre-tool hook that denies every tool. Cursor's grep and glob tools still run, but only inside that empty workspace. Other CLI Funnel providers, such as `gemini-api` and `ollama`, are not offered. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
 
 ## Templates and schemas
 
