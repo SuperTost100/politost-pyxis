@@ -185,6 +185,7 @@ test("Quiz: an open answer takes a formula from the keyboard and previews it", a
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
     const source = (await importPickedSource(page, app, file)) as { sourceId: string };
     await expect
       .poll(async () => {
