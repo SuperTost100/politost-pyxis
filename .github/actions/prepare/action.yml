@@ -1,0 +1,65 @@
+name: Prepare Pyxis checkout
+description: Installs dependencies and, when asked, the pinned fixtures and built workers.
+
+inputs:
+  fixtures:
+    description: Restore and verify the pinned Python, OCR and embedding fixtures
+    default: "false"
+  build:
+    description: Build the app into out/
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: 26
+        cache: npm
+    - name: Install Linux display and Electron libraries
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libfuse2 apparmor
+    - shell: bash
+      run: npm ci
+    - name: Allow the Electron test binary to use its namespace sandbox
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+          binary="$(node -p "require('electron')")"
+          sudo tee /etc/apparmor.d/pyxis-ci >/dev/null <<EOF
+        profile pyxis-ci "$binary" flags=(unconfined) {
+          userns,
+        }
+        EOF
+          sudo apparmor_parser -r /etc/apparmor.d/pyxis-ci
+        fi
+    - name: Collect Windows native faults locally
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $crash = Join-Path (Get-Location) $env:PYXIS_CRASH_DIR
+        New-Item -ItemType Directory -Force $crash | Out-Null
+        $key = 'HKLM:\Software\Microsoft\Windows\Windows Error Reporting\LocalDumps\electron.exe'
+        New-Item -Path $key -Force | Out-Null
+        New-ItemProperty -Path $key -Name DumpFolder -Value $crash -PropertyType ExpandString -Force | Out-Null
+        New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
+    # The fixture script checks every file's SHA-256 and downloads again on a mismatch, so a restored cache is never trusted as is.
+    - name: Restore pinned fixtures
+      if: inputs.fixtures == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          .tmp/pyodide
+          .tmp/tessdata-fast
+          .tmp/e5
+        key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/prepare-fixtures.ts', 'resources/pyodide-manifest.json', 'src/core/sources/ocr-data.ts', 'src/core/sources/embed.ts') }}
+    - if: inputs.fixtures == 'true'
+      shell: bash
+      run: npm run test:fixtures
+    - if: inputs.build == 'true'
+      shell: bash
+      run: npm run build

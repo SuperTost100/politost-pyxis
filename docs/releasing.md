@@ -1,16 +1,16 @@
 # Release checks
 
-The public repository is https://github.com/SuperTost100/politost-pyxis. Hosted checks start on push; their results must be inspected before claiming other-platform packages verified. Packaging never publishes automatically.
+The public repository is https://github.com/SuperTost100/politost-pyxis. Hosted checks start on pull requests and pushes to `main`, or manually for another branch; their results must be inspected before claiming other-platform packages verified. Packaging never publishes automatically.
 
 The package homepage points to the repository. Linux maintainer metadata uses the authenticated owner SuperTost100 and their GitHub noreply address.
 
 ## Build targets
 
-`.github/workflows/ci.yml` uses a four-target matrix: macOS arm64 on `macos-15`, macOS x64 on `macos-15-intel`, Windows x64 on `windows-2025`, and Linux x64 on `ubuntu-24.04`. Linux CI installs Xvfb and a runner-local AppArmor profile scoped to the Electron test executable. This permits Chromium's namespace sandbox without adding `--no-sandbox` to the app. The profile addresses the [upstream Ubuntu restriction](https://github.com/electron/electron/issues/41066).
+`.github/workflows/ci.yml` uses a four-target matrix: macOS arm64 on `macos-15`, macOS x64 on `macos-15-intel`, Windows x64 on `windows-2025`, and Linux x64 on `ubuntu-24.04`. Each target has separate test, packaging and route-audit jobs; the audit is split by language, and pull requests skip the macOS x64 audit. Shared setup is in `.github/actions/prepare`, which caches the pinned fixtures and still verifies their SHA-256. Linux CI installs Xvfb and a runner-local AppArmor profile scoped to the Electron test executable. This permits Chromium's namespace sandbox without adding `--no-sandbox` to the app. The profile addresses the [upstream Ubuntu restriction](https://github.com/electron/electron/issues/41066).
 
 These labels follow the [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). Each target explicitly installs Electron from the lockfile, verifies pinned Python/OCR/embedding fixtures, builds the workers, checks types, runs unit and recorded native UI tests, and builds installers with `--publish never`. Route audits use a fresh application process per theme/language/width. The arm64 Mac job also audits largest text.
 
-Installers and their SHA-256 checksums are uploaded as separate per-target artifacts. A follow-up job on push/manual runs generates [build provenance through actions/attest](https://github.com/actions/attest). Pull requests have read-only permissions and do not request attestations. Public repositories support attestations on current GitHub plans; private repositories need Enterprise Cloud. Uploading an Actions artifact does not create a public release.
+Installers and their SHA-256 checksums are uploaded as separate per-target artifacts. A follow-up job on `main` and manual runs generates [build provenance through actions/attest](https://github.com/actions/attest). Pull requests have read-only permissions and do not request attestations. Public repositories support attestations on current GitHub plans; private repositories need Enterprise Cloud. Uploading an Actions artifact does not create a public release.
 
 A manual dispatch with `windows_trace=true` runs the recorded Windows OCR/release checks without units, route audits, packaging or attestations. It is diagnostic coverage, not a release gate. Windows diagnostics keep crash dumps on the ephemeral runner and print only exception and module metadata; the dumps are never uploaded. Crashpad collection requires the explicit E2E seam and `PYXIS_CRASH_DIR`, and uploads are disabled.
 

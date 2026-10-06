@@ -27,7 +27,7 @@ Use the existing design tokens and components. Keep English and Italian copy in 
 
 Commit messages should name the area and the change, for example `fix: preserve quiz answers on retry`. Keep fixes reviewable and explain a deliberate limitation. Do not commit API keys, user workspaces, `.tmp/`, `.reviews/`, `out/` or `dist/`. Screenshots committed under `docs/screenshots/` must use fixture material.
 
-The workflow in `.github/workflows/ci.yml` checks and packages macOS arm64, macOS x64, Windows x64 and Linux x64 on pushes and pull requests. Source tests, route audits and packaged-app checks must pass before release. See [release checklist](docs/releasing.md) for checksums, provenance and installed-app checks.
+The workflow in `.github/workflows/ci.yml` checks and packages macOS arm64, macOS x64, Windows x64 and Linux x64 on pull requests and pushes to `main`; other branches can start it manually. Tests, route audits and packaging run as parallel jobs. Pull requests skip the macOS x64 route audit, which runs on `main`. Source tests, route audits and packaged-app checks must pass before release. See [release checklist](docs/releasing.md) for checksums, provenance and installed-app checks.
 
 Work on a branch and open a pull request against `main`. Explain the resulting behavior and the checks you ran. Keep native platform results separate from local results, and resolve review findings before merging. Run local Electron checks with `PYXIS_E2E_HIDDEN=1` to avoid bringing windows to the foreground. On Linux, use `xvfb-run -a npx playwright test` after building.
 
