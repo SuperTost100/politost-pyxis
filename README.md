@@ -32,7 +32,7 @@
 
 A fluent answer is no use if you can't check it. Pyxis answers from the material you import. Lessons and chat replies carry numbered citations that open the exact passage they came from, and each flashcard shows its source passage on the back. When Pyxis writes from general knowledge instead, it labels the text that way.
 
-Pyxis has no account, no subscription and no server of its own. The workspace is a SQLite file and a folder of blobs on your disk. You connect the model provider you already use: Claude Code, Codex, or an Anthropic or OpenAI API key. That provider may charge you for usage; Pyxis does not.
+Pyxis has no account, no subscription and no server of its own. The workspace is a SQLite file and a folder of blobs on your disk. You connect the AI tools you already use: Claude Code, Codex, Cursor Agent or Antigravity, or an Anthropic or OpenAI API key. Your provider may charge for usage. Pyxis doesn't.
 
 The app is in English and Italian, with dark and light themes.
 
@@ -46,7 +46,7 @@ The app is in English and Italian, with dark and light themes.
 
 **Close knowledge gaps.** Two wrong answers on a topic in one quiz open a gap. Pyxis asks the model what misconception the answers show, builds a drill for it, and closes the gap after two clean sessions on different days.
 
-**Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
+**Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. The Σ button opens a formula keyboard, which also works in quiz, practice and simulation answers. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
 
 **Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Back up the whole workspace to one ZIP and restore it on another computer.
 
@@ -103,16 +103,23 @@ Pyxis checks GitHub for a new release at most once a day and links you to it. It
 
 ### First launch
 
-Choose a profile and a language, then open Settings → Engines and connect a provider:
+First setup takes four short steps, and Skip on the first screen jumps past all of them:
 
-| Engine        | How it connects                                |
-| ------------- | ---------------------------------------------- |
-| Claude Code   | Uses your installed and signed-in `claude` CLI |
-| Codex         | Uses your installed and signed-in `codex` CLI  |
-| Anthropic API | API key, encrypted with the OS key store       |
-| OpenAI API    | API key, encrypted with the OS key store       |
+1. **About you.** Name, level, school and course. They stay on your computer.
+2. **AI engines.** Pyxis looks for the tools below and tells you what it found. It sends nothing to a model at this step.
+3. **Photos and scans.** Optionally download the English and Italian OCR data (about 7 MB), so Pyxis can read photos and scans on your computer.
+4. **Privacy.** The crash-report switch. For now it only records your choice. Pyxis has no crash reporter yet.
 
-Press Test before you build your first plan. You can assign a different engine to chat, plans, lessons, grading, maps and image reading. Cursor Agent and Antigravity are listed but disabled in this version.
+| Engine        | How it connects                           |
+| ------------- | ----------------------------------------- |
+| Claude Code   | Your installed and signed-in `claude` CLI |
+| Codex         | Your installed and signed-in `codex` CLI  |
+| Cursor Agent  | Your installed and signed-in `agent` CLI  |
+| Antigravity   | Your installed and signed-in `agy` CLI    |
+| Anthropic API | API key, encrypted with the OS key store  |
+| OpenAI API    | API key, encrypted with the OS key store  |
+
+Pyxis runs the CLIs in text-only mode, so they can't use their shell, file or web tools. It picks an engine and model for each job itself. Chat and maps get a fast model, lessons a mid-range one, and plans and grading the strongest. With several CLIs signed in, it spreads the work across them. API keys come into play only when no CLI is ready, because they bill per token. To pin a different choice, open Settings → Engines. [Engines](docs/engines.md#automatic-choice) lists the defaults for each combination.
 
 ## Your data
 
@@ -125,7 +132,7 @@ These actions send data off your computer:
 - **Optional downloads.** The search model, the Python runtime and the OCR language files are fetched once, after you agree, and checked against pinned SHA-256 hashes.
 - **Update check.** Pyxis asks GitHub for the latest release tag. It sends no workspace content.
 
-Pyxis has no telemetry. Backups and exported plans can contain your course material, so treat them as private files. API keys are never written to the workspace or to backups. [SECURITY.md](SECURITY.md) lists every network request and where each file lives.
+Pyxis has no telemetry and uploads no crash reports. Backups and exported plans can contain your course material, so treat them as private files. API keys are never written to the workspace or to backups. [SECURITY.md](SECURITY.md) lists every network request and where each file lives.
 
 ## Build from source
 
