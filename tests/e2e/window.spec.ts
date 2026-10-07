@@ -163,7 +163,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .click();
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Scegli un file", exact: true })
+      .getByRole("button", { name: "Scegli i file", exact: true })
       .click();
     await expect(
       page.getByRole("button", { name: "Motion", exact: true }),
@@ -214,7 +214,14 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     for (let step = 0; step < 3; step++) {
       await page.getByRole("button", { name: "Continua", exact: true }).click();
     }
-    await page.getByRole("button", { name: "Motion", exact: true }).click();
+    // The book is in the library already, so it comes in through the library picker.
+    await page
+      .getByRole("button", { name: "Dalla tua libreria", exact: true })
+      .click();
+    const picker = page.getByRole("dialog", { name: "Aggiungi dalla libreria" });
+    await picker.getByRole("checkbox", { name: /Motion/ }).check();
+    await picker.getByRole("button", { name: /^Aggiungi 1 fonte$/ }).click();
+    await expect(page.getByText("1 fonte nel piano")).toBeVisible();
     for (let step = 0; step < 2; step++) {
       await page.getByRole("button", { name: "Continua", exact: true }).click();
     }

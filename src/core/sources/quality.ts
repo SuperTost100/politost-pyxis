@@ -67,13 +67,26 @@ export async function hashFiles(paths: string[], maxBytes: number): Promise<Arra
   return out;
 }
 
-export function isDuplicateBlob(db: Database.Database, sha: string): boolean {
+/**
+ * The newest source whose current file has this hash and that is still usable: reading, waiting or ready.
+ * A removed, failed, cancelled or interrupted source does not count, so importing that file again starts over.
+ */
+export function existingSourceFor(
+  db: Database.Database,
+  sha: string,
+): string | null {
   const row = db
     .prepare(
-      `SELECT 1 AS n FROM sources WHERE blob_sha = ? AND status != 'removed'`,
+      `SELECT id FROM sources
+       WHERE blob_sha = ? AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+       ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
-    .get(sha);
-  return row != null;
+    .get(sha) as { id: string } | undefined;
+  return row?.id ?? null;
+}
+
+export function isDuplicateBlob(db: Database.Database, sha: string): boolean {
+  return existingSourceFor(db, sha) != null;
 }
 
 export function qualityFlags(input: {

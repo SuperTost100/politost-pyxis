@@ -1708,7 +1708,12 @@ export const requests = {
   },
   "sources.preview": {
     input: z.object({ path: z.string() }),
-    output: z.object({ duplicate: z.boolean(), blurry: z.boolean() }),
+    output: z.object({
+      duplicate: z.boolean(),
+      blurry: z.boolean(),
+      /** The newest usable source with the same file. Importing it again would only make a second copy. */
+      existingSourceId: z.string().optional(),
+    }),
   },
   "sources.rename": {
     input: z.object({ sourceId: z.string(), title: z.string() }),

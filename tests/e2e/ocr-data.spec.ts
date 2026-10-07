@@ -126,7 +126,7 @@ test("OCR data: a refused photo asks first, the app downloads the pinned files o
     await app.evaluate((_, path) => {
       process.env.PYXIS_E2E_FILE = path;
     }, HEIC);
-    await dialog.getByRole("button", { name: "Scegli un file" }).click();
+    await dialog.getByRole("button", { name: "Scegli i file" }).click();
     await expect(
       dialog.getByText(/Per leggere questo file Pyxis ha bisogno/),
     ).toBeVisible();

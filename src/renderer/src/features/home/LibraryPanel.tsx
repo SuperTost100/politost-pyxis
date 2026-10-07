@@ -1,6 +1,6 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Modal, Select, Dropdown, Drawer } from "antd";
+import { Button, Input, Modal, Progress, Select, Dropdown, Drawer } from "antd";
 import { ProTable, type ProColumns } from "@ant-design/pro-components";
 import {
   BookMarked,
@@ -33,15 +33,33 @@ const messageKeyOf = (err: unknown): string =>
 
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
+/** The folder a file sits in, so two files with one name can be told apart in a checklist. */
+const parentName = (path: string) => path.split(/[\\/]/).slice(-2, -1)[0] ?? "";
+
 const sizeText = (bytes: number) =>
   bytes >= 1024 * 1024
     ? `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024)} MB`
     : `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024)} KB`;
 
+/** What an import run did, kept on screen until the student closes it or starts another run. */
+type ImportResult = {
+  /** Files that became new sources. A file already in the library is not counted: its source is reused. */
+  imported: number;
+  notes: Array<{ name: string; text: string }>;
+  failed: Array<{ name: string; key: string }>;
+  skipped: number;
+};
+
 export function LibraryPanel({
   importOnly = false,
   onClose,
-}: { importOnly?: boolean; onClose?: () => void } = {}) {
+  onImported,
+}: {
+  importOnly?: boolean;
+  onClose?: () => void;
+  /** Called with the ids of the sources an import just created, so a caller can use them right away. */
+  onImported?: (sourceIds: string[]) => void;
+} = {}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -96,6 +114,15 @@ export function LibraryPanel({
   const [folderFiles, setFolderFiles] = useState<
     Array<{ path: string; name: string; duplicate: boolean; selected: boolean }>
   >([]);
+  // The folder a scan has read, so an empty answer can say so instead of showing nothing.
+  const [folderScanned, setFolderScanned] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState<{
+    done: number;
+    total: number;
+    name: string;
+  } | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
   // A folder scan stops at a file count and a depth. The student is told when it did.
   const [folderCut, setFolderCut] = useState<{
     files: boolean;
@@ -172,12 +199,13 @@ export function LibraryPanel({
   }, [page.data, opened.data]);
 
   const [dragging, setDragging] = useState(false);
-  // One path for the picker and for a drop. A drop gets its grant from main before core sees a path.
+  // One path for the picker, a drop and a folder. A drop gets its grant from main before core sees a path.
   const add = useMutation({
     mutationFn: async (input: { dropped?: File[]; paths?: string[] }) => {
       setWarning(null);
       setError(null);
       setAgain(null);
+      setResult(null);
       let paths: string[];
       let skipped = 0;
       if (input.dropped) {
@@ -189,56 +217,90 @@ export function LibraryPanel({
       } else {
         paths =
           (await window.pyxis.showOpenDialog({
-            properties: ["openFile"],
+            properties: ["openFile", "multiSelections"],
             filters: [
               { name: t("exams.sources"), extensions: [...SOURCE_EXTENSIONS] },
             ],
           })) ?? [];
       }
-      const notes: string[] = [];
-      let last: { sourceId: string } | null = null;
-      let at = 0;
+      if (!paths.length && skipped) throw { messageKey: "sources.dropSkipped" };
+      if (!paths.length) return null;
+      const outcome: ImportResult & { ids: string[]; done: string[] } = {
+        imported: 0,
+        notes: [],
+        failed: [],
+        skipped,
+        ids: [],
+        done: [],
+      };
+      let firstError: unknown;
       try {
         for (const [index, path] of paths.entries()) {
-          at = index;
-          const preview = await invoke("sources.preview", { path });
-          const found = [
-            preview.duplicate ? t("sources.duplicate") : "",
-            preview.blurry ? t("sources.blurry") : "",
-          ].filter(Boolean);
-          notes.push(
-            ...(paths.length > 1
-              ? found.map((note) => `${fileName(path)}: ${note}`)
-              : found),
-          );
-          last = await invoke("sources.import", { path });
+          setProgress({ done: index, total: paths.length, name: fileName(path) });
+          try {
+            const preview = await invoke("sources.preview", { path });
+            if (preview.blurry)
+              outcome.notes.push({
+                name: fileName(path),
+                text: t("sources.blurry"),
+              });
+            if (preview.existingSourceId) {
+              // The same bytes are already in the library. That source is used, no second copy is made.
+              outcome.notes.push({
+                name: fileName(path),
+                text: t("sources.reused"),
+              });
+              outcome.ids.push(preview.existingSourceId);
+            } else {
+              const value = await invoke("sources.import", { path });
+              outcome.ids.push(value.sourceId);
+              outcome.imported += 1;
+            }
+            outcome.done.push(path);
+          } catch (err) {
+            // The files from the refused one on stay chosen, so nothing has to be picked or dropped again.
+            if (isOcrRefusal(messageKeyOf(err))) {
+              const rest = paths.slice(index);
+              setAgain({
+                label: t("sources.ocrData.again.import", { count: rest.length }),
+                run: () => add.mutate({ paths: rest }),
+              });
+              throw err;
+            }
+            // One unreadable file does not stop the others. It is listed in the result.
+            firstError ??= err;
+            outcome.failed.push({
+              name: fileName(path),
+              key: messageKeyOf(err),
+            });
+          }
         }
-      } catch (err) {
-        // The files from the refused one on stay chosen, so nothing has to be picked or dropped again.
-        if (isOcrRefusal(messageKeyOf(err))) {
-          const rest = paths.slice(at);
-          setAgain({
-            label: t("sources.ocrData.again.import", { count: rest.length }),
-            run: () => add.mutate({ paths: rest }),
-          });
-        }
-        throw err;
       } finally {
-        if (last) void client.invalidateQueries({ queryKey: ["sources"] });
+        setProgress(null);
+        // Files already in stay out of the checklist, whether the run finished or stopped on a refusal.
+        const imported = new Set(outcome.done);
+        if (imported.size)
+          setFolderFiles((current) =>
+            current.filter((file) => !imported.has(file.path)),
+          );
+        if (outcome.ids.length) {
+          void client.invalidateQueries({ queryKey: ["sources"] });
+          onImported?.([...new Set(outcome.ids)]);
+        }
       }
-      if (!paths.length && skipped) throw { messageKey: "sources.dropSkipped" };
-      return last ? { last, notes, skipped } : null;
+      // Nothing came in and something failed: the error shows as a notice, with its own recovery.
+      if (!outcome.ids.length && firstError) throw firstError;
+      return outcome;
     },
     onSuccess: (value) => {
       if (!value) return;
-      setSourceId(value.last.sourceId);
+      const last = value.ids[value.ids.length - 1];
+      if (last) setSourceId(last);
       setChapter(null);
-      const notes = value.skipped
-        ? [...value.notes, t("sources.dropSkipped")]
-        : value.notes;
-      // A warning stays on screen. Closing the dialog would hide it.
-      if (notes.length) setWarning(notes.join(" "));
-      else closeAdd();
+      // A single clean import has nothing more to say. Anything else stays on screen, closing would hide it.
+      if (value.imported === 1 && !value.notes.length && !value.failed.length && !value.skipped)
+        closeAdd();
+      else setResult(value);
     },
     onError: (err: unknown) => setError(messageKeyOf(err)),
   });
@@ -251,39 +313,38 @@ export function LibraryPanel({
     setAgain(retry ?? null);
   }
 
-  async function importPath(path: string): Promise<void> {
-    const preview = await invoke("sources.preview", { path });
-    const notes = [
-      preview.duplicate ? t("sources.duplicate") : "",
-      preview.blurry ? t("sources.blurry") : "",
-    ].filter(Boolean);
-    setWarning(notes.length > 0 ? notes.join(" ") : null);
-    const value = await invoke("sources.import", { path });
-    void client.invalidateQueries({ queryKey: ["sources"] });
-    setSourceId(value.sourceId);
-    setChapter(null);
-  }
-
-  /** The ticked files go in one by one. A file that local OCR refused, and those after it, stay ticked to run again. */
-  function importChosen(
-    files = folderFiles.filter((file) => file.selected),
-  ): void {
+  /** Reads a picked folder and lists what it holds. An empty folder is said out loud, and a failure shows as a notice. */
+  async function pickFolder(): Promise<void> {
     setError(null);
     setAgain(null);
-    let left = files;
-    void (async () => {
-      while (left.length) {
-        await importPath(left[0]!.path);
-        left = left.slice(1);
-      }
-      setFolderFiles([]);
-    })().catch((err: unknown) => {
-      const rest = left;
-      fail(err, {
-        label: t("sources.ocrData.again.importChosen"),
-        run: () => importChosen(rest),
+    setResult(null);
+    setScanning(true);
+    try {
+      const picked = await window.pyxis.showOpenDialog({
+        properties: ["openDirectory"],
       });
-    });
+      const folder = picked?.[0];
+      if (!folder) return;
+      const scan = await invoke("sources.scanFolder", { path: folder });
+      setFolderCut(
+        scan.cappedFiles || scan.cappedDepth
+          ? {
+              files: scan.cappedFiles,
+              depth: scan.cappedDepth,
+              limit: scan.limit,
+            }
+          : null,
+      );
+      setFolderScanned(fileName(folder));
+      setFolderFiles(
+        // A file already in the library is ticked too: adding it uses the source that is there.
+        scan.files.map((file) => ({ ...file, selected: true })),
+      );
+    } catch (err) {
+      fail(err);
+    } finally {
+      setScanning(false);
+    }
   }
 
   async function readScan(
@@ -365,6 +426,7 @@ export function LibraryPanel({
       setLinkUrl("");
       void client.invalidateQueries({ queryKey: ["sources"] });
       setSourceId(value.sourceId);
+      onImported?.([value.sourceId]);
       linkPreview.reset();
       closeAdd();
     },
@@ -586,6 +648,10 @@ export function LibraryPanel({
   ];
   function closeAdd() {
     setAddOpen(false);
+    setResult(null);
+    setFolderFiles([]);
+    setFolderScanned(null);
+    setFolderCut(null);
     onClose?.();
   }
   // A refusal for lack of OCR data gets the download card. Anything else is a plain notice.
@@ -620,6 +686,9 @@ export function LibraryPanel({
       width={640}
       title={t("exams.addSources")}
       footer={null}
+      // A button that was loading when the dialog closed would keep its hidden "loading" icon, and with it a
+      // wrong accessible name, until the dialog was read again. A fresh dialog each time avoids that.
+      destroyOnHidden
       onCancel={closeAdd}
       className="px-library-add"
     >
@@ -645,7 +714,12 @@ export function LibraryPanel({
       <SegmentedTabs
         label={t("sources.addMethod")}
         value={addTab}
-        onChange={setAddTab}
+        onChange={(next) => {
+          setAddTab(next);
+          setResult(null);
+          setError(null);
+          setAgain(null);
+        }}
         items={[
           { value: "file", label: t("sources.fileTab") },
           { value: "folder", label: t("sources.folderTab") },
@@ -655,6 +729,60 @@ export function LibraryPanel({
       />
       {warning ? <Notice tone="warning">{warning}</Notice> : null}
       {errorView}
+      {progress ? (
+        <div className="px-library-progress" role="status">
+          <p className="small">
+            <LoaderCircle size={16} aria-hidden />
+            {t("sources.importing", {
+              current: Math.min(progress.done + 1, progress.total),
+              total: progress.total,
+              name: progress.name,
+            })}
+          </p>
+          <Progress
+            percent={Math.round((progress.done / progress.total) * 100)}
+            showInfo={false}
+            size="small"
+            aria-hidden
+          />
+        </div>
+      ) : null}
+      {result ? (
+        <section
+          className="px-library-result"
+          role="status"
+          aria-label={t("sources.importResult")}
+        >
+          <p className="body-strong">
+            <CheckCircle2 size={18} aria-hidden />
+            {result.imported
+              ? t("sources.imported", { count: result.imported })
+              : t("sources.importedNone")}
+          </p>
+          {result.notes.length || result.failed.length || result.skipped ? (
+            <ul className="small px-library-result-notes">
+              {result.notes.map((note, index) => (
+                <li key={`note-${index}`}>
+                  <strong>{note.name}</strong>
+                  {" · "}
+                  {note.text}
+                </li>
+              ))}
+              {result.failed.map((item, index) => (
+                <li key={`failed-${index}`} className="is-failed">
+                  <strong>{item.name}</strong>
+                  {" · "}
+                  {t(item.key)}
+                </li>
+              ))}
+              {result.skipped ? <li>{t("sources.dropSkipped")}</li> : null}
+            </ul>
+          ) : null}
+          <Button type="primary" shape="round" onClick={closeAdd}>
+            {t("sources.importDone")}
+          </Button>
+        </section>
+      ) : null}
       {addTab === "file" ? (
         <div
           className={
@@ -700,36 +828,14 @@ export function LibraryPanel({
       ) : null}
       {addTab === "folder" ? (
         <div className="px-library-import-pane">
+          <p className="small ink-muted">{t("sources.folderHint")}</p>
           <Button
             shape="round"
-            onClick={() => {
-              void window.pyxis
-                .showOpenDialog({ properties: ["openDirectory"] })
-                .then(async (picked) => {
-                  if (!picked?.[0]) return;
-                  const scan = await invoke("sources.scanFolder", {
-                    path: picked[0],
-                  });
-                  setFolderCut(
-                    scan.cappedFiles || scan.cappedDepth
-                      ? {
-                          files: scan.cappedFiles,
-                          depth: scan.cappedDepth,
-                          limit: scan.limit,
-                        }
-                      : null,
-                  );
-                  setFolderFiles(
-                    scan.files.map((file) => ({
-                      ...file,
-                      selected: !file.duplicate,
-                    })),
-                  );
-                })
-                .catch(fail);
-            }}
+            loading={scanning}
+            disabled={add.isPending}
+            onClick={() => void pickFolder()}
           >
-            {t("sources.folder")}
+            {scanning ? t("sources.folderReading") : t("sources.folder")}
           </Button>
           {folderCut?.files ? (
             <Notice tone="warning">
@@ -741,40 +847,71 @@ export function LibraryPanel({
               {t("sources.folderCappedDepth", { depth: MAX_FOLDER_DEPTH })}
             </Notice>
           ) : null}
-          <ul className="choice-list">
-            {folderFiles.map((file) => (
-              <li key={file.path}>
-                <label className="choice">
-                  <input
-                    type="checkbox"
-                    checked={file.selected}
-                    onChange={(event) => {
-                      const selected = event.target.checked;
-                      setFolderFiles((current) =>
-                        current.map((item) =>
-                          item.path === file.path
-                            ? { ...item, selected }
-                            : item,
-                        ),
-                      );
-                    }}
-                  />
-                  <span>{file.name}</span>
-                  {file.duplicate ? (
-                    <span className="small">{t("sources.duplicate")}</span>
-                  ) : null}
-                </label>
-              </li>
-            ))}
-          </ul>
+          {folderScanned != null && !scanning && !folderFiles.length && !result ? (
+            <Notice tone="info">
+              {t("sources.folderEmpty", { name: folderScanned })}
+            </Notice>
+          ) : null}
           {folderFiles.length ? (
-            <Button
-              type="primary"
-              disabled={!folderFiles.some((file) => file.selected)}
-              onClick={() => importChosen()}
-            >
-              {t("sources.importChosen")}
-            </Button>
+            <>
+              <p className="small ink-muted" role="status">
+                {t("sources.folderFound", { count: folderFiles.length })}
+                {folderFiles.some((file) => file.duplicate)
+                  ? ` ${t("sources.folderDuplicatesUsed")}`
+                  : ""}
+              </p>
+              <ul className="px-library-file-list">
+                {folderFiles.map((file) => (
+                  <li key={file.path}>
+                    <label className="px-library-file-row">
+                      <input
+                        type="checkbox"
+                        checked={file.selected}
+                        disabled={add.isPending}
+                        onChange={(event) => {
+                          const selected = event.target.checked;
+                          setFolderFiles((current) =>
+                            current.map((item) =>
+                              item.path === file.path
+                                ? { ...item, selected }
+                                : item,
+                            ),
+                          );
+                        }}
+                      />
+                      <span className="px-library-file-name">
+                        <span className="body">{file.name}</span>
+                        <span className="small ink-muted">
+                          {parentName(file.path)}
+                        </span>
+                      </span>
+                      {file.duplicate ? (
+                        <span className="small ink-muted px-library-file-flag">
+                          {t("sources.duplicateShort")}
+                        </span>
+                      ) : null}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <Button
+                type="primary"
+                shape="round"
+                loading={add.isPending}
+                disabled={!folderFiles.some((file) => file.selected)}
+                onClick={() =>
+                  add.mutate({
+                    paths: folderFiles
+                      .filter((file) => file.selected)
+                      .map((file) => file.path),
+                  })
+                }
+              >
+                {t("sources.addFolderFiles", {
+                  count: folderFiles.filter((file) => file.selected).length,
+                })}
+              </Button>
+            </>
           ) : null}
         </div>
       ) : null}
@@ -850,6 +987,8 @@ export function LibraryPanel({
                 setPasteText("");
                 void client.invalidateQueries({ queryKey: ["sources"] });
                 setSourceId(value.sourceId);
+                onImported?.([value.sourceId]);
+                closeAdd();
               })
               .catch(fail);
           }}
