@@ -40,11 +40,11 @@
     "html-to-image": "1.11.11",
     "i18next": "^26.4.2",
     "jpeg-js": "^0.4.4",
-    "katex": "0.16.22",
+    "katex": "0.18.2",
     "libheif-js": "1.23.2",
     "linkedom": "^0.18.13",
     "lucide-react": "^1.49.0",
-    "mammoth": "^1.10.0",
+    "mammoth": "^1.11.0",
     "mathlive": "0.111.0",
     "pdfjs-dist": "^4.10.38",
     "pngjs": "^7.0.0",
@@ -84,7 +84,11 @@
     "tsx": "^4.23.15",
     "typescript": "5.9",
     "vite": "^7.3.6",
-    "vitest": "^3.2.7"
+    "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "katex": "$katex",
+    "sharp": "0.35.5"
   },
   "repository": {
     "type": "git",

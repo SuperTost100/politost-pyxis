@@ -52,9 +52,10 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
       .getByRole("dialog")
       .getByRole("button", { name: "Scegli i file", exact: true })
       .click();
+    // The import starts a cold extraction worker, which took over 5 s on a hosted macOS runner.
     await expect(
       page.getByRole("button", { name: "Fisica", exact: true }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 30000 });
     await page.getByRole("button", { name: "Fisica", exact: true }).click();
     await expect(
       page.getByRole("dialog", { name: "Fisica", exact: true }),

@@ -76,7 +76,8 @@ afterEach(() => {
   removal.opened.clear();
 });
 
-describe("backupWorkspace / restoreWorkspace", () => {
+// Windows runners scan every file a test creates, so a case that takes 0.1 s locally can pass 5 s there.
+describe("backupWorkspace / restoreWorkspace", { timeout: 30_000 }, () => {
   it("roundtrips restore identities larger than a JavaScript safe integer", () => {
     const root = mkdtempSync(join(tmpdir(), "pyxis-large-inode-"));
     try {
@@ -217,7 +218,7 @@ describe("backupWorkspace / restoreWorkspace", () => {
   });
 });
 
-describe("restore validation and interruption recovery", () => {
+describe("restore validation and interruption recovery", { timeout: 30_000 }, () => {
   function fixture() {
     const root = mkdtempSync(join(tmpdir(), "pyxis-safe-restore-"));
     const source = join(root, "source");

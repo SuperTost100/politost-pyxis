@@ -246,10 +246,19 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       })
       .toBe(true);
     await expect(actual).toHaveClass(/selected/);
-    await page.keyboard.press("ArrowRight");
-    await expect
-      .poll(async () => (await graph()).nodes.find((n) => n.id === nodeId)?.x)
-      .not.toBe(pinned.x);
+    // Something else can take focus right after the node does (the composer re-enables after the undo),
+    // and then the arrow goes to it; take focus back and press again until the node moves.
+    await expect(async () => {
+      await actual.focus();
+      await expect(actual).toBeFocused({ timeout: 1000 });
+      await page.keyboard.press("ArrowRight");
+      await expect
+        .poll(
+          async () => (await graph()).nodes.find((n) => n.id === nodeId)?.x,
+          { timeout: 2000 },
+        )
+        .not.toBe(pinned.x);
+    }).toPass({ timeout: 20000 });
     await actual.click();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("dialog")).toBeVisible();

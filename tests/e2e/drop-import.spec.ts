@@ -40,6 +40,8 @@ test("SRC-07 a dropped file gets a native grant and nothing else does", async ()
     await page.getByText("Fonti", { exact: true }).click();
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     const dialog = page.getByRole("dialog");
+    // The dialog mounts after the click; a slow runner reaches the drop before the zone exists.
+    await expect(dialog.locator(".px-library-upload")).toBeVisible();
     await page.evaluate(() => {
       const probe = document.createElement("input");
       probe.type = "file";

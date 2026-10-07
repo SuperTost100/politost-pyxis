@@ -22,7 +22,8 @@ describe("folder import", () => {
     expect(listed).toMatchObject({ cappedFiles: false, cappedDepth: false });
   });
 
-  it("says when the file cap cut the list, and not when the folder holds exactly the cap", () => {
+  // Writing a cap's worth of files took over 5 s on the hosted Windows runner.
+  it("says when the file cap cut the list, and not when the folder holds exactly the cap", { timeout: 30_000 }, () => {
     const root = mkdtempSync(join(tmpdir(), "pyxis-folder-cap-"));
     for (let index = 0; index < MAX_FOLDER_FILES; index += 1) writeFileSync(join(root, `n${index}.txt`), "");
     expect(listImportable(root)).toMatchObject({ cappedFiles: false });

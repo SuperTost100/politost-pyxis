@@ -107,7 +107,9 @@ const docx = (extra: Record<string, Uint8Array> = {}) =>
     ...extra,
   });
 
-describe("office extraction under the zip bound", () => {
+// Each case deflates a 65-70 MiB run of zeros to build its bomb, which takes 3-5 s on a hosted macOS x64 runner;
+// the production limits stay as they are, so the archives cannot be made smaller.
+describe("office extraction under the zip bound", { timeout: 30_000 }, () => {
   it("still reads a real-shaped .docx, through an archive of this app's own making", async () => {
     const extracted = await extractDocx(docx());
     expect(extracted.pages.map((page) => page.text).join("\n")).toContain(

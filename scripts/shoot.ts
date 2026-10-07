@@ -106,14 +106,7 @@ async function shootStudy(page: Page): Promise<void> {
     await page.getByRole("button", { name: "Continua", exact: true }).click();
   }
   // A source imported on the material step goes into the plan with no ticking.
-  await page
-    .getByRole("button", { name: "Aggiungi fonti", exact: true })
-    .click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Scegli i file", exact: true })
-    .click();
-  await page.getByText("1 fonte nel piano").waitFor();
+  await addPlanSource(page);
   for (let step = 0; step < 2; step++) {
     await page.getByRole("button", { name: "Continua", exact: true }).click();
   }
@@ -121,34 +114,24 @@ async function shootStudy(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Apri il piano" }).click();
   await page.locator("h1", { hasText: "Fisica" }).waitFor();
   const plan = await hashOf(page);
-  await page.getByRole("button", { name: /Introduzione/ }).click();
-  await page.getByRole("button", { name: /Diagnosi/ }).click();
-  await page.getByRole("button", { name: "Inizia" }).click();
-  await page.getByRole("textbox", { name: "Correggi" }).fill("W = F s.");
-  await page.getByRole("button", { name: "Correggi" }).click();
-  await page.getByRole("button", { name: "Indietro" }).click();
-  await page.getByRole("button", { name: /Studio/ }).click();
-  await page.getByText("vettore posizione").waitFor();
-  const lesson = await hashOf(page);
-  await page.getByRole("button", { name: "Ho letto" }).click();
-  await page.getByRole("button", { name: /Esercizi/ }).click();
-  await page.getByText("Quanto vale il lavoro?").waitFor();
-  const practice = await hashOf(page);
-  await page.getByRole("button", { name: "Quiz dal libro" }).click();
-  const quiz = await hashOf(page);
-  await page.getByRole("button", { name: "Indietro" }).click();
-  await page.getByRole("button", { name: /Esercizi/ }).click();
-  await page.getByRole("button", { name: "Ho letto" }).click();
-  await page.getByRole("button", { name: /Carte/ }).click();
-  await page.waitForFunction(() =>
-    (
-      globalThis as unknown as { location: { hash: string } }
-    ).location.hash.includes("/cards/"),
-  );
-  await page.locator("main").waitFor();
-  const cards = await hashOf(page);
-  const topic = lesson.split("/").pop() ?? "";
   const planId = plan.replace("#/plans/", "");
+  // The path is a map of nodes, so the study pages are opened by route from the saved plan.
+  const topic = await page.evaluate(async (id) => {
+    const host = globalThis as unknown as {
+      pyxis: {
+        invoke: (
+          channel: string,
+          input: unknown,
+        ) => Promise<{ topics: Array<{ id: string }> }>;
+      };
+    };
+    return (await host.pyxis.invoke("plans.read", { planId: id })).topics[0]!
+      .id;
+  }, planId);
+  const lesson = `#/plans/${planId}/lesson/${topic}`;
+  const practice = `#/plans/${planId}/practice/${topic}`;
+  const quiz = `#/plans/${planId}/quiz/${topic}`;
+  const cards = `#/plans/${planId}/cards/${topic}`;
   const studyRoutes = [
     ["plan", plan],
     ["lesson", lesson],
@@ -173,9 +156,27 @@ async function shootStudy(page: Page): Promise<void> {
   }
 }
 
+// Without material the wizard leaves for the guided flow, so the material step needs a source before Continue.
+async function addPlanSource(page: Page): Promise<void> {
+  await page
+    .getByRole("button", { name: /^(Aggiungi fonti|Add sources)$/ })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: /^(Scegli i file|Choose files)$/ })
+    .click();
+  await page.getByText(/^1 (fonte nel piano|source in the plan)$/).waitFor();
+  // The first import closes the dialog; a file that is already in the library leaves its result open.
+  const done = page
+    .getByRole("dialog")
+    .getByRole("button", { name: /^(Fatto|Done)$/ });
+  if (await done.isVisible()) await done.click();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
+}
+
 async function waitStudy(page: Page, name: string): Promise<void> {
   if (name === "plan") {
-    await page.getByRole("heading", { name: /Progressi|Progress/ }).waitFor();
+    await page.locator(".px-plan-page .px-seg-wrap").waitFor();
   } else if (name === "lesson") {
     await page.getByText("vettore posizione").waitFor();
   } else if (name === "practice") {
@@ -183,13 +184,20 @@ async function waitStudy(page: Page, name: string): Promise<void> {
   } else if (name === "quiz") {
     await page.getByRole("button", { name: /^(Inizia|Start)$/ }).waitFor();
   } else if (name === "cards") {
-    await page.getByRole("button", { name: /^(Gira|Flip)$/ }).waitFor();
+    await page.getByRole("button", { name: /^(Gira|Flip)\b/ }).waitFor();
   } else if (name === "simulation") {
-    await page
-      .getByRole("button", { name: /Inizia i 30 minuti|Start the 30 minutes/ })
-      .waitFor();
+    await page.getByRole("button", { name: /^(Inizia|Start)$/ }).waitFor();
   } else if (name === "map") {
-    await page.locator("svg text").first().waitFor();
+    // The first visit has no map yet; the recorded reply builds it on request.
+    const create = page.getByRole("button", {
+      name: /^(Crea mappe|Create maps)$/,
+    });
+    await create
+      .or(page.locator(".react-flow__node").first())
+      .first()
+      .waitFor();
+    if (await create.isVisible()) await create.click();
+    await page.locator(".react-flow__node").first().waitFor();
   }
 }
 
@@ -210,6 +218,47 @@ try {
       PYXIS_USER_DATA: userData,
       PYXIS_E2E: "1",
       PYXIS_E2E_FILE: book,
+      // Recorded replies stand in for an engine, so the wizard can create the plan and no model is called.
+      PYXIS_E2E_MAP_REPLIES: JSON.stringify({
+        title: {
+          title: "Moti",
+          nodes: [
+            "Moto",
+            "Posizione",
+            "Velocità",
+            "Accelerazione",
+            "Traiettoria",
+            "Spostamento",
+            "Tempo",
+            "Sistema di riferimento",
+          ].map((label, i) => ({
+            id: `n${i}`,
+            label,
+            parent: i ? "n0" : null,
+            sources: "{{allPassages}}",
+          })),
+          edges: Array.from({ length: 7 }, (_, i) => ({
+            from: "n0",
+            to: `n${i + 1}`,
+            label: "comprende",
+          })),
+        },
+      }),
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
+        markdown: {
+          markdown: "## Energia\n\nIl vettore posizione descrive il punto.",
+        },
+        questions: {
+          questions: Array.from({ length: 10 }, (_, i) => ({
+            stem: `Quale grandezza descrive il moto ${i + 1}?`,
+            options: ["Velocità", "Calore", "Massa", "Volume"],
+            correct: 0,
+            topicIndex: 0,
+            passageIds: [],
+            explanation: "La velocità descrive il moto.",
+          })),
+        },
+      }),
     },
   });
   const page = await app.firstWindow();
@@ -247,6 +296,7 @@ try {
             .locator("#plan-title")
             .fill(locale === "it" ? "Fisica" : "Physics");
           for (let step = 1; step < 6; step++) {
+            if (step === 4) await addPlanSource(page);
             await page
               .getByRole("button", { name: /^(Continua|Continue)$/ })
               .click();
@@ -282,7 +332,7 @@ try {
   const start = page.getByRole("button", { name: "Avvia" });
   if ((await start.count()) > 0) {
     await start.click();
-    const jobs = page.getByRole("button", { name: /lavori in corso/i });
+    const jobs = page.getByRole("button", { name: /attività/i });
     await jobs.waitFor({ timeout: 3000 });
     await jobs.click();
     await page.waitForTimeout(200);

@@ -41,7 +41,10 @@ describe("SRC-04 chat images fit provider limits", () => {
   });
   const fit = async (file: string) => normalizeForVision(new Uint8Array(readFileSync(file)));
 
-  /** A busy 3000x2000 JPEG, above the 1.5 MB budget. */
+  /**
+   * A busy 3000x2000 JPEG, above the 1.5 MB budget. Encoding and decoding six megapixels of noise in JavaScript takes
+   * about 12 s locally and 75-85 s on a hosted macOS x64 runner, so the cases that use it allow 180 s.
+   */
   function bigPhoto(dir: string): { path: string; bytes: Uint8Array } {
     const width = 3000;
     const height = 2000;
@@ -90,7 +93,7 @@ describe("SRC-04 chat images fit provider limits", () => {
       expect(resend.images).toHaveLength(1);
       expect(Buffer.from(resend.images[0]!.data, "base64")).toEqual(sent);
     } finally { db.close(); }
-  }, 60_000);
+  }, 180_000);
 
   it("fits an oversized image saved before fitting existed, off the core thread, and skips HEIC rows", async () => {
     const { workspace, db } = setup();
@@ -197,5 +200,5 @@ describe("SRC-04 chat images fit provider limits", () => {
       expect(Buffer.from(seen!.bytes)).toEqual(Buffer.from(bytes));
       expect(readFileSync(readBlob(workspace, prepared.images[0]!.sha).file)).toEqual(Buffer.from(bytes));
     } finally { db.close(); }
-  }, 60_000);
+  }, 180_000);
 });

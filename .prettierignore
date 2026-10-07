@@ -1,0 +1,7 @@
+# Prompts are model input; Prettier would escape characters such as ** in them.
+resources/prompts/
+out/
+.tmp/
+.shots/
+test-results/
+playwright-report/
