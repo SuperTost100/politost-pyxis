@@ -120,6 +120,10 @@
     "reorderSubject": "Reorder {{name}}",
     "removeSubject": "Remove",
     "removeNamedSubject": "Remove {{name}}",
+    "renameSubject": "Rename",
+    "renameNamedSubject": "Rename {{name}}",
+    "renameSubjectField": "Subject name",
+    "saveSubject": "Save",
     "removeSubjectConfirm": "Remove {{name}} from the subject list? Existing plans and conversations are kept.",
     "subjectOrderHelp": "Drag a subject to change the order. You can also focus its handle, press Space, move with the arrow keys, then press Space to save.",
     "subjectDragInstructions": "Press Space to pick up a subject, use the arrow keys to move it, and press Space to drop it. Press Escape to cancel.",
@@ -1039,6 +1043,7 @@
     "invalidOutput": "The answer was not in the expected shape",
     "attachTooBig": "That file is too large. Keep each attachment under 15 MB, and eight files at most.",
     "invalidSubject": "Enter a subject name of 1 to 120 characters.",
+    "subjectExists": "A subject with that name already exists.",
     "coreUnavailable": "The internal engine could not start. Retry, or open Settings to restore a backup."
   },
   "dev": {

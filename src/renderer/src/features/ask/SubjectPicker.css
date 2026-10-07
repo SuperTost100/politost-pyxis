@@ -1,4 +1,3 @@
-.subject-picker { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .subject-manager-list { list-style: none; margin: var(--space-4) 0; padding: 0; }
 .subject-manager-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border); background: var(--surface); }
 .subject-manager-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
