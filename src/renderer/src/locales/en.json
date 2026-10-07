@@ -441,7 +441,10 @@
     "buildSources": "Build from sources",
     "general": "General knowledge, not from your sources",
     "redo": "Redo",
-    "svg": "Export SVG"
+    "svg": "Export SVG",
+    "expand_one": "Show {{count}} hidden node",
+    "expand_other": "Show {{count}} hidden nodes",
+    "collapse": "Hide branch"
   },
   "lesson": {
     "title": "Lesson from the book",
@@ -695,7 +698,6 @@
     "noSimulations": "No simulation yet.",
     "startSimulation": "Start a simulation",
     "simulationRow": "{{score}} out of 100 · {{minutes}} min",
-    "views": "Progress views",
     "preparation": "Preparation",
     "paceTitle": "Pace",
     "forecast": "Exam forecast",

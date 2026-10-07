@@ -28,22 +28,83 @@
   overflow: hidden;
 }
 .px-concept-node {
+  position: relative;
   border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
-  width: 200px;
+  box-sizing: border-box;
+  width: 240px;
   min-height: 64px;
   padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   color: var(--ink);
 }
 .px-concept-node .px-markdown {
-  font: 400 15px/22px var(--font-sans);
+  font: 400 calc(15px * var(--text-scale, 1)) / 1.45 var(--font-sans);
 }
 .px-concept-node .px-markdown p {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.px-concept-node.is-root {
+  border-width: 2px;
+}
 .px-concept-node.is-root .px-markdown {
+  font-size: calc(17px * var(--text-scale, 1));
   font-weight: 600;
+}
+.px-concept-fold {
+  position: absolute;
+  top: 50%;
+  right: -30px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink-muted);
+  font: 500 12px/1 var(--font-mono);
+  cursor: pointer;
+}
+.px-concept-fold:hover {
+  color: var(--ink);
+  background: var(--surface-raised);
+}
+.px-concept-fold:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-map-canvas .react-flow__edge-path {
+  stroke-linecap: round;
+}
+.px-cross-edge .react-flow__edge-path {
+  stroke: var(--border-control);
+  stroke-width: 1.25;
+  stroke-dasharray: 6 5;
+  opacity: 0.55;
+}
+.px-cross-edge.is-lit .react-flow__edge-path {
+  stroke: var(--ink-muted);
+  opacity: 1;
+}
+.px-cross-label {
+  position: absolute;
+  z-index: 5;
+  max-width: 220px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  color: var(--ink);
+  font: 400 calc(13px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  pointer-events: none;
 }
 .px-map-canvas .react-flow__node.selected,
 .px-map-canvas .react-flow__node:focus-visible {

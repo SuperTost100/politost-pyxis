@@ -441,7 +441,10 @@
     "buildSources": "Crea dalle fonti",
     "general": "Conoscenza generale, non dalle tue fonti",
     "redo": "Ripeti",
-    "svg": "Esporta SVG"
+    "svg": "Esporta SVG",
+    "expand_one": "Mostra {{count}} nodo nascosto",
+    "expand_other": "Mostra {{count}} nodi nascosti",
+    "collapse": "Nascondi il ramo"
   },
   "lesson": {
     "title": "Lezione dal libro",
@@ -695,7 +698,6 @@
     "noSimulations": "Nessuna simulazione ancora.",
     "startSimulation": "Inizia una simulazione",
     "simulationRow": "{{score}} su 100 · {{minutes}} min",
-    "views": "Viste dei progressi",
     "preparation": "Preparazione",
     "paceTitle": "Ritmo",
     "forecast": "Previsione per l’esame",
