@@ -6,6 +6,7 @@ import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import { cacheKey, loadLesson, saveLesson } from "./lesson";
 import { IpcError } from "../../shared/ipc";
+import { replaceSection, smartSections } from "../../shared/smart-text";
 
 const BOOK_VERSION = "book-1";
 // Part of the lesson cache key; comes from the template front matter.
@@ -20,11 +21,11 @@ const PASSAGE_CHARS = 4_000;
 
 const WORDING_RULES: Record<Wording, string> = {
   simple:
-    "Use short sentences, everyday words and one concrete example; define each term the first time you use it.",
+    "Teach from the ground up: short sentences, everyday words, intuition and a concrete example before each formula; define every term the first time you use it.",
   balanced:
-    "Use clear standard wording; explain terms briefly and stay close to the level of the passages.",
+    "Teach like a good lecturer: clear standard wording, intuition and the formal statement side by side, terms explained briefly.",
   technical:
-    "Use precise terminology and formal notation; assume the reader already knows the basics.",
+    "Teach rigorously: precise terminology, formal definitions and notation, derivations where they matter; assume the reader already knows the basics.",
 };
 
 type Passage = { id: string; text: string; section_path: string | null };
@@ -42,10 +43,10 @@ function passagesFor(db: Database.Database, topicId: string): Passage[] {
 }
 
 function lessonParts(all: Passage[]) {
-  const parts: Array<Array<Passage & { citation: number }>> = [];
-  let current: Array<Passage & { citation: number }> = [];
+  const parts: Passage[][] = [];
+  let current: Passage[] = [];
   let size = 0;
-  all.forEach((row, index) => {
+  for (const row of all) {
     for (let offset = 0; offset < row.text.length; offset += PASSAGE_CHARS) {
       const text = row.text.slice(offset, offset + PASSAGE_CHARS);
       if (size + text.length > CONTEXT_CHARS) {
@@ -53,12 +54,27 @@ function lessonParts(all: Passage[]) {
         current = [];
         size = 0;
       }
-      current.push({ ...row, text, citation: index + 1 });
+      current.push({ ...row, text });
       size += text.length;
     }
-  });
+  }
   if (current.length) parts.push(current);
   return parts;
+}
+
+/** Reference material for the model, under its section headings and without labels it could cite. */
+function materialText(rows: Array<Pick<Passage, "text" | "section_path">>) {
+  let section: string | null = null;
+  return rows
+    .map((row) => {
+      const heading =
+        row.section_path && row.section_path !== section
+          ? `### ${row.section_path}\n\n`
+          : "";
+      section = row.section_path ?? section;
+      return `${heading}${row.text}`;
+    })
+    .join("\n\n");
 }
 
 function bookMarkdown(passages: Array<Pick<Passage, "text" | "section_path">>) {
@@ -134,10 +150,11 @@ function lessonSystem(
   grounded: boolean,
 ) {
   const style = `Reader education level: ${context.education}. Wording: ${context.wording}. ${WORDING_RULES[context.wording]} Match the depth to the reader's education level.${readerContext(context)}`;
-  const base = grounded
-    ? systemPrompt("lesson.write", { contentLanguage: context.language })
-    : `Write all output in ${context.language}.\nWrite a short lesson on the topic from your general knowledge. Markdown only. Do not cite sources.`;
-  return `${base}\n${style}`;
+  const base = systemPrompt("lesson.write", { contentLanguage: context.language });
+  const general = grounded
+    ? ""
+    : "\nNo material was supplied for this topic: teach it from your general knowledge.";
+  return `${base}${general}\n${style}`;
 }
 
 export function openLesson(
@@ -260,7 +277,7 @@ export async function writeLesson(
         signal: options?.signal,
         onDelta: options?.onDelta && ((text) => options.onDelta?.(earlier + text)),
         prompt: grounded
-          ? `Topic: ${topic.title}\nPart ${index + 1} of ${batches.length}. Explain this material in order. Use the supplied citation numbers exactly.\n\n${batch.map((row) => `[P${row.citation}] ${row.text}`).join("\n\n")}`
+          ? `Topic: ${topic.title}\n${partNote(index, batches.length)}\n\nMaterial:\n\n${materialText(batch)}`
           : `Topic: ${topic.title}`,
         system: [lessonSystem(context, grounded), interestsLine(db)]
           .filter(Boolean)
@@ -269,15 +286,8 @@ export async function writeLesson(
         run,
       });
       options?.signal?.throwIfAborted();
-      const markdown = result.text.trim();
-      const cited = [...markdown.matchAll(/\[P(\d+)\]/g)].map((match) =>
-        Number(match[1]),
-      );
-      const valid = grounded
-        ? cited.length > 0 &&
-          cited.every((id) => batch.some((row) => row.citation === id))
-        : cited.length === 0;
-      if (!markdown || !valid) return failed();
+      const markdown = lessonText(result.text);
+      if (!markdown) return failed();
       models.add(result.model);
       written.push(markdown);
     }
@@ -313,10 +323,106 @@ export async function writeLesson(
   };
 }
 
-/** Every [Pn] must index an ordered passage (1..count) and at least one must be present. */
-export function citationsValid(markdown: string, count: number): boolean {
-  const indices = [...markdown.matchAll(/\[P(\d+)\]/g)].map((m) =>
-    Number(m[1]),
+function partNote(index: number, count: number) {
+  if (count === 1) return "Teach this material.";
+  return `Part ${index + 1} of ${count}. Teach this part of the material, continuing from the earlier parts.${index + 1 < count ? " This is not the last part: do not write the pyxis-recap." : " This is the last part: end with the pyxis-recap for the whole topic."}`;
+}
+
+/** The model's lesson, unwrapped when it put the whole answer in one Markdown fence; empty when there is no text. */
+function lessonText(text: string) {
+  const trimmed = text.trim();
+  const wrapped = /^```(?:markdown|md)?\n([\s\S]*)\n```$/.exec(trimmed);
+  return (wrapped ? wrapped[1]! : trimmed).trim();
+}
+
+/** Material most related to one section, up to the per-call bound, in reading order. */
+function sectionMaterial(all: Passage[], section: string) {
+  const words = new Set(
+    section.toLowerCase().match(/\p{L}{5,}/gu) ?? [],
   );
-  return indices.length > 0 && indices.every((n) => n >= 1 && n <= count);
+  const scored = all.map((row, index) => ({
+    row,
+    index,
+    score: (row.text.toLowerCase().match(/\p{L}{5,}/gu) ?? []).filter((word) =>
+      words.has(word),
+    ).length,
+  }));
+  const chosen: typeof scored = [];
+  let size = 0;
+  for (const item of [...scored].sort((a, b) => b.score - a.score || a.index - b.index)) {
+    const text = item.row.text.slice(0, PASSAGE_CHARS);
+    if (size + text.length > CONTEXT_CHARS) continue;
+    chosen.push({ ...item, row: { ...item.row, text } });
+    size += text.length;
+  }
+  return chosen.sort((a, b) => a.index - b.index).map((item) => item.row);
+}
+
+/** Rewrites one ## section of the saved model lesson; the rest of the lesson and its answers stay as they are. */
+export async function rewriteLessonSection(
+  db: Database.Database,
+  planId: string,
+  topicId: string,
+  run: Parameters<typeof generate>[0]["run"],
+  options: {
+    section: number;
+    note?: string;
+    wording?: Wording;
+    signal?: AbortSignal;
+  },
+): Promise<LessonResult> {
+  const context = modelContext(db, planId, topicId, options.wording);
+  const cached = loadLesson(db, { planId, kind: "lesson", key: context.key });
+  if (!cached?.provider) throw new Error("lesson-missing");
+  const sections = smartSections(cached.markdown);
+  const section = sections[options.section];
+  if (!section) throw new Error("section-missing");
+  const lines = cached.markdown.split("\n");
+  const current = lines.slice(section.start, section.end).join("\n").trim();
+  const topic = db
+    .prepare("SELECT title FROM topics WHERE id = ?")
+    .get(topicId) as { title: string };
+  const grounded = context.all.length > 0;
+  const note = options.note?.replace(/\s+/g, " ").trim().slice(0, 500);
+  const result = await generate({
+    signal: options.signal,
+    prompt: [
+      `Topic: ${topic.title}`,
+      `Lesson outline: ${sections.map((item) => item.title).join(" | ")}`,
+      `Rewrite only the section "${section.title}" so it teaches better. Return only the new section, starting with its ## heading; keep it about as long, keep any blocks it needs, and do not add a pyxis-recap unless the current section has one.`,
+      note ? `The student asked: ${JSON.stringify(note)}` : "",
+      `Current section:\n\n${current}`,
+      grounded ? `Material:\n\n${materialText(sectionMaterial(context.all, current))}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    system: [lessonSystem(context, grounded), interestsLine(db)]
+      .filter(Boolean)
+      .join("\n"),
+    selection: selectionFor(db, "lesson"),
+    run,
+  });
+  options.signal?.throwIfAborted();
+  let text = lessonText(result.text);
+  if (!text) throw new Error("lesson-invalid");
+  if (!/^##\s/.test(text)) text = `${lines[section.start]}\n\n${text}`;
+  const markdown = replaceSection(cached.markdown, options.section, text);
+  const itemId = saveLesson(db, {
+    planId,
+    topicId,
+    kind: "lesson",
+    key: context.key,
+    markdown,
+    passageIds: context.passageIds,
+    engine: { provider: result.provider, model: result.model },
+    prompt: { template: "lesson.write", version: MODEL_VERSION },
+    grounding: grounded ? "sources" : "general",
+  });
+  return {
+    markdown,
+    passageIds: context.passageIds,
+    itemId,
+    wording: context.wording,
+    ...(grounded ? {} : { general: true }),
+  };
 }

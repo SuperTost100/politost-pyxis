@@ -25,6 +25,7 @@ import {
 } from "./rebuild";
 import { embedWithModel } from "../sources/retrieve";
 import { queueSyllabusChecks } from "../sources/syllabus";
+import { stripPassageRefs } from "../../shared/smart-text";
 
 export type PlanInput = Omit<
   Parameters<typeof createPlan>[1],
@@ -72,7 +73,6 @@ const topicSchema = z.object({
     .min(1)
     .max(15),
 });
-const introSchema = z.object({ markdown: z.string().min(1).max(20000) });
 const diagnosticSchema = z.object({
   questions: z
     .array(
@@ -186,6 +186,32 @@ function contentPrompt(
       text: row.text.slice(0, 700),
     })),
   });
+}
+/** Course data for the introduction: topics and a sample of the material, with no ids the model could quote. */
+function introPrompt(params: Params, rows: Passage[]): string {
+  return JSON.stringify({
+    title: params.input.title,
+    subject: params.input.subject,
+    topics: params.tree?.map((topic) => ({
+      title: topic.title,
+      summary: topic.summary,
+    })),
+    material: rows.slice(0, 40).map((row) => ({
+      section: sectionOf(row),
+      text: row.text.slice(0, 700),
+    })),
+  });
+}
+/** The introduction's smart text. A JSON reply ({ "markdown": ... }) is unwrapped; passage references are removed. */
+function introText(text: string): string {
+  let markdown = text.trim();
+  try {
+    const parsed = JSON.parse(markdown) as { markdown?: unknown };
+    if (typeof parsed?.markdown === "string") markdown = parsed.markdown;
+  } catch {
+    // Plain smart text, as asked.
+  }
+  return stripPassageRefs(markdown).trim().slice(0, 20000);
 }
 function saveItem(
   db: Database.Database,
@@ -496,35 +522,23 @@ export function registerPlanJobs(
           const params = ctx.params as Params;
           if (params.introId) return true;
           const rows = samplePassages(params, passages(db, params));
-          const schema = introSchema.superRefine((value, ctx) => {
-            for (const match of value.markdown.matchAll(/\[P(\d+)\]/g)) {
-              const index = Number(match[1]);
-              if (index < 1 || index > rows.length)
-                ctx.addIssue({
-                  code: "custom",
-                  message: "Unknown introduction citation",
-                });
-            }
-          });
           const result = await generate({
             selection: params.selection,
             signal: ctx.signal,
             run,
-            schema,
             system: systemPrompt("plan.intro", {
               contentLanguage: planLanguage(db, params.planId),
             }),
-            prompt: contentPrompt(params, rows),
+            prompt: introPrompt(params, rows),
           });
+          const markdown = introText(result.text);
+          if (!markdown) throw new Error("intro-invalid");
           checkpoint(db, ctx, params, () => {
             params.introId = saveItem(
               db,
               params,
               "intro",
-              {
-                ...(result.data as z.infer<typeof introSchema>),
-                passageIds: rows.map((row) => row.id),
-              },
+              { markdown, passageIds: rows.map((row) => row.id) },
               rows.map((row) => row.id),
               result.model,
               result.provider,

@@ -377,6 +377,7 @@ function latestScore(db: Database.Database, planId: string, topicId: string): nu
     .prepare(
       `SELECT payload_json FROM learning_events
        WHERE plan_id = ? AND topic_id = ? AND kind = 'answer_given'
+         AND json_extract(payload_json, '$.evidenceKind') IS NOT 'check'
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(planId, topicId) as { payload_json: string } | undefined;

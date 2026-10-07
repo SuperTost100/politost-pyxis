@@ -25,7 +25,9 @@ describe("prompt templates", () => {
   });
 
   it("bumps the version of every template whose wording changed", () => {
-    expect(loadTemplate("lesson.write").version).toBe("model-3");
+    // Smart text: lessons teach with inline blocks and no citations.
+    expect(loadTemplate("lesson.write").version).toBe("smart-1");
+    expect(loadTemplate("plan.intro").version).toBe("3");
     expect(loadTemplate("quiz.batch").version).toBe("quiz-3");
     for (const id of [
       "chat.socratic",
@@ -37,7 +39,6 @@ describe("prompt templates", () => {
     expect(loadTemplate("chat.solver").body).toContain("opening line is exactly ```check");
     for (const id of [
       "plan.synopsis",
-      "plan.intro",
       "map.generate",
       "map.edit",
       "simulation.grade",
@@ -74,9 +75,7 @@ describe("prompt templates", () => {
   it("includes the single shared citation partial in every passage-using template", () => {
     const passageTemplates: TemplateId[] = [
       "simulation.questions",
-      "lesson.write",
       "quiz.batch",
-      "plan.intro",
       "plan.diagnostic",
       "map.generate",
       "chat.solver",
