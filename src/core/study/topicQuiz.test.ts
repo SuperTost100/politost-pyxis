@@ -170,7 +170,7 @@ describe("diagnostic", () => {
     expect(stems).toContain("FROM2");
     expect(stems).toContain("OTHER");
     expect(stems.filter((stem) => stem === "OTHER")).toHaveLength(1);
-    expect(started.questions).toHaveLength(20);
+    expect(started.questions).toHaveLength(10);
   });
 
   it("resumes the open diagnostic with its draft and freezes it after submit", () => {

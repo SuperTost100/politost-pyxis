@@ -314,6 +314,16 @@ async function dispatchValidated(
       return study?.quizRead(requests["study.quizRead"].input.parse(input));
     case "study.quizCheck":
       return study?.quizCheck(requests["study.quizCheck"].input.parse(input));
+    case "study.quizCheckCancel":
+      return study?.quizCheckCancel(
+        requests["study.quizCheckCancel"].input.parse(input),
+      );
+    case "study.quizWrong":
+      return study?.quizWrong(requests["study.quizWrong"].input.parse(input));
+    case "study.diagnosticPreview":
+      return study?.diagnosticPreview(
+        requests["study.diagnosticPreview"].input.parse(input),
+      );
     case "study.quizSubmit":
       return study?.quizSubmit(requests["study.quizSubmit"].input.parse(input));
     case "study.quizGrading":

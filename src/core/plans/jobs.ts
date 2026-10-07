@@ -14,6 +14,7 @@ import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner, StepContext, StepSpec } from "../jobs/runner";
 import { createPlan, draftTree, type BuildTopic } from "./create";
 import { acrossTopics } from "../study/topicQuiz";
+import { QUIZ_MAX_QUESTIONS } from "../study/attempt";
 import { addSubject } from "./subjects";
 import { snapshotPlanEducation } from "./education";
 import { buildSegments, passagesByTopic, SEGMENT_LIMIT } from "./segments";
@@ -85,7 +86,8 @@ const diagnosticSchema = z.object({
         explanation: z.string().max(2000),
       }),
     )
-    .min(10)
+    // The prompt asks for QUIZ_MAX_QUESTIONS; a longer reply is cut to that, across topics, rather than retried.
+    .min(1)
     .max(20),
 });
 
@@ -136,10 +138,11 @@ export function diagnosticTopics(tree: BuildTopic[]): number[] {
   const eligible = tree.flatMap((topic, i) =>
     !grounded || topic.passageIds.length ? [i] : [],
   );
-  if (eligible.length <= 20) return eligible;
+  const limit = QUIZ_MAX_QUESTIONS;
+  if (eligible.length <= limit) return eligible;
   return Array.from(
-    { length: 20 },
-    (_, i) => eligible[Math.floor((i * (eligible.length - 1)) / 19)]!,
+    { length: limit },
+    (_, i) => eligible[Math.floor((i * (eligible.length - 1)) / (limit - 1))]!,
   );
 }
 function samplePassages(
@@ -583,7 +586,12 @@ export function registerPlanJobs(
           });
           const parsed = result.data as z.infer<typeof diagnosticSchema>;
           const data = {
-            questions: parsed.questions.map((q) => ({
+            questions: acrossTopics(
+              indices.map((index) =>
+                parsed.questions.filter((q) => q.topicIndex === index),
+              ),
+              QUIZ_MAX_QUESTIONS,
+            ).map((q) => ({
               ...q,
               passageIds: cite(q),
             })),
