@@ -121,7 +121,7 @@ export function ThinkingMessage({ usesSources }: { usesSources?: boolean }) {
   return (
     <div className="px-msg px-msg-thinking" role="status">
       <span className="px-msg-avatar" aria-hidden>
-        <Logo size={22} />
+        <Logo size={22} working />
       </span>
       <div className="px-msg-body">
         <p className="px-msg-status">
