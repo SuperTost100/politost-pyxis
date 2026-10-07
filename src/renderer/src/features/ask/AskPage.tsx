@@ -41,6 +41,11 @@ export function AskPage() {
   const defaultMode = profile.data?.tutorMode ?? "solver";
   const [mode, setMode] = useState<"solver" | "socratic">(defaultMode);
   const [picked, setPicked] = useState<string[]>([]);
+  // A subject's sources arrive after its plans are read; a message sent before then waits for them, so it is not sent
+  // without the sources the student just picked.
+  const pickedNow = useRef(picked);
+  pickedNow.current = picked;
+  const scopeReady = useRef<Promise<void>>(Promise.resolve());
   const [planId, setPlanId] = useState<string | null>(null);
   const loadedFor = useRef<string | undefined>(undefined);
   const [uncovered, setUncovered] = useState<string | null>(null);
@@ -135,11 +140,15 @@ export function AskPage() {
     setSubject(next);
     const plan = (plans.data ?? []).find((item) => item.id === planId);
     if (plan?.subject && plan.subject !== next) setPlanId(null);
-    const [before, after] = await Promise.all([
+    const ready = Promise.all([
       subjectSourceIds(previous),
       subjectSourceIds(next),
-    ]);
-    setPicked((current) => applySubject(current, before, after));
+    ]).then(([before, after]) => {
+      pickedNow.current = applySubject(pickedNow.current, before, after);
+      setPicked(pickedNow.current);
+    });
+    scopeReady.current = ready;
+    await ready;
   }
 
   async function addPlan(id: string) {
@@ -171,13 +180,15 @@ export function AskPage() {
     held,
   });
   // The ids sent are the ones the student can see; a source deleted since the chat was saved is left out.
-  const sendIds = sources.data
-    ? picked.filter(
-        (id) =>
-          sources.data.some((source) => source.id === id) ||
-          held.some((source) => source.id === id),
-      )
-    : picked;
+  const visible = (ids: string[]) =>
+    sources.data
+      ? ids.filter(
+          (id) =>
+            sources.data.some((source) => source.id === id) ||
+            held.some((source) => source.id === id),
+        )
+      : ids;
+  const sendIds = visible(picked);
   const hasScope = items.length > 0;
 
   // The page fills the viewport, so the composer sits at the foot of the window even with one short message. The shell
@@ -260,6 +271,8 @@ export function AskPage() {
     if (!trimmed || busy) return;
     if (chatId && loadedFor.current !== chatId) return;
     setBusy(true);
+    await scopeReady.current.catch(() => undefined);
+    const ids = visible(pickedNow.current);
     setLive("");
     setError(null);
     setSkipped([]);
@@ -288,14 +301,14 @@ export function AskPage() {
       {
         chatId,
         text: trimmed,
-        sourceIds: sendIds,
+        sourceIds: ids,
         planId,
         mode,
         subject,
         files: attached.length > 0 ? attached : undefined,
         allowGeneral:
           options.allowGeneral === true ||
-          (!planId && sendIds.length === 0 && attached.length === 0),
+          (!planId && ids.length === 0 && attached.length === 0),
       },
       (event) => {
         const data = event as { text?: string };
