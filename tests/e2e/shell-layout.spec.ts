@@ -70,7 +70,11 @@ test("doors navigate from settings and every shell page uses the full column", a
     const logo = (await page.locator("header").getByRole("img", { name: "Pyxis" }).boundingBox())!;
     const doorsBox = (await doors.boundingBox())!;
     const settings = (await page.getByRole("button", { name: "Impostazioni", exact: true }).boundingBox())!;
-    expect(logo.x).toBeLessThan(40);
+    // macOS leaves room for the traffic lights (80px); elsewhere the logo sits at the edge.
+    if (process.platform === "darwin") {
+      expect(logo.x).toBeGreaterThanOrEqual(78);
+      expect(logo.x).toBeLessThan(90);
+    } else expect(logo.x).toBeLessThan(40);
     expect(Math.abs(doorsBox.x + doorsBox.width / 2 - (header.x + header.width / 2))).toBeLessThanOrEqual(2);
     expect(header.x + header.width - (settings.x + settings.width)).toBeLessThan(40);
 

@@ -12,6 +12,8 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping setup navigates to Exams on its own; wait for it so it cannot override the next route.
+    await expect(page).toHaveURL(/#\/exams$/);
     // Settings no longer lists subjects, and the old address lands on the Exams home.
     await page.evaluate(() => { window.location.hash = "#/settings"; });
     await expect(page.getByRole("heading", { name: "Impostazioni" })).toBeVisible();
@@ -35,7 +37,8 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     await page.getByRole("button", { name: "Rinomina Analisi 1" }).click();
     await page.getByRole("textbox", { name: "Nome della materia" }).fill("Analisi");
     await page.getByRole("button", { name: "Salva", exact: true }).click();
-    const handle = page.getByRole("button", { name: "Riordina Analisi" });
+    // Exact: "Riordina Analisi 1" also matches the plain name until the rename has landed.
+    const handle = page.getByRole("button", { name: "Riordina Analisi", exact: true });
     await expect(handle).toBeEnabled();
     await handle.focus();
     await page.keyboard.press("Space");
