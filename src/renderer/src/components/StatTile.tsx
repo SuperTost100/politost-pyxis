@@ -9,6 +9,7 @@ export function StatTile({
   target,
   pills,
   stats,
+  compact = false,
 }: {
   label: string;
   value: number;
@@ -16,9 +17,11 @@ export function StatTile({
   target?: number;
   pills?: string[];
   stats?: { value: string; label: string }[];
+  /** No progress bar and the pills in one row; for pages that already show the bar elsewhere. */
+  compact?: boolean;
 }) {
   return (
-    <Card className="px-card px-stat" variant="outlined">
+    <Card className={`px-card px-stat${compact ? " is-compact" : ""}`} variant="outlined">
       <div className="px-stat-head">
         <div>
           <div className="px-stat-label">{label}</div>
@@ -35,13 +38,15 @@ export function StatTile({
           ))}
         </div>
       </div>
-      <MasteryBar
-        value={value}
-        target={target}
-        tone="primary"
-        label={label}
-        showValue={false}
-      />
+      {compact ? null : (
+        <MasteryBar
+          value={value}
+          target={target}
+          tone="primary"
+          label={label}
+          showValue={false}
+        />
+      )}
       {stats ? (
         <div className="px-stat-foot">
           {stats.map((s) => (
