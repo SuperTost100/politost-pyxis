@@ -1,7 +1,7 @@
 import katex from "katex";
 import type { MathfieldElement } from "mathlive";
 import { loadMathLive, mathLive } from "./loadMathLive";
-import { cleanLatex, parseMathText, serializeMathText, type MathSegment } from "./mathText";
+import { cleanLatex, parseMathText, serializeMathText, type MathSegment } from "./mathString";
 
 /**
  * Drives one editable element that holds text with formulas inline. The text is plain, newlines
