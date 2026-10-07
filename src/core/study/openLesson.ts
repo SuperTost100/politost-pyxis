@@ -117,21 +117,50 @@ function modelContext(
   const { school, course } = schoolCourse(db);
   const language = planLanguage(db, planId);
   const passageIds = all.map((row) => row.id);
+  // Everything but the prompt version: an older lesson with the same variant still shows until it is rewritten.
+  const variant = ["complete-2", wording, education, school, course, language];
   const key = cacheKey({
     kind: "lesson",
     scopeId: topicId,
     passageIds,
-    promptVersion: [
-      MODEL_VERSION,
-      "complete-2",
-      wording,
-      education,
-      school,
-      course,
-      language,
-    ].join("|"),
+    promptVersion: [MODEL_VERSION, ...variant].join("|"),
   });
-  return { all, parts, passageIds, wording, education, school, course, language, key };
+  return { all, parts, passageIds, wording, education, school, course, language, key, variant };
+}
+
+/**
+ * The newest model lesson written by an earlier lesson prompt for the same passages and variant. It keeps its own
+ * provenance and is shown as it is (Markdown with citations) until the student rewrites it.
+ */
+function earlierLesson(
+  db: Database.Database,
+  planId: string,
+  topicId: string,
+  context: ReturnType<typeof modelContext>,
+) {
+  const rows = db
+    .prepare(
+      `SELECT json_extract(body_json, '$.cacheKey') AS key FROM items
+       WHERE plan_id = ? AND topic_id = ? AND kind = 'lesson' AND engine_provider IS NOT NULL
+         AND (prompt_template IS NULL OR prompt_template = 'lesson.write') AND prompt_version IS NOT ?
+       ORDER BY created_at DESC, rowid DESC`,
+    )
+    .all(planId, topicId, MODEL_VERSION) as Array<{ key: string | null }>;
+  const passages = JSON.stringify([...context.passageIds].sort());
+  for (const row of rows) {
+    if (!row.key) continue;
+    const parsed = JSON.parse(row.key) as {
+      promptVersion?: string;
+      passageIds?: string[];
+    };
+    if (
+      JSON.stringify(parsed.promptVersion?.split("|").slice(1)) ===
+        JSON.stringify(context.variant) &&
+      JSON.stringify(parsed.passageIds) === passages
+    )
+      return loadLesson(db, { planId, kind: "lesson", key: row.key });
+  }
+  return null;
 }
 
 /** School and course only steer vocabulary and depth; they are reader data, never instructions. */
@@ -198,7 +227,9 @@ export function readLesson(
   wording?: Wording,
 ) {
   const context = modelContext(db, planId, topicId, wording);
-  const cached = loadLesson(db, { planId, kind: "lesson", key: context.key });
+  const cached =
+    loadLesson(db, { planId, kind: "lesson", key: context.key }) ??
+    earlierLesson(db, planId, topicId, context);
   return cached?.provider
     ? cached
     : {
@@ -215,6 +246,8 @@ export type LessonResult = {
   /** Model general knowledge, not the student's sources. */
   general?: boolean;
   fallback?: boolean;
+  /** Written by an earlier lesson prompt, before smart text; shown until rewritten. */
+  earlier?: boolean;
 };
 
 export async function writeLesson(
@@ -235,7 +268,11 @@ export async function writeLesson(
   const grounded = parts.length > 0;
   options?.onPassages?.(passageIds);
   // Only rows with provenance are model lessons; older fallback rows under this key are ignored and overwritten.
-  const cached = loadLesson(db, { planId, kind: "lesson", key: context.key });
+  const current = loadLesson(db, { planId, kind: "lesson", key: context.key });
+  const earlier = current?.provider
+    ? null
+    : earlierLesson(db, planId, topicId, context);
+  const cached = current?.provider ? current : earlier;
   if (cached?.provider && !options?.regenerate)
     return {
       markdown: cached.markdown,
@@ -243,6 +280,7 @@ export async function writeLesson(
       itemId: cached.itemId,
       wording,
       ...(cached.grounding === "general" ? { general: true } : {}),
+      ...(earlier ? { earlier: true } : {}),
     };
   const bookFallback = () => ({
     ...openLesson(db, planId, topicId),

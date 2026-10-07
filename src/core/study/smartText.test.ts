@@ -7,6 +7,7 @@ import { importSmartbook } from "../sources/smartbook";
 import { parseSmartText, smartQuestions, finalRecap } from "../../shared/smart-text";
 import { MASTERY_WEIGHTS, masteryFor } from "./mastery";
 import { rewriteLessonSection, writeLesson } from "./openLesson";
+import { cacheKey, saveLesson } from "./lesson";
 import { answerSmartCheck, smartAnswers, smartSources } from "./smartText";
 import { studyHandlers } from "./handlers";
 import { exportMarkdown } from "../share/markdown";
@@ -216,6 +217,47 @@ describe("smart lessons", () => {
     await expect(
       rewriteLessonSection(db, planId, topicId, run, { section: 9 }),
     ).rejects.toThrow("section-missing");
+    db.close();
+  });
+
+  it("keeps showing a lesson from the earlier prompt until it is rewritten", async () => {
+    const { db, planId, topicId, run } = setup();
+    const passageIds = (
+      db.prepare("SELECT passage_id FROM topic_passages WHERE topic_id = ?").all(topicId) as Array<{
+        passage_id: string;
+      }>
+    ).map((row) => row.passage_id);
+    const itemId = saveLesson(db, {
+      planId,
+      topicId,
+      kind: "lesson",
+      key: cacheKey({
+        kind: "lesson",
+        scopeId: topicId,
+        passageIds,
+        promptVersion: "model-3|complete-2|balanced|university|||Italian",
+      }),
+      markdown: "La velocità [P1].",
+      passageIds,
+      engine: { provider: "claude", model: "old" },
+      prompt: { template: "lesson.write", version: "model-3" },
+    });
+    let calls = 0;
+    const counting: typeof run = async (input) => {
+      calls++;
+      return run!(input);
+    };
+    const shown = await writeLesson(db, planId, topicId, counting);
+    expect(shown).toMatchObject({ itemId, markdown: "La velocità [P1].", earlier: true });
+    expect(calls).toBe(0);
+    // Another level is another variant: it is written fresh.
+    await writeLesson(db, planId, topicId, counting, { wording: "simple" });
+    expect(calls).toBe(1);
+    const rewritten = await writeLesson(db, planId, topicId, counting, { regenerate: true });
+    expect(calls).toBe(2);
+    expect(rewritten.earlier).toBeUndefined();
+    expect(rewritten.itemId).not.toBe(itemId);
+    expect((await writeLesson(db, planId, topicId, counting)).markdown).toBe(smartLesson);
     db.close();
   });
 
