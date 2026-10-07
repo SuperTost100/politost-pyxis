@@ -128,15 +128,13 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     const result = (await page.evaluate(
       (id) => window.pyxis.invoke("plans.read", { planId: id }),
       created.planId,
-    )) as {
-      topics: Array<{ title: string }>;
-      nodes: Array<{ kind: string; id: string }>;
-    };
+    )) as { topics: Array<{ title: string }> };
     expect(result.topics).toHaveLength(1);
     await page.locator(".px-plan-page .px-seg-wrap").getByText("Percorso", { exact: true }).click();
+    // A new plan suggests the introduction first.
     await page
-      .locator(".px-plan-dock")
-      .getByRole("button", { name: "Continua", exact: true })
+      .locator(".px-path-next")
+      .getByRole("button", { name: "Inizia", exact: true })
       .click();
     // The introduction is its own page, without the passage references the model was given.
     await expect(page).toHaveURL(new RegExp(`#/plans/${created.planId}/intro$`));
