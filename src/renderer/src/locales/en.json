@@ -1272,7 +1272,31 @@
       "vision": "Images"
     },
     "perFeature": "Engine by feature",
-    "inherit": "Use the default engine",
+    "advanced": "Advanced options",
+    "allEngines": "All engines",
+    "automatic": "Automatic",
+    "backToAuto": "Back to automatic choice",
+    "installHelp": "Pyxis needs an AI engine to answer. Install Claude Code or Codex and sign in with your account. Pyxis then picks the model.",
+    "installHelpLink": "How to install",
+    "auto": {
+      "title": "Automatic choice",
+      "summary": "Pyxis uses {{parts}}.",
+      "part": "{{name}} for {{tasks}}",
+      "split": "Pyxis splits the work across {{count}} engines:",
+      "single": "Pyxis uses {{name}} for everything.",
+      "cheap": "It picks the cheapest model that is good enough.",
+      "none": "No engine is ready.",
+      "pinned_one": "{{count}} feature is pinned by hand in the advanced options.",
+      "pinned_other": "{{count}} features are pinned by hand in the advanced options."
+    },
+    "task": {
+      "chat": "chat",
+      "map": "maps",
+      "plan": "plans",
+      "lesson": "lessons",
+      "vision": "photos",
+      "grading": "grading"
+    },
     "allCliAdded": "All supported CLI engines are already listed in Settings. Use their details to connect or configure them."
   },
   "graph": {

@@ -1272,7 +1272,31 @@
       "vision": "Immagini"
     },
     "perFeature": "Motori per funzione",
-    "inherit": "Usa il motore predefinito",
+    "advanced": "Opzioni avanzate",
+    "allEngines": "Tutti i motori",
+    "automatic": "Automatico",
+    "backToAuto": "Torna alla scelta automatica",
+    "installHelp": "Pyxis ha bisogno di un motore AI per rispondere. Installa Claude Code o Codex e accedi con il tuo account. Poi sceglie lui il modello.",
+    "installHelpLink": "Come si installa",
+    "auto": {
+      "title": "Scelta automatica",
+      "summary": "Pyxis usa {{parts}}.",
+      "part": "{{name}} per {{tasks}}",
+      "split": "Pyxis divide il lavoro tra {{count}} motori:",
+      "single": "Pyxis usa {{name}} per tutto.",
+      "cheap": "Sceglie il modello più economico che basta.",
+      "none": "Nessun motore è pronto.",
+      "pinned_one": "{{count}} funzione è fissata a mano nelle opzioni avanzate.",
+      "pinned_other": "{{count}} funzioni sono fissate a mano nelle opzioni avanzate."
+    },
+    "task": {
+      "chat": "la chat",
+      "map": "le mappe",
+      "plan": "i piani",
+      "lesson": "le lezioni",
+      "vision": "le foto",
+      "grading": "le correzioni"
+    },
     "allCliAdded": "Tutti i motori CLI supportati sono già elencati nelle Impostazioni. Apri i dettagli per collegarli o configurarli."
   },
   "graph": {
