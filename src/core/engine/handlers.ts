@@ -3,7 +3,13 @@ import { engineProviders, IpcError } from "../../shared/ipc";
 import { autoFeatures, planAuto, type AutoProvider } from "./auto";
 import { capabilityWarning, type Need } from "./capabilities";
 import { translateEngineError } from "./errors";
-import { getFunnel, runTurn, type ProviderId } from "./funnel";
+import {
+  acknowledgeProviders,
+  getFunnel,
+  isProviderAcknowledged,
+  runTurn,
+  type ProviderId,
+} from "./funnel";
 import type { StoredSelection } from "./selection";
 
 const features = [
@@ -67,6 +73,7 @@ type OverviewRow = {
   version: string;
   path: string;
   withinTestedRange: boolean;
+  acknowledged: boolean;
   capabilities: { effort: boolean; fast: boolean };
 };
 
@@ -95,6 +102,7 @@ async function overviewRows(): Promise<OverviewRow[]> {
         version: row.installation.version ?? "",
         path: row.installation.path ?? "",
         withinTestedRange: row.installation.withinTestedRange ?? true,
+        acknowledged: isProviderAcknowledged(row.id),
         capabilities: {
           effort: row.capabilities.effort,
           fast: row.capabilities.fast,
@@ -113,7 +121,9 @@ type StoredRow = { feature: string; selection_json: string };
 
 /**
  * Recomputes the automatic feature choices from the engines that are ready
- * now. Features pinned by the student are left alone, and no model is called.
+ * now and acknowledged. An engine whose notice has not been read is never
+ * chosen, so a task never reaches it. Features pinned by the student are left
+ * alone, and no model is called.
  * `reset` un-pins the listed features (or all) before the plan is applied.
  */
 export async function autoConfigureEngines(
@@ -124,7 +134,7 @@ export async function autoConfigureEngines(
   const ready = rows.filter(isReady);
   const listed: AutoProvider[] = [];
   let failed = 0;
-  for (const row of ready) {
+  for (const row of ready.filter((candidate) => candidate.acknowledged)) {
     try {
       const models = await getFunnel().models(row.id as ProviderId);
       listed.push({
@@ -234,6 +244,16 @@ export function engineHandlers(
       }
       return rows;
     },
+    /**
+     * Records that the student has read what these providers receive, then lets them take part in the automatic
+     * choices. The recomputation lists models, which can take seconds, so the answer does not wait for it.
+     */
+    acknowledge(input: { providers: ProviderId[] }) {
+      acknowledgeProviders(input.providers);
+      lastAuto = Date.now();
+      void reconfigure();
+      return { ok: true as const };
+    },
     async autoConfigure(input: { reset?: boolean; features?: string[] } = {}) {
       lastAuto = Date.now();
       const run = queue.then(() => autoConfigureEngines(db, input));
@@ -317,6 +337,11 @@ export function engineHandlers(
       }
       if (disabled(input.provider))
         throw new IpcError("unsupported", "engines.disabled");
+      if (!isProviderAcknowledged(input.provider))
+        throw new IpcError(
+          "disclosure-required",
+          "engines.errors.disclosure-required",
+        );
       const capability = getFunnel().providers[input.provider]!.capabilities;
       if (
         (input.effort && !capability.effort) ||

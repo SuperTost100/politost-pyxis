@@ -11,14 +11,36 @@ import { invoke } from "../../lib/ipc";
 import "./SubjectPicker.css";
 
 type Subject = { id: string; name: string };
-function SubjectRow({ item, disabled, remove }: { item: Subject; disabled: boolean; remove: () => void }) {
+function SubjectRow({ item, disabled, remove, rename }: { item: Subject; disabled: boolean; remove: () => void; rename: (name: string) => Promise<void> }) {
   const { t } = useTranslation();
+  const [draft, setDraft] = useState<string | null>(null);
+  const save = () => {
+    const next = draft?.trim() ?? "";
+    if (!next || next === item.name) return setDraft(null);
+    void rename(next).then(() => setDraft(null), () => undefined);
+  };
   const { setNodeRef, setActivatorNodeRef, transform, transition, attributes, listeners } = useSortable({ id: item.id, disabled });
   return <li ref={setNodeRef} className="subject-manager-row" style={{ transform: CSS.Transform.toString(transform), transition }}>
     <button ref={setActivatorNodeRef} type="button" className="subject-drag" {...attributes} {...listeners} aria-label={t("ask.reorderSubject", { name: item.name })} disabled={disabled}>
       <GripVertical size={18} aria-hidden />
     </button>
-    <span className="body">{item.name}</span>
+    {draft === null ? <span className="body">{item.name}</span> : (
+      <Input autoFocus size="small" value={draft} maxLength={120} aria-label={t("ask.renameSubjectField")} disabled={disabled}
+        onFocus={(event) => event.target.select()}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") { event.preventDefault(); save(); }
+          if (event.key === "Escape") { event.stopPropagation(); setDraft(null); }
+        }} />
+    )}
+    {draft === null ? (
+      <Button type="text" disabled={disabled} aria-label={t("ask.renameNamedSubject", { name: item.name })} onClick={() => setDraft(item.name)}>{t("ask.renameSubject")}</Button>
+    ) : (
+      <>
+        <Button type="text" disabled={disabled || !draft.trim()} onClick={save}>{t("ask.saveSubject")}</Button>
+        <Button type="text" disabled={disabled} onClick={() => setDraft(null)}>{t("ask.cancelSubjects")}</Button>
+      </>
+    )}
     <Popconfirm title={t("ask.removeSubjectConfirm", { name: item.name })} onConfirm={remove} okText={t("ask.removeSubject")} cancelText={t("ask.cancelSubjects")}>
       <Button type="text" disabled={disabled} aria-label={t("ask.removeNamedSubject", { name: item.name })}>{t("ask.removeSubject")}</Button>
     </Popconfirm>
@@ -33,22 +55,25 @@ export function SubjectManagerModal({ open, onClose, value, onChange }: { open: 
   const [name, setName] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const change = useMutation({
-    mutationFn: async (action: { kind: "add"; name: string } | { kind: "remove"; item: Subject } | { kind: "order"; ids: string[] }) => {
+    mutationFn: async (action: { kind: "add"; name: string } | { kind: "rename"; item: Subject; name: string } | { kind: "remove"; item: Subject } | { kind: "order"; ids: string[] }) => {
       if (action.kind === "add") {
         const added = await invoke("subjects.add", { name: action.name });
         onChange(added.name); setName("");
+      } else if (action.kind === "rename") {
+        const renamed = await invoke("subjects.rename", { id: action.item.id, name: action.name });
+        if (value === action.item.name) onChange(renamed.name);
       } else if (action.kind === "remove") {
         await invoke("subjects.remove", { id: action.item.id });
         if (value === action.item.name) onChange("");
       } else await invoke("subjects.reorder", { ids: action.ids });
     },
-    onSuccess: () => { void client.invalidateQueries({ queryKey: ["subjects"] }); void client.invalidateQueries({ queryKey: ["plans"] }); },
+    onSuccess: () => { void client.invalidateQueries({ queryKey: ["subjects"] }); void client.invalidateQueries({ queryKey: ["plans"] }); void client.invalidateQueries({ queryKey: ["chats"] }); },
   });
   const rows = subjects.data ?? [];
   return <>
     <Modal open={open} onCancel={onClose} afterOpenChange={(next) => { if (next) change.reset(); }} title={t("ask.manageSubjects")} footer={null}>
       <p className="small">{t("ask.subjectOrderHelp")}</p>
-      {subjects.isError || change.isError ? <Notice tone="danger">{t("ask.subjectSaveFailed")}</Notice> : null}
+      {subjects.isError || change.isError ? <Notice tone="danger">{t((change.error as { messageKey?: unknown } | null)?.messageKey === "errors.subjectExists" ? "errors.subjectExists" : "ask.subjectSaveFailed")}</Notice> : null}
       <DndContext sensors={sensors} collisionDetection={closestCenter} accessibility={{ screenReaderInstructions: { draggable: t("ask.subjectDragInstructions") }, announcements: {
         onDragStart: ({ active }) => t("ask.subjectPicked", { name: rows.find((row) => row.id === active.id)?.name ?? "" }),
         onDragOver: ({ active, over }) => over ? t("ask.subjectMoved", { name: rows.find((row) => row.id === active.id)?.name ?? "", position: rows.findIndex((row) => row.id === over.id) + 1, count: rows.length }) : undefined,
@@ -61,7 +86,7 @@ export function SubjectManagerModal({ open, onClose, value, onChange }: { open: 
         if (from >= 0 && to >= 0) change.mutate({ kind: "order", ids: arrayMove(rows, from, to).map((row) => row.id) });
       }}>
         <SortableContext items={rows.map((row) => row.id)} strategy={verticalListSortingStrategy}>
-          <ul className="subject-manager-list">{rows.map((item) => <SubjectRow key={item.id} item={item} disabled={change.isPending} remove={() => change.mutate({ kind: "remove", item })} />)}</ul>
+          <ul className="subject-manager-list">{rows.map((item) => <SubjectRow key={item.id} item={item} disabled={change.isPending} remove={() => change.mutate({ kind: "remove", item })} rename={(name) => change.mutateAsync({ kind: "rename", item, name })} />)}</ul>
         </SortableContext>
       </DndContext>
       <form className="subject-manager-add" onSubmit={(event) => { event.preventDefault(); if (name.trim()) change.mutate({ kind: "add", name }); }}>
@@ -71,14 +96,3 @@ export function SubjectManagerModal({ open, onClose, value, onChange }: { open: 
     </Modal>
   </>;
 }
-
-/** Settings entry point: a button that opens the subject manager. */
-export function SubjectPicker({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  return <div className="subject-picker">
-    <Button type="text" disabled={disabled} onClick={() => setOpen(true)}>{t("ask.manageSubjects")}</Button>
-    <SubjectManagerModal open={open} onClose={() => setOpen(false)} value={value} onChange={onChange} />
-  </div>;
-}
-

@@ -120,6 +120,10 @@
     "reorderSubject": "Riordina {{name}}",
     "removeSubject": "Rimuovi",
     "removeNamedSubject": "Rimuovi {{name}}",
+    "renameSubject": "Rinomina",
+    "renameNamedSubject": "Rinomina {{name}}",
+    "renameSubjectField": "Nome della materia",
+    "saveSubject": "Salva",
     "removeSubjectConfirm": "Rimuovere {{name}} dalla lista delle materie? I piani e le conversazioni restano salvati.",
     "subjectOrderHelp": "Trascina una materia per cambiare ordine. Puoi anche selezionare la maniglia, premere Spazio, spostarla con le frecce e premere Spazio per salvare.",
     "subjectDragInstructions": "Premi Spazio per prendere una materia, usa le frecce per spostarla e premi Spazio per posarla. Premi Esc per annullare.",
@@ -1041,6 +1045,7 @@
     "invalidOutput": "La risposta non ha la forma attesa",
     "attachTooBig": "Il file è troppo grande. Ogni allegato sta sotto i 15 MB, e al massimo otto file.",
     "invalidSubject": "Inserisci una materia da 1 a 120 caratteri.",
+    "subjectExists": "Esiste già una materia con questo nome.",
     "coreUnavailable": "Il motore interno non riesce ad avviarsi. Riprova oppure apri le Impostazioni per ripristinare una copia di sicurezza."
   },
   "dev": {
@@ -1396,6 +1401,12 @@
     "terms": "Una prova invia una frase corta al fornitore scelto.",
     "disclosure": "Il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore del motore.",
     "acknowledge": "Ho capito",
+    "notice": {
+      "title": "Cosa esce da questo computer",
+      "intro": "Quando usi un motore, il testo, i brani recuperati e gli allegati escono da questo computer. Pyxis non invia nulla finché non confermi.",
+      "item": "{{name}} li invia a {{vendor}}.",
+      "later": "Non ora"
+    },
     "loading": "Cerco i motori installati.",
     "loadFailed": "Non riesco a leggere i motori.",
     "disabled": "Non disponibile: manca ancora la modalità senza strumenti.",
@@ -1429,7 +1440,8 @@
       "aborted": "Annullato.",
       "refused": "La chiave è stata rifiutata. Controllala.",
       "quota": "Limite di utilizzo raggiunto. Riprova più tardi o scegli un altro motore.",
-      "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare."
+      "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
+      "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI."
     },
     "feature": {
       "default": "Motore predefinito",

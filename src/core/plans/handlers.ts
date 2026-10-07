@@ -17,7 +17,7 @@ import { educationKey, planEducation, setPlanEducation } from "./education";
 import type { EducationLevel } from "../profile/profile";
 import type { Runner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
-import { addSubject, reorderSubjects, removeSubject } from "./subjects";
+import { addSubject, reorderSubjects, removeSubject, renameSubject } from "./subjects";
 import type Database from "better-sqlite3";
 import {
   completeNode,
@@ -63,6 +63,9 @@ export function planHandlers(
     reorderSubjects(input: { ids: string[] }) {
       reorderSubjects(db, input.ids);
       return { ok: true as const };
+    },
+    renameSubject(input: { id: string; name: string }) {
+      return renameSubject(db, input.id, input.name);
     },
     removeSubject(input: { id: string }) {
       removeSubject(db, input.id);

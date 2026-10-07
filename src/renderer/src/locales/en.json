@@ -120,6 +120,10 @@
     "reorderSubject": "Reorder {{name}}",
     "removeSubject": "Remove",
     "removeNamedSubject": "Remove {{name}}",
+    "renameSubject": "Rename",
+    "renameNamedSubject": "Rename {{name}}",
+    "renameSubjectField": "Subject name",
+    "saveSubject": "Save",
     "removeSubjectConfirm": "Remove {{name}} from the subject list? Existing plans and conversations are kept.",
     "subjectOrderHelp": "Drag a subject to change the order. You can also focus its handle, press Space, move with the arrow keys, then press Space to save.",
     "subjectDragInstructions": "Press Space to pick up a subject, use the arrow keys to move it, and press Space to drop it. Press Escape to cancel.",
@@ -1041,6 +1045,7 @@
     "invalidOutput": "The answer was not in the expected shape",
     "attachTooBig": "That file is too large. Keep each attachment under 15 MB, and eight files at most.",
     "invalidSubject": "Enter a subject name of 1 to 120 characters.",
+    "subjectExists": "A subject with that name already exists.",
     "coreUnavailable": "The internal engine could not start. Retry, or open Settings to restore a backup."
   },
   "dev": {
@@ -1396,6 +1401,12 @@
     "terms": "A test sends one short sentence to the provider you pick.",
     "disclosure": "The text, the retrieved passages and the attachments leave this computer and go to that engine's vendor.",
     "acknowledge": "I understand",
+    "notice": {
+      "title": "What leaves this computer",
+      "intro": "When you use an engine, the text, the retrieved passages and the attachments leave this computer. Pyxis sends nothing until you confirm.",
+      "item": "{{name}} sends them to {{vendor}}.",
+      "later": "Not now"
+    },
     "loading": "Looking for installed engines.",
     "loadFailed": "The engine list did not load.",
     "disabled": "Unavailable: text-only mode is not ready yet.",
@@ -1429,7 +1440,8 @@
       "aborted": "Cancelled.",
       "refused": "The key was refused. Check it.",
       "quota": "Usage limit reached. Try again later or pick another engine.",
-      "engine-missing": "Choose and test an engine in Settings before continuing."
+      "engine-missing": "Choose and test an engine in Settings before continuing.",
+      "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines."
     },
     "feature": {
       "default": "Default engine",
