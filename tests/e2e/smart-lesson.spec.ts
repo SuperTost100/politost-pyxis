@@ -287,7 +287,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     // Recap: answering every question completes the lesson.
     const recap = page.getByRole("region", { name: "Ripasso finale" });
     await recap.scrollIntoViewIfNeeded();
-    await recap.getByRole("button", { name: /^B\s*Newton/ }).click();
+    await recap.getByRole("button", { name: /^(B\s*)?Newton$/ }).click();
     await recap.getByRole("button", { name: /raddoppia/ }).click();
     expect(await done("lesson", learn.topicId)).toBe(false);
     await recap.getByRole("button", { name: /è sempre fermo/ }).click();
