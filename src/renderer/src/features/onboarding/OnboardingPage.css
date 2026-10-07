@@ -61,3 +61,7 @@
   gap: var(--space-4);
   padding-top: var(--space-6);
 }
+/* Back and Skip are real secondary buttons, as in the task pages' action bar. */
+.px-onboarding-actions .ant-btn-text {
+  border-color: var(--border-control);
+}
