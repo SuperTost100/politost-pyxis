@@ -8,6 +8,6 @@ The local installed real-engine loop passed in 91.451 seconds with reported mode
 
 The uploaded macOS installer is that verified local artifact. GitHub repository/update and Linux maintainer metadata were configured afterwards in source. The uploaded installer therefore predates repository metadata and needs manual updates; the next hosted build includes the configured update channel. Developer ID signing/notarization and hosted other-platform validation are not claimed for this local artifact.
 
-Hosted CI starts on push. Inspect its results before distributing other-platform packages. Test fixtures that need downloaded runtimes/models must be supplied and skips reviewed. Two old dependency notices retain explicitly labeled metadata only; see notices.md.
+Hosted CI starts on pull requests and pushes to `main`. Inspect its results before distributing other-platform packages. Test fixtures that need downloaded runtimes/models must be supplied and skips reviewed. Two old dependency notices retain explicitly labeled metadata only; see notices.md.
 
 The first hosted run exposed portability defects in workspace directory identity, Windows key-store flushing and native embedding worker restart. Those were corrected after review. The rebuilt macOS arm64 tree passes both typechecks and all 761 unit tests in 129 files with zero skips. The hidden native workspace move/recovery check also passes. The inode-pinning test applies to POSIX and is explicitly skipped on Windows. Cross-platform acceptance still depends on the next hosted run.

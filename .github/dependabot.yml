@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Every pull request runs the four-platform CI, so security fixes arrive as one grouped pull request.
+  # The limit of 0 keeps routine version updates off; security updates are not affected by it.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
