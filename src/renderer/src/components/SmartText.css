@@ -1,0 +1,291 @@
+/* Smart text: book-like prose with quiet, clearly framed interactive blocks. */
+/* Block flow, so the margins between prose and blocks collapse. */
+.px-smart {
+  display: block;
+}
+
+.px-smart > .px-markdown.is-reading {
+  max-width: none;
+}
+
+.px-smart .px-markdown.is-reading :where(h2) {
+  margin: var(--space-8) 0 var(--space-3);
+  font: 600 calc(22px * var(--text-scale, 1)) / calc(28px * var(--text-scale, 1)) var(--font-sans);
+}
+
+.px-smart .px-markdown.is-reading :where(h3) {
+  margin: var(--space-6) 0 var(--space-2);
+  font: 600 calc(17px * var(--text-scale, 1)) / calc(24px * var(--text-scale, 1)) var(--font-sans);
+}
+
+.px-smart > .px-markdown.is-reading:first-child :where(h2:first-child) {
+  margin-top: 0;
+}
+
+.px-smart .px-markdown :where(p, ul, ol, blockquote) {
+  margin-bottom: var(--space-4);
+}
+
+.px-sb {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-6) 0;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.px-sb .px-markdown :where(p:last-child, ul:last-child, ol:last-child) {
+  margin-bottom: 0;
+}
+
+.px-sb-label {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.px-sb.is-check .px-sb-label,
+.px-sb.is-recap .px-sb-label {
+  color: var(--primary-text);
+}
+
+.px-sb.is-try .px-sb-label {
+  color: var(--star-text);
+}
+
+.px-sb.is-example .px-sb-label {
+  color: var(--mastery-text);
+}
+
+.px-sb-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.px-sb-head .meta {
+  margin: 0;
+}
+
+.px-sb-title {
+  margin: 0;
+}
+
+.px-sb-question {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.px-sb.is-recap .px-sb-question + .px-sb-question {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.px-sb-question > .meta {
+  margin: 0;
+}
+
+.px-sb-options {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.px-sb-options:disabled .px-opt {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.px-sb-feedback {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+}
+
+.px-sb-feedback p.body-strong {
+  margin: 0;
+}
+
+.px-sb-feedback.is-right {
+  background: var(--mastery-soft);
+}
+
+.px-sb-feedback.is-right p.body-strong {
+  color: var(--mastery-text);
+}
+
+.px-sb-feedback.is-wrong {
+  background: var(--danger-soft);
+}
+
+.px-sb-feedback.is-wrong p.body-strong {
+  color: var(--danger);
+}
+
+.px-sb-error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.px-sb-hint {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--star-soft);
+  color: var(--ink);
+}
+
+.px-sb-hint > svg {
+  margin-top: 2px;
+  color: var(--star-text);
+}
+
+.px-sb-hint .label {
+  margin: 0 0 var(--space-1);
+  color: var(--star-text);
+}
+
+.px-sb-steps {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.px-sb-steps li {
+  display: grid;
+  gap: var(--space-1);
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--border);
+}
+
+.px-sb-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.px-sb-result .label {
+  color: var(--ink-muted);
+}
+
+.px-sb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.px-sb.is-reveal {
+  padding: 0;
+  gap: 0;
+}
+
+.px-sb-reveal {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "label toggle"
+    "front toggle";
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.px-sb-reveal:hover {
+  background: var(--surface-raised);
+}
+
+.px-sb-reveal .px-sb-label {
+  grid-area: label;
+}
+
+.px-sb-front {
+  grid-area: front;
+  font: 600 calc(15px * var(--text-scale, 1)) / calc(22px * var(--text-scale, 1)) var(--font-sans);
+}
+
+.px-sb-toggle {
+  grid-area: toggle;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--ink-muted);
+}
+
+.px-sb-toggle svg {
+  transition: transform 160ms ease-out;
+}
+
+.px-sb.is-open .px-sb-toggle svg {
+  transform: rotate(180deg);
+}
+
+.px-sb.is-open .px-sb-reveal {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.px-sb-back {
+  margin: 0 var(--space-5);
+  padding: var(--space-4) 0 var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.px-sb.is-pending {
+  gap: var(--space-2);
+}
+
+.px-sb-skeleton {
+  display: block;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  animation: px-sb-pulse 1.4s ease-in-out infinite;
+}
+
+.px-sb-skeleton.is-short {
+  width: 60%;
+}
+
+@keyframes px-sb-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-sb-skeleton {
+    animation: none;
+  }
+
+  .px-sb-toggle svg {
+    transition: none;
+  }
+}
+
+/* Inline Markdown keeps the weight of the line it sits in. */
+.px-sb-title .px-markdown,
+.px-sb-front .px-markdown {
+  font: inherit;
+}
