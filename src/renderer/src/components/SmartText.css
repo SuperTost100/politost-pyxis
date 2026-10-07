@@ -8,7 +8,8 @@
   max-width: none;
 }
 
-.px-smart .px-markdown.is-reading :where(h2) {
+/* An h1 from an older or disobedient lesson never outranks the page title above it. */
+.px-smart .px-markdown.is-reading :where(h1, h2) {
   margin: var(--space-8) 0 var(--space-3);
   font: 600 calc(22px * var(--text-scale, 1)) / calc(28px * var(--text-scale, 1)) var(--font-sans);
 }
@@ -18,7 +19,7 @@
   font: 600 calc(17px * var(--text-scale, 1)) / calc(24px * var(--text-scale, 1)) var(--font-sans);
 }
 
-.px-smart > .px-markdown.is-reading:first-child :where(h2:first-child) {
+.px-smart > .px-markdown.is-reading:first-child :where(h1:first-child, h2:first-child) {
   margin-top: 0;
 }
 
