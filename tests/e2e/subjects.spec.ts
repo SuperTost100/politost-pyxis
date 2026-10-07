@@ -13,6 +13,7 @@ test("ASK-01 subjects can be added, selected, reordered by keyboard and removed"
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await page.getByText("Chiedi", { exact: true }).click();
+    await page.getByRole("button", { name: /^Materia:/ }).click();
     await page.getByRole("button", { name: "Gestisci materie" }).click();
     for (const name of ["Fisica", "Analisi"]) {
       await page.getByRole("textbox", { name: "Nuova materia" }).fill(name);
@@ -44,8 +45,8 @@ test("ASK-01 subjects can be added, selected, reordered by keyboard and removed"
     await expect(page.getByRole("button", { name: "Riordina Analisi" })).not.toBeVisible();
     await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("subjects.list", {})) as Array<{ name: string }>).map((row) => row.name)).toEqual(["Fisica"]);
     await page.keyboard.press("Escape");
-    await page.getByRole("combobox", { name: "Materia" }).click();
-    await page.getByTitle("Fisica", { exact: true }).last().click();
-    await expect(page.locator(".subject-picker")).toContainText("Fisica");
+    await page.getByRole("button", { name: /^Materia:/ }).click();
+    await page.getByRole("button", { name: "Fisica", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Materia: Fisica" })).toHaveText("Fisica");
   } finally { await app.close(); rmSync(userData, { recursive: true, force: true }); }
 });

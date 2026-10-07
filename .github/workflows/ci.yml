@@ -1,8 +1,10 @@
 name: Check and package
 
+# Pull requests run on the PR event only, so a push to a PR branch does not start a second full run.
+# Other branches can still be checked through workflow_dispatch.
 on:
   push:
-    branches-ignore: [ci/windows-ocr-trace]
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -15,65 +17,40 @@ permissions:
   contents: read
 
 concurrency:
-  group: pyxis-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: pyxis-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  PYXIS_E2E_HIDDEN: "1"
+  PYXIS_TEST_E5: .tmp/e5
+  PYXIS_CRASH_DIR: .tmp/ci-crashes
+
+# Tests, route audits and packaging run as separate jobs in parallel. macOS allows few concurrent
+# runners, so a pull request starts six macOS jobs; pushes to main add the macOS x64 route audit.
 jobs:
-  build:
-    name: ${{ matrix.target }}
+  test:
+    name: test ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 75
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.windows_trace && '[{"target":"windows-x64","runner":"windows-2025","builder":"--win --x64"}]' || '[{"target":"mac-arm64","runner":"macos-15","builder":"--mac --arm64"},{"target":"mac-x64","runner":"macos-15-intel","builder":"--mac --x64"},{"target":"windows-x64","runner":"windows-2025","builder":"--win --x64"},{"target":"linux-x64","runner":"ubuntu-24.04","builder":"--linux --x64"}]') }}
+        include: ${{ fromJSON(inputs.windows_trace && '[{"target":"windows-x64","runner":"windows-2025"}]' || '[{"target":"mac-arm64","runner":"macos-15"},{"target":"mac-x64","runner":"macos-15-intel"},{"target":"windows-x64","runner":"windows-2025"},{"target":"linux-x64","runner":"ubuntu-24.04"}]') }}
     defaults:
       run:
         shell: bash
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      PYXIS_E2E_HIDDEN: "1"
-      PYXIS_TEST_E5: .tmp/e5
-      PYXIS_CRASH_DIR: .tmp/ci-crashes
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: ./.github/actions/prepare
         with:
-          node-version: 26
-          cache: npm
-      - name: Install Linux display and Electron libraries
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libfuse2 apparmor
-      - run: npm ci
-      - name: Allow the Electron test binary to use its namespace sandbox
-        if: runner.os == 'Linux'
-        run: |
-          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
-            binary="$(node -p "require('electron')")"
-            sudo tee /etc/apparmor.d/pyxis-ci >/dev/null <<EOF
-          profile pyxis-ci "$binary" flags=(unconfined) {
-            userns,
-          }
-          EOF
-            sudo apparmor_parser -r /etc/apparmor.d/pyxis-ci
-          fi
-      - run: npm run typecheck
-      - run: npm run test:fixtures
-      - run: npm run build
-      - name: Collect Windows native faults locally
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $crash = Join-Path (Get-Location) $env:PYXIS_CRASH_DIR
-          New-Item -ItemType Directory -Force $crash | Out-Null
-          $key = 'HKLM:\Software\Microsoft\Windows\Windows Error Reporting\LocalDumps\electron.exe'
-          New-Item -Path $key -Force | Out-Null
-          New-ItemProperty -Path $key -Name DumpFolder -Value $crash -PropertyType ExpandString -Force | Out-Null
-          New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
+          fixtures: "true"
+          build: "true"
+      # Type checking does not depend on the platform.
+      - if: runner.os == 'Linux'
+        run: npm run typecheck
       - name: Unit checks
         if: ${{ !inputs.windows_trace }}
         run: npm test -- --maxWorkers=2
@@ -144,11 +121,65 @@ jobs:
           run_e2e tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
           if [ "${{ inputs.windows_trace }}" = true ]; then exit 0; fi
           run_e2e --grep-invert 'M14 every application|OCR data:|release loop:'
-          for combo in it-dark-1280 it-dark-960 it-light-1280 it-light-960 en-dark-1280 en-dark-960 en-light-1280 en-light-960; do
+      - name: Preserve failed test report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: test-report-${{ matrix.target }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+      - name: Report local crash fault metadata
+        if: always() && runner.os == 'Windows'
+        run: node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR"
+      - name: Report Windows application fault modules
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000; StartTime=(Get-Date).AddMinutes(-50)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match '(?i)electron|politost|pyxis' } |
+            Select-Object -First 5 -ExpandProperty Message
+
+  # One job per platform and language; each covers both themes and widths (and large text on macOS arm64).
+  audit:
+    name: route audit ${{ matrix.target }} ${{ matrix.language }}
+    if: ${{ !inputs.windows_trace }}
+    # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
+    runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [mac-arm64, mac-x64, windows-x64, linux-x64]
+        language: [it, en]
+        # macOS x64 renders with the same Chromium as macOS arm64; pull requests leave its audit to main.
+        exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"target":"mac-x64"}]' || '[]') }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+        with:
+          fixtures: "true"
+          build: "true"
+      - name: Route audit
+        run: |
+          run_e2e() {
+            if [ "$RUNNER_OS" = Linux ]; then
+              xvfb-run -a npx playwright test "$@" --workers=1
+            else
+              npx playwright test "$@" --workers=1
+            fi
+          }
+          for combo in ${{ matrix.language }}-dark-1280 ${{ matrix.language }}-dark-960 ${{ matrix.language }}-light-1280 ${{ matrix.language }}-light-960; do
             export PYXIS_UI_COMBO="$combo"
             export PYXIS_UI_RECORD="ci-audit/audit-$combo.json"
             run_e2e tests/e2e/ui-audit.spec.ts
-            if [ "$RUNNER_OS" = macOS ] && [ "${{ matrix.target }}" = mac-arm64 ]; then
+            if [ "${{ matrix.target }}" = mac-arm64 ]; then
               export PYXIS_UI_LARGE=1
               export PYXIS_UI_RECORD="ci-audit/audit-$combo-large.json"
               run_e2e tests/e2e/ui-audit.spec.ts
@@ -156,18 +187,50 @@ jobs:
             fi
           done
       - name: Preserve route audit records
-        if: always() && !inputs.windows_trace
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ui-audit-${{ matrix.target }}
+          name: ui-audit-${{ matrix.target }}-${{ matrix.language }}
           path: ci-audit/
           if-no-files-found: warn
           retention-days: 14
+      - name: Preserve failed test report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: audit-report-${{ matrix.target }}-${{ matrix.language }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+      - name: Report local crash fault metadata
+        if: always() && runner.os == 'Windows'
+        run: node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR"
+
+  package:
+    name: package ${{ matrix.target }}
+    if: ${{ !inputs.windows_trace }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: mac-arm64, runner: macos-15, builder: --mac --arm64 }
+          - { target: mac-x64, runner: macos-15-intel, builder: --mac --x64 }
+          - { target: windows-x64, runner: windows-2025, builder: --win --x64 }
+          - { target: linux-x64, runner: ubuntu-24.04, builder: --linux --x64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
       - name: Package without publishing
-        if: ${{ !inputs.windows_trace }}
         run: npm run dist -- ${{ matrix.builder }} --publish never
       - name: Check the packaged application
-        if: ${{ !inputs.windows_trace }}
         run: |
           export PYXIS_DIST_APP="$(node --input-type=module <<'JS'
           import { existsSync } from 'node:fs';
@@ -197,7 +260,6 @@ jobs:
             npx playwright test tests/e2e/window.spec.ts --workers=1
           fi
       - name: Collect installers and SHA-256 checksums
-        if: ${{ !inputs.windows_trace }}
         run: |
           node --input-type=module <<'JS'
           import { readdirSync, mkdirSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
@@ -216,7 +278,6 @@ jobs:
           writeFileSync(join(output, 'SHA256SUMS'), checksums.join('\n') + '\n');
           JS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: ${{ !inputs.windows_trace }}
         with:
           name: pyxis-${{ matrix.target }}
           path: release-artifacts/
@@ -226,7 +287,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: test-report-${{ matrix.target }}
+          name: package-report-${{ matrix.target }}
           path: |
             playwright-report/
             test-results/
@@ -234,17 +295,10 @@ jobs:
       - name: Report local crash fault metadata
         if: always() && runner.os == 'Windows'
         run: node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR"
-      - name: Report Windows application fault modules
-        if: failure() && runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000; StartTime=(Get-Date).AddMinutes(-50)} -ErrorAction SilentlyContinue |
-            Where-Object { $_.Message -match '(?i)electron|politost|pyxis' } |
-            Select-Object -First 5 -ExpandProperty Message
 
   attest:
     name: Attest packaged artifacts
-    needs: build
+    needs: package
     if: github.event_name != 'pull_request' && !inputs.windows_trace
     runs-on: ubuntu-24.04
     timeout-minutes: 10

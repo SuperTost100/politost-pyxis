@@ -1,7 +1,31 @@
 import type Database from "better-sqlite3";
 import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat } from "./turn";
 
-export function chatHandlers(db: Database.Database, workspace = "", fixtureReply?: string) {
+/** Recorded reply for tests. With a delay it waits, then streams the words, so the thinking and streaming states can be seen. */
+function recordedReply(text: string, delayMs: number) {
+  return async (input: { signal?: AbortSignal; onDelta?: (text: string) => void }) => {
+    if (delayMs > 0) {
+      const pause = (ms: number) =>
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, ms);
+          input.signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        });
+      await pause(delayMs / 2);
+      const words = text.split(/(?<=\s)/);
+      const step = Math.max(1, Math.ceil(words.length / 20));
+      for (let at = step; at < words.length + step; at += step) {
+        input.onDelta?.(words.slice(0, at).join(""));
+        await pause(delayMs / 2 / Math.ceil(words.length / step));
+      }
+    }
+    return { text, model: "fixture", provider: "fixture", inputTokens: 0 };
+  };
+}
+
+export function chatHandlers(db: Database.Database, workspace = "", fixtureReply?: string, replyDelayMs = 0) {
   return {
     list() {
       return listChats(db).map((row) => ({
@@ -59,14 +83,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       return regenerateTurn(db, {
         ...input,
         workspace,
-        run: fixtureReply
-          ? async () => ({
-              text: fixtureReply,
-              model: "fixture",
-              provider: "fixture",
-              inputTokens: 0,
-            })
-          : undefined,
+        run: fixtureReply ? recordedReply(fixtureReply, replyDelayMs) : undefined,
       });
     },
     ask(input: {
@@ -84,14 +101,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       return askTurn(db, {
         ...input,
         workspace,
-        run: fixtureReply
-          ? async () => ({
-              text: fixtureReply,
-              model: "fixture",
-              provider: "fixture",
-              inputTokens: 0,
-            })
-          : undefined,
+        run: fixtureReply ? recordedReply(fixtureReply, replyDelayMs) : undefined,
       });
     },
   };

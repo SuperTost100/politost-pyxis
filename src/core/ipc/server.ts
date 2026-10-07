@@ -259,6 +259,10 @@ async function dispatchValidated(
     case "engines.features":
       requests["engines.features"].input.parse(input);
       return engines?.features();
+    case "engines.autoConfigure":
+      return engines?.autoConfigure(
+        requests["engines.autoConfigure"].input.parse(input),
+      );
     case "engines.remove": {
       const parsed = requests["engines.remove"].input.parse(input);
       return engines?.remove({ provider: parsed.provider as ProviderId });
@@ -657,11 +661,19 @@ export function removeEngineSelections(provider: string): void {
   engines?.remove({ provider: provider as ProviderId });
 }
 
+/** Recomputes automatic engine choices in the background. Never calls a model. */
+export function refreshAutoEngines(): void {
+  void engines?.autoConfigure({}).catch(() => undefined);
+}
+
 export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
   configureDisclosure(db, (provider, pending) =>
     broadcast("engine.disclosure", { provider, pending }),
   );
-  engines = engineHandlers(db, (event) => broadcast("engine.login", event));
+  engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
+    auto: true,
+    onAuto: () => broadcast("engine.auto", {}),
+  });
 }
 
 export function bindStudy(
@@ -703,8 +715,9 @@ export function bindChat(
   db: Parameters<typeof chatHandlers>[0],
   workspace = "",
   fixtureReply?: string,
+  replyDelayMs = 0,
 ): void {
-  chats = chatHandlers(db, workspace, fixtureReply);
+  chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs);
 }
 
 export function bindSources(

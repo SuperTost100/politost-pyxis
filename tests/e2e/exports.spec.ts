@@ -35,7 +35,9 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
+      timeout: 10000,
+    });
     db.exec(`INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('export-plan','Fisica','ready',1,1);
       INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('export-topic','export-plan','Energia',0,1);
       INSERT INTO cards (id,plan_id,topic_id,front,back,created_at) VALUES ('card-basic','export-plan','export-topic','Forza $F=ma$','La forza è massa per accelerazione',1);

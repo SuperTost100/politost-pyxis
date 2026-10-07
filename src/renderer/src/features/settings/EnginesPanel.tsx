@@ -16,13 +16,14 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { RequestOutput } from "@shared/ipc";
+import type { TFunction } from "i18next";
+import { engineProviders as providers, type RequestOutput } from "@shared/ipc";
 import { EngineRow } from "../../components/EngineRow";
+import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { invoke, onBroadcast } from "../../lib/ipc";
 import "./EnginesPanel.css";
 
-const providers = ["claude", "codex", "anthropic-api", "openai-api"] as const;
 const featureNames = [
   "default",
   "chat",
@@ -33,9 +34,93 @@ const featureNames = [
   "vision",
 ] as const;
 type Feature = (typeof featureNames)[number];
+/** Order in which tasks are named in the plain-words summary. */
+const summaryTasks = [
+  "chat",
+  "map",
+  "plan",
+  "lesson",
+  "vision",
+  "grading",
+] as const;
+const AUTO = "__auto__";
+const advancedKey = "pyxis.engines.advanced";
 type Engine = RequestOutput<"engines.overview">[number];
 type Model = RequestOutput<"engines.models">[number];
-const docs = "https://github.com/SuperTost100/cli-funnel#quickstart";
+export const docs = "https://github.com/SuperTost100/cli-funnel#quickstart";
+type Features = RequestOutput<"engines.features">;
+type SummaryInput = {
+  t: TFunction;
+  language: string;
+  overview: Engine[] | undefined;
+  features: Features | undefined;
+  nothingReady: boolean;
+};
+
+function summaryParts(input: SummaryInput) {
+  const { t, overview, features } = input;
+  const tasksByEngine = new Map<string, string[]>();
+  for (const task of summaryTasks) {
+    const selection = features?.[task];
+    if (!selection) continue;
+    tasksByEngine.set(selection.provider, [
+      ...(tasksByEngine.get(selection.provider) ?? []),
+      t(`engines.task.${task}`),
+    ]);
+  }
+  const listFormat = new Intl.ListFormat(
+    input.language.startsWith("it") ? "it" : "en-GB",
+    { style: "long", type: "conjunction" },
+  );
+  const engineName = (id: string) =>
+    overview?.find((row) => row.id === id)?.name ?? id;
+  return { tasksByEngine, listFormat, engineName };
+}
+
+/**
+ * With three or more engines the summary reads better as one line each, for example "Antigravity: chat and maps".
+ */
+export function engineSummaryLines(
+  input: SummaryInput,
+): Array<{ id: string; name: string; tasks: string }> {
+  if (input.nothingReady) return [];
+  const { tasksByEngine, listFormat, engineName } = summaryParts(input);
+  if (tasksByEngine.size <= 2) return [];
+  return [...tasksByEngine].map(([id, tasks]) => ({
+    id,
+    name: engineName(id),
+    tasks: listFormat.format(tasks),
+  }));
+}
+
+/**
+ * The plain-words sentence for the automatic choice, for example "Pyxis uses Codex for chat and maps and Claude Code
+ * for plans". Shared with first setup so both screens say the same thing.
+ */
+export function engineSummaryText(input: SummaryInput): string | null {
+  const { t } = input;
+  if (input.nothingReady) return t("engines.auto.none");
+  const { tasksByEngine, listFormat, engineName } = summaryParts(input);
+  if (tasksByEngine.size > 2)
+    return t("engines.auto.split", { count: tasksByEngine.size });
+  if (tasksByEngine.size === 1)
+    return t("engines.auto.single", {
+      name: engineName([...tasksByEngine.keys()][0]!),
+    });
+  if (tasksByEngine.size > 1)
+    return t("engines.auto.summary", {
+      parts: listFormat.format(
+        [...tasksByEngine].map(([id, tasks]) =>
+          t("engines.auto.part", {
+            name: engineName(id),
+            tasks: listFormat.format(tasks),
+          }),
+        ),
+      ),
+    });
+  return null;
+}
+
 function messageKey(err: unknown): string {
   if (
     err &&
@@ -45,6 +130,13 @@ function messageKey(err: unknown): string {
   )
     return err.messageKey;
   return "engines.testFailed";
+}
+function readAdvanced(): boolean {
+  try {
+    return localStorage.getItem(advancedKey) === "1";
+  } catch {
+    return false;
+  }
 }
 function detailOf(err: unknown): string {
   return err &&
@@ -56,7 +148,16 @@ function detailOf(err: unknown): string {
 }
 
 export function EnginesPanel() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [advanced, setAdvancedState] = useState(readAdvanced);
+  function setAdvanced(value: boolean) {
+    setAdvancedState(value);
+    try {
+      localStorage.setItem(advancedKey, value ? "1" : "0");
+    } catch {
+      // The choice still applies until the window closes.
+    }
+  }
   const client = useQueryClient();
   const overview = useQuery({
     queryKey: ["engines"],
@@ -166,6 +267,14 @@ export function EnginesPanel() {
     () => onBroadcast("engine.login", (event) => loginEvent(event)),
     [client, t],
   );
+  // Pyxis recomputes automatic choices in the background (startup, sign-in, a new CLI); show the result.
+  useEffect(
+    () =>
+      onBroadcast("engine.auto", () => {
+        void client.invalidateQueries({ queryKey: ["engine-features"] });
+      }),
+    [client],
+  );
   const test = useMutation({
     mutationFn: ({
       provider,
@@ -201,8 +310,6 @@ export function EnginesPanel() {
       effort?: string;
       fast?: boolean;
     }) => {
-      if (!value && feature !== "default")
-        return invoke("engines.clearFeature", { feature });
       const [provider, model] = JSON.parse(value) as [string, string];
       const response = await invoke("engines.setFeature", {
         feature,
@@ -213,6 +320,15 @@ export function EnginesPanel() {
       });
       return response;
     },
+    onSuccess: refresh,
+  });
+  // Returns one feature, or all of them, to Pyxis's own choice.
+  const automatic = useMutation({
+    mutationFn: (feature?: Feature) =>
+      invoke("engines.autoConfigure", {
+        reset: true,
+        ...(feature ? { features: [feature] } : {}),
+      }),
     onSuccess: refresh,
   });
   const manage = useMutation({
@@ -313,7 +429,46 @@ export function EnginesPanel() {
       setKeyBusy(false);
     }
   }
-  function renderRow(row: Engine) {
+  const defaultPinned = !!features.data?.default && !features.data.default.auto;
+  const pinnedCount = featureNames.filter(
+    (feature) => features.data?.[feature] && !features.data[feature]!.auto,
+  ).length;
+  const readyRows = (overview.data ?? []).filter(
+    (row) => row.installed && row.loggedIn && !row.disabled,
+  );
+  const nothingReady = overview.isSuccess && readyRows.length === 0;
+  // Simple view: engines that can work, or can with one sign-in. When none is
+  // ready the installable CLIs are listed so there is something to act on.
+  const simpleRows = (overview.data ?? []).filter(
+    (row) =>
+      !row.disabled &&
+      available.includes(row) &&
+      (row.installed || (nothingReady && row.kind === "cli")),
+  );
+  function modelsUsedBy(provider: string): string {
+    const ids: string[] = [];
+    for (const feature of featureNames) {
+      const selection = features.data?.[feature];
+      if (selection?.provider === provider && !ids.includes(selection.model))
+        ids.push(selection.model);
+    }
+    return ids.join(" · ");
+  }
+  const summaryText = engineSummaryText({
+    t,
+    language: i18n.language,
+    overview: overview.data,
+    features: features.data,
+    nothingReady,
+  });
+  const summaryLines = engineSummaryLines({
+    t,
+    language: i18n.language,
+    overview: overview.data,
+    features: features.data,
+    nothingReady,
+  });
+  function renderRow(row: Engine, simple = false) {
     return (
       <div
         key={row.id}
@@ -322,12 +477,12 @@ export function EnginesPanel() {
         <EngineRow
           kind={row.kind}
           name={row.name}
-          model={
+          model={modelsUsedBy(row.id) || row.version || row.id}
+          isDefault={
+            !simple &&
+            defaultPinned &&
             features.data?.default?.provider === row.id
-              ? features.data.default.model
-              : row.version || row.id
           }
-          isDefault={features.data?.default?.provider === row.id}
           status={
             row.disabled || !row.installed
               ? "idle"
@@ -342,7 +497,7 @@ export function EnginesPanel() {
                 ? t("engines.notInstalled")
                 : undefined
           }
-          onDetails={() => openEngine(row)}
+          onDetails={simple ? undefined : () => openEngine(row)}
           actionDisabled={row.disabled || test.isPending || manage.isPending}
           actionLabel={
             !row.installed && row.kind === "cli"
@@ -402,9 +557,14 @@ export function EnginesPanel() {
       </Notice>
       <div className="engines-heading">
         <h2 className="title-3">{t("engines.title")}</h2>
-        <Button type="primary" shape="round" onClick={() => setAdding(true)}>
-          {t("engines.add")}
-        </Button>
+        <label className="engines-advanced-toggle">
+          <span>{t("engines.advanced")}</span>
+          <Switch
+            checked={advanced}
+            onChange={setAdvanced}
+            aria-label={t("engines.advanced")}
+          />
+        </label>
       </div>
       {overview.isPending ? (
         <p className="small" role="status">
@@ -414,7 +574,48 @@ export function EnginesPanel() {
       {overview.isError ? (
         <Notice tone="danger">{t("engines.loadFailed")}</Notice>
       ) : null}
-      <div className="engines-list">{available.map(renderRow)}</div>
+      {summaryText ? (
+        <div className="px-card engines-summary">
+          <span className="px-engine-ico">
+            <Icon name="cpu" size={18} />
+          </span>
+          <div className="engines-summary-body">
+            <h3 className="engines-summary-title">{t("engines.auto.title")}</h3>
+            <p>{summaryText}</p>
+            {summaryLines.length ? (
+              <ul className="engines-summary-split">
+                {summaryLines.map((line) => (
+                  <li key={line.id}>
+                    <span className="body-strong">{line.name}</span>:{" "}
+                    {line.tasks}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {!nothingReady ? (
+              <p className="small engines-hint">{t("engines.auto.cheap")}</p>
+            ) : null}
+            {pinnedCount > 0 ? (
+              <p className="small engines-hint">
+                {t("engines.auto.pinned", { count: pinnedCount })}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {advanced ? (
+        <div className="engines-heading">
+          <h2 className="title-3">{t("engines.allEngines")}</h2>
+          <Button type="primary" shape="round" onClick={() => setAdding(true)}>
+            {t("engines.add")}
+          </Button>
+        </div>
+      ) : null}
+      <div className="engines-list">
+        {advanced
+          ? available.map((row) => renderRow(row))
+          : simpleRows.map((row) => renderRow(row, true))}
+      </div>
       {loginStatus ? (
         <p className="small" role="status">
           {loginStatus}
@@ -468,100 +669,131 @@ export function EnginesPanel() {
         </div>
       ) : null}
       {!drawer && !adding ? feedback : null}
-      <h2 className="title-3">{t("engines.perFeature")}</h2>
-      <div className="engines-feature-table">
-        {featureNames.map((feature) => {
-          const selection = features.data?.[feature];
-          const value = selection
-            ? JSON.stringify([selection.provider, selection.model])
-            : "";
-          return (
-            <div className="engines-feature-row" key={feature}>
-              <label htmlFor={`engine-${feature}`}>
-                {t(`engines.feature.${feature}`)}
-              </label>
-              <div>
-                <Select
-                  id={`engine-${feature}`}
-                  aria-label={t(`engines.feature.${feature}`)}
-                  showSearch
-                  optionFilterProp="label"
-                  disabled={configure.isPending}
-                  value={value || undefined}
-                  placeholder={t(
-                    feature === "default"
-                      ? "engines.chooseEngine"
-                      : "engines.inherit",
-                  )}
-                  options={[
-                    ...(feature === "default"
-                      ? []
-                      : [{ value: "", label: t("engines.inherit") }]),
-                    ...(selection &&
-                    !choices.some((choice) => choice.value === value)
-                      ? [
-                          {
-                            value,
-                            label: `${overview.data?.find((row) => row.id === selection.provider)?.name ?? selection.provider} · ${selection.model}`,
-                          },
-                        ]
-                      : []),
-                    ...choices,
-                  ]}
-                  onChange={(value) => configure.mutate({ feature, value })}
-                />
-                {feature === "vision" && visionCapability.data?.warning ? (
-                  <p className="small engines-warning">
-                    {t(visionCapability.data.warning)}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <p className="small engines-hint">{t("engines.modelAdvice")}</p>
-      {configure.error ? (
-        <Notice tone="danger">{t(messageKey(configure.error))}</Notice>
-      ) : null}
-      <details className="engines-diagnostics">
-        <summary>{t("engines.diagnostics")}</summary>
-        <div
-          className="engines-diagnostics-scroll"
-          tabIndex={0}
-          aria-label={t("engines.diagnostics")}
+      {nothingReady && !advanced ? (
+        <Notice
+          tone="info"
+          action={{
+            label: t("engines.installHelpLink"),
+            onClick: () => void window.pyxis.openExternal(docs),
+          }}
         >
-          <table>
-            <thead>
-              <tr>
-                <th>{t("engines.provider")}</th>
-                <th>{t("engines.version")}</th>
-                <th>{t("engines.detectedPath")}</th>
-                <th>{t("engines.status")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(overview.data ?? []).map((row) => (
-                <tr key={row.id}>
-                  <td>{row.name}</td>
-                  <td>{row.version || t("engines.notDetected")}</td>
-                  <td>
-                    <code>{row.path || t("engines.notDetected")}</code>
-                  </td>
-                  <td>
-                    {row.disabled
-                      ? t("engines.unavailable")
-                      : row.loggedIn
-                        ? t("components.engine.statusOk")
-                        : t("components.engine.statusWarn")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="small">{t("engines.searchFoldersUnavailable")}</p>
-      </details>
+          {t("engines.installHelp")}
+        </Notice>
+      ) : null}
+      {advanced ? (
+        <>
+          <div className="engines-heading">
+            <h2 className="title-3">{t("engines.perFeature")}</h2>
+            <Button
+              shape="round"
+              disabled={automatic.isPending || pinnedCount === 0}
+              onClick={() => automatic.mutate(undefined)}
+            >
+              {t("engines.backToAuto")}
+            </Button>
+          </div>
+          <div className="engines-feature-table">
+            {featureNames.map((feature) => {
+              const selection = features.data?.[feature];
+              const isAuto = !selection || selection.auto === true;
+              const value = selection
+                ? JSON.stringify([selection.provider, selection.model])
+                : "";
+              return (
+                <div className="engines-feature-row" key={feature}>
+                  <label htmlFor={`engine-${feature}`}>
+                    {t(`engines.feature.${feature}`)}
+                  </label>
+                  <div>
+                    <Select
+                      id={`engine-${feature}`}
+                      aria-label={t(`engines.feature.${feature}`)}
+                      showSearch
+                      optionFilterProp="label"
+                      disabled={configure.isPending || automatic.isPending}
+                      value={isAuto ? AUTO : value}
+                      options={[
+                        { value: AUTO, label: t("engines.automatic") },
+                        ...(selection &&
+                        !isAuto &&
+                        !choices.some((choice) => choice.value === value)
+                          ? [
+                              {
+                                value,
+                                label: `${overview.data?.find((row) => row.id === selection.provider)?.name ?? selection.provider} · ${selection.model}`,
+                              },
+                            ]
+                          : []),
+                        ...choices,
+                      ]}
+                      onChange={(next) =>
+                        next === AUTO
+                          ? automatic.mutate(feature)
+                          : configure.mutate({ feature, value: next })
+                      }
+                    />
+                    {isAuto && selection ? (
+                      <p className="small engines-auto-model">
+                        {selection.model}
+                        {selection.effort ? ` · ${selection.effort}` : ""}
+                      </p>
+                    ) : null}
+                    {feature === "vision" && visionCapability.data?.warning ? (
+                      <p className="small engines-warning">
+                        {t(visionCapability.data.warning)}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="small engines-hint">{t("engines.modelAdvice")}</p>
+          {configure.error || automatic.error ? (
+            <Notice tone="danger">
+              {t(messageKey(configure.error ?? automatic.error))}
+            </Notice>
+          ) : null}
+          <details className="engines-diagnostics">
+            <summary>{t("engines.diagnostics")}</summary>
+            <div
+              className="engines-diagnostics-scroll"
+              tabIndex={0}
+              aria-label={t("engines.diagnostics")}
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t("engines.provider")}</th>
+                    <th>{t("engines.version")}</th>
+                    <th>{t("engines.detectedPath")}</th>
+                    <th>{t("engines.status")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(overview.data ?? []).map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.name}</td>
+                      <td>{row.version || t("engines.notDetected")}</td>
+                      <td>
+                        <code>{row.path || t("engines.notDetected")}</code>
+                      </td>
+                      <td>
+                        {row.disabled
+                          ? t("engines.unavailable")
+                          : row.loggedIn
+                            ? t("components.engine.statusOk")
+                            : t("components.engine.statusWarn")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="small">{t("engines.searchFoldersUnavailable")}</p>
+          </details>
+        </>
+      ) : null}
       <p className="small engines-terms" id="engine-terms">
         {t("engines.terms")} {t("engines.termsDetail")}
       </p>
@@ -730,7 +962,9 @@ export function EnginesPanel() {
               children: (
                 <div className="engines-add-list">
                   {available.some((row) => row.kind === "cli") ? (
-                    available.filter((row) => row.kind === "cli").map(renderRow)
+                    available
+                      .filter((row) => row.kind === "cli")
+                      .map((row) => renderRow(row))
                   ) : (
                     <Notice tone="info">{t("engines.allCliAdded")}</Notice>
                   )}

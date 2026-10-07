@@ -109,7 +109,7 @@ async function setupPlan(userData: string, page: Page, app: Awaited<ReturnType<t
   const plan = await invoke<{ topics: Array<{ id: string }> }>(page, "plans.read", { planId });
   expect(plan.topics).toHaveLength(3);
   // Each gapped topic gets a saved quiz it answers wrongly, which is how a gap opens in the app.
-  const db = new DatabaseSync(dbPath(userData));
+  const db = new DatabaseSync(dbPath(userData), { timeout: 10000 });
   const now = Date.now();
   for (const [index, topic] of plan.topics.slice(1).entries()) {
     const body = {
@@ -318,7 +318,7 @@ test("LES-13 a failed drill can be skipped for good, a closed gap stops being wa
     await expect(page.getByText(/Hai saltato le domande su/)).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Salta", exact: true })).toHaveCount(1);
     // The other gap closes while its drill is failed: the drill is dropped instead of waited for.
-    const db = new DatabaseSync(dbPath(userData));
+    const db = new DatabaseSync(dbPath(userData), { timeout: 10000 });
     db.prepare("UPDATE gaps SET closed_at = ? WHERE plan_id = ? AND topic_id = ?").run(Date.now(), planId, topics[2]!);
     db.close();
     await page.reload();

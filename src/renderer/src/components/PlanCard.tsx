@@ -26,7 +26,11 @@ export function PlanCard({
   onContinue?: () => void;
 }) {
   return (
-    <Card className="px-card px-plan" variant="outlined">
+    <Card
+      className="px-card px-plan"
+      variant="outlined"
+      styles={{ body: { padding: 0, display: "flex", flexDirection: "column", flex: 1 } }}
+    >
       <div className="px-plan-top">
         <div>
           {subject ? <div className="px-plan-subject">{subject}</div> : null}

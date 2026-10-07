@@ -15,7 +15,6 @@ import { useAppState } from "../app-state";
 type Door = "ask" | "exams";
 
 const LAST_KEY = "pyxis.lastDoorPath";
-const DOOR_KEY = "pyxis.door";
 
 function readLast(): Record<Door, string> {
   try {
@@ -28,12 +27,16 @@ function readLast(): Record<Door, string> {
   }
 }
 
-function doorForPath(pathname: string, stored: Door): Door {
+/** Settings and dev pages belong to no door, so neither door is selected there. */
+function doorForPath(pathname: string): Door | null {
   if (pathname.startsWith("/ask")) return "ask";
   if (pathname.startsWith("/exams") || pathname.startsWith("/plans"))
     return "exams";
-  return stored;
+  return null;
 }
+
+/** antd's Segmented shows no selection when its value matches no option. */
+const NO_DOOR = "" as Door;
 
 export function Shell() {
   const { t } = useTranslation();
@@ -43,10 +46,7 @@ export function Shell() {
   const { appearance } = useAppState();
   const mode = appearance.resolved;
   const [last, setLast] = useState(readLast);
-  const [storedDoor, setStoredDoor] = useState<Door>(() =>
-    sessionStorage.getItem(DOOR_KEY) === "ask" ? "ask" : "exams",
-  );
-  const activeDoor = doorForPath(location.pathname, storedDoor);
+  const activeDoor = doorForPath(location.pathname);
   const profile = useQuery({
     queryKey: ["profile"],
     queryFn: () => invoke("profile.get", {}),
@@ -92,19 +92,12 @@ export function Shell() {
   }, [profile.isSuccess, profile.data, location.pathname, navigate]);
 
   useEffect(() => {
-    const door = doorForPath(location.pathname, storedDoor);
-    if (
-      location.pathname.startsWith("/ask") ||
-      location.pathname.startsWith("/exams") ||
-      location.pathname.startsWith("/plans")
-    ) {
-      const next = { ...readLast(), [door]: location.pathname };
-      sessionStorage.setItem(LAST_KEY, JSON.stringify(next));
-      sessionStorage.setItem(DOOR_KEY, door);
-      setLast(next);
-      setStoredDoor(door);
-    }
-  }, [location.pathname, storedDoor]);
+    const door = doorForPath(location.pathname);
+    if (!door) return;
+    const next = { ...readLast(), [door]: location.pathname };
+    sessionStorage.setItem(LAST_KEY, JSON.stringify(next));
+    setLast(next);
+  }, [location.pathname]);
 
   return (
     <ProLayout
@@ -126,43 +119,30 @@ export function Shell() {
         <div
           style={{ display: "flex", justifyContent: "center", width: "100%" }}
         >
-          <div
-            onClick={(event) => {
-              const item = (event.target as HTMLElement).closest(
-                ".ant-segmented-item",
-              );
-              if (!item?.classList.contains("ant-segmented-item-selected"))
-                return;
-              const text = item.textContent ?? "";
-              if (text.includes(t("doors.ask"))) navigate(last.ask);
-              else if (text.includes(t("doors.exams"))) navigate(last.exams);
-            }}
-          >
-            <Segmented<Door>
-              shape="round"
-              className="px-doors"
-              value={activeSimulation.data ? "exams" : activeDoor}
-              onChange={(value) =>
-                navigate(value === "ask" ? last.ask : last.exams)
-              }
-              options={[
-                ...(!activeSimulation.data
-                  ? [
-                      {
-                        value: "ask" as const,
-                        label: t("doors.ask"),
-                        icon: <MessageCircle size={16} strokeWidth={1.75} />,
-                      },
-                    ]
-                  : []),
-                {
-                  value: "exams",
-                  label: t("doors.exams"),
-                  icon: <GraduationCap size={16} strokeWidth={1.75} />,
-                },
-              ]}
-            />
-          </div>
+          <Segmented<Door>
+            shape="round"
+            className="px-doors"
+            value={activeSimulation.data ? "exams" : (activeDoor ?? NO_DOOR)}
+            onChange={(value) =>
+              navigate(value === "ask" ? last.ask : last.exams)
+            }
+            options={[
+              ...(!activeSimulation.data
+                ? [
+                    {
+                      value: "ask" as const,
+                      label: t("doors.ask"),
+                      icon: <MessageCircle size={16} strokeWidth={1.75} />,
+                    },
+                  ]
+                : []),
+              {
+                value: "exams",
+                label: t("doors.exams"),
+                icon: <GraduationCap size={16} strokeWidth={1.75} />,
+              },
+            ]}
+          />
         </div>
       )}
       actionsRender={() => [
@@ -180,7 +160,7 @@ export function Shell() {
     >
       <PageContainer
         header={{ title: false, breadcrumb: {} }}
-        style={{ maxWidth: 768, margin: "0 auto" }}
+        className="px-shell-container"
       >
         <div className="shell-page">
           {activeSimulation.data ? (

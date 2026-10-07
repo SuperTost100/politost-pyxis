@@ -1,0 +1,63 @@
+.px-onboarding {
+  /* The page container shrinks to its content, so the width is set here to keep every step the same size. */
+  width: min(var(--content-width), calc(100vw - var(--space-12)));
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: var(--space-8);
+}
+.px-onboarding .ant-steps-item-title {
+  font-size: 12px;
+}
+.px-onboarding h1,
+.px-onboarding p {
+  margin: 0;
+}
+.px-onboarding h1:focus-visible {
+  outline: none;
+}
+.px-onboarding-count {
+  color: var(--ink-muted);
+  margin-top: calc(var(--space-2) * -1);
+}
+.px-onboarding .body {
+  margin-bottom: var(--space-2);
+  color: var(--ink-muted);
+}
+.px-onboarding .px-form-grid,
+.px-onboarding .choice-list {
+  margin-block: 0;
+}
+.px-onboarding .section-label {
+  margin-top: var(--space-2);
+}
+.px-onboarding-engines,
+.px-onboarding-photos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.px-onboarding-engines .engines-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.px-onboarding-engines .px-engine {
+  max-width: none;
+}
+.px-onboarding-engines p {
+  margin: 0;
+}
+.px-onboarding-note {
+  color: var(--ink-muted);
+}
+.px-onboarding-inline {
+  display: flex;
+}
+.px-onboarding-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-top: var(--space-6);
+}

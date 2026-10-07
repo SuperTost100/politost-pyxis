@@ -148,6 +148,12 @@ const routes = [
   ["library-ocr-ready", "/exams/library"],
   ["ask-ocr-refused", "/ask"],
   ["ask-ocr-ready", "/ask"],
+  // The chat panel, the composer's subject menu and its sources popover.
+  ["ask-panel", "/ask/audit-chat"],
+  ["ask-subject-menu", "/ask/audit-chat"],
+  ["ask-sources-menu", "/ask/audit-chat"],
+  // The formula keyboard docked in the composer, with a formula already typed.
+  ["ask-formula", "/ask/audit-chat"],
 ] as const;
 
 /** The pinned OCR files the runtime task downloaded once. The audit stages these bytes, it never fetches them. */
@@ -531,6 +537,15 @@ const untranslatedKey = new RegExp(
 );
 const both = (it: string, en: string) => new RegExp(`^(${it}|${en})$`);
 
+async function openAdvancedEngines(page: Page) {
+  const toggle = page.getByRole("switch", {
+    name: /^(Opzioni avanzate|Advanced options)$/,
+  });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-checked")) !== "true")
+    await toggle.click();
+}
+
 async function openAddSources(page: Page, tab?: RegExp) {
   await page
     .getByRole("button", { name: both("Aggiungi fonti", "Add sources") })
@@ -559,7 +574,9 @@ let auditUserData = "";
 let auditApp: ElectronApplication | undefined;
 let auditPicked = "";
 function withDb(work: (db: DatabaseSync) => void) {
-  const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"));
+  const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"), {
+    timeout: 10000,
+  });
   try {
     work(db);
   } finally {
@@ -881,8 +898,18 @@ async function openWizard(page: Page, step: number) {
     .fill("Fisica audit");
   const current = (index: number) => page.locator(".ant-steps-item").nth(index);
   for (let at = 1; at < step; at++) {
-    if (at === 4 && step > 4)
-      await page.getByRole("button", { name: /^Appunti di fisica$/ }).click();
+    if (at === 4 && step > 4) {
+      // The seeded source is in the library, so it comes in through the library picker.
+      await page
+        .getByRole("button", { name: both("Dalla tua libreria", "From your library") })
+        .click();
+      const picker = page.getByRole("dialog");
+      await picker.getByRole("checkbox", { name: /Appunti di fisica/ }).check();
+      await picker
+        .getByRole("button", { name: /^(Aggiungi 1 fonte|Add 1 source)$/ })
+        .click();
+      await expect(picker).toBeHidden();
+    }
     await page
       .getByRole("button", { name: /Continua|Continue/, exact: true })
       .click();
@@ -1116,6 +1143,46 @@ async function openState(page: Page, name: string) {
     case "guided-tree":
       await openGuided(page, name.slice("guided-".length) as "period");
       break;
+    case "ask-panel":
+      await page
+        .getByRole("button", { name: both("Apri le chat", "Open chats") })
+        .click();
+      await expect(
+        page.getByRole("list", { name: both("Chat", "Chats") }),
+      ).toBeVisible();
+      break;
+    case "ask-subject-menu":
+      await page.getByRole("button", { name: /^(Materia|Subject):/ }).click();
+      await expect(
+        page.getByRole("button", {
+          name: both("Gestisci materie", "Manage subjects"),
+        }),
+      ).toBeVisible();
+      break;
+    case "ask-sources-menu":
+      await page
+        .getByRole("button", { name: both("Fonti", "Sources") })
+        .click();
+      await expect(
+        page.getByRole("button", {
+          name: both("Aggiungi fonti", "Add sources"),
+        }),
+      ).toBeVisible();
+      break;
+    case "ask-formula": {
+      await page
+        .getByRole("button", { name: both("Inserisci formula", "Insert formula") })
+        .click();
+      const keys = page.getByRole("group", {
+        name: both("Tastiera per formule", "Formula keyboard"),
+      });
+      await expect(keys).toBeVisible();
+      await keys
+        .getByRole("button", { name: both("Frazione", "Fraction") })
+        .click();
+      await keys.getByRole("button", { name: "1", exact: true }).click();
+      break;
+    }
     case "ask-python":
       await expect(
         page.getByRole("textbox", {
@@ -1557,6 +1624,7 @@ async function openState(page: Page, name: string) {
       await expect(dialog.getByText(/La forza è il prodotto/)).toBeVisible();
       break;
     case "engine-details":
+      await openAdvancedEngines(page);
       await page
         .getByRole("button", { name: /^(Dettagli di|Details for) / })
         .first()
@@ -1564,6 +1632,7 @@ async function openState(page: Page, name: string) {
       await expect(dialog).toBeVisible();
       break;
     case "engine-details-disabled":
+      await openAdvancedEngines(page);
       await page
         .getByRole("button", {
           name: /^(Dettagli di|Details for) .*(Antigravity)/i,
@@ -1572,12 +1641,14 @@ async function openState(page: Page, name: string) {
       await expect(dialog).toBeVisible();
       break;
     case "engine-add-cli":
+      await openAdvancedEngines(page);
       await page
         .getByRole("button", { name: both("Aggiungi motore", "Add engine") })
         .click();
       await expect(dialog.getByRole("tab", { selected: true })).toBeVisible();
       break;
     case "engine-add-key":
+      await openAdvancedEngines(page);
       await page
         .getByRole("button", { name: both("Aggiungi motore", "Add engine") })
         .click();
@@ -1868,7 +1939,9 @@ test("M14 every application route in both languages, themes and supported widths
         ]),
       ),
     );
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
+      timeout: 10000,
+    });
     seed(db);
     db.close();
     const pageErrors: string[] = [];

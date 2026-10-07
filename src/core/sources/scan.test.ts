@@ -110,4 +110,32 @@ describe("source reads stay bounded and off the core thread", () => {
     expect(calls).toHaveLength(1);
     db.close();
   });
+
+  it("points a preview at the newest usable source with the same file, never a removed or failed one", async () => {
+    const dir = scratch();
+    const file = join(dir, "notes.txt");
+    writeFileSync(file, "same bytes");
+    const sha = sha256(new TextEncoder().encode("same bytes"));
+    const db = openDatabase(":memory:");
+    const insert = db.prepare(
+      `INSERT INTO sources (id, kind, title, blob_sha, mime, status, created_at, updated_at)
+       VALUES (?, 'text', ?, ?, 'text/plain', ?, ?, ?)`,
+    );
+    const work = (async () => ({ sha, variance: null })) as unknown as typeof runSourceWorker;
+    const handlers = sourceHandlers(db, dir, undefined, undefined, work);
+    // Nothing yet: not a duplicate, nothing to reuse.
+    expect(await handlers.preview({ path: file })).toEqual({ duplicate: false, blurry: false });
+    insert.run("removed", "removed", sha, "removed", 4, 4);
+    insert.run("failed", "failed", sha, "failed", 5, 5);
+    expect(await handlers.preview({ path: file })).toEqual({ duplicate: false, blurry: false });
+    insert.run("old", "old", sha, "ready", 1, 1);
+    insert.run("new", "new", sha, "extracting", 2, 2);
+    insert.run("other", "other", "0".repeat(64), "ready", 3, 3);
+    expect(await handlers.preview({ path: file })).toEqual({
+      duplicate: true,
+      blurry: false,
+      existingSourceId: "new",
+    });
+    db.close();
+  });
 });

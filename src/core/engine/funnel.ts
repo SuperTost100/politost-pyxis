@@ -70,6 +70,19 @@ export async function runTurn(input: {
   }>;
 }): Promise<EngineResult> {
   await disclosure?.ensure(input.selection.provider, input.signal);
+  try {
+    return await turn(input);
+  } catch (err) {
+    // Antigravity reports a cancelled run as a failed one. Callers expect an abort.
+    if (input.signal?.aborted)
+      throw new DOMException("Engine turn cancelled", "AbortError");
+    throw err;
+  }
+}
+
+async function turn(
+  input: Parameters<typeof runTurn>[0],
+): Promise<EngineResult> {
   const selection = {
     ...input.selection,
     cwd: input.selection.cwd || scratch,

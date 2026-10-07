@@ -169,7 +169,9 @@ The tutor chat input (ASK-01…05): subject pill, scoped sources, text, attach, 
 
 **Consumer provides** `subject`, `sources` (names of scoped sources), `mode` default, `placeholder`, `streaming` (shows Stop instead of Send), and the handlers.
 
-- Sits at the bottom of the chat column at `content-width`, `radius-xl`.
+- Sits at the bottom of the chat column at `content-width`, `radius-xl`. On the Ask page it is docked to the bottom of the viewport with the page background behind it, and notices, the context block and attachments stack directly above it in the same sticky area.
+- The subject chip is the only subject control. `subjectControl` replaces the plain label with a chip that opens a menu (subjects, "Nessuna materia", "Gestisci materie"). `sourcesControl` replaces the source tags with a "Fonti" chip: a count, and a popover to remove sources or add others.
+- `onFormula` handles the Σ button. Without it the button opens the graph tool.
 - No microphone and no voice button: voice is out of v1.
 - Enter sends, Shift+Enter breaks the line, Esc stops a stream.
 - antd: `<Sender>` from `@ant-design/x` is the closest; otherwise `Input.TextArea autoSize` inside a styled container.
@@ -183,6 +185,7 @@ A turn in the tutor chat: student bubble on the right, tutor reply on the left w
 - Tutor text uses the `reading` style (17/28) at max 68ch; dyslexia mode raises letter spacing and line height.
 - Actions: copy, thumbs up, thumbs down, regenerate. No read-aloud.
 - The engine id is always visible, in `meta` mono, `ink-subtle`.
+- `ThinkingMessage` is the tutor turn before any text streams: the Pyxis mark and one status line ("Sto pensando…", or "Leggo le tue fonti…" first when the chat uses sources). The mark and line pulse gently unless reduced motion is on, and the streamed text replaces it.
 - antd: `<Bubble>` from `@ant-design/x`, themed with these tokens.
 
 ## QuizOption
@@ -283,6 +286,17 @@ The quoted card above the composer.
 **Consumer provides** an excerpt and a remove label.
 
 - Two lines at most. The remove control is an icon button.
+
+## MathInput and the formula keyboard
+
+A written answer with a sigma button that opens a math field (MathLive) and a four-tab key panel (operations, functions, trigonometry, calculus) inside the layout, under the text. The Composer, quiz open answers, simulation answers and practice answers share it.
+
+**Consumer provides** `value`, `onChange`, `ariaLabel`, and optional `rows` or `autoSize`. The Composer uses the same parts (`FormulaDock`, `MathPreview`, `useFormulaInsert`) around its own textarea.
+
+- "Inserisci" or Enter puts the formula in as `$...$` at the caret and returns focus to the text; Esc closes without inserting. A rendered preview shows while the text holds a closed `$...$` span.
+- Keys are real buttons, so Tab and the arrow keys work: `surface-raised` with `ink`, digits on `surface-overlay`, `radius-md`, the active tab underlined in `primary`. Gold stays out of the panel; keyboard focus uses the system `focus-ring`.
+- MathLive loads on first open (dynamic import). Glyphs use the bundled KaTeX fonts; nothing is fetched and no sounds play, which the CSP requires.
+- Key tooltips and spoken names live under `math.*` in both locale files.
 
 ## Feature layouts added after the initial gallery
 

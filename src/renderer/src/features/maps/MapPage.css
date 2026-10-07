@@ -132,14 +132,4 @@
 .px-map-topbar {
   padding: var(--space-3) var(--space-3) 0;
 }
-.px-map-topbar .ant-segmented-item {
-  color: var(--ink-muted);
-}
-.px-map-topbar .ant-segmented-item-selected {
-  color: var(--ink);
-  background: var(--surface-overlay);
-}
 
-.px-map-topbar .ant-segmented-thumb {
-  background: var(--surface-overlay);
-}

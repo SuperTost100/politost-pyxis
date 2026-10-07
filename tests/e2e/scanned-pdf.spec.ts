@@ -141,7 +141,9 @@ test("a scan with no stored file offers Replace, not a read that cannot run, and
   test.setTimeout(120000);
   const run = await openScan();
   try {
-    const db = new DatabaseSync(join(run.userData, "workspace", "pyxis.db"));
+    const db = new DatabaseSync(join(run.userData, "workspace", "pyxis.db"), {
+      timeout: 10000,
+    });
     try {
       db.prepare("UPDATE sources SET blob_sha = NULL WHERE id = ?").run(
         run.sourceId,

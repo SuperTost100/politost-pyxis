@@ -68,8 +68,8 @@ export function UpdatesPanel() {
   const query = useUpdates();
   const state = query.isError ? "failed" : query.data?.state;
   return (
-    <section aria-labelledby="updates-heading">
-      <h2 id="updates-heading" className="title-3">
+    <section className="px-updates" aria-labelledby="updates-heading">
+      <h2 id="updates-heading" className="visually-hidden">
         {t("updates.title")}
       </h2>
       <p className="small section-hint" role="status">

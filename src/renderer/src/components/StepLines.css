@@ -16,6 +16,19 @@
   gap: var(--space-3);
 }
 
+/* A fixed square box, so a spinning icon turns around its own centre. */
+.px-stepline-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.px-stepline-icon .px-spin {
+  transform-origin: center;
+}
+
 .px-stepline-icon.is-done {
   color: var(--mastery-text);
 }

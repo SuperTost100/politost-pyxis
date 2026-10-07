@@ -1,7 +1,17 @@
 import { Modal } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { EngineProvider } from "@shared/ipc";
 import { invoke, onBroadcast } from "../lib/ipc";
+
+const vendors: Record<EngineProvider, string> = {
+  claude: "Anthropic",
+  "anthropic-api": "Anthropic",
+  codex: "OpenAI",
+  "openai-api": "OpenAI",
+  agent: "Cursor",
+  antigravity: "Google",
+};
 
 export function EngineDisclosure() {
   const { t } = useTranslation();
@@ -49,15 +59,11 @@ export function EngineDisclosure() {
       offPort();
     };
   }, []);
-  const provider = providers[0];
+  const provider = providers[0] as EngineProvider | undefined;
   return (
     <Modal
       open={Boolean(provider)}
-      title={
-        provider === "claude" || provider === "anthropic-api"
-          ? "Anthropic"
-          : "OpenAI"
-      }
+      title={provider ? vendors[provider] : ""}
       closable={false}
       maskClosable={false}
       keyboard={false}
@@ -66,10 +72,7 @@ export function EngineDisclosure() {
       onCancel={async () => {
         if (!provider || busy) return;
         try {
-          await invoke("engines.disclosureCancel", {
-            provider: provider as
-              "claude" | "codex" | "anthropic-api" | "openai-api",
-          });
+          await invoke("engines.disclosureCancel", { provider });
           setProviders((current) =>
             current.filter((value) => value !== provider),
           );
@@ -84,10 +87,7 @@ export function EngineDisclosure() {
         setBusy(true);
         setFailed(false);
         try {
-          await invoke("engines.acknowledge", {
-            provider: provider as
-              "claude" | "codex" | "anthropic-api" | "openai-api",
-          });
+          await invoke("engines.acknowledge", { provider });
           setProviders((current) =>
             current.filter((value) => value !== provider),
           );

@@ -168,6 +168,19 @@ export function pyxisTheme(
         activeShadow: "none",
         paddingInline: 16,
       },
+      InputNumber: {
+        borderRadius: 999,
+        activeBorderColor: c.primaryText,
+        hoverBorderColor: c.inkMuted,
+        activeShadow: "none",
+      },
+      Select: {
+        borderRadius: 999,
+        activeBorderColor: c.primaryText,
+        hoverBorderColor: c.inkMuted,
+        activeOutlineColor: "transparent",
+        optionSelectedBg: c.primarySoft,
+      },
       Card: {
         borderRadiusLG: 16,
         colorBgContainer: c.surface,

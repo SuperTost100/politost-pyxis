@@ -83,7 +83,9 @@ for (const libraryCopy of [false, true]) {
           )
         ).sourceIds,
       ).toContain(held.held[0]!.id);
-      const db = new DatabaseSync(join(userData, "workspace/pyxis.db"));
+      const db = new DatabaseSync(join(userData, "workspace/pyxis.db"), {
+        timeout: 10000,
+      });
       const doc = db
         .prepare("SELECT blob_sha FROM sources WHERE id=?")
         .get(held.held[0]!.id) as { blob_sha: string };

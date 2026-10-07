@@ -221,7 +221,7 @@ test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results"
     const deadline = (await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).deadlineAt;
     await page.reload();
     expect((await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).deadlineAt).toBe(deadline);
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     db.prepare("UPDATE attempt_answers SET payload_json = json_set(payload_json, '$.deadlineAt', ?) WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object'").run(Date.now() - 1000, timed.attemptId);
     db.close();
     await page.reload();

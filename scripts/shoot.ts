@@ -99,22 +99,21 @@ async function hashOf(page: Page): Promise<string> {
 async function shootStudy(page: Page): Promise<void> {
   await setLocale(page, "it");
   await setTheme(page, "dark");
-  await openRoute(page, "#/exams/library");
-  await page
-    .getByRole("button", { name: "Aggiungi fonti", exact: true })
-    .click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Scegli un file", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Demo" }).waitFor();
   await openRoute(page, "#/exams");
   await page.getByRole("button", { name: "Nuovo piano" }).click();
   await page.locator("#plan-title").fill("Fisica");
   for (let step = 0; step < 3; step++) {
     await page.getByRole("button", { name: "Continua", exact: true }).click();
   }
-  await page.getByRole("button", { name: "Demo", exact: true }).click();
+  // A source imported on the material step goes into the plan with no ticking.
+  await page
+    .getByRole("button", { name: "Aggiungi fonti", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Scegli i file", exact: true })
+    .click();
+  await page.getByText("1 fonte nel piano").waitFor();
   for (let step = 0; step < 2; step++) {
     await page.getByRole("button", { name: "Continua", exact: true }).click();
   }

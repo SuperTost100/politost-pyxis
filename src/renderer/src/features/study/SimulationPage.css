@@ -18,19 +18,8 @@
   flex-direction: column;
   gap: var(--space-5);
 }
-.px-sim-setup {
-  max-width: 560px;
-  margin: auto;
-}
-.px-sim-setup .ant-segmented-item {
-  color: var(--ink-muted);
-}
-.px-sim-setup .ant-segmented-item-selected {
-  color: var(--ink);
-  background: var(--surface-overlay);
-}
-.px-sim-setup .ant-segmented-thumb {
-  background: var(--surface-overlay);
+.px-sim-setup .ant-segmented {
+  align-self: flex-start;
 }
 .px-sim-setup .ant-btn {
   align-self: flex-start;
@@ -69,12 +58,8 @@
 .px-sim-results h2 {
   margin: 0;
 }
-.px-sim-preview summary,
 .px-sim-feedback summary {
   cursor: pointer;
-}
-.px-sim-preview[open] summary {
-  margin-bottom: var(--space-3);
 }
 .px-sim-score {
   display: flex;
@@ -126,6 +111,3 @@
   }
 }
 
-.focus:has(.px-sim-header-actions) .focus-bar {
-  grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr) minmax(160px, 1fr);
-}

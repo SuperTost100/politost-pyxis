@@ -50,7 +50,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: "Scegli un file", exact: true })
+      .getByRole("button", { name: "Scegli i file", exact: true })
       .click();
     await expect(
       page.getByRole("button", { name: "Fisica", exact: true }),

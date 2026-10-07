@@ -19,6 +19,7 @@ import {
   GraduationCap,
   Terminal,
 } from "lucide-react";
+import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import "./SettingsPage.css";
@@ -190,8 +191,6 @@ export function SettingsPage() {
   const panels: Record<string, ReactNode> = {
     appearance: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.appearance")}</div>
         <div className="choice-list">
           <Choice
             label={t("settings.system")}
@@ -217,8 +216,6 @@ export function SettingsPage() {
     engines: <EnginesPanel />,
     tutor: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.tutor")}</div>
         <div className="choice-list">
           <Choice
             label={t("settings.solver")}
@@ -245,9 +242,7 @@ export function SettingsPage() {
     ),
     subjects: (
       <>
-        {" "}
-        <div className="label section-label">{t("ask.subject")}</div>
-        <SubjectPicker value="" onChange={() => undefined} managementOnly />
+        <SubjectPicker value="" onChange={() => undefined} />
       </>
     ),
     profile: (
@@ -264,6 +259,7 @@ export function SettingsPage() {
               </span>
               <Input
                 key={profile.data?.[field] ?? ""}
+                placeholder={t(`settings.fieldPlaceholder.${field}`)}
                 defaultValue={profile.data?.[field] ?? ""}
                 onBlur={(event) =>
                   void patch({ [field]: event.target.value.trim() })
@@ -286,6 +282,7 @@ export function SettingsPage() {
         <Input
           className="px-settings-interests"
           aria-label={t("settings.interests")}
+          placeholder={t("settings.fieldPlaceholder.interests")}
           value={draftInterests ?? (profile.data?.interests ?? []).join(", ")}
           onChange={(event) => setDraftInterests(event.target.value)}
           onBlur={() => {
@@ -302,24 +299,14 @@ export function SettingsPage() {
     ),
     privacy: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.privacy")}</div>
-        <div className="choice-list">
-          <Choice
-            label={t("settings.crashReports")}
-            selected={profile.data?.crashReports === true}
-            onClick={() =>
-              void patch({ crashReports: profile.data?.crashReports !== true })
-            }
-          />
-        </div>
-        <p className="small section-hint">{t("settings.crashHint")}</p>
+        <CrashReportsSwitch
+          checked={profile.data?.crashReports === true}
+          onChange={(value) => void patch({ crashReports: value })}
+        />
       </>
     ),
     reading: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.reading")}</div>
         <div className="choice-list">
           <Choice
             label={t("settings.dyslexia")}
@@ -344,8 +331,6 @@ export function SettingsPage() {
     ),
     data: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.data")}</div>
         {place.data ? <p className="small section-hint">{place.data}</p> : null}
         <Button
           shape="round"
@@ -508,8 +493,6 @@ export function SettingsPage() {
     ),
     language: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.language")}</div>
         <div className="choice-list">
           <Choice
             label={t("settings.italian")}

@@ -8,3 +8,9 @@
 .px-msg-foot { display: flex; align-items: center; gap: var(--space-1); margin-top: var(--space-2); flex-wrap: wrap; }
 .px-msg-engine { margin-left: auto; font: 400 calc(12px * var(--text-scale))/calc(16px * var(--text-scale)) var(--font-mono); color: var(--ink-subtle); }
 .px-msg-chips { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
+.px-msg-thinking { align-items: center; }
+.px-msg-status { margin: 0; color: var(--ink-muted); font: 400 calc(15px * var(--text-scale))/calc(22px * var(--text-scale)) var(--font-sans); }
+@keyframes px-msg-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .px-msg-thinking .px-msg-avatar, .px-msg-thinking .px-msg-status { animation: px-msg-pulse 1.6s ease-in-out infinite; }
+}

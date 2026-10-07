@@ -50,6 +50,64 @@
   align-items: center;
   flex-wrap: wrap;
 }
+.px-wizard-source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-wizard-source-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  min-height: var(--control-lg);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-wizard-source-row.is-pickable {
+  padding-inline-end: var(--space-4);
+  cursor: pointer;
+}
+.px-wizard-source-row.is-pickable:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-wizard-source-row input {
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+.px-wizard-source-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.px-wizard-source-text .body-strong {
+  overflow-wrap: anywhere;
+}
+.px-wizard-source-row .ant-btn {
+  flex-shrink: 0;
+  color: var(--ink-muted);
+}
+.px-wizard-picker .ant-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.px-wizard-picker-list {
+  padding: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.px-wizard-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+}
 .px-wizard-summary {
   border-top: 1px solid var(--border);
   padding-top: var(--space-6);
@@ -67,4 +125,35 @@
   .px-plan-wizard .ant-steps-item-title {
     display: none;
   }
+}
+
+/* Build screen: one centred composition; the step rows stay left-aligned inside their block. */
+.px-build {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  padding-top: var(--space-6);
+  text-align: center;
+}
+.px-build .px-steplines {
+  text-align: left;
+}
+.px-build-status {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-build-notice {
+  width: 100%;
+  max-width: 480px;
+  text-align: left;
+}
+.px-build-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+}
+.px-build-actions:empty {
+  display: none;
 }

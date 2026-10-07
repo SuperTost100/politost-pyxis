@@ -9,6 +9,17 @@ import {
   mapSummarySchema,
 } from "./concept-map";
 
+/** Engines Pyxis offers. Each one runs in CLI Funnel's text-only mode. */
+export const engineProviders = [
+  "claude",
+  "codex",
+  "agent",
+  "antigravity",
+  "anthropic-api",
+  "openai-api",
+] as const;
+export type EngineProvider = (typeof engineProviders)[number];
+
 export const JobState = z.enum([
   "queued",
   "running",
@@ -219,6 +230,23 @@ const EducationLevelSchema = z.enum([
   "other",
 ]);
 
+const engineFeature = z.enum([
+  "default",
+  "chat",
+  "plan",
+  "lesson",
+  "grading",
+  "map",
+  "vision",
+]);
+const engineSelection = z.object({
+  provider: z.string(),
+  model: z.string(),
+  effort: z.string().optional(),
+  fast: z.boolean().optional(),
+  auto: z.boolean().optional(),
+});
+
 export const requests = {
   "jobs.list": { input: z.object({}), output: z.array(JobView) },
   "jobs.startDemo": {
@@ -272,7 +300,7 @@ export const requests = {
   },
   "engines.acknowledge": {
     input: z.object({
-      provider: z.enum(["claude", "codex", "anthropic-api", "openai-api"]),
+      provider: z.enum(engineProviders),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
@@ -282,7 +310,7 @@ export const requests = {
   },
   "engines.disclosureCancel": {
     input: z.object({
-      provider: z.enum(["claude", "codex", "anthropic-api", "openai-api"]),
+      provider: z.enum(engineProviders),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
@@ -308,15 +336,7 @@ export const requests = {
   },
   "engines.setFeature": {
     input: z.object({
-      feature: z.enum([
-        "default",
-        "chat",
-        "plan",
-        "lesson",
-        "grading",
-        "map",
-        "vision",
-      ]),
+      feature: engineFeature,
       provider: z.string(),
       model: z.string(),
       effort: z.string().optional(),
@@ -326,15 +346,20 @@ export const requests = {
   },
   "engines.features": {
     input: z.object({}),
-    output: z.record(
-      z.string(),
-      z.object({
-        provider: z.string(),
-        model: z.string(),
-        effort: z.string().optional(),
-        fast: z.boolean().optional(),
-      }),
-    ),
+    output: z.record(z.string(), engineSelection),
+  },
+  "engines.autoConfigure": {
+    input: z.object({
+      /** Un-pin the listed features (all when omitted) before choosing. */
+      reset: z.boolean().optional(),
+      features: z.array(engineFeature).optional(),
+    }),
+    output: z.object({
+      /** Ids of the engines that are installed, signed in and usable. */
+      ready: z.array(z.string()),
+      /** Feature choices after the update. `auto: true` means Pyxis chose it. */
+      features: z.record(z.string(), engineSelection),
+    }),
   },
   "engines.remove": {
     input: z.object({ provider: z.string() }),
@@ -1683,7 +1708,12 @@ export const requests = {
   },
   "sources.preview": {
     input: z.object({ path: z.string() }),
-    output: z.object({ duplicate: z.boolean(), blurry: z.boolean() }),
+    output: z.object({
+      duplicate: z.boolean(),
+      blurry: z.boolean(),
+      /** The newest usable source with the same file. Importing it again would only make a second copy. */
+      existingSourceId: z.string().optional(),
+    }),
   },
   "sources.rename": {
     input: z.object({ sourceId: z.string(), title: z.string() }),
@@ -1843,6 +1873,8 @@ export const streams = {} as const;
 export const broadcasts = {
   "job.updated": JobView,
   "engine.disclosure": z.object({ provider: z.string(), pending: z.boolean() }),
+  // Background recomputation of automatic engine choices finished.
+  "engine.auto": z.object({}),
   "engine.login": z.object({
     provider: z.string(),
     type: z.string(),
