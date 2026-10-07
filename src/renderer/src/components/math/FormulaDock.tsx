@@ -1,23 +1,26 @@
 import { lazy, Suspense } from "react";
+import type { FormulaCommand } from "./FormulaPanel";
 import "./FormulaPanel.css";
 
-// MathLive and its keys load the first time a student opens the keyboard.
+// The keys load the first time a student opens the keyboard.
 const FormulaPanel = lazy(() => import("./FormulaPanel"));
 
-/** The formula field and keyboard, rendered in place while `open`. */
+/** The formula keyboard, rendered in place while `open`. */
 export function FormulaDock({
   open,
-  onInsert,
-  onClose,
+  onKey,
+  onCommand,
+  onDone,
 }: {
   open: boolean;
-  onInsert: (latex: string) => void;
-  onClose: () => void;
+  onKey: (latex: string) => void;
+  onCommand: (name: FormulaCommand) => void;
+  onDone: () => void;
 }) {
   if (!open) return null;
   return (
     <Suspense fallback={<div className="px-formula-loading" aria-busy="true" />}>
-      <FormulaPanel onInsert={onInsert} onClose={onClose} />
+      <FormulaPanel onKey={onKey} onCommand={onCommand} onDone={onDone} />
     </Suspense>
   );
 }

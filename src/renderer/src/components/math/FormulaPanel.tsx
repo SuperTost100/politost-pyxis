@@ -1,5 +1,4 @@
 import katex from "katex";
-import { MathfieldElement } from "mathlive";
 import {
   useEffect,
   useId,
@@ -9,18 +8,9 @@ import {
   type MouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Icon } from "../Icon";
-import { MATH_TABS, type MathKey } from "./keys";
+import { MATH_TABS } from "./keys";
 import "katex/dist/katex.min.css";
 import "./FormulaPanel.css";
-
-// The app serves everything from its own bundle. The glyphs come from the KaTeX fonts that
-// katex.min.css already declares, and nothing is fetched or played.
-MathfieldElement.fontsDirectory = null;
-MathfieldElement.soundsDirectory = null;
-MathfieldElement.computeEngine = null;
-MathfieldElement.keypressSound = null;
-MathfieldElement.plonkSound = null;
 
 const rendered = new Map<string, string>();
 function glyphHtml(latex: string): string {
@@ -36,92 +26,41 @@ function glyphHtml(latex: string): string {
   return html;
 }
 
+export type FormulaCommand = "moveToPreviousChar" | "moveToNextChar" | "deleteBackward";
+
 /**
- * A math field with a four-tab key panel under it. It lives inside its caller's layout, so it
- * pushes the page up instead of covering it. `onInsert` receives the LaTeX of the field.
+ * Four tabs of math keys. They type into the formula open in the field above, so the panel never
+ * takes focus from it. It lives inside its caller's layout and pushes the page up instead of covering it.
  */
 export default function FormulaPanel({
-  onInsert,
-  onClose,
+  onKey,
+  onCommand,
+  onDone,
 }: {
-  onInsert: (latex: string) => void;
-  onClose: () => void;
+  onKey: (latex: string) => void;
+  onCommand: (name: FormulaCommand) => void;
+  /** Closes the panel and the formula; also on Esc from anywhere on the page. */
+  onDone: () => void;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const id = useId();
-  const host = useRef<HTMLDivElement>(null);
-  const field = useRef<MathfieldElement | null>(null);
   const [tab, setTab] = useState(0);
-  const [empty, setEmpty] = useState(true);
-  const callbacks = useRef({ onInsert, onClose });
-  callbacks.current = { onInsert, onClose };
+  const done = useRef(onDone);
+  done.current = onDone;
 
   useEffect(() => {
-    const el = new MathfieldElement();
-    MathfieldElement.locale = i18n.language.startsWith("it") ? "it" : "en";
-    el.mathVirtualKeyboardPolicy = "manual";
-    el.smartMode = false;
-    el.setAttribute("aria-label", t("math.field"));
-    el.className = "px-formula-field";
-    el.addEventListener("input", () => setEmpty(!el.getValue("latex-without-placeholders").trim()));
-    host.current?.prepend(el);
-    field.current = el;
-    const focus = requestAnimationFrame(() => el.focus());
-    // Esc closes from anywhere on the page, not only from inside the panel.
     const onEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
       event.stopPropagation();
-      callbacks.current.onClose();
+      done.current();
     };
     document.addEventListener("keydown", onEscape, true);
-    return () => {
-      cancelAnimationFrame(focus);
-      document.removeEventListener("keydown", onEscape, true);
-      el.remove();
-      field.current = null;
-    };
-    // The field is created once; its label follows the language on the next open.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => document.removeEventListener("keydown", onEscape, true);
   }, []);
-
-  function commit() {
-    const el = field.current;
-    if (!el) return;
-    const latex = el.getValue("latex-without-placeholders");
-    if (!latex.trim()) return;
-    callbacks.current.onInsert(latex);
-  }
-
-  function press(key: MathKey) {
-    const el = field.current;
-    if (!el) return;
-    el.focus();
-    el.executeCommand(["insert", key.insert, { format: "latex", focus: true, feedback: false }]);
-  }
-
-  function command(name: "moveToPreviousChar" | "moveToNextChar" | "deleteBackward") {
-    const el = field.current;
-    if (!el) return;
-    el.focus();
-    el.executeCommand(name);
-  }
 
   // Keys must not take focus from the field, so a tap does not close the caret or the selection.
   const keepFocus = (event: MouseEvent) => event.preventDefault();
-
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      event.target instanceof HTMLElement &&
-      (event.target === field.current || event.target.closest("math-field"))
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-      commit();
-    }
-  }
 
   function onTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const last = MATH_TABS.length - 1;
@@ -144,24 +83,7 @@ export default function FormulaPanel({
   const current = MATH_TABS[tab] ?? MATH_TABS[0]!;
 
   return (
-    <div
-      className="px-formula"
-      role="group"
-      aria-label={t("math.keyboard")}
-      onKeyDownCapture={onKeyDown}
-    >
-      <div className="px-formula-head" ref={host}>
-        <button
-          type="button"
-          className="px-formula-close"
-          aria-label={t("math.close")}
-          title={t("math.close")}
-          onMouseDown={keepFocus}
-          onClick={() => callbacks.current.onClose()}
-        >
-          <Icon name="x" size={16} />
-        </button>
-      </div>
+    <div className="px-formula" role="group" aria-label={t("math.keyboard")} data-math-keys>
       <div className="px-formula-tabs" role="tablist" aria-label={t("math.tabs")}>
         {MATH_TABS.map((item, index) => (
           <button
@@ -210,7 +132,7 @@ export default function FormulaPanel({
                   aria-label={name}
                   title={name}
                   onMouseDown={keepFocus}
-                  onClick={() => press(key)}
+                  onClick={() => onKey(key.insert)}
                 >
                   <span
                     aria-hidden
@@ -229,7 +151,7 @@ export default function FormulaPanel({
           aria-label={t("math.left")}
           title={t("math.left")}
           onMouseDown={keepFocus}
-          onClick={() => command("moveToPreviousChar")}
+          onClick={() => onCommand("moveToPreviousChar")}
         >
           <span aria-hidden>←</span>
         </button>
@@ -239,7 +161,7 @@ export default function FormulaPanel({
           aria-label={t("math.right")}
           title={t("math.right")}
           onMouseDown={keepFocus}
-          onClick={() => command("moveToNextChar")}
+          onClick={() => onCommand("moveToNextChar")}
         >
           <span aria-hidden>→</span>
         </button>
@@ -249,18 +171,17 @@ export default function FormulaPanel({
           aria-label={t("math.backspace")}
           title={t("math.backspace")}
           onMouseDown={keepFocus}
-          onClick={() => command("deleteBackward")}
+          onClick={() => onCommand("deleteBackward")}
         >
           <span aria-hidden>⌫</span>
         </button>
         <button
           type="button"
           className="px-formula-insert"
-          disabled={empty}
           onMouseDown={keepFocus}
-          onClick={commit}
+          onClick={() => onDone()}
         >
-          {t("math.insert")}
+          {t("math.done")}
         </button>
       </div>
     </div>
