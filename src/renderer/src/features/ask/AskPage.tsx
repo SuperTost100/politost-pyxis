@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ChatMessage, ThinkingMessage } from "../../components/ChatMessage";
 import { Composer } from "../../components/Composer";
+import { MathText } from "../../components/math/MathText";
 import { ContextBlock } from "../../components/ContextBlock";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
@@ -442,7 +443,7 @@ export function AskPage() {
           {shownMessages.map((row) =>
             row.role === "user" ? (
               <ChatMessage key={row.id} role="user">
-                {row.body}
+                <MathText text={row.body} />
               </ChatMessage>
             ) : (
               <ChatMessage
@@ -498,7 +499,9 @@ export function AskPage() {
             ),
           )}
           {pendingQuestion !== null && !regenerating ? (
-            <ChatMessage role="user">{pendingQuestion}</ChatMessage>
+            <ChatMessage role="user">
+              <MathText text={pendingQuestion} />
+            </ChatMessage>
           ) : null}
           {busy && live ? (
             <ChatMessage role="tutor">
