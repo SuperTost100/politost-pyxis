@@ -220,7 +220,7 @@ test("Quiz: an open answer takes a formula from the keyboard and previews it", a
       },
       { planId: created.planId, topicId: plan.topics[0]!.id },
     );
-    await page.getByRole("slider", { name: "Numero di domande" }).waitFor();
+    await page.getByRole("button", { name: "Personalizza" }).click();
     // Only open questions: switch the other four kinds off.
     const types = page.getByRole("group", { name: "Tipi di domanda" });
     for (const name of ["Scelta multipla", "Vero o falso", "Completamento", "Abbinamento"])

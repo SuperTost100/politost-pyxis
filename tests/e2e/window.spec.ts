@@ -261,8 +261,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       },
       { planId, topicId },
     );
-    await page.getByRole("slider", { name: "Numero di domande" }).focus();
-    await page.keyboard.press("Home");
+    await page.getByRole("button", { name: "Personalizza" }).click();
     await page
       .getByRole("button", { name: "Solo vero o falso", exact: true })
       .click();
@@ -273,17 +272,17 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       await page
         .getByRole("button", { name: "A. Vero", exact: true })
         .click({ timeout: 120000 });
-      await page.getByRole("button", { name: "Correggi", exact: true }).click();
+      await page.getByRole("button", { name: "Verifica", exact: true }).click();
       if (i === 0) await clean(page);
       await page
         .getByRole("button", {
-          name: i === 9 ? "Termina il quiz" : "Avanti",
+          name: i === 9 ? "Vedi risultato" : "Avanti",
           exact: true,
         })
         .click({ timeout: 120000 });
     }
     await expect(
-      page.getByText(/su 100/, { exact: false }).first(),
+      page.getByText(/su 10$/, { exact: false }).first(),
     ).toBeVisible();
     await clean(page);
     await page.evaluate(

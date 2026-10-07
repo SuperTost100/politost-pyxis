@@ -30,6 +30,8 @@ export function FocusLayout(props: {
   secondary?: ReactNode;
   progress?: number;
   closable?: boolean;
+  /** Where the close button leads; the exams list when not given. */
+  onClose?: () => void;
   headerRight?: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -45,7 +47,7 @@ export function FocusLayout(props: {
             type="text"
             aria-label={t("nav.close")}
             icon={<X size={18} strokeWidth={1.75} />}
-            onClick={() => navigate("/exams")}
+            onClick={props.onClose ?? (() => navigate("/exams"))}
           />
         )}
         <div>
