@@ -45,7 +45,7 @@
     },
     "engines": {
       "title": "Connect an AI engine",
-      "body": "Pyxis uses Claude Code or Codex with your account. I check what is already on this computer.",
+      "body": "Pyxis works with Claude Code, Codex, Cursor Agent or Antigravity, signed in with your account. I check what is already on this computer.",
       "found": "I found {{names}}.",
       "foundSignedOut": "I found {{names}}, but you still need to sign in.",
       "foundNone": "I did not find any engine.",
@@ -1443,7 +1443,7 @@
     "allEngines": "All engines",
     "automatic": "Automatic",
     "backToAuto": "Back to automatic choice",
-    "installHelp": "Pyxis needs an AI engine to answer. Install Claude Code or Codex and sign in with your account. Pyxis then picks the model.",
+    "installHelp": "Pyxis needs an AI engine to answer. Install Claude Code, Codex, Cursor Agent or Antigravity and sign in with your account. Pyxis then picks the model.",
     "installHelpLink": "How to install",
     "auto": {
       "title": "Automatic choice",
