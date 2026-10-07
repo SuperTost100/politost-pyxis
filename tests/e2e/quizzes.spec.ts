@@ -491,7 +491,7 @@ test("quiz screens in both languages and themes", async () => {
         .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state)
         .toBe("succeeded");
       await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
-      await page.locator(".px-quiz-open textarea").fill(
+      await page.locator(".px-quiz-open").getByRole("textbox").fill(
         lang === "it" ? "È lo spostamento diviso il tempo." : "Displacement over time.",
       );
       await page.locator(".px-quiz-nav .ant-btn-primary").click();
