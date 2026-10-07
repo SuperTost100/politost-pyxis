@@ -825,7 +825,6 @@
     "weeklyTitle": "Weekly activity",
     "topic": "Topic",
     "date": "Date",
-    "type": "Type",
     "duration": "Duration",
     "score": "Score",
     "openExam": "Open exam from {{date}}",

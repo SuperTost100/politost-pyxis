@@ -825,7 +825,6 @@
     "weeklyTitle": "Attività settimanale",
     "topic": "Argomento",
     "date": "Data",
-    "type": "Tipo",
     "duration": "Durata",
     "score": "Punteggio",
     "openExam": "Apri la prova del {{date}}",
