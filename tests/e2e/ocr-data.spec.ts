@@ -92,6 +92,17 @@ function expectPinned(userData: string) {
 }
 
 async function noAxeViolations(page: Page) {
+  // A dialog that is still fading in has translucent text, which axe reports as low contrast.
+  // Spinners loop forever, so only animations that end are waited for.
+  await page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .every(
+        (animation) =>
+          animation.playState !== "running" ||
+          animation.effect?.getTiming().iterations === Infinity,
+      ),
+  );
   const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
     .violations;
   expect(
