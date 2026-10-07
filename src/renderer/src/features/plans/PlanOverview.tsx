@@ -85,7 +85,6 @@ export function PlanPage() {
   const [group, setGroup] = useState("learn");
   const [lessonKind, setLessonKind] = useState<string | null>(null);
   const [topicId, setTopicId] = useState("");
-  const [count, setCount] = useState(20);
   const [quizKinds, setQuizKinds] = useState<QuizKind[]>([...kinds]);
   const [minutes, setMinutes] = useState<30 | 60 | 90 | 120>(60);
   const [material, setMaterial] = useState<"exam" | "mixed">("mixed");
@@ -814,17 +813,6 @@ export function PlanPage() {
             </Button>
             {lessonKind === "quiz" ? (
               <>
-                <label className="body-strong">
-                  {t("quiz.count")} · {count}
-                </label>
-                <Slider
-                  min={10}
-                  max={100}
-                  value={count}
-                  onChange={setCount}
-                  disabled={busy}
-                  ariaLabelForHandle={t("quiz.count")}
-                />
                 <fieldset className="px-plan-quiz-types">
                   <legend>{t("quiz.types")}</legend>
                   {kinds.map((kind) => (
@@ -882,7 +870,7 @@ export function PlanPage() {
                     const result = await invoke("study.quizStart", {
                       planId,
                       topicId,
-                      count,
+                      count: 10,
                       types: quizKinds,
                       feedback: true,
                     });
