@@ -11,6 +11,7 @@ import { pyxisProLayoutToken } from "../../design-system/theme/pyxis-theme";
 import { JobsButton } from "../../features/jobs/JobsButton";
 import { invoke } from "../../lib/ipc";
 import { useAppState } from "../app-state";
+import { LaunchEngineNotice } from "../LaunchEngineNotice";
 
 type Door = "ask" | "exams";
 
@@ -102,7 +103,7 @@ export function Shell() {
   return (
     <ProLayout
       layout="top"
-      contentWidth="Fixed"
+      contentWidth="Fluid"
       fixedHeader
       navTheme={mode === "dark" ? "realDark" : "light"}
       token={pyxisProLayoutToken(mode)}
@@ -117,7 +118,17 @@ export function Shell() {
       menuRender={false}
       headerContentRender={() => (
         <div
-          style={{ display: "flex", justifyContent: "center", width: "100%" }}
+          className="px-doors-wrap"
+          onClick={(event) => {
+            // antd fires onChange only for a new selection. A click on the active door lands here instead and goes to that door's root.
+            if (!(event.target instanceof HTMLInputElement) || !activeDoor) return;
+            if (
+              event.target
+                .closest("label")
+                ?.classList.contains("ant-segmented-item-selected")
+            )
+              navigate(activeDoor === "ask" ? "/ask" : "/exams");
+          }}
         >
           <Segmented<Door>
             shape="round"
@@ -158,6 +169,7 @@ export function Shell() {
       ]}
       footerRender={false}
     >
+      <LaunchEngineNotice ready={profile.isSuccess && Boolean(profile.data)} />
       <PageContainer
         header={{ title: false, breadcrumb: {} }}
         className="px-shell-container"

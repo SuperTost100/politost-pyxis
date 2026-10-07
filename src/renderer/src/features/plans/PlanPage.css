@@ -1,3 +1,15 @@
+.px-plan-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  color: var(--ink-muted);
+  font: 500 calc(14px * var(--text-scale))/calc(20px * var(--text-scale)) var(--font-sans);
+  text-decoration: none;
+}
+.px-plan-back:hover {
+  color: var(--ink);
+}
 .px-plan-header {
   padding: var(--space-6);
   margin-bottom: var(--space-6);

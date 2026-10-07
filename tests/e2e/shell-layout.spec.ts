@@ -2,6 +2,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 test("doors navigate from settings and every shell page uses the full column", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-shell-layout-"));
@@ -60,6 +61,38 @@ test("doors navigate from settings and every shell page uses the full column", a
     expect(new Set(widths).size).toBe(1);
     expect(widths[0]).toBe(768);
     expect(new Set(logoX).size).toBe(1);
+
+    // The header spans the window: logo at the left edge, actions at the right, doors centred on the window.
+    await page.evaluate(() => {
+      window.location.hash = "#/exams";
+    });
+    const header = (await page.locator("header .ant-pro-top-nav-header").boundingBox())!;
+    const logo = (await page.locator("header").getByRole("img", { name: "Pyxis" }).boundingBox())!;
+    const doorsBox = (await doors.boundingBox())!;
+    const settings = (await page.getByRole("button", { name: "Impostazioni", exact: true }).boundingBox())!;
+    expect(logo.x).toBeLessThan(40);
+    expect(Math.abs(doorsBox.x + doorsBox.width / 2 - (header.x + header.width / 2))).toBeLessThanOrEqual(2);
+    expect(header.x + header.width - (settings.x + settings.width)).toBeLessThan(40);
+
+    // A click on the door that is already active goes to that door's root.
+    await page.evaluate(() => {
+      window.location.hash = "#/exams/library";
+    });
+    await expect(page).toHaveURL(/#\/exams\/library$/);
+    await doors.getByText("Esami", { exact: true }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+
+    // A plan page offers a way back to the exams.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    db.exec(`
+      INSERT INTO plans(id,title,status,content_language,target,created_at,updated_at) VALUES('p-1','Fisica 1','ready','it',0.75,1,1);
+    `);
+    db.close();
+    await page.evaluate(() => {
+      window.location.hash = "#/plans/p-1";
+    });
+    await page.getByRole("link", { name: "Esami", exact: true }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

@@ -92,9 +92,30 @@ body {
   border-bottom: 1px solid var(--border) !important;
 }
 
-html[data-platform="darwin"] .ant-pro-global-header,
-html[data-platform="darwin"] .ant-layout-header {
-  padding-inline-start: 80px !important;
+/* The header spans the window: logo at the far left, actions at the far right, doors centred on the window.
+   macOS keeps the left edge clear of the traffic lights (trafficLightPosition x 16 in src/main/index.ts). */
+:root {
+  --shell-gutter-start: 20px;
+  --shell-gutter-end: 16px;
+}
+html[data-platform="darwin"] {
+  --shell-gutter-start: 80px;
+}
+.ant-pro-top-nav-header-main {
+  padding-inline: var(--shell-gutter-start) var(--shell-gutter-end) !important;
+}
+.px-doors-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Empty header stays a drag region; only the switch takes clicks. */
+  pointer-events: none;
+}
+.px-doors-wrap .px-doors {
+  pointer-events: auto;
+  line-height: normal;
 }
 
 .ant-pro-global-header button,
@@ -336,6 +357,11 @@ html[data-platform="darwin"] .canvas-bar {
   display: flex;
   justify-content: flex-start;
   margin-bottom: var(--space-6);
+}
+.tabs-row-split {
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .passage {
