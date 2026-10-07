@@ -1,4 +1,3 @@
-import { EngineDisclosure } from "../components/EngineDisclosure";
 import { UpdateNotice } from "../features/settings/UpdatesPanel";
 import { PrintPage } from "../features/share/PrintPage";
 import { App as AntApp, ConfigProvider } from "antd";
@@ -111,7 +110,6 @@ function StudyApp() {
         <ProConfigProvider dark={appearance.resolved === "dark"} hashed={false}>
           <AntApp>
             <JobsSync />
-            <EngineDisclosure />
             <UpdateNotice />
             <CoreNotice />
             <RouterProvider router={router} />

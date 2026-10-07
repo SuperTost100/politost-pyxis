@@ -26,20 +26,15 @@ let keys: Keys = {};
 let funnel: Funnel | null = null;
 let scratch = "";
 let disclosure: ReturnType<typeof createDisclosure> | undefined;
-export function configureDisclosure(
-  db: Database.Database,
-  notify: (provider: string, pending: boolean) => void,
-) {
-  disclosure = createDisclosure(db, notify);
+export function configureDisclosure(db: Database.Database) {
+  disclosure = createDisclosure(db);
 }
-export function acknowledgeProvider(provider: string) {
-  disclosure?.acknowledge(provider);
+export function acknowledgeProviders(providers: readonly string[]) {
+  disclosure?.acknowledge(providers);
 }
-export function cancelDisclosure(provider: string) {
-  disclosure?.cancel(provider);
-}
-export function pendingDisclosures(): string[] {
-  return disclosure?.pending() ?? [];
+/** True when the student has seen what this provider receives. Without a configured store nothing is gated. */
+export function isProviderAcknowledged(provider: string): boolean {
+  return disclosure?.isAcknowledged(provider) ?? true;
 }
 
 export function setScratch(path: string): void {
@@ -69,7 +64,7 @@ export async function runTurn(input: {
     data: string;
   }>;
 }): Promise<EngineResult> {
-  await disclosure?.ensure(input.selection.provider, input.signal);
+  disclosure?.ensure(input.selection.provider, input.signal);
   try {
     return await turn(input);
   } catch (err) {

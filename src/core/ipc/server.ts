@@ -3,12 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
-import {
-  configureDisclosure,
-  acknowledgeProvider,
-  cancelDisclosure,
-  pendingDisclosures,
-} from "../engine/funnel";
+import { configureDisclosure } from "../engine/funnel";
 import {
   IpcError,
   requests,
@@ -217,21 +212,10 @@ async function dispatchValidated(
       const parsed = requests["engines.models"].input.parse(input);
       return engines?.models({ provider: parsed.provider as ProviderId });
     }
-    case "engines.disclosurePending":
-      requests["engines.disclosurePending"].input.parse(input);
-      return { providers: pendingDisclosures() };
-    case "engines.disclosureCancel": {
-      cancelDisclosure(
-        requests["engines.disclosureCancel"].input.parse(input).provider,
+    case "engines.acknowledge":
+      return engines?.acknowledge(
+        requests["engines.acknowledge"].input.parse(input),
       );
-      return { ok: true as const };
-    }
-    case "engines.acknowledge": {
-      acknowledgeProvider(
-        requests["engines.acknowledge"].input.parse(input).provider,
-      );
-      return { ok: true as const };
-    }
     case "engines.test": {
       const parsed = requests["engines.test"].input.parse(input);
       return engines?.test({
@@ -453,10 +437,6 @@ async function dispatchValidated(
     case "maps.patch":
       return maps?.patch(requests["maps.patch"].input.parse(input));
     case "maps.redo":
-    case "subjects.rename":
-      return plans?.renameSubject(
-        requests["subjects.rename"].input.parse(input),
-      );
       return maps?.redo(requests["maps.redo"].input.parse(input));
     case "maps.undo":
       return maps?.undo(requests["maps.undo"].input.parse(input));
@@ -472,6 +452,10 @@ async function dispatchValidated(
     case "subjects.reorder":
       return plans?.reorderSubjects(
         requests["subjects.reorder"].input.parse(input),
+      );
+    case "subjects.rename":
+      return plans?.renameSubject(
+        requests["subjects.rename"].input.parse(input),
       );
     case "subjects.remove":
       return plans?.removeSubject(
@@ -680,9 +664,7 @@ export function refreshAutoEngines(): void {
 }
 
 export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
-  configureDisclosure(db, (provider, pending) =>
-    broadcast("engine.disclosure", { provider, pending }),
-  );
+  configureDisclosure(db);
   engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
