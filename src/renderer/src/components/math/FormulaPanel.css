@@ -108,7 +108,8 @@
 }
 
 /* The glyph is drawn by KaTeX and can overhang its key; the key itself takes every tap. */
-.px-formula-key > span {
+.px-formula-key > span,
+.px-formula-key > svg {
   pointer-events: none;
 }
 
@@ -124,9 +125,6 @@
   margin-top: var(--space-1);
 }
 
-.px-formula-key.is-action {
-  font-size: calc(18px * var(--text-scale, 1));
-}
 
 .px-formula-insert {
   height: 44px;

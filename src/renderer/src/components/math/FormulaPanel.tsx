@@ -1,4 +1,5 @@
 import katex from "katex";
+import { ArrowLeft, ArrowRight, Delete } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -153,7 +154,7 @@ export default function FormulaPanel({
           onMouseDown={keepFocus}
           onClick={() => onCommand("moveToPreviousChar")}
         >
-          <span aria-hidden>←</span>
+          <ArrowLeft size={18} strokeWidth={1.75} aria-hidden />
         </button>
         <button
           type="button"
@@ -163,7 +164,7 @@ export default function FormulaPanel({
           onMouseDown={keepFocus}
           onClick={() => onCommand("moveToNextChar")}
         >
-          <span aria-hidden>→</span>
+          <ArrowRight size={18} strokeWidth={1.75} aria-hidden />
         </button>
         <button
           type="button"
@@ -173,7 +174,7 @@ export default function FormulaPanel({
           onMouseDown={keepFocus}
           onClick={() => onCommand("deleteBackward")}
         >
-          <span aria-hidden>⌫</span>
+          <Delete size={18} strokeWidth={1.75} aria-hidden />
         </button>
         <button
           type="button"
