@@ -264,6 +264,53 @@ const engineSelection = z.object({
   auto: z.boolean().optional(),
 });
 
+const SmartAnswers = z.record(z.string(), z.number().int());
+const PathActivity = z.enum([
+  "intro",
+  "diagnostic",
+  "lesson",
+  "practice",
+  "quiz",
+  "cards",
+  "gaps",
+  "simulation",
+]);
+const StepResult = z.object({
+  correct: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
+const LessonSources = z.array(
+  z.object({
+    sourceId: z.string(),
+    title: z.string(),
+    places: z.array(
+      z.object({
+        passageId: z.string(),
+        page: z.number().optional(),
+        slide: z.number().optional(),
+        chapter: z.number().optional(),
+        section: z.string().optional(),
+      }),
+    ),
+  }),
+);
+const LessonOutput = z.object({
+  markdown: z.string(),
+  passageIds: z.array(z.string()),
+  fallback: z.boolean().optional(),
+  /** The lesson row its answers belong to. */
+  itemId: z.string().optional(),
+  wording: z.enum(["simple", "balanced", "technical"]).optional(),
+  /** Written from the model's general knowledge, not the sources. */
+  general: z.boolean().optional(),
+  /** Written by an earlier lesson prompt, before smart text: Markdown with citations, until rewritten. */
+  earlier: z.boolean().optional(),
+  /** Saved picks of the lesson's quick checks and recap, by question id. */
+  answers: SmartAnswers,
+  /** The sources and places the lesson was given, for its "Sources used" footer. */
+  sources: LessonSources,
+});
+
 export const requests = {
   "jobs.list": { input: z.object({}), output: z.array(JobView) },
   "jobs.startDemo": {
@@ -409,15 +456,30 @@ export const requests = {
       wording: z.enum(["simple", "balanced", "technical"]).optional(),
       regenerate: z.boolean().optional(),
     }),
-    output: z.object({
-      markdown: z.string(),
-      passageIds: z.array(z.string()),
-      fallback: z.boolean().optional(),
-      /** Lesson row to flag with study.flag { targetKind: "item" }. */
-      itemId: z.string().optional(),
+    output: LessonOutput,
+  },
+  "study.lessonSection": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      section: z.number().int().min(0),
+      note: z.string().max(500).optional(),
       wording: z.enum(["simple", "balanced", "technical"]).optional(),
-      /** Written from the model's general knowledge, not the sources. */
-      general: z.boolean().optional(),
+    }),
+    output: LessonOutput,
+  },
+  "study.lessonAnswer": {
+    input: z.object({
+      planId: z.string(),
+      itemId: z.string(),
+      blockId: z.string().max(200),
+      pick: z.number().int().min(0).max(9),
+    }),
+    output: z.object({
+      correct: z.boolean(),
+      pick: z.number().int(),
+      /** True when this answer finished the closing recap and so the reading. */
+      finished: z.boolean(),
     }),
   },
   "study.markdown": {
@@ -1049,15 +1111,14 @@ export const requests = {
             subtopics: z.array(z.string()),
           }),
         ),
-        nodes: z.array(
+        // What the student finished, in order; the path shows these as done steps.
+        steps: z.array(
           z.object({
             id: z.string(),
-            title: z.string(),
-            kind: z.string(),
+            activity: PathActivity,
             topicId: z.string().nullable(),
-            position: z.number(),
-            state: z.enum(["locked", "current", "done"]),
-            unlockReason: z.string(),
+            at: z.number(),
+            result: StepResult.nullable(),
           }),
         ),
         sources: z.array(
@@ -1135,9 +1196,36 @@ export const requests = {
     input: z.object({ planId: z.string() }),
     output: z
       .object({
-        nodeId: z.string(),
-        reason: z.enum(["due", "gaps", "next"]),
-        count: z.number(),
+        next: z
+          .object({
+            activity: PathActivity,
+            topicId: z.string().nullable(),
+            reason: z.enum([
+              "intro",
+              "diagnostic",
+              "due",
+              "gaps",
+              "examSoon",
+              "ready",
+              "consolidate",
+              "next",
+              "weakest",
+            ]),
+            count: z.number(),
+          })
+          .nullable(),
+        hasIntro: z.boolean(),
+        // Per topic in the plan's order: what fits it now and what the chooser shows next to each activity.
+        topics: z.array(
+          z.object({
+            topicId: z.string(),
+            mastery: z.number(),
+            read: z.boolean(),
+            dueCards: z.number(),
+            gaps: z.number(),
+            suggested: PathActivity,
+          }),
+        ),
       })
       .nullable(),
   },
@@ -1224,8 +1312,14 @@ export const requests = {
       ),
     }),
   },
+  // Records a finished activity the renderer owns; quizzes, the diagnostic and simulations record themselves on submit.
   "plans.complete": {
-    input: z.object({ planId: z.string(), nodeId: z.string() }),
+    input: z.object({
+      planId: z.string(),
+      activity: z.enum(["intro", "lesson", "practice", "cards"]),
+      topicId: z.string().nullable(),
+      result: StepResult.optional(),
+    }),
     output: z.object({ ok: z.boolean() }),
   },
   "plans.build": {
@@ -1244,7 +1338,12 @@ export const requests = {
   "plans.intro": {
     input: z.object({ planId: z.string() }),
     output: z
-      .object({ markdown: z.string(), passageIds: z.array(z.string()) })
+      .object({
+        itemId: z.string(),
+        markdown: z.string(),
+        passageIds: z.array(z.string()),
+        answers: SmartAnswers,
+      })
       .nullable(),
   },
   "plans.create": {

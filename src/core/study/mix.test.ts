@@ -1,7 +1,8 @@
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { completeNode, createPlan } from "../plans/create";
+import { createPlan } from "../plans/create";
+import { recordStep } from "../plans/steps";
 import { syncGaps } from "../plans/progress";
 import { importSmartbook } from "../sources/smartbook";
 import { flagTarget } from "./flags";
@@ -19,14 +20,12 @@ function pack(files: Record<string, string>): Uint8Array {
   );
 }
 
-/** Review draws new items from the path's frontier, which starts once the intro and diagnostic are done. */
+/** Review draws new items from the path's frontier: the topic whose lesson the student read last. */
 function reachFrontier(db: ReturnType<typeof openDatabase>, planId: string) {
-  for (const kind of ["intro", "diagnostic"]) {
-    const node = db
-      .prepare("SELECT id FROM path_nodes WHERE plan_id = ? AND kind = ?")
-      .get(planId, kind) as { id: string };
-    completeNode(db, planId, node.id);
-  }
+  const first = db
+    .prepare("SELECT id FROM topics WHERE plan_id = ? ORDER BY position LIMIT 1")
+    .get(planId) as { id: string };
+  recordStep(db, planId, { activity: "lesson", topicId: first.id });
 }
 
 const book = {

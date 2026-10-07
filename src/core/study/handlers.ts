@@ -24,7 +24,13 @@ import {
   exerciseJob,
   registerExerciseJobs,
 } from "./exerciseJobs";
-import { requireTopic, writeLesson, type Wording } from "./openLesson";
+import {
+  requireTopic,
+  rewriteLessonSection,
+  writeLesson,
+  type Wording,
+} from "./openLesson";
+import { answerSmartCheck, smartAnswers, smartSources } from "./smartText";
 import type { Rating } from "./schedule";
 import { runTurn } from "../engine/funnel";
 import {
@@ -68,6 +74,17 @@ import {
   saveQuizDraft,
 } from "./quizJobs";
 
+/** A lesson with what its reader shows besides the text: saved answers and the sources it was given. */
+function readingFor(db: Database.Database) {
+  return <T extends { itemId?: string; passageIds: string[]; fallback?: boolean }>(
+    lesson: T,
+  ) => ({
+    ...lesson,
+    answers: lesson.itemId && !lesson.fallback ? smartAnswers(db, lesson.itemId) : {},
+    sources: smartSources(db, lesson.passageIds),
+  });
+}
+
 export function studyHandlers(
   db: Database.Database,
   runner?: Runner,
@@ -84,6 +101,7 @@ export function studyHandlers(
     registerGapInsightJobs(db, runner, run);
     registerWrongQuestionJobs(db, runner, run);
   }
+  const withReading = readingFor(db);
   return {
     exercises(input: { topicId: string; planId?: string; generate?: boolean }) {
       const scope = input.planId
@@ -113,7 +131,32 @@ export function studyHandlers(
         ...options,
         wording: input.wording,
         regenerate: input.regenerate,
-      });
+      }).then((lesson) => withReading(lesson));
+    },
+    lessonSection(
+      input: {
+        planId: string;
+        topicId: string;
+        section: number;
+        note?: string;
+        wording?: Wording;
+      },
+      signal?: AbortSignal,
+    ) {
+      return rewriteLessonSection(db, input.planId, input.topicId, run ?? runTurn, {
+        section: input.section,
+        note: input.note,
+        wording: input.wording,
+        signal,
+      }).then((lesson) => withReading(lesson));
+    },
+    lessonAnswer(input: {
+      planId: string;
+      itemId: string;
+      blockId: string;
+      pick: number;
+    }) {
+      return answerSmartCheck(db, input);
     },
     markdown(input: {
       planId: string;

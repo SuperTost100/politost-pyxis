@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 import type { Grade } from "../study/grade";
 import { readLesson } from "../study/openLesson";
+import { planLanguage } from "../engine/prompts";
+import { smartLabels, smartTextToMarkdown } from "../../shared/smart-text";
 
 export function lessonMarkdown(
   title: string,
@@ -165,11 +167,13 @@ export function exportMarkdown(
       .get(input.topicId, input.planId) as { title: string } | undefined;
     if (!topic) throw new Error("topic-missing");
     const lesson = readLesson(db, input.planId, input.topicId, input.wording);
+    const labels =
+      planLanguage(db, input.planId) === "Italian" ? smartLabels.it : smartLabels.en;
     return {
       filename,
       markdown: lessonMarkdown(
         topic.title,
-        lesson.markdown,
+        smartTextToMarkdown(lesson.markdown, labels),
         sectionPaths(db, lesson.passageIds),
       ),
     };

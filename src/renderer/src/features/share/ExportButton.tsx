@@ -1,5 +1,5 @@
 import { App, Button, Checkbox, Modal, Radio } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
@@ -24,6 +24,8 @@ export function ExportButton({
   attemptId,
   kind,
   disabled = false,
+  open: controlled,
+  onOpenChange,
 }: {
   planId: string;
   topicId?: string;
@@ -31,10 +33,18 @@ export function ExportButton({
   attemptId?: string;
   kind: Kind;
   disabled?: boolean;
+  /** Opened from elsewhere, such as a menu: no button of its own is shown. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const [open, setOpen] = useState(false);
+  const [internal, setInternal] = useState(false);
+  const open = controlled ?? internal;
+  const setOpen = (next: boolean) => {
+    setInternal(next);
+    onOpenChange?.(next);
+  };
   const [format, setFormat] = useState<Format>(
     kind === "plan" ? "pyxis" : "pdf",
   );
@@ -44,6 +54,9 @@ export function ExportButton({
   const [author, setAuthor] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  useEffect(() => {
+    if (controlled) setError(false);
+  }, [controlled]);
   const formats: Format[] =
     kind === "plan"
       ? ["pyxis"]
@@ -112,16 +125,18 @@ export function ExportButton({
 
   return (
     <>
-      <Button
-        shape="round"
-        disabled={disabled || !planId}
-        onClick={() => {
-          setError(false);
-          setOpen(true);
-        }}
-      >
-        {t("export.title")}
-      </Button>
+      {controlled === undefined ? (
+        <Button
+          shape="round"
+          disabled={disabled || !planId}
+          onClick={() => {
+            setError(false);
+            setOpen(true);
+          }}
+        >
+          {t("export.title")}
+        </Button>
+      ) : null}
       <Modal
         title={t("export.title")}
         open={open}

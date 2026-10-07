@@ -18,14 +18,17 @@ import type { EducationLevel } from "../profile/profile";
 import type { Runner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
 import { addSubject, reorderSubjects, removeSubject, renameSubject } from "./subjects";
+import { recordStep } from "./steps";
+import type { StepResult } from "./path";
+import { stripPassageRefs } from "../../shared/smart-text";
+import { smartAnswers } from "../study/smartText";
 import type Database from "better-sqlite3";
 import {
-  completeNode,
   createPlan,
   deletePlan,
   listPlans,
   listSubjects,
-  nextLesson,
+  planGuide,
   readPlan,
 } from "./create";
 import { proposeModules, proposeTree } from "./guided";
@@ -80,15 +83,21 @@ export function planHandlers(
     intro(input: { planId: string }) {
       const row = db
         .prepare(
-          "SELECT body_json FROM items WHERE plan_id = ? AND kind = 'intro' ORDER BY created_at DESC LIMIT 1",
+          "SELECT id, body_json FROM items WHERE plan_id = ? AND kind = 'intro' ORDER BY created_at DESC LIMIT 1",
         )
-        .get(input.planId) as { body_json: string } | undefined;
-      return row
-        ? (JSON.parse(row.body_json) as {
-            markdown: string;
-            passageIds: string[];
-          })
-        : null;
+        .get(input.planId) as { id: string; body_json: string } | undefined;
+      if (!row) return null;
+      const body = JSON.parse(row.body_json) as {
+        markdown: string;
+        passageIds?: string[];
+      };
+      // Older introductions cite passages as [P3] or raw ids; the page never shows them.
+      return {
+        itemId: row.id,
+        markdown: stripPassageRefs(body.markdown),
+        passageIds: body.passageIds ?? [],
+        answers: smartAnswers(db, row.id),
+      };
     },
     create(input: Parameters<typeof createPlan>[1], signal?: AbortSignal) {
       if (runner) return enqueuePlan(db, runner, input);
@@ -213,10 +222,15 @@ export function planHandlers(
       return listSimulations(db, input.planId);
     },
     recommend(input: { planId: string }) {
-      return nextLesson(db, input.planId);
+      return planGuide(db, input.planId);
     },
-    complete(input: { planId: string; nodeId: string }) {
-      completeNode(db, input.planId, input.nodeId);
+    complete(input: {
+      planId: string;
+      activity: "intro" | "lesson" | "practice" | "cards";
+      topicId: string | null;
+      result?: StepResult;
+    }) {
+      recordStep(db, input.planId, input);
       return { ok: true };
     },
   };

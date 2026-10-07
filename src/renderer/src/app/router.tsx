@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { CardsPage } from "../features/study/CardsPage";
 import { MapPage } from "../features/maps/MapPage";
 import { LessonPage } from "../features/study/LessonPage";
+import { IntroPage } from "../features/study/IntroPage";
 import { PracticePage } from "../features/study/PracticePage";
 import { SimulationPage } from "../features/study/SimulationPage";
 import { QuizPage } from "../features/study/QuizPage";
@@ -60,6 +61,7 @@ export const router = createHashRouter([
   { path: "/plans/new/guided", element: <GuidedPlanPage /> },
   { path: "/plans/:planId/practice/:topicId", element: <PracticePage /> },
   { path: "/plans/:planId/lesson/:topicId", element: <LessonPage /> },
+  { path: "/plans/:planId/intro", element: <IntroPage /> },
   { path: "/plans/:planId/diagnostic", element: <QuizPage /> },
   { path: "/plans/:planId/quiz/:topicId", element: <QuizPage /> },
   { path: "/plans/:planId/cards/:topicId", element: <CardsPage /> },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanLatex, parseMathText, serializeMathText, type MathSegment } from "./mathText";
+import { cleanLatex, parseMathText, serializeMathText, type MathSegment } from "./mathString";
 
 const text = (t: string): MathSegment => ({ kind: "text", text: t });
 const math = (latex: string, display?: boolean): MathSegment =>

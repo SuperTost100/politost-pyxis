@@ -6,41 +6,47 @@ import "./PathNode.css";
 export function PathNode({
   icon,
   label,
+  detail,
+  meta,
   state = "available",
-  unlockHint,
-  inspectable = false,
+  ariaLabel,
   onClick,
 }: {
   icon: IconName;
   label?: string;
-  state?: "done" | "current" | "available" | "locked";
-  unlockHint?: string;
-  inspectable?: boolean;
+  /** A second line under the label, such as the topic. */
+  detail?: string;
+  /** A short result under the label, such as "8/10". */
+  meta?: string;
+  state?: "done" | "current" | "available" | "planned";
+  ariaLabel?: string;
   onClick?: () => void;
 }) {
   const { t } = useTranslation();
-  const stateKey =
-    state === "locked" || state === "done" || state === "current"
-      ? `components.path.state.${state}`
+  const stateLabel =
+    state === "done" || state === "current"
+      ? ` (${t(`components.path.state.${state}`)})`
       : "";
-  const stateLabel = stateKey ? ` (${t(stateKey)})` : "";
   return (
-    <div className="px-node-wrap">
+    <div className={["px-node-wrap", `is-${state}`].join(" ")}>
       <button
         type="button"
         className={["px-node", `is-${state}`].join(" ")}
-        disabled={state === "locked" && !inspectable}
-        aria-label={(label ?? "") + stateLabel}
-        title={state === "locked" ? unlockHint : undefined}
+        aria-label={
+          ariaLabel ?? [label, detail, meta].filter(Boolean).join(", ") + stateLabel
+        }
         onClick={onClick}
+        data-path-box
       >
-        <Icon
-          name={state === "locked" ? "lock" : icon}
-          size={32}
-          strokeWidth={1.5}
-        />
+        <Icon name={icon} size={32} strokeWidth={1.5} />
       </button>
-      {label ? <div className="px-node-label">{label}</div> : null}
+      {label || detail || meta ? (
+        <div className="px-node-label" aria-hidden>
+          {label ? <span className="px-node-title">{label}</span> : null}
+          {detail ? <span className="px-node-detail">{detail}</span> : null}
+          {meta ? <span className="px-node-meta">{meta}</span> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

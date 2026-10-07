@@ -275,8 +275,7 @@ export function ComponentGallery() {
         <PathNode
           icon="file-pen"
           label={t("components.path.sim")}
-          state="locked"
-          unlockHint={t("components.path.unlock")}
+          state="planned"
         />
       </Section>
 

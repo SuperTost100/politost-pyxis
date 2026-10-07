@@ -182,6 +182,9 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
       ];
     }
     if (!row.topic_id) return [];
+    // A finished quiz, exercise set or card session is a path step on its topic, not a lesson.
+    if (row.kind === "lesson_completed" && payload.activity && payload.activity !== "lesson")
+      return [];
     const legacySimulation =
       !payload.evidenceKind &&
       !payload.questionScores &&
@@ -359,7 +362,8 @@ export function planSeries(
   });
   const completed = db
     .prepare(
-      "SELECT topic_id,created_at FROM learning_events WHERE plan_id=? AND kind='lesson_completed' AND topic_id IS NOT NULL",
+      `SELECT topic_id,created_at FROM learning_events WHERE plan_id=? AND kind='lesson_completed' AND topic_id IS NOT NULL
+       AND coalesce(json_extract(payload_json, '$.activity'), 'lesson') = 'lesson'`,
     )
     .all(planId) as { topic_id: string | null; created_at: number }[];
   const topicDates = new Map(
@@ -379,7 +383,7 @@ export function planSeries(
     return {
       ...topic,
       exercisesSolved: rows
-        .filter((event) => event.kind === "quiz")
+        .filter((event) => event.kind === "quiz" && event.evidenceKind !== "check")
         .reduce(
           (sum, event) =>
             sum +
@@ -438,6 +442,7 @@ export function planSeries(
           .filter(
             (event) =>
               event.kind === "quiz" &&
+              event.evidenceKind !== "check" &&
               event.topicId === gap.topicId &&
               event.at >= gap.openedAt,
           )
@@ -501,10 +506,12 @@ export function planSeries(
 
 type ScorePayload = {
   attemptId?: string;
+  /** Set on lesson_completed steps; older ones are lessons or plan-wide nodes. */
+  activity?: string;
   score?: number;
   scores?: number[];
   seconds?: number;
-  evidenceKind?: "quiz" | "simulation";
+  evidenceKind?: "quiz" | "simulation" | "check";
   questionScores?: Array<{
     id?: string;
     sourceIds?: string[];

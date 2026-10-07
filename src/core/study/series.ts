@@ -7,7 +7,8 @@ export type SeriesEvent = {
   score: number;
   scores?: number[];
   answerKinds?: Array<string | undefined>;
-  evidenceKind?: "quiz" | "simulation";
+  /** "check": a lesson's quick check; it counts for mastery but never opens or closes a gap. */
+  evidenceKind?: "quiz" | "simulation" | "check";
   /** The attempt this event came from and its answers by question id, when recorded; links wrong answers to gaps. */
   attemptId?: string;
   answers?: Array<{ id?: string; score: number }>;
@@ -158,7 +159,7 @@ export function replayGaps(
 ): TrackedGap[] {
   const byTopic = new Map<string, SeriesEvent[]>();
   for (const event of events) {
-    if (event.kind !== "quiz") continue;
+    if (event.kind !== "quiz" || event.evidenceKind === "check") continue;
     byTopic.set(event.topicId, [...(byTopic.get(event.topicId) ?? []), event]);
   }
   for (const gap of known) if (!byTopic.has(gap.topicId)) byTopic.set(gap.topicId, []);

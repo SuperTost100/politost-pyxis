@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import type { Runner } from "../jobs/runner";
-import { readPlan } from "../plans/create";
+import { readSteps } from "../plans/steps";
 import { planSeries } from "../plans/progress";
 import { saveQuiz, startAttempt, type QuizQuestion } from "./attempt";
 import { dueCards } from "./cards";
@@ -366,10 +366,9 @@ function usedSources(db: Database.Database, planId: string): Set<string> {
   return used;
 }
 
-/** The topic of the path's current node, when that node is topic work; null before the path reaches one. */
+/** The topic the student is learning now: the one whose lesson they read last; null before any lesson is read. */
 function frontierTopic(db: Database.Database, planId: string): string | null {
-  const node = readPlan(db, planId)?.nodes.find((item) => item.state === "current");
-  return node?.topicId ?? null;
+  return readSteps(db, planId).findLast((step) => step.activity === "lesson")?.topicId ?? null;
 }
 
 function latestScore(db: Database.Database, planId: string, topicId: string): number | undefined {
@@ -377,6 +376,7 @@ function latestScore(db: Database.Database, planId: string, topicId: string): nu
     .prepare(
       `SELECT payload_json FROM learning_events
        WHERE plan_id = ? AND topic_id = ? AND kind = 'answer_given'
+         AND json_extract(payload_json, '$.evidenceKind') IS NOT 'check'
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(planId, topicId) as { payload_json: string } | undefined;

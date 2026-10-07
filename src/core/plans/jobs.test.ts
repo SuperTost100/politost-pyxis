@@ -94,6 +94,7 @@ describe("PLAN-21 durable plan build", () => {
       if (input.system?.startsWith("Write")) {
         calls.intro++;
         systems.intro = input.system;
+        systems.introPrompt = input.prompt;
         return response({ markdown: "Il moto [P1]." });
       }
       if (input.system?.startsWith("Create")) {
@@ -132,9 +133,25 @@ describe("PLAN-21 durable plan build", () => {
     expect(startDiagnostic(db, built.planId).questions).toHaveLength(10);
     for (const id of ["intro", "diagnostic"] as const) {
       expect(systems[id], id).toContain("Write all output in Italian.");
-      expect(systems[id], id).toContain(partialText("citation"));
       expect(systems[id], id).not.toMatch(/\{\{[A-Za-z]/);
     }
+    expect(systems.diagnostic).toContain(partialText("citation"));
+    // The introduction is smart text for the student: no citation rule, no passage ids to quote, none stored.
+    expect(systems.intro).not.toContain(partialText("citation"));
+    expect(systems.intro).toContain("```pyxis-check");
+    const passageIds = (
+      db.prepare("SELECT id FROM passages").all() as Array<{ id: string }>
+    ).map((row) => row.id);
+    expect(passageIds.some((id) => systems.introPrompt!.includes(id))).toBe(false);
+    expect(
+      JSON.parse(
+        (
+          db.prepare("SELECT body_json FROM items WHERE kind = 'intro'").get() as {
+            body_json: string;
+          }
+        ).body_json,
+      ).markdown,
+    ).toBe("Il moto.");
     expect(
       db
         .prepare(
@@ -550,7 +567,7 @@ describe("PLAN-21 durable plan build", () => {
         .prepare("SELECT prompt_template FROM plans WHERE id = ?")
         .get(edited.planId),
     ).toEqual({ prompt_template: "plan.tree" });
-    expect(plan.nodes.some((node) => node.state === "current")).toBe(true);
+    expect(plan.steps).toEqual([]);
 
     // With no tree at all the model proposes one, and the result is a draft too.
     const invented = enqueuePlan(db, runner, { title: "Fisica", sourceIds: [] });

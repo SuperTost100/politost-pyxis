@@ -280,6 +280,15 @@ async function dispatchValidated(
         onDelta: (text) => emit?.({ type: "text", text }),
         onPassages: (passageIds) => emit?.({ type: "sources", passageIds }),
       });
+    case "study.lessonSection":
+      return study?.lessonSection(
+        requests["study.lessonSection"].input.parse(input),
+        signal,
+      );
+    case "study.lessonAnswer":
+      return study?.lessonAnswer(
+        requests["study.lessonAnswer"].input.parse(input),
+      );
     case "study.markdown":
       return study?.markdown(requests["study.markdown"].input.parse(input));
     case "study.anki":
