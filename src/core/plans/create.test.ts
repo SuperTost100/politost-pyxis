@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { importSmartbook } from "../sources/smartbook";
 import {
-  completeNode,
   createPlan,
   deletePlan,
   listPlans,
@@ -11,7 +10,7 @@ import {
 } from "./create";
 import { applyRebuild, computeRebuild } from "./rebuild";
 import { uuidv7 } from "../../shared/ids";
-import { pathState } from "./path";
+import { recordStep } from "./steps";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -80,14 +79,12 @@ describe("createPlan", () => {
       )
       .get(plan.planId) as { n: number };
     expect(linked.n).toBe(2);
-    const practice = db
-      .prepare(
-        `SELECT id FROM path_nodes WHERE plan_id = ? AND kind = 'practice' LIMIT 1`,
-      )
-      .get(plan.planId) as { id: string };
-    expect(() => completeNode(db, plan.planId, practice.id)).toThrow(
-      /node-locked/,
-    );
+    // Nothing is locked: exercises on a topic count before the introduction or the diagnostic.
+    const topicId = readPlan(db, plan.planId)!.topics[1]!.id;
+    expect(recordStep(db, plan.planId, { activity: "practice", topicId })).toBe(true);
+    expect(readPlan(db, plan.planId)?.steps).toMatchObject([
+      { activity: "practice", topicId, result: null },
+    ]);
     deletePlan(db, plan.planId);
     const left = db.prepare(`SELECT COUNT(*) AS n FROM plans`).get() as {
       n: number;
@@ -157,45 +154,9 @@ describe("createPlan", () => {
       "practice",
       "learn",
     ]);
-    const rows = db
-      .prepare(
-        `SELECT id, kind, topic_id, position FROM path_nodes WHERE plan_id = ?`,
-      )
-      .all(practicePlan.planId) as Array<{
-      id: string;
-      kind:
-        | "intro"
-        | "diagnostic"
-        | "learn"
-        | "practice"
-        | "cards"
-        | "gaps"
-        | "simulation"
-        | "final";
-      topic_id: string | null;
-      position: number;
-    }>;
-    const states = pathState(
-      rows.map((row) => ({
-        id: row.id,
-        stage: row.kind,
-        topicId: row.topic_id,
-        position: row.position,
-      })),
-      rows
-        .filter((row) => row.kind === "intro" || row.kind === "diagnostic")
-        .map((row) => row.id),
-      {},
-    );
-    const stateOf = (kind: string) =>
-      states.find(
-        (item) => item.id === rows.find((row) => row.kind === kind)?.id,
-      )?.state;
-    expect(stateOf("practice")).toBe("current");
-    expect(stateOf("learn")).toBe("locked");
   });
 
-  it("keeps the final check locked after a failed simulation", () => {
+  it("shows nodes an older plan marked done as done steps, without the final check", () => {
     const db = openDatabase(":memory:");
     const imported = importSmartbook(
       db,
@@ -215,7 +176,7 @@ describe("createPlan", () => {
       target: 0.8,
     });
     const nodes = db
-      .prepare(`SELECT id, kind, topic_id FROM path_nodes WHERE plan_id = ?`)
+      .prepare(`SELECT id, kind, topic_id FROM path_nodes WHERE plan_id = ? ORDER BY position`)
       .all(plan.planId) as Array<{
       id: string;
       kind: string;
@@ -223,35 +184,39 @@ describe("createPlan", () => {
     }>;
     let at = Date.now();
     for (const node of nodes) {
-      if (node.kind === "final") continue;
+      // Older versions put the topic only on lesson nodes and kept the rest in the node.
       db.prepare(
         `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
-         VALUES (?, 'lesson_completed', ?, NULL, ?, ?)`,
-      ).run(uuidv7(at), plan.planId, JSON.stringify({ nodeId: node.id }), at);
-      at += 1;
-    }
-    for (const topicId of new Set(
-      nodes.flatMap((node) => (node.topic_id ? [node.topic_id] : [])),
-    )) {
-      db.prepare(
-        `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
-         VALUES (?, 'answer_given', ?, ?, ?, ?)`,
+         VALUES (?, 'lesson_completed', ?, ?, ?, ?)`,
       ).run(
         uuidv7(at),
         plan.planId,
-        topicId,
-        JSON.stringify({ score: 0, scores: [0] }),
+        node.kind === "learn" ? node.topic_id : null,
+        JSON.stringify({ nodeId: node.id }),
         at,
       );
       at += 1;
     }
-    const view = readPlan(db, plan.planId);
-    expect(view?.nodes.find((node) => node.kind === "simulation")?.state).toBe(
-      "done",
-    );
-    expect(view?.nodes.find((node) => node.kind === "final")?.state).toBe(
-      "locked",
-    );
+    const topicId = nodes.find((node) => node.topic_id)!.topic_id;
+    expect(readPlan(db, plan.planId)?.steps.map(({ activity, topicId }) => ({ activity, topicId }))).toEqual([
+      { activity: "intro", topicId: null },
+      { activity: "diagnostic", topicId: null },
+      { activity: "lesson", topicId },
+      { activity: "practice", topicId },
+      { activity: "cards", topicId },
+      { activity: "gaps", topicId },
+      { activity: "simulation", topicId: null },
+    ]);
+    // A lesson already read is not recorded twice.
+    expect(recordStep(db, plan.planId, { activity: "lesson", topicId }, at)).toBe(false);
+    expect(
+      recordStep(db, plan.planId, { activity: "quiz", topicId, result: { correct: 8, total: 10 } }, at),
+    ).toBe(true);
+    expect(readPlan(db, plan.planId)?.steps.at(-1)).toMatchObject({
+      activity: "quiz",
+      topicId,
+      result: { correct: 8, total: 10 },
+    });
   });
 
   it("keeps a draft when there is no source, and renames topics before the path is built", () => {

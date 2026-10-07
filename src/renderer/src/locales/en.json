@@ -445,7 +445,6 @@
   },
   "lesson": {
     "title": "Lesson",
-    "done": "I've read it",
     "sourceFallback": "The lesson could not be written. You are reading the source text.",
     "failed": "The lesson could not be opened. Check the selected engine or retry.",
     "retry": "Retry lesson",
@@ -665,16 +664,6 @@
     "generate": "Write exercises"
   },
   "plans": {
-    "unlocksAfterIntro": "Unlocks after the introduction",
-    "unlocksAfterDiagnostic": "Unlocks after the diagnostic",
-    "unlocksAtHalf": "Unlocks at 50%",
-    "unlocksAtTarget": "Unlocks at the target",
-    "unlocksAfterCurrent": "Unlocks after the current step",
-    "current": "Now",
-    "recommended": "Recommended lesson",
-    "recommendDue": "{{count}} cards due",
-    "recommendGaps": "{{count}} open gaps",
-    "recommendNext": "The open step",
     "export": "Export",
     "includeAuthor": "Include my profile name",
     "includeProgress": "Include progress",
@@ -693,15 +682,62 @@
     "cards": "Cards",
     "gaps": "Gaps",
     "simulation": "Simulation",
-    "final": "Final check",
     "views": "Plan sections",
     "noExam": "No exam date",
-    "recommendDue_one": "1 card due",
-    "recommendDue_other": "{{count}} cards due",
-    "recommendGaps_one": "1 open gap",
-    "recommendGaps_other": "{{count}} open gaps",
     "quiz": "Quiz",
-    "map": "Map"
+    "map": "Map",
+    "path": {
+      "next": "Suggested next",
+      "pick": "Choose what to study",
+      "on": "{{activity}} on {{topic}}",
+      "more": "Other activities",
+      "change": "Change topic",
+      "whole": "Whole plan",
+      "forTopic": "Activities on {{topic}}",
+      "topics": "Plan topics",
+      "search": "Search topics",
+      "noMatch": "No topics found.",
+      "mastery": "Mastery of {{topic}}",
+      "suggested": "Suggested",
+      "due_one": "1 due",
+      "due_other": "{{count}} due",
+      "gaps_one": "1 open gap",
+      "gaps_other": "{{count}} open gaps",
+      "done": "Steps done",
+      "planned": "Coming up",
+      "choose": "{{topic}}: choose an activity",
+      "showAll": "Show all steps ({{count}})",
+      "activity": {
+        "intro": "Introduction",
+        "diagnostic": "Diagnostic test",
+        "lesson": "Smart text",
+        "practice": "Guided exercise",
+        "quiz": "Quiz",
+        "cards": "Flashcards",
+        "gaps": "Close gaps",
+        "simulation": "Exam simulation"
+      },
+      "result": {
+        "lesson": "read",
+        "intro": "read",
+        "done": "done",
+        "cards_one": "1 card",
+        "cards_other": "{{count}} cards"
+      },
+      "reason": {
+        "intro": "Start here: what you'll study and how.",
+        "diagnostic": "Find your starting point. You can skip it.",
+        "due_one": "1 card to review today.",
+        "due_other": "{{count}} cards to review today.",
+        "gaps_one": "One serious gap on this topic.",
+        "gaps_other": "{{count}} serious gaps on this topic.",
+        "examSoon": "The exam is in a few days: test yourself.",
+        "ready": "Every topic has reached your target.",
+        "consolidate": "Lock in what you just read.",
+        "next": "The next topic in order.",
+        "weakest": "It's your weakest topic."
+      }
+    }
   },
   "progress": {
     "title": "Progress",
@@ -1238,15 +1274,13 @@
     },
     "path": {
       "state": {
-        "locked": "locked",
         "done": "done",
         "current": "current"
       },
       "intro": "Introduction",
       "exercises": "Exercises",
       "review": "Review",
-      "sim": "Simulation",
-      "unlock": "Reach 75% to unlock"
+      "sim": "Simulation"
     },
     "gapSamples": {
       "severe": "You mix up heat and work in the energy balance sign.",
@@ -1590,9 +1624,7 @@
     "create": "Create lesson",
     "failed": "This action could not be completed. Try again.",
     "unavailable": "This plan could not be opened. Return to Exams and try again.",
-    "nodeReady": "Open this activity to continue studying.",
     "start": "Start",
-    "another": "Another suggestion",
     "save": "Save changes",
     "language": "Content language",
     "rebuildConfirm": "Rebuild the path from the attached sources? Existing progress is kept.",
@@ -1627,7 +1659,6 @@
     "attachSources": "Attach selected sources",
     "pickerHelp": "Choose sources from your library. Sources still being prepared will become available when indexing finishes.",
     "importSource": "Import a source",
-    "reviewReason": "Review an activity you have already completed.",
     "rebuildIntro": "Pyxis builds a new topic tree from the attached sources, matches it to your current topics and shows what would change. Nothing changes until you apply it.",
     "rebuildStart": "Compare with sources",
     "rebuildStepMatch": "Matching topics",

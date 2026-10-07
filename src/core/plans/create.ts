@@ -4,7 +4,8 @@ import { planEducation } from "./education";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
-import { bestRecommendation, pathState, type Stage } from "./path";
+import { suggestStep, topicSuggestion, type Stage, type TopicStatus } from "./path";
+import { readSteps } from "./steps";
 import { dueCards } from "../study/cards";
 import { gapSeverity, planMastery, syncGaps, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
@@ -261,50 +262,6 @@ export function deletePlan(db: Database.Database, planId: string): void {
   if (info.changes === 0) throw new Error("plan-missing");
 }
 
-export function completeNode(
-  db: Database.Database,
-  planId: string,
-  nodeId: string,
-  now = Date.now(),
-): void {
-  const node = db
-    .prepare(
-      `SELECT id, topic_id, kind FROM path_nodes WHERE id = ? AND plan_id = ?`,
-    )
-    .get(nodeId, planId) as
-    { id: string; topic_id: string | null; kind: string } | undefined;
-  if (!node) throw new Error("node-missing");
-  const open = readPlan(db, planId)?.nodes.find((item) => item.id === nodeId);
-  if (open?.state !== "current") throw new Error("node-locked");
-  db.prepare(
-    `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
-     VALUES (?, 'lesson_completed', ?, ?, ?, ?)`,
-  ).run(
-    uuidv7(now),
-    planId,
-    node.kind === "learn" ? node.topic_id : null,
-    JSON.stringify({ nodeId }),
-    now,
-  );
-}
-
-export function completeCurrentStage(
-  db: Database.Database,
-  planId: string,
-  kind: string,
-  now = Date.now(),
-): void {
-  const node = db
-    .prepare(`SELECT id FROM path_nodes WHERE plan_id = ? AND kind = ?`)
-    .get(planId, kind) as { id: string } | undefined;
-  if (!node) return;
-  try {
-    completeNode(db, planId, node.id, now);
-  } catch (err) {
-    if (!(err instanceof Error) || err.message !== "node-locked") throw err;
-  }
-}
-
 export function readPlan(db: Database.Database, planId: string) {
   const plan = db
     .prepare(
@@ -338,66 +295,11 @@ export function readPlan(db: Database.Database, planId: string) {
     ...topicContent(db, planId, topic.id),
     ...topicTree(tree_json),
   }));
-  const rows = db
-    .prepare(
-      `SELECT id, title, kind, topic_id, position FROM path_nodes
-       WHERE plan_id = ? AND (topic_id IS NULL OR topic_id IN (SELECT id FROM topics WHERE archived_at IS NULL))
-       ORDER BY position`,
-    )
-    .all(planId) as Array<{
-    id: string;
-    title: string;
-    kind: string;
-    topic_id: string | null;
-    position: number;
-  }>;
-  const events = db
-    .prepare(
-      `SELECT payload_json, topic_id FROM learning_events
-       WHERE plan_id = ? AND kind = 'lesson_completed'`,
-    )
-    .all(planId) as Array<{ payload_json: string; topic_id: string | null }>;
-  const doneIds = events.flatMap((event) => {
-    const payload = JSON.parse(event.payload_json) as { nodeId?: string };
-    return payload.nodeId ? [payload.nodeId] : [];
-  });
-  const simulationDone = rows.some(
-    (row) => row.kind === "simulation" && doneIds.includes(row.id),
-  );
-  const mastery: Record<string, number> = {};
-  for (const topic of planMastery(db, planId)) {
-    mastery[topic.id] = simulationDone
-      ? topic.mastery
-      : Math.min(topic.mastery, 0.5);
-  }
-  const states = pathState(
-    rows.map((row) => ({
-      id: row.id,
-      stage: row.kind as Stage,
-      topicId: row.topic_id,
-      position: row.position,
-    })),
-    doneIds,
-    mastery,
-    reachableTarget(plan.target),
-  );
-  const nodes = rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    kind: row.kind,
-    topicId: row.topic_id,
-    position: row.position,
-    unlockReason: states.find((item) => item.id === row.id)?.reason ?? "",
-    state:
-      plan.status === "building"
-        ? "locked"
-        : (states.find((item) => item.id === row.id)?.state ?? "locked"),
-  }));
   return {
     ...plan,
     ...planOrigin(db, planId),
     topics: topicViews,
-    nodes,
+    steps: readSteps(db, planId),
     sources: db
       .prepare(
         `SELECT s.id, s.title, s.kind, s.status FROM sources s
@@ -469,88 +371,68 @@ export function listPlans(db: Database.Database, now = Date.now()) {
   });
 }
 
-export function nextLesson(
+/**
+ * What the path suggests next, and for each topic what fits it now. Every activity stays open; this only picks
+ * the first offer. Gap rows follow the answers only when synced; Progress syncs before it reads them, and so does this.
+ */
+export function planGuide(
   db: Database.Database,
   planId: string,
   now = Date.now(),
 ) {
-  const plan = readPlan(db, planId);
-  if (!plan) return null;
   const meta = db
-    .prepare(`SELECT exam_at, target, style FROM plans WHERE id = ?`)
+    .prepare(`SELECT exam_at, target, status FROM plans WHERE id = ?`)
     .get(planId) as
-    { exam_at: number | null; target: number; style: string } | undefined;
-  if (!meta) return null;
-  const daysToExam =
-    meta.exam_at == null ? 30 : Math.max(1, daysUntil(meta.exam_at, now));
-  // Gap rows follow the answers only when synced; Progress syncs before it reads them, and so does this.
+    { exam_at: number | null; target: number; status: string } | undefined;
+  if (!meta || meta.status === "building") return null;
   syncGaps(db, planId, now);
-  const masteries = planMastery(db, planId, now);
-  const candidates = plan.nodes.flatMap((node) => {
-    if (node.state !== "current") return [];
-    const due = node.topicId
-      ? dueCards(db, planId, now, node.topicId).length
-      : 0;
-    const mastery = node.topicId
-      ? (masteries.find((topic) => topic.id === node.topicId)?.mastery ?? 0)
-      : 0;
-    // Only gaps Progress would call severe count as such; a minor reading is not a severe gap.
-    const gaps = {
-      n: node.topicId
-        ? (
-            db
-              .prepare(
-                `SELECT severity FROM gaps WHERE plan_id = ? AND topic_id = ? AND closed_at IS NULL`,
-              )
-              .all(planId, node.topicId) as Array<{ severity: "severe" | "minor" | null }>
-          ).filter((gap) => gapSeverity(gap.severity, mastery, meta.target) === "severe").length
-        : 0,
+  const steps = readSteps(db, planId);
+  const gaps = db
+    .prepare(
+      `SELECT topic_id, severity FROM gaps WHERE plan_id = ? AND closed_at IS NULL`,
+    )
+    .all(planId) as Array<{ topic_id: string | null; severity: "severe" | "minor" | null }>;
+  const lastStudied = db.prepare(
+    `SELECT MAX(created_at) AS at FROM learning_events WHERE plan_id = ? AND topic_id = ?`,
+  );
+  const topics: TopicStatus[] = planMastery(db, planId, now).map((topic) => {
+    const open = gaps.filter((gap) => gap.topic_id === topic.id);
+    const last = lastStudied.get(planId, topic.id) as { at: number | null };
+    return {
+      id: topic.id,
+      mastery: topic.mastery,
+      dueCards: dueCards(db, planId, now, topic.id).length,
+      // Only gaps Progress would call severe count as such; a minor reading is not a severe gap.
+      severeGaps: open.filter(
+        (gap) => gapSeverity(gap.severity, topic.mastery, meta.target) === "severe",
+      ).length,
+      daysIdle: last.at == null ? 0 : Math.max(0, -daysUntil(last.at, now)),
     };
-    const last = node.topicId
-      ? (db
-          .prepare(
-            `SELECT MAX(created_at) AS at FROM learning_events WHERE plan_id = ? AND topic_id = ?`,
-          )
-          .get(planId, node.topicId) as { at: number | null })
-      : { at: null };
-    const daysIdle =
-      last.at == null ? 0 : Math.max(0, -daysUntil(last.at, now));
-    const styleMatch =
-      (meta.style === "practice" && node.kind === "practice") ||
-      (meta.style === "read" && node.kind === "learn")
-        ? 1
-        : 0;
-    return [
-      {
-        id: node.id,
-        dueCards: due,
-        severeGaps: gaps.n,
-        topicMastery: mastery,
-        target: meta.target,
-        daysToExam,
-        daysIdle,
-        styleMatch,
-      },
-    ];
   });
-  const best = bestRecommendation(candidates);
-  if (!best) return null;
-  const chosen = candidates.find((item) => item.id === best.id);
-  if (!chosen) return null;
-  if (chosen.dueCards > 0)
-    return {
-      nodeId: chosen.id,
-      reason: "due" as const,
-      count: chosen.dueCards,
-    };
-  if (chosen.severeGaps > 0) {
-    return {
-      nodeId: chosen.id,
-      reason: "gaps" as const,
-      count: chosen.severeGaps,
-    };
-  }
-  return { nodeId: chosen.id, reason: "next" as const, count: 0 };
+  const read = new Set(
+    steps.filter((step) => step.activity === "lesson").map((step) => step.topicId),
+  );
+  const hasIntro = Boolean(
+    db.prepare("SELECT 1 FROM items WHERE plan_id = ? AND kind = 'intro'").get(planId),
+  );
+  return {
+    next: suggestStep({
+      topics,
+      steps,
+      hasIntro,
+      target: reachableTarget(meta.target),
+      daysToExam: meta.exam_at == null ? null : daysUntil(meta.exam_at, now),
+    }),
+    hasIntro,
+    topics: topics.map((topic) => ({
+      topicId: topic.id,
+      mastery: topic.mastery,
+      read: read.has(topic.id),
+      dueCards: topic.dueCards,
+      gaps: gaps.filter((gap) => gap.topic_id === topic.id).length,
+      suggested: topicSuggestion(topic, read.has(topic.id)),
+    })),
+  };
 }
 
 export function listSubjects(db: Database.Database) {

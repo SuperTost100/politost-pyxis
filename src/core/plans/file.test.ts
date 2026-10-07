@@ -185,7 +185,7 @@ describe("plan file", () => {
       intervalDays: 0,
       ease: 2.5,
     });
-    expect(readPlan(db, restored)?.nodes[0]?.state).toBe("done");
+    expect(readPlan(db, restored)?.steps[0]?.activity).toBe("intro");
     const kept = db
       .prepare(
         `SELECT payload_json FROM learning_events
