@@ -1088,10 +1088,7 @@
     "saveFailed": "The setting could not be saved. Try again.",
     "readingSample": "Velocity tells us how displacement changes over time. Read this paragraph while choosing the size and spacing that suit you.",
     "groups": {
-      "profile": "Profile",
-      "engines": "AI engines",
       "study": "Study",
-      "data": "Data",
       "app": "App"
     },
     "crashOn": "On: if Pyxis closes by mistake, it can use a technical report to fix it. For now Pyxis sends no report: this choice stays on this computer.",

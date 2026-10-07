@@ -1088,10 +1088,7 @@
     "saveFailed": "L’impostazione non è stata salvata. Riprova.",
     "readingSample": "La velocità descrive come cambia lo spostamento nel tempo. Leggi questo paragrafo mentre scegli la dimensione e la spaziatura più adatte a te.",
     "groups": {
-      "profile": "Profilo",
-      "engines": "Motori AI",
       "study": "Studio",
-      "data": "Dati",
       "app": "App"
     },
     "crashOn": "Acceso: se Pyxis si chiude per errore, potrà usare un rapporto tecnico per correggerlo. Per ora Pyxis non invia nessun rapporto: la scelta resta su questo computer.",
