@@ -220,7 +220,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     expect((await read()).steps).toEqual([]);
     const recap = page.getByRole("region", { name: "Ripasso finale" });
     await recap.scrollIntoViewIfNeeded();
-    await recap.getByRole("button", { name: /^B\s*Newton/ }).click();
+    await recap.getByRole("button", { name: /^(B\s*)?Newton$/ }).click();
     await recap.getByRole("button", { name: /si dimezza/ }).click();
     await expect(page.getByText("Lezione completata")).toBeVisible();
     expect((await read()).steps).toMatchObject([{ activity: "lesson", topicId: topics[0]!.id }]);
@@ -269,7 +269,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
       timeout: 20000,
     });
     await recap.scrollIntoViewIfNeeded();
-    await recap.getByRole("button", { name: /^B\s*Newton/ }).click();
+    await recap.getByRole("button", { name: /^(B\s*)?Newton$/ }).click();
     await recap.getByRole("button", { name: /raddoppia/ }).click();
     await expect(page.getByText("Lezione completata")).toBeVisible();
     expect((await read()).steps.map((step) => [step.activity, step.topicId])).toEqual([
