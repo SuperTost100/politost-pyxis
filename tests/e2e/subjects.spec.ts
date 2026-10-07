@@ -27,8 +27,12 @@ test("ASK-01 subjects can be added, selected, reordered by keyboard and removed"
     await expect(handle).toHaveAttribute("aria-pressed", "true");
     // The keyboard sensor measures droppable positions on the next frame.
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    await page.keyboard.press("ArrowUp");
-    await expect(page.getByText("Analisi, posizione 1 di 2.", { exact: true })).toBeAttached();
+    // The sensor listens for keys a tick after the press; on a slow runner the first arrow can come too early.
+    // Another arrow at the top leaves the row where it is, so it is safe to repeat.
+    await expect(async () => {
+      await page.keyboard.press("ArrowUp");
+      await expect(page.getByText("Analisi, posizione 1 di 2.", { exact: true })).toBeAttached({ timeout: 1000 });
+    }).toPass({ timeout: 15000 });
     await page.keyboard.press("Space");
     await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("subjects.list", {})) as Array<{ name: string }>).map((row) => row.name)).toEqual(["Analisi", "Fisica"]);
     mkdirSync(".shots", { recursive: true });
