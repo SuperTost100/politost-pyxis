@@ -131,28 +131,33 @@ export function PracticePage() {
   return (
     <FocusLayout
       title={t("practice.title")}
+      headerRight={
+        <Button
+          shape="round"
+          onClick={() => navigate(`/plans/${planId ?? ""}/quiz/${topicId ?? ""}`)}
+        >
+          {t("quiz.title")}
+        </Button>
+      }
       secondary={
         <Button type="text" shape="round" onClick={() => navigate(`/plans/${planId ?? ""}`)}>
           {t("nav.back")}
         </Button>
       }
+      primary={
+        // Done comes after the exercises, as at the end of a lesson.
+        list.length > 0 && plan.data ? (
+          <Button
+            type="primary"
+            shape="round"
+            loading={finish.isPending}
+            onClick={() => finish.mutate()}
+          >
+            {t("lesson.markDone")}
+          </Button>
+        ) : null
+      }
     >
-      <Button
-        shape="round"
-        onClick={() => navigate(`/plans/${planId ?? ""}/quiz/${topicId ?? ""}`)}
-      >
-        {t("quiz.title")}
-      </Button>
-      {list.length > 0 && plan.data ? (
-        <Button
-          type="primary"
-          shape="round"
-          loading={finish.isPending}
-          onClick={() => finish.mutate()}
-        >
-          {t("lesson.markDone")}
-        </Button>
-      ) : null}
       {finish.isError ? (
         <Notice tone="danger">{t("planOverview.failed")}</Notice>
       ) : null}

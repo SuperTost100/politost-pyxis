@@ -87,6 +87,30 @@ export function ReviewPage() {
           {t("nav.back")}
         </Button>
       }
+      // Start sits in the action bar opposite Back, as on the quiz intro.
+      primary={
+        <div className="px-review-actions">
+          {active ? (
+            <Button
+              type="text"
+              shape="round"
+              loading={discard.isPending}
+              onClick={() => discard.mutate()}
+            >
+              {t("cards.reviewDiscard")}
+            </Button>
+          ) : null}
+          <Button
+            type="primary"
+            shape="round"
+            loading={start.isPending}
+            disabled={active?.next === "waiting"}
+            onClick={() => (active ? go(active) : start.mutate())}
+          >
+            {t(active ? "cards.reviewContinue" : "cards.reviewStart")}
+          </Button>
+        </div>
+      }
     >
       <p className="body">{t("cards.reviewIntro")}</p>
       {start.isError ? (
@@ -138,27 +162,6 @@ export function ReviewPage() {
           </Notice>
         );
       })}
-      <div className="px-review-actions">
-        <Button
-          type="primary"
-          shape="round"
-          loading={start.isPending}
-          disabled={active?.next === "waiting"}
-          onClick={() => (active ? go(active) : start.mutate())}
-        >
-          {t(active ? "cards.reviewContinue" : "cards.reviewStart")}
-        </Button>
-        {active ? (
-          <Button
-            type="text"
-            shape="round"
-            loading={discard.isPending}
-            onClick={() => discard.mutate()}
-          >
-            {t("cards.reviewDiscard")}
-          </Button>
-        ) : null}
-      </div>
     </FocusLayout>
   );
 }

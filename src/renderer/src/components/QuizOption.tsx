@@ -48,7 +48,7 @@ export function QuizOption({
         .filter(Boolean)
         .join(" ")}
       aria-pressed={state === "idle" || state === "selected" ? state === "selected" : undefined}
-      aria-keyshortcuts={shortcut}
+      aria-keyshortcuts={state === "muted" ? undefined : shortcut}
       aria-label={label && feedback ? `${label}, ${feedback.word}` : label}
       disabled={disabled}
       onClick={onClick}
@@ -62,7 +62,7 @@ export function QuizOption({
           <Icon name={feedback.icon} size={16} strokeWidth={2} />
           {feedback.word}
         </span>
-      ) : shortcut ? (
+      ) : shortcut && state !== "muted" ? (
         <kbd className="px-opt-shortcut" aria-hidden>
           {shortcut}
         </kbd>
