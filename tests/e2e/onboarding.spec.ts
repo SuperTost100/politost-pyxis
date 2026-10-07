@@ -83,6 +83,8 @@ const button = (page: Page, name: string | RegExp) =>
   page.getByRole("button", { name, exact: typeof name === "string" });
 
 test("First setup: name, engines found, photos later, crash reports on by default, then the switch in Settings", async () => {
+  // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
   const { bin, env } = fakeBins({ claude: true, codex: true });
