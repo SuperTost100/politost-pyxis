@@ -6,22 +6,22 @@ One SQLite file, `pyxis.db`, in the workspace. WAL and foreign keys are on. `000
 
 Migrations after the initial schema, applied in one transaction by `src/core/db/migrate.ts`:
 
-| `user_version` | Change                                                                              |
-| -------------- | ----------------------------------------------------------------------------------- |
-| 2              | `chats.scope_json`                                                                  |
-| 3              | `cards.passage_id`                                                                  |
-| 4              | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`)    |
-| 5              | `messages.reaction` (`up`, `down`, or empty)                                        |
-| 6              | `cards.suspended` (`0` or `1`). A suspended card stays out of the due queue         |
-| 7              | `cards.seed_key` and `cards.removed`. A removed generated card is not created again |
-| 8              | Source `origin_url`/`fetched_at` and stale citation state in `item_passages`        |
-| 9              | Stopped message state and chat subject                                              |
-| 10             | Saved chat context and source library visibility                                    |
-| 11             | Reorderable subject position                                                        |
-| 12             | Topic `tree_json` and dismissible jobs                                              |
-| 13             | `topics.archived_at`. A rebuild archives unmatched topics instead of deleting them  |
+| `user_version` | Change                                                                                  |
+| -------------- | --------------------------------------------------------------------------------------- |
+| 2              | `chats.scope_json`                                                                      |
+| 3              | `cards.passage_id`                                                                      |
+| 4              | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`)        |
+| 5              | `messages.reaction` (`up`, `down`, or empty)                                            |
+| 6              | `cards.suspended` (`0` or `1`). A suspended card stays out of the due queue             |
+| 7              | `cards.seed_key` and `cards.removed`. A removed generated card is not created again     |
+| 8              | Source `origin_url`/`fetched_at` and stale citation state in `item_passages`            |
+| 9              | Stopped message state and chat subject                                                  |
+| 10             | Saved chat context and source library visibility                                        |
+| 11             | Reorderable subject position                                                            |
+| 12             | Topic `tree_json` and dismissible jobs                                                  |
+| 13             | `topics.archived_at`. A rebuild archives unmatched topics instead of deleting them      |
 | 14             | `gaps.misconception` and `gaps.severity` (`severe` or `minor`), from the model analysis |
-| 15             | `gaps.origin`, `gaps.comparison`, `gaps.merged_into` and the `gap_answers` table    |
+| 15             | `gaps.origin`, `gaps.comparison`, `gaps.merged_into` and the `gap_answers` table        |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -78,6 +78,4 @@ Plan files are a portability format, not a database dump. Version 2 includes stu
 
 ## Restore safety
 
-Restore validates SQLite integrity and foreign-key references before and after migrations. Future schema versions and unexpected ZIP paths are rejected before live data moves. Only canonical hash-named blob files and their metadata accompany the database; restore verifies their hashes and metadata. Existing runtime/model caches are copied into staging and survive both commit and rollback. A fsynced sibling restore journal records the original and staged directory identities. Startup checks that journal before creating workspace folders.
-
-The app keeps the original `.old` workspace until the restored core reports healthy readiness. An interrupted uncommitted swap rolls back to that original. Commitment is recorded before deleting old data; a failed cleanup leaves the committed marker for the next startup and never selects a partly deleted original. A replaced or unexpected directory stops recovery with both copies preserved for inspection.
+Restore validates and migrates a staging copy, keeps the original workspace until the new core is healthy, and recovers from an interrupted swap. The steps are in [architecture](architecture.md#restore-safety).

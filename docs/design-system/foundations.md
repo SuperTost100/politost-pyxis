@@ -32,7 +32,7 @@ Dark is the primary theme; light is fully designed, on a warm paper ground. Set 
 - Focus: a 2px solid `focus-ring` outline, 2px offset, on every focusable element. Gold on dark, cobalt on light; both 3:1+ on every surface.
 - Behind modals, the whiteboard and the plan wizard: `scrim`.
 
-No gradients. The defined effect  `glow-star`, used only on the current node.
+No gradients. The only effect is `glow-star`, used on the current path node.
 
 ## Typography
 
@@ -76,7 +76,7 @@ The mark is **star trails**: three long-exposure trails circling the pole star, 
 
 ## Building with this system
 
-- UI is **Ant Design Pro** on antd v6: `@ant-design/pro-components` v3 in the Electron + Vite app, themed by `antd/pyxis-theme.ts` (`pyxisTheme` for antd, `pyxisProLayoutToken` for ProLayout). No Umi, no Pro admin template. See the *Ant Design Pro mapping* section.
-- The shell is ProLayout in `top` mode with a fixed 768px content column (`antd/AppShell.tsx`): lockup left, Chiedi / Esami doors centred, settings right. No sidebar.
-- Pyxis-specific pieces (Logo, PathNode, MasteryBar, LessonTile, Composer, ChatMessage, QuizOption, Flashcard, GapItem, EngineRow, CitationChip) are custom; the previews and `components/bundle.css` are their reference.
+- UI is **Ant Design Pro** on antd v6: `@ant-design/pro-components` v3 in the Electron + Vite app, themed by `theme/pyxis-theme.ts` (`pyxisTheme` for antd, `pyxisProLayoutToken` for ProLayout). No Umi, no Pro admin template. See [Ant Design mapping](ant-design-pro.md).
+- The shell is ProLayout in `top` mode with a fixed 768px content column (`theme/AppShell.tsx`): lockup left, Chiedi / Esami doors centred, settings right. No sidebar.
+- Pyxis-specific pieces (Logo, PathNode, MasteryBar, LessonTile, Composer, ChatMessage, QuizOption, Flashcard, GapItem, EngineRow, CitationChip) are custom; the previews and `reference/bundle.css` are their reference.
 - Accessibility (NFR-09): every control reachable by keyboard, every icon-only button labelled, status never by colour alone, and all text pairs in this system at 4.5:1 or better in both themes.
