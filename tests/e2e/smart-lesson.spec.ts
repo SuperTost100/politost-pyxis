@@ -174,9 +174,11 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       .toBe("succeeded");
     const read = () =>
       page.evaluate((planId) => window.pyxis.invoke("plans.read", { planId }), planId) as Promise<{
-        nodes: Array<{ id: string; kind: string; topicId: string | null; state: string }>;
+        steps: Array<{ activity: string; topicId: string | null }>;
         topics: Array<{ id: string }>;
       }>;
+    const done = async (activity: string, topicId: string | null = null) =>
+      (await read()).steps.some((step) => step.activity === activity && step.topicId === topicId);
     // An introduction stored before smart text, with a raw passage id, next to a quick check.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     db.prepare("UPDATE items SET body_json = ? WHERE plan_id = ? AND kind = 'intro'").run(
@@ -189,7 +191,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, planId);
-    await page.locator(".px-plan-dock").getByRole("button", { name: "Continua", exact: true }).click();
+    await page.locator(".px-path-next").getByRole("button", { name: "Inizia", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/intro$`));
     await expect(page.getByRole("heading", { level: 1, name: "Fisica 1" })).toBeVisible();
     await expect(page.getByText("imparerai a descrivere il moto")).toBeVisible();
@@ -205,23 +207,17 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(page.getByText("Giusto.", { exact: true })).toBeVisible();
     // Answering the introduction's only check completes it.
     await expect(page.getByText("Introduzione completata")).toBeVisible();
-    expect((await read()).nodes.find((node) => node.kind === "intro")?.state).toBe("done");
+    expect(await done("intro")).toBe(true);
     await page.screenshot({ path: `${shots}/intro-answered-it-light.png` });
 
-    const diagnostic = (await read()).nodes.find((node) => node.kind === "diagnostic")!;
-    await page.evaluate(
-      ({ planId, nodeId }) => window.pyxis.invoke("plans.complete", { planId, nodeId }),
-      { planId, nodeId: diagnostic.id },
-    );
-    const learn = (await read()).nodes.find((node) => node.kind === "learn")!;
-    expect(learn.state).toBe("current");
+    const learn = { topicId: (await read()).topics[0]!.id };
 
     // Generating: an in-place status with Stop and skeleton lines, then the lesson.
     await page.evaluate(
       ({ planId, topicId }) => {
         location.hash = `/plans/${planId}/lesson/${topicId}`;
       },
-      { planId, topicId: learn.topicId! },
+      { planId, topicId: learn.topicId },
     );
     const status = page.getByRole("status").filter({ hasText: "Sto scrivendo la lezione…" });
     await expect(status).toBeVisible();
@@ -230,7 +226,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible({ timeout: 20000 });
     await expect(status).toHaveCount(0);
     // Opening the lesson did not mark it done.
-    expect((await read()).nodes.find((node) => node.id === learn.id)?.state).toBe("current");
+    expect(await done("lesson", learn.topicId)).toBe(false);
     await expect(page.getByText("Rispondi al ripasso finale per completare la lezione.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toBeVisible();
     await expect(page.getByText("pyxis-")).toHaveCount(0);
@@ -293,11 +289,11 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await recap.scrollIntoViewIfNeeded();
     await recap.getByRole("button", { name: /^(B\s*)?Newton$/ }).click();
     await recap.getByRole("button", { name: /raddoppia/ }).click();
-    expect((await read()).nodes.find((node) => node.id === learn.id)?.state).toBe("current");
+    expect(await done("lesson", learn.topicId)).toBe(false);
     await recap.getByRole("button", { name: /è sempre fermo/ }).click();
     await expect(recap.getByText("2 su 3 giuste")).toBeVisible();
     await expect(page.getByText("Lezione completata")).toBeVisible();
-    expect((await read()).nodes.find((node) => node.id === learn.id)?.state).toBe("done");
+    expect(await done("lesson", learn.topicId)).toBe(true);
 
     // Sources used: collapsed, and each place opens the source viewer.
     const sources = page.locator(".px-reader-sources");
