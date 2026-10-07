@@ -179,7 +179,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     }, plan.planId);
     await expect(
       page.getByRole("textbox", { name: "La tua risposta" }),
-    ).toHaveValue(picks[run.questions[0]!.id]!);
+    ).toHaveText(picks[run.questions[0]!.id]!);
     run = (await page.evaluate(
       (planId) => window.pyxis.invoke("study.simulationOpen", { planId }),
       plan.planId,
