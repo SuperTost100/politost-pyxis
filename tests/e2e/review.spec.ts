@@ -195,7 +195,7 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
     !existsSync(".tmp/pyodide/pyodide.js"),
     "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.",
   );
-  test.setTimeout(120000);
+  test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-python-block-"));
   const { version } = JSON.parse(readFileSync("resources/pyodide-manifest.json", "utf8"));
   const pack = join(userData, "workspace/runtimes/pyodide", version);
@@ -226,7 +226,8 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
     await expect(code).toHaveValue("print(6 * 7)");
     await page.getByRole("button", { name: "Esegui" }).click();
     const output = page.getByLabel("Risultato");
-    await expect(output).toHaveText("42\n", { timeout: 60000 });
+    // Pyodide's first start takes over a minute on the hosted macOS x64 runner (each python.spec case there takes ~20 s).
+    await expect(output).toHaveText("42\n", { timeout: 150000 });
     // The captured output scrolls by keyboard, so it must take focus.
     await output.focus();
     await expect(output).toBeFocused();

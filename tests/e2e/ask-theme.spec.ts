@@ -142,9 +142,11 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
       await expect(page.locator(".katex").first()).toBeVisible();
     };
     // Transitions are still running a moment after a switch; a reload paints the settled colours.
-    // The pointer rests in a corner so no hover state differs between a live page and a reloaded one.
+    // The pointer rests in a corner and nothing keeps focus, so no hover or focus state differs between a live page and
+    // a reloaded one (macOS keeps the composer focused after sending; a reload drops it).
     const settle = async () => {
       await page.mouse.move(1, 1);
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       await page.waitForTimeout(800);
     };
     const reloaded = async () => {
