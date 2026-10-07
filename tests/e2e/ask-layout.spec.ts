@@ -245,14 +245,15 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
       await box.fill(text);
       await box.press("Enter");
       await expect(page.getByText(text, { exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 30000 });
+      await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
     }
     // A turn the material does not cover leaves the earlier reply's suggestions beside the notice.
     await page.getByRole("button", { name: /^Materia:/ }).click();
     await page.getByRole("button", { name: "Analisi 2", exact: true }).click();
     await box.fill("Una domanda fuori materia");
     await box.press("Enter");
-    await expect(page.getByText("Il materiale non copre questa domanda.")).toBeVisible({ timeout: 30000 });
+    // Slow hosted runners can take well over 30 s for a recorded reply.
+    await expect(page.getByText("Il materiale non copre questa domanda.")).toBeVisible({ timeout: 90000 });
 
     const layout = await page.evaluate(() => {
       const top = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
