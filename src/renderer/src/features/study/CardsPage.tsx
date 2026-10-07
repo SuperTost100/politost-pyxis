@@ -108,14 +108,44 @@ export function CardsPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
-  const node = (plan.data?.nodes ?? []).find(
-    (item) =>
-      item.kind === "cards" &&
-      Boolean(topicId) &&
-      item.topicId === topicId &&
-      item.state === "current",
-  );
   const card = reviewing ? reviewQueue.data?.cards[0] : cards.data?.[0];
+  const [recorded, setRecorded] = useState(false);
+  const [finishFailed, setFinishFailed] = useState(false);
+  /** Records this topic's card session on the path: when its last due card is rated, or with "Mark as done". */
+  async function finishSession(): Promise<boolean> {
+    if (!planId || !topicId) return false;
+    if (recorded) return true;
+    setFinishFailed(false);
+    try {
+      await invoke("plans.complete", {
+        planId,
+        activity: "cards",
+        topicId,
+        ...(seen.length
+          ? {
+              result: {
+                correct: seen.filter((rating) => rating === "good" || rating === "easy").length,
+                total: seen.length,
+              },
+            }
+          : {}),
+      });
+      setRecorded(true);
+      await Promise.all(
+        [["plan", planId], ["recommend", planId]].map((queryKey) =>
+          client.invalidateQueries({ queryKey }),
+        ),
+      );
+      return true;
+    } catch {
+      setFinishFailed(true);
+      return false;
+    }
+  }
+  const sessionOver = !reviewing && seen.length > 0 && cards.isSuccess && !card;
+  useEffect(() => {
+    if (sessionOver) void finishSession();
+  }, [sessionOver]);
   // Editing needs a topic; a review card brings its own.
   const cardTopicId = topicId ?? card?.topicId ?? undefined;
   useEffect(() => {
@@ -244,21 +274,20 @@ export function CardsPage() {
             {t("cards.mastered", { count: queue.data.mastered })}
           </p>
         ) : null}
-        {node ? (
+        {!reviewing && plan.data ? (
           <Button
             shape="round"
-            onClick={() => {
-              if (!planId) return;
-              void invoke("plans.complete", { planId, nodeId: node.id }).then(
-                () => {
-                  void client.invalidateQueries({ queryKey: ["plan", planId] });
-                  navigate(`/plans/${planId}`);
-                },
-              );
-            }}
+            onClick={() =>
+              void finishSession().then(
+                (ok) => ok && navigate(`/plans/${planId ?? ""}`),
+              )
+            }
           >
-            {t("lesson.done")}
+            {t(recorded ? "lesson.backToPath" : "lesson.markDone")}
           </Button>
+        ) : null}
+        {finishFailed ? (
+          <Notice tone="danger">{t("planOverview.failed")}</Notice>
         ) : null}
         {!card ? (
           building ? null : (

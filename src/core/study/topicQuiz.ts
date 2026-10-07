@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { completeNode } from "../plans/create";
+import { readSteps, recordStep } from "../plans/steps";
 import {
   QUIZ_MAX_QUESTIONS,
   questionFlagged,
@@ -140,18 +140,9 @@ export function startDiagnostic(db: Database.Database, planId: string) {
     QUIZ_MAX_QUESTIONS,
   );
   if (questions.length === 0) {
-    const node = db
-      .prepare(
-        `SELECT id FROM path_nodes WHERE plan_id = ? AND kind = 'diagnostic'`,
-      )
-      .get(planId) as { id: string } | undefined;
-    if (node) {
-      try {
-        completeNode(db, planId, node.id);
-      } catch (err) {
-        if (!(err instanceof Error) || err.message !== "node-locked") throw err;
-      }
-    }
+    // Nothing to ask: the diagnostic counts as done once, so it is not suggested again.
+    if (!readSteps(db, planId).some((step) => step.activity === "diagnostic"))
+      recordStep(db, planId, { activity: "diagnostic" });
     return { attemptId: "", questions: [] };
   }
   const itemId = saveQuiz(

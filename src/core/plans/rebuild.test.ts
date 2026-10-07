@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
-import { createPlan, readPlan } from "./create";
+import { createPlan, planGuide, readPlan } from "./create";
 import { planHandlers } from "./handlers";
 import { exportPlan, importPlan } from "./file";
 import { planMastery } from "./progress";
@@ -202,23 +202,9 @@ describe("PLAN-13 apply", () => {
       "Cinematica",
       "Energia",
     ]);
-    expect(
-      view.nodes.filter((n) => n.topicId === dinamica!.id),
-    ).toHaveLength(0);
-    expect(view.nodes.map((n) => n.kind)).toEqual([
-      "intro",
-      "diagnostic",
-      "learn",
-      "practice",
-      "cards",
-      "gaps",
-      "learn",
-      "practice",
-      "cards",
-      "gaps",
-      "simulation",
-      "final",
-    ]);
+    const guided = planGuide(db, planId)!.topics.map((row) => row.topicId);
+    expect(guided).toHaveLength(2);
+    expect(guided).not.toContain(dinamica!.id);
     expect(planMastery(db, planId).map((row) => row.title)).toEqual([
       "Cinematica",
       "Energia",

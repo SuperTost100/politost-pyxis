@@ -94,9 +94,6 @@ export function PracticePage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
-  const node = (plan.data?.nodes ?? []).find(
-    (item) => item.kind === "practice" && item.topicId === topicId && item.state === "current",
-  );
   const exercises = useQuery({
     queryKey: ["exercises", planId, topicId],
     enabled: Boolean(topicId),
@@ -105,6 +102,19 @@ export function PracticePage() {
       ["queued", "running"].includes(query.state.data?.job?.state ?? "") ? 1500 : false,
   });
   const refresh = () => client.invalidateQueries({ queryKey: ["exercises", planId, topicId] });
+  // Finishing the set records it on the path, for this topic whatever the path suggested.
+  const finish = useMutation({
+    mutationFn: () =>
+      invoke("plans.complete", { planId: planId ?? "", activity: "practice", topicId: topicId ?? null }),
+    onSuccess: async () => {
+      await Promise.all(
+        [["plan", planId], ["recommend", planId]].map((queryKey) =>
+          client.invalidateQueries({ queryKey }),
+        ),
+      );
+      navigate(`/plans/${planId ?? ""}`);
+    },
+  });
   const generate = useMutation({
     mutationFn: () => invoke("study.exercises", { topicId: topicId ?? "", planId, generate: true }),
     onSuccess: refresh,
@@ -133,20 +143,18 @@ export function PracticePage() {
       >
         {t("quiz.title")}
       </Button>
-      {node ? (
+      {list.length > 0 && plan.data ? (
         <Button
           type="primary"
           shape="round"
-          onClick={() => {
-            if (!planId) return;
-            void invoke("plans.complete", { planId, nodeId: node.id }).then(() => {
-              void client.invalidateQueries({ queryKey: ["plan", planId] });
-              navigate(`/plans/${planId}`);
-            });
-          }}
+          loading={finish.isPending}
+          onClick={() => finish.mutate()}
         >
-          {t("lesson.done")}
+          {t("lesson.markDone")}
         </Button>
+      ) : null}
+      {finish.isError ? (
+        <Notice tone="danger">{t("planOverview.failed")}</Notice>
       ) : null}
       {building ? (
         <div role="status">
@@ -173,7 +181,7 @@ export function PracticePage() {
         <>
           <p className="body">{t("practice.emptyGenerate")}</p>
           <Button
-            type={node ? "default" : "primary"}
+            type="primary"
             shape="round"
             loading={generate.isPending}
             onClick={() => generate.mutate()}

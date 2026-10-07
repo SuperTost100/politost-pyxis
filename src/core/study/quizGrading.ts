@@ -6,7 +6,7 @@ import { generate, type GenerateInput } from "../engine/generate";
 import { promptProvenance, systemPrompt } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
-import { completeCurrentStage } from "../plans/create";
+import { recordStep, stepResult } from "../plans/steps";
 import { syncGaps } from "../plans/progress";
 import { enqueueGapInsights } from "./gapInsight";
 import {
@@ -343,9 +343,21 @@ export function finalizeAttempt(
       row.kind === "review" ||
       row.kind === "quiz"
     ) {
-      // A review is practice, not a path stage: it records topic scores like a quiz and completes nothing.
-      if (row.kind !== "quiz" && row.kind !== "review")
-        completeCurrentStage(db, row.plan_id, row.kind, now + 1);
+      // A review is practice, not a path step: it records topic scores like a quiz and adds no step.
+      if (row.kind !== "review") {
+        const drill =
+          row.kind === "quiz" &&
+          db.prepare("SELECT 1 FROM gap_items WHERE item_id = (SELECT item_id FROM attempts WHERE id = ?)").get(attemptId);
+        const activity =
+          row.kind === "quiz" ? (drill ? "gaps" : "quiz") : (row.kind as "diagnostic" | "simulation");
+        if (row.kind !== "quiz" || row.topic_id)
+          recordStep(
+            db,
+            row.plan_id,
+            { activity, topicId: row.topic_id, result: stepResult(scored.results) },
+            now + 1,
+          );
+      }
       // Every diagnostic question carries its answer kind so open answers keep their 1.5 weight.
       recordTopicScores(
         db,
