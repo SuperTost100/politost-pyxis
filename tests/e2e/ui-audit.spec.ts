@@ -1252,19 +1252,26 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "quiz-setup":
+      await page
+        .getByRole("button", { name: /^(Personalizza|Customize)$/ })
+        .click();
       await expect(
-        page.getByRole("slider", {
-          name: /Numero di domande|Number of questions/,
-        }),
+        page.getByRole("group", { name: /Tipi di domanda|Question types/ }),
       ).toBeVisible();
       break;
     case "quiz-page":
+      await page
+        .getByRole("button", { name: /^(Personalizza|Customize)$/ })
+        .click();
       await page
         .getByRole("button", { name: /^(Una pagina|One page)$/ })
         .click();
       await expect(page.getByRole("spinbutton")).toBeVisible();
       break;
     case "quiz-timed":
+      await page
+        .getByRole("button", { name: /^(Personalizza|Customize)$/ })
+        .click();
       await page
         .getByRole("checkbox", { name: /Imposta un limite|Set a time limit/ })
         .check();
