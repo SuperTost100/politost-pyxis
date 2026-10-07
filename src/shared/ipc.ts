@@ -272,6 +272,8 @@ const LessonOutput = z.object({
   wording: z.enum(["simple", "balanced", "technical"]).optional(),
   /** Written from the model's general knowledge, not the sources. */
   general: z.boolean().optional(),
+  /** Written by an earlier lesson prompt, before smart text: Markdown with citations, until rewritten. */
+  earlier: z.boolean().optional(),
   /** Saved picks of the lesson's quick checks and recap, by question id. */
   answers: SmartAnswers,
   /** The sources and places the lesson was given, for its "Sources used" footer. */
