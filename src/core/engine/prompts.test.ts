@@ -38,7 +38,6 @@ describe("prompt templates", () => {
     for (const id of [
       "plan.synopsis",
       "plan.intro",
-      "plan.diagnostic",
       "map.generate",
       "map.edit",
       "simulation.grade",
@@ -46,6 +45,8 @@ describe("prompt templates", () => {
       expect(loadTemplate(id).version, id).toBe("2");
     }
     expect(loadTemplate("plan.topics").version).toBe("3");
+    // Diagnostic passages now name their topic, so citations can match the question's topic.
+    expect(loadTemplate("plan.diagnostic").version).toBe("3");
     // Reference-language grading is unchanged; solve checks now require every real root.
     expect(loadTemplate("quiz.open-grade").version).toBe("1");
     expect(loadTemplate("chat.checks").version).toBe("2");

@@ -425,6 +425,77 @@ describe("PLAN-21 durable plan build", () => {
     ]);
     db.close();
   });
+  it("tells the diagnostic which topic owns each passage and repairs a citation from another topic", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "codex", model: "gpt-6.1-sol" }));
+    db.prepare(
+      "INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('docx', 'file', 'Appunti', 'ready', 1, 1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES ('doc', 'docx', 1, '{}', 1)",
+    ).run();
+    const insert = db.prepare(
+      "INSERT INTO passages (id, source_id, document_id, text, section_path, created_at) VALUES (?, 'docx', 'doc', ?, 'text', ?)",
+    );
+    for (let i = 0; i < 40; i++) insert.run(`d${i}`, `Paragrafo ${i}`, i);
+    let diagnosticCalls = 0;
+    let owners: Array<number | undefined> = [];
+    const run: GenerateInput["run"] = async (input) => {
+      if (input.system?.startsWith("Build"))
+        return response({
+          topics: [
+            { title: "Parte uno", summary: "A", subtopics: [], segmentIds: ["s1"] },
+            { title: "Parte due", summary: "B", subtopics: [], segmentIds: ["s11"] },
+          ],
+        });
+      if (input.system?.startsWith("Write"))
+        return response({ markdown: "Introduzione [P1]." });
+      diagnosticCalls++;
+      const content = JSON.parse(input.prompt) as {
+        diagnosticTopicIndices: number[];
+        passages: Array<{ id: string; topicIndex?: number }>;
+      };
+      owners = content.passages.map((p) => p.topicIndex);
+      // Every question cites the first passage, which belongs to topic 0 only.
+      return response({
+        questions: Array.from({ length: 10 }, (_, i) => ({
+          stem: `Domanda ${i}`,
+          options: ["a", "b", "c", "d"],
+          correct: 0,
+          topicIndex: content.diagnosticTopicIndices[i % 2]!,
+          passageIds: [content.passages[0]!.id, "invented"],
+          explanation: "Spiegazione",
+        })),
+      });
+    };
+    const runner = createRunner(db, () => {});
+    registerPlanJobs(db, runner, run);
+    const built = enqueuePlan(db, runner, { title: "Appunti", sourceIds: ["docx"] });
+    await until(db, built.planId, "succeeded");
+    expect(diagnosticCalls).toBe(1);
+    expect(new Set(owners)).toEqual(new Set([0, 1]));
+    const topics = db
+      .prepare("SELECT id FROM topics WHERE plan_id = ? ORDER BY position")
+      .all(built.planId) as Array<{ id: string }>;
+    const owned = db.prepare(
+      "SELECT 1 FROM topic_passages WHERE topic_id = ? AND passage_id = ?",
+    );
+    const body = JSON.parse(
+      (
+        db
+          .prepare("SELECT body_json FROM items WHERE kind = 'diagnostic'")
+          .get() as { body_json: string }
+      ).body_json,
+    ) as { questions: Array<{ topicId: string; sourceIds: string[] }> };
+    expect(body.questions.map((q) => q.topicId)).toContain(topics[1]!.id);
+    for (const q of body.questions) {
+      expect(q.sourceIds).toHaveLength(1);
+      expect(owned.get(q.topicId, q.sourceIds[0])).toBeTruthy();
+    }
+    db.close();
+  });
   it("keeps a plan without material a draft after the build, with every topic tagged general", async () => {
     const db = openDatabase(":memory:");
     db.prepare(

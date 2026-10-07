@@ -174,6 +174,14 @@ function contentPrompt(
     })),
     passages: rows.slice(0, 40).map((row) => ({
       id: row.id,
+      // The diagnostic cites a passage of the question's own topic, so the model must know which topic each passage belongs to.
+      ...(diagnosticTopicIndices
+        ? {
+            topicIndex: diagnosticTopicIndices.find((i) =>
+              params.tree?.[i]?.passageIds.includes(row.id),
+            ),
+          }
+        : {}),
       section: sectionOf(row),
       text: row.text.slice(0, 700),
     })),
@@ -535,7 +543,6 @@ export function registerPlanJobs(
           if (params.diagnosticId) return true;
           const indices = diagnosticTopics(params.tree ?? []);
           const rows = samplePassages(params, passages(db, params), indices);
-          const ids = new Set(rows.slice(0, 40).map((row) => row.id));
           const schema = diagnosticSchema.superRefine((value, ctx) => {
             const covered = new Set(value.questions.map((q) => q.topicIndex));
             for (const i of indices)
@@ -551,21 +558,19 @@ export function registerPlanJobs(
                   message: "Unknown topic index",
                   path: ["questions", i, "topicIndex"],
                 });
-              if (
-                q.passageIds.some(
-                  (id) =>
-                    !ids.has(id) ||
-                    !params.tree?.[q.topicIndex]?.passageIds.includes(id),
-                ) ||
-                (ids.size > 0 && q.passageIds.length === 0)
-              )
-                ctx.addIssue({
-                  code: "custom",
-                  message: "Use supplied passage IDs",
-                  path: ["questions", i, "passageIds"],
-                });
             });
           });
+          // A wrong citation is dropped rather than failing the whole plan: it keeps only supplied passages of the question's topic, or falls back to that topic's first supplied passage.
+          const cite = (q: { topicIndex: number; passageIds: string[] }) => {
+            const own = rows
+              .slice(0, 40)
+              .filter((row) =>
+                params.tree?.[q.topicIndex]?.passageIds.includes(row.id),
+              )
+              .map((row) => row.id);
+            const kept = q.passageIds.filter((id) => own.includes(id));
+            return kept.length ? kept : own.slice(0, 1);
+          };
           const result = await generate({
             selection: params.selection,
             signal: ctx.signal,
@@ -576,7 +581,13 @@ export function registerPlanJobs(
             }),
             prompt: contentPrompt(params, rows, indices),
           });
-          const data = result.data as z.infer<typeof diagnosticSchema>;
+          const parsed = result.data as z.infer<typeof diagnosticSchema>;
+          const data = {
+            questions: parsed.questions.map((q) => ({
+              ...q,
+              passageIds: cite(q),
+            })),
+          };
           checkpoint(db, ctx, params, () => {
             const topics = db
               .prepare(
