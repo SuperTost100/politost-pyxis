@@ -10,7 +10,7 @@ import {
   type QuizInput,
   type QuizSnapshot,
 } from "./configuredQuiz";
-import { startAttempt } from "./attempt";
+import { startAttempt, type AttemptResult } from "./attempt";
 import { checkedAnswer, DRAFT_GRACE_MS } from "./quizGrading";
 
 type Params = {
@@ -95,13 +95,14 @@ export function readQuiz(
     | undefined;
   if (!row) throw new Error("quiz-missing");
   const body = JSON.parse(row.body_json) as {
-    config?: { count: number; feedback: boolean; timerMinutes?: number };
+    config?: { count: number; timerMinutes?: number };
     explanation?: string;
     complete?: boolean;
     questions: Array<{
       id: string;
       stem: string;
       sourceId?: string;
+      topicId?: string;
       options?: string[];
       left?: string[];
       right?: string[];
@@ -125,12 +126,7 @@ export function readQuiz(
   const result = final
     ? (JSON.parse(final.payload_json) as {
         score: number;
-        results: Array<{
-          id: string;
-          score: number;
-          expected: string;
-          explanation: string;
-        }>;
+        results: AttemptResult[];
         picks: Record<string, string>;
       })
     : undefined;
@@ -168,12 +164,9 @@ export function readQuiz(
     // LES-32: questions the model wrote without the plan's sources carry a visible tag.
     general: row.grounding === "general" ? true : undefined,
     requestedCount: body.config?.count ?? body.questions.length,
-    feedback: body.config?.feedback ?? false,
     checked: body.questions.flatMap((question) => {
       const check = checkedAnswer(db, attemptId, question.id);
-      return check && (body.config?.feedback || row.submitted_at != null)
-        ? [check]
-        : [];
+      return check ? [check] : [];
     }),
   };
 }

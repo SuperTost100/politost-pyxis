@@ -76,11 +76,11 @@ describe("PLAN-21 durable plan build", () => {
       passageIds: i === 1 ? [] : [`p${i}`],
     }));
     const picked = diagnosticTopics(tree);
-    expect(picked).toHaveLength(20);
+    expect(picked).toHaveLength(10);
     expect(picked[0]).toBe(0);
     expect(picked.at(-1)).toBe(29);
     expect(picked).not.toContain(1);
-    expect(new Set(picked).size).toBe(20);
+    expect(new Set(picked).size).toBe(10);
   });
   it("retries only the failed generation and preserves the topic and introduction", async () => {
     const db = openDatabase(":memory:");

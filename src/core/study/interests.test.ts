@@ -61,7 +61,7 @@ async function systems(db: ReturnType<typeof fixture>) {
     { regenerate: true },
   );
   await generateQuiz(
-    prepareQuiz(db, { planId: "plan", topicId: "topic", count: 10, types: ["tf"], feedback: true }),
+    prepareQuiz(db, { planId: "plan", topicId: "topic", count: 10, types: ["tf"] }),
     record("quiz", (input) => {
       const { count } = JSON.parse(input.prompt) as { count: number };
       return reply({

@@ -10,6 +10,7 @@ import {
 import { generateQuiz, prepareQuiz, saveQuizSnapshot, startConfiguredQuiz } from "./configuredQuiz";
 import { gradeConfiguredAttempt, gradeQuizQuestion } from "./quizGrading";
 import { submitAttempt } from "./attempt";
+import { flagTarget } from "./flags";
 import type { GenerateInput } from "../engine/generate";
 import { partialText, systemPrompt, templateVersion } from "../engine/prompts";
 
@@ -74,7 +75,7 @@ async function until(
   throw new Error(JSON.stringify(readQuiz(db, attemptId)));
 }
 describe("configured quizzes", () => {
-  it("builds exactly 100 distinct questions in ten sequential validated batches", async () => {
+  it("asks at most ten questions, in one validated batch, whatever count is sent", async () => {
     const db = fixture();
     let calls = 0;
     const systems = new Set<string>();
@@ -100,11 +101,11 @@ describe("configured quizzes", () => {
       prompt_template: "quiz.batch",
       prompt_version: templateVersion("quiz.batch"),
     });
-    expect(started.questions).toHaveLength(100);
+    expect(started.questions).toHaveLength(10);
     expect(
       new Set(started.questions.map((question) => question.stem)).size,
-    ).toBe(100);
-    expect(calls).toBe(10);
+    ).toBe(10);
+    expect(calls).toBe(1);
     expect(JSON.stringify(started)).not.toContain('"correct"');
     expect(db.prepare("SELECT model_id FROM items").get()).toEqual({
       model_id: "test-model",
@@ -115,7 +116,7 @@ describe("configured quizzes", () => {
     const db = fixture();
     const started = await startConfiguredQuiz(
       db,
-      { planId: "plan", topicId: "topic", count: 20 },
+      { planId: "plan", topicId: "topic" },
       async (input) => {
         const content = JSON.parse(input.prompt) as {
           questionKinds: string[];
@@ -164,7 +165,7 @@ describe("configured quizzes", () => {
     for (const kind of ["mcq", "tf", "completion", "matching", "open"])
       expect(
         started.questions.filter((question) => question.grade.kind === kind),
-      ).toHaveLength(4);
+      ).toHaveLength(2);
     const body = JSON.parse(
       (db.prepare("SELECT body_json FROM items").get() as { body_json: string })
         .body_json,
@@ -180,17 +181,12 @@ describe("configured quizzes", () => {
       expect(question.options![question.answer.correct!]).toBe("right");
     db.close();
   });
-  it("publishes the first batch and retries only after its saved checkpoint", async () => {
+  it("keeps the attempt of a failed build and fills it on retry", async () => {
     const db = fixture();
     const runner = createRunner(db, () => {});
     let fail = true;
-    let firstBatchCalls = 0;
     registerQuizJobs(db, runner, async (input) => {
-      const content = JSON.parse(input.prompt) as {
-        previousQuestions: string[];
-      };
-      if (!content.previousQuestions.length) firstBatchCalls++;
-      if (fail && content.previousQuestions.length) throw new Error("offline");
+      if (fail) throw new Error("offline");
       return tfRun!(input);
     });
     const started = enqueueQuiz(db, runner, {
@@ -200,19 +196,17 @@ describe("configured quizzes", () => {
       types: ["tf"],
     });
     await until(db, started.attemptId, "failed");
-    const partial = readQuiz(db, started.attemptId);
-    expect(partial.questions).toHaveLength(10);
+    const failed = readQuiz(db, started.attemptId);
+    expect(failed.questions).toHaveLength(0);
+    expect(failed.requestedCount).toBe(10);
     await expect(
       gradeConfiguredAttempt(db, started.attemptId, {}),
     ).rejects.toThrow("quiz-building");
-    const firstId = partial.questions[0]!.id;
-    runner.dismiss(partial.jobId!);
+    runner.dismiss(failed.jobId!);
     fail = false;
-    runner.retry(partial.jobId!);
+    runner.retry(failed.jobId!);
     await until(db, started.attemptId, "succeeded");
-    expect(firstBatchCalls).toBe(1);
-    expect(readQuiz(db, started.attemptId).questions[0]!.id).toBe(firstId);
-    expect(readQuiz(db, started.attemptId).questions).toHaveLength(20);
+    expect(readQuiz(db, started.attemptId).questions).toHaveLength(10);
     db.close();
   });
   it("stores model feedback once, locks checked answers, and reuses grades on submit", async () => {
@@ -411,6 +405,8 @@ it("marks a quiz written without the plan's sources as general knowledge", async
 it("retains each batch model after retrying with another engine", async () => {
   const db = fixture(); const input = { planId: "plan", topicId: "topic", count: 20, types: ["tf" as const] };
   const snapshot = prepareQuiz(db, input);
+  // A quiz never asks more than ten; a longer build (a diagnostic's replacement) still checkpoints each batch.
+  snapshot.config.count = 20;
   await expect(generateQuiz(snapshot, async (turn) => ({ ...(await tfRun(turn)), model: "model-A" }), undefined, () => { throw new Error("interrupted"); })).rejects.toThrow("interrupted");
   expect(snapshot.questions).toHaveLength(10);
   snapshot.selection = { provider: "claude", model: "model-B" };
@@ -419,4 +415,30 @@ it("retains each batch model after retrying with another engine", async () => {
   const row = db.prepare("SELECT body_json, engine_provider, model_id FROM items WHERE id = ?").get(id) as { body_json: string; engine_provider: string | null; model_id: string | null };
   expect(JSON.parse(row.body_json).questions.map((q: { generatedBy: { model: string } }) => q.generatedBy.model)).toEqual([...Array(10).fill("model-A"), ...Array(10).fill("model-B")]);
   expect(row.engine_provider).toBeNull(); expect(row.model_id).toBeNull(); db.close();
+});
+
+it("never asks again a question the student marked wrong", async () => {
+  const db = fixture();
+  const ask = { planId: "plan", topicId: "topic", types: ["tf" as const] };
+  const first = await startConfiguredQuiz(db, ask, tfRun);
+  flagTarget(db, "exercise", first.questions[3]!.id, "wrong-question");
+  const prompts: string[] = [];
+  await startConfiguredQuiz(db, ask, async (input) => {
+    prompts.push(input.prompt);
+    return reply({
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        kind: "tf",
+        // The model repeats the rejected stem once; that batch is refused and asked again.
+        stem: prompts.length === 1 && i === 0 ? "Statement 3" : `Fresh ${i}`,
+        explanation: "Velocity describes displacement per time.",
+        passageIds: ["p"],
+        correct: true,
+      })),
+    });
+  });
+  expect(
+    (JSON.parse(prompts[0]!) as { rejectedQuestions?: string[] }).rejectedQuestions,
+  ).toEqual(["Statement 3"]);
+  expect(prompts.length).toBeGreaterThan(1);
+  db.close();
 });

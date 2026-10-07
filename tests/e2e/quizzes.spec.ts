@@ -1,38 +1,116 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page,
+} from "@playwright/test";
+import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { manyPagePdf } from "../../src/core/sources/documents";
 
-test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results", async () => {
-  const userData = mkdtempSync(join(tmpdir(), "pyxis-quiz-check-"));
-  const file = join(userData, "physics.pdf");
-  writeFileSync(file, manyPagePdf(1, "Velocity is displacement over time."));
-  const replies = {
-    topics: {
-      topics: [
-        {
-          title: "Moto",
-          summary: "Velocità",
-          subtopics: ["Tempo"],
-          segmentIds: ["{{segment:0}}"],
-        },
-      ],
-    },
+const MAIN = join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js");
+
+/** Ten diagnostic questions over the book's two chapters; each explanation cites a passage by ID. */
+const diagnosticReply = {
+  questions: Array.from({ length: 10 }, (_, i) => ({
+    stem: `Diagnosi ${i}: quale grandezza descrive ${i % 2 ? "il lavoro" : "il moto"}?`,
+    options: ["La velocità", "La massa", "La carica", "La temperatura"],
+    correct: 0,
+    topicIndex: i % 2,
+    passageIds: [`{{passage:${i % 2}}}`],
+    explanation: `La velocità è lo spostamento nell’unità di tempo [{{passage:${i % 2}}}].`,
+  })),
+};
+
+async function invoke<T = unknown>(page: Page, channel: string, input: unknown): Promise<T> {
+  return (await page.evaluate(
+    ({ channel, input }) => window.pyxis.invoke(channel as never, input as never),
+    { channel, input },
+  )) as T;
+}
+
+/** Launches a fresh app on a two-chapter smartbook and builds a plan with recorded model replies. */
+async function launch(replies: Record<string, unknown>, delay = 0) {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-quiz-"));
+  const file = join(userData, "book.ptsb");
+  writeFileSync(
+    file,
+    zipSync({
+      "smartbook.json": strToU8(
+        JSON.stringify({
+          id: "fisica",
+          title: "Fisica",
+          access: "public",
+          chapters: [
+            { id: "c1", number: 1, title: "Moti", file: "01.md" },
+            { id: "c2", number: 2, title: "Energia", file: "02.md" },
+          ],
+        }),
+      ),
+      "chapters/01.md": strToU8("## p1 | Velocità\nLa velocità descrive lo spostamento nel tempo.\n"),
+      "chapters/02.md": strToU8("## p1 | Lavoro\nIl lavoro è forza per spostamento.\n"),
+    }),
+  );
+  const env = {
+    ...process.env,
+    PYXIS_USER_DATA: userData,
+    PYXIS_E2E: "1",
+    PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
+    PYXIS_E2E_PLAN_DELAY: String(delay),
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app: ElectronApplication = await electron.launch({ args: [MAIN], env });
+  const page = await app.firstWindow();
+  await page.getByRole("button", { name: "Salta" }).click();
+  const source = (await importPickedSource(page, app, file)) as { sourceId: string };
+  await expect
+    .poll(async () =>
+      (await invoke<Array<{ id: string; status: string }>>(page, "sources.list", {})).find(
+        (row) => row.id === source.sourceId,
+      )?.status,
+    )
+    .toBe("ready");
+  const { planId } = await invoke<{ planId: string }>(page, "plans.create", {
+    title: "Fisica 1",
+    sourceIds: [source.sourceId],
+  });
+  await expect
+    .poll(async () => (await invoke<{ state: string }>(page, "plans.build", { planId })).state, {
+      timeout: 60000,
+    })
+    .toBe("succeeded");
+  const plan = await invoke<{ topics: Array<{ id: string; title: string }> }>(page, "plans.read", {
+    planId,
+  });
+  const done = async () => {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  };
+  return { app, page, userData, planId, topics: plan.topics, done };
+}
+
+async function go(page: Page, hash: string) {
+  await page.evaluate((value) => {
+    window.location.hash = value;
+  }, hash);
+}
+
+async function axe(page: Page) {
+  expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+}
+
+const score = (page: Page) => page.locator(".px-quiz-score");
+
+test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each answer, back, keys and results", async () => {
+  test.setTimeout(120000);
+  const { page, planId, topics, userData, done } = await launch({
     markdown: { markdown: "## Il moto\nLa velocità descrive il moto [P1]." },
-    questions: {
-      questions: Array.from({ length: 10 }, (_, i) => ({
-        stem: `Diagnosi ${i}`,
-        options: ["a", "b", "c", "d"],
-        correct: 0,
-        topicIndex: 0,
-        passageIds: ["{{passage:0}}"],
-        explanation: "Il moto.",
-      })),
-    },
+    questions: diagnosticReply,
     quizQuestions: {
       questions: Array.from({ length: 10 }, (_, i) => ({
         kind: "tf",
@@ -42,194 +120,388 @@ test("LES-11 LES-12 quiz setup, soft timer, checked-answer recovery and results"
         explanation: "La velocità è lo spostamento per unità di tempo.",
       })),
     },
-  };
-  const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
-    PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
-    PYXIS_E2E_PLAN_DELAY: "100",
-  };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
-    env,
   });
   try {
-    const page = await app.firstWindow();
-    await page.getByRole("button", { name: "Salta" }).click();
-    const source = (await importPickedSource(page, app, file)) as {
-      sourceId: string;
-    };
-    await expect
-      .poll(async () => {
-        const rows = (await page.evaluate(() =>
-          window.pyxis.invoke("sources.list", {}),
-        )) as Array<{ id: string; status: string }>;
-        return rows.find((row) => row.id === source.sourceId)?.status;
-      })
-      .toBe("ready");
-    const created = (await page.evaluate(
-      (sourceId) =>
-        window.pyxis.invoke("plans.create", {
-          title: "Fisica",
-          sourceIds: [sourceId],
-        }),
-      source.sourceId,
-    )) as { planId: string };
-    await expect
-      .poll(
-        async () =>
-          (
-            (await page.evaluate(
-              (planId) => window.pyxis.invoke("plans.build", { planId }),
-              created.planId,
-            )) as { state: string }
-          ).state,
-      )
-      .toBe("succeeded");
-    const plan = (await page.evaluate(
-      (planId) => window.pyxis.invoke("plans.read", { planId }),
-      created.planId,
-    )) as { topics: Array<{ id: string }> };
-    await page.evaluate(
-      ({ planId, topicId }) => {
-        window.location.hash = `/plans/${planId}/quiz/${topicId}`;
-      },
-      { planId: created.planId, topicId: plan.topics[0]!.id },
-    );
-    await expect(
-      page.getByRole("slider", { name: "Numero di domande" }),
-    ).toBeVisible();
-    mkdirSync(".shots", { recursive: true });
-    for (const theme of ["dark", "light"] as const) {
-      await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
-      for (const width of [1280, 960]) {
-        await page.setViewportSize({
-          width,
-          height: width === 960 ? 640 : 800,
-        });
-        await page.screenshot({
-          path: `.shots/m8-setup-it-${theme}-${width}.png`,
-          animations: "disabled",
-        });
-        expect(
-          (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-            .violations,
-        ).toEqual([]);
-      }
-    }
-    await page.getByRole("slider", { name: "Numero di domande" }).focus();
-    await page.keyboard.press("End");
-    await expect(page.locator("output")).toHaveText("100");
-    await page.keyboard.press("Home");
-    await expect(page.locator("output")).toHaveText("10");
-    await page.getByRole("button", { name: "Solo vero o falso" }).click();
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}`);
+    await expect(page.getByRole("heading", { name: "Moti", level: 2 })).toBeVisible();
+    await expect(page.getByText("10 domande", { exact: true })).toBeVisible();
+    await expect(page.getByText("Correzione dopo ogni risposta", { exact: true })).toBeVisible();
+    await axe(page);
+    await page.getByRole("button", { name: "Personalizza" }).click();
+    await page.getByRole("button", { name: "Solo vero o falso", exact: true }).click();
     await page.getByRole("button", { name: "Inizia", exact: true }).click();
-    await expect(
-      page.getByText("Domanda 1 di 10", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
     await page.clock.install();
     await page.clock.fastForward(11000);
     await expect(
       page.getByRole("progressbar", { name: "Dieci secondi per riflettere" }),
     ).toHaveAttribute("aria-valuenow", "0");
-    await expect(
-      page.getByText("Domanda 1 di 10", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "A. Vero", exact: true }),
-    ).toBeEnabled();
-    await page.getByRole("button", { name: "A. Vero", exact: true }).click();
-    await page.getByRole("button", { name: "Correggi", exact: true }).click();
-    await expect(page.getByText("Corretto", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Avanti", exact: true })).toBeFocused();
-    await page.screenshot({
-      path: ".shots/m8-tf-feedback-it-light-960.png",
-      animations: "disabled",
-    });
+    const vero = page.getByRole("button", { name: "A. Vero", exact: true });
+    const falso = page.getByRole("button", { name: "B. Falso", exact: true });
+    // Number keys pick, and the pick can change freely until Check.
+    await page.keyboard.press("2");
+    await expect(falso).toHaveAttribute("aria-pressed", "true");
+    // Picking by key draws no focus box around the question.
     expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
-    await page.getByRole("button", { name: "Avanti", exact: true }).click();
+      await page.locator(".px-quiz-stem").evaluate(
+        (stem) => document.activeElement === stem && getComputedStyle(stem).outlineStyle,
+      ),
+    ).toBe("none");
+    await page.keyboard.press("1");
+    await expect(vero).toHaveAttribute("aria-pressed", "true");
+    await expect(falso).toHaveAttribute("aria-pressed", "false");
+    // On the first question there is nothing to go back to.
+    await expect(page.getByRole("button", { name: "Indietro", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".px-quiz-feedback")).toContainText("Corretto");
+    await expect(page.getByRole("button", { name: "Avanti", exact: true })).toBeFocused();
+    await expect(page.getByRole("button", { name: /^A\. Vero, Corretta$/ })).toBeDisabled();
+    await axe(page);
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
     await page.clock.runFor(600);
     await expect
       .poll(async () => {
         const attemptId = new URLSearchParams(
           (await page.evaluate(() => window.location.hash)).split("?")[1],
         ).get("attempt")!;
-        const session = (await page.evaluate(
-          (attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }),
-          attemptId,
-        )) as { draft?: { index: number } };
-        return session.draft?.index;
+        return (await invoke<{ draft?: { index: number } }>(page, "study.quizRead", { attemptId }))
+          .draft?.index;
       })
       .toBe(1);
     await page.reload();
-    await expect(
-      page.getByText("Domanda 2 di 10", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
     await page.clock.resume();
-    for (let i = 1; i < 10; i++) {
+    await falso.click();
+    await page.getByRole("button", { name: "Verifica", exact: true }).click();
+    await expect(page.locator(".px-quiz-feedback")).toContainText("Sbagliato");
+    await expect(page.getByRole("button", { name: /^A\. Vero, Risposta giusta$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^B\. Falso, Sbagliata$/ })).toBeVisible();
+    // Back shows the previous question as answered, read-only, on the left of the same row.
+    const back = page.getByRole("button", { name: "Indietro", exact: true });
+    const next = page.getByRole("button", { name: "Avanti", exact: true });
+    const [backBox, nextBox] = [await back.boundingBox(), await next.boundingBox()];
+    expect(Math.abs(backBox!.y - nextBox!.y)).toBeLessThan(2);
+    expect(backBox!.x).toBeLessThan(nextBox!.x);
+    await back.click();
+    await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
+    await expect(page.locator(".px-quiz-feedback")).toContainText("Corretto");
+    await expect(page.getByRole("button", { name: /^A\. Vero, Corretta$/ })).toBeDisabled();
+    await next.click();
+    await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
+    await expect(page.locator(".px-quiz-feedback")).toContainText("Sbagliato");
+    await next.click();
+    for (let i = 2; i < 10; i++) {
+      await expect(page.getByText(`Domanda ${i + 1} di 10`, { exact: true })).toBeVisible();
+      await vero.click();
+      await page.getByRole("button", { name: "Verifica", exact: true }).click();
       await page
-        .getByRole("button", {
-          name: i === 1 ? "B. Falso" : "A. Vero",
-          exact: true,
-        })
-        .click();
-      await page.getByRole("button", { name: "Correggi", exact: true }).click();
-      await expect(
-        page.getByRole("button", {
-          name: i === 9 ? "Termina il quiz" : "Avanti",
-          exact: true,
-        }),
-      ).toBeEnabled();
-      await page
-        .getByRole("button", {
-          name: i === 9 ? "Termina il quiz" : "Avanti",
-          exact: true,
-        })
+        .getByRole("button", { name: i === 9 ? "Vedi risultato" : "Avanti", exact: true })
         .click();
     }
-    await expect(page.getByText("90 su 100", { exact: true })).toBeVisible();
+    await expect(score(page)).toHaveText(/^9\s*su 10$/);
+    await expect(page.getByText("90%", { exact: true })).toBeVisible();
     await page.reload();
-    await expect(page.getByText("90 su 100", { exact: true })).toBeVisible();
-    await page.evaluate(() => window.pyxis.setAppearance("dark"));
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.getByText(/Rivedi questa risposta/).click();
-    await page.screenshot({
-      path: ".shots/m8-results-it-dark-1280.png",
-      animations: "disabled",
+    await expect(score(page)).toHaveText(/^9\s*su 10$/);
+    const second = page.locator(".px-quiz-row").nth(1);
+    await second.locator(".px-quiz-row-head").click();
+    await expect(second.locator(".px-quiz-answer.is-wrong")).toContainText("Falso");
+    await expect(second.locator(".px-quiz-answer.is-expected")).toContainText("Vero");
+    await axe(page);
+    // "Wrong question?" takes it out of the score at once; the toast can undo it.
+    await second.getByRole("button", { name: "Domanda sbagliata?" }).click();
+    await expect(score(page)).toHaveText(/^9\s*su 9$/);
+    await expect(page.getByText("100%", { exact: true })).toBeVisible();
+    await page.locator(".px-quiz-toast").getByRole("button", { name: "Annulla" }).click();
+    await expect(score(page)).toHaveText(/^9\s*su 10$/);
+    await expect(second.getByRole("button", { name: "Domanda sbagliata?" })).toBeVisible();
+    await second.getByRole("button", { name: "Chiedi al tutor", exact: true }).click();
+    await expect(page.getByText(/La tua risposta: Falso/)).toContainText("Risposta corretta: Vero");
+
+    // Core asks at most ten questions, whatever count a caller sends.
+    const big = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      count: 40,
+      types: ["tf"],
     });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: big.attemptId })).state)
+      .toBe("succeeded");
     expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
-    await page
-      .getByRole("button", { name: "Chiedi al tutor", exact: true })
-      .click();
-    await expect(page.getByText(/La tua risposta: Falso/)).toContainText(
-      "Risposta corretta: Vero",
-    );
+      await invoke<{ questions: unknown[]; requestedCount: number }>(page, "study.quizRead", {
+        attemptId: big.attemptId,
+      }),
+    ).toMatchObject({ requestedCount: 10, questions: expect.any(Array) });
+    expect(
+      (await invoke<{ questions: unknown[] }>(page, "study.quizRead", { attemptId: big.attemptId }))
+        .questions,
+    ).toHaveLength(10);
+
     // A whole-plan timed quiz keeps its deadline through reload and submits unanswered work on expiry.
-    const timed = await page.evaluate((planId) => window.pyxis.invoke("study.quizStart", {
-      planId, scope: "plan", count: 10, types: ["tf"], feedback: false, timerMinutes: 1,
-    }), created.planId);
-    await expect.poll(async () => (await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).state).toBe("succeeded");
-    await page.evaluate(({ planId, topicId, attemptId }) => { location.hash = `/plans/${planId}/quiz/${topicId}?attempt=${attemptId}`; }, { planId: created.planId, topicId: plan.topics[0]!.id, attemptId: timed.attemptId });
+    const timed = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      scope: "plan",
+      types: ["tf"],
+      timerMinutes: 1,
+    });
+    const read = () =>
+      invoke<{ state: string; deadlineAt?: number; submittedAt?: number; result?: { score: number } }>(
+        page,
+        "study.quizRead",
+        { attemptId: timed.attemptId },
+      );
+    await expect.poll(async () => (await read()).state).toBe("succeeded");
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${timed.attemptId}`);
     await expect(page.locator(".px-quiz-question")).toBeVisible();
-    await expect.poll(async () => (await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).deadlineAt).toBeGreaterThan(0);
-    const deadline = (await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).deadlineAt;
+    await expect.poll(async () => (await read()).deadlineAt).toBeGreaterThan(0);
+    const deadline = (await read()).deadlineAt;
     await page.reload();
-    expect((await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).deadlineAt).toBe(deadline);
+    expect((await read()).deadlineAt).toBe(deadline);
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    db.prepare("UPDATE attempt_answers SET payload_json = json_set(payload_json, '$.deadlineAt', ?) WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object'").run(Date.now() - 1000, timed.attemptId);
+    db.prepare(
+      "UPDATE attempt_answers SET payload_json = json_set(payload_json, '$.deadlineAt', ?) WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object'",
+    ).run(Date.now() - 1000, timed.attemptId);
     db.close();
     await page.reload();
-    await expect.poll(async () => (await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).submittedAt).toBeGreaterThan(0);
-    expect((await page.evaluate((attemptId) => window.pyxis.invoke("study.quizRead", { attemptId }), timed.attemptId)).result?.score).toBe(0);
+    await expect.poll(async () => (await read()).submittedAt).toBeGreaterThan(0);
+    expect((await read()).result?.score).toBe(0);
   } finally {
-    await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    await done();
+  }
+});
+
+test("diagnostic: feedback after each answer, where to start, source chips and a wrong question replaced", async () => {
+  test.setTimeout(120000);
+  const { page, planId, userData, done } = await launch({
+    markdown: { markdown: "## Fisica\nIl moto e il lavoro [P1]." },
+    questions: diagnosticReply,
+    quizQuestions: {
+      questions: [
+        {
+          kind: "mcq",
+          stem: "Domanda di ricambio sul moto",
+          options: ["La velocità", "Il colore", "Il suono", "La luce"],
+          correct: 0,
+          passageIds: ["{{passage:0}}"],
+          explanation: "La velocità descrive il moto.",
+        },
+      ],
+    },
+  });
+  try {
+    await go(page, `/plans/${planId}/diagnostic`);
+    await expect(page.getByRole("heading", { name: "Diagnosi", level: 2 })).toBeVisible();
+    await expect(page.getByText("10 domande", { exact: true })).toBeVisible();
+    await expect(page.getByText(/alla fine/)).toHaveCount(0);
+    const close = page.locator(".px-quiz-intro-actions").getByRole("button", { name: "Chiudi" });
+    const begin = page.getByRole("button", { name: "Inizia", exact: true });
+    expect(Math.abs((await close.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
+    await begin.click();
+    await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "A. La velocità" })).toBeEnabled();
+    await page.keyboard.press("1");
+    await page.keyboard.press("Enter");
+    const feedback = page.locator(".px-quiz-feedback");
+    await expect(feedback).toContainText("Corretto");
+    // The passage the model cited is a source chip, never a raw ID.
+    await expect(feedback.locator(".px-cite")).toHaveCount(1);
+    expect(await feedback.innerText()).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("2");
+    await page.keyboard.press("Enter");
+    await expect(feedback).toContainText("Sbagliato");
+    await page.keyboard.press("Enter");
+    for (let i = 2; i < 10; i++) {
+      await expect(page.getByText(`Domanda ${i + 1} di 10`, { exact: true })).toBeVisible();
+      await page.keyboard.press("1");
+      await page.keyboard.press("Enter");
+      await expect(feedback).toContainText("Corretto");
+      await page.keyboard.press("Enter");
+    }
+    await expect(page.getByText("Diagnosi completata", { exact: true })).toBeVisible();
+    await expect(score(page)).toHaveText(/^9\s*su 10$/);
+    const topics = page.locator(".px-quiz-topics li");
+    await expect(topics).toHaveCount(2);
+    await expect(topics.nth(0)).toContainText("Moti");
+    await expect(topics.nth(0)).toContainText("Lo sai già");
+    await expect(topics.nth(1)).toContainText("Energia");
+    await axe(page);
+    const second = page.locator(".px-quiz-row").nth(1);
+    await second.locator(".px-quiz-row-head").click();
+    await expect(second.locator(".px-cite")).toHaveCount(1);
+    await second.getByRole("button", { name: "Domanda sbagliata?" }).click();
+    await expect(score(page)).toHaveText(/^9\s*su 9$/);
+    await expect(second).toContainText("Domanda tolta dal punteggio");
+    // A new question takes its place in the next diagnostic.
+    await expect
+      .poll(
+        () => {
+          const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true });
+          const row = db
+            .prepare(
+              "SELECT body_json FROM items WHERE plan_id = ? AND kind = 'diagnostic' ORDER BY created_at DESC LIMIT 1",
+            )
+            .get(planId) as { body_json: string };
+          db.close();
+          return (JSON.parse(row.body_json) as { questions: Array<{ stem: string }> }).questions.map(
+            (question) => question.stem,
+          );
+        },
+        { timeout: 20000 },
+      )
+      .toContain("Domanda di ricambio sul moto");
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
+  } finally {
+    await done();
+  }
+});
+
+/** Open questions graded by the recorded model after `delay` ms. */
+function openReplies() {
+  return {
+    markdown: { markdown: "## Il moto\nLa velocità descrive il moto [P1]." },
+    questions: diagnosticReply,
+    quizQuestions: {
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        kind: "open",
+        stem: `Spiega che cosa misura la velocità (${"{{question:" + i + "}}"}).`,
+        reference: "La velocità è lo spostamento diviso il tempo impiegato.",
+        rubric: ["Nomina lo spostamento", "Nomina il tempo"],
+        passageIds: ["{{passage:0}}"],
+        explanation: "Spostamento nel tempo.",
+      })),
+    },
+    score: { score: 0.6, explanation: "Hai nominato lo spostamento ma non il tempo." },
+  };
+}
+
+test("open answer: checked right away, the check can be cancelled and the answer edited", async () => {
+  test.setTimeout(120000);
+  const { page, planId, topics, done } = await launch(openReplies(), 1500);
+  try {
+    const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["open"],
+    });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state)
+      .toBe("succeeded");
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    const answer = page.getByRole("textbox", { name: "La tua risposta" });
+    await answer.fill("È lo spostamento.");
+    await page.getByRole("button", { name: "Verifica", exact: true }).click();
+    await expect(page.getByText("Correggo…", { exact: true })).toBeVisible();
+    await expect(answer).toBeDisabled();
+    await page.locator(".px-quiz-checking").getByRole("button", { name: "Annulla" }).click();
+    await expect(page.getByText("Correggo…", { exact: true })).toHaveCount(0);
+    await expect(answer).toBeEnabled();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await answer.fill("È lo spostamento diviso il tempo.");
+    await page.getByRole("button", { name: "Verifica", exact: true }).click();
+    const feedback = page.locator(".px-quiz-feedback");
+    await expect(feedback).toContainText("Parzialmente corretto", { timeout: 15000 });
+    await expect(feedback).toContainText("60%");
+    await expect(feedback).toContainText("Risposta modello");
+    await expect(answer).toBeDisabled();
+    await axe(page);
+  } finally {
+    await done();
+  }
+});
+
+test("quiz screens in both languages and themes", async () => {
+  test.setTimeout(240000);
+  const { page, planId, topics, done } = await launch(openReplies(), 2500);
+  mkdirSync(".shots", { recursive: true });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  try {
+    for (const lang of ["it", "en"] as const) {
+      await page.evaluate((value) => localStorage.setItem("pyxis.lang", value), lang);
+      await page.reload();
+      const shoot = async (name: string, fullPage = false) => {
+        for (const theme of ["light", "dark"] as const) {
+          await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
+          await page.evaluate(() => document.fonts.ready);
+          await page.screenshot({
+            path: `.shots/v021-quiz-${name}-${lang}-${theme}.png`,
+            animations: "disabled",
+            fullPage,
+          });
+        }
+      };
+      await go(page, `/plans/${planId}/diagnostic`);
+      await expect(page.locator(".px-quiz-intro")).toBeVisible();
+      await expect(page.locator(".px-quiz-facts li")).toHaveCount(3);
+      await shoot("start");
+      const started = await invoke<{ attemptId: string; questions: Array<{ id: string }> }>(
+        page,
+        "study.diagnosticStart",
+        { planId },
+      );
+      const ids = started.questions.map((question) => question.id);
+      const view = `/plans/${planId}/diagnostic?attempt=${started.attemptId}`;
+      await invoke(page, "study.quizDraft", {
+        attemptId: started.attemptId,
+        planId,
+        picks: { [ids[0]!]: "1" },
+        index: 0,
+      });
+      await go(page, view);
+      await expect(page.locator(".px-opt.is-selected")).toHaveCount(1);
+      await shoot("question");
+      await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[0], pick: "0" });
+      await page.reload();
+      await expect(page.locator(".px-quiz-feedback.is-correct")).toBeVisible();
+      await shoot("correct");
+      await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[1], pick: "2" });
+      await invoke(page, "study.quizDraft", {
+        attemptId: started.attemptId,
+        planId,
+        picks: { [ids[0]!]: "0", [ids[1]!]: "2" },
+        index: 1,
+      });
+      await page.reload();
+      await expect(page.locator(".px-quiz-feedback.is-wrong")).toBeVisible();
+      await shoot("wrong");
+      const picks: Record<string, string> = { [ids[0]!]: "0", [ids[1]!]: "2" };
+      for (const id of ids.slice(2)) {
+        picks[id] = id === ids[4] ? "3" : "0";
+        await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: id, pick: picks[id] });
+      }
+      await invoke(page, "study.quizSubmit", { attemptId: started.attemptId, picks });
+      await expect
+        .poll(async () => (await invoke<{ result?: unknown }>(page, "study.quizRead", { attemptId: started.attemptId })).result)
+        .toBeTruthy();
+      await page.reload();
+      await expect(page.locator(".px-quiz-results")).toBeVisible();
+      await shoot("results", true);
+      await page.locator(".px-quiz-row").nth(1).locator(".px-quiz-row-head").click();
+      await expect(page.locator(".px-quiz-row-body")).toBeVisible();
+      await shoot("results-expanded", true);
+
+      const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+        planId,
+        topicId: topics[0]!.id,
+        types: ["open"],
+      });
+      await expect
+        .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state)
+        .toBe("succeeded");
+      await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+      await page.locator(".px-quiz-open textarea").fill(
+        lang === "it" ? "È lo spostamento diviso il tempo." : "Displacement over time.",
+      );
+      await page.locator(".px-quiz-nav .ant-btn-primary").click();
+      await expect(page.locator(".px-quiz-checking")).toBeVisible();
+      await shoot("open-checking");
+      await expect(page.locator(".px-quiz-feedback.is-partial")).toBeVisible({ timeout: 15000 });
+      await shoot("open-graded");
+    }
+  } finally {
+    await done();
   }
 });
 

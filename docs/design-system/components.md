@@ -192,11 +192,12 @@ A turn in the tutor chat: student bubble on the right, tutor reply on the left w
 
 An answer option in quizzes and true/false (LES-11, LES-12).
 
-**Consumer provides** `letter`, the text, `state` (`idle` | `selected` | `correct` | `wrong`), `onClick`.
+**Consumer provides** `letter`, the text, `state` (`idle` | `selected` | `correct` | `wrong` | `answer` | `muted`), the `shortcut` key, `disabled`, `onClick`.
 
-- `correct` and `wrong` always show an icon and a word, so they work without colour.
-- After feedback, the explanation with citations goes below the options, with "Chiedi al tutor" (LES-14).
-- Keys 1–4 or A–D select options.
+- A fixed letter column, one left edge for the text, and the key hint centred on the row, also for multi-line text and math.
+- The pick can change until Verifica/Check; then the options lock. `correct`, `wrong` and `answer` (the right option not picked) always show an icon and a word, so they work without colour.
+- After the check, the explanation with source chips goes below the options, with "Chiedi al tutor" (LES-14) and "Domanda sbagliata?".
+- Keys 1–4 select options; Enter checks, then moves on.
 - antd: `Radio.Group` with `optionType="button"` restyled, or custom as here.
 
 ## Flashcard
