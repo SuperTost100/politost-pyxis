@@ -17,6 +17,9 @@ import { DatabaseSync } from "node:sqlite";
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
 ).version as string;
+// The fake release is always one minor version ahead, so a version bump never hides the notice.
+const [major = 0, minor = 0] = packageVersion.split(".").map(Number);
+const newerTag = `v${major}.${minor + 1}.0`;
 
 test("SET-05/06 verified workspace move, failed move recovery and daily release notice", async () => {
   test.setTimeout(90000);
@@ -33,7 +36,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
     PYXIS_E2E: "1",
     PYXIS_E2E_MOVE: parent,
     PYXIS_E2E_RELEASE: JSON.stringify({
-      tag_name: "v0.2.0",
+      tag_name: newerTag,
       body: "New study tools.\n".repeat(1200),
       draft: false,
       prerelease: false,
