@@ -37,7 +37,23 @@ async function typeHalf(page: Page) {
   return keys;
 }
 
-test("Composer: the formula keyboard builds a fraction and inserts it at the caret", async () => {
+/** The message as it will be sent, and what of it lies before the caret. */
+function composerState(page: Page) {
+  return page.evaluate(() => {
+    const box = document.querySelector<HTMLElement>(".px-composer-field")!;
+    const range = getSelection()!.getRangeAt(0);
+    const before = document.createRange();
+    before.setStart(box, 0);
+    before.setEnd(range.startContainer, range.startOffset);
+    return {
+      draft: sessionStorage.getItem("pyxis-draft"),
+      formulasBeforeCaret: before.cloneContents().querySelectorAll(".px-mathchip").length,
+      textBeforeCaret: before.toString().replace(/[^\x20-\x7e]/g, ""),
+    };
+  });
+}
+
+test("Composer: the formula keyboard types into a formula opened at the caret", async () => {
   test.setTimeout(120000);
   const { app, page, userData, violations } = await launch();
   try {
@@ -48,7 +64,12 @@ test("Composer: the formula keyboard builds a fraction and inserts it at the car
     const box = page.getByRole("textbox", { name: "Messaggio" });
     await box.fill("Calcola  e poi semplifica");
     // The caret sits after "Calcola ".
-    await box.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(8, 8));
+    await box.evaluate((el) => {
+      const range = document.createRange();
+      range.setStart(el.firstChild!, 8);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+    });
 
     const toggle = page.getByRole("button", { name: "Inserisci formula" });
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
@@ -56,24 +77,26 @@ test("Composer: the formula keyboard builds a fraction and inserts it at the car
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
     const keys = page.getByRole("group", { name: "Tastiera per formule" });
     await expect(keys).toBeVisible();
-    await expect(page.locator("math-field")).toBeVisible();
-    // The keyboard is part of the composer, so it does not cover the textarea or the send button.
+    // The formula opens inside the message, not in a box of its own.
+    const field = box.locator(".px-mathchip math-field");
+    await expect(field).toBeFocused();
+    // The keyboard is part of the composer, so it does not cover the field or the send button.
     const boxes = await page.evaluate(() => {
       const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
       return {
         panelTop: rect(".px-formula").top,
-        textareaBottom: rect(".px-composer textarea").bottom,
+        fieldBottom: rect(".px-composer-field").bottom,
         barTop: rect(".px-composer-bar").top,
         panelBottom: rect(".px-formula").bottom,
         viewport: window.innerHeight,
         composerBottom: rect(".px-composer").bottom,
       };
     });
-    expect(boxes.panelTop).toBeGreaterThanOrEqual(boxes.textareaBottom);
+    expect(boxes.panelTop).toBeGreaterThanOrEqual(boxes.fieldBottom);
     expect(boxes.panelBottom).toBeLessThanOrEqual(boxes.barTop);
     expect(boxes.composerBottom).toBeLessThanOrEqual(boxes.viewport);
 
-    // Four tabs, reachable by keyboard.
+    // Four tabs, reachable by keyboard. Focus on the tabs keeps the formula open.
     const tabs = keys.getByRole("tab");
     await expect(tabs).toHaveCount(4);
     await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
@@ -85,33 +108,38 @@ test("Composer: the formula keyboard builds a fraction and inserts it at the car
     await tabs.nth(0).click();
 
     await typeHalf(page);
-    await keys.getByRole("button", { name: "Inserisci", exact: true }).click();
+    await expect(field).toBeFocused();
+    await keys.getByRole("button", { name: "Fatto", exact: true }).click();
 
     await expect(keys).toHaveCount(0);
     await expect(box).toBeFocused();
-    await expect(box).toHaveValue("Calcola $\\frac{1}{2}$ e poi semplifica");
-    const caret = await box.evaluate((el: HTMLTextAreaElement) => el.selectionStart);
-    expect(caret).toBe("Calcola $\\frac{1}{2}$".length);
-    // The preview renders the formula under the textarea.
-    const preview = page.getByRole("group", { name: "Anteprima" });
-    await expect(preview.locator(".katex .mfrac")).toBeVisible();
+    await expect(box.locator(".px-mathchip .katex .mfrac")).toBeVisible();
+    expect(await composerState(page)).toEqual({
+      draft: "Calcola $\\frac{1}{2}$ e poi semplifica",
+      formulasBeforeCaret: 1,
+      textBeforeCaret: expect.stringMatching(/^Calcola /),
+    });
+    await expect(page.getByText("Anteprima")).toHaveCount(0);
 
-    // Esc closes without inserting; the toggle button opens it again.
+    // Esc closes the keyboard; a formula left empty goes away.
     await toggle.click();
     await expect(keys).toBeVisible();
+    await expect(field).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(keys).toHaveCount(0);
     await expect(box).toBeFocused();
-    await expect(box).toHaveValue("Calcola $\\frac{1}{2}$ e poi semplifica");
+    await expect(box.locator(".px-mathchip")).toHaveCount(1);
+    expect((await composerState(page)).draft).toBe("Calcola $\\frac{1}{2}$ e poi semplifica");
 
-    // Typing in the field with the physical keyboard and pressing Enter inserts too.
+    // Typing in the formula with the physical keyboard; Enter returns to the text without sending.
     await box.fill("");
     await toggle.click();
-    await expect(page.locator("math-field")).toBeFocused();
+    await expect(field).toBeFocused();
     await page.keyboard.type("x^2");
     await page.keyboard.press("Enter");
-    await expect(box).toHaveValue(/^\$x\^\{?2\}?\$$/);
     await expect(box).toBeFocused();
+    expect((await composerState(page)).draft).toMatch(/^\$x\^\{?2\}?\$$/);
+    await expect(page).toHaveURL(/#\/ask$/);
 
     expect(violations).toEqual([]);
   } finally {
@@ -132,7 +160,7 @@ test("Composer: the keyboard follows the interface language", async () => {
     await page.getByRole("button", { name: "Insert formula" }).click();
     const keys = page.getByRole("group", { name: "Formula keyboard" });
     await expect(keys.getByRole("button", { name: "Square root" })).toBeVisible();
-    await expect(keys.getByRole("button", { name: "Insert", exact: true })).toBeDisabled();
+    await expect(keys.getByRole("button", { name: "Done", exact: true })).toBeEnabled();
     await expect(keys.getByRole("tab", { name: "Calculus" })).toBeVisible();
   } finally {
     await app.close();
@@ -140,7 +168,7 @@ test("Composer: the keyboard follows the interface language", async () => {
   }
 });
 
-test("Quiz: an open answer takes a formula from the keyboard and previews it", async () => {
+test("Quiz: an open answer takes a formula from the keyboard inline", async () => {
   test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-quiz-"));
   const file = join(userData, "physics.pdf");
@@ -233,10 +261,12 @@ test("Quiz: an open answer takes a formula from the keyboard and previews it", a
     await page.getByRole("button", { name: "Inserisci formula" }).click();
     const keys = page.getByRole("group", { name: "Tastiera per formule" });
     await typeHalf(page);
-    await keys.getByRole("button", { name: "Inserisci", exact: true }).click();
-    await expect(answer).toHaveValue("La velocità vale $\\frac{1}{2}$");
+    await keys.getByRole("button", { name: "Fatto", exact: true }).click();
     await expect(answer).toBeFocused();
-    await expect(page.getByRole("group", { name: "Anteprima" }).locator(".katex .mfrac")).toBeVisible();
+    await expect(answer).toHaveText(/^La velocità vale /);
+    await expect(answer.locator(".px-mathchip .katex .mfrac")).toBeVisible();
+    expect(await answer.innerText()).not.toContain("frac");
+    await page.locator(".px-mathinput").screenshot({ path: ".shots/math-input-quiz.png" });
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

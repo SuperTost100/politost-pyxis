@@ -1442,7 +1442,7 @@ async function openState(page: Page, name: string) {
       // The message and the photo are still in the composer, and nothing was sent.
       await expect(
         page.getByRole("textbox", { name: both("Messaggio", "Message") }),
-      ).toHaveValue("Che cosa c'è scritto qui?");
+      ).toHaveText("Che cosa c'è scritto qui?");
       await expect(page.getByText("foto.png")).toBeVisible();
       if (name === "ask-ocr-ready") {
         // The files appear on disk (as if another window had finished the download); Download then finds them ready.

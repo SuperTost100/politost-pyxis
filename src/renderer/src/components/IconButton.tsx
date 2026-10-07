@@ -10,6 +10,7 @@ export function IconButton({
   onClick,
   disabled,
   pressed,
+  keepFocus,
 }: {
   icon: IconName;
   label: string;
@@ -18,6 +19,8 @@ export function IconButton({
   onClick?: () => void;
   disabled?: boolean;
   pressed?: boolean;
+  /** A click leaves focus where it was, for buttons that act on the field being typed in. */
+  keepFocus?: boolean;
 }) {
   const antType =
     variant === "primary"
@@ -43,6 +46,7 @@ export function IconButton({
       aria-pressed={pressed}
       title={label}
       onClick={onClick}
+      onMouseDown={keepFocus ? (event) => event.preventDefault() : undefined}
       disabled={disabled}
       icon={<Icon name={icon} size={size === "sm" ? 16 : 18} />}
     />

@@ -1,0 +1,9 @@
+/* Line breaks the student typed stay; long unbroken words wrap instead of widening the bubble. */
+.px-mathtext-view {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.px-mathtext-view .katex {
+  white-space: nowrap;
+}
