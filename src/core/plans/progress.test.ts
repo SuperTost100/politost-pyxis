@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
-import { listPlans, nextLesson } from "./create";
+import { listPlans, planGuide } from "./create";
+import { recordStep } from "./steps";
 import { planMastery, planSeries, syncGaps } from "./progress";
 import { assignAnswers, insertGap } from "../study/gapRows";
 import { flagTarget } from "../study/flags";
@@ -142,21 +143,35 @@ describe("planMastery", () => {
     ]);
   });
 
-  it("points the recommended lesson at the open step", () => {
+  it("suggests the introduction on a new plan, and nothing for a missing one", () => {
     const db = openDatabase(":memory:");
-    db.prepare(
-      `INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Fisica', 'ready', 1, 1)`,
-    ).run();
-    db.prepare(
-      `INSERT INTO path_nodes (id, plan_id, kind, position, title, created_at)
-       VALUES ('intro', 'p', 'intro', 0, 'Introduzione', 1)`,
-    ).run();
-    expect(nextLesson(db, "missing")).toBeNull();
-    expect(nextLesson(db, "p")).toEqual({
-      nodeId: "intro",
-      reason: "next",
-      count: 0,
+    db.exec(`
+      INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Fisica', 'ready', 1, 1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','Moti',0,1);
+      INSERT INTO items (id, plan_id, kind, body_json, created_at) VALUES ('i', 'p', 'intro', '{"markdown":""}', 1);
+    `);
+    expect(planGuide(db, "missing")).toBeNull();
+    expect(planGuide(db, "p")).toMatchObject({
+      next: { activity: "intro", topicId: null, reason: "intro", count: 0 },
+      hasIntro: true,
+      topics: [{ topicId: "t", read: false, dueCards: 0, gaps: 0, suggested: "lesson" }],
     });
+  });
+
+  it("keeps steps other than lessons out of lessons and activity counts", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Fisica', 'ready', 1, 1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','Moti',0,1);
+    `);
+    const now = Date.UTC(2026, 0, 14, 12);
+    recordStep(db, "p", { activity: "quiz", topicId: "t", result: { correct: 3, total: 4 } }, now);
+    recordStep(db, "p", { activity: "practice", topicId: "t" }, now + 1);
+    expect(planSeries(db, "p", now + 2)).toMatchObject({ lessons: 0, chart: expect.any(Array) });
+    expect(planSeries(db, "p", now + 2).chart.at(-1)?.count).toBe(0);
+    recordStep(db, "p", { activity: "lesson", topicId: "t" }, now + 3);
+    expect(planSeries(db, "p", now + 4).lessons).toBe(1);
+    db.close();
   });
 
   describe("the recommended lesson counts severe gaps only", () => {
@@ -166,7 +181,6 @@ describe("planMastery", () => {
       db.exec(`
         INSERT INTO plans (id,title,status,target,created_at,updated_at) VALUES ('p','Fisica','ready',0.8,1,1);
         INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','Moti',0,1);
-        INSERT INTO path_nodes (id,plan_id,topic_id,kind,position,title,created_at) VALUES ('n','p','t','intro',0,'Moti',1);
       `);
       return db;
     }
@@ -180,9 +194,9 @@ describe("planMastery", () => {
       answers(db, "good", [1, 1, 1, 1, 1, 1], T0);
       insertGap(db, { planId: "p", topicId: "t", openedAt: T0 + 1, origin: "answers", misconception: "slip", severity: "minor" });
       insertGap(db, { planId: "p", topicId: "t", openedAt: T0 + 2, origin: "misconception", misconception: "other slip", severity: "minor" });
-      expect(nextLesson(db, "p", T0 + 10)).toEqual({ nodeId: "n", reason: "next", count: 0 });
+      expect(planGuide(db, "p", T0 + 10)?.next?.reason).not.toBe("gaps");
       insertGap(db, { planId: "p", topicId: "t", openedAt: T0 + 3, origin: "misconception", misconception: "real misunderstanding", severity: "severe" });
-      expect(nextLesson(db, "p", T0 + 10)).toEqual({ nodeId: "n", reason: "gaps", count: 1 });
+      expect(planGuide(db, "p", T0 + 10)?.next).toEqual({ activity: "gaps", topicId: "t", reason: "gaps", count: 1 });
       db.close();
     });
 
@@ -190,7 +204,7 @@ describe("planMastery", () => {
       const db = planWithNode();
       answers(db, "bad", [0, 0], T0);
       expect(db.prepare("SELECT count(*) AS n FROM gaps").get()).toEqual({ n: 0 });
-      expect(nextLesson(db, "p", T0 + 10)).toEqual({ nodeId: "n", reason: "gaps", count: 1 });
+      expect(planGuide(db, "p", T0 + 10)?.next).toEqual({ activity: "gaps", topicId: "t", reason: "gaps", count: 1 });
       expect(db.prepare("SELECT count(*) AS n FROM gaps").get()).toEqual({ n: 1 });
       db.close();
     });

@@ -14,7 +14,7 @@ import {
 } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
-import { completeCurrentStage } from "../plans/create";
+import { recordStep, stepResult } from "../plans/steps";
 import { topicExercises } from "./exercises";
 import { acrossTopics } from "./topicQuiz";
 
@@ -619,10 +619,10 @@ export function registerSimulationJobs(
               "simulation",
               params.attemptId,
             );
-            completeCurrentStage(
+            recordStep(
               db,
               params.planId,
-              "simulation",
+              { activity: "simulation", result: stepResult(params.results) },
               now + params.results.length + 1,
             );
             syncGaps(db, params.planId, now);

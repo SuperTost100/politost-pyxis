@@ -28,7 +28,7 @@ export function IntroPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.read", { planId }),
   });
-  const node = plan.data?.nodes.find((item) => item.kind === "intro");
+  const done = plan.data?.steps.some((step) => step.activity === "intro");
   const refreshPlan = () =>
     Promise.all(
       [["plan", planId], ["recommend", planId]].map((queryKey) =>
@@ -36,7 +36,7 @@ export function IntroPage() {
       ),
     );
   const markDone = useMutation({
-    mutationFn: (nodeId: string) => invoke("plans.complete", { planId, nodeId }),
+    mutationFn: () => invoke("plans.complete", { planId, activity: "intro", topicId: null }),
     onSuccess: async () => {
       await refreshPlan();
       navigate(`/plans/${planId}`);
@@ -91,17 +91,13 @@ export function IntroPage() {
       {intro.isSuccess ? (
         <ReaderEnd
           state={
-            node?.state === "done"
-              ? "done"
-              : node?.state === "current"
-                ? "current"
-                : "other"
+            !plan.data ? "other" : done ? "done" : "current"
           }
           doneLabel={t("lesson.introDone")}
           pendingHint={unanswered ? t("lesson.introPrompt") : undefined}
           busy={markDone.isPending}
           failed={markDone.isError}
-          onMarkDone={() => node && markDone.mutate(node.id)}
+          onMarkDone={() => markDone.mutate()}
           onBack={() => navigate(`/plans/${planId}`)}
         />
       ) : null}

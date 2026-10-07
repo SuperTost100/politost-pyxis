@@ -1,3 +1,4 @@
+/** The kinds of the plan's path_nodes rows; "final" is only read from older plans. */
 export const stages = [
   "intro",
   "diagnostic",
@@ -10,16 +11,85 @@ export const stages = [
 ] as const;
 
 export type Stage = (typeof stages)[number];
-export type NodeState = "locked" | "current" | "done";
 
-export type PathNode = {
+/** What a student can do on the path. Every activity is open at any time; the order is only a suggestion. */
+export const activities = [
+  "intro",
+  "diagnostic",
+  "lesson",
+  "practice",
+  "quiz",
+  "cards",
+  "gaps",
+  "simulation",
+] as const;
+
+export type Activity = (typeof activities)[number];
+
+/** Activities that need a topic; the others cover the whole plan. */
+export const topicActivities: ReadonlySet<Activity> = new Set([
+  "lesson",
+  "practice",
+  "quiz",
+  "cards",
+  "gaps",
+]);
+
+/** The path node an activity marks done in older plans; a quiz never had one. */
+export function stageOf(activity: Activity): Stage | null {
+  if (activity === "lesson") return "learn";
+  if (activity === "quiz") return null;
+  return activity;
+}
+
+/** The activity an older done node stands for; the final check was a goal, not an activity. */
+export function activityOf(stage: string): Activity | null {
+  if (stage === "learn") return "lesson";
+  return (activities as readonly string[]).includes(stage) && stage !== "quiz"
+    ? (stage as Activity)
+    : null;
+}
+
+export type StepResult = { correct: number; total: number };
+
+/** One finished activity, in the order the student did them. */
+export type Step = {
   id: string;
-  stage: Stage;
+  activity: Activity;
   topicId: string | null;
-  position: number;
+  at: number;
+  result: StepResult | null;
+};
+
+export type SuggestReason =
+  | "intro"
+  | "diagnostic"
+  | "due"
+  | "gaps"
+  | "examSoon"
+  | "ready"
+  | "consolidate"
+  | "next"
+  | "weakest";
+
+export type Suggestion = {
+  activity: Activity;
+  topicId: string | null;
+  reason: SuggestReason;
+  count: number;
+};
+
+export type TopicStatus = {
+  id: string;
+  mastery: number;
+  dueCards: number;
+  severeGaps: number;
+  daysIdle: number;
 };
 
 const middle = 0.5;
+/** Within this many days of the exam a simulation is worth suggesting whatever the mastery. */
+const examSoonDays = 3;
 
 const weights = {
   due: 3,
@@ -29,72 +99,88 @@ const weights = {
   style: 1,
 };
 
-export function pathState(
-  nodes: PathNode[],
-  doneIds: string[],
-  mastery: Record<string, number>,
-  target = 0.8,
-): Array<{ id: string; state: NodeState; reason: string }> {
-  const done = new Set(doneIds);
-  const ordered = [...nodes].sort((a, b) => a.position - b.position);
-  const topicOrder = ordered
-    .filter((node) => node.stage === "learn" && node.topicId)
-    .map((node) => node.topicId as string);
-  let currentAssigned = false;
-  return ordered.map((node) => {
-    if (done.has(node.id)) return { id: node.id, state: "done" as const, reason: "" };
-    const reason = lockReason(node, ordered, done, mastery, topicOrder, target);
-    if (reason) return { id: node.id, state: "locked" as const, reason };
-    if (!currentAssigned) {
-      currentAssigned = true;
-      return { id: node.id, state: "current" as const, reason: "" };
-    }
-    return { id: node.id, state: "locked" as const, reason: "plans.unlocksAfterCurrent" };
-  });
+/** The work that fits one topic now: due cards, then severe gaps, then the lesson, then exercises by mastery. */
+export function topicSuggestion(topic: TopicStatus, read: boolean): Activity {
+  if (topic.dueCards > 0) return "cards";
+  if (topic.severeGaps > 0) return "gaps";
+  if (!read) return "lesson";
+  return topic.mastery < middle ? "practice" : "quiz";
 }
 
-function lockReason(
-  node: PathNode,
-  nodes: PathNode[],
-  done: Set<string>,
-  mastery: Record<string, number>,
-  topicOrder: string[],
-  target: number,
-): string {
-  const finished = (stage: Stage, topicId?: string | null) =>
-    nodes.some(
-      (item) =>
-        item.stage === stage &&
-        (topicId == null || item.topicId === topicId) &&
-        done.has(item.id),
-    );
-  if (node.stage === "intro") return "";
-  if (node.stage === "diagnostic") return finished("intro") ? "" : "plans.unlocksAfterIntro";
-  if (node.stage === "learn" && node.topicId) {
-    if (!finished("diagnostic")) return "plans.unlocksAfterDiagnostic";
-    const index = topicOrder.indexOf(node.topicId);
-    const previous = index > 0 ? topicOrder[index - 1] : null;
-    if (previous && (mastery[previous] ?? 0) < middle) return "plans.unlocksAtHalf";
-    return "";
+/**
+ * The suggested next step. Nothing is locked: this only picks what to offer first.
+ * Due cards and severe gaps come first; a new plan then starts with the introduction and the diagnostic; a simulation
+ * once every topic reaches the target or the exam is close, exercises on a lesson just read, the next unread topic in
+ * the plan's order, and finally exercises on the weakest topic.
+ */
+export function suggestStep(input: {
+  topics: TopicStatus[];
+  steps: Array<Pick<Step, "activity" | "topicId">>;
+  hasIntro: boolean;
+  target: number;
+  daysToExam: number | null;
+}): Suggestion | null {
+  const { topics, steps, target } = input;
+  const done = (activity: Activity) => steps.some((step) => step.activity === activity);
+  const read = new Set(
+    steps.filter((step) => step.activity === "lesson").map((step) => step.topicId),
+  );
+  const studied =
+    steps.some((step) => step.activity !== "intro" && step.activity !== "diagnostic") ||
+    topics.some((topic) => topic.mastery > 0);
+  const plan = (activity: Activity, reason: SuggestReason): Suggestion => ({
+    activity,
+    topicId: null,
+    reason,
+    count: 0,
+  });
+  const urgent = bestRecommendation(
+    topics
+      .filter((topic) => topic.dueCards > 0 || topic.severeGaps > 0)
+      .map((topic) => ({
+        id: topic.id,
+        dueCards: topic.dueCards,
+        severeGaps: topic.severeGaps,
+        topicMastery: topic.mastery,
+        target,
+        daysToExam: input.daysToExam ?? 30,
+        daysIdle: topic.daysIdle,
+        styleMatch: 0,
+      })),
+  );
+  if (urgent) {
+    const topic = topics.find((item) => item.id === urgent.id)!;
+    return topic.dueCards > 0
+      ? { activity: "cards", topicId: topic.id, reason: "due", count: topic.dueCards }
+      : { activity: "gaps", topicId: topic.id, reason: "gaps", count: topic.severeGaps };
   }
-  if (node.stage === "practice" && node.topicId) {
-    const learn = nodes.find((item) => item.stage === "learn" && item.topicId === node.topicId);
-    if (learn && node.position < learn.position) {
-      if (!finished("diagnostic")) return "plans.unlocksAfterDiagnostic";
-      const index = topicOrder.indexOf(node.topicId);
-      const previous = index > 0 ? topicOrder[index - 1] : null;
-      if (previous && (mastery[previous] ?? 0) < middle) return "plans.unlocksAtHalf";
-      return "";
-    }
+  if (!studied && !done("diagnostic")) {
+    if (input.hasIntro && !done("intro")) return plan("intro", "intro");
+    if (topics.length) return plan("diagnostic", "diagnostic");
   }
-  if ((node.stage === "practice" || node.stage === "cards" || node.stage === "gaps") && node.topicId) {
-    const level = mastery[node.topicId] ?? 0;
-    return level >= middle ? "" : "plans.unlocksAtHalf";
-  }
-  const levels = topicOrder.map((id) => mastery[id] ?? 0);
-  const weakest = levels.length === 0 ? 0 : Math.min(...levels);
-  if (node.stage === "simulation") return weakest >= middle ? "" : "plans.unlocksAtHalf";
-  return weakest >= target ? "" : "plans.unlocksAtTarget";
+  if (!topics.length) return null;
+  const weakest = Math.min(...topics.map((topic) => topic.mastery));
+  if (weakest >= target) return plan("simulation", "ready");
+  if (
+    studied &&
+    input.daysToExam != null &&
+    input.daysToExam >= 0 &&
+    input.daysToExam <= examSoonDays
+  )
+    return plan("simulation", "examSoon");
+  const exercise = (topic: TopicStatus, reason: SuggestReason): Suggestion => ({
+    activity: topic.mastery < middle ? "practice" : "quiz",
+    topicId: topic.id,
+    reason,
+    count: 0,
+  });
+  const last = steps.at(-1);
+  const justRead = last?.activity === "lesson" && topics.find((topic) => topic.id === last.topicId);
+  if (justRead && justRead.mastery < target) return exercise(justRead, "consolidate");
+  const unread = topics.find((topic) => !read.has(topic.id));
+  if (unread) return { activity: "lesson", topicId: unread.id, reason: "next", count: 0 };
+  const weak = topics.reduce((low, topic) => (topic.mastery < low.mastery ? topic : low));
+  return exercise(weak, "weakest");
 }
 
 export function recommend(input: {

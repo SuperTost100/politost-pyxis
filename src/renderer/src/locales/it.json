@@ -445,7 +445,6 @@
   },
   "lesson": {
     "title": "Lezione",
-    "done": "Ho letto",
     "sourceFallback": "Non è stato possibile scrivere la lezione. Stai leggendo il testo delle fonti.",
     "failed": "Non è stato possibile aprire la lezione. Controlla il motore selezionato o riprova.",
     "retry": "Riprova la lezione",
@@ -665,16 +664,6 @@
     "generate": "Scrivi esercizi"
   },
   "plans": {
-    "unlocksAfterIntro": "Si sblocca dopo l'introduzione",
-    "unlocksAfterDiagnostic": "Si sblocca dopo la diagnosi",
-    "unlocksAtHalf": "Si sblocca al 50 %",
-    "unlocksAtTarget": "Si sblocca al traguardo",
-    "unlocksAfterCurrent": "Si sblocca dopo il passo corrente",
-    "current": "Adesso",
-    "recommended": "Lezione consigliata",
-    "recommendDue": "{{count}} schede in scadenza",
-    "recommendGaps": "{{count}} lacune aperte",
-    "recommendNext": "Il passo aperto",
     "export": "Esporta",
     "includeAuthor": "Includi il mio nome del profilo",
     "includeProgress": "Includi i progressi",
@@ -693,15 +682,62 @@
     "cards": "Carte",
     "gaps": "Lacune",
     "simulation": "Simulazione",
-    "final": "Verifica finale",
     "views": "Sezioni del piano",
     "noExam": "Nessuna data d'esame",
-    "recommendDue_one": "1 scheda in scadenza",
-    "recommendDue_other": "{{count}} schede in scadenza",
-    "recommendGaps_one": "1 lacuna aperta",
-    "recommendGaps_other": "{{count}} lacune aperte",
     "quiz": "Quiz",
-    "map": "Mappa"
+    "map": "Mappa",
+    "path": {
+      "next": "Ti suggerisco",
+      "pick": "Scegli cosa studiare",
+      "on": "{{activity}} su {{topic}}",
+      "more": "Altre attività",
+      "change": "Cambia argomento",
+      "whole": "Tutto il piano",
+      "forTopic": "Attività su {{topic}}",
+      "topics": "Argomenti del piano",
+      "search": "Cerca un argomento",
+      "noMatch": "Nessun argomento trovato.",
+      "mastery": "Padronanza di {{topic}}",
+      "suggested": "Consigliato",
+      "due_one": "1 da ripassare",
+      "due_other": "{{count}} da ripassare",
+      "gaps_one": "1 lacuna aperta",
+      "gaps_other": "{{count}} lacune aperte",
+      "done": "Passi fatti",
+      "planned": "In programma",
+      "choose": "{{topic}}: scegli un'attività",
+      "showAll": "Mostra tutti i passi ({{count}})",
+      "activity": {
+        "intro": "Introduzione",
+        "diagnostic": "Test diagnostico",
+        "lesson": "Testo smart",
+        "practice": "Esercizio assistito",
+        "quiz": "Quiz",
+        "cards": "Flashcard",
+        "gaps": "Colma lacune",
+        "simulation": "Simulazione d'esame"
+      },
+      "result": {
+        "lesson": "letto",
+        "intro": "letta",
+        "done": "fatto",
+        "cards_one": "1 scheda",
+        "cards_other": "{{count}} schede"
+      },
+      "reason": {
+        "intro": "Parti da qui: cosa studierai e come.",
+        "diagnostic": "Trova il tuo punto di partenza. Puoi saltarlo.",
+        "due_one": "1 scheda da ripassare oggi.",
+        "due_other": "{{count}} schede da ripassare oggi.",
+        "gaps_one": "Una lacuna seria su questo argomento.",
+        "gaps_other": "{{count}} lacune serie su questo argomento.",
+        "examSoon": "L'esame è tra pochi giorni: mettiti alla prova.",
+        "ready": "Tutti gli argomenti hanno raggiunto il tuo obiettivo.",
+        "consolidate": "Fissa quello che hai appena letto.",
+        "next": "Il prossimo argomento in ordine.",
+        "weakest": "È l'argomento in cui sei più debole."
+      }
+    }
   },
   "progress": {
     "title": "Progressi",
@@ -912,7 +948,7 @@
         "quizzes_one": "{{count}} quiz",
         "quizzes_other": "{{count}} quiz",
         "cards_one": "{{count}} carta",
-        "cards_other": "{{count}} carte",
+        "cards_other": "{{count}} schede",
         "maps_one": "{{count}} mappa concettuale",
         "maps_other": "{{count}} mappe concettuali",
         "exercises_one": "{{count}} esercizio",
@@ -1238,15 +1274,13 @@
     },
     "path": {
       "state": {
-        "locked": "bloccato",
         "done": "completato",
         "current": "attuale"
       },
       "intro": "Introduzione",
       "exercises": "Esercizi",
       "review": "Ripasso",
-      "sim": "Simulazione",
-      "unlock": "Raggiungi il 75% per sbloccare"
+      "sim": "Simulazione"
     },
     "gapSamples": {
       "severe": "Confondi calore e lavoro nel segno del bilancio energetico.",
@@ -1590,9 +1624,7 @@
     "create": "Crea lezione",
     "failed": "Non è stato possibile completare questa azione. Riprova.",
     "unavailable": "Non è stato possibile aprire il piano. Torna a Esami e riprova.",
-    "nodeReady": "Apri questa attività per continuare a studiare.",
     "start": "Inizia",
-    "another": "Un’altra proposta",
     "save": "Salva modifiche",
     "language": "Lingua dei contenuti",
     "rebuildConfirm": "Ricostruire il percorso dalle fonti collegate? I progressi esistenti vengono conservati.",
@@ -1627,7 +1659,6 @@
     "attachSources": "Collega le fonti selezionate",
     "pickerHelp": "Scegli le fonti dalla libreria. Quelle in preparazione saranno disponibili al termine dell’indicizzazione.",
     "importSource": "Importa una fonte",
-    "reviewReason": "Ripassa un’attività che hai già completato.",
     "rebuildIntro": "Pyxis costruisce un nuovo albero di argomenti dalle fonti collegate, lo confronta con i tuoi argomenti attuali e mostra cosa cambierebbe. Non cambia nulla finché non lo applichi.",
     "rebuildStart": "Confronta con le fonti",
     "rebuildStepMatch": "Confronto gli argomenti",

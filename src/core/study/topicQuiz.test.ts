@@ -1,12 +1,8 @@
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import {
-  completeNode,
-  createPlan,
-  deletePlan,
-  readPlan,
-} from "../plans/create";
+import { createPlan, deletePlan, readPlan } from "../plans/create";
+import { recordStep } from "../plans/steps";
 import { importSmartbook } from "../sources/smartbook";
 import { studyHandlers } from "./handlers";
 import { readQuiz } from "./quizJobs";
@@ -42,13 +38,7 @@ describe("diagnostic", () => {
       title: "Fisica 1",
       sourceIds: [imported.sourceId],
     });
-    const intro = readPlan(db, plan.planId)?.nodes.find(
-      (node) => node.kind === "diagnostic",
-    );
-    const introNode = readPlan(db, plan.planId)?.nodes.find(
-      (node) => node.kind === "intro",
-    );
-    completeNode(db, plan.planId, introNode?.id ?? "");
+    recordStep(db, plan.planId, { activity: "intro" });
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
     ).run(JSON.stringify({ provider: "claude", model: "review-model" }));
@@ -68,10 +58,12 @@ describe("diagnostic", () => {
       attemptId: started.attemptId,
       picks: { [question?.id ?? ""]: "ten newtons" },
     });
-    const after = readPlan(db, plan.planId);
-    expect(after?.nodes.find((node) => node.id === intro?.id)?.state).toBe(
-      "done",
-    );
+    // Submitting the diagnostic records it as a step with its score.
+    expect(readPlan(db, plan.planId)?.steps.at(-1)).toMatchObject({
+      activity: "diagnostic",
+      topicId: null,
+      result: { correct: 1, total: 1 },
+    });
     const event = db
       .prepare(
         `SELECT topic_id, payload_json FROM learning_events WHERE kind = 'answer_given'`,
@@ -101,19 +93,18 @@ describe("diagnostic", () => {
       title: "Note",
       sourceIds: [imported.sourceId],
     });
-    const intro = readPlan(db, plan.planId)?.nodes.find(
-      (node) => node.kind === "intro",
-    );
-    completeNode(db, plan.planId, intro?.id ?? "");
+    recordStep(db, plan.planId, { activity: "intro" });
     const study = studyHandlers(db);
     expect(study.diagnosticStart({ planId: plan.planId }).questions).toEqual(
       [],
     );
-    expect(
-      readPlan(db, plan.planId)?.nodes.find(
-        (node) => node.kind === "diagnostic",
-      )?.state,
-    ).toBe("done");
+    expect(readPlan(db, plan.planId)?.steps.map((step) => step.activity)).toEqual([
+      "intro",
+      "diagnostic",
+    ]);
+    // Opening it again adds nothing.
+    studyHandlers(db).diagnosticStart({ planId: plan.planId });
+    expect(readPlan(db, plan.planId)?.steps).toHaveLength(2);
   });
 
   it("takes unflagged questions from each topic and only from that topic's book", () => {
@@ -160,10 +151,7 @@ describe("diagnostic", () => {
     });
     const rejected = db.prepare("SELECT id FROM exercises WHERE prompt = 'A0'").get() as { id: string };
     flagTarget(db, "exercise", rejected.id, "Wrong answer");
-    const intro = readPlan(db, plan.planId)?.nodes.find(
-      (node) => node.kind === "intro",
-    );
-    completeNode(db, plan.planId, intro?.id ?? "");
+    recordStep(db, plan.planId, { activity: "intro" });
     const started = studyHandlers(db).diagnosticStart({ planId: plan.planId });
     const stems = started.questions.map((question) => question.stem);
     expect(stems).not.toContain("A0");
@@ -191,10 +179,7 @@ describe("diagnostic", () => {
       );
     const make = (title: string, sourceId: string) => {
       const plan = createPlan(db, { title, sourceIds: [sourceId] });
-      const intro = readPlan(db, plan.planId)?.nodes.find(
-        (node) => node.kind === "intro",
-      );
-      completeNode(db, plan.planId, intro?.id ?? "");
+      recordStep(db, plan.planId, { activity: "intro" });
       return plan.planId;
     };
     const planA = make("A", book("a", "10").sourceId);

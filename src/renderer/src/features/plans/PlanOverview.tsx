@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
@@ -6,7 +6,6 @@ import {
   Form,
   Input,
   Modal,
-  Popover,
   Select,
   Slider,
   Table,
@@ -21,8 +20,6 @@ import type { RequestOutput } from "@shared/ipc";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { invoke } from "../../lib/ipc";
 import { MasteryBar } from "../../components/MasteryBar";
-import { PathNode } from "../../components/PathNode";
-import { Dock } from "../../components/Dock";
 import { PlanEducationLevel } from "./PlanEducationLevel";
 import { Icon } from "../../components/Icon";
 import { Tag } from "../../components/Tag";
@@ -37,20 +34,10 @@ import { openSourceViewer } from "../../components/SourceViewer";
 import { ExportButton } from "../share/ExportButton";
 import { PlanProgress } from "./PlanProgress";
 import { RebuildDialog } from "./RebuildDialog";
+import { PlanPath } from "./PlanPath";
 import "./PlanPage.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
-type Node = Plan["nodes"][number];
-const icons: Record<string, IconName> = {
-  intro: "book-open",
-  diagnostic: "list-checks",
-  learn: "book-open",
-  practice: "pencil-line",
-  cards: "layers",
-  gaps: "target",
-  simulation: "clock",
-  final: "circle-check",
-};
 const kinds = ["mcq", "completion", "matching", "tf", "open"] as const;
 type QuizKind = (typeof kinds)[number];
 
@@ -94,8 +81,6 @@ export function PlanPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [proposal, setProposal] = useState<string | null>(null);
   const [group, setGroup] = useState("learn");
   const [lessonKind, setLessonKind] = useState<string | null>(null);
   const [topicId, setTopicId] = useState("");
@@ -108,66 +93,10 @@ export function PlanPage() {
   const busyRef = useRef(false);
   const [form] = Form.useForm();
   const [modal, modalContext] = Modal.useModal();
-  const path = useRef<HTMLOListElement>(null);
-  const scrolled = useRef("");
-  const [connectors, setConnectors] = useState<
-    Array<{ path: string; done: boolean }>
-  >([]);
   const tab = ["progress", "topics", "sources"].includes(view ?? "")
     ? view!
     : "path";
   const progress = series.data;
-  const current = plan.data?.nodes.find((node) => node.state === "current");
-  useEffect(() => {
-    if (
-      tab !== "path" ||
-      !current ||
-      scrolled.current === `${planId}:${current.id}`
-    )
-      return;
-    const frame = requestAnimationFrame(() => {
-      const element = path.current?.querySelector<HTMLElement>(
-        `[data-node-id="${current.id}"]`,
-      );
-      if (element) {
-        element.scrollIntoView({ block: "center", behavior: "instant" });
-        window.scrollBy({ top: window.innerHeight * 0.1, behavior: "instant" });
-        scrolled.current = `${planId}:${current.id}`;
-      }
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [tab, planId, current?.id]);
-  useEffect(() => {
-    if (tab !== "path" || !path.current) return;
-    const list = path.current;
-    const measure = () => {
-      const origin = list.getBoundingClientRect();
-      const nodes = Array.from(
-        list.querySelectorAll<HTMLElement>(".px-node"),
-      ).map((node) => {
-        const rect = node.getBoundingClientRect();
-        return {
-          x: rect.left - origin.left + rect.width / 2,
-          y: rect.top - origin.top + rect.height / 2,
-          done: node.classList.contains("is-done"),
-        };
-      });
-      setConnectors(
-        nodes.slice(1).map((node, index) => {
-          const previous = nodes[index]!;
-          const middle = (previous.y + node.y) / 2;
-          return {
-            path: `M${previous.x} ${previous.y} C${previous.x} ${middle} ${node.x} ${middle} ${node.x} ${node.y}`,
-            done: node.done,
-          };
-        }),
-      );
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(list);
-    measure();
-    return () => observer.disconnect();
-  }, [tab, plan.data]);
   const refresh = async () => {
     await Promise.all([
       client.invalidateQueries({ queryKey: ["plan", planId] }),
@@ -190,37 +119,10 @@ export function PlanPage() {
       setBusy(false);
     }
   }
-  function startNode(node: Node, reviewDue = false) {
-    setSelectedNode(null);
-    if (node.state === "locked" && !reviewDue) return;
-    if (node.kind === "intro") {
-      navigate(`/plans/${planId}/intro`);
-      return;
-    }
-    if (["diagnostic", "simulation"].includes(node.kind)) {
-      navigate(`/plans/${planId}/${node.kind}`);
-      return;
-    }
-    if (node.kind === "gaps" && node.topicId) {
-      navigate(`/plans/${planId}/progress?drill=${encodeURIComponent(node.topicId)}`);
-      return;
-    }
-    if (
-      node.topicId &&
-      ["learn", "practice", "cards"].includes(node.kind)
-    ) {
-      navigate(
-        `/plans/${planId}/${node.kind === "learn" ? "lesson" : node.kind}/${node.topicId}`,
-      );
-      return;
-    }
-    void action(async () => {
-      await invoke("plans.complete", { planId, nodeId: node.id });
-      await refresh();
-    });
-  }
   function showCreate(topic?: string) {
-    setTopicId(topic ?? current?.topicId ?? plan.data?.topics[0]?.id ?? "");
+    setTopicId(
+      topic ?? recommended.data?.next?.topicId ?? plan.data?.topics[0]?.id ?? "",
+    );
     setLessonKind(null);
     setGroup("learn");
     setError("");
@@ -287,18 +189,6 @@ export function PlanPage() {
         questions?: Array<{ stem: string; options?: string[] }>;
       })
     : null;
-  const suggestion = plan.data?.nodes.find(
-    (node) => node.id === (proposal ?? recommended.data?.nodeId),
-  );
-  const alternatives =
-    plan.data?.nodes.filter(
-      (node) =>
-        node.state !== "locked" &&
-        (node.topicId !== null || node.kind === "simulation"),
-    ) ?? [];
-  const stages = Array.from(
-    new Set(plan.data?.nodes.map((node) => node.kind) ?? []),
-  );
   if (plan.data?.status === "building")
     return (
       <section>
@@ -410,158 +300,8 @@ export function PlanPage() {
       {error && !settingsOpen && !createOpen && (
         <Notice tone="danger">{error}</Notice>
       )}
-      {tab === "path" && (
-        <div className="px-plan-path-frame">
-          <ol ref={path} className="px-plan-path">
-            {stages.map((stage) => (
-              <li key={stage} className="px-plan-stage">
-                <h2 className="label">{t(`plans.${stage}`)}</h2>
-                <ol>
-                  {plan.data?.nodes
-                    .filter((node) => node.kind === stage)
-                    .map((node, index) => (
-                      <li
-                        key={node.id}
-                        data-node-id={node.id}
-                        className={`px-plan-node ${index % 2 ? "is-right" : "is-left"}`}
-                      >
-                        <Popover
-                          trigger="click"
-                          open={selectedNode === node.id}
-                          onOpenChange={(open) =>
-                            setSelectedNode(open ? node.id : null)
-                          }
-                          placement={index % 2 ? "left" : "right"}
-                          content={
-                            <div className="px-plan-node-popover">
-                              <h3 className="title-3">{node.title}</h3>
-                              <p className="small ink-muted">
-                                {t(`plans.${node.kind}`)}
-                              </p>
-                              {node.topicId && (
-                                <MasteryBar
-                                  label={t("progress.title")}
-                                  value={Math.round(
-                                    (progress?.topics.find(
-                                      (topic) => topic.id === node.topicId,
-                                    )?.mastery ?? 0) * 100,
-                                  )}
-                                  target={(plan.data?.target ?? 0.75) * 100}
-                                />
-                              )}
-                              <p className="small">
-                                {node.state === "locked"
-                                  ? t(
-                                      node.unlockReason ||
-                                        "plans.unlocksAfterCurrent",
-                                    )
-                                  : t("planOverview.nodeReady")}
-                              </p>
-                              {node.kind === "learn" &&
-                                node.state !== "locked" &&
-                                node.topicId && (
-                                  <div className="px-plan-node-lessons">
-                                    <LessonTile
-                                      icon="book-open"
-                                      label={t("lesson.title")}
-                                      onClick={() => startNode(node)}
-                                    />
-                                    <LessonTile
-                                      icon="network"
-                                      label={t("map.title")}
-                                      onClick={() =>
-                                        navigate(
-                                          `/plans/${planId}/map/${node.topicId}`,
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                )}
-                              {node.state !== "locked" && (
-                                <Button
-                                  type="primary"
-                                  onClick={() => startNode(node)}
-                                >
-                                  {t("planOverview.start")}
-                                </Button>
-                              )}
-                            </div>
-                          }
-                        >
-                          <div>
-                            <PathNode
-                              icon={icons[node.kind] ?? "book-open"}
-                              label={node.title}
-                              state={node.state}
-                              inspectable
-                              unlockHint={t(
-                                node.unlockReason ||
-                                  "plans.unlocksAfterCurrent",
-                              )}
-                            />
-                          </div>
-                        </Popover>
-                      </li>
-                    ))}
-                </ol>
-              </li>
-            ))}
-          </ol>
-          <svg className="px-plan-path-lines" aria-hidden>
-            {connectors.map((line, index) => (
-              <path
-                key={index}
-                d={line.path}
-                className={line.done ? "is-done" : ""}
-              />
-            ))}
-          </svg>
-        </div>
-      )}
-      {tab === "path" && suggestion && (
-        <div className="px-plan-dock">
-          <Dock
-            eyebrow={t("plans.recommended")}
-            title={suggestion.title}
-            reason={
-              proposal
-                ? t(
-                    suggestion.state === "done"
-                      ? "planOverview.reviewReason"
-                      : "plans.recommendNext",
-                  )
-                : t(
-                    recommended.data?.reason === "due"
-                      ? "plans.recommendDue"
-                      : recommended.data?.reason === "gaps"
-                        ? "plans.recommendGaps"
-                        : "plans.recommendNext",
-                    { count: recommended.data?.count ?? 0 },
-                  )
-            }
-            anotherDisabled={
-              alternatives.filter((node) => node.id !== suggestion.id)
-                .length === 0
-            }
-            continueLabel={t("wizard.continue")}
-            anotherLabel={t("planOverview.another")}
-            onContinue={() =>
-              startNode(
-                suggestion,
-                recommended.data?.reason === "due" &&
-                  suggestion.kind === "cards",
-              )
-            }
-            onAnother={() => {
-              const index = alternatives.findIndex(
-                (node) => node.id === suggestion.id,
-              );
-              setProposal(
-                alternatives[(index + 1) % alternatives.length]?.id ?? null,
-              );
-            }}
-          />
-        </div>
+      {tab === "path" && plan.data && (
+        <PlanPath planId={planId} plan={plan.data} guide={recommended.data ?? undefined} />
       )}
       {tab === "topics" && (
         <ul className="px-plan-topics">
@@ -1049,9 +789,10 @@ export function PlanPage() {
                   icon={tile.icon as IconName}
                   label={tile.label}
                   recommended={
-                    tile.kind === "lesson" && current?.kind === "learn"
+                    recommended.data?.next?.activity === tile.kind &&
+                    [topicId, null].includes(recommended.data.next.topicId)
                   }
-                  recommendedLabel={t("plans.recommended")}
+                  recommendedLabel={t("plans.path.suggested")}
                   onClick={() => chooseLesson(tile.kind)}
                 />
               ))}

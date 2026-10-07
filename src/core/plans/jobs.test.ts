@@ -567,7 +567,7 @@ describe("PLAN-21 durable plan build", () => {
         .prepare("SELECT prompt_template FROM plans WHERE id = ?")
         .get(edited.planId),
     ).toEqual({ prompt_template: "plan.tree" });
-    expect(plan.nodes.some((node) => node.state === "current")).toBe(true);
+    expect(plan.steps).toEqual([]);
 
     // With no tree at all the model proposes one, and the result is a draft too.
     const invented = enqueuePlan(db, runner, { title: "Fisica", sourceIds: [] });
