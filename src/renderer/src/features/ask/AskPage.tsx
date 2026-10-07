@@ -335,7 +335,7 @@ export function AskPage() {
     }
   }
 
-  function regenerate(row: { grounding: "sources" | "general" | null }) {
+  function regenerate() {
     if (!chatId) return;
     setBusy(true);
     setRegenerating(true);
@@ -350,7 +350,8 @@ export function AskPage() {
         planId,
         mode,
         subject,
-        allowGeneral: row.grounding === "general",
+        // Same rule as a first send: the reply's own grounding says nothing about whether sources are selected.
+        allowGeneral: !planId && sendIds.length === 0,
       },
       (event) => {
         const data = event as { text?: string };
@@ -458,7 +459,7 @@ export function AskPage() {
                 regenerateDisabled={busy}
                 onRegenerate={
                   row.id === lastTutor?.id && chatId
-                    ? () => regenerate(row)
+                    ? regenerate
                     : undefined
                 }
                 suggestions={

@@ -20,8 +20,30 @@ import {
   rateMessage,
   readChat,
   renameChat,
+  replyGrounding,
   seedChat,
 } from "./turn";
+
+describe("replyGrounding", () => {
+  const turn = { selected: true, cited: 0, attached: false, question: false, passages: 3 };
+  it("badges only a turn with sources selected whose answer cites none of them", () => {
+    expect(replyGrounding(turn)).toBe("general");
+    expect(replyGrounding({ ...turn, passages: 0 })).toBe("general");
+    expect(replyGrounding({ ...turn, cited: 2 })).toBe("sources");
+  });
+  it("never badges a turn with nothing selected", () => {
+    expect(replyGrounding({ ...turn, selected: false })).toBeNull();
+    expect(replyGrounding({ ...turn, selected: false, passages: 0 })).toBeNull();
+  });
+  it("counts the turn's own attachment as its source", () => {
+    expect(replyGrounding({ ...turn, attached: true })).toBe("sources");
+    expect(replyGrounding({ ...turn, selected: false, attached: true })).toBe("sources");
+  });
+  it("does not expect a Socratic question to cite, unless nothing was found", () => {
+    expect(replyGrounding({ ...turn, question: true })).toBe("sources");
+    expect(replyGrounding({ ...turn, question: true, passages: 0 })).toBe("general");
+  });
+});
 
 describe("chatTitleFrom", () => {
   it("keeps a short question and cuts a long one at a word near 60 characters", () => {
@@ -95,8 +117,11 @@ describe("askTurn", () => {
         text: "Il vettore posizione descrive il punto.",
       }),
     });
-    expect(factual.covered).toBe(false);
-    expect(factual.message).toBeNull();
+    // A factual reply with no citation is still kept; it is marked as not from the sources.
+    expect(factual.covered).toBe(true);
+    expect(factual.message?.citations).toEqual([]);
+    expect(factual.message?.grounding).toBe("general");
+    expect(question.message?.grounding).toBe("sources");
     db.close();
   });
 
@@ -132,11 +157,13 @@ describe("askTurn", () => {
       }),
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(readChat(db, first.chatId)).toEqual(before);
-    await regenerateTurn(db, {
+    // A model that still answers NOT_COVERED stores nothing and leaves the earlier answer in place.
+    const refused = await regenerateTurn(db, {
       chatId: first.chatId,
       allowGeneral: true,
       run: async () => ({ ...reply, text: "NOT_COVERED" }),
     });
+    expect(refused.covered).toBe(false);
     expect(readChat(db, first.chatId)).toEqual(before);
     let prompt = "";
     const result = await regenerateTurn(db, {
@@ -289,10 +316,13 @@ describe("askTurn", () => {
       sourceIds: ["missing-source"],
       run: async () => reply,
     });
-    expect(outside.covered).toBe(false);
+    // Nothing found in the chosen source: the question is still answered, and marked as not from the sources.
+    expect(outside.covered).toBe(true);
+    expect(outside.message?.citations).toEqual([]);
+    expect(outside.message?.grounding).toBe("general");
   });
 
-  it("does not keep a source answer that cites nothing", async () => {
+  it("keeps a source answer that cites nothing and marks it as general knowledge", async () => {
     const db = openDatabase(":memory:");
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
@@ -315,10 +345,10 @@ describe("askTurn", () => {
       sourceIds: [imported.sourceId],
       run: async () => ({ ...reply, text: "Senza un rimando." }),
     });
-    expect(result.covered).toBe(false);
-    expect(
-      readChat(db, result.chatId).some((row) => row.role === "assistant"),
-    ).toBe(false);
+    expect(result.covered).toBe(true);
+    expect(result.message?.body).toBe("Senza un rimando.");
+    expect(result.message?.grounding).toBe("general");
+    expect(readChat(db, result.chatId).at(-1)?.grounding).toBe("general");
   });
 
   it("reuses the pending question for a general answer", async () => {
@@ -326,10 +356,12 @@ describe("askTurn", () => {
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
     ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    // The model refuses, so the question is stored and the answer is not.
     const first = await askTurn(db, {
       text: "fotosintesi delle banane",
-      run: async () => reply,
+      run: async () => ({ ...reply, text: "NOT_COVERED" }),
     });
+    expect(first.covered).toBe(false);
     await askTurn(db, {
       chatId: first.chatId,
       text: "fotosintesi delle banane",
@@ -343,9 +375,10 @@ describe("askTurn", () => {
       (row) => row.role === "user",
     );
     expect(users).toHaveLength(1);
+
   });
 
-  it("skips the model when the material does not cover the question", async () => {
+  it("still asks the model when the material does not cover the question, and says so", async () => {
     const db = openDatabase(":memory:");
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
@@ -363,19 +396,22 @@ describe("askTurn", () => {
           "## p1 | Energia\nIl vettore posizione descrive il punto.\n",
       }),
     );
-    let calls = 0;
+    let system = "";
+    let prompt = "";
     const result = await askTurn(db, {
       text: "fotosintesi delle banane",
-      run: async () => {
-        calls += 1;
-        return reply;
+      subject: "Biologia",
+      run: async (input) => {
+        system = input.system ?? "";
+        prompt = input.prompt;
+        return { ...reply, text: "La fotosintesi usa la luce.\n<followups>\nA\nB\nC\n</followups>" };
       },
     });
-    expect(result.covered).toBe(false);
-    expect(calls).toBe(0);
-    expect(
-      readChat(db, result.chatId).some((row) => row.role === "assistant"),
-    ).toBe(false);
+    expect(result.covered).toBe(true);
+    expect(system).toContain("Never refuse");
+    expect(prompt).toContain("No passage matches this question.");
+    expect(result.message?.citations).toEqual([]);
+    expect(result.message?.grounding).toBe("general");
   });
 
   it("answers from general knowledge when asked", async () => {
@@ -391,7 +427,8 @@ describe("askTurn", () => {
         text: "Dalle conoscenze generali: la fotosintesi usa la luce.\n<followups>\nA\nB\nC\n</followups>",
       }),
     });
-    expect(result.message?.grounding).toBe("general");
+    // Nothing was selected, so there is no "not from your sources" to say.
+    expect(result.message?.grounding).toBeNull();
     expect(result.message?.citations).toHaveLength(0);
   });
 
@@ -597,9 +634,10 @@ describe("askTurn", () => {
       chatId: result.chatId,
       text: "Who wrote Hamlet?",
       workspace: dir,
-      run: async () => reply,
+      run: async () => ({ ...reply, text: "Shakespeare." }),
     });
-    expect(aside.covered).toBe(false);
+    expect(aside.covered).toBe(true);
+    expect(aside.message?.grounding).toBe("general");
   });
 
   it("reads an image with local OCR when the model cannot see it", async () => {
@@ -663,7 +701,7 @@ describe("askTurn", () => {
     expect(result.message?.body).toContain("[P1]");
   });
 
-  it("does not treat a blank image as covered when the model cannot see it", async () => {
+  it("does not treat a blank image as a source when the model cannot see it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pyxis-blank-"));
     const file = join(dir, "board.png");
     writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
@@ -681,7 +719,9 @@ describe("askTurn", () => {
       recognize: async () => "",
       run: async () => reply,
     });
-    expect(result.covered).toBe(false);
+    // Nothing was selected and the photo gave no text, so it is an ordinary general answer with no badge.
+    expect(result.covered).toBe(true);
+    expect(result.message?.grounding).toBeNull();
   });
 
   it("refuses an attachment over 15 MB", async () => {
