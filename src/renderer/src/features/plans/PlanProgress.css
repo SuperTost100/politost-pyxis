@@ -1,9 +1,21 @@
 .px-plan-progress {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-8);
   width: 100%;
   margin: var(--space-5) 0;
+}
+.px-progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.px-progress-section + .px-progress-section {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-8);
+}
+.px-progress-section > h2 {
+  margin: 0;
 }
 .px-preparation,
 .px-progress-block {
@@ -12,9 +24,9 @@
   gap: var(--space-4);
 }
 .px-preparation {
-  gap: var(--space-8);
+  gap: var(--space-6);
 }
-.px-progress-block h2 {
+.px-progress-block h3 {
   margin: 0;
 }
 .px-progress-chart {
@@ -142,6 +154,13 @@
 }
 .px-progress-empty {
   color: var(--ink-muted);
+  margin: 0;
+}
+.px-progress-inline-action.ant-btn {
+  height: auto;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
 }
 @media (max-width: 700px) {
   .px-progress-skills li {
