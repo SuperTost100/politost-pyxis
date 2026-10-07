@@ -18,6 +18,7 @@ import dateEn from "antd/es/date-picker/locale/en_GB";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
+import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { invoke } from "../../lib/ipc";
 import { MasteryBar } from "../../components/MasteryBar";
 import { PathNode } from "../../components/PathNode";
@@ -79,11 +80,6 @@ export function PlanPage() {
     queryFn: () => invoke("plans.series", { planId }),
     refetchOnMount: "always",
   });
-  const intro = useQuery({
-    queryKey: ["plan", planId, "intro"],
-    enabled: !!planId,
-    queryFn: () => invoke("plans.intro", { planId }),
-  });
   const [pickerOpen, setPickerOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
@@ -95,7 +91,6 @@ export function PlanPage() {
     refetchInterval: pickerOpen ? 1000 : false,
     queryFn: () => invoke("sources.list", {}),
   });
-  const [introOpen, setIntroOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -199,7 +194,7 @@ export function PlanPage() {
     setSelectedNode(null);
     if (node.state === "locked" && !reviewDue) return;
     if (node.kind === "intro") {
-      setIntroOpen(true);
+      navigate(`/plans/${planId}/intro`);
       return;
     }
     if (["diagnostic", "simulation"].includes(node.kind)) {
@@ -851,7 +846,10 @@ export function PlanPage() {
             if (passageId) openSourceViewer({ passageId });
           }}
         >
-          {previewBody?.markdown ?? ""}
+          {smartTextToMarkdown(
+            previewBody?.markdown ?? "",
+            i18n.language.startsWith("it") ? smartLabels.it : smartLabels.en,
+          )}
         </MarkdownView>
         {previewBody?.questions?.map((question, index) => (
           <section key={index}>
@@ -873,39 +871,6 @@ export function PlanPage() {
           simulations={simulations.data ?? []}
         />
       )}
-      <Modal
-        open={introOpen}
-        title={t("plans.intro")}
-        onCancel={() => !busy && setIntroOpen(false)}
-        footer={
-          <Button
-            type="primary"
-            loading={busy}
-            onClick={() =>
-              void action(async () => {
-                const node = plan.data?.nodes.find(
-                  (node) => node.kind === "intro",
-                );
-                if (node?.state === "current")
-                  await invoke("plans.complete", { planId, nodeId: node.id });
-                await refresh();
-                setIntroOpen(false);
-              })
-            }
-          >
-            {t("wizard.continue")}
-          </Button>
-        }
-      >
-        <MarkdownView
-          onCitationClick={(number) => {
-            const passageId = intro.data?.passageIds[number - 1];
-            if (passageId) openSourceViewer({ passageId });
-          }}
-        >
-          {intro.data?.markdown ?? ""}
-        </MarkdownView>
-      </Modal>
       <Modal
         open={settingsOpen}
         title={t("planOverview.settings")}
