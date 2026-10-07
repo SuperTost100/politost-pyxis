@@ -158,8 +158,8 @@
     "pastExam": "Past exam",
     "continuePlan": "Continue {{title}}",
     "imported": "Imported",
-    "aligned_one": "{{count}} of {{total}} topics on target",
-    "aligned_other": "{{count}} of {{total}} topics on target"
+    "aligned_one": "{{ready}} of {{count}} topic on track",
+    "aligned_other": "{{ready}} of {{count}} topics on track"
   },
   "sources": {
     "dropSkipped": "Some items were skipped. Drop individual files of the listed types.",
@@ -268,7 +268,7 @@
       "ocrData": "Download scan-reading data"
     },
     "copySelection": "Copy",
-    "embedQueued": "The download is in jobs. You can cancel or resume it.",
+    "embedQueued": "The download is in your background tasks. You can cancel or resume it.",
     "status": {
       "queued": "Queued",
       "extracting": "Reading",
@@ -804,7 +804,7 @@
     "forecast": "Exam forecast",
     "target": "target {{value}}%",
     "weeklyChange": "{{value}}% this week",
-    "topicsOnTrack": "topics on track",
+    "topicsOnTrack": "Topics on track",
     "lessonsDone": "Lessons completed",
     "gapsCount": "Gaps · {{count}}",
     "fillWorst": "Work on the most serious gap",
