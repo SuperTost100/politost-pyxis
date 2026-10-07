@@ -715,8 +715,9 @@ export function bindChat(
   db: Parameters<typeof chatHandlers>[0],
   workspace = "",
   fixtureReply?: string,
+  replyDelayMs = 0,
 ): void {
-  chats = chatHandlers(db, workspace, fixtureReply);
+  chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs);
 }
 
 export function bindSources(

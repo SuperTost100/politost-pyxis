@@ -234,29 +234,6 @@ html[data-platform="darwin"] .ant-layout-header {
   align-items: center;
 }
 
-.ask-home {
-  min-height: calc(100vh - 180px);
-  display: flex;
-  flex-direction: column;
-}
-
-.ask-greeting {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding-bottom: 8vh;
-}
-
-.ask-greeting h1 {
-  margin: 0;
-}
-
-.ask-greeting p {
-  margin: var(--space-3) 0 0;
-  color: var(--ink-muted);
-}
-
 .composer {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -531,26 +508,6 @@ ul.choice-list {
   list-style: none;
   padding: 0;
   margin-block: var(--space-4);
-}
-.ask-attachments {
-  list-style: none;
-  padding: 0;
-  margin-block: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.ask-attachments li {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.ask-attachment-preview {
-  max-width: 280px;
-  max-height: 160px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
 }
 @media (max-width: 600px) {
   .px-form-grid {

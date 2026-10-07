@@ -2,7 +2,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Modal, Popconfirm, Select } from "antd";
+import { Button, Input, Modal, Popconfirm } from "antd";
 import { GripVertical } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -25,11 +25,11 @@ function SubjectRow({ item, disabled, remove }: { item: Subject; disabled: boole
   </li>;
 }
 
-export function SubjectPicker({ value, onChange, disabled, managementOnly = false }: { value: string; onChange: (value: string) => void; disabled?: boolean; managementOnly?: boolean }) {
+/** The subject list as a dialog: add, reorder by drag or keyboard, remove. `value` is the subject in use, so removing it clears it. */
+export function SubjectManagerModal({ open, onClose, value, onChange }: { open: boolean; onClose: () => void; value: string; onChange: (value: string) => void }) {
   const { t } = useTranslation();
   const client = useQueryClient();
   const subjects = useQuery({ queryKey: ["subjects"], queryFn: () => invoke("subjects.list", {}) });
-  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const change = useMutation({
@@ -45,15 +45,8 @@ export function SubjectPicker({ value, onChange, disabled, managementOnly = fals
     onSuccess: () => { void client.invalidateQueries({ queryKey: ["subjects"] }); void client.invalidateQueries({ queryKey: ["plans"] }); },
   });
   const rows = subjects.data ?? [];
-  const options = rows.map((row) => ({ value: row.name, label: row.name }));
-  if (value && !rows.some((row) => row.name === value)) options.push({ value, label: value });
   return <>
-    <div className="subject-picker">
-      {!managementOnly ? <><span className="small" id="subject-picker-label">{t("ask.subject")}</span>
-      <Select value={value || undefined} onChange={(next) => onChange(next ?? "")} aria-labelledby="subject-picker-label" showSearch allowClear disabled={disabled} options={options} placeholder={t("ask.chooseSubject")} /></> : null}
-      <Button type="text" disabled={disabled} onClick={() => { change.reset(); setOpen(true); }}>{t("ask.manageSubjects")}</Button>
-    </div>
-    <Modal open={open} onCancel={() => setOpen(false)} title={t("ask.manageSubjects")} footer={null}>
+    <Modal open={open} onCancel={onClose} afterOpenChange={(next) => { if (next) change.reset(); }} title={t("ask.manageSubjects")} footer={null}>
       <p className="small">{t("ask.subjectOrderHelp")}</p>
       {subjects.isError || change.isError ? <Notice tone="danger">{t("ask.subjectSaveFailed")}</Notice> : null}
       <DndContext sensors={sensors} collisionDetection={closestCenter} accessibility={{ screenReaderInstructions: { draggable: t("ask.subjectDragInstructions") }, announcements: {
@@ -78,3 +71,14 @@ export function SubjectPicker({ value, onChange, disabled, managementOnly = fals
     </Modal>
   </>;
 }
+
+/** Settings entry point: a button that opens the subject manager. */
+export function SubjectPicker({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  return <div className="subject-picker">
+    <Button type="text" disabled={disabled} onClick={() => setOpen(true)}>{t("ask.manageSubjects")}</Button>
+    <SubjectManagerModal open={open} onClose={() => setOpen(false)} value={value} onChange={onChange} />
+  </div>;
+}
+

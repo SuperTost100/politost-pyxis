@@ -242,9 +242,7 @@ export function SettingsPage() {
     ),
     subjects: (
       <>
-        {" "}
-        <div className="label section-label">{t("ask.subject")}</div>
-        <SubjectPicker value="" onChange={() => undefined} managementOnly />
+        <SubjectPicker value="" onChange={() => undefined} />
       </>
     ),
     profile: (

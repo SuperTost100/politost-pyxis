@@ -1,0 +1,10 @@
+.ask-panel .ant-drawer-content { background: var(--surface); }
+.ask-panel .ant-drawer-body { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); }
+.ask-panel-empty { margin: 0; color: var(--ink-muted); }
+.ask-panel-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ask-panel-row { display: flex; align-items: center; gap: var(--space-1); min-height: var(--control-md); padding-left: var(--space-3); padding-right: var(--space-1); border-radius: var(--radius-md); }
+.ask-panel-row:hover, .ask-panel-row:focus-within { background: var(--surface-raised); }
+.ask-panel-row.is-current { background: var(--primary-soft); }
+.ask-panel-title { flex: 1; min-width: 0; padding: var(--space-2) 0; border: 0; background: transparent; color: var(--ink); font: 400 calc(15px * var(--text-scale))/calc(20px * var(--text-scale)) var(--font-sans); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-panel-row.is-current .ask-panel-title { color: var(--primary-text); font-weight: 500; }
+.ask-panel-rename { flex: 1; min-width: 0; margin: var(--space-1) var(--space-2) var(--space-1) 0; }

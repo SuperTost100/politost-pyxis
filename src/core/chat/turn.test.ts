@@ -13,6 +13,7 @@ import {
   regenerateTurn,
   chatContext,
   chatScope,
+  chatTitleFrom,
   deleteChat,
   heldSources,
   listChats,
@@ -21,6 +22,19 @@ import {
   renameChat,
   seedChat,
 } from "./turn";
+
+describe("chatTitleFrom", () => {
+  it("keeps a short question and cuts a long one at a word near 60 characters", () => {
+    expect(chatTitleFrom("  Che cos'è\n il vettore?  ")).toBe("Che cos'è il vettore?");
+    const long = chatTitleFrom(
+      "Mi spieghi con calma come si dimostra il teorema fondamentale del calcolo integrale partendo dalla definizione?",
+    );
+    expect(long.length).toBeLessThanOrEqual(61);
+    expect(long.endsWith("…")).toBe(true);
+    expect(long).not.toMatch(/\s…$/);
+    expect(chatTitleFrom("a".repeat(100))).toBe(`${"a".repeat(60)}…`);
+  });
+});
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -225,6 +239,8 @@ describe("askTurn", () => {
     expect(readChat(db, result.chatId).at(-1)?.reaction).toBe("up");
     expect(rateMessage(db, messageId, "up")).toBe(null);
     expect(rateMessage(db, messageId, "down")).toBe("down");
+    // The chat is named after its first question until the student renames it.
+    expect(listChats(db)[0]?.title).toBe("Che cos'è il vettore?");
     renameChat(db, result.chatId, "Moti");
     expect(listChats(db)[0]?.title).toBe("Moti");
     expect(() => renameChat(db, result.chatId, "  ")).toThrow(/chat-title/);
