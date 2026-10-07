@@ -252,7 +252,7 @@ test("Quiz: an open answer takes a formula from the keyboard inline", async () =
     // Only open questions: switch the other four kinds off.
     const types = page.getByRole("group", { name: "Tipi di domanda" });
     for (const name of ["Scelta multipla", "Vero o falso", "Completamento", "Abbinamento"])
-      await types.getByRole("button", { name }).click();
+      await types.getByRole("button", { name, exact: true }).click();
     await page.getByRole("button", { name: "Inizia", exact: true }).click();
     await expect(page.getByText(/^Domanda 1 di \d+$/)).toBeVisible();
 

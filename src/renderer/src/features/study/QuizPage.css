@@ -617,3 +617,9 @@
     padding-left: var(--space-2);
   }
 }
+
+/* A locked answer stays readable while it is checked and after. */
+.px-quiz-open textarea:disabled,
+.px-quiz-blanks input:disabled {
+  color: var(--ink);
+}
