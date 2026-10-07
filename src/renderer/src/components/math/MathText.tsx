@@ -1,6 +1,6 @@
 import katex from "katex";
 import { useMemo } from "react";
-import { parseMathText } from "./mathText";
+import { parseMathText } from "./mathString";
 import "katex/dist/katex.min.css";
 import "./MathText.css";
 
