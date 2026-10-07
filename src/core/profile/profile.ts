@@ -47,6 +47,8 @@ const empty: Profile = {
   followups: true,
   dyslexia: false,
   textSize: "md",
+  // Off unless a save says otherwise. First setup sends true when the student leaves its switch on. An install that
+  // never saw that switch reads as off and stays off, because every save writes the value it read.
   crashReports: false,
 };
 

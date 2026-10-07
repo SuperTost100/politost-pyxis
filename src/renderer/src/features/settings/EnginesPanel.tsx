@@ -16,6 +16,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { engineProviders as providers, type RequestOutput } from "@shared/ipc";
 import { EngineRow } from "../../components/EngineRow";
 import { Icon } from "../../components/Icon";
@@ -46,7 +47,80 @@ const AUTO = "__auto__";
 const advancedKey = "pyxis.engines.advanced";
 type Engine = RequestOutput<"engines.overview">[number];
 type Model = RequestOutput<"engines.models">[number];
-const docs = "https://github.com/SuperTost100/cli-funnel#quickstart";
+export const docs = "https://github.com/SuperTost100/cli-funnel#quickstart";
+type Features = RequestOutput<"engines.features">;
+type SummaryInput = {
+  t: TFunction;
+  language: string;
+  overview: Engine[] | undefined;
+  features: Features | undefined;
+  nothingReady: boolean;
+};
+
+function summaryParts(input: SummaryInput) {
+  const { t, overview, features } = input;
+  const tasksByEngine = new Map<string, string[]>();
+  for (const task of summaryTasks) {
+    const selection = features?.[task];
+    if (!selection) continue;
+    tasksByEngine.set(selection.provider, [
+      ...(tasksByEngine.get(selection.provider) ?? []),
+      t(`engines.task.${task}`),
+    ]);
+  }
+  const listFormat = new Intl.ListFormat(
+    input.language.startsWith("it") ? "it" : "en-GB",
+    { style: "long", type: "conjunction" },
+  );
+  const engineName = (id: string) =>
+    overview?.find((row) => row.id === id)?.name ?? id;
+  return { tasksByEngine, listFormat, engineName };
+}
+
+/**
+ * With three or more engines the summary reads better as one line each, for example "Antigravity: chat and maps".
+ */
+export function engineSummaryLines(
+  input: SummaryInput,
+): Array<{ id: string; name: string; tasks: string }> {
+  if (input.nothingReady) return [];
+  const { tasksByEngine, listFormat, engineName } = summaryParts(input);
+  if (tasksByEngine.size <= 2) return [];
+  return [...tasksByEngine].map(([id, tasks]) => ({
+    id,
+    name: engineName(id),
+    tasks: listFormat.format(tasks),
+  }));
+}
+
+/**
+ * The plain-words sentence for the automatic choice, for example "Pyxis uses Codex for chat and maps and Claude Code
+ * for plans". Shared with first setup so both screens say the same thing.
+ */
+export function engineSummaryText(input: SummaryInput): string | null {
+  const { t } = input;
+  if (input.nothingReady) return t("engines.auto.none");
+  const { tasksByEngine, listFormat, engineName } = summaryParts(input);
+  if (tasksByEngine.size > 2)
+    return t("engines.auto.split", { count: tasksByEngine.size });
+  if (tasksByEngine.size === 1)
+    return t("engines.auto.single", {
+      name: engineName([...tasksByEngine.keys()][0]!),
+    });
+  if (tasksByEngine.size > 1)
+    return t("engines.auto.summary", {
+      parts: listFormat.format(
+        [...tasksByEngine].map(([id, tasks]) =>
+          t("engines.auto.part", {
+            name: engineName(id),
+            tasks: listFormat.format(tasks),
+          }),
+        ),
+      ),
+    });
+  return null;
+}
+
 function messageKey(err: unknown): string {
   if (
     err &&
@@ -380,50 +454,20 @@ export function EnginesPanel() {
     }
     return ids.join(" · ");
   }
-  const tasksByEngine = new Map<string, string[]>();
-  for (const task of summaryTasks) {
-    const selection = features.data?.[task];
-    if (!selection) continue;
-    tasksByEngine.set(selection.provider, [
-      ...(tasksByEngine.get(selection.provider) ?? []),
-      t(`engines.task.${task}`),
-    ]);
-  }
-  const listFormat = new Intl.ListFormat(
-    i18n.language.startsWith("it") ? "it" : "en-GB",
-    { style: "long", type: "conjunction" },
-  );
-  const engineName = (id: string) =>
-    overview.data?.find((row) => row.id === id)?.name ?? id;
-  // Three or more engines read better as one line each than as one long sentence.
-  const summaryLines =
-    !nothingReady && tasksByEngine.size > 2
-      ? [...tasksByEngine].map(([id, tasks]) => ({
-          id,
-          name: engineName(id),
-          tasks: listFormat.format(tasks),
-        }))
-      : [];
-  const summaryText = nothingReady
-    ? t("engines.auto.none")
-    : summaryLines.length
-      ? t("engines.auto.split", { count: summaryLines.length })
-      : tasksByEngine.size === 1
-      ? t("engines.auto.single", {
-          name: engineName([...tasksByEngine.keys()][0]!),
-        })
-      : tasksByEngine.size > 1
-        ? t("engines.auto.summary", {
-            parts: listFormat.format(
-              [...tasksByEngine].map(([id, tasks]) =>
-                t("engines.auto.part", {
-                  name: engineName(id),
-                  tasks: listFormat.format(tasks),
-                }),
-              ),
-            ),
-          })
-        : null;
+  const summaryText = engineSummaryText({
+    t,
+    language: i18n.language,
+    overview: overview.data,
+    features: features.data,
+    nothingReady,
+  });
+  const summaryLines = engineSummaryLines({
+    t,
+    language: i18n.language,
+    overview: overview.data,
+    features: features.data,
+    nothingReady,
+  });
   function renderRow(row: Engine, simple = false) {
     return (
       <div
