@@ -8,3 +8,5 @@
 .ask-panel-title { flex: 1; min-width: 0; padding: var(--space-2) 0; border: 0; background: transparent; color: var(--ink); font: 400 calc(15px * var(--text-scale))/calc(20px * var(--text-scale)) var(--font-sans); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ask-panel-row.is-current .ask-panel-title { color: var(--primary-text); font-weight: 500; }
 .ask-panel-rename { flex: 1; min-width: 0; margin: var(--space-1) var(--space-2) var(--space-1) 0; }
+/* The window has no title bar on macOS, so the traffic lights float over the drawer's top-left corner; start the header below them. */
+html[data-platform="darwin"] .ask-panel .ant-drawer-header { padding-top: 44px; }

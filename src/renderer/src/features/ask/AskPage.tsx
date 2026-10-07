@@ -218,6 +218,25 @@ export function AskPage() {
     };
   }, []);
 
+  // The chat controls sit under the header, aligned with the logo's left edge, which is left of the centred column.
+  useLayoutEffect(() => {
+    const node = page.current;
+    if (!node) return;
+    const align = () => {
+      const logo = document.querySelector("header img")?.getBoundingClientRect().left;
+      const shift =
+        logo === undefined ? 0 : Math.max(0, Math.round(node.getBoundingClientRect().left - logo));
+      node.style.setProperty("--ask-bar-shift", `${shift}px`);
+    };
+    align();
+    const frame = requestAnimationFrame(align);
+    window.addEventListener("resize", align);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", align);
+    };
+  }, []);
+
   // Keep the newest text in view while the student has not scrolled up.
   const page = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -399,22 +418,22 @@ export function AskPage() {
   return (
     <div className="ask-page" ref={page}>
       <div className="ask-bar">
-        <Button
-          type="text"
-          shape="circle"
-          aria-label={t("ask.chatsOpen")}
-          aria-expanded={panelOpen}
-          icon={<PanelLeft size={18} aria-hidden />}
-          onClick={() => setPanelOpen(true)}
-        />
-        <Button
-          type="text"
-          shape="round"
-          icon={<Plus size={16} aria-hidden />}
-          onClick={() => navigate("/ask")}
-        >
-          {t("ask.new")}
-        </Button>
+        <div className="ask-bar-tools">
+          <Button
+            type="text"
+            aria-label={t("ask.chatsOpen")}
+            aria-expanded={panelOpen}
+            icon={<PanelLeft size={18} aria-hidden />}
+            onClick={() => setPanelOpen(true)}
+          />
+          <Button
+            type="text"
+            icon={<Plus size={16} aria-hidden />}
+            onClick={() => navigate("/ask")}
+          >
+            {t("ask.new")}
+          </Button>
+        </div>
       </div>
       <ChatPanel
         open={panelOpen}
