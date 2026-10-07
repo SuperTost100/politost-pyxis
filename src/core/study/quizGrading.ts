@@ -13,6 +13,7 @@ import {
   answerOf,
   expectedText,
   submitAttempt,
+  type AttemptResult,
   type StoredQuestion,
 } from "./attempt";
 import { gradeAnswer } from "./grade";
@@ -95,6 +96,8 @@ export function quizAttempt(db: Database.Database, attemptId: string) {
     },
   };
 }
+/** Every quiz kind is corrected one answer at a time; a simulation has its own grading. */
+const CHECKED_KINDS = ["quiz", "diagnostic", "review"];
 /** Only non-blank open answers cost a model call; blank ones score 0 without one. */
 function needsModel(question: StoredQuestion, pick: string | undefined) {
   return question.answer.kind === "open" && Boolean(pick?.trim());
@@ -202,8 +205,9 @@ export async function gradeQuizQuestion(
   const attempt = quizAttempt(db, attemptId);
   const stored = checkedAnswer(db, attemptId, questionId);
   if (stored?.pick === pick) return stored;
-  if (stored && attempt.body.config?.feedback) throw new Error("answer-locked");
-  if (attempt.kind !== "quiz" || !attempt.body.config)
+  // A checked answer is final: its correction has been shown.
+  if (stored) throw new Error("answer-locked");
+  if (!CHECKED_KINDS.includes(attempt.kind))
     throw new Error("feedback-unavailable");
   const question = attempt.body.questions.find((row) => row.id === questionId);
   if (!question) throw new Error("question-missing");
@@ -234,8 +238,7 @@ export async function gradeQuizQuestion(
     quizAttempt(db, attemptId);
     const concurrent = checkedAnswer(db, attemptId, questionId);
     if (concurrent?.pick === pick) return concurrent;
-    if (concurrent && attempt.body.config?.feedback)
-      throw new Error("answer-locked");
+    if (concurrent) throw new Error("answer-locked");
     replaceCheck(db, attemptId, checked);
     return checked;
   })();
@@ -558,7 +561,7 @@ export function submitQuiz(
     const pick = given ?? checked?.pick ?? (config ? "" : undefined);
     if (pick === undefined) continue;
     // Late, a checked answer stays as it was checked rather than failing the forced submit.
-    if (checked && checked.pick !== pick && config?.feedback) {
+    if (checked && checked.pick !== pick) {
       if (!expired) throw new Error("answer-locked");
       picks[question.id] = checked.pick;
       continue;
@@ -598,8 +601,8 @@ export async function checkQuestion(
     !needsModel(question, pick)
   )
     return gradeQuizQuestion(db, attemptId, questionId, pick, run);
-  if (stored && attempt.body.config?.feedback) throw new Error("answer-locked");
-  if (attempt.kind !== "quiz" || !attempt.body.config)
+  if (stored) throw new Error("answer-locked");
+  if (!CHECKED_KINDS.includes(attempt.kind))
     throw new Error("feedback-unavailable");
   const jobId = runner.start("quiz-check", {
     attemptId,
@@ -615,6 +618,21 @@ export async function checkQuestion(
   } finally {
     runner.dismiss(jobId);
   }
+}
+/** Stops the model check of one answer, if it is still running; the answer stays unchecked and editable. */
+export function cancelCheck(
+  db: Database.Database,
+  runner: Runner | undefined,
+  attemptId: string,
+  questionId: string,
+) {
+  const jobs = db
+    .prepare(
+      "SELECT id FROM jobs WHERE kind = 'quiz-check' AND state IN ('queued', 'running') AND json_extract(params_json, '$.attemptId') = ? AND json_extract(params_json, '$.questionId') = ?",
+    )
+    .all(attemptId, questionId) as Array<{ id: string }>;
+  for (const job of jobs) runner?.cancel(job.id);
+  return { ok: true as const };
 }
 async function jobSettled(db: Database.Database, jobId: string) {
   for (;;) {
@@ -646,12 +664,7 @@ export function readQuizGrading(db: Database.Database, attemptId: string) {
     ? (JSON.parse(final.payload_json) as {
         score: number;
         picks: Record<string, string>;
-        results: Array<{
-          id: string;
-          score: number;
-          expected: string;
-          explanation: string;
-        }>;
+        results: AttemptResult[];
       })
     : undefined;
   return {

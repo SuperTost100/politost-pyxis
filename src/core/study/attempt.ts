@@ -1,6 +1,9 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { flaggedIds } from "./flags";
 import { gradeAnswer, type Grade } from "./grade";
+
+export { QUIZ_MAX_QUESTIONS } from "../../shared/quiz";
 
 export type QuizQuestion = {
   id: string;
@@ -103,6 +106,34 @@ export function startAttempt(
   };
 }
 
+/** A question the student marked wrong ("Domanda sbagliata?"): by its own id or the exercise it came from. */
+export function questionFlagged(
+  blocked: Set<string>,
+  question: { id: string; sourceId?: string },
+): boolean {
+  return (
+    blocked.has(question.id) ||
+    (question.sourceId != null && blocked.has(question.sourceId))
+  );
+}
+
+export type AttemptResult = {
+  id: string;
+  score: number;
+  expected: string;
+  explanation: string;
+  /** Marked wrong by the student: shown, but left out of the score. */
+  flagged?: boolean;
+};
+
+/** Mean credit of the questions that still count; flagged ones are left out. */
+export function attemptScore(results: AttemptResult[]): number {
+  const counted = results.filter((row) => !row.flagged);
+  return counted.length === 0
+    ? 0
+    : counted.reduce((sum, row) => sum + row.score, 0) / counted.length;
+}
+
 export function submitAttempt(
   db: Database.Database,
   attemptId: string,
@@ -114,12 +145,7 @@ export function submitAttempt(
   >,
 ): {
   score: number;
-  results: Array<{
-    id: string;
-    score: number;
-    expected: string;
-    explanation: string;
-  }>;
+  results: AttemptResult[];
 } {
   const attempt = db
     .prepare(
@@ -131,7 +157,8 @@ export function submitAttempt(
   if (!attempt) throw new Error("attempt-missing");
   if (attempt.submitted_at != null) throw new Error("attempt-closed");
   const stored = JSON.parse(attempt.body_json) as Stored;
-  const results = stored.questions.map((question) => ({
+  const blocked = flaggedIds(db, "exercise");
+  const results: AttemptResult[] = stored.questions.map((question) => ({
     id: question.id,
     score:
       graded?.get(question.id)?.score ??
@@ -139,11 +166,9 @@ export function submitAttempt(
     expected: graded?.get(question.id)?.expected ?? expectedText(question),
     explanation:
       graded?.get(question.id)?.explanation ?? question.explanation ?? "",
+    ...(questionFlagged(blocked, question) ? { flagged: true } : {}),
   }));
-  const score =
-    results.length === 0
-      ? 0
-      : results.reduce((sum, row) => sum + row.score, 0) / results.length;
+  const score = attemptScore(results);
   db.prepare(
     `INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)`,
   ).run(uuidv7(now), attemptId, JSON.stringify({ picks, results, score }), now);

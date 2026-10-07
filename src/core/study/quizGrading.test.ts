@@ -5,6 +5,7 @@ import { promptProvenance } from "../engine/prompts";
 import { createRunner } from "../jobs/runner";
 import { saveQuiz, startAttempt, type QuizQuestion } from "./attempt";
 import {
+  cancelCheck,
   checkQuestion,
   checkedAnswer,
   gradeQuizQuestion,
@@ -392,6 +393,45 @@ describe("quiz grading job", () => {
     expect(db.prepare("SELECT count(*) AS n FROM jobs").get()).toEqual({
       n: 0,
     });
+    db.close();
+  });
+
+  it("checks a diagnostic open answer right away, and a cancelled check leaves it editable", async () => {
+    const { db, attemptId } = fixture([open("a")], "diagnostic");
+    let hang = true;
+    const runner = createRunner(db, () => {});
+    const run: GenerateInput["run"] = async (input) => {
+      if (hang)
+        await new Promise((_, reject) =>
+          input.signal!.addEventListener(
+            "abort",
+            () =>
+              reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            { once: true },
+          ),
+        );
+      return reply(0.5);
+    };
+    registerQuizGradingJobs(db, runner, run);
+    const pending = checkQuestion(db, runner, run, attemptId, "a", "first try");
+    for (let i = 0; i < 200; i++) {
+      const job = db
+        .prepare("SELECT state FROM jobs WHERE kind = 'quiz-check'")
+        .get() as { state: string } | undefined;
+      if (job?.state === "running") break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    cancelCheck(db, runner, attemptId, "a");
+    await expect(pending).rejects.toThrow();
+    expect(checkedAnswer(db, attemptId, "a")).toBeUndefined();
+    hang = false;
+    const checked = await checkQuestion(db, runner, run, attemptId, "a", "second try");
+    expect(checked).toMatchObject({ score: 0.5, pick: "second try" });
+    // Submitting reuses the check; no second model call is made for it.
+    submitQuiz(db, runner, attemptId, { a: "second try" });
+    const done = await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(done.total).toBe(0);
+    expect(done.result!.score).toBe(0.5);
     db.close();
   });
 

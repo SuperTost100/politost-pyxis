@@ -28,7 +28,7 @@ describe("prompt templates", () => {
     // Smart text: lessons teach with inline blocks and no citations.
     expect(loadTemplate("lesson.write").version).toBe("smart-1");
     expect(loadTemplate("plan.intro").version).toBe("3");
-    expect(loadTemplate("quiz.batch").version).toBe("quiz-3");
+    expect(loadTemplate("quiz.batch").version).toBe("quiz-4");
     expect(loadTemplate("chat.socratic").version).toBe("4");
     expect(loadTemplate("chat.general").version).toBe("4");
     expect(loadTemplate("chat.solver").version).toBe("6");
@@ -49,7 +49,7 @@ describe("prompt templates", () => {
     }
     expect(loadTemplate("plan.topics").version).toBe("3");
     // Diagnostic passages now name their topic, so citations can match the question's topic.
-    expect(loadTemplate("plan.diagnostic").version).toBe("3");
+    expect(loadTemplate("plan.diagnostic").version).toBe("4");
     // Reference-language grading is unchanged; solve checks now require every real root.
     expect(loadTemplate("quiz.open-grade").version).toBe("1");
     expect(loadTemplate("chat.checks").version).toBe("2");

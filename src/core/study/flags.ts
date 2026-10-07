@@ -23,3 +23,14 @@ export function flaggedIds(db: Database.Database, targetKind: string): Set<strin
     .all(targetKind) as Array<{ target_id: string }>;
   return new Set(rows.map((row) => row.target_id));
 }
+
+export function unflagTarget(
+  db: Database.Database,
+  targetKind: string,
+  targetId: string,
+): void {
+  db.prepare(`DELETE FROM flags WHERE target_kind = ? AND target_id = ?`).run(
+    targetKind,
+    targetId,
+  );
+}
