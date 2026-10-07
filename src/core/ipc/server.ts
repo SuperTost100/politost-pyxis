@@ -453,6 +453,10 @@ async function dispatchValidated(
     case "maps.patch":
       return maps?.patch(requests["maps.patch"].input.parse(input));
     case "maps.redo":
+    case "subjects.rename":
+      return plans?.renameSubject(
+        requests["subjects.rename"].input.parse(input),
+      );
       return maps?.redo(requests["maps.redo"].input.parse(input));
     case "maps.undo":
       return maps?.undo(requests["maps.undo"].input.parse(input));

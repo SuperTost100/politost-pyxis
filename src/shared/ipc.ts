@@ -1015,6 +1015,13 @@ export const requests = {
       }),
     ),
   },
+  "subjects.rename": {
+    input: z.object({
+      id: z.string(),
+      name: z.string().trim().min(1).max(120),
+    }),
+    output: z.object({ id: z.string(), name: z.string() }),
+  },
   "subjects.add": {
     input: z.object({ name: z.string().trim().min(1).max(120) }),
     output: z.object({ id: z.string(), name: z.string() }),

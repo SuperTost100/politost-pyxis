@@ -1,6 +1,5 @@
 import { AboutPanel } from "./AboutPanel";
 import { UpdatesPanel } from "./UpdatesPanel";
-import { SubjectPicker } from "../ask/SubjectPicker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "antd";
 import {
@@ -15,8 +14,7 @@ import {
   Shield,
   RefreshCw,
   Info,
-  Accessibility,
-  GraduationCap,
+  ALargeSmall,
   Terminal,
 } from "lucide-react";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
@@ -102,7 +100,6 @@ export function SettingsPage() {
     t("settings.workspaceThis");
   const labels: Record<string, string> = {
     profile: t("settings.profile"),
-    subjects: t("ask.subject"),
     engines: t("settings.enginesTitle"),
     tutor: t("settings.tutor"),
     reading: t("settings.reading"),
@@ -138,7 +135,6 @@ export function SettingsPage() {
           icon: UserRound,
           value: profile.data?.displayName ?? "",
         },
-        { key: "subjects", icon: GraduationCap, value: "" },
       ],
     },
     {
@@ -159,7 +155,7 @@ export function SettingsPage() {
         },
         {
           key: "reading",
-          icon: Accessibility,
+          icon: ALargeSmall,
           value: t(`settings.text.${profile.data?.textSize ?? "md"}`),
         },
         {
@@ -238,11 +234,6 @@ export function SettingsPage() {
           />
         </div>
         {levelChoices}
-      </>
-    ),
-    subjects: (
-      <>
-        <SubjectPicker value="" onChange={() => undefined} />
       </>
     ),
     profile: (

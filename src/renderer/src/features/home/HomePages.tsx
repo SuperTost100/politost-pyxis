@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Button, Input, Modal, Segmented, Select } from "antd";
 import { useTranslation } from "react-i18next";
-import { Search } from "lucide-react";
+import { Search, Settings2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
@@ -10,6 +10,7 @@ import { LibraryPanel } from "./LibraryPanel";
 import { PlanCard } from "../../components/PlanCard";
 import { Notice } from "../../components/Notice";
 import type { PlanFile } from "@shared/plan-file";
+import { SubjectManagerModal } from "../ask/SubjectPicker";
 import { ImportReview } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
 
@@ -23,7 +24,8 @@ export function ExamsHome() {
     queryFn: () => invoke("plans.list", {}),
   });
   const [query, setQuery] = useState("");
-  const [subject, setSubject] = useState("");
+  const [picked, setSubject] = useState("");
+  const [managing, setManaging] = useState(false);
   const tab = location.pathname.startsWith("/exams/library")
     ? "sources"
     : "plans";
@@ -32,6 +34,8 @@ export function ExamsHome() {
       (plans.data ?? []).map((plan) => plan.subject).filter((name) => name),
     ),
   ];
+  // A renamed or removed subject can no longer filter.
+  const subject = subjects.includes(picked) ? picked : "";
   const shown = (plans.data ?? []).filter((plan) => {
     const needle = query.trim().toLocaleLowerCase();
     const haystack = `${plan.title} ${plan.subject ?? ""}`.toLocaleLowerCase();
@@ -42,7 +46,7 @@ export function ExamsHome() {
   return (
     <div>
       <h1 className="title-1">{t("doors.exams")}</h1>
-      <div className="tabs-row">
+      <div className="tabs-row tabs-row-split">
         <Segmented
           shape="round"
           className="px-doors"
@@ -55,7 +59,23 @@ export function ExamsHome() {
             { value: "sources", label: t("exams.sources") },
           ]}
         />
+        {tab === "plans" ? (
+          <Button
+            type="text"
+            shape="round"
+            icon={<Settings2 size={16} aria-hidden />}
+            onClick={() => setManaging(true)}
+          >
+            {t("ask.manageSubjects")}
+          </Button>
+        ) : null}
       </div>
+      <SubjectManagerModal
+        open={managing}
+        onClose={() => setManaging(false)}
+        value=""
+        onChange={() => undefined}
+      />
       {tab === "sources" ? (
         <LibraryPanel />
       ) : (plans.data?.length ?? 0) > 0 ? (
