@@ -1920,9 +1920,12 @@ test("M14 every application route in both languages, themes and supported widths
   mkdirSync(dirname(recordFile), { recursive: true });
   try {
     const page = await app.firstWindow();
-    page.setDefaultTimeout(7000);
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.getByRole("button", { name: "Salta" }).click();
+    // The first render waits for core to start, which takes far longer than 7 s on a cold hosted Windows runner.
+    await page
+      .getByRole("button", { name: "Salta" })
+      .click({ timeout: 90_000 });
+    page.setDefaultTimeout(7000);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     await page.evaluate(() =>
       sessionStorage.setItem(

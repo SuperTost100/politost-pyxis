@@ -51,6 +51,9 @@ jobs:
       # Type checking does not depend on the platform.
       - if: runner.os == 'Linux'
         run: npm run typecheck
+      - name: Markdown formatting
+        if: runner.os == 'Linux'
+        run: npx prettier --check "**/*.md"
       - name: Unit checks
         if: ${{ !inputs.windows_trace }}
         run: npm test -- --maxWorkers=2

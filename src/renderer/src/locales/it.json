@@ -45,7 +45,7 @@
     },
     "engines": {
       "title": "Collega un motore AI",
-      "body": "Pyxis usa Claude Code o Codex con il tuo account. Guardo cosa c'è già su questo computer.",
+      "body": "Pyxis funziona con Claude Code, Codex, Cursor Agent o Antigravity, con il tuo account. Guardo cosa c'è già su questo computer.",
       "found": "Ho trovato {{names}}.",
       "foundSignedOut": "Ho trovato {{names}}, ma serve ancora l'accesso.",
       "foundNone": "Non ho trovato nessun motore.",
@@ -1443,7 +1443,7 @@
     "allEngines": "Tutti i motori",
     "automatic": "Automatico",
     "backToAuto": "Torna alla scelta automatica",
-    "installHelp": "Pyxis ha bisogno di un motore AI per rispondere. Installa Claude Code o Codex e accedi con il tuo account. Poi sceglie lui il modello.",
+    "installHelp": "Pyxis ha bisogno di un motore AI per rispondere. Installa Claude Code, Codex, Cursor Agent o Antigravity e accedi con il tuo account. Poi sceglie lui il modello.",
     "installHelpLink": "Come si installa",
     "auto": {
       "title": "Scelta automatica",
