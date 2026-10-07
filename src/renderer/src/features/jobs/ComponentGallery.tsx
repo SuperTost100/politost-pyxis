@@ -83,6 +83,7 @@ export function ComponentGallery() {
           <Logo size={60} inverse />
         </span>
         <Logo size={20} />
+        <Logo size={64} working />
       </Section>
 
       <Section eyebrow={t("gallery.sections.foundations")} title="Icon">
