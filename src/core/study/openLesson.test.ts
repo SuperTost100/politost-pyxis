@@ -6,7 +6,7 @@ import { setPlanEducation, snapshotPlanEducation } from "../plans/education";
 import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
 import { partialText, templateVersion } from "../engine/prompts";
-import { citationsValid, openLesson, writeLesson } from "./openLesson";
+import { openLesson, rewriteLessonSection, writeLesson } from "./openLesson";
 import { exportMarkdown } from "../share/markdown";
 
 function pack(files: Record<string, string>): Uint8Array {
@@ -138,8 +138,9 @@ it("caches lessons per wording and education, bounds the context, regenerates sa
     });
     expect(simple.wording).toBe("simple");
     expect(simple.passageIds).toHaveLength(10);
-    expect(calls[0]!.prompt).toContain("[P6]");
-    expect(calls[0]!.prompt).toContain("[P10]");
+    // Every passage is taught, with no labels the model could cite.
+    expect(calls[0]!.prompt.match(/x{500}/g)).toHaveLength(10);
+    expect(calls[0]!.prompt).not.toMatch(/\[P\d+\]/);
     expect(calls[0]!.prompt.length).toBeLessThan(25_000);
     expect(calls[0]!.system).toContain("Wording: simple");
     expect(calls[0]!.system).toContain("education level: primary");
@@ -239,16 +240,7 @@ it("lessons follow the plan's education, not later profile edits, and carry scho
   }
 });
 
-describe("citationsValid", () => {
-  it("requires at least one citation and rejects out-of-range indices", () => {
-    expect(citationsValid("Testo [P1] e [P2]", 2)).toBe(true);
-    expect(citationsValid("Nessuna citazione", 2)).toBe(false);
-    expect(citationsValid("Testo [P3]", 2)).toBe(false);
-    expect(citationsValid("Testo [P0]", 2)).toBe(false);
-  });
-});
-
-it("rejects invalid citations without poisoning a later generated lesson and keeps provenance", async () => {
+it("falls back to the book on an empty reply without poisoning a later lesson, and keeps provenance", async () => {
   const db = openDatabase(":memory:");
   try {
     db.prepare(
@@ -270,8 +262,8 @@ it("rejects invalid citations without poisoning a later generated lesson and kee
       return {
         text:
           calls === 1
-            ? "Incorrect index [P2]."
-            : "Velocity describes displacement per time [P1].",
+            ? "  \n"
+            : "```markdown\n## Velocity\n\nVelocity describes displacement per time.\n```",
         provider: "claude",
         model: "reported-model",
         inputTokens: 1,
@@ -285,7 +277,9 @@ it("rejects invalid citations without poisoning a later generated lesson and kee
         .all(),
     ).toEqual([]);
     const generated = await writeLesson(db, "plan", "topic", run);
-    expect(generated.markdown).toContain("[P1]");
+    expect(generated.markdown).toBe(
+      "## Velocity\n\nVelocity describes displacement per time.",
+    );
     expect(await writeLesson(db, "plan", "topic", run)).toEqual(generated);
     expect(calls).toBe(2);
     const itemCount = db.prepare("SELECT COUNT(*) AS n FROM items").get();
@@ -299,7 +293,10 @@ it("rejects invalid citations without poisoning a later generated lesson and kee
       itemCount,
     );
     expect(systems[0]).toContain("Write all output in Italian.");
-    expect(systems[0]).toContain(partialText("citation"));
+    expect(systems[0]).not.toContain(partialText("citation"));
+    expect(systems[0]).toContain("```pyxis-<kind>");
+    expect(systems[0]).toContain("Do not cite sources");
+    expect(systems[0]).toContain("Teach only the current part");
     expect(systems[0]).not.toMatch(/\{\{[A-Za-z]/);
     expect(
       db
@@ -357,7 +354,7 @@ it("rejects invalid citations without poisoning a later generated lesson and kee
   }
 });
 
-it("teaches all of a long topic in bounded calls with stable citations and no partial cache", async () => {
+it("teaches all of a long topic in bounded calls, recaps only in the last part and caches no partial lesson", async () => {
   const db = openDatabase(":memory:");
   try {
     db.exec(`
@@ -383,7 +380,7 @@ it("teaches all of a long topic in bounded calls with stable citations and no pa
     const run: Parameters<typeof writeLesson>[3] = async (input) => {
       prompts.push(input.prompt);
       return {
-        text: `Explanation ${input.prompt.match(/\[P\d+\]/)![0]}`,
+        text: `Explanation ${input.prompt.match(/Part (\d+) of/)![1]}`,
         provider: "claude",
         model: "test",
         inputTokens: 1,
@@ -393,9 +390,11 @@ it("teaches all of a long topic in bounded calls with stable citations and no pa
     expect(prompts).toHaveLength(2);
     expect(prompts.every((prompt) => prompt.length < 25000)).toBe(true);
     expect(prompts.join("\n")).toContain("END_OF_FIRST");
-    expect(prompts.at(-1)).toContain("[P2] END_OF_TOPIC");
+    expect(prompts.at(-1)).toContain("END_OF_TOPIC");
+    expect(prompts[0]).toContain("This is not the last part: do not write the pyxis-recap.");
+    expect(prompts.at(-1)).toContain("This is the last part: end with the pyxis-recap");
     expect(lesson.passageIds).toEqual(["first", "last"]);
-    expect(lesson.markdown).toBe("Explanation [P1]\n\nExplanation [P1]");
+    expect(lesson.markdown).toBe("Explanation 1\n\nExplanation 2");
     let calls = 0;
     const failing: Parameters<typeof writeLesson>[3] = async (input) => {
       if (++calls === 2) throw new Error("part failed");

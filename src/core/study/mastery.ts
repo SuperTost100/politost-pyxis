@@ -7,11 +7,13 @@ export const MASTERY_WEIGHTS = {
   open: 1.5,
   simulation: 2,
   card: 0.5,
+  /** A quick check inside a lesson: one guided question, so it weighs half a quiz answer. */
+  check: 0.5,
 } as const;
 
 export type MasteryEvent = {
   topicId: string;
-  kind: "quiz" | "simulation" | "card" | "lesson";
+  kind: "quiz" | "simulation" | "card" | "lesson" | "check";
   answerKind?: string;
   cardId?: string;
   score: number;
@@ -71,7 +73,9 @@ export function masteryFor(
       const typeWeight =
         e.kind === "card"
           ? MASTERY_WEIGHTS.card
-          : e.kind === "simulation"
+          : e.kind === "check"
+            ? MASTERY_WEIGHTS.check
+            : e.kind === "simulation"
             ? MASTERY_WEIGHTS.simulation
             : e.answerKind === "open"
               ? MASTERY_WEIGHTS.open
