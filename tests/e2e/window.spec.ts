@@ -25,7 +25,7 @@ async function clean(page: Page) {
 // This same loop runs against an unpackaged build or the locally installed app.
 // Live mode uses the signed-in engine for plan, lesson and quiz generation.
 test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restore", async () => {
-  test.setTimeout(process.env.PYXIS_LIVE_RELEASE === "1" ? 600000 : 120000);
+  test.setTimeout(process.env.PYXIS_LIVE_RELEASE === "1" ? 600000 : 240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-release-"));
   const book = join(userData, "motion.ptsb");
   const backup = join(userData, "backup.zip");
@@ -369,9 +369,17 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .getByRole("dialog")
       .getByRole("button", { name: "Salva file", exact: true })
       .click();
-    await expect.poll(() => existsSync(exported)).toBe(true);
+    // Windows shows the file before the write has finished, so wait until it parses.
+    const readExport = () => {
+      try {
+        return JSON.parse(readFileSync(exported, "utf8")) as { title: string; topics: unknown[] };
+      } catch {
+        return null;
+      }
+    };
+    await expect.poll(readExport, { timeout: 30000 }).not.toBeNull();
     console.log("release: export");
-    const file = JSON.parse(readFileSync(exported, "utf8"));
+    const file = readExport()!;
     expect(file.title).toBe("Motion");
     expect(file.topics).toHaveLength(1);
     await page.evaluate(() => {
@@ -383,9 +391,10 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     await page
       .getByRole("button", { name: "Copia di sicurezza", exact: true })
       .click();
+    // A full backup of the workspace passed 5 s on the hosted Windows runner.
     await expect(
       page.getByText("La copia è pronta.", { exact: true }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 60000 });
     console.log("release: backup");
     expect(existsSync(backup)).toBe(true);
     await clean(page);
