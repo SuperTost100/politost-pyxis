@@ -299,6 +299,7 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     expect(Math.abs((await close.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "A. La velocità" })).toBeEnabled();
     await page.keyboard.press("1");
     await page.keyboard.press("Enter");
     const feedback = page.locator(".px-quiz-feedback");

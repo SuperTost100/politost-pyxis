@@ -1831,7 +1831,7 @@ async function keyboardCheck(page: Page, name: string) {
     }
   }
   if (name === "quiz") {
-    const choice = page.locator(".choice").first();
+    const choice = page.locator(".px-opt").first();
     await choice.focus();
     await page.keyboard.press("Space");
     await expect(choice).toHaveAttribute("aria-pressed", "true");

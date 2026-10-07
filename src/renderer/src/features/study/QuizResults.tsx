@@ -113,9 +113,9 @@ export function QuizResults({
 
       {byTopic.length ? (
         <section className="px-quiz-block" aria-labelledby="quiz-topics">
-          <h3 id="quiz-topics" className="label px-quiz-block-title">
+          <h2 id="quiz-topics" className="label px-quiz-block-title">
             {t("quiz.startHere")}
-          </h3>
+          </h2>
           <ul className="px-quiz-topics">
             {byTopic.map((topic) => {
               const share = topic.value / topic.total;
@@ -146,9 +146,9 @@ export function QuizResults({
       ) : null}
 
       <section className="px-quiz-block" aria-labelledby="quiz-answers">
-        <h3 id="quiz-answers" className="label px-quiz-block-title">
+        <h2 id="quiz-answers" className="label px-quiz-block-title">
           {t("quiz.questions")}
-        </h3>
+        </h2>
         <ol className="px-quiz-rows">
           {results.map((row, index) => (
             <ResultRow
