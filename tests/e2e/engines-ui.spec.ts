@@ -141,6 +141,8 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
 });
 
 test("Automatic engines: simple view names who does what, and advanced can pin and return to automatic", async () => {
+  // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-auto-"));
   const bin = mkdtempSync(join(tmpdir(), "pyxis-engine-bin-"));
@@ -219,6 +221,8 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
 });
 
 test("Automatic engines: with all four CLIs ready, the summary gives each engine its own line", async () => {
+  // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-four-"));
   const bin = mkdtempSync(join(tmpdir(), "pyxis-engine-bin-"));
