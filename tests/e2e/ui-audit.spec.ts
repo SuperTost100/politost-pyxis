@@ -84,7 +84,8 @@ const routes = [
   ["practice", "/plans/audit-plan/practice/audit-topic"],
   ["lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-rewrite", "/plans/audit-plan/lesson/audit-topic"],
-  ["lesson-flag", "/plans/audit-plan/lesson/audit-topic"],
+  ["lesson-menu", "/plans/audit-plan/lesson/audit-topic"],
+  ["intro", "/plans/audit-plan/intro"],
   ["quiz-setup", "/plans/audit-plan/quiz/audit-topic"],
   ["quiz-page", "/plans/audit-plan/quiz/audit-topic"],
   ["quiz-timed", "/plans/audit-plan/quiz/audit-topic"],
@@ -203,6 +204,7 @@ function seed(db: DatabaseSync) {
     INSERT INTO cards(id,plan_id,topic_id,front,back,passage_id,grounding,created_at) VALUES('audit-card','audit-plan','audit-topic','Qual è la seconda legge di Newton?','$F=ma$. La forza è proporzionale alla massa.','audit-passage','sources',1);
     INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES('audit-chat','Seconda legge di Newton','Fisica',1,2);
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-user','audit-chat','user','Come calcolo la forza?',1);
+    INSERT INTO items(id,plan_id,kind,body_json,created_at) VALUES('audit-intro','audit-plan','intro','{"markdown":"Benvenuto in **Fisica 1**: studierai le forze e il moto.\\n\\n\`\`\`pyxis-check\\n{\\"question\\": \\"Che cosa cambia una forza?\\", \\"options\\": [\\"Il moto\\", \\"Il colore\\"], \\"answer\\": 0}\\n\`\`\`","passageIds":[]}',1);
     INSERT INTO messages(id,chat_id,role,body,grounding,created_at) VALUES('audit-assistant','audit-chat','assistant','Usa $F=ma$. Con $m=2$ e $a=3$, ottieni $6$ N [P1].','sources',2);
     INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-assistant','audit-passage','P1');`);
   db.prepare(
@@ -1229,18 +1231,24 @@ async function openState(page: Page, name: string) {
       break;
     case "lesson-rewrite":
       await page
-        .getByRole("button", { name: both("Riscrivi", "Rewrite"), exact: true })
+        .getByRole("button", { name: both("Altre azioni", "More actions") })
+        .click();
+      await page
+        .getByRole("menuitem", { name: both("Riscrivi", "Rewrite"), exact: true })
         .click();
       await expect(
-        page.getByText(/Riscrivere questa lezione|Rewrite this lesson/),
+        page
+          .getByRole("dialog")
+          .getByText(/Riscrivere questa lezione|Rewrite this lesson/)
+          .last(),
       ).toBeVisible();
       break;
-    case "lesson-flag":
+    case "lesson-menu":
       await page
-        .getByRole("button", { name: both("Segnala", "Report"), exact: true })
+        .getByRole("button", { name: both("Altre azioni", "More actions") })
         .click();
       await expect(
-        page.getByRole("textbox", { name: /Cosa non va|What is wrong/ }),
+        page.getByRole("menuitem", { name: both("Mappa", "Map") }),
       ).toBeVisible();
       break;
     case "quiz-setup":
@@ -1684,6 +1692,19 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "export-lesson":
+      await page
+        .getByRole("button", { name: both("Altre azioni", "More actions") })
+        .click();
+      await page
+        .getByRole("menuitem", { name: both("Esporta", "Export") })
+        .click();
+      await expect(
+        page
+          .getByRole("dialog")
+          .last()
+          .getByRole("button", { name: both("Salva file", "Save file") }),
+      ).toBeVisible();
+      break;
     case "export-cards":
     case "export-simulation":
       await openExport(page);
