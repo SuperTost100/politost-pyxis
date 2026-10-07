@@ -70,7 +70,7 @@ const VECTOR_MAX_DISTANCE = 0.8;
  * splits those with room on both sides. The old 0.8 admitted all of them. Limits: a question in the other language than
  * the source (0.59-0.67) and a neighbouring subject (maths asked of a physics source, 0.59-0.66) fall in the same
  * band, so the former can read as "not covered" and the latter as covered. A larger source probably pulls unrelated
- * questions nearer (not measured). The model's own NOT_COVERED reply is the backstop, and "answer from general knowledge" the way out.
+ * questions nearer (not measured). Chat no longer stops on this flag: it sends the passages found and the model decides which to cite. The flag only widens a follow-up's search.
  */
 const VECTOR_COVERED_MAX_DISTANCE = 0.6;
 

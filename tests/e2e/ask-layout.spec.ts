@@ -247,13 +247,17 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
       await expect(page.getByText(text, { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
     }
-    // A turn the material does not cover leaves the earlier reply's suggestions beside the notice.
+    // With a subject chosen and nothing in its sources about the question, the reply is still given, marked as general knowledge.
     await page.getByRole("button", { name: /^Materia:/ }).click();
     await page.getByRole("button", { name: "Analisi 2", exact: true }).click();
     await box.fill("Una domanda fuori materia");
     await box.press("Enter");
     // Slow hosted runners can take well over 30 s for a recorded reply.
-    await expect(page.getByText("Il materiale non copre questa domanda.")).toBeVisible({ timeout: 90000 });
+    await expect(page.getByText("Conoscenza generale, non dalle tue fonti")).toBeVisible({ timeout: 90000 });
+    await expect(page.getByText("Il materiale non copre questa domanda.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
+    // The earlier replies, from a chat with nothing selected, carry no badge.
+    await expect(page.getByText("Conoscenza generale, non dalle tue fonti")).toHaveCount(1);
 
     const layout = await page.evaluate(() => {
       const top = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
@@ -261,20 +265,17 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
       const users = [...document.querySelectorAll(".px-msg-user")].map((el) => el.getBoundingClientRect());
       const root = document.scrollingElement!;
       return {
+        chipsTop: Math.min(...chips.map((r) => r.top)),
         chipsBottom: Math.max(...chips.map((r) => r.bottom)),
-        lastUserTop: users.at(-1)!.top,
         lastUserBottom: users.at(-1)!.bottom,
-        noticeTop: top(".px-notice")!.top,
-        noticeBottom: top(".px-notice")!.bottom,
         composerTop: top(".px-composer")!.top,
         composerBottom: top(".px-composer")!.bottom,
         viewport: window.innerHeight,
         atBottom: root.scrollHeight - root.scrollTop - root.clientHeight,
       };
     });
-    expect(layout.chipsBottom).toBeLessThanOrEqual(layout.lastUserTop);
-    expect(layout.lastUserBottom).toBeLessThanOrEqual(layout.noticeTop);
-    expect(layout.noticeBottom).toBeLessThanOrEqual(layout.composerTop);
+    expect(layout.lastUserBottom).toBeLessThanOrEqual(layout.chipsTop);
+    expect(layout.chipsBottom).toBeLessThanOrEqual(layout.composerTop);
     expect(layout.composerBottom).toBeLessThanOrEqual(layout.viewport);
     expect(layout.composerBottom).toBeGreaterThan(layout.viewport - 40);
     expect(layout.atBottom).toBeLessThan(4);

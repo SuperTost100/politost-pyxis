@@ -80,8 +80,8 @@ test("R14-3 a suggestion sends only its own text and leaves the draft and photos
     await page.getByRole("button", { name: "Allega file o immagine" }).click();
     await expect(page.getByText("appunti.txt")).toBeVisible();
     await box.press("Enter");
-    // The fixture reply cites nothing, so a turn that carries a note is "not covered": the question is stored and the answer is not.
-    await expect.poll(async () => (await chat()).messages.length).toBe(5);
+    // The note is the turn's own source, so the reply is stored even though the fixture reply cites nothing.
+    await expect.poll(async () => (await chat()).messages.length).toBe(6);
     expect((await chat()).held).toHaveLength(1);
     await expect(box).toHaveValue("");
     await expect(page.getByText("appunti.txt")).toHaveCount(0);
