@@ -703,7 +703,6 @@ export function AskPage() {
                   setFiles((current) => [...current, ...chosen]);
               });
           }}
-          onFormula={() => navigate("/tools/graph")}
         />
       </div>
     </div>

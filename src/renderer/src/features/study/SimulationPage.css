@@ -58,12 +58,8 @@
 .px-sim-results h2 {
   margin: 0;
 }
-.px-sim-preview summary,
 .px-sim-feedback summary {
   cursor: pointer;
-}
-.px-sim-preview[open] summary {
-  margin-bottom: var(--space-3);
 }
 .px-sim-score {
   display: flex;

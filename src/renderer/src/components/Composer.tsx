@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
+import { FormulaDock } from "./math/FormulaDock";
+import { MathPreview } from "./math/MathPreview";
+import { useFormulaInsert } from "./math/useFormulaInsert";
 import { Tag } from "./Tag";
 import "./Composer.css";
 
@@ -20,7 +23,6 @@ export function Composer({
   onStop,
   onModeChange,
   onAttach,
-  onFormula,
 }: {
   subject?: string;
   /** Replaces the plain subject label, for a chip that opens the subject menu. */
@@ -37,8 +39,6 @@ export function Composer({
   onStop?: () => void;
   onModeChange?: (mode: "solver" | "socratic") => void;
   onAttach?: () => void;
-  /** Opens the formula tool. Without it the button goes to the graph tool. */
-  onFormula?: () => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -51,6 +51,11 @@ export function Composer({
     if (value === undefined) setDraft(next);
   }
   const field = useRef<HTMLTextAreaElement>(null);
+  const formula = useFormulaInsert({
+    getField: () => field.current,
+    value: text,
+    onChange: setText,
+  });
   // The field grows with the draft up to a few lines, then scrolls.
   useEffect(() => {
     const el = field.current;
@@ -87,6 +92,12 @@ export function Composer({
           if (event.key === "Escape" && streaming) onStop?.();
         }}
       />
+      <MathPreview text={text} />
+      <FormulaDock
+        open={formula.open}
+        onInsert={formula.insert}
+        onClose={formula.close}
+      />
       <div className="px-composer-bar">
         <IconButton
           icon="paperclip"
@@ -104,10 +115,18 @@ export function Composer({
         />
         <IconButton
           icon="sigma"
-          label={t("components.composer.formula")}
+          label={t("math.toggle")}
           variant="ghost"
           size="sm"
-          onClick={onFormula ?? (() => navigate("/tools/graph"))}
+          pressed={formula.open}
+          onClick={formula.toggle}
+        />
+        <IconButton
+          icon="chart-line"
+          label={t("components.composer.graph")}
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate("/tools/graph")}
         />
         <div className="px-mode" role="group" aria-label={t("components.composer.modeLabel")}>
           <button

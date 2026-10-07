@@ -1,0 +1,240 @@
+/* Formula keyboard: a math field above four tabs of keys, drawn inside the page flow. */
+.px-formula {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--ink);
+}
+
+.px-formula-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.px-formula-head math-field {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-lg);
+  padding: 0 var(--space-3);
+  font-size: calc(24px * var(--text-scale, 1));
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  --caret-color: var(--primary-text);
+  --selection-background-color: var(--primary-soft);
+  --selection-color: var(--ink);
+  --placeholder-color: var(--ink-subtle);
+  --smart-fence-color: var(--ink);
+  --contains-highlight-background-color: transparent;
+}
+
+.px-formula-head math-field:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The panel below is the keyboard, so the field's own toggles stay out of the way. */
+.px-formula-head math-field::part(virtual-keyboard-toggle),
+.px-formula-head math-field::part(menu-toggle) {
+  display: none;
+}
+
+.px-formula-close {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-md);
+  height: var(--control-md);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.px-formula-close:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.px-formula-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.px-formula-tabs [role="tab"] {
+  flex: 1;
+  min-width: 0;
+  height: var(--control-md);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 calc(14px * var(--text-scale, 1)) / 1 var(--font-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.px-formula-tabs .is-short {
+  display: none;
+}
+
+@container (max-width: 520px) {
+  .px-formula-tabs .is-full {
+    display: none;
+  }
+  .px-formula-tabs .is-short {
+    display: inline;
+  }
+  .px-formula-tabs [role="tab"] {
+    padding: 0 var(--space-1);
+    font-size: calc(13px * var(--text-scale, 1));
+  }
+}
+
+.px-formula-tabs [role="tab"]:hover {
+  color: var(--ink);
+}
+
+.px-formula-tabs [role="tab"][aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--primary);
+}
+
+.px-formula-tabs [role="tab"]:focus-visible,
+.px-formula-key:focus-visible,
+.px-formula-insert:focus-visible,
+.px-formula-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.px-formula-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.px-formula-row {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.px-formula-key {
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: 500 calc(16px * var(--text-scale, 1)) / 1 var(--font-sans);
+  cursor: pointer;
+}
+
+.px-formula-key:hover {
+  border-color: var(--border-control);
+}
+
+.px-formula-key:active {
+  background: var(--surface-overlay);
+}
+
+.px-formula-key.is-digit {
+  background: var(--surface-overlay);
+  border-color: var(--border-control);
+}
+
+/* The glyph is drawn by KaTeX and can overhang its key; the key itself takes every tap. */
+.px-formula-key > span {
+  pointer-events: none;
+}
+
+.px-formula-key .katex {
+  font-size: 1.15em;
+  white-space: nowrap;
+}
+
+.px-formula-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 56px) minmax(0, 1fr);
+  gap: 6px;
+  margin-top: var(--space-1);
+}
+
+.px-formula-key.is-action {
+  font-size: calc(18px * var(--text-scale, 1));
+}
+
+.px-formula-insert {
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--on-primary);
+  font: 600 calc(15px * var(--text-scale, 1)) / 1 var(--font-sans);
+  cursor: pointer;
+}
+
+.px-formula-insert:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.px-formula-insert:active:not(:disabled) {
+  background: var(--primary-active);
+}
+
+.px-formula-insert:disabled {
+  background: var(--surface-raised);
+  color: var(--ink-subtle);
+  cursor: not-allowed;
+}
+
+/* Short windows give the keys back some height so the answer stays in view. */
+@media (max-height: 760px) {
+  .px-formula-key,
+  .px-formula-insert {
+    height: 38px;
+  }
+  .px-formula-head math-field {
+    min-height: var(--control-md);
+  }
+}
+
+@container (max-width: 520px) {
+  .px-formula-row {
+    gap: 4px;
+  }
+  .px-formula-key .katex {
+    font-size: 1em;
+  }
+  .px-formula-key.is-tight .katex {
+    font-size: 0.8em;
+  }
+  .px-formula-key.is-tighter .katex {
+    font-size: 0.62em;
+  }
+}
+
+.px-formula-loading {
+  height: 220px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}

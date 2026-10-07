@@ -138,8 +138,7 @@
   flex-direction: column;
   gap: var(--space-2);
 }
-.px-quiz-feedback,
-.px-quiz-preview {
+.px-quiz-feedback {
   padding: var(--space-4);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -159,9 +158,6 @@
 }
 .px-quiz-open textarea {
   font: 400 17px/1.6 var(--font-sans);
-}
-.px-quiz-preview {
-  margin-top: var(--space-3);
 }
 .px-quiz-page,
 .px-quiz-timer-setup {

@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "antd";
+import { Button } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
@@ -28,12 +29,12 @@ function ExerciseCard({ exercise }: { exercise: Exercise }) {
         {t(exercise.generated ? "components.tags.ai" : "components.tags.smartbook")}
       </Tag>
       <MarkdownView runnable>{exercise.prompt}</MarkdownView>
-      <Input.TextArea
+      <MathInput
         value={answer}
         rows={2}
-        aria-label={t("practice.yourAnswer")}
+        ariaLabel={t("practice.yourAnswer")}
         placeholder={t("practice.yourAnswer")}
-        onChange={(event) => setAnswer(event.target.value)}
+        onChange={setAnswer}
       />
       {exercise.hints.slice(0, hints).map((hint, index) => (
         <p key={index} className="body">
