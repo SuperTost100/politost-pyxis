@@ -190,8 +190,6 @@ export function SettingsPage() {
   const panels: Record<string, ReactNode> = {
     appearance: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.appearance")}</div>
         <div className="choice-list">
           <Choice
             label={t("settings.system")}
@@ -217,8 +215,6 @@ export function SettingsPage() {
     engines: <EnginesPanel />,
     tutor: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.tutor")}</div>
         <div className="choice-list">
           <Choice
             label={t("settings.solver")}
@@ -264,6 +260,7 @@ export function SettingsPage() {
               </span>
               <Input
                 key={profile.data?.[field] ?? ""}
+                placeholder={t(`settings.fieldPlaceholder.${field}`)}
                 defaultValue={profile.data?.[field] ?? ""}
                 onBlur={(event) =>
                   void patch({ [field]: event.target.value.trim() })
@@ -286,6 +283,7 @@ export function SettingsPage() {
         <Input
           className="px-settings-interests"
           aria-label={t("settings.interests")}
+          placeholder={t("settings.fieldPlaceholder.interests")}
           value={draftInterests ?? (profile.data?.interests ?? []).join(", ")}
           onChange={(event) => setDraftInterests(event.target.value)}
           onBlur={() => {
@@ -318,8 +316,6 @@ export function SettingsPage() {
     ),
     reading: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.reading")}</div>
         <div className="choice-list">
           <Choice
             label={t("settings.dyslexia")}
@@ -344,8 +340,6 @@ export function SettingsPage() {
     ),
     data: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.data")}</div>
         {place.data ? <p className="small section-hint">{place.data}</p> : null}
         <Button
           shape="round"
@@ -508,8 +502,6 @@ export function SettingsPage() {
     ),
     language: (
       <>
-        {" "}
-        <div className="label section-label">{t("settings.language")}</div>
         <div className="choice-list">
           <Choice
             label={t("settings.italian")}

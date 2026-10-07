@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Button, Input, Modal, Segmented, Select } from "antd";
 import { useTranslation } from "react-i18next";
+import { Search } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
@@ -32,9 +33,9 @@ export function ExamsHome() {
     ),
   ];
   const shown = (plans.data ?? []).filter((plan) => {
-    const title = plan.title.toLocaleLowerCase();
     const needle = query.trim().toLocaleLowerCase();
-    if (needle && !title.includes(needle)) return false;
+    const haystack = `${plan.title} ${plan.subject ?? ""}`.toLocaleLowerCase();
+    if (needle && !haystack.includes(needle)) return false;
     if (subject && plan.subject !== subject) return false;
     return true;
   });
@@ -76,6 +77,7 @@ export function ExamsHome() {
             <Button
               type="text"
               shape="round"
+              className="linkish"
               onClick={() => navigate("/exams/get")}
             >
               {t("exams.openShared")}
@@ -88,6 +90,9 @@ export function ExamsHome() {
               </label>
               <Input
                 id="plan-search"
+                prefix={<Search size={16} strokeWidth={1.75} aria-hidden />}
+                placeholder={t("exams.searchPlaceholder")}
+                allowClear
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />

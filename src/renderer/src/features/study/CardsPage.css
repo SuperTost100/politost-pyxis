@@ -73,7 +73,14 @@
 .px-review-progress > p {
   margin: 0;
 }
+.px-review-count {
+  margin: var(--space-5) 0;
+}
+.px-review-count .label {
+  margin: 0 0 var(--space-2);
+}
 .px-review-actions {
+  margin-top: var(--space-5);
   display: flex;
   flex-wrap: wrap;
   align-items: center;

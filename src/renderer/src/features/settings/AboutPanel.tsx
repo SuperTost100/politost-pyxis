@@ -47,7 +47,7 @@ export function AboutPanel({ labels }: { labels: AboutLabels }) {
   }
   return (
     <section className="px-about" aria-labelledby="px-about-title">
-      <h2 id="px-about-title" className="label section-label">
+      <h2 id="px-about-title" className="visually-hidden">
         {labels.title}
       </h2>
       <dl className="px-about-version">

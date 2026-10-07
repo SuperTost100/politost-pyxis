@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
+import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { examInstant, type PlanFile } from "@shared/plan-file";
 import { ImportReview } from "./ImportReview";
@@ -145,84 +146,96 @@ export function WizardFrame() {
         title={t("wizard.preparing", { title: name })}
         closable={!busy}
       >
-        <BuildingMark
-          inner={Math.min(1, (build.data?.progress ?? 0) * 6)}
-          middle={Math.max(0, Math.min(1, (build.data?.progress ?? 0) * 6 - 1))}
-          outer={Math.max(
-            0,
-            Math.min(1, ((build.data?.progress ?? 0) * 6 - 2) / 4),
-          )}
-          done={Boolean(built)}
-          failedTrail={failed ? 0 : undefined}
-        />
-        <p className="title-2">{t("wizard.preparing", { title: name })}</p>
-        <StepLines
-          steps={(build.data?.steps ?? []).map((step) => ({
-            id: step.name,
-            label: t(step.label),
-            state: step.state === "succeeded" ? "done" : step.state,
-          }))}
-          label={t("wizard.preparing", { title: name })}
-        />
-        {build.data?.stepLabel ? (
-          <p className="small" role="status">
-            {t(build.data.stepLabel)}
-          </p>
-        ) : null}
-        {buildPlanId && !build.isPending && !build.data ? (
-          <p className="small" role="alert">
-            {t("wizard.buildMissing")}
-          </p>
-        ) : null}
-        {failed ? (
-          <p className="small">
-            {t(
-              build.data?.state === "cancelled"
-                ? "wizard.cancelled"
-                : "wizard.failed",
+        <div className="px-build">
+          <BuildingMark
+            inner={Math.min(1, (build.data?.progress ?? 0) * 6)}
+            middle={Math.max(
+              0,
+              Math.min(1, (build.data?.progress ?? 0) * 6 - 1),
             )}
-          </p>
-        ) : null}
-        {built ? (
-          <Button
-            type="primary"
-            shape="round"
-            onClick={() => navigate(`/plans/${built}`)}
-          >
-            {t("wizard.open")}
-          </Button>
-        ) : null}
-        {failed ? (
-          <Button
-            shape="round"
-            onClick={() => {
-              if (build.data)
-                void invoke(
-                  build.data.state === "interrupted"
+            outer={Math.max(
+              0,
+              Math.min(1, ((build.data?.progress ?? 0) * 6 - 2) / 4),
+            )}
+            done={Boolean(built)}
+            failedTrail={failed ? 0 : undefined}
+          />
+          <StepLines
+            steps={(build.data?.steps ?? []).map((step) => ({
+              id: step.name,
+              label: t(step.label),
+              state: step.state === "succeeded" ? "done" : step.state,
+            }))}
+            label={t("wizard.preparing", { title: name })}
+          />
+          {build.data?.stepLabel && !failed ? (
+            <p className="small px-build-status" role="status">
+              {t(build.data.stepLabel)}
+            </p>
+          ) : null}
+          {buildPlanId && !build.isPending && !build.data ? (
+            <div className="px-build-notice" role="alert">
+              <Notice tone="danger">{t("wizard.buildMissing")}</Notice>
+            </div>
+          ) : null}
+          {failed ? (
+            <div className="px-build-notice">
+              <Notice
+                tone={build.data?.state === "cancelled" ? "warning" : "danger"}
+                details={build.data?.error?.slice(0, 2000) || undefined}
+              >
+                {t(
+                  build.data?.state === "cancelled"
+                    ? "wizard.cancelled"
+                    : "wizard.failed",
+                )}
+              </Notice>
+            </div>
+          ) : null}
+          <div className="px-build-actions">
+            {built ? (
+              <Button
+                type="primary"
+                shape="round"
+                size="large"
+                onClick={() => navigate(`/plans/${built}`)}
+              >
+                {t("wizard.open")}
+              </Button>
+            ) : null}
+            {failed ? (
+              <Button
+                shape="round"
+                onClick={() => {
+                  if (build.data)
+                    void invoke(
+                      build.data.state === "interrupted"
+                        ? "jobs.resume"
+                        : "jobs.retry",
+                      { jobId: build.data.jobId },
+                    ).then(() => build.refetch());
+                }}
+              >
+                {t(
+                  build.data?.state === "interrupted"
                     ? "jobs.resume"
-                    : "jobs.retry",
-                  { jobId: build.data.jobId },
-                ).then(() => build.refetch());
-            }}
-          >
-            {t(
-              build.data?.state === "interrupted"
-                ? "jobs.resume"
-                : "wizard.retry",
-            )}
-          </Button>
-        ) : null}
-        {busy ? (
-          <Button
-            shape="round"
-            onClick={() => {
-              if (build.data)
-                void invoke("jobs.cancel", { jobId: build.data.jobId });
-            }}
-          >
-            {t("wizard.cancel")}
-          </Button>
-        ) : null}
+                    : "wizard.retry",
+                )}
+              </Button>
+            ) : null}
+            {busy ? (
+              <Button
+                shape="round"
+                onClick={() => {
+                  if (build.data)
+                    void invoke("jobs.cancel", { jobId: build.data.jobId });
+                }}
+              >
+                {t("wizard.cancel")}
+              </Button>
+            ) : null}
+          </div>
+        </div>
       </FocusLayout>
     );
   }
@@ -323,6 +336,7 @@ export function WizardFrame() {
               </label>
               <Input
                 id="plan-title"
+                placeholder={t("wizard.planTitlePlaceholder")}
                 maxLength={500}
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
@@ -334,6 +348,7 @@ export function WizardFrame() {
               </label>
               <Input
                 id="plan-subject"
+                placeholder={t("wizard.subjectPlaceholder")}
                 list="plan-subjects"
                 value={subject}
                 onChange={(event) => setSubject(event.target.value)}
@@ -701,6 +716,7 @@ export function SharedPlanPage() {
           <Input
             id="plan-url"
             type="url"
+            placeholder={t("shared.urlPlaceholder")}
             disabled={busy}
             value={url}
             onChange={(event) => setUrl(event.target.value)}

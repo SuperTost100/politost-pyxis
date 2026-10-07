@@ -23,7 +23,7 @@
 }
 .px-plan-page > .px-seg-wrap {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   margin-bottom: var(--space-6);
 }
 .px-plan-path {
@@ -220,6 +220,23 @@
 }
 .px-plan-source-table .ant-table-cell {
   overflow-wrap: anywhere;
+  border-color: var(--border) !important;
+}
+/* Same quiet header as the sources library: no grey Pro band, no column dividers. */
+.px-plan-source-table .ant-table-thead > tr > th {
+  background: transparent !important;
+  color: var(--ink-muted);
+  font: 500 11px/16px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.px-plan-source-table .ant-table-thead > tr > th::before {
+  display: none !important;
+}
+.px-plan-source-table .ant-table,
+.px-plan-source-table .ant-table-container {
+  background: transparent;
 }
 
 .px-rebuild-diff {

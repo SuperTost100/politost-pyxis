@@ -19,6 +19,7 @@
 }
 .px-graph-formula {
   min-width: 0;
+  border-radius: var(--radius-md);
   overflow: auto;
   padding: 3px 0;
 }

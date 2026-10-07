@@ -12,11 +12,20 @@
   max-width: none;
   overflow: hidden;
 }
+/* The card body has no padding of its own, so the footer band runs edge to edge and the card's radius clips it. */
 .px-plan-top {
-  padding: var(--space-4) var(--space-4) var(--space-5);
+  flex: 1;
+  padding: var(--space-5) var(--space-5) var(--space-5);
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: var(--space-5);
+}
+.px-plan-top > div:first-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
 }
 .px-plan-title {
   font: 600 calc(17px * var(--text-scale, 1))/calc(24px * var(--text-scale, 1))
@@ -34,7 +43,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--border);
   background: var(--surface-raised);
 }
@@ -54,6 +63,7 @@
 }
 .px-plan-grid > li {
   min-width: 0;
+  display: flex;
 }
 @media (max-width: 815px) {
   .px-plan-grid {
