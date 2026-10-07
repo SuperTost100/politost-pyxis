@@ -1399,6 +1399,12 @@
     "terms": "A test sends one short sentence to the provider you pick.",
     "disclosure": "The text, the retrieved passages and the attachments leave this computer and go to that engine's vendor.",
     "acknowledge": "I understand",
+    "notice": {
+      "title": "What leaves this computer",
+      "intro": "When you use an engine, the text, the retrieved passages and the attachments leave this computer. Pyxis sends nothing until you confirm.",
+      "item": "{{name}} sends them to {{vendor}}.",
+      "later": "Not now"
+    },
     "loading": "Looking for installed engines.",
     "loadFailed": "The engine list did not load.",
     "disabled": "Unavailable: text-only mode is not ready yet.",
@@ -1432,7 +1438,8 @@
       "aborted": "Cancelled.",
       "refused": "The key was refused. Check it.",
       "quota": "Usage limit reached. Try again later or pick another engine.",
-      "engine-missing": "Choose and test an engine in Settings before continuing."
+      "engine-missing": "Choose and test an engine in Settings before continuing.",
+      "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines."
     },
     "feature": {
       "default": "Default engine",

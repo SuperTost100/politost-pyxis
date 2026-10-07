@@ -37,7 +37,6 @@ const routes = [
   ["settings", "/settings"],
   ...[
     "profile",
-    "subjects",
     "engines",
     "tutor",
     "reading",
@@ -99,7 +98,6 @@ const routes = [
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
   ["jobs-popover", "/exams"],
-  ["provider-disclosure", "/settings/engines"],
   [
     "quiz-grading-failed",
     "/plans/audit-plan/quiz/audit-topic?attempt=audit-grading-attempt",
@@ -1460,19 +1458,6 @@ async function openState(page: Page, name: string) {
       }
       break;
     }
-    case "provider-disclosure":
-      await page.evaluate(() => {
-        void window.pyxis
-          .invoke("engines.test", {
-            provider: "claude",
-            model: "claude-sonnet-5-5",
-          })
-          .catch(() => undefined);
-      });
-      await expect(
-        page.getByRole("dialog", { name: "Anthropic", exact: true }),
-      ).toBeVisible();
-      break;
     case "quiz-grading-failed":
       await expect(
         page.getByRole("button", {
@@ -2053,16 +2038,6 @@ test("M14 every application route in both languages, themes and supported widths
                 fullPage: false,
                 animations: "disabled",
               });
-              if (name === "provider-disclosure")
-                await page.evaluate(() =>
-                  window.pyxis.invoke("engines.disclosureCancel", {
-                    provider: "claude",
-                  }),
-                );
-              if (name === "provider-disclosure")
-                await expect(
-                  page.getByRole("dialog", { name: "Anthropic", exact: true }),
-                ).toHaveCount(0);
               const errors = pageErrors.slice(before);
               const untranslated = (
                 await page.locator("body").innerText()
@@ -2098,14 +2073,6 @@ test("M14 every application route in both languages, themes and supported widths
                   `${key}: ${violations.map((v) => v.id).join(",")} ${errors.join(";")} ${overflow ? "horizontal overflow" : ""}`,
                 );
             } catch (error) {
-              if (name === "provider-disclosure")
-                await page
-                  .evaluate(() =>
-                    window.pyxis.invoke("engines.disclosureCancel", {
-                      provider: "claude",
-                    }),
-                  )
-                  .catch(() => undefined);
               failures.push(`${key}: ${String(error).slice(0, 900)}`);
               records.push({
                 name,

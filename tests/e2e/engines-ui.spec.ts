@@ -23,6 +23,12 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
+    // Whatever engines this computer has, their notice is already confirmed, so no dialog covers the screen.
+    await page.evaluate(() =>
+      window.pyxis.invoke("engines.acknowledge", {
+        providers: ["claude", "codex", "agent", "antigravity"],
+      }),
+    );
     // Exercise both keyring states without entering, storing or sending any key.
     mkdirSync(".shots", { recursive: true });
     for (const language of ["en", "it"] as const)
@@ -157,6 +163,10 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     ...process.env,
     PYXIS_USER_DATA: userData,
     PYXIS_E2E: "1",
+    // Only the two stand-ins exist: engines installed on this computer must not show up.
+    HOME: bin,
+    PATH: "/usr/bin:/bin",
+    CLI_FUNNEL_NO_SHELL_PATH: "1",
     CLI_FUNNEL_CLAUDE_BIN: fake(
       "claude",
       `case "$1" in --version) echo "2.1.0";; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac`,
@@ -183,6 +193,13 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
       location.hash = "/settings/engines";
     });
     await page.reload();
+    // Engines that are ready but not acknowledged get their notice here, and take no part in the plan before it.
+    const notice = page.getByRole("dialog", { name: "What leaves this computer" });
+    await expect(notice).toBeVisible({ timeout: 30000 });
+    await expect(notice.getByText("Claude Code sends them to Anthropic.")).toBeVisible();
+    await expect(page.locator(".engines-summary")).toHaveCount(0);
+    await notice.getByRole("button", { name: "I understand" }).click();
+    await expect(notice).toHaveCount(0);
     await expect(page.locator(".engines-summary")).toContainText(
       "Pyxis uses Codex for chat, maps and grading and Claude Code for plans, lessons and photos.",
       { timeout: 30000 },
@@ -279,6 +296,9 @@ esac`,
       location.hash = "/settings/engines";
     });
     await page.reload();
+    const notice = page.getByRole("dialog", { name: "What leaves this computer" });
+    await expect(notice).toBeVisible({ timeout: 30000 });
+    await notice.getByRole("button", { name: "I understand" }).click();
     const summary = page.locator(".engines-summary");
     await expect(summary).toContainText(
       "Pyxis splits the work across 4 engines:",

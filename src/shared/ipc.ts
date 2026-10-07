@@ -282,6 +282,8 @@ export const requests = {
         version: z.string(),
         path: z.string(),
         withinTestedRange: z.boolean(),
+        /** The student has seen what this provider receives. Pyxis sends it nothing until then. */
+        acknowledged: z.boolean(),
         capabilities: z.object({ effort: z.boolean(), fast: z.boolean() }),
       }),
     ),
@@ -300,17 +302,7 @@ export const requests = {
   },
   "engines.acknowledge": {
     input: z.object({
-      provider: z.enum(engineProviders),
-    }),
-    output: z.object({ ok: z.literal(true) }),
-  },
-  "engines.disclosurePending": {
-    input: z.object({}),
-    output: z.object({ providers: z.array(z.string()) }),
-  },
-  "engines.disclosureCancel": {
-    input: z.object({
-      provider: z.enum(engineProviders),
+      providers: z.array(z.enum(engineProviders)).min(1).max(engineProviders.length),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
@@ -967,13 +959,6 @@ export const requests = {
       }),
     ),
   },
-  "subjects.rename": {
-    input: z.object({
-      id: z.string(),
-      name: z.string().trim().min(1).max(120),
-    }),
-    output: z.object({ id: z.string(), name: z.string() }),
-  },
   "subjects.add": {
     input: z.object({ name: z.string().trim().min(1).max(120) }),
     output: z.object({ id: z.string(), name: z.string() }),
@@ -981,6 +966,13 @@ export const requests = {
   "subjects.reorder": {
     input: z.object({ ids: z.array(z.string()).max(1000) }),
     output: z.object({ ok: z.literal(true) }),
+  },
+  "subjects.rename": {
+    input: z.object({
+      id: z.string(),
+      name: z.string().trim().min(1).max(120),
+    }),
+    output: z.object({ id: z.string(), name: z.string() }),
   },
   "subjects.remove": {
     input: z.object({ id: z.string() }),
@@ -1879,7 +1871,6 @@ export const streams = {} as const;
 
 export const broadcasts = {
   "job.updated": JobView,
-  "engine.disclosure": z.object({ provider: z.string(), pending: z.boolean() }),
   // Background recomputation of automatic engine choices finished.
   "engine.auto": z.object({}),
   "engine.login": z.object({

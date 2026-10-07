@@ -1399,6 +1399,12 @@
     "terms": "Una prova invia una frase corta al fornitore scelto.",
     "disclosure": "Il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore del motore.",
     "acknowledge": "Ho capito",
+    "notice": {
+      "title": "Cosa esce da questo computer",
+      "intro": "Quando usi un motore, il testo, i brani recuperati e gli allegati escono da questo computer. Pyxis non invia nulla finché non confermi.",
+      "item": "{{name}} li invia a {{vendor}}.",
+      "later": "Non ora"
+    },
     "loading": "Cerco i motori installati.",
     "loadFailed": "Non riesco a leggere i motori.",
     "disabled": "Non disponibile: manca ancora la modalità senza strumenti.",
@@ -1432,7 +1438,8 @@
       "aborted": "Annullato.",
       "refused": "La chiave è stata rifiutata. Controllala.",
       "quota": "Limite di utilizzo raggiunto. Riprova più tardi o scegli un altro motore.",
-      "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare."
+      "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
+      "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI."
     },
     "feature": {
       "default": "Motore predefinito",
