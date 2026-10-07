@@ -208,17 +208,19 @@ describe("plan-scoped chat", () => {
   it("ASK-07: a plan with no sources never searches the whole library", async () => {
     const { db } = setup();
     plan(db);
-    let called = false;
+    let prompt = "";
     const result = await askTurn(db, {
       text: question,
       planId: "plan",
-      run: async () => {
-        called = true;
+      run: async (input) => {
+        prompt = input.prompt;
         return reply;
       },
     });
-    expect(result.covered).toBe(false);
-    expect(called).toBe(false);
+    // The question is answered, but no library passage is sent and the reply is marked as not from the sources.
+    expect(result.covered).toBe(true);
+    expect(prompt).not.toContain("[P1]");
+    expect(result.message?.grounding).toBe("general");
     db.close();
   });
 });

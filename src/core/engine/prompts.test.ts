@@ -27,13 +27,15 @@ describe("prompt templates", () => {
   it("bumps the version of every template whose wording changed", () => {
     expect(loadTemplate("lesson.write").version).toBe("model-3");
     expect(loadTemplate("quiz.batch").version).toBe("quiz-3");
-    for (const id of [
-      "chat.socratic",
-      "chat.general",
-    ] as const) {
-      expect(loadTemplate(id).version, id).toBe("3");
+    expect(loadTemplate("chat.socratic").version).toBe("4");
+    expect(loadTemplate("chat.general").version).toBe("4");
+    expect(loadTemplate("chat.solver").version).toBe("6");
+    // With sources the passages guide the answer, they do not limit it, and the model never refuses.
+    for (const id of ["chat.solver", "chat.socratic"] as const) {
+      expect(loadTemplate(id).body, id).not.toContain("NOT_COVERED");
+      expect(loadTemplate(id).body, id).not.toMatch(/only from the numbered passages/i);
+      expect(loadTemplate(id).body, id).toContain("own knowledge");
     }
-    expect(loadTemplate("chat.solver").version).toBe("5");
     expect(loadTemplate("chat.solver").body).toContain("opening line is exactly ```check");
     for (const id of [
       "plan.synopsis",

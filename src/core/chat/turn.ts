@@ -76,6 +76,28 @@ type AskInput = {
   run?: Parameters<typeof generate>[0]["run"];
 };
 
+/** Passages a chat turn sends to the model. Questions that ask for a full explanation need more than the default eight. */
+const CHAT_PASSAGES = 12;
+
+/**
+ * What the reply message records, and so whether the "general knowledge" badge shows. The badge is only for a turn where
+ * the student had sources or a subject selected and the answer cites none of them: that is "general". A cited answer is
+ * "sources", and a turn with nothing selected carries no claim (null) and no badge. A turn's own attachment counts as
+ * its source. A Socratic question needs no citation, so it stays "sources" whenever passages were found.
+ */
+export function replyGrounding(turn: {
+  selected: boolean;
+  cited: number;
+  attached: boolean;
+  /** The reply is a Socratic question, which is not expected to cite. */
+  question: boolean;
+  passages: number;
+}): "sources" | "general" | null {
+  if (turn.cited > 0 || turn.attached) return "sources";
+  if (!turn.selected) return null;
+  return turn.question && turn.passages > 0 ? "sources" : "general";
+}
+
 function splitFollowups(text: string): { body: string; followups: string[] } {
   const match = text.match(/<followups>([\s\S]*?)<\/followups>/i);
   if (!match?.[1]) return { body: text.trim(), followups: [] };
@@ -272,7 +294,7 @@ async function gather(
   sourceIds: string[],
   embed: AskInput["embed"],
 ) {
-  const options = { sourceIds, embed };
+  const options = { sourceIds, embed, limit: CHAT_PASSAGES };
   const found = await retrieveWithModel(db, text, options);
   if (found.covered || !isFollowUp(text)) return found;
   const earlier = db
@@ -457,15 +479,15 @@ export async function askTurn(
     capabilityWarning(selectionFor(db, "chat").model, "vision") == null &&
     images.some((image) => image.data);
   const thisTurnFile = notes.length > 0 || seesImage;
+  // The passages are the main reference, not a gate: a question they do not cover is still answered from the model's own
+  // knowledge, and the reply shows it by citing nothing (see replyGrounding).
   const found =
-    input.allowGeneral || (thisTurnFile && sourceIds.length === 0)
+    input.allowGeneral ||
+    (thisTurnFile && sourceIds.length === 0) ||
+    (planId && sourceIds.length === 0)
       ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
-      : planId && sourceIds.length === 0
-        ? { hits: [] as PassageHit[], covered: false, usedVectors: false }
-        : await gather(db, chatId, input.text, sourceIds, input.embed);
-  if (!input.allowGeneral && !found.covered && !thisTurnFile) {
-    return { chatId, covered: false, message: null };
-  }
+      : await gather(db, chatId, input.text, sourceIds, input.embed);
+  const selected = sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
 
   const citations: ChatCitation[] = found.hits.map((hit, index) => ({
     label: hit.sectionPath || hit.locator.paragraph || `P${index + 1}`,
@@ -500,7 +522,11 @@ export async function askTurn(
   ]
     .filter(Boolean)
     .join("\n");
-  const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}\n\nEarlier turns:\n${historyText(db, chatId, replacing?.assistantId)}\n\nQuestion:\n${input.text}`;
+  const noPassages =
+    selected && !input.allowGeneral && !thisTurnFile && citations.length === 0
+      ? "No passage matches this question.\n\n"
+      : "";
+  const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}${noPassages}\n\nEarlier turns:\n${historyText(db, chatId, replacing?.assistantId)}\n\nQuestion:\n${input.text}`;
   const selection = selectionFor(db, "chat");
   let streamed = "";
   let result;
@@ -542,10 +568,11 @@ export async function askTurn(
         ...finishReply(db, chatId, streamed, {
           provider: selection.provider,
           model: selection.model,
-          grounding: input.allowGeneral ? "general" : "sources",
+          selected,
+          attached: thisTurnFile,
+          mode,
           template,
           citations,
-          allowGeneral: input.allowGeneral === true,
           stopped: true,
           now,
         }),
@@ -554,6 +581,7 @@ export async function askTurn(
     }
     throw err;
   }
+  // The prompts no longer ask for it, but a model or an older prompt can still answer NOT_COVERED: nothing is stored.
   if (result.text.trim().startsWith("NOT_COVERED")) {
     return { chatId, covered: false, message: null };
   }
@@ -575,7 +603,17 @@ export async function askTurn(
       : ""
   }${checks.length ? `\n<checks>${JSON.stringify(checks)}</checks>` : ""}`;
   const messageId = uuidv7(now + 2);
-  const grounding = input.allowGeneral ? "general" : "sources";
+  const used = new Set(
+    [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
+  );
+  const linked = citations.filter((cite) => used.has(cite.index));
+  const grounding = replyGrounding({
+    selected,
+    cited: linked.length,
+    attached: thisTurnFile,
+    question: mode === "socratic" && parsed.body.trim().endsWith("?"),
+    passages: citations.length,
+  });
   db.prepare(
     `INSERT INTO messages
       (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, created_at)
@@ -594,19 +632,6 @@ export async function askTurn(
   const link = db.prepare(
     `INSERT INTO message_passages (message_id, passage_id, label) VALUES (?, ?, ?)`,
   );
-  const used = new Set(
-    [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
-  );
-  const linked = citations.filter((cite) => used.has(cite.index));
-  if (
-    !input.allowGeneral &&
-    linked.length === 0 &&
-    !thisTurnFile &&
-    !(mode === "socratic" && parsed.body.trim().endsWith("?"))
-  ) {
-    db.prepare(`DELETE FROM messages WHERE id = ?`).run(messageId);
-    return { chatId, covered: false, message: null };
-  }
   for (const cite of linked) {
     link.run(messageId, cite.passageId, `P${cite.index}`);
   }
@@ -637,16 +662,28 @@ function finishReply(
   meta: {
     provider: string;
     model: string;
-    grounding: "sources" | "general";
+    selected: boolean;
+    attached: boolean;
+    mode: string;
     template: string;
     citations: ChatCitation[];
-    allowGeneral: boolean;
     stopped: boolean;
     now: number;
   },
 ): AskResult {
   const parsed = splitFollowups(text);
   const messageId = uuidv7(meta.now + 2);
+  const used = new Set(
+    [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
+  );
+  const linked = meta.citations.filter((cite) => used.has(cite.index));
+  const grounding = replyGrounding({
+    selected: meta.selected,
+    cited: linked.length,
+    attached: meta.attached,
+    question: meta.mode === "socratic" && parsed.body.trim().endsWith("?"),
+    passages: meta.citations.length,
+  });
   db.prepare(
     `INSERT INTO messages
       (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, stopped, created_at)
@@ -659,14 +696,10 @@ function finishReply(
     meta.model,
     meta.template,
     chatProvenance(meta.template as ChatTemplateId).version,
-    meta.grounding,
+    grounding,
     meta.stopped ? 1 : 0,
     meta.now + 1,
   );
-  const used = new Set(
-    [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
-  );
-  const linked = meta.citations.filter((cite) => used.has(cite.index));
   const link = db.prepare(
     `INSERT INTO message_passages (message_id, passage_id, label) VALUES (?, ?, ?)`,
   );
@@ -681,7 +714,7 @@ function finishReply(
       body: parsed.body,
       modelId: meta.model || null,
       provider: meta.provider || null,
-      grounding: meta.grounding,
+      grounding,
       followups: [],
       citations: linked,
       reaction: null,
