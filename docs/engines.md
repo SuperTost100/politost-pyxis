@@ -28,14 +28,14 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 
 Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.3 model lists:
 
-| Ready CLIs | Chat and maps | Lessons and default | Photos | Plans | Grading |
-| --- | --- | --- | --- | --- | --- |
-| Claude Code + Codex | Codex luna | Claude sonnet | Claude sonnet | Claude opus | Codex sol |
-| Claude Code + Antigravity | Gemini Flash | Claude sonnet | Claude sonnet | Claude opus | Gemini Pro |
-| Claude Code + Cursor | Cursor Gemini Flash | Claude sonnet | Claude sonnet | Claude opus | Cursor opus |
-| Codex + Antigravity | Codex luna (chat), Gemini Flash (maps) | Gemini Pro | Antigravity sonnet | Codex sol | Codex sol |
-| Cursor + Antigravity | Gemini Flash | Cursor sonnet | Cursor sonnet | Cursor opus | Gemini Pro |
-| All four | Gemini Flash | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet | Claude opus | Codex sol |
+| Ready CLIs                | Chat and maps                          | Lessons and default                              | Photos             | Plans       | Grading     |
+| ------------------------- | -------------------------------------- | ------------------------------------------------ | ------------------ | ----------- | ----------- |
+| Claude Code + Codex       | Codex luna                             | Claude sonnet                                    | Claude sonnet      | Claude opus | Codex sol   |
+| Claude Code + Antigravity | Gemini Flash                           | Claude sonnet                                    | Claude sonnet      | Claude opus | Gemini Pro  |
+| Claude Code + Cursor      | Cursor Gemini Flash                    | Claude sonnet                                    | Claude sonnet      | Claude opus | Cursor opus |
+| Codex + Antigravity       | Codex luna (chat), Gemini Flash (maps) | Gemini Pro                                       | Antigravity sonnet | Codex sol   | Codex sol   |
+| Cursor + Antigravity      | Gemini Flash                           | Cursor sonnet                                    | Cursor sonnet      | Cursor opus | Gemini Pro  |
+| All four                  | Gemini Flash                           | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet      | Claude opus | Codex sol   |
 
 An automatic row in `feature_engines` carries `"auto": true` in its JSON. A row without it is pinned. `engines.setFeature` pins, and `engines.autoConfigure` with `reset` returns features to automatic. Only automatic rows are rewritten. When no engine is ready they are removed, which brings back `engine-missing`. If every ready engine fails to list models, the current rows stay.
 
