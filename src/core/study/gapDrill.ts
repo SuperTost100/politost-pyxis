@@ -21,7 +21,6 @@ const drillInput = (planId: string, topicId: string) => ({
   topicId,
   count: DRILL_QUESTIONS,
   drill: true,
-  feedback: true,
   types: ["mcq", "tf", "completion"] as Array<"mcq" | "tf" | "completion">,
 });
 

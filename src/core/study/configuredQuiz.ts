@@ -14,7 +14,13 @@ import { selectionFor } from "../engine/selection";
 import { requireTopic } from "./openLesson";
 import { flaggedIds } from "./flags";
 import { topicExercises } from "./exercises";
-import { saveQuiz, startAttempt, type QuizQuestion } from "./attempt";
+import {
+  QUIZ_MAX_QUESTIONS,
+  questionFlagged,
+  saveQuiz,
+  startAttempt,
+  type QuizQuestion,
+} from "./attempt";
 
 export const quizKinds = [
   "mcq",
@@ -24,7 +30,14 @@ export const quizKinds = [
   "open",
 ] as const;
 export const quizConfig = z.object({
-  count: z.number().int().min(10).max(100).default(20),
+  // Older callers may still ask for more; no quiz asks more than QUIZ_MAX_QUESTIONS.
+  count: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(QUIZ_MAX_QUESTIONS)
+    .transform((count) => Math.min(count, QUIZ_MAX_QUESTIONS)),
   types: z
     .array(z.enum(quizKinds))
     .min(1)
@@ -77,9 +90,8 @@ export type QuizInput = {
   page?: number;
   timerMinutes?: number;
   count?: number;
-  feedback?: boolean;
   types?: Array<(typeof quizKinds)[number]>;
-  /** A gap drill (LES-03) is five questions. That size is the drill's own; a quiz a student configures keeps its minimum of ten. */
+  /** A gap drill (LES-03) is five questions; a quiz a student configures has QUIZ_MAX_QUESTIONS. */
   drill?: boolean;
 };
 export type QuizSnapshot = {
@@ -94,6 +106,8 @@ export type QuizSnapshot = {
   explanation?: string;
   /** PER-04 line captured at preparation; gap drills reuse this builder, so they carry it too. */
   interests?: string;
+  /** Stems the student marked wrong; the model must not ask them again. */
+  rejected?: string[];
   provenance?: { provider: string; model: string };
 };
 
@@ -102,7 +116,8 @@ export function prepareQuiz(
   input: QuizInput,
 ): QuizSnapshot {
   const config = quizConfig.parse(input.drill ? { ...input, count: undefined } : input);
-  if (input.drill) config.count = Math.min(10, Math.max(1, input.count ?? 5));
+  if (input.drill)
+    config.count = Math.min(QUIZ_MAX_QUESTIONS, Math.max(1, input.count ?? 5));
   if (config.scope === "topic") {
     if (!input.topicId) throw new Error("topic-missing");
     requireTopic(db, input.planId, input.topicId);
@@ -182,7 +197,42 @@ export function prepareQuiz(
     selection,
     grounding: allPassages.length ? "sources" : "general",
     interests: interestsLine(db) || undefined,
+    rejected: rejectedStems(
+      db,
+      input.planId,
+      config.scope === "topic" ? input.topicId : undefined,
+    ),
   };
+}
+
+/** Stems of questions the student marked wrong in this plan (or one topic of it), newest first. */
+export function rejectedStems(
+  db: Database.Database,
+  planId: string,
+  topicId?: string,
+  limit = 20,
+): string[] {
+  const blocked = flaggedIds(db, "exercise");
+  if (!blocked.size) return [];
+  const items = db
+    .prepare(
+      "SELECT topic_id, body_json FROM items WHERE plan_id = ? AND kind IN ('quiz', 'diagnostic', 'review') ORDER BY created_at DESC, id DESC",
+    )
+    .all(planId) as Array<{ topic_id: string | null; body_json: string }>;
+  const stems = new Set<string>();
+  for (const item of items) {
+    const body = JSON.parse(item.body_json) as {
+      questions?: Array<{ id: string; sourceId?: string; topicId?: string; stem: string }>;
+    };
+    for (const question of body.questions ?? [])
+      if (
+        questionFlagged(blocked, question) &&
+        (!topicId || (question.topicId ?? item.topic_id) === topicId)
+      )
+        stems.add(question.stem);
+    if (stems.size >= limit) break;
+  }
+  return [...stems].slice(0, limit);
 }
 
 export async function generateQuiz(
@@ -213,7 +263,9 @@ export async function generateQuiz(
       .object({ questions: z.array(questionSchema).length(batchCount) })
       .superRefine((batch, ctx) => {
         const seen = new Set(
-          questions.map((question) => question.stem.trim().toLowerCase()),
+          [...questions.map((question) => question.stem), ...(snapshot.rejected ?? [])].map(
+            (stem) => stem.trim().toLowerCase(),
+          ),
         );
         batch.questions.forEach((question, i) => {
           if (!config.types.includes(question.kind))
@@ -303,6 +355,9 @@ export async function generateQuiz(
           text: row.text.slice(0, 1000),
         })),
         previousQuestions: questions.map((question) => question.stem),
+        ...(snapshot.rejected?.length
+          ? { rejectedQuestions: snapshot.rejected }
+          : {}),
       }),
     });
     snapshot.provenance = { provider: result.provider, model: result.model };
@@ -381,7 +436,8 @@ export function saveQuizSnapshot(
   return db.transaction(() => {
     const id = existingId ?? saveQuiz(db, input.planId, []);
     const body = {
-      config: { ...snapshot.config, feedback: input.feedback ?? true },
+      // Every quiz corrects each answer as it is given.
+      config: { ...snapshot.config, feedback: true },
       ...(snapshot.explanation ? { explanation: snapshot.explanation } : {}),
       complete: snapshot.questions.length === snapshot.config.count,
       questions: snapshot.questions.map(({ grade, ...question }) => ({

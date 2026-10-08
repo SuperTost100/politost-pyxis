@@ -46,6 +46,23 @@ const dueCardSchema = z.object({
 });
 
 /** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
+const citationSchema = z.object({ passageId: z.string(), label: z.string() });
+const quizResultSchema = z.object({
+  score: z.number(),
+  picks: z.record(z.string(), z.string()),
+  results: z.array(
+    z.object({
+      id: z.string(),
+      score: z.number(),
+      expected: z.string(),
+      explanation: z.string(),
+      // Source chips for [Pn] references in the explanation.
+      citations: z.array(citationSchema),
+      // Marked wrong by the student; shown but not scored.
+      flagged: z.boolean().optional(),
+    }),
+  ),
+});
 const reviewSessionSchema = z.object({
   sessionId: z.string(),
   cards: z.array(dueCardSchema),
@@ -483,6 +500,15 @@ export const requests = {
     input: z.object({ planId: z.string(), topicId: z.string().optional() }),
     output: z.object({ filename: z.string(), csv: z.string() }),
   },
+  // Shows the intro's facts without starting anything.
+  "study.diagnosticPreview": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({
+      count: z.number(),
+      answered: z.number(),
+      minutes: z.number(),
+    }),
+  },
   "study.diagnosticStart": {
     input: z.object({ planId: z.string() }),
     output: z.object({
@@ -508,8 +534,10 @@ export const requests = {
       sourceId: z.string().min(1).optional(),
       page: z.number().int().min(1).max(100000).optional(),
       timerMinutes: z.number().int().min(1).max(180).optional(),
+      // Ignored: every quiz now corrects each answer when it is checked.
       feedback: z.boolean().optional(),
-      count: z.number().int().min(10).max(100).optional(),
+      // Core asks at most ten questions whatever is sent here.
+      count: z.number().int().min(1).max(100).optional(),
       types: z
         .array(z.enum(["mcq", "tf", "completion", "matching", "open"]))
         .min(1)
@@ -549,24 +577,12 @@ export const requests = {
         .object({ picks: z.record(z.string(), z.string()), index: z.number() })
         .optional(),
       submittedAt: z.number().optional(),
-      result: z
-        .object({
-          score: z.number(),
-          picks: z.record(z.string(), z.string()),
-          results: z.array(
-            z.object({
-              id: z.string(),
-              score: z.number(),
-              expected: z.string(),
-              explanation: z.string(),
-            }),
-          ),
-        })
-        .optional(),
+      result: quizResultSchema.optional(),
       questions: z.array(
         z.object({
           id: z.string(),
           sourceId: z.string().optional(),
+          topicId: z.string().optional(),
           stem: z.string(),
           grade: z.object({ kind: z.string() }),
           options: z.array(z.string()).optional(),
@@ -580,7 +596,6 @@ export const requests = {
       error: z.string().optional(),
       general: z.boolean().optional(),
       requestedCount: z.number(),
-      feedback: z.boolean(),
       // Optional quiz timer: minutes configured, and the persisted wall-clock end once the quiz is ready.
       timerMinutes: z.number().optional(),
       deadlineAt: z.number().optional(),
@@ -590,6 +605,7 @@ export const requests = {
           score: z.number(),
           expected: z.string(),
           explanation: z.string(),
+          citations: z.array(citationSchema),
           pick: z.string(),
           provider: z.string().optional(),
           model: z.string().optional(),
@@ -608,9 +624,24 @@ export const requests = {
       score: z.number(),
       expected: z.string(),
       explanation: z.string(),
+      citations: z.array(citationSchema),
       provider: z.string().optional(),
       model: z.string().optional(),
     }),
+  },
+  // Stops a running model check of one open answer; the answer stays editable.
+  "study.quizCheckCancel": {
+    input: z.object({ attemptId: z.string(), questionId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  // "Wrong question?": flags the question, leaves it out of this score and later quizzes. `wrong: false` undoes it.
+  "study.quizWrong": {
+    input: z.object({
+      attemptId: z.string(),
+      questionId: z.string(),
+      wrong: z.boolean(),
+    }),
+    output: z.object({ ok: z.literal(true), score: z.number().optional() }),
   },
   "study.quizSubmit": {
     input: z.object({
@@ -643,19 +674,7 @@ export const requests = {
       total: z.number(),
       provider: z.string().optional(),
       model: z.string().optional(),
-      result: z
-        .object({
-          score: z.number(),
-          picks: z.record(z.string(), z.string()),
-          results: z.array(
-            z.object({
-              id: z.string(),
-              score: z.number(),
-              expected: z.string(),
-              explanation: z.string(),
-            }),
-          ),
-        })
+      result: quizResultSchema
         .optional(),
     }),
   },

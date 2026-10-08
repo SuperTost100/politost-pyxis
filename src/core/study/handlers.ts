@@ -46,16 +46,18 @@ import {
 } from "./simulation";
 import { flagTarget } from "./flags";
 import { discardReview, readReview, reviewWaiting, skipDrill, startReview } from "./review";
-import { startDiagnostic } from "./topicQuiz";
+import { diagnosticPreview, startDiagnostic } from "./topicQuiz";
+import { citedAnswers } from "./citations";
+import { markWrongQuestion, registerWrongQuestionJobs } from "./wrongQuestion";
 import { exportAnki } from "../share/anki";
 import { exportCardsCsv, exportMarkdown } from "../share/markdown";
 
 import {
+  cancelCheck,
   checkQuestion,
   finalizeAttempt,
   gradeConfiguredAttempt,
   gradeOpenAnswers,
-  quizAttempt,
   readQuizGrading,
   registerQuizGradingJobs,
   submitQuiz,
@@ -97,6 +99,7 @@ export function studyHandlers(
     registerCardJobs(db, runner, run);
     registerGapJobs(db, runner, run);
     registerGapInsightJobs(db, runner, run);
+    registerWrongQuestionJobs(db, runner, run);
   }
   const withReading = readingFor(db);
   return {
@@ -215,19 +218,28 @@ export function studyHandlers(
       );
     },
     quizRead(input: { attemptId: string; planId?: string }) {
-      return readQuiz(db, input.attemptId, input.planId);
+      const quiz = readQuiz(db, input.attemptId, input.planId);
+      return {
+        ...quiz,
+        checked: citedAnswers(db, input.attemptId, quiz.checked),
+        result: quiz.result && {
+          ...quiz.result,
+          results: citedAnswers(db, input.attemptId, quiz.result.results),
+        },
+      };
     },
     diagnosticStart(input: { planId: string }) {
       return startDiagnostic(db, input.planId);
+    },
+    diagnosticPreview(input: { planId: string }) {
+      return diagnosticPreview(db, input.planId);
     },
     async quizCheck(input: {
       attemptId: string;
       questionId: string;
       pick: string;
     }) {
-      if (!quizAttempt(db, input.attemptId).body.config?.feedback)
-        throw new Error("feedback-unavailable");
-      return checkQuestion(
+      const checked = await checkQuestion(
         db,
         runner,
         run,
@@ -235,6 +247,13 @@ export function studyHandlers(
         input.questionId,
         input.pick,
       );
+      return citedAnswers(db, input.attemptId, [checked])[0]!;
+    },
+    quizCheckCancel(input: { attemptId: string; questionId: string }) {
+      return cancelCheck(db, runner, input.attemptId, input.questionId);
+    },
+    quizWrong(input: { attemptId: string; questionId: string; wrong: boolean }) {
+      return markWrongQuestion(db, runner, input);
     },
     quizSubmit(input: { attemptId: string; picks: Record<string, string> }) {
       const gate = db
@@ -275,7 +294,14 @@ export function studyHandlers(
       return finalize();
     },
     quizGrading(input: { attemptId: string }) {
-      return readQuizGrading(db, input.attemptId);
+      const grading = readQuizGrading(db, input.attemptId);
+      return {
+        ...grading,
+        result: grading.result && {
+          ...grading.result,
+          results: citedAnswers(db, input.attemptId, grading.result.results),
+        },
+      };
     },
     // Reads never generate: building cards is a durable job started by cardsGenerate.
     cards(input: { planId: string; topicId?: string }) {

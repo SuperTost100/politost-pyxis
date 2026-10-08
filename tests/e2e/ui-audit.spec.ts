@@ -1178,7 +1178,8 @@ async function openState(page: Page, name: string) {
       const keys = page.getByRole("group", {
         name: both("Tastiera per formule", "Formula keyboard"),
       });
-      await expect(keys).toBeVisible();
+      // The keyboard loads on first open, which took over 5 s on the hosted Windows runner.
+      await expect(keys).toBeVisible({ timeout: 20000 });
       await keys
         .getByRole("button", { name: both("Frazione", "Fraction") })
         .click();
@@ -1252,19 +1253,26 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "quiz-setup":
+      await page
+        .getByRole("button", { name: /^(Personalizza|Customize)$/ })
+        .click();
       await expect(
-        page.getByRole("slider", {
-          name: /Numero di domande|Number of questions/,
-        }),
+        page.getByRole("group", { name: /Tipi di domanda|Question types/ }),
       ).toBeVisible();
       break;
     case "quiz-page":
+      await page
+        .getByRole("button", { name: /^(Personalizza|Customize)$/ })
+        .click();
       await page
         .getByRole("button", { name: /^(Una pagina|One page)$/ })
         .click();
       await expect(page.getByRole("spinbutton")).toBeVisible();
       break;
     case "quiz-timed":
+      await page
+        .getByRole("button", { name: /^(Personalizza|Customize)$/ })
+        .click();
       await page
         .getByRole("checkbox", { name: /Imposta un limite|Set a time limit/ })
         .check();
@@ -1847,7 +1855,7 @@ async function keyboardCheck(page: Page, name: string) {
     }
   }
   if (name === "quiz") {
-    const choice = page.locator(".choice").first();
+    const choice = page.locator(".px-opt").first();
     await choice.focus();
     await page.keyboard.press("Space");
     await expect(choice).toHaveAttribute("aria-pressed", "true");

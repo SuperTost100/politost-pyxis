@@ -169,12 +169,12 @@ export function planHandlers(
       ).run(input.planId);
       const quizJobs = db
         .prepare(
-          "SELECT id FROM jobs WHERE (kind IN ('quiz-build', 'map-build', 'exercise-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind IN ('simulation-grade', 'simulation-build', 'cards-build', 'gap-drill', 'exercise-build') AND json_extract(params_json, '$.planId') = ?) OR (kind IN ('quiz-grade', 'quiz-check') AND json_extract(params_json, '$.attemptId') IN (SELECT id FROM attempts WHERE plan_id = ?))",
+          "SELECT id FROM jobs WHERE (kind IN ('quiz-build', 'map-build', 'exercise-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind IN ('simulation-grade', 'simulation-build', 'cards-build', 'gap-drill', 'exercise-build', 'quiz-replace') AND json_extract(params_json, '$.planId') = ?) OR (kind IN ('quiz-grade', 'quiz-check') AND json_extract(params_json, '$.attemptId') IN (SELECT id FROM attempts WHERE plan_id = ?))",
         )
         .all(input.planId, input.planId, input.planId) as Array<{ id: string }>;
       for (const quizJob of quizJobs) runner?.cancel(quizJob.id);
       db.prepare(
-        "DELETE FROM jobs WHERE (kind IN ('quiz-build', 'map-build', 'exercise-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind IN ('simulation-grade', 'simulation-build', 'cards-build', 'gap-drill', 'exercise-build') AND json_extract(params_json, '$.planId') = ?) OR (kind IN ('quiz-grade', 'quiz-check') AND json_extract(params_json, '$.attemptId') IN (SELECT id FROM attempts WHERE plan_id = ?))",
+        "DELETE FROM jobs WHERE (kind IN ('quiz-build', 'map-build', 'exercise-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind IN ('simulation-grade', 'simulation-build', 'cards-build', 'gap-drill', 'exercise-build', 'quiz-replace') AND json_extract(params_json, '$.planId') = ?) OR (kind IN ('quiz-grade', 'quiz-check') AND json_extract(params_json, '$.attemptId') IN (SELECT id FROM attempts WHERE plan_id = ?))",
       ).run(input.planId, input.planId, input.planId);
       deletePlan(db, input.planId);
       db.prepare("DELETE FROM settings WHERE key IN (?,?,?)").run(
