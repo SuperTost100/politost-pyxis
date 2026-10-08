@@ -114,7 +114,7 @@ export function LessonPage() {
     },
   });
   const markDone = useMutation({
-    mutationFn: (nodeId: string) => invoke("plans.complete", { planId, nodeId }),
+    mutationFn: () => invoke("plans.complete", { planId, activity: "lesson", topicId }),
     onSuccess: async () => {
       await refreshPlan();
       navigate(`/plans/${planId}`);
@@ -130,8 +130,8 @@ export function LessonPage() {
     ? live || data?.markdown || ""
     : (data?.markdown ?? (cancelled ? live : ""));
   const topic = plan.data?.topics.find((item) => item.id === topicId);
-  const node = plan.data?.nodes.find(
-    (item) => item.kind === "learn" && item.topicId === topicId,
+  const read = plan.data?.steps.some(
+    (step) => step.activity === "lesson" && step.topicId === topicId,
   );
   const wording = chosen ?? data?.wording ?? "balanced";
   const model = Boolean(data && !data.fallback);
@@ -325,18 +325,12 @@ export function LessonPage() {
       {data && !writing ? (
         <>
           <ReaderEnd
-            state={
-              node?.state === "done"
-                ? "done"
-                : node?.state === "current"
-                  ? "current"
-                  : "other"
-            }
+            state={!plan.data || !topic ? "other" : read ? "done" : "current"}
             doneLabel={t("lesson.doneTitle")}
             pendingHint={recapOpen ? t("lesson.recapPrompt") : undefined}
             busy={markDone.isPending}
             failed={markDone.isError}
-            onMarkDone={() => node && markDone.mutate(node.id)}
+            onMarkDone={() => markDone.mutate()}
             onBack={() => navigate(`/plans/${planId}`)}
           />
           <SourcesFooter sources={data.sources} />

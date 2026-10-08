@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { appendEvent } from "../events";
-import { completeNode } from "../plans/create";
+import { recordStep } from "../plans/steps";
 import {
   finalRecap,
   parseSmartText,
@@ -52,26 +52,18 @@ export function finishingQuestions(
   return kind === "intro" ? [...smartQuestions(segments).keys()] : [];
 }
 
-/** Marks the path node for this lesson or the introduction done, if it is the node the path is on. */
+/** Records the lesson or the introduction as read on the path, whichever topic it is on. */
 export function completeReading(
   db: Database.Database,
   planId: string,
   kind: "lesson" | "intro",
   topicId: string | null,
 ) {
-  const node = db
-    .prepare(
-      `SELECT id FROM path_nodes WHERE plan_id = ? AND kind = ? AND (? IS NULL OR topic_id = ?) ORDER BY position LIMIT 1`,
-    )
-    .get(planId, kind === "intro" ? "intro" : "learn", topicId, topicId) as
-    | { id: string }
-    | undefined;
-  if (!node) return;
   try {
-    completeNode(db, planId, node.id);
+    recordStep(db, planId, { activity: kind, topicId });
   } catch (err) {
-    // A node already done, or not yet reached on the path, keeps its state.
-    if (!(err instanceof Error) || err.message !== "node-locked") throw err;
+    // A lesson on a topic archived since keeps its answers; there is no path step to add.
+    if (!(err instanceof Error) || err.message !== "topic-missing") throw err;
   }
 }
 

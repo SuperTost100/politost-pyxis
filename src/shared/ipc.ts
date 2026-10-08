@@ -265,6 +265,20 @@ const engineSelection = z.object({
 });
 
 const SmartAnswers = z.record(z.string(), z.number().int());
+const PathActivity = z.enum([
+  "intro",
+  "diagnostic",
+  "lesson",
+  "practice",
+  "quiz",
+  "cards",
+  "gaps",
+  "simulation",
+]);
+const StepResult = z.object({
+  correct: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
 const LessonSources = z.array(
   z.object({
     sourceId: z.string(),
@@ -1097,15 +1111,14 @@ export const requests = {
             subtopics: z.array(z.string()),
           }),
         ),
-        nodes: z.array(
+        // What the student finished, in order; the path shows these as done steps.
+        steps: z.array(
           z.object({
             id: z.string(),
-            title: z.string(),
-            kind: z.string(),
+            activity: PathActivity,
             topicId: z.string().nullable(),
-            position: z.number(),
-            state: z.enum(["locked", "current", "done"]),
-            unlockReason: z.string(),
+            at: z.number(),
+            result: StepResult.nullable(),
           }),
         ),
         sources: z.array(
@@ -1183,9 +1196,36 @@ export const requests = {
     input: z.object({ planId: z.string() }),
     output: z
       .object({
-        nodeId: z.string(),
-        reason: z.enum(["due", "gaps", "next"]),
-        count: z.number(),
+        next: z
+          .object({
+            activity: PathActivity,
+            topicId: z.string().nullable(),
+            reason: z.enum([
+              "intro",
+              "diagnostic",
+              "due",
+              "gaps",
+              "examSoon",
+              "ready",
+              "consolidate",
+              "next",
+              "weakest",
+            ]),
+            count: z.number(),
+          })
+          .nullable(),
+        hasIntro: z.boolean(),
+        // Per topic in the plan's order: what fits it now and what the chooser shows next to each activity.
+        topics: z.array(
+          z.object({
+            topicId: z.string(),
+            mastery: z.number(),
+            read: z.boolean(),
+            dueCards: z.number(),
+            gaps: z.number(),
+            suggested: PathActivity,
+          }),
+        ),
       })
       .nullable(),
   },
@@ -1272,8 +1312,14 @@ export const requests = {
       ),
     }),
   },
+  // Records a finished activity the renderer owns; quizzes, the diagnostic and simulations record themselves on submit.
   "plans.complete": {
-    input: z.object({ planId: z.string(), nodeId: z.string() }),
+    input: z.object({
+      planId: z.string(),
+      activity: z.enum(["intro", "lesson", "practice", "cards"]),
+      topicId: z.string().nullable(),
+      result: StepResult.optional(),
+    }),
     output: z.object({ ok: z.boolean() }),
   },
   "plans.build": {

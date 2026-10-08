@@ -92,16 +92,9 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     await expect
       .poll(async () => (await invoke<{ state: string }>("plans.build", { planId })).state)
       .toBe("succeeded");
-    // The path's frontier starts once the intro and the diagnostic are done.
-    const plan = await invoke<{
-      topics: Array<{ id: string }>;
-      nodes: Array<{ id: string; kind: string }>;
-    }>("plans.read", { planId });
-    for (const kind of ["intro", "diagnostic"])
-      await invoke("plans.complete", {
-        planId,
-        nodeId: plan.nodes.find((node) => node.kind === kind)!.id,
-      });
+    // The path's frontier is the topic whose lesson the student read last.
+    const plan = await invoke<{ topics: Array<{ id: string }> }>("plans.read", { planId });
+    await invoke("plans.complete", { planId, activity: "lesson", topicId: plan.topics[0]!.id });
     for (const n of [1, 2, 3, 4, 5, 6])
       await invoke("study.save", {
         planId,

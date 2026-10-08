@@ -1,7 +1,7 @@
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { completeNode, createPlan, readPlan } from "../plans/create";
+import { createPlan, readPlan } from "../plans/create";
 import { planMastery, planSeries } from "../plans/progress";
 import { importSmartbook } from "../sources/smartbook";
 import { parseSmartText, smartQuestions, finalRecap } from "../../shared/smart-text";
@@ -74,11 +74,10 @@ function setup() {
     title: "Fisica 1",
     sourceIds: [imported.sourceId],
   });
-  const nodes = () => readPlan(db, planId)!.nodes;
-  for (const kind of ["intro", "diagnostic"])
-    completeNode(db, planId, nodes().find((node) => node.kind === kind)!.id);
-  const learn = () => nodes().find((node) => node.kind === "learn")!;
-  const topicId = learn().topicId!;
+  // The introduction and the diagnostic stay undone: nothing is locked, so a lesson finishes on any topic.
+  const topicId = readPlan(db, planId)!.topics[0]!.id;
+  const learn = () =>
+    readPlan(db, planId)!.steps.some((step) => step.activity === "lesson" && step.topicId === topicId);
   let text = smartLesson;
   const run: Parameters<typeof writeLesson>[3] = async () => ({
     text,
@@ -112,7 +111,7 @@ describe("smart lessons", () => {
     const lesson = await studyHandlers(db, undefined, run).lesson({ planId, topicId });
     await studyHandlers(db, undefined, run).lesson({ planId, topicId });
     expect(completed(db)).toBe(before);
-    expect(learn().state).toBe("current");
+    expect(learn()).toBe(false);
     expect(lesson.answers).toEqual({});
     expect(lesson.sources).toEqual([
       expect.objectContaining({ title: "Fisica", places: [expect.objectContaining({ chapter: 1 })] }),
@@ -128,9 +127,9 @@ describe("smart lessons", () => {
     // The first answer stays: a second try returns the saved result and writes nothing.
     expect(answer(first!, 0)).toEqual({ correct: false, pick: 1, finished: false });
     expect(answer(ids[0]!, 0)).toMatchObject({ correct: true, finished: false });
-    expect(learn().state).toBe("current");
+    expect(learn()).toBe(false);
     expect(answer(ids[1]!, 0)).toMatchObject({ correct: false, finished: true });
-    expect(learn().state).toBe("done");
+    expect(learn()).toBe(true);
     expect(completed(db)).toBe(before + 1);
     expect(smartAnswers(db, lesson.itemId!)).toEqual({
       [first!]: 1,
@@ -175,13 +174,13 @@ describe("smart lessons", () => {
     db.prepare(
       "INSERT INTO items (id, plan_id, kind, body_json, created_at) VALUES ('intro-item', ?, 'intro', ?, 1)",
     ).run(fresh.planId, JSON.stringify({ markdown: `Benvenuto.\n\n${check("Ricordi?")}`, passageIds: [] }));
-    const intro = () => readPlan(db, fresh.planId)!.nodes.find((node) => node.kind === "intro")!;
-    expect(intro().state).toBe("current");
+    const intro = () => readPlan(db, fresh.planId)!.steps.some((step) => step.activity === "intro");
+    expect(intro()).toBe(false);
     const [id] = [...smartQuestions(parseSmartText(`${check("Ricordi?")}`)).keys()];
     expect(
       answerSmartCheck(db, { planId: fresh.planId, itemId: "intro-item", blockId: id!, pick: 2 }),
     ).toMatchObject({ correct: false, finished: true });
-    expect(intro().state).toBe("done");
+    expect(intro()).toBe(true);
     // Another plan's item is not reachable through this plan.
     expect(() =>
       answerSmartCheck(db, { planId, itemId: "intro-item", blockId: id!, pick: 0 }),

@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
 import type { Runner } from "../jobs/runner";
-import { completeNode, createPlan } from "../plans/create";
+import { createPlan } from "../plans/create";
+import { recordStep } from "../plans/steps";
 import { importSmartbook } from "../sources/smartbook";
 import { saveQuiz, startAttempt } from "./attempt";
 import { dueCards, rateCard, seedCards } from "./cards";
@@ -53,13 +54,8 @@ function setup() {
   const topics = (
     db.prepare("SELECT id FROM topics WHERE plan_id = ? ORDER BY position").all(planId) as Array<{ id: string }>
   ).map((row) => row.id);
-  // The path's frontier is the first topic once the intro and diagnostic are done.
-  for (const kind of ["intro", "diagnostic"]) {
-    const node = db
-      .prepare("SELECT id FROM path_nodes WHERE plan_id = ? AND kind = ?")
-      .get(planId, kind) as { id: string };
-    completeNode(db, planId, node.id);
-  }
+  // The path's frontier is the topic whose lesson the student read last.
+  recordStep(db, planId, { activity: "lesson", topicId: topics[0]! });
   return { db, planId, topics };
 }
 type Fixture = ReturnType<typeof setup>;

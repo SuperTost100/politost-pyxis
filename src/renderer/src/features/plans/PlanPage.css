@@ -38,79 +38,6 @@
   justify-content: flex-start;
   margin-bottom: var(--space-6);
 }
-.px-plan-path {
-  position: relative;
-  width: min(420px, 100%);
-  margin: 0 auto;
-  padding: var(--space-4) 0 260px;
-  list-style: none;
-}
-.px-plan-stage {
-  position: relative;
-}
-.px-plan-stage > h2 {
-  margin: var(--space-8) 0 var(--space-6);
-  color: var(--ink-muted);
-}
-.px-plan-stage > ol {
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-.px-plan-node {
-  position: relative;
-  min-height: 144px;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-}
-.px-plan-node.is-left > div {
-  transform: translateX(-72px);
-}
-.px-plan-node.is-right > div {
-  transform: translateX(72px);
-}
-.px-plan-node .px-node-label {
-  font: 400 12px/18px var(--font-sans);
-  letter-spacing: 0;
-  text-transform: none;
-}
-.px-plan-path-lines {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  overflow: visible;
-}
-.px-plan-path-lines path {
-  fill: none;
-  stroke: var(--border-control);
-  stroke-width: 1;
-}
-.px-plan-path-lines path.is-done {
-  stroke: var(--mastery);
-}
-.px-plan-node-popover {
-  width: min(280px, 70vw);
-  display: grid;
-  gap: var(--space-3);
-}
-.px-plan-node-popover h3,
-.px-plan-node-popover p {
-  margin: 0;
-}
-.px-plan-dock {
-  position: fixed;
-  z-index: 8;
-  bottom: var(--space-5);
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(560px, calc(100vw - var(--space-6) * 2));
-}
-.px-plan-dock .px-dock {
-  width: 100%;
-}
 .px-plan-topics {
   list-style: none;
   padding: 0;
@@ -165,39 +92,9 @@
   gap: var(--space-3);
 }
 @media (max-width: 600px) {
-  .px-plan-node.is-left > div {
-    transform: translateX(-48px);
-  }
-  .px-plan-node.is-right > div {
-    transform: translateX(48px);
-  }
   .px-plan-topics summary .px-mbar {
     flex-basis: 100px;
   }
-}
-
-.px-plan-path-frame {
-  position: relative;
-  width: min(420px, 100%);
-  margin-inline: auto;
-}
-.px-plan-node .px-node.is-locked:not(:disabled) {
-  cursor: pointer;
-}
-.px-plan-path-frame {
-  isolation: isolate;
-}
-.px-plan-path-lines {
-  z-index: -1;
-}
-.px-plan-stage > h2 {
-  width: fit-content;
-  background: var(--bg);
-  padding-right: var(--space-3);
-}
-.px-plan-node-lessons {
-  display: grid;
-  gap: var(--space-2);
 }
 .px-plan-topic-row {
   display: flex;
