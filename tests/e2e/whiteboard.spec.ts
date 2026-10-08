@@ -6,7 +6,6 @@ import {
   type Page,
 } from "@playwright/test";
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -110,8 +109,16 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
         await page
           .getByRole("button", { name: /Save|Salva/, exact: true })
           .click();
-        await expect.poll(() => existsSync(output)).toBe(true);
-        const png = PNG.sync.read(readFileSync(output));
+        // Windows shows the file before the write has finished, so wait until it decodes.
+        const readPng = () => {
+          try {
+            return PNG.sync.read(readFileSync(output));
+          } catch {
+            return null;
+          }
+        };
+        await expect.poll(readPng, { timeout: 20000 }).not.toBeNull();
+        const png = readPng()!;
         expect([png.width, png.height]).toEqual([1200, 700]);
         expect(Array.from(png.data.subarray(0, 4))).toEqual(rgba);
         // Save writes a file only. It must not leave an image for Ask to preview.
