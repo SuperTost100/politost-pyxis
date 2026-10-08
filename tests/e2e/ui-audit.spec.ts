@@ -1663,11 +1663,14 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "progress-simulations":
-      await page
-        .getByRole("radio", { name: both("Simulazioni", "Simulations") })
-        .locator("..")
-        .click();
-      await expect(page.getByRole("table")).toBeVisible();
+      await expect(
+        page.getByRole("heading", {
+          name: both("Simulazioni", "Simulations"),
+          level: 2,
+        }),
+      ).toBeVisible();
+      await page.locator(".px-progress-simulations").scrollIntoViewIfNeeded();
+      await expect(page.locator(".px-progress-simulations")).toBeVisible();
       await expect(
         page.getByRole("button", {
           name: /^(Apri la prova del|Open exam from) /,
@@ -1676,9 +1679,8 @@ async function openState(page: Page, name: string) {
       break;
     case "progress-pace":
       await page
-        .getByRole("radio", { name: both("Ritmo", "Pace") })
-        .locator("..")
-        .click();
+        .getByRole("heading", { name: both("Ritmo", "Pace"), level: 2 })
+        .scrollIntoViewIfNeeded();
       await expect(
         page.getByRole("heading", { name: both("Ritmo", "Pace"), level: 2 }),
       ).toBeVisible();

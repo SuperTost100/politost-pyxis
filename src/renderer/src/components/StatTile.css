@@ -10,3 +10,5 @@
 .px-stat-foot > div + div { border-left: 1px solid var(--border); }
 .px-stat-foot b { display: block; font: 600 calc(20px * var(--text-scale))/calc(26px * var(--text-scale)) var(--font-sans); }
 .px-stat-foot span { font-size: calc(12px * var(--text-scale)); line-height: calc(16px * var(--text-scale)); color: var(--ink-muted); }
+.px-stat.is-compact .px-stat-head { align-items: flex-end; flex-wrap: wrap; }
+.px-stat.is-compact .px-stat-pills { flex-direction: row; flex-wrap: wrap; align-items: center; }

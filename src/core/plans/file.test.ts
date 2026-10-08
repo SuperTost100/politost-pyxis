@@ -1439,7 +1439,8 @@ describe("progress keeps gap state (PRO-02, PRO-08)", () => {
     }
   });
 
-  it("rejects dangling, looping, duplicated or mistimed gap state before writing anything", () => {
+  // Each rejected file round-trips the whole plan; the hosted Intel Mac took 7.5 s.
+  it("rejects dangling, looping, duplicated or mistimed gap state before writing anything", { timeout: 30_000 }, () => {
     const { db, planId, gaps } = gapPlan();
     const good = JSON.parse(JSON.stringify(exportPlan(db, planId, { progress: true }))) as ReturnType<typeof exportPlan>;
     const clone = () => JSON.parse(JSON.stringify(good)) as typeof good;

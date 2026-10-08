@@ -214,35 +214,37 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
         (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
           .violations,
       ).toEqual([]);
-      await page
-        .locator(".px-plan-progress")
-        .getByText(/Simulazioni|Simulations/, { exact: true })
-        .click();
+      await expect(page.locator(".px-plan-progress .ant-segmented")).toHaveCount(0);
+      await expect(
+        page.getByRole("heading", {
+          name: /Preparazione|Preparation/,
+          level: 2,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: /Simulazioni|Simulations/, level: 2 }),
+      ).toBeVisible();
       await expect(
         page.getByRole("button", {
           name: /Inizia una simulazione|Start a simulation/,
         }),
       ).toBeVisible();
-      await page
-        .locator(".px-plan-progress")
-        .getByText(/Ritmo|Pace/, { exact: true })
-        .click();
+      await expect(
+        page.getByRole("heading", { name: /Ritmo|Pace/, level: 2 }),
+      ).toBeVisible();
       await expect(
         page.locator(".px-progress-pace-facts dd").first(),
       ).toContainText(/min/);
       await expect(page.locator(".ant-segmented-thumb")).toHaveCount(0);
       await page.screenshot({
         path: `.shots/m12-pace-${language}-${theme}-${width}.png`,
+        fullPage: true,
       });
       expect(
         (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
           .violations,
       ).toEqual([]);
     }
-    await page
-      .locator(".px-plan-progress")
-      .getByText("Preparation", { exact: true })
-      .click();
     await page.locator(".px-progress-chart .recharts-surface").first().focus();
     await page.keyboard.press("ArrowRight");
     await expect(

@@ -304,14 +304,20 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       await expect
         .poll(() => existsSync(output), { timeout: 20000 })
         .toBe(true);
-      await expect
-        .poll(() => readFileSync(output).length)
-        .toBeGreaterThan(1000);
+      // Windows shows the file before the write has finished, so wait until it decodes.
+      const readPng = () => {
+        try {
+          return PNG.sync.read(readFileSync(output));
+        } catch {
+          return null;
+        }
+      };
+      await expect.poll(readPng, { timeout: 20000 }).not.toBeNull();
       copyFileSync(
         output,
         `.shots/m10-export-${language}-${theme}-${width}.png`,
       );
-      const png = PNG.sync.read(readFileSync(output));
+      const png = readPng()!;
       const bounds = await page.locator(".px-map-canvas").boundingBox();
       expect(png.width).toBe(Math.round(bounds!.width * 2));
       expect(png.height).toBe(Math.round(bounds!.height * 2));
