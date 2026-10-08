@@ -1735,13 +1735,6 @@ async function keyboardCheck(page: Page, name: string) {
     'button:visible:not([disabled]),input:visible:not([disabled]),textarea:visible:not([disabled]),select:visible:not([disabled]),[tabindex="0"]:visible',
   );
   const first = controls.first();
-  // Ant Design moves focus into a modal once it has opened, which on a slow runner comes
-  // after this focus call, so focus again until it holds.
-  await expect(async () => {
-    await first.focus();
-    await expect(first).toBeFocused({ timeout: 1000 });
-  }).toPass({ timeout: 10000 });
-  await page.keyboard.press("Tab");
   const readNext = () =>
     page.evaluate(() => {
       const focused = document.activeElement;
@@ -1757,11 +1750,21 @@ async function keyboardCheck(page: Page, name: string) {
             : true,
       };
     });
-  let next = await readNext();
+  // Opening a dialog from a menu can move focus once more after it shows; on a slow runner
+  // that lands between these steps, so start over until focus and Tab both hold.
+  let next = { tag: "BODY" as string | undefined, hidden: true };
+  const single = dialogOpen && (await controls.count()) === 1;
+  await expect(async () => {
+    await first.focus();
+    await expect(first).toBeFocused({ timeout: 1000 });
+    await page.keyboard.press("Tab");
+    next = await readNext();
+    if (!single) expect(next.tag).not.toBe("BODY");
+  }).toPass({ timeout: 10000 });
   // A dialog whose only control is its close button has no later stop. Tab
   // leaves the page for the window boundary (BODY) and the focus lock pulls
   // the next Tab back, so that return is what proves the dialog traps focus.
-  if (dialogOpen && next.tag === "BODY" && (await controls.count()) === 1) {
+  if (single && next.tag === "BODY") {
     await page.keyboard.press("Tab");
     await expect(
       first,
