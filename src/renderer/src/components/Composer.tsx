@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
 import { FormulaDock } from "./math/FormulaDock";
-import { MathPreview } from "./math/MathPreview";
-import { useFormulaInsert } from "./math/useFormulaInsert";
+import { MathTextEditor, type MathTextEditorHandle } from "./math/MathTextEditor";
+import { useFormulaKeys } from "./math/useFormulaKeys";
 import { Tag } from "./Tag";
 import "./Composer.css";
 
@@ -50,19 +50,8 @@ export function Composer({
     onValueChange?.(next);
     if (value === undefined) setDraft(next);
   }
-  const field = useRef<HTMLTextAreaElement>(null);
-  const formula = useFormulaInsert({
-    getField: () => field.current,
-    value: text,
-    onChange: setText,
-  });
-  // The field grows with the draft up to a few lines, then scrolls.
-  useEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [text]);
+  const field = useRef<MathTextEditorHandle>(null);
+  const formula = useFormulaKeys(field);
   return (
     <div className="px-composer">
       <div className="px-composer-top">
@@ -77,27 +66,22 @@ export function Composer({
             <Tag key={s} tone="smartbook">{s}</Tag>
           ))}
       </div>
-      <textarea
+      {/* The field grows with the draft up to a few lines, then scrolls. */}
+      <MathTextEditor
         ref={field}
+        className="px-composer-field"
         placeholder={placeholder ?? t("ask.placeholder")}
-        rows={2}
-        aria-label={t("components.composer.messageLabel")}
+        ariaLabel={t("components.composer.messageLabel")}
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={setText}
+        onSubmit={() => {
+          if (!streaming) onSend?.();
+        }}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            if (!streaming) onSend?.();
-          }
           if (event.key === "Escape" && streaming) onStop?.();
         }}
       />
-      <MathPreview text={text} />
-      <FormulaDock
-        open={formula.open}
-        onInsert={formula.insert}
-        onClose={formula.close}
-      />
+      <FormulaDock {...formula.dock} />
       <div className="px-composer-bar">
         <IconButton
           icon="paperclip"
@@ -119,6 +103,7 @@ export function Composer({
           variant="ghost"
           size="sm"
           pressed={formula.open}
+          keepFocus
           onClick={formula.toggle}
         />
         <IconButton

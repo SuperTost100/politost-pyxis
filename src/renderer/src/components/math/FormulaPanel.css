@@ -1,4 +1,4 @@
-/* Formula keyboard: a math field above four tabs of keys, drawn inside the page flow. */
+/* Formula keyboard: four tabs of keys, drawn inside the page flow under the field they type into. */
 .px-formula {
   container-type: inline-size;
   display: flex;
@@ -8,59 +8,6 @@
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  color: var(--ink);
-}
-
-.px-formula-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.px-formula-head math-field {
-  flex: 1;
-  min-width: 0;
-  min-height: var(--control-lg);
-  padding: 0 var(--space-3);
-  font-size: calc(24px * var(--text-scale, 1));
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-md);
-  --caret-color: var(--primary-text);
-  --selection-background-color: var(--primary-soft);
-  --selection-color: var(--ink);
-  --placeholder-color: var(--ink-subtle);
-  --smart-fence-color: var(--ink);
-  --contains-highlight-background-color: transparent;
-}
-
-.px-formula-head math-field:focus-within {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-/* The panel below is the keyboard, so the field's own toggles stay out of the way. */
-.px-formula-head math-field::part(virtual-keyboard-toggle),
-.px-formula-head math-field::part(menu-toggle) {
-  display: none;
-}
-
-.px-formula-close {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: var(--control-md);
-  height: var(--control-md);
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ink-muted);
-  cursor: pointer;
-}
-
-.px-formula-close:hover {
-  background: var(--surface-raised);
   color: var(--ink);
 }
 
@@ -115,8 +62,7 @@
 
 .px-formula-tabs [role="tab"]:focus-visible,
 .px-formula-key:focus-visible,
-.px-formula-insert:focus-visible,
-.px-formula-close:focus-visible {
+.px-formula-insert:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -192,18 +138,12 @@
   cursor: pointer;
 }
 
-.px-formula-insert:hover:not(:disabled) {
+.px-formula-insert:hover {
   background: var(--primary-hover);
 }
 
-.px-formula-insert:active:not(:disabled) {
+.px-formula-insert:active {
   background: var(--primary-active);
-}
-
-.px-formula-insert:disabled {
-  background: var(--surface-raised);
-  color: var(--ink-subtle);
-  cursor: not-allowed;
 }
 
 /* Short windows give the keys back some height so the answer stays in view. */
@@ -211,9 +151,6 @@
   .px-formula-key,
   .px-formula-insert {
     height: 38px;
-  }
-  .px-formula-head math-field {
-    min-height: var(--control-md);
   }
 }
 

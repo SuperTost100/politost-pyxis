@@ -4,8 +4,42 @@
   gap: var(--space-2);
 }
 
+/* Drawn like the other multiline fields: bordered, rounded, growing between its row limits. */
+.px-mathinput-field {
+  --line: calc(26px * var(--text-scale, 1));
+  min-height: calc(var(--min-rows) * var(--line) + 2 * var(--space-2) + 2px);
+  max-height: calc(var(--max-rows) * var(--line) + 2 * var(--space-2) + 2px);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font: 400 calc(16px * var(--text-scale, 1)) / var(--line) var(--font-sans);
+  transition: border-color 120ms ease-out;
+}
+
+.px-mathinput-field:hover {
+  border-color: var(--ink-muted);
+}
+
+.px-mathinput .px-mathinput-field:focus-within {
+  border-color: var(--primary-text);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.px-mathinput-field[aria-disabled="true"] {
+  border-color: var(--border);
+  background: var(--surface-raised);
+}
+
 .px-mathinput-bar {
   display: flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-mathinput-field {
+    transition: none;
+  }
 }

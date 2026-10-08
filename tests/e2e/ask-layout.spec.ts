@@ -175,7 +175,7 @@ test("Ask: panel, automatic titles, rename and delete, greeting and the thinking
     await box.press("Enter");
     // The question and a status line show at once, before any text streams.
     await expect(page.locator(".px-msg-bubble", { hasText: question })).toBeVisible();
-    await expect(box).toHaveValue("");
+    await expect(box).toHaveText("");
     await expect(page.getByText("Sto pensando…")).toBeVisible();
     await expect(page.getByText("Fammi un altro esempio")).toBeVisible({ timeout: 30000 });
     await expect(page.getByText("Sto pensando…")).toHaveCount(0);

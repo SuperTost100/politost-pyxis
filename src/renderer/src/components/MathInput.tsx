@@ -1,16 +1,14 @@
-import { Input } from "antd";
-import type { TextAreaRef } from "antd/es/input/TextArea";
-import { useCallback, useRef } from "react";
+import { useRef, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { IconButton } from "./IconButton";
 import { FormulaDock } from "./math/FormulaDock";
-import { MathPreview } from "./math/MathPreview";
-import { useFormulaInsert } from "./math/useFormulaInsert";
+import { MathTextEditor, type MathTextEditorHandle } from "./math/MathTextEditor";
+import { useFormulaKeys } from "./math/useFormulaKeys";
 import "./MathInput.css";
 
 /**
- * A written answer with the formula keyboard: a sigma button opens it under the field, and the
- * formula goes in as `$...$` at the caret. A rendered preview shows while the text holds math.
+ * A written answer with formulas inline: typing `$` or the sigma button opens a formula at the
+ * caret, and the formula keyboard types into it. The value holds the formulas as `$...$`.
  */
 export function MathInput({
   value,
@@ -32,25 +30,24 @@ export function MathInput({
   maxLength?: number;
 }) {
   const { t } = useTranslation();
-  const ref = useRef<TextAreaRef>(null);
-  const getField = useCallback(
-    () => ref.current?.resizableTextArea?.textArea ?? null,
-    [],
-  );
-  const formula = useFormulaInsert({ getField, value, onChange });
+  const field = useRef<MathTextEditorHandle>(null);
+  const formula = useFormulaKeys(field);
+  const minRows = autoSize?.minRows ?? rows ?? 2;
+  const maxRows = Math.max(autoSize?.maxRows ?? 12, minRows);
   return (
     <div className="px-mathinput">
-      <Input.TextArea
-        ref={ref}
-        aria-label={ariaLabel}
+      <MathTextEditor
+        ref={field}
+        className="px-mathinput-field"
+        style={{ "--min-rows": minRows, "--max-rows": maxRows } as CSSProperties}
+        ariaLabel={ariaLabel}
         placeholder={placeholder}
-        rows={rows}
-        autoSize={autoSize}
-        maxLength={maxLength}
         disabled={disabled}
+        maxLength={maxLength}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={onChange}
       />
+      <FormulaDock {...formula.dock} open={formula.open && !disabled} />
       <div className="px-mathinput-bar">
         <IconButton
           icon="sigma"
@@ -59,15 +56,10 @@ export function MathInput({
           size="sm"
           pressed={formula.open}
           disabled={disabled}
+          keepFocus
           onClick={formula.toggle}
         />
       </div>
-      <FormulaDock
-        open={formula.open && !disabled}
-        onInsert={formula.insert}
-        onClose={formula.close}
-      />
-      <MathPreview text={value} />
     </div>
   );
 }

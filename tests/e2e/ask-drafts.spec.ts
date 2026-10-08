@@ -66,7 +66,7 @@ test("R14-3 a suggestion sends only its own text and leaves the draft and photos
     await expect.poll(async () => (await chat()).messages.length).toBe(4);
     // The note stayed pending, so the chip's turn did not carry it.
     expect((await chat()).held).toEqual([]);
-    await expect(box).toHaveValue("Bozza da tenere");
+    await expect(box).toHaveText("Bozza da tenere");
     await expect(page.getByText("appunti.txt")).toBeVisible();
     expect(
       await page.evaluate(() => sessionStorage.getItem("pyxis-draft")),
@@ -83,7 +83,7 @@ test("R14-3 a suggestion sends only its own text and leaves the draft and photos
     // The note is the turn's own source, so the reply is stored even though the fixture reply cites nothing.
     await expect.poll(async () => (await chat()).messages.length).toBe(6);
     expect((await chat()).held).toHaveLength(1);
-    await expect(box).toHaveValue("");
+    await expect(box).toHaveText("");
     await expect(page.getByText("appunti.txt")).toHaveCount(0);
   } finally {
     await app.close();
