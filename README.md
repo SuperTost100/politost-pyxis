@@ -50,7 +50,7 @@ The app is in English and Italian, with dark and light themes.
 
 **Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Back up the whole workspace to one ZIP and restore it on another computer.
 
-Pyxis reads PDF, Word (`.docx`), PowerPoint (`.pptx`), Markdown, plain text, web pages, photos (JPEG, PNG, WebP, HEIC) and [PoliTost smartbooks](https://github.com/SuperTost100/politost-content-core) (`.ptsb`), which keep their chapters and exercises. Scanned pages go through local OCR or your model's vision support.
+Pyxis reads PDF, Word (`.docx`), PowerPoint (`.pptx`), Markdown, plain text, web pages, photos (JPEG, PNG, WebP, HEIC) and [PoliTost smartbooks](https://github.com/SuperTost100/politost-content) (`.ptsb`), which keep their chapters and exercises. Scanned pages go through local OCR or your model's vision support.
 
 <table>
   <tr>
