@@ -145,7 +145,7 @@ test("Ask composer: typing $ opens a formula, arrows move in and out, paste and 
 
     // Pasted text turns its $...$ into formulas.
     await page.evaluate(() => navigator.clipboard.writeText(" e $\\sqrt{2}$"));
-    await page.keyboard.press("Control+v");
+    await page.keyboard.press("ControlOrMeta+v");
     await expect(chips).toHaveCount(2);
     await expect.poll(() => draft(page)).toBe("a $\\frac{y}{2}$ b\nriga e $\\sqrt{2}$");
 
@@ -158,8 +158,8 @@ test("Ask composer: typing $ opens a formula, arrows move in and out, paste and 
     await expect.poll(() => draft(page)).toBe("a $\\frac{y}{2}$ b\nriga e $\\sqrt{2}$ 5\\$");
 
     // Copying the field gives back the message with its formulas.
-    await page.keyboard.press("Control+a");
-    await page.keyboard.press("Control+c");
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.press("ControlOrMeta+c");
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       "a $\\frac{y}{2}$ b\nriga e $\\sqrt{2}$ 5\\$",
     );
