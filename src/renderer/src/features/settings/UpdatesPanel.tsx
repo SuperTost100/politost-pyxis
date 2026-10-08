@@ -64,7 +64,7 @@ export function UpdateNotice() {
 }
 
 export function UpdatesPanel() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const query = useUpdates();
   const state = query.isError ? "failed" : query.data?.state;
   return (
@@ -89,7 +89,7 @@ export function UpdatesPanel() {
       {query.data?.checkedAt ? (
         <p className="small section-hint">
           {t("updates.checked", {
-            at: new Date(query.data.checkedAt).toLocaleString(),
+            at: new Date(query.data.checkedAt).toLocaleString(i18n.language),
           })}
         </p>
       ) : null}

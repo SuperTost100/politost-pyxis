@@ -80,10 +80,10 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       location.hash = "/settings/data";
     });
     await page
-      .getByRole("button", { name: "Sposta workspace", exact: true })
+      .getByRole("button", { name: "Sposta lo spazio di lavoro", exact: true })
       .click();
     await expect(
-      page.getByText("Workspace spostato.", { exact: true }),
+      page.getByText("Spazio di lavoro spostato.", { exact: true }),
     ).toBeVisible();
     const moved = realpathSync.native(join(parent, "Pyxis workspace"));
     expect(await page.evaluate(() => window.pyxis.workspacePath())).toBe(moved);

@@ -159,8 +159,8 @@ export function ExamsHome() {
                         ? t("exams.pastExam")
                         : t("exams.days", { count: plan.daysToExam }),
                     t("exams.aligned", {
-                      count: plan.alignedTopics,
-                      total: plan.totalTopics,
+                      ready: plan.alignedTopics,
+                      count: plan.totalTopics,
                     }),
                   ]
                     .filter(Boolean)

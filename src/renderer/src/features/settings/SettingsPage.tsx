@@ -126,24 +126,17 @@ export function SettingsPage() {
       </div>
     </>
   );
+  // Two groups: how you study, and the app itself. A group of one row only repeats its row.
   const groups = [
     {
-      name: t("settings.groups.profile"),
+      name: t("settings.groups.study"),
       rows: [
         {
           key: "profile",
           icon: UserRound,
           value: profile.data?.displayName ?? "",
         },
-      ],
-    },
-    {
-      name: t("settings.groups.engines"),
-      rows: [{ key: "engines", icon: Cpu, value: "" }],
-    },
-    {
-      name: t("settings.groups.study"),
-      rows: [
+        { key: "engines", icon: Cpu, value: "" },
         {
           key: "tutor",
           icon: BookOpen,
@@ -158,6 +151,11 @@ export function SettingsPage() {
           icon: ALargeSmall,
           value: t(`settings.text.${profile.data?.textSize ?? "md"}`),
         },
+      ],
+    },
+    {
+      name: t("settings.groups.app"),
+      rows: [
         {
           key: "appearance",
           icon: Palette,
@@ -168,15 +166,7 @@ export function SettingsPage() {
           icon: Languages,
           value: t(locale === "it" ? "settings.italian" : "settings.english"),
         },
-      ],
-    },
-    {
-      name: t("settings.groups.data"),
-      rows: [{ key: "data", icon: HardDrive, value: "" }],
-    },
-    {
-      name: t("settings.groups.app"),
-      rows: [
+        { key: "data", icon: HardDrive, value: "" },
         { key: "privacy", icon: Shield, value: "" },
         { key: "updates", icon: RefreshCw, value: "" },
         { key: "about", icon: Info, value: "" },
@@ -377,7 +367,7 @@ export function SettingsPage() {
             </li>
           ))}
         </ul>
-        <div className="choice-list">
+        <div className="gallery-row">
           <Button
             disabled={moving}
             onClick={() => {
@@ -429,6 +419,14 @@ export function SettingsPage() {
             </Button>
           ) : null}
         </div>
+        {/* The confirmation and the hint sit under the backup buttons they explain. */}
+        {restoreArmed ? (
+          <p className="small section-hint" role="alert">
+            {t("settings.restoreConfirm", { workspace: workspaceName })}
+          </p>
+        ) : (
+          <p className="small section-hint">{t("settings.dataHint")}</p>
+        )}
         <div className="px-settings-danger">
           <p className="small ink-muted">{t("settings.wipeHint")}</p>
           <Button
@@ -469,17 +467,11 @@ export function SettingsPage() {
             </Button>
           ) : null}
         </div>
-        {restoreArmed ? (
-          <p className="small section-hint" role="alert">
-            {t("settings.restoreConfirm", { workspace: workspaceName })}
-          </p>
-        ) : null}
         {dataNote ? (
           <p className="small section-hint" role="status">
             {dataNote}
           </p>
         ) : null}
-        <p className="small section-hint">{t("settings.dataHint")}</p>
       </>
     ),
     language: (

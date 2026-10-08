@@ -456,18 +456,21 @@ export function PlanProgress({
             <table className="px-progress-simulations">
               <thead>
                 <tr>
-                  {["date", "type", "duration", "score", "open"].map((key) => (
+                  {/* Every row is a simulation, so there is no type column; the Open buttons label themselves. */}
+                  {["date", "duration", "score"].map((key) => (
                     <th key={key} scope="col">
                       {t(`progress.${key}`)}
                     </th>
                   ))}
+                  <th scope="col">
+                    <span className="visually-hidden">{t("progress.open")}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {simulations.map((run) => (
                   <tr key={run.id}>
                     <td>{date(run.at)}</td>
-                    <td>{t("simulation.title")}</td>
                     <td>{t("simulation.minutes", { count: run.minutes })}</td>
                     <td>{Math.round(run.score * 100)} / 100</td>
                     <td>

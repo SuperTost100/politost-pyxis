@@ -136,8 +136,6 @@
   background: transparent !important;
   color: var(--ink-muted);
   font: 500 11px/16px var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .px-plan-source-table .ant-table-thead > tr > th::before {

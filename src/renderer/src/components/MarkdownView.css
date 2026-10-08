@@ -13,6 +13,23 @@
   margin: 0 0 var(--space-3);
 }
 
+/* Headings a model writes stay on the type scale (title-2, title-3) instead of the browser's 32px h1. */
+.px-markdown :where(h1, h2, h3, h4) {
+  margin: var(--space-5) 0 var(--space-2);
+  font-weight: 600;
+}
+.px-markdown :where(h1, h2) {
+  font-size: calc(22px * var(--text-scale, 1));
+  line-height: calc(28px * var(--text-scale, 1));
+}
+.px-markdown :where(h3, h4) {
+  font-size: calc(17px * var(--text-scale, 1));
+  line-height: calc(24px * var(--text-scale, 1));
+}
+.px-markdown > :where(h1, h2, h3, h4):first-child {
+  margin-top: 0;
+}
+
 .px-markdown :where(table) {
   width: 100%;
   border-collapse: collapse;

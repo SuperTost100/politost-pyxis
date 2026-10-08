@@ -259,33 +259,42 @@ export function CardsPage() {
             {t(buildState === "cancelled" ? "cards.buildCancelled" : "cards.buildFailed")}
           </Notice>
         ) : null}
-        {reviewing ? null : (
-          <ExportButton planId={planId ?? ""} topicId={topicId} kind="cards" />
-        )}
         {reviewing && reviewQueue.data ? (
           <ReviewProgress progress={reviewQueue.data.progress} />
         ) : null}
-        {queue.data ? (
-          <p className="small">
-            {t("cards.fresh", { count: queue.data.fresh })}
-            {" · "}
-            {t("cards.learning", { count: queue.data.learning })}
-            {" · "}
-            {t("cards.mastered", { count: queue.data.mastered })}
-          </p>
-        ) : null}
-        {!reviewing && plan.data ? (
-          <Button
-            shape="round"
-            onClick={() =>
-              void finishSession().then(
-                (ok) => ok && navigate(`/plans/${planId ?? ""}`),
-              )
-            }
-          >
-            {t(recorded ? "lesson.backToPath" : "lesson.markDone")}
-          </Button>
-        ) : null}
+        {/* One row: the deck counts, then what you can do with the deck. */}
+        <div className="px-cards-toolbar">
+          {queue.data ? (
+            <p className="small">
+              {t("cards.fresh", { count: queue.data.fresh })}
+              {" · "}
+              {t("cards.learning", { count: queue.data.learning })}
+              {" · "}
+              {t("cards.mastered", { count: queue.data.mastered })}
+            </p>
+          ) : null}
+          {reviewing ? null : (
+            <div className="px-cards-toolbar-actions">
+              <ExportButton
+                planId={planId ?? ""}
+                topicId={topicId}
+                kind="cards"
+              />
+              {plan.data ? (
+                <Button
+                  shape="round"
+                  onClick={() =>
+                    void finishSession().then(
+                      (ok) => ok && navigate(`/plans/${planId ?? ""}`),
+                    )
+                  }
+                >
+                  {t(recorded ? "lesson.backToPath" : "lesson.markDone")}
+                </Button>
+              ) : null}
+            </div>
+          )}
+        </div>
         {finishFailed ? (
           <Notice tone="danger">{t("planOverview.failed")}</Notice>
         ) : null}

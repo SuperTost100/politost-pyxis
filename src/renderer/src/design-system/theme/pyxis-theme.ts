@@ -125,6 +125,8 @@ export function pyxisTheme(
       controlHeightSM: 32,
       controlHeightLG: 48,
       lineWidthFocus: 2,
+      // antd draws its keyboard focus outline in this colour; one ring for every control, as in global.css.
+      colorPrimaryBorder: c.focusRing,
       boxShadowSecondary:
         mode === "dark"
           ? "0 16px 40px rgba(0, 0, 0, 0.55)"
@@ -230,6 +232,7 @@ export function pyxisTheme(
         trackHoverBg: c.primaryHover,
         handleColor: c.primary,
         railBg: c.surfaceRaised,
+        dotActiveBorderColor: c.primary,
       },
       Tree: {
         nodeSelectedBg: c.primarySoft,

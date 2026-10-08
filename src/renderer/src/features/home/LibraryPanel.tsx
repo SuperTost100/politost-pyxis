@@ -25,6 +25,7 @@ import {
   REPLACE_EXTENSIONS,
   SOURCE_EXTENSIONS,
 } from "@shared/source-types";
+import { i18n } from "../../locales/i18n";
 
 const messageKeyOf = (err: unknown): string =>
   err && typeof err === "object" && "messageKey" in err
@@ -38,8 +39,8 @@ const parentName = (path: string) => path.split(/[\\/]/).slice(-2, -1)[0] ?? "";
 
 const sizeText = (bytes: number) =>
   bytes >= 1024 * 1024
-    ? `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024)} MB`
-    : `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024)} KB`;
+    ? `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024)} MB`
+    : `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(bytes / 1024)} KB`;
 
 /** What an import run did, kept on screen until the student closes it or starts another run. */
 type ImportResult = {
@@ -524,7 +525,7 @@ export function LibraryPanel({
     {
       title: t("sources.nameColumn"),
       dataIndex: "title",
-      width: 230,
+      width: 200,
       fixed: "left",
       render: (_, source) => (
         <>
@@ -557,7 +558,7 @@ export function LibraryPanel({
     {
       title: t("sources.typeColumn"),
       dataIndex: "kind",
-      width: 95,
+      width: 90,
       render: (_, source) => (
         <span className="meta px-library-kind">
           {t(`sources.kind.${source.kind}`, { defaultValue: source.kind })}
@@ -567,12 +568,12 @@ export function LibraryPanel({
     {
       title: t("sources.sizeColumn"),
       dataIndex: "bytes",
-      width: 105,
+      width: 90,
       render: (_, source) => (
         <span className="meta">
           {source.bytes == null
             ? "—"
-            : new Intl.NumberFormat(undefined, {
+            : new Intl.NumberFormat(i18n.language, {
                 maximumFractionDigits: 1,
               }).format(source.bytes / 1024) + " KB"}
         </span>
@@ -582,7 +583,7 @@ export function LibraryPanel({
     {
       title: t("sources.statusColumn"),
       dataIndex: "status",
-      width: 120,
+      width: 110,
       render: (_, source) => (
         <span className="px-library-status">
           {source.status === "ready" ? (
@@ -967,7 +968,7 @@ export function LibraryPanel({
                 {linkPreview.data.kind === "pdf" ? "PDF" : t("sources.webPage")}
                 {linkPreview.data.bytes == null
                   ? ""
-                  : ` · ${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(linkPreview.data.bytes / 1024)} KB`}
+                  : ` · ${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(linkPreview.data.bytes / 1024)} KB`}
               </p>
               <p className="body">
                 {linkPreview.data.excerpt || t("sources.pdfPreviewHint")}
@@ -1083,20 +1084,6 @@ export function LibraryPanel({
           }
         />
       ) : null}
-      <h2 className="title-3 px-library-search-title">
-        {t("sources.searchPassages")}
-      </h2>
-      <Button
-        shape="round"
-        disabled={embedding.data?.ready === true}
-        onClick={() => {
-          void invoke("sources.embed", { consent: true })
-            .then(() => setWarning(t("sources.embedQueued")))
-            .catch(fail);
-        }}
-      >
-        {t(embedding.data?.ready ? "sources.embedReady" : "sources.embedAsk")}
-      </Button>
       {errorView}
       {info ? <Notice tone="info">{info}</Notice> : null}
       {sources
@@ -1144,6 +1131,9 @@ export function LibraryPanel({
             )}
           </Notice>
         ))}
+      <h2 className="title-3 px-library-search-title">
+        {t("sources.searchPassages")}
+      </h2>
       <form
         className="px-form-inline"
         onSubmit={(event) => {
@@ -1195,6 +1185,23 @@ export function LibraryPanel({
           ))}
         </ul>
       ) : null}
+      {embedding.data?.ready ? (
+        <p className="small px-library-embed">{t("sources.embedReady")}</p>
+      ) : (
+        <div className="px-library-embed">
+          <p className="small">{t("sources.embedAsk")}</p>
+          <Button
+            shape="round"
+            onClick={() => {
+              void invoke("sources.embed", { consent: true })
+                .then(() => setWarning(t("sources.embedQueued")))
+                .catch(fail);
+            }}
+          >
+            {t("sources.embedDownload")}
+          </Button>
+        </div>
+      )}
       <Drawer
         open={detailsOpen}
         onClose={() => setDetailsOpen(false)}

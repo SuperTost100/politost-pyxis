@@ -260,8 +260,8 @@ export function PlanPage() {
             onClick={openSettings}
             disabled={!plan.data}
           />
+          {/* Not primary: the path's suggested step is the one main action on this page. */}
           <Button
-            type="primary"
             onClick={() => showCreate()}
             disabled={!plan.data?.topics.length}
           >

@@ -30,6 +30,14 @@ For desktop checks while using the computer, run `PYXIS_E2E_HIDDEN=1 npm run tes
 6. Record platform coverage, skipped checks, unresolved choices and review outcomes in the resources build log. Do not call an untested OS installer verified.
 7. Publish only reviewed artifacts with checksums and provenance. Verify provenance with `gh attestation verify FILE --repo SuperTost100/politost-pyxis`.
 
+## Version and release notes
+
+1. Run `npm version X.Y.Z --no-git-tag-version --ignore-scripts`. It changes `package.json` and `package-lock.json` without reinstalling.
+2. Run `npm run notices`. It writes the version into `src/renderer/src/generated/build-info.json` (Settings, About) and the first line of `docs/THIRD-PARTY-NOTICES.txt`. `npm run build` runs it too, but commit the result with the bump.
+3. Add the release to `CHANGELOG.md` in English and Italian, in plain words for students. The GitHub release uses the same text; the in-app update notice links to that page.
+
+Tag and publish only after the owner release loop above.
+
 ## Update channel
 
 `package.json` names the GitHub repository under `repository`. Main reads that packaged metadata to query GitHub's latest stable release. The update check is cached for 24 hours, including manual checks, and opens the release page for manual installation. It never installs an update automatically.
