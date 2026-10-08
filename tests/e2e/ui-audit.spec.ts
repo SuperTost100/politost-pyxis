@@ -1178,7 +1178,8 @@ async function openState(page: Page, name: string) {
       const keys = page.getByRole("group", {
         name: both("Tastiera per formule", "Formula keyboard"),
       });
-      await expect(keys).toBeVisible();
+      // The keyboard loads on first open, which took over 5 s on the hosted Windows runner.
+      await expect(keys).toBeVisible({ timeout: 20000 });
       await keys
         .getByRole("button", { name: both("Frazione", "Fraction") })
         .click();
