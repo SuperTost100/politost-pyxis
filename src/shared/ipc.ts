@@ -247,6 +247,39 @@ const engineSelection = z.object({
   auto: z.boolean().optional(),
 });
 
+const SmartAnswers = z.record(z.string(), z.number().int());
+const LessonSources = z.array(
+  z.object({
+    sourceId: z.string(),
+    title: z.string(),
+    places: z.array(
+      z.object({
+        passageId: z.string(),
+        page: z.number().optional(),
+        slide: z.number().optional(),
+        chapter: z.number().optional(),
+        section: z.string().optional(),
+      }),
+    ),
+  }),
+);
+const LessonOutput = z.object({
+  markdown: z.string(),
+  passageIds: z.array(z.string()),
+  fallback: z.boolean().optional(),
+  /** The lesson row its answers belong to. */
+  itemId: z.string().optional(),
+  wording: z.enum(["simple", "balanced", "technical"]).optional(),
+  /** Written from the model's general knowledge, not the sources. */
+  general: z.boolean().optional(),
+  /** Written by an earlier lesson prompt, before smart text: Markdown with citations, until rewritten. */
+  earlier: z.boolean().optional(),
+  /** Saved picks of the lesson's quick checks and recap, by question id. */
+  answers: SmartAnswers,
+  /** The sources and places the lesson was given, for its "Sources used" footer. */
+  sources: LessonSources,
+});
+
 export const requests = {
   "jobs.list": { input: z.object({}), output: z.array(JobView) },
   "jobs.startDemo": {
@@ -400,15 +433,30 @@ export const requests = {
       wording: z.enum(["simple", "balanced", "technical"]).optional(),
       regenerate: z.boolean().optional(),
     }),
-    output: z.object({
-      markdown: z.string(),
-      passageIds: z.array(z.string()),
-      fallback: z.boolean().optional(),
-      /** Lesson row to flag with study.flag { targetKind: "item" }. */
-      itemId: z.string().optional(),
+    output: LessonOutput,
+  },
+  "study.lessonSection": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      section: z.number().int().min(0),
+      note: z.string().max(500).optional(),
       wording: z.enum(["simple", "balanced", "technical"]).optional(),
-      /** Written from the model's general knowledge, not the sources. */
-      general: z.boolean().optional(),
+    }),
+    output: LessonOutput,
+  },
+  "study.lessonAnswer": {
+    input: z.object({
+      planId: z.string(),
+      itemId: z.string(),
+      blockId: z.string().max(200),
+      pick: z.number().int().min(0).max(9),
+    }),
+    output: z.object({
+      correct: z.boolean(),
+      pick: z.number().int(),
+      /** True when this answer finished the closing recap and so the reading. */
+      finished: z.boolean(),
     }),
   },
   "study.markdown": {
@@ -1226,7 +1274,12 @@ export const requests = {
   "plans.intro": {
     input: z.object({ planId: z.string() }),
     output: z
-      .object({ markdown: z.string(), passageIds: z.array(z.string()) })
+      .object({
+        itemId: z.string(),
+        markdown: z.string(),
+        passageIds: z.array(z.string()),
+        answers: SmartAnswers,
+      })
       .nullable(),
   },
   "plans.create": {

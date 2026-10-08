@@ -379,7 +379,7 @@ export function planSeries(
     return {
       ...topic,
       exercisesSolved: rows
-        .filter((event) => event.kind === "quiz")
+        .filter((event) => event.kind === "quiz" && event.evidenceKind !== "check")
         .reduce(
           (sum, event) =>
             sum +
@@ -438,6 +438,7 @@ export function planSeries(
           .filter(
             (event) =>
               event.kind === "quiz" &&
+              event.evidenceKind !== "check" &&
               event.topicId === gap.topicId &&
               event.at >= gap.openedAt,
           )
@@ -504,7 +505,7 @@ type ScorePayload = {
   score?: number;
   scores?: number[];
   seconds?: number;
-  evidenceKind?: "quiz" | "simulation";
+  evidenceKind?: "quiz" | "simulation" | "check";
   questionScores?: Array<{
     id?: string;
     sourceIds?: string[];

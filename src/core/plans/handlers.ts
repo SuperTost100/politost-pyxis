@@ -18,6 +18,8 @@ import type { EducationLevel } from "../profile/profile";
 import type { Runner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
 import { addSubject, reorderSubjects, removeSubject } from "./subjects";
+import { stripPassageRefs } from "../../shared/smart-text";
+import { smartAnswers } from "../study/smartText";
 import type Database from "better-sqlite3";
 import {
   completeNode,
@@ -77,15 +79,21 @@ export function planHandlers(
     intro(input: { planId: string }) {
       const row = db
         .prepare(
-          "SELECT body_json FROM items WHERE plan_id = ? AND kind = 'intro' ORDER BY created_at DESC LIMIT 1",
+          "SELECT id, body_json FROM items WHERE plan_id = ? AND kind = 'intro' ORDER BY created_at DESC LIMIT 1",
         )
-        .get(input.planId) as { body_json: string } | undefined;
-      return row
-        ? (JSON.parse(row.body_json) as {
-            markdown: string;
-            passageIds: string[];
-          })
-        : null;
+        .get(input.planId) as { id: string; body_json: string } | undefined;
+      if (!row) return null;
+      const body = JSON.parse(row.body_json) as {
+        markdown: string;
+        passageIds?: string[];
+      };
+      // Older introductions cite passages as [P3] or raw ids; the page never shows them.
+      return {
+        itemId: row.id,
+        markdown: stripPassageRefs(body.markdown),
+        passageIds: body.passageIds ?? [],
+        answers: smartAnswers(db, row.id),
+      };
     },
     create(input: Parameters<typeof createPlan>[1], signal?: AbortSignal) {
       if (runner) return enqueuePlan(db, runner, input);
