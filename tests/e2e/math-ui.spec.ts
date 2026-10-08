@@ -40,7 +40,8 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     !existsSync(".tmp/pyodide/pyodide.js"),
     "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.",
   );
-  test.setTimeout(90000);
+  // Four Python runs, one per language and theme, passed 90 s on the hosted Intel Mac.
+  test.setTimeout(180000);
   const step = "La derivata è $x$.";
   const reply = `${step}\n\n\`\`\`check\n${JSON.stringify({ kind: "derivative", expr: "x**2*sin(x)", claimed: "x", step })}\n\`\`\``;
   const { app, page, userData } = await launch(reply);
