@@ -1735,8 +1735,12 @@ async function keyboardCheck(page: Page, name: string) {
     'button:visible:not([disabled]),input:visible:not([disabled]),textarea:visible:not([disabled]),select:visible:not([disabled]),[tabindex="0"]:visible',
   );
   const first = controls.first();
-  await first.focus();
-  await expect(first).toBeFocused();
+  // Ant Design moves focus into a modal once it has opened, which on a slow runner comes
+  // after this focus call, so focus again until it holds.
+  await expect(async () => {
+    await first.focus();
+    await expect(first).toBeFocused({ timeout: 1000 });
+  }).toPass({ timeout: 10000 });
   await page.keyboard.press("Tab");
   const readNext = () =>
     page.evaluate(() => {
