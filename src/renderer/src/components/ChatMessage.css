@@ -12,5 +12,5 @@
 .px-msg-status { margin: 0; color: var(--ink-muted); font: 400 calc(15px * var(--text-scale))/calc(22px * var(--text-scale)) var(--font-sans); }
 @keyframes px-msg-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: no-preference) {
-  .px-msg-thinking .px-msg-avatar, .px-msg-thinking .px-msg-status { animation: px-msg-pulse 1.6s ease-in-out infinite; }
+  .px-msg-thinking .px-msg-status { animation: px-msg-pulse 1.6s ease-in-out infinite; }
 }

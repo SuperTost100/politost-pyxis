@@ -1,3 +1,4 @@
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,7 +17,7 @@ import dayjs from "dayjs";
 import dateIt from "antd/es/date-picker/locale/it_IT";
 import dateEn from "antd/es/date-picker/locale/en_GB";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { invoke } from "../../lib/ipc";
@@ -327,6 +328,10 @@ export function PlanPage() {
           setSettingsOpen(false);
         }}
       />
+      <Link to="/exams" className="px-plan-back">
+        <ArrowLeft size={16} aria-hidden />
+        {t("doors.exams")}
+      </Link>
       <header className="px-plan-header">
         {plan.data?.subject && (
           <p className="label ink-muted">{plan.data.subject}</p>

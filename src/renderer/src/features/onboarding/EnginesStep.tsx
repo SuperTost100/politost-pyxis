@@ -3,6 +3,7 @@ import { Button, Input } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
+import { EngineNoticePanel, unacknowledged } from "../../components/EngineNotice";
 import { EngineRow } from "../../components/EngineRow";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
@@ -51,10 +52,12 @@ export function EnginesStep({
       (row.installed || nothingReady),
   );
   const readyKey = readyRows.map((row) => row.id).join(",");
+  // One notice for every engine found, shown here so no task ever has to ask.
+  const toAcknowledge = unacknowledged(readyRows);
 
   useEffect(() => {
-    if (overview.isSuccess) onReady(readyKey !== "");
-  }, [overview.isSuccess, readyKey, onReady]);
+    if (overview.isSuccess) onReady(readyKey !== "" && toAcknowledge.length === 0);
+  }, [overview.isSuccess, readyKey, toAcknowledge.length, onReady]);
 
   // Let core choose the models once the set of ready engines is known, and again when it changes.
   useEffect(() => {
@@ -70,6 +73,15 @@ export function EnginesStep({
       live = false;
     };
   }, [overview.isSuccess, readyKey, client]);
+
+  // Core recomputes the choices after the notice is confirmed.
+  useEffect(
+    () =>
+      onBroadcast("engine.auto", () => {
+        void client.invalidateQueries({ queryKey: ["engine-features"] });
+      }),
+    [client],
+  );
 
   const names = (list: Engine[]) =>
     new Intl.ListFormat(i18n.language.startsWith("it") ? "it" : "en-GB", {
@@ -179,7 +191,14 @@ export function EnginesStep({
           {t("engines.installHelp")}
         </Notice>
       ) : null}
-      <p className="small engines-hint">{t("onboarding.engines.disclosure")}</p>
+      {toAcknowledge.length > 0 ? (
+        <EngineNoticePanel
+          engines={toAcknowledge}
+          onDone={() => void client.invalidateQueries({ queryKey: ["engines"] })}
+        />
+      ) : readyRows.length === 0 ? (
+        <p className="small engines-hint">{t("onboarding.engines.disclosure")}</p>
+      ) : null}
     </div>
   );
 }

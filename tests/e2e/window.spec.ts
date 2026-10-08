@@ -185,7 +185,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
         models.find((m) => /sonnet/i.test(m.name))?.id;
       selectedModel = model;
       await page.evaluate(() =>
-        window.pyxis.invoke("engines.acknowledge", { provider: "claude" }),
+        window.pyxis.invoke("engines.acknowledge", { providers: ["claude"] }),
       );
       expect(model).toBeTruthy();
       for (const feature of [

@@ -23,14 +23,20 @@ function starPath(): string {
   return `M${cx},${cy - 9} C${cx + k},${cy - k} ${cx + k},${cy - k} 59,54 C${cx + k},${cy + k} ${cx + k},${cy + k} ${cx},${cy + 9} C${cx - k},${cy + k} ${cx - k},${cy + k} 41,54 C${cx - k},${cy - k} ${cx - k},${cy - k} ${cx},${cy - 9}Z`;
 }
 
+/**
+ * With `working` the rings turn around the centre, ring 1 clockwise and the next ones alternating.
+ * Each ring sits in a group with an invisible full circle so its fill box is centred on the mark.
+ */
 export function Logo({
   size = 32,
   wordmark,
   inverse,
+  working,
 }: {
   size?: number;
   wordmark?: boolean;
   inverse?: boolean;
+  working?: boolean;
 }) {
   const stroke = inverse ? "var(--on-primary)" : "var(--ink)";
   const mark = (
@@ -41,18 +47,21 @@ export function Logo({
       role="img"
       aria-label={wordmark ? undefined : "Pyxis"}
       aria-hidden={wordmark ? true : undefined}
+      className={working ? "px-logo-working" : undefined}
       style={{ flex: "none" }}
     >
       {TRAILS.map(([r, st, sp, opacity], i) => (
-        <path
-          key={i}
-          d={arc(r, st, sp)}
-          fill="none"
-          stroke={stroke}
-          strokeWidth={5}
-          strokeLinecap="round"
-          opacity={opacity}
-        />
+        <g key={i} className={working ? `px-logo-ring px-logo-ring-${i + 1}` : undefined}>
+          {working ? <circle cx={50} cy={54} r={r} fill="none" stroke="none" /> : null}
+          <path
+            d={arc(r, st, sp)}
+            fill="none"
+            stroke={stroke}
+            strokeWidth={5}
+            strokeLinecap="round"
+            opacity={opacity}
+          />
+        </g>
       ))}
       <path d={starPath()} fill="var(--star)" />
     </svg>

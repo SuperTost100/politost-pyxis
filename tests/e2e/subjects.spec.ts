@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-test("ASK-01 subjects can be added, selected, reordered by keyboard and removed", async () => {
+test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by keyboard, remove", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-subject-check-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -12,15 +12,33 @@ test("ASK-01 subjects can be added, selected, reordered by keyboard and removed"
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await page.getByText("Chiedi", { exact: true }).click();
-    await page.getByRole("button", { name: /^Materia:/ }).click();
+    // Skipping setup navigates to Exams on its own; wait for it so it cannot override the next route.
+    await expect(page).toHaveURL(/#\/exams$/);
+    // Settings no longer lists subjects, and the old address lands on the Exams home.
+    await page.evaluate(() => { window.location.hash = "#/settings"; });
+    await expect(page.getByRole("heading", { name: "Impostazioni" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Materia/ })).toHaveCount(0);
+    await page.evaluate(() => { window.location.hash = "#/settings/subjects"; });
+    await expect(page).toHaveURL(/#\/exams$/);
     await page.getByRole("button", { name: "Gestisci materie" }).click();
     for (const name of ["Fisica", "Analisi"]) {
       await page.getByRole("textbox", { name: "Nuova materia" }).fill(name);
       await page.getByRole("button", { name: "Aggiungi", exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Nuova materia" })).toHaveValue("");
     }
-    const handle = page.getByRole("button", { name: "Riordina Analisi" });
+    // Renaming keeps the row and refuses a name already in use.
+    await page.getByRole("button", { name: "Rinomina Analisi" }).click();
+    await page.getByRole("textbox", { name: "Nome della materia" }).fill("fisica");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("Esiste già una materia con questo nome.")).toBeVisible();
+    await page.getByRole("textbox", { name: "Nome della materia" }).fill("Analisi 1");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("button", { name: "Riordina Analisi 1" })).toBeVisible();
+    await page.getByRole("button", { name: "Rinomina Analisi 1" }).click();
+    await page.getByRole("textbox", { name: "Nome della materia" }).fill("Analisi");
+    await page.getByRole("button", { name: "Salva", exact: true }).click();
+    // Exact: "Riordina Analisi 1" also matches the plain name until the rename has landed.
+    const handle = page.getByRole("button", { name: "Riordina Analisi", exact: true });
     await expect(handle).toBeEnabled();
     await handle.focus();
     await page.keyboard.press("Space");
@@ -49,6 +67,7 @@ test("ASK-01 subjects can be added, selected, reordered by keyboard and removed"
     await expect(page.getByRole("button", { name: "Riordina Analisi" })).not.toBeVisible();
     await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("subjects.list", {})) as Array<{ name: string }>).map((row) => row.name)).toEqual(["Fisica"]);
     await page.keyboard.press("Escape");
+    await page.getByText("Chiedi", { exact: true }).click();
     await page.getByRole("button", { name: /^Materia:/ }).click();
     await page.getByRole("button", { name: "Fisica", exact: true }).click();
     await expect(page.getByRole("button", { name: "Materia: Fisica" })).toHaveText("Fisica");

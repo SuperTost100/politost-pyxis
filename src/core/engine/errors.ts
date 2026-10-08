@@ -1,3 +1,4 @@
+import { DISCLOSURE_REQUIRED } from "./disclosure";
 import { FunnelError } from "./funnel";
 
 export type EngineMessage = {
@@ -10,6 +11,12 @@ export function translateEngineError(err: unknown): EngineMessage {
   const message = err instanceof Error ? err.message : String(err);
   const rawCode =
     err && typeof err === "object" && "code" in err ? String(err.code) : "";
+  if (message === DISCLOSURE_REQUIRED) {
+    return {
+      code: "disclosure-required",
+      messageKey: "engines.errors.disclosure-required",
+    };
+  }
   if (/401|invalid api key|authentication/i.test(`${rawCode} ${message}`)) {
     return { code: "refused", messageKey: "engines.errors.refused" };
   }

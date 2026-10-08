@@ -1,2 +1,16 @@
 /* Logo */
 .px-logo { display: inline-flex; align-items: center; gap: .3em; font-family: var(--font-sans); font-weight: 700; letter-spacing: -0.02em; color: var(--ink); line-height: 1; }
+
+/* Working: rings turn about the mark centre, alternating direction; the star stays still. */
+.px-logo-ring { transform-box: fill-box; transform-origin: center; }
+@keyframes px-logo-cw { to { transform: rotate(360deg); } }
+@keyframes px-logo-ccw { to { transform: rotate(-360deg); } }
+@keyframes px-logo-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .px-logo-ring-1 { animation: px-logo-cw 2.4s linear infinite; }
+  .px-logo-ring-2 { animation: px-logo-ccw 3.2s linear infinite; }
+  .px-logo-ring-3 { animation: px-logo-cw 4s linear infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-logo-working { animation: px-logo-breathe 1.6s ease-in-out infinite; }
+}

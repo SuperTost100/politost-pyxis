@@ -52,6 +52,7 @@ export const router = createHashRouter([
       { path: "plans/:planId", element: <PlanPage /> },
       { path: "plans/:planId/:view", element: <PlanPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "settings/subjects", element: <Navigate to="/exams" replace /> },
       { path: "settings/:section", element: <SettingsPage /> },
       { path: "dev/gallery", element: <DevGallery /> },
     ],

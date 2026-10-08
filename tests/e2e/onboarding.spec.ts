@@ -30,6 +30,10 @@ function fakeBins(options: { claude: boolean | null; codex: boolean | null }) {
   return {
     bin,
     env: {
+      // Only the stand-ins exist: engines installed on this computer must not show up, so the search sees no user folders.
+      HOME: bin,
+      PATH: "/usr/bin:/bin",
+      CLI_FUNNEL_NO_SHELL_PATH: "1",
       CLI_FUNNEL_CLAUDE_BIN:
         options.claude === null
           ? missing
@@ -108,11 +112,27 @@ test("First setup: name, engines found, photos later, crash reports on by defaul
         timeout: 30000,
       },
     );
+    // One notice for both engines, here and not later in a task. Until it is confirmed Pyxis plans nothing with them.
+    const notice = page.getByRole("region", {
+      name: "Cosa esce da questo computer",
+    });
+    await expect(notice.getByText("Claude Code li invia a Anthropic.")).toBeVisible();
+    await expect(notice.getByText("Codex li invia a OpenAI.")).toBeVisible();
+    await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toHaveCount(0);
+    await expect(button(page, "Continua")).toHaveCount(0);
+    await noAxeViolations(page);
+    await notice.getByRole("button", { name: "Ho capito" }).click();
+    await expect(notice).toHaveCount(0);
     await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toBeVisible(
       {
         timeout: 30000,
       },
     );
+    expect(
+      (await page.evaluate(() => window.pyxis.invoke("engines.overview", {})))
+        .filter((row) => row.id === "claude" || row.id === "codex")
+        .map((row) => row.acknowledged),
+    ).toEqual([true, true]);
     await noAxeViolations(page);
     await button(page, "Continua").click();
 
@@ -275,5 +295,74 @@ test("First setup: skipping leaves crash reports off, and the OCR download shows
   } finally {
     rmSync(skipped, { recursive: true, force: true });
     rmSync(engines.bin, { recursive: true, force: true });
+  }
+});
+
+const notice = (page: Page) =>
+  page.getByRole("dialog", { name: "Cosa esce da questo computer" });
+
+test("Engine notice: a profile with unacknowledged engines sees it once at launch, never during a chat", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
+  const { bin, env } = fakeBins({ claude: true, codex: true });
+  const reply = { PYXIS_E2E_REPLY: "Ecco la risposta [P1]." };
+  let app = await launch(userData, { ...env, ...reply });
+  try {
+    let page = await app.firstWindow();
+    // Setup that skips the engines step does not raise the notice by itself afterwards.
+    await button(page, "Salta").click();
+    await expect(page).toHaveURL(/exams/);
+    await page.waitForTimeout(1500);
+    await expect(notice(page)).toHaveCount(0);
+    await app.close();
+
+    // A launch with a profile (as after an upgrade from 0.2.0): one combined notice for both engines.
+    app = await launch(userData, { ...env, ...reply });
+    page = await app.firstWindow();
+    await expect(notice(page)).toBeVisible({ timeout: 30000 });
+    await expect(notice(page).getByText("Claude Code li invia a Anthropic.")).toBeVisible();
+    await expect(notice(page).getByText("Codex li invia a OpenAI.")).toBeVisible();
+    await noAxeViolations(page);
+    await notice(page).getByRole("button", { name: "Non ora" }).click();
+    await expect(notice(page)).toHaveCount(0);
+
+    // With the notice declined, a chat runs without any dialog appearing.
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Che cos'è la velocità?");
+    await box.press("Enter");
+    await expect(page.getByText("Ecco la risposta")).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // Settings asks for it where the engines are enabled.
+    await page.evaluate(() => {
+      location.hash = "/settings/engines";
+    });
+    await expect(notice(page)).toBeVisible({ timeout: 30000 });
+    await notice(page).getByRole("button", { name: "Ho capito" }).click();
+    await expect(notice(page)).toHaveCount(0);
+    expect(
+      (await page.evaluate(() => window.pyxis.invoke("engines.overview", {})))
+        .filter((row) => row.id === "claude" || row.id === "codex")
+        .map((row) => row.acknowledged),
+    ).toEqual([true, true]);
+    await app.close();
+
+    // Acknowledged once, never asked again.
+    app = await launch(userData, { ...env, ...reply });
+    page = await app.firstWindow();
+    await expect(page).toHaveURL(/exams/);
+    await expect(
+      page.getByRole("heading", { name: "Esami", level: 1 }),
+    ).toBeVisible();
+    await page.waitForTimeout(2000);
+    await expect(notice(page)).toHaveCount(0);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
   }
 });

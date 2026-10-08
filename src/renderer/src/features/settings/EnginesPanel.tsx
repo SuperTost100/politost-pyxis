@@ -18,6 +18,11 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { engineProviders as providers, type RequestOutput } from "@shared/ipc";
+import {
+  EngineNoticeModal,
+  unacknowledged,
+  type NoticeEngine,
+} from "../../components/EngineNotice";
 import { EngineRow } from "../../components/EngineRow";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
@@ -220,6 +225,18 @@ export function EnginesPanel() {
   const [code, setCode] = useState("");
   const [loginStatus, setLoginStatus] = useState<string | null>(null);
   const [terminalCommand, setTerminalCommand] = useState<string | null>(null);
+  // The notice for engines that are ready but not acknowledged. `then` runs the action the student was after.
+  const [notice, setNotice] = useState<{
+    engines: NoticeEngine[];
+    then?: () => void;
+  } | null>(null);
+  const [noticeLater, setNoticeLater] = useState(false);
+  // An engine the student enables or adds needs its notice before anything is sent to it.
+  function withNotice(provider: string, action: () => void) {
+    const row = overview.data?.find((item) => item.id === provider);
+    if (!row || row.acknowledged) action();
+    else setNotice({ engines: [row], then: action });
+  }
   const engine = overview.data?.find((row) => row.id === drawer);
   const models = modelsByProvider[drawer ?? ""] ?? [];
   const model = models.find((row) => row.id === selectedModel);
@@ -396,12 +413,14 @@ export function EnginesPanel() {
         features.data?.default?.provider === row.id
           ? features.data.default
           : undefined;
-      test.mutate({
-        provider: row.id,
-        model: selection?.model,
-        effort: selection?.effort,
-        fast: selection?.fast,
-      });
+      withNotice(row.id, () =>
+        test.mutate({
+          provider: row.id,
+          model: selection?.model,
+          effort: selection?.effort,
+          fast: selection?.fast,
+        }),
+      );
     } else {
       setAdding(false);
       setLoginStatus(t("engines.waitingSignIn"));
@@ -420,9 +439,8 @@ export function EnginesPanel() {
       setKeyValue("");
       refresh();
       setResult(t("engines.keySaved"));
-      test.mutate({
-        provider: `${keyProvider === "anthropic" ? "anthropic" : "openai"}-api`,
-      });
+      const provider = `${keyProvider === "anthropic" ? "anthropic" : "openai"}-api`;
+      withNotice(provider, () => test.mutate({ provider }));
     } catch {
       setResult(t("engines.keyFailed"));
     } finally {
@@ -436,6 +454,14 @@ export function EnginesPanel() {
   const readyRows = (overview.data ?? []).filter(
     (row) => row.installed && row.loggedIn && !row.disabled,
   );
+  const toAcknowledge = unacknowledged(readyRows);
+  const toAcknowledgeKey = toAcknowledge.map((row) => row.id).join(",");
+  useEffect(() => {
+    // Not while the list reloads after a confirmation, or the notice would come straight back.
+    if (!noticeLater && !notice && toAcknowledgeKey && !overview.isFetching)
+      setNotice({ engines: toAcknowledge });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noticeLater, notice, toAcknowledgeKey, overview.isFetching]);
   const nothingReady = overview.isSuccess && readyRows.length === 0;
   // Simple view: engines that can work, or can with one sign-in. When none is
   // ready the installable CLIs are listed so there is something to act on.
@@ -729,7 +755,10 @@ export function EnginesPanel() {
                       onChange={(next) =>
                         next === AUTO
                           ? automatic.mutate(feature)
-                          : configure.mutate({ feature, value: next })
+                          : withNotice(
+                              (JSON.parse(next) as [string, string])[0],
+                              () => configure.mutate({ feature, value: next }),
+                            )
                       }
                     />
                     {isAuto && selection ? (
@@ -865,15 +894,17 @@ export function EnginesPanel() {
                 disabled={!selectedModel}
                 onClick={() => {
                   if (drawer)
-                    test.mutate({
-                      provider: drawer,
-                      model: selectedModel,
-                      effort: engine?.capabilities.effort ? effort : undefined,
-                      fast:
-                        engine?.capabilities.fast && model?.fast
-                          ? fast
-                          : undefined,
-                    });
+                    withNotice(drawer, () =>
+                      test.mutate({
+                        provider: drawer,
+                        model: selectedModel,
+                        effort: engine?.capabilities.effort ? effort : undefined,
+                        fast:
+                          engine?.capabilities.fast && model?.fast
+                            ? fast
+                            : undefined,
+                      }),
+                    );
                 }}
               >
                 {t("engines.test")}
@@ -883,15 +914,17 @@ export function EnginesPanel() {
                 disabled={!selectedModel || configure.isPending}
                 onClick={() => {
                   if (drawer)
-                    configure.mutate({
-                      feature: "default",
-                      value: JSON.stringify([drawer, selectedModel]),
-                      effort: engine?.capabilities.effort ? effort : undefined,
-                      fast:
-                        engine?.capabilities.fast && model?.fast
-                          ? fast
-                          : undefined,
-                    });
+                    withNotice(drawer, () =>
+                      configure.mutate({
+                        feature: "default",
+                        value: JSON.stringify([drawer, selectedModel]),
+                        effort: engine?.capabilities.effort ? effort : undefined,
+                        fast:
+                          engine?.capabilities.fast && model?.fast
+                            ? fast
+                            : undefined,
+                      }),
+                    );
                 }}
               >
                 {t("engines.useDefault")}
@@ -1016,6 +1049,18 @@ export function EnginesPanel() {
         />
         {feedback}
       </Modal>
+      <EngineNoticeModal
+        engines={notice?.engines ?? []}
+        onDone={() => {
+          const then = notice?.then;
+          setNotice(null);
+          then?.();
+        }}
+        onLater={() => {
+          setNotice(null);
+          setNoticeLater(true);
+        }}
+      />
     </section>
   );
 }

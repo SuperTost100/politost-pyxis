@@ -23,6 +23,21 @@ export function reorderSubjects(db: Database.Database, ids: string[]): void {
   })();
 }
 
+/** Renames in place: plans follow through their subject id, chats keep the name as text, so those are updated too. */
+export function renameSubject(db: Database.Database, id: string, name: string): { id: string; name: string } {
+  const clean = name.trim();
+  if (!clean || clean.length > 120) throw new IpcError("invalid", "errors.invalidSubject");
+  return db.transaction(() => {
+    const current = db.prepare("SELECT name FROM subjects WHERE id = ?").get(id) as { name: string } | undefined;
+    if (!current) throw new IpcError("invalid", "errors.invalidSubject");
+    const clash = db.prepare("SELECT id FROM subjects WHERE name = ? COLLATE NOCASE AND id <> ?").get(clean, id);
+    if (clash) throw new IpcError("invalid", "errors.subjectExists");
+    db.prepare("UPDATE subjects SET name = ? WHERE id = ?").run(clean, id);
+    db.prepare("UPDATE chats SET subject = ? WHERE subject = ?").run(clean, current.name);
+    return { id, name: clean };
+  })();
+}
+
 export function removeSubject(db: Database.Database, id: string): void {
   db.prepare("DELETE FROM subjects WHERE id = ?").run(id);
 }

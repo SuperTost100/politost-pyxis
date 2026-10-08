@@ -44,7 +44,6 @@ const routes = [
   "#/settings",
   ...[
     "profile",
-    "subjects",
     "engines",
     "tutor",
     "reading",
