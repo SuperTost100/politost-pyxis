@@ -40,6 +40,7 @@ import {
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
 import { recoverInterruptedWipe, wipeWorkspace } from "../core/share/wipe";
@@ -163,14 +164,30 @@ function installNavigationGuards(): void {
       if (allowedExternal(url)) void shell.openExternal(url);
       return { action: "deny" };
     });
+    // Only the app's own page may load. A dropped or linked file would otherwise replace it and get the bridge.
     contents.on("will-navigate", (event, url) => {
       const devOrigin = process.env["ELECTRON_RENDERER_URL"];
       if (devOrigin && url.startsWith(devOrigin)) return;
-      const current = contents.getURL();
-      if (current.startsWith("file:") && url.startsWith("file:")) return;
+      if (url.split("#")[0] === rendererPage) return;
       event.preventDefault();
     });
   });
+}
+
+const rendererPage = pathToFileURL(
+  join(import.meta.dirname, "../renderer/index.html"),
+).href;
+
+// The renderer only writes to the clipboard; every other permission (camera, microphone, location…) is refused.
+function installPermissionHandlers(): void {
+  const allowed = (permission: string) =>
+    permission === "clipboard-sanitized-write";
+  session.defaultSession.setPermissionRequestHandler(
+    (_contents, permission, callback) => callback(allowed(permission)),
+  );
+  session.defaultSession.setPermissionCheckHandler((_contents, permission) =>
+    allowed(permission),
+  );
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -398,7 +415,10 @@ function waitForCoreReady(
 
 function startCore(strict = false): Promise<void> {
   let startupFailed = false;
-  const captureLogs = e2eSeam() && process.env.PYXIS_E2E === "1" && process.env.PYXIS_E2E_CORE_STDIO !== "inherit";
+  const captureLogs =
+    e2eSeam() &&
+    process.env.PYXIS_E2E === "1" &&
+    process.env.PYXIS_E2E_CORE_STDIO !== "inherit";
   const child = utilityProcess.fork(join(import.meta.dirname, "core.js"), [], {
     serviceName: "pyxis-core",
     stdio: captureLogs ? "pipe" : "inherit",
@@ -1032,6 +1052,7 @@ app.whenReady().then(() => {
   applyAppearance(readAppearanceSource());
   installCsp();
   installNavigationGuards();
+  installPermissionHandlers();
   registerProtocols();
   registerIpc();
   nativeTheme.on("updated", broadcastAppearance);
