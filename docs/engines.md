@@ -26,7 +26,7 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 - A provider is ready when it is installed, signed in and not disabled. API providers count only with a stored key that the provider accepts. CLIs win: API providers are used only when no CLI is ready, because they bill per token.
 - With two or more ready providers each tier has a preference order (fast: Antigravity, Codex, Cursor, Claude Code; mid: Claude Code, Cursor, Antigravity, Codex; strong: Claude Code, Codex, Cursor, Antigravity). Features then move from the busiest provider to the idlest while that narrows the gap. A feature's load is its weight times its tier cost, so frequent chat on a cheap model and rare plans on a strong model each weigh what they cost. Every ready CLI gets at least one feature.
 
-Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.3 model lists:
+Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.4 model lists:
 
 | Ready CLIs                | Chat and maps                          | Lessons and default                              | Photos             | Plans       | Grading     |
 | ------------------------- | -------------------------------------- | ------------------------------------------------ | ------------------ | ----------- | ----------- |
@@ -41,7 +41,7 @@ An automatic row in `feature_engines` carries `"auto": true` in its JSON. A row 
 
 `engines.autoConfigure` (`{ reset?, features? }` returning `{ ready, features }`) recomputes on demand. Core also runs it at startup, after sign-in, sign-out, update and removal, when a key is added or removed, and when `engines.overview` sees a changed engine set (at most every 30 seconds). `selectionFor` drops the `auto` flag, so callers see the same shape as before.
 
-Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`. Providers are `claude`, `codex`, Cursor `agent`, `antigravity`, `anthropic-api` and `openai-api`. A CLI provider is disabled unless its CLI Funnel adapter lists `none` in `capabilities.access`. CLI Funnel 0.3 runs Cursor Agent in ask mode from its own workspace, whose `.cursor/cli.json` denies shell, file reads and writes, web fetches and MCP tools. It runs Antigravity with a pre-tool hook that denies every tool. Cursor's grep and glob tools still run, but only inside that empty workspace. Other CLI Funnel providers, such as `gemini-api` and `ollama`, are not offered. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
+Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`. Providers are `claude`, `codex`, Cursor `agent`, `antigravity`, `anthropic-api` and `openai-api`. A CLI provider is disabled unless its CLI Funnel adapter lists `none` in `capabilities.access`. CLI Funnel 0.4 runs Cursor Agent in ask mode from its own workspace, whose `.cursor/cli.json` denies shell, file reads and writes, web fetches and MCP tools. It runs Antigravity with a pre-tool hook that denies every tool. Cursor's grep and glob tools still run, but only inside that empty workspace. Other CLI Funnel providers, such as `gemini-api` and `ollama`, are not offered. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
 
 ## Templates and schemas
 
