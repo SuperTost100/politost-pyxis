@@ -1,8 +1,8 @@
 import { PrintPage } from "../features/share/PrintPage";
 import { createHashRouter, Link, Navigate } from "react-router";
 import { useTranslation } from "react-i18next";
+import type { ComponentType } from "react";
 import { CardsPage } from "../features/study/CardsPage";
-import { MapPage } from "../features/maps/MapPage";
 import { LessonPage } from "../features/study/LessonPage";
 import { IntroPage } from "../features/study/IntroPage";
 import { PracticePage } from "../features/study/PracticePage";
@@ -18,11 +18,6 @@ import {
   SharedPlanPage,
   WizardFrame,
 } from "../features/plans/PlanFrames";
-import { GraphPage } from "../features/tools/GraphPage";
-import { PythonPage } from "../features/tools/PythonPage";
-import { WhiteboardPage } from "../features/tools/WhiteboardPage";
-import { DevGallery } from "../features/jobs/DevGallery";
-import { SettingsPage } from "../features/settings/SettingsPage";
 import { Shell } from "./layouts/Shell";
 
 function RouteError() {
@@ -35,6 +30,15 @@ function RouteError() {
     </main>
   );
 }
+
+// Pages a student opens rarely load on first visit, so the window parses less at startup.
+function page<K extends string>(
+  load: () => Promise<Record<K, ComponentType>>,
+  name: K,
+) {
+  return async () => ({ Component: (await load())[name] });
+}
+const settings = page(() => import("../features/settings/SettingsPage"), "SettingsPage");
 
 export const router = createHashRouter([
   { path: "/print", element: <PrintPage /> },
@@ -51,10 +55,10 @@ export const router = createHashRouter([
       { path: "exams/get", element: <SharedPlanPage /> },
       { path: "plans/:planId", element: <PlanPage /> },
       { path: "plans/:planId/:view", element: <PlanPage /> },
-      { path: "settings", element: <SettingsPage /> },
+      { path: "settings", lazy: settings },
       { path: "settings/subjects", element: <Navigate to="/exams" replace /> },
-      { path: "settings/:section", element: <SettingsPage /> },
-      { path: "dev/gallery", element: <DevGallery /> },
+      { path: "settings/:section", lazy: settings },
+      { path: "dev/gallery", lazy: page(() => import("../features/jobs/DevGallery"), "DevGallery") },
     ],
   },
   { path: "/plans/new", element: <WizardFrame /> },
@@ -69,8 +73,8 @@ export const router = createHashRouter([
   { path: "/plans/:planId/review/cards", element: <CardsPage /> },
   { path: "/plans/:planId/simulation", element: <SimulationPage /> },
   { path: "/plans/:planId/exam/:attemptId", element: <SimulationPage /> },
-  { path: "/plans/:planId/map/:topicId", element: <MapPage /> },
-  { path: "/tools/whiteboard", element: <WhiteboardPage /> },
-  { path: "/tools/graph", element: <GraphPage /> },
-  { path: "/tools/python", element: <PythonPage /> },
+  { path: "/plans/:planId/map/:topicId", lazy: page(() => import("../features/maps/MapPage"), "MapPage") },
+  { path: "/tools/whiteboard", lazy: page(() => import("../features/tools/WhiteboardPage"), "WhiteboardPage") },
+  { path: "/tools/graph", lazy: page(() => import("../features/tools/GraphPage"), "GraphPage") },
+  { path: "/tools/python", lazy: page(() => import("../features/tools/PythonPage"), "PythonPage") },
 ].map((route) => ({ ...route, errorElement: <RouteError /> })));
