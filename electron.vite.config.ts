@@ -67,5 +67,7 @@ export default defineConfig({
       },
     },
     plugins: [react(), copySandboxPage()],
+    // electron-vite leaves the renderer unminified; minifying it shrinks what the window parses at startup.
+    build: { minify: "esbuild" },
   },
 });
