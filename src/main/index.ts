@@ -178,15 +178,30 @@ const rendererPage = pathToFileURL(
   join(import.meta.dirname, "../renderer/index.html"),
 ).href;
 
-// The renderer only writes to the clipboard; every other permission (camera, microphone, location…) is refused.
+// A study app needs no camera, microphone, location, notifications or devices, so pages never get them.
+// Everything else (clipboard, fullscreen…) keeps Electron's default.
+const deniedPermissions = new Set([
+  "media",
+  "display-capture",
+  "geolocation",
+  "notifications",
+  "midi",
+  "midiSysex",
+  "hid",
+  "serial",
+  "usb",
+  "idle-detection",
+  "mediaKeySystem",
+  "speaker-selection",
+  "window-management",
+]);
 function installPermissionHandlers(): void {
-  const allowed = (permission: string) =>
-    permission === "clipboard-sanitized-write";
   session.defaultSession.setPermissionRequestHandler(
-    (_contents, permission, callback) => callback(allowed(permission)),
+    (_contents, permission, callback) =>
+      callback(!deniedPermissions.has(permission)),
   );
-  session.defaultSession.setPermissionCheckHandler((_contents, permission) =>
-    allowed(permission),
+  session.defaultSession.setPermissionCheckHandler(
+    (_contents, permission) => !deniedPermissions.has(permission),
   );
 }
 
