@@ -15,6 +15,8 @@ export type FolderListing = {
   cappedFiles: boolean;
   /** A subfolder nested deeper than the depth cap was not read. */
   cappedDepth: boolean;
+  /** A subfolder could not be read, for example a protected system folder, and was skipped. */
+  unreadable: boolean;
 };
 
 /**
@@ -25,8 +27,18 @@ export function listImportable(root: string): FolderListing {
   const found: string[] = [];
   let cappedFiles = false;
   let cappedDepth = false;
+  let unreadable = false;
   const walk = (dir: string, depth: number): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch (err) {
+      // The chosen folder itself must be readable; a subfolder that is not is skipped and reported.
+      if (depth === 0) throw err;
+      unreadable = true;
+      return;
+    }
+    for (const entry of entries) {
       if (cappedFiles) return;
       if (entry.name.startsWith(".")) continue;
       const full = join(dir, entry.name);
@@ -43,5 +55,5 @@ export function listImportable(root: string): FolderListing {
     }
   };
   walk(root, 0);
-  return { files: found.sort(), cappedFiles, cappedDepth };
+  return { files: found.sort(), cappedFiles, cappedDepth, unreadable };
 }

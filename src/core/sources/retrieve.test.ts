@@ -53,6 +53,24 @@ describe("retrieve", () => {
     expect(retrieve(db, "definizione della velocità").hits[0]?.id).toBe(id);
   });
 
+  it("leaves out passages of an import that stopped", () => {
+    const db = openDatabase(":memory:");
+    for (const status of ["ready", "cancelled", "failed", "interrupted"]) {
+      db.prepare(
+        "INSERT INTO sources (id, kind, title, status, library, created_at, updated_at) VALUES (?, 'excerpt', ?, ?, 1, 1, 1)",
+      ).run(status, status, status);
+      db.prepare(
+        "INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES (?, ?, 1, '{}', 1)",
+      ).run(`d-${status}`, status);
+      db.prepare(
+        "INSERT INTO passages (id, source_id, document_id, text, created_at) VALUES (?, ?, ?, 'la velocità è la derivata dello spazio', 1)",
+      ).run(`p-${status}`, status, `d-${status}`);
+    }
+    expect(retrieve(db, "velocità").hits.map((hit) => hit.id)).toEqual([
+      "p-ready",
+    ]);
+  });
+
   it("finds a nearby passage when the embedding model is present", () => {
     const db = openDatabase(":memory:");
     passage(db, "la velocità è la derivata dello spazio", unit(0));

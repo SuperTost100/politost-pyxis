@@ -83,6 +83,8 @@ CREATE INDEX gap_answers_attempt ON gap_answers (attempt_id, question_id);`,
 export function migrate(db: Database.Database): void {
   const current = db.pragma("user_version", { simple: true });
   const version = typeof current === "number" ? current : 0;
+  // A newer Pyxis wrote this workspace. Running on a schema this build does not know could damage it.
+  if (version > steps.at(-1)!.version) throw new Error("workspace-newer");
   const pending = steps.filter((step) => step.version > version);
   if (pending.length === 0) return;
   const apply = db.transaction(() => {

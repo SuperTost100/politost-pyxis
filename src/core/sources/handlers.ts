@@ -189,8 +189,9 @@ export function sourceHandlers(
       ],
     });
   }
-  const activeOcrDownload = () =>
-    runner?.list().find((job) => job.kind === "ocr-data-download" && ["queued", "running"].includes(job.state))?.id;
+  const activeJob = (kind: string) =>
+    runner?.list().find((job) => job.kind === kind && ["queued", "running"].includes(job.state))?.id;
+  const activeOcrDownload = () => activeJob("ocr-data-download");
   const requireOcrData = async () => {
     const { state } = await ocrDataStatus(tess);
     if (state !== "ready") throw new Error(`ocr-data-${state}`);
@@ -314,6 +315,7 @@ export function sourceHandlers(
         })),
         cappedFiles: listing.cappedFiles,
         cappedDepth: listing.cappedDepth,
+        unreadable: listing.unreadable,
         limit: MAX_FOLDER_FILES,
       };
     },
@@ -479,7 +481,8 @@ export function sourceHandlers(
       setEmbeddingConsent(db, input.consent);
       if (!input.consent) return { state: "off" as const };
       if (!runner) throw new IpcError("not-ready", "errors.notReady");
-      const jobId = runner.start("embedding-download");
+      // A second click joins the download already running instead of starting another.
+      const jobId = activeJob("embedding-download") ?? runner.start("embedding-download");
       return { state: "missing" as const, jobId };
     },
     async search(input: { query: string }, signal?: AbortSignal) {

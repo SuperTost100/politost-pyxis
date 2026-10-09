@@ -183,7 +183,7 @@ function lexical(
        JOIN passages p ON p.rowid = passages_fts.rowid
        LEFT JOIN sources s ON s.id = p.source_id
        WHERE passages_fts MATCH ?${scope}
-         AND (p.source_id IS NULL OR s.status != 'removed')
+         AND (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted'))
          AND (
            p.source_id IS NULL
            OR p.document_id = (
@@ -220,7 +220,7 @@ function vectorHits(
       `SELECT passage_rowid AS n, distance FROM passages_vec
        WHERE embedding MATCH ? AND k = 30 AND passage_rowid IN (
          SELECT p.rowid FROM passages p LEFT JOIN sources s ON s.id = p.source_id
-         WHERE (p.source_id IS NULL OR s.status != 'removed') ${scope}
+         WHERE (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')) ${scope}
          AND (p.source_id IS NULL OR p.document_id = (SELECT id FROM source_documents
            WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))
        ORDER BY distance`,
@@ -235,7 +235,7 @@ function vectorHits(
     `SELECT p.id, p.source_id FROM passages p
      LEFT JOIN sources s ON s.id = p.source_id
      WHERE p.rowid = ?
-       AND (p.source_id IS NULL OR s.status != 'removed')
+       AND (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted'))
        AND (
          p.source_id IS NULL
          OR p.document_id = (

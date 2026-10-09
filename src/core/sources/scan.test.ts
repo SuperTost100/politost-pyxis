@@ -71,6 +71,7 @@ describe("source reads stay bounded and off the core thread", () => {
       ],
       cappedFiles: false,
       cappedDepth: false,
+      unreadable: false,
       limit: MAX_FOLDER_FILES,
     });
     expect(calls).toHaveLength(1);

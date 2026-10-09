@@ -1820,6 +1820,8 @@ export const requests = {
       cappedFiles: z.boolean(),
       /** Subfolders nested too deep were not read. */
       cappedDepth: z.boolean(),
+      /** Subfolders that could not be read were skipped. */
+      unreadable: z.boolean(),
       limit: z.number(),
     }),
   },

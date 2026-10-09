@@ -165,8 +165,9 @@ export function createRunner(
         ).run(step.label, done / steps.length, Date.now(), jobId);
         publish(jobId);
         const specStep = spec.steps.find((item) => item.name === step.name);
-        if (!specStep) throw new Error(`missing-step:${step.name}`);
         try {
+          // A step an app update renamed or removed fails its job rather than leaving it running.
+          if (!specStep) throw new Error(`missing-step:${step.name}`);
           const desired =
             specStep.jobClass === undefined ? spec.jobClass : specStep.jobClass;
           if (entry.jobClass !== desired) {

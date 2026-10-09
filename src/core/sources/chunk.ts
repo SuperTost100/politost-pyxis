@@ -1,6 +1,9 @@
-/** SRC-20: section-local chunks with one-sentence overlap and intact math/code. */
+/**
+ * SRC-20: section-local chunks with one-sentence overlap and intact math/code. Inline $…$ math stays within one
+ * paragraph and 400 characters, so dollar amounts far apart ("costs $5" … "$7") do not join into one unsplittable span.
+ */
 export function chunkText(text: string, maxChars = 1400): Array<{ text: string; start: number; end: number }> {
-  const protectedRanges = [...text.matchAll(/```[\s\S]*?```|~~~[\s\S]*?~~~|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|(?<!\\)\$(?!\$)[^$]*?(?<!\\)\$/g)]
+  const protectedRanges = [...text.matchAll(/```[\s\S]*?```|~~~[\s\S]*?~~~|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|(?<!\\)\$(?!\$)(?:[^$\n]|\n(?!\n)){1,400}?(?<!\\)\$/g)]
     .map((match) => ({ start: match.index, end: match.index + match[0].length }));
   const inside = (n: number) => protectedRanges.some((range) => n > range.start && n < range.end);
   const ends = [...text.matchAll(/(?<=[.!?])\s+|\n{2,}/g)]
