@@ -24,9 +24,9 @@ const COUNTS = [
   "exercises",
 ] as const;
 
-function size(bytes: number): string {
+function size(bytes: number, language: string): string {
   return bytes >= 1048576
-    ? `${(bytes / 1048576).toFixed(1)} MB`
+    ? `${new Intl.NumberFormat(language, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / 1048576)} MB`
     : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
@@ -147,7 +147,7 @@ export function ImportReview({
               .filter((source) => source.embedded)
               .map((source) => (
                 <li key={source.index}>
-                  {source.title} · {size(source.bytes)}
+                  {source.title} · {size(source.bytes, i18n.language)}
                 </li>
               ))}
           </ul>
@@ -173,7 +173,7 @@ export function ImportReview({
             <fieldset key={source.index} className="px-import-source">
               <legend className="body-strong">{source.title}</legend>
               <p className="small ink-muted">
-                {size(source.bytes)} ·{" "}
+                {size(source.bytes, i18n.language)} ·{" "}
                 {t("shared.review.excerptCount", { count: source.excerpts })}
               </p>
               {options.map((option) => {

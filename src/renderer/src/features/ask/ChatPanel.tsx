@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Drawer, Dropdown, Input, Modal } from "antd";
+import { App, Button, Drawer, Dropdown, Input, Modal } from "antd";
 import { Ellipsis, Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,6 +21,7 @@ export function ChatPanel({
   onNew: () => void;
 }) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const client = useQueryClient();
   const history = useQuery({
     queryKey: ["chats"],
@@ -32,6 +33,7 @@ export function ChatPanel({
   const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(
     null,
   );
+  const [removing, setRemoving] = useState(false);
   // Esc unmounts the field, so the blur that follows must not save what Esc just cancelled.
   const cancelled = useRef(false);
   const chats = history.data ?? [];
@@ -44,17 +46,28 @@ export function ChatPanel({
     const title = current.title.trim();
     const old = chats.find((chat) => chat.id === current.id);
     if (!title || title === old?.title) return;
-    await invoke("chats.rename", { chatId: current.id, title });
+    try {
+      await invoke("chats.rename", { chatId: current.id, title });
+    } catch {
+      void message.error(t("ask.renameFailed"));
+    }
     void client.invalidateQueries({ queryKey: ["chats"] });
   }
 
   async function confirmDelete() {
     const target = deleting;
-    if (!target) return;
-    await invoke("chats.delete", { chatId: target.id });
-    setDeleting(null);
-    void client.invalidateQueries({ queryKey: ["chats"] });
-    if (target.id === chatId) onNew();
+    if (!target || removing) return;
+    setRemoving(true);
+    try {
+      await invoke("chats.delete", { chatId: target.id });
+      setDeleting(null);
+      if (target.id === chatId) onNew();
+    } catch {
+      void message.error(t("ask.deleteFailed"));
+    } finally {
+      setRemoving(false);
+      void client.invalidateQueries({ queryKey: ["chats"] });
+    }
   }
 
   return (
@@ -178,6 +191,7 @@ export function ChatPanel({
         okText={t("ask.deleteConfirm")}
         cancelText={t("ask.cancel")}
         okButtonProps={{ danger: true }}
+        confirmLoading={removing}
         width={420}
       >
         <p>{t("ask.deleteBody", { title: deleting?.title ?? "" })}</p>

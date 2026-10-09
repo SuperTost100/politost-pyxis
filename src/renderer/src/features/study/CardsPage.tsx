@@ -31,6 +31,12 @@ export function CardsPage() {
   const ratingLock = useRef(false);
   const [ratingPending, setRatingPending] = useState(false);
   const [ratingError, setRatingError] = useState(false);
+  // Saving, suspending or deleting a card that fails says so instead of doing nothing.
+  const [actionFailed, setActionFailed] = useState(false);
+  const act = (request: Promise<unknown>, then: () => void) => {
+    setActionFailed(false);
+    request.then(then, () => setActionFailed(true));
+  };
   const [showBack, setShowBack] = useState(false);
   const [intervalDays, setIntervalDays] = useState<number | null>(null);
   const [seen, setSeen] = useState<Array<(typeof RATINGS)[number]>>([]);
@@ -234,6 +240,9 @@ export function CardsPage() {
         {ratingError ? (
           <Notice tone="danger">{t("cards.rateFailed")}</Notice>
         ) : null}
+        {actionFailed ? (
+          <Notice tone="danger">{t("cards.actionFailed")}</Notice>
+        ) : null}
         {building ? (
           <Notice
             tone="info"
@@ -329,16 +338,19 @@ export function CardsPage() {
                   shape="round"
                   onClick={() => {
                     if (!planId || !cardTopicId) return;
-                    void invoke("study.save", {
-                      planId,
-                      topicId: cardTopicId,
-                      cardId: card.id,
-                      front: draftFront,
-                      back: draftBack,
-                    }).then(() => {
-                      setEditing(false);
-                      refresh();
-                    });
+                    act(
+                      invoke("study.save", {
+                        planId,
+                        topicId: cardTopicId,
+                        cardId: card.id,
+                        front: draftFront,
+                        back: draftBack,
+                      }),
+                      () => {
+                        setEditing(false);
+                        refresh();
+                      },
+                    );
                   }}
                   disabled={!draftFront.trim() || !draftBack.trim()}
                 >
@@ -390,7 +402,7 @@ export function CardsPage() {
                 shape="round"
                 onClick={() => setShowBack(true)}
               >
-                {t("cards.flip")} <kbd>Space</kbd>
+                {t("cards.flip")} <kbd>{t("cards.spaceKey")}</kbd>
               </Button>
             ) : null}
             {showBack && !editing ? (
@@ -445,13 +457,16 @@ export function CardsPage() {
                     disabled={ratingPending}
                     shape="round"
                     onClick={() => {
-                      void invoke("study.suspend", {
-                        cardId: card.id,
-                        suspended: true,
-                      }).then(() => {
-                        setShowBack(false);
-                        refresh();
-                      });
+                      act(
+                        invoke("study.suspend", {
+                          cardId: card.id,
+                          suspended: true,
+                        }),
+                        () => {
+                          setShowBack(false);
+                          refresh();
+                        },
+                      );
                     }}
                   >
                     {t("cards.suspend")}
@@ -464,13 +479,11 @@ export function CardsPage() {
                         setArmedDelete(true);
                         return;
                       }
-                      void invoke("study.remove", { cardId: card.id }).then(
-                        () => {
-                          setArmedDelete(false);
-                          setShowBack(false);
-                          refresh();
-                        },
-                      );
+                      act(invoke("study.remove", { cardId: card.id }), () => {
+                        setArmedDelete(false);
+                        setShowBack(false);
+                        refresh();
+                      });
                     }}
                   >
                     {armedDelete ? t("cards.deleteConfirm") : t("cards.delete")}
@@ -486,10 +499,13 @@ export function CardsPage() {
             <Button
               shape="round"
               onClick={() => {
-                void invoke("study.suspend", {
-                  cardId: item.id,
-                  suspended: false,
-                }).then(() => refresh());
+                act(
+                  invoke("study.suspend", {
+                    cardId: item.id,
+                    suspended: false,
+                  }),
+                  () => refresh(),
+                );
               }}
             >
               {t("cards.resume")}
@@ -559,16 +575,19 @@ export function CardsPage() {
             shape="round"
             onClick={() => {
               if (!planId || !topicId) return;
-              void invoke("study.save", {
-                planId,
-                topicId,
-                front: addingFront,
-                back: addingBack,
-              }).then(() => {
-                setAddingFront("");
-                setAddingBack("");
-                refresh();
-              });
+              act(
+                invoke("study.save", {
+                  planId,
+                  topicId,
+                  front: addingFront,
+                  back: addingBack,
+                }),
+                () => {
+                  setAddingFront("");
+                  setAddingBack("");
+                  refresh();
+                },
+              );
             }}
             disabled={!addingFront.trim() || !addingBack.trim()}
           >

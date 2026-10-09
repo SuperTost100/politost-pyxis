@@ -1,10 +1,12 @@
 {
   "routeError": {
     "title": "This page could not be opened",
-    "body": "Return to your exams and try opening it again."
+    "body": "Return to your exams and try opening it again.",
+    "home": "Go to exams"
   },
   "doors": {
     "ask": "Ask",
+    "label": "Sections",
     "exams": "Exams"
   },
   "nav": {
@@ -107,6 +109,8 @@
     "rename": "Rename",
     "delete": "Delete",
     "deleteConfirm": "Delete forever",
+    "renameFailed": "This chat couldn't be renamed. Try again.",
+    "deleteFailed": "This chat couldn't be deleted. Try again.",
     "new": "New chat",
     "stop": "Stop",
     "regenerate": "Regenerate",
@@ -137,6 +141,7 @@
     "subjectDragCancelled": "Reordering cancelled."
   },
   "exams": {
+    "view": "Show",
     "plans": "Plans",
     "sources": "Sources",
     "emptyTitle": "No plans yet",
@@ -346,6 +351,8 @@
   },
   "cards": {
     "rateFailed": "The card could not be rated. Try again.",
+    "actionFailed": "That didn't work. Try again.",
+    "spaceKey": "Space",
     "intervalMinutes": "{{count}} min",
     "intervalHours": "{{count}} h",
     "intervalDays": "{{count}} d",
@@ -421,7 +428,7 @@
     "recolor": "Node color",
     "fit": "Fit map",
     "instruction": "Edit with AI",
-    "instructionPlaceholder": "Add a branch on the chain rule…",
+    "instructionPlaceholder": "Describe a change, such as a branch to add…",
     "apply": "Apply changes",
     "applied": "Changes applied. Undo restores the previous map.",
     "editFailed": "The map could not be changed. Try again.",

@@ -133,6 +133,7 @@ export function Shell() {
           <Segmented<Door>
             shape="round"
             className="px-doors"
+            aria-label={t("doors.label")}
             value={activeSimulation.data ? "exams" : (activeDoor ?? NO_DOOR)}
             onChange={(value) =>
               navigate(value === "ask" ? last.ask : last.exams)

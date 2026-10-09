@@ -31,7 +31,7 @@ function RouteError() {
     <main className="empty" style={{ maxWidth: 768, margin: "0 auto", padding: "var(--space-12) var(--space-6)" }}>
       <h1 className="title-2">{t("routeError.title")}</h1>
       <p className="body">{t("routeError.body")}</p>
-      <Link to="/exams">{t("onboarding.done")}</Link>
+      <Link to="/exams">{t("routeError.home")}</Link>
     </main>
   );
 }

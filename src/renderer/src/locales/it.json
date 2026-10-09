@@ -1,10 +1,12 @@
 {
   "routeError": {
     "title": "Non è stato possibile aprire questa pagina",
-    "body": "Torna ai tuoi esami e prova ad aprirla di nuovo."
+    "body": "Torna ai tuoi esami e prova ad aprirla di nuovo.",
+    "home": "Vai agli esami"
   },
   "doors": {
     "ask": "Chiedi",
+    "label": "Sezioni",
     "exams": "Esami"
   },
   "nav": {
@@ -107,6 +109,8 @@
     "rename": "Rinomina",
     "delete": "Elimina",
     "deleteConfirm": "Elimina per sempre",
+    "renameFailed": "Non è stato possibile rinominare la chat. Riprova.",
+    "deleteFailed": "Non è stato possibile eliminare la chat. Riprova.",
     "new": "Nuova chat",
     "stop": "Ferma",
     "regenerate": "Rigenera",
@@ -137,6 +141,7 @@
     "subjectDragCancelled": "Riordino annullato."
   },
   "exams": {
+    "view": "Mostra",
     "plans": "Piani",
     "sources": "Fonti",
     "emptyTitle": "Nessun piano ancora",
@@ -346,6 +351,8 @@
   },
   "cards": {
     "rateFailed": "Non è stato possibile valutare la scheda. Riprova.",
+    "actionFailed": "Non ha funzionato. Riprova.",
+    "spaceKey": "Spazio",
     "intervalMinutes": "{{count}} min",
     "intervalHours": "{{count}} h",
     "intervalDays": "{{count}} g",
@@ -421,7 +428,7 @@
     "recolor": "Colore del nodo",
     "fit": "Adatta la mappa",
     "instruction": "Modifica con AI",
-    "instructionPlaceholder": "Aggiungi un ramo sulla regola della catena…",
+    "instructionPlaceholder": "Descrivi una modifica, ad esempio un ramo da aggiungere…",
     "apply": "Applica modifiche",
     "applied": "Modifiche applicate. Annulla ripristina la mappa precedente.",
     "editFailed": "Non riesco a modificare la mappa. Riprova.",
