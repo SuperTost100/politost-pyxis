@@ -40,6 +40,7 @@ import {
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
 import { recoverInterruptedWipe, wipeWorkspace } from "../core/share/wipe";
@@ -163,14 +164,45 @@ function installNavigationGuards(): void {
       if (allowedExternal(url)) void shell.openExternal(url);
       return { action: "deny" };
     });
+    // Only the app's own page may load. A dropped or linked file would otherwise replace it and get the bridge.
     contents.on("will-navigate", (event, url) => {
       const devOrigin = process.env["ELECTRON_RENDERER_URL"];
       if (devOrigin && url.startsWith(devOrigin)) return;
-      const current = contents.getURL();
-      if (current.startsWith("file:") && url.startsWith("file:")) return;
+      if (url.split("#")[0] === rendererPage) return;
       event.preventDefault();
     });
   });
+}
+
+const rendererPage = pathToFileURL(
+  join(import.meta.dirname, "../renderer/index.html"),
+).href;
+
+// A study app needs no camera, microphone, location, notifications or devices, so pages never get them.
+// Everything else (clipboard, fullscreen…) keeps Electron's default.
+const deniedPermissions = new Set([
+  "media",
+  "display-capture",
+  "geolocation",
+  "notifications",
+  "midi",
+  "midiSysex",
+  "hid",
+  "serial",
+  "usb",
+  "idle-detection",
+  "mediaKeySystem",
+  "speaker-selection",
+  "window-management",
+]);
+function installPermissionHandlers(): void {
+  session.defaultSession.setPermissionRequestHandler(
+    (_contents, permission, callback) =>
+      callback(!deniedPermissions.has(permission)),
+  );
+  session.defaultSession.setPermissionCheckHandler(
+    (_contents, permission) => !deniedPermissions.has(permission),
+  );
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -398,7 +430,10 @@ function waitForCoreReady(
 
 function startCore(strict = false): Promise<void> {
   let startupFailed = false;
-  const captureLogs = e2eSeam() && process.env.PYXIS_E2E === "1" && process.env.PYXIS_E2E_CORE_STDIO !== "inherit";
+  const captureLogs =
+    e2eSeam() &&
+    process.env.PYXIS_E2E === "1" &&
+    process.env.PYXIS_E2E_CORE_STDIO !== "inherit";
   const child = utilityProcess.fork(join(import.meta.dirname, "core.js"), [], {
     serviceName: "pyxis-core",
     stdio: captureLogs ? "pipe" : "inherit",
@@ -1032,6 +1067,7 @@ app.whenReady().then(() => {
   applyAppearance(readAppearanceSource());
   installCsp();
   installNavigationGuards();
+  installPermissionHandlers();
   registerProtocols();
   registerIpc();
   nativeTheme.on("updated", broadcastAppearance);
