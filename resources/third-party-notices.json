@@ -66,12 +66,12 @@
   },
   {
     "name": "cli-funnel",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "license": "MIT",
     "texts": [
       {
         "file": "LICENSE",
-        "source": "https://raw.githubusercontent.com/SuperTost100/cli-funnel/bab12a100803f9c7c7c301ace7ca5bd77304328b/LICENSE",
+        "source": "https://raw.githubusercontent.com/SuperTost100/cli-funnel/7adaf2bd06c59e24100be96b13eb3674e1268c5d/LICENSE",
         "sha256": "9388c0c8e9a16013ddb24abccf14464ba93da95689c501c20fe2e2213c53a25e",
         "text": "MIT License\n\nCopyright (c) 2026 cli-funnel contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
       }

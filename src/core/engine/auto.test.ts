@@ -184,7 +184,7 @@ describe("automatic engine policy", () => {
   });
 });
 
-// Cursor Agent and Antigravity model ids as CLI Funnel 0.3 lists them.
+// Cursor Agent and Antigravity model ids as CLI Funnel 0.4 lists them.
 const agent: AutoProvider = {
   id: "agent",
   kind: "cli",
