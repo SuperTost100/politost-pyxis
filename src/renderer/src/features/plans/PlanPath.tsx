@@ -126,9 +126,12 @@ export function PlanPath({
   useEffect(() => {
     if (!guide || scrolled.current === planId) return;
     scrolled.current = planId;
-    const frameId = requestAnimationFrame(() =>
-      card.current?.scrollIntoView({ block: "center", behavior: "instant" }),
-    );
+    // Centre the suggested step only when it is off screen; scrolling a visible one hides the plan's title.
+    const frameId = requestAnimationFrame(() => {
+      const box = card.current?.getBoundingClientRect();
+      if (!box || (box.top >= 0 && box.bottom <= window.innerHeight)) return;
+      card.current?.scrollIntoView({ block: "center", behavior: "instant" });
+    });
     return () => cancelAnimationFrame(frameId);
   }, [planId, guide]);
 

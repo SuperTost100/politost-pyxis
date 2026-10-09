@@ -50,6 +50,7 @@ export function ExamsHome() {
         <Segmented
           shape="round"
           className="px-doors"
+          aria-label={t("exams.view")}
           value={tab}
           onChange={(value) =>
             navigate(value === "sources" ? "/exams/library" : "/exams")

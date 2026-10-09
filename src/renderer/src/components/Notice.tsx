@@ -30,7 +30,7 @@ export function Notice({
   return (
     <div
       className={["px-notice", tones[tone].className].join(" ")}
-      role="status"
+      role={tone === "danger" ? "alert" : "status"}
     >
       <Icon size={16} strokeWidth={1.75} aria-hidden />
       <div className="px-notice-body">

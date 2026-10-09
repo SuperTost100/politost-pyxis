@@ -55,6 +55,13 @@ export function AskPage() {
   // The question just sent, shown at once: the stored message only arrives with the reply.
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  // The chat a reply is being written for ("" for a new one). Its text shows only there, and the page follows
+  // the reply to its new chat only if the student is still on the chat it was sent from.
+  const [streamIn, setStreamIn] = useState<string | null>(null);
+  const streamHere = streamIn === (chatId ?? "");
+  const chatNow = useRef(chatId);
+  chatNow.current = chatId;
+  const arrived = useRef<string | null>(null);
   const [subject, setSubject] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
   const [files, setFiles] = useState<string[]>([]);
@@ -90,6 +97,17 @@ export function AskPage() {
     enabled: Boolean(chatId),
     queryFn: () => invoke("chats.read", { chatId: chatId ?? "" }),
   });
+
+  // Notices belong to the chat they were raised in; the chat a new reply just moved to keeps its own.
+  useEffect(() => {
+    if (chatId && arrived.current === chatId) {
+      arrived.current = null;
+      return;
+    }
+    setUncovered(null);
+    setSkipped([]);
+    setError(null);
+  }, [chatId]);
 
   useEffect(() => {
     if (chatId) return;
@@ -291,6 +309,8 @@ export function AskPage() {
     if (!trimmed || busy) return;
     if (chatId && loadedFor.current !== chatId) return;
     setBusy(true);
+    const startedIn = chatId ?? "";
+    setStreamIn(startedIn);
     await scopeReady.current.catch(() => undefined);
     const ids = visible(pickedNow.current);
     setLive("");
@@ -344,8 +364,11 @@ export function AskPage() {
         restore();
         return;
       }
-      setUncovered(result.covered ? null : trimmed);
-      setSkipped(result.skippedImages ?? []);
+      const stillHere = (chatNow.current ?? "") === startedIn;
+      if (stillHere) {
+        setUncovered(result.covered ? null : trimmed);
+        setSkipped(result.skippedImages ?? []);
+      }
       // Store the new messages in the cache before the placeholder goes, so the reply replaces it without a gap.
       await client
         .fetchQuery({
@@ -355,7 +378,10 @@ export function AskPage() {
         })
         .catch(() => undefined);
       void client.invalidateQueries({ queryKey: ["chats"] });
-      if (result.chatId !== chatId) navigate(`/ask/${result.chatId}`);
+      if (stillHere && result.chatId !== chatNow.current) {
+        arrived.current = result.chatId;
+        navigate(`/ask/${result.chatId}`);
+      }
     } catch (err) {
       restore();
       const key = errorKey(err);
@@ -364,6 +390,7 @@ export function AskPage() {
       stop.current = null;
       setLive("");
       setPendingQuestion(null);
+      setStreamIn(null);
       setBusy(false);
     }
   }
@@ -371,6 +398,7 @@ export function AskPage() {
   function regenerate() {
     if (!chatId) return;
     setBusy(true);
+    setStreamIn(chatId);
     setRegenerating(true);
     setError(null);
     setLive("");
@@ -397,14 +425,16 @@ export function AskPage() {
         const reply = result as Awaited<
           ReturnType<typeof invoke<"chats.regenerate">>
         >;
-        setSkipped(reply.skippedImages ?? []);
-        setUncovered(
-          reply.covered
-            ? null
-            : (thread.data?.messages
-                .filter((message) => message.role === "user")
-                .at(-1)?.body ?? ""),
-        );
+        if (chatNow.current === chatId) {
+          setSkipped(reply.skippedImages ?? []);
+          setUncovered(
+            reply.covered
+              ? null
+              : (thread.data?.messages
+                  .filter((message) => message.role === "user")
+                  .at(-1)?.body ?? ""),
+          );
+        }
         await client.invalidateQueries({ queryKey: ["chat", chatId] });
       })
       .catch((err: unknown) => {
@@ -415,12 +445,14 @@ export function AskPage() {
         stop.current = null;
         setLive("");
         setRegenerating(false);
+        setStreamIn(null);
         setBusy(false);
       });
   }
 
-  const conversation = messages.length > 0 || pendingQuestion !== null;
-  const shownMessages = regenerating
+  const conversation =
+    messages.length > 0 || (streamHere && pendingQuestion !== null);
+  const shownMessages = regenerating && streamHere
     ? messages.filter((row) => row.id !== lastTutor?.id)
     : messages;
   const usesSources = hasScope || files.length > 0;
@@ -531,17 +563,17 @@ export function AskPage() {
               </ChatMessage>
             ),
           )}
-          {pendingQuestion !== null && !regenerating ? (
+          {streamHere && pendingQuestion !== null && !regenerating ? (
             <ChatMessage role="user">
               <MathText text={pendingQuestion} />
             </ChatMessage>
           ) : null}
-          {busy && live ? (
+          {streamHere && busy && live ? (
             <ChatMessage role="tutor">
               <MarkdownView>{live}</MarkdownView>
             </ChatMessage>
           ) : null}
-          {busy && !live ? <ThinkingMessage usesSources={usesSources} /> : null}
+          {streamHere && busy && !live ? <ThinkingMessage usesSources={usesSources} /> : null}
         </div>
       )}
       <div className="ask-dock">

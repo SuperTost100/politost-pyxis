@@ -170,6 +170,59 @@ export function SimulationPage() {
         model: `${run.generated.provider} · ${run.generated.model}`,
       })
     : "";
+  // The setup's start button sits with Back in the action bar, as on every other task page.
+  const setupAction = !run ? (
+    ready ? (
+      <Button
+        type="primary"
+        shape="round"
+        loading={busy}
+        onClick={() =>
+          void begin(
+            invoke("study.simulationStart", {
+              planId,
+              minutes: (building?.minutes ?? length) as typeof length,
+              source,
+            }),
+          )
+        }
+      >
+        {t("simulation.startNow")}
+      </Button>
+    ) : (
+      <Button
+        type="primary"
+        shape="round"
+        loading={busy}
+        disabled={open.isPending || (Boolean(building) && !buildStopped)}
+        onClick={() => {
+          setBusy(true);
+          setNotice("");
+          setNoEngine(false);
+          void invoke("study.simulationPrepare", {
+            planId,
+            minutes: length,
+            source,
+          })
+            .then(async (next) => {
+              if (next.attemptId) {
+                setStarted(next.attemptId);
+                navigate(`/plans/${planId}/exam/${next.attemptId}`, {
+                  replace: true,
+                });
+              } else
+                await client.invalidateQueries({
+                  queryKey: ["simulation-build", planId],
+                });
+            })
+            .catch(startFailed)
+            .finally(() => setBusy(false));
+        }}
+      >
+        {t("simulation.start")}
+      </Button>
+    )
+  ) : undefined;
   return (
     <FocusLayout
       title={
@@ -211,6 +264,7 @@ export function SimulationPage() {
           </Button>
         ) : undefined
       }
+      primary={setupAction}
     >
       {notice && (
         <Notice
@@ -312,56 +366,6 @@ export function SimulationPage() {
             >
               {t("simulation.buildFailed")}
             </Notice>
-          )}
-          {ready ? (
-            <Button
-              type="primary"
-              shape="round"
-              loading={busy}
-              onClick={() =>
-                void begin(
-                  invoke("study.simulationStart", {
-                    planId,
-                    minutes: (building?.minutes ?? length) as typeof length,
-                    source,
-                  }),
-                )
-              }
-            >
-              {t("simulation.startNow")}
-            </Button>
-          ) : (
-            <Button
-              type="primary"
-              shape="round"
-              loading={busy}
-              disabled={open.isPending || (Boolean(building) && !buildStopped)}
-              onClick={() => {
-                setBusy(true);
-                setNotice("");
-                setNoEngine(false);
-                void invoke("study.simulationPrepare", {
-                  planId,
-                  minutes: length,
-                  source,
-                })
-                  .then(async (next) => {
-                    if (next.attemptId) {
-                      setStarted(next.attemptId);
-                      navigate(`/plans/${planId}/exam/${next.attemptId}`, {
-                        replace: true,
-                      });
-                    } else
-                      await client.invalidateQueries({
-                        queryKey: ["simulation-build", planId],
-                      });
-                  })
-                  .catch(startFailed)
-                  .finally(() => setBusy(false));
-              }}
-            >
-              {t("simulation.start")}
-            </Button>
           )}
         </section>
       ) : run.submitted ? (

@@ -9,7 +9,12 @@ import { useJobs } from "../jobs/queries";
 import "./PythonPage.css";
 
 export function PythonPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const mb = (bytes: number) =>
+    new Intl.NumberFormat(i18n.language, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(bytes / 1e6);
   const [code, setCode] = useState("print(1 + 1)");
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
@@ -30,7 +35,7 @@ export function PythonPage() {
   });
   const ready = runtime.data?.phase === "ready";
   const tooLong = code.length > pythonMaxChars;
-  const megabytes = ((runtime.data?.totalBytes ?? 0) / 1e6).toFixed(1);
+  const megabytes = mb(runtime.data?.totalBytes ?? 0);
   async function download() {
     setStarting(true);
     setNotice("");
@@ -83,7 +88,7 @@ export function PythonPage() {
               <div className="px-python-actions">
                 <span className="meta" role="status">
                   {t("python.download", {
-                    current: (runtime.data.bytes / 1e6).toFixed(1),
+                    current: mb(runtime.data.bytes),
                     total: megabytes,
                   })}
                 </span>
