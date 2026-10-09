@@ -167,6 +167,13 @@ describe("automatic engine choice", () => {
       "offline",
     );
     expect(handlers.features()).toEqual(before);
+    // A reset in the same state keeps them too, rather than leaving every feature without an engine.
+    await withFunnel(
+      { claude: true, codex: false },
+      () => handlers.autoConfigure({ reset: true }),
+      "offline",
+    );
+    expect(handlers.features()).toEqual(before);
     db.close();
   });
 

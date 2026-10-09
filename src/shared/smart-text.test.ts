@@ -8,6 +8,7 @@ import {
   smartSections,
   smartTextToMarkdown,
   smartLabels,
+  splitCitationGroups,
   stripPassageRefs,
 } from "./smart-text";
 
@@ -169,5 +170,11 @@ describe("smart text", () => {
         "Partirai dalle misure. [01a110b2-3b89-7089-b52e-0855aadf1b56] Poi i vettori [P2] [01a110b2-3bc6-77ba-ba19-330c056ed84f].",
       ),
     ).toBe("Partirai dalle misure. Poi i vettori.");
+  });
+
+  it("splits grouped citations into single ones", () => {
+    expect(splitCitationGroups("Vale F = ma [P1, P3] e anche [P2; 4], non [P5].")).toBe(
+      "Vale F = ma [P1][P3] e anche [P2][P4], non [P5].",
+    );
   });
 });

@@ -7,6 +7,7 @@ import {
   type AnchoredCheck,
   type MathCheck,
 } from "@shared/math-check";
+import { splitCitationGroups } from "@shared/smart-text";
 import type { ComponentPropsWithoutRef } from "react";
 import { isValidElement, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,7 +30,7 @@ export type CitationResolver = (passageId: number) => string | undefined;
 
 function linkCitations(markdown: string, resolver?: CitationResolver): string {
   return mapOutsideCode(markdown, (text) =>
-    text.replace(/\[P(\d+)\]/g, (_, raw: string) => {
+    splitCitationGroups(text).replace(/\[P(\d+)\]/g, (_, raw: string) => {
       const id = Number(raw);
       const label = resolver?.(id) ?? `P${id}`;
       return `[${label}](cite:p${id})`;

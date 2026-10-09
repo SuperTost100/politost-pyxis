@@ -337,27 +337,35 @@ export function finalizeAttempt(
         now,
       );
       syncGaps(db, row.plan_id, now);
+      // A topic quiz, or a gap drill on one, is a step on that topic's path. A topic archived meanwhile gets none.
+      const live = db
+        .prepare("SELECT 1 FROM topics WHERE id = ? AND plan_id = ? AND archived_at IS NULL")
+        .get(row.topic_id, row.plan_id);
+      if (row.kind === "quiz" && live) {
+        const drill = db
+          .prepare("SELECT 1 FROM gap_items WHERE item_id = (SELECT item_id FROM attempts WHERE id = ?)")
+          .get(attemptId);
+        recordStep(
+          db,
+          row.plan_id,
+          { activity: drill ? "gaps" : "quiz", topicId: row.topic_id, result: stepResult(scored.results) },
+          now + 1,
+        );
+      }
     } else if (
       row.kind === "simulation" ||
       row.kind === "diagnostic" ||
       row.kind === "review" ||
       row.kind === "quiz"
     ) {
-      // A review is practice, not a path step: it records topic scores like a quiz and adds no step.
-      if (row.kind !== "review") {
-        const drill =
-          row.kind === "quiz" &&
-          db.prepare("SELECT 1 FROM gap_items WHERE item_id = (SELECT item_id FROM attempts WHERE id = ?)").get(attemptId);
-        const activity =
-          row.kind === "quiz" ? (drill ? "gaps" : "quiz") : (row.kind as "diagnostic" | "simulation");
-        if (row.kind !== "quiz" || row.topic_id)
-          recordStep(
-            db,
-            row.plan_id,
-            { activity, topicId: row.topic_id, result: stepResult(scored.results) },
-            now + 1,
-          );
-      }
+      // A review is practice, not a path step, and a whole-plan quiz has no topic to step on.
+      if (row.kind === "diagnostic" || row.kind === "simulation")
+        recordStep(
+          db,
+          row.plan_id,
+          { activity: row.kind, topicId: null, result: stepResult(scored.results) },
+          now + 1,
+        );
       // Every diagnostic question carries its answer kind so open answers keep their 1.5 weight.
       recordTopicScores(
         db,

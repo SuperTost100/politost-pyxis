@@ -156,6 +156,8 @@ export async function autoConfigureEngines(
   const plan = planAuto(listed);
   const now = Date.now();
   const apply = db.transaction(() => {
+    // A reset that cannot read any model list would leave every feature without an engine.
+    if (unreadable) return;
     if (options.reset) {
       const scope = options.features;
       if (scope?.length)
@@ -165,7 +167,6 @@ export async function autoConfigureEngines(
           );
       else db.prepare("DELETE FROM feature_engines").run();
     }
-    if (unreadable) return;
     const existing = new Map(
       (
         db

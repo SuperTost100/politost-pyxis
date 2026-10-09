@@ -386,6 +386,13 @@ const uuidRef =
   /\s?\[(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\s*[,;]\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})*\]/gi;
 
 /** Removes passage references ([P3], raw passage ids) that an older introduction carried as plain text. */
+/** Rewrites a grouped citation such as [P1, P3] or [P1; 3] as [P1][P3], the form the chat links. */
+export function splitCitationGroups(markdown: string): string {
+  return markdown.replace(/\[P\d+(?:\s*[,;]\s*P?\d+)+\]/g, (group) =>
+    [...group.matchAll(/\d+/g)].map((match) => `[P${match[0]}]`).join(""),
+  );
+}
+
 export function stripPassageRefs(markdown: string): string {
   return markdown
     .replace(uuidRef, "")
