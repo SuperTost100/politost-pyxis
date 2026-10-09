@@ -48,6 +48,34 @@ describe("importSmartbook", () => {
     expect(searchPassages(db, "vettore")).toHaveLength(1);
   });
 
+  it("drops markup a book generator leaked into chapters and exercises (#35)", () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "leaky",
+          title: "Analisi 1",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Limiti", file: "01.md" }],
+        }),
+        "chapters/01.md":
+          '## p1 | Limiti\nIl limite descrive il comportamento vicino a un punto.</markdown>\n</parameter>\n</invoke>\n',
+        "esercizi.md":
+          ':::exercise{id="e1" chapter="1"}\nCalcola il limite.</invoke>\n:::solution\nZero.\n:::\n:::\n',
+      }),
+    );
+    expect(imported.passages).toBe(1);
+    const texts = (
+      db
+        .prepare("SELECT text FROM passages UNION ALL SELECT prompt || ' ' || answer FROM exercises")
+        .all() as Array<{ text: string }>
+    ).map((row) => row.text);
+    expect(texts.join("\n")).toContain("Il limite descrive");
+    expect(texts.join("\n")).toContain("Calcola il limite.");
+    expect(texts.join("\n")).not.toMatch(/<\/?(markdown|parameter|invoke)/);
+  });
+
   it("opens every passage on the cited page", () => {
     const db = openDatabase(":memory:");
     db.prepare(
