@@ -12,6 +12,16 @@ import { putBlob } from "../blobs";
 import { uuidv7 } from "../../shared/ids";
 import { retrieve, type Embedder, type PassageHit } from "./retrieve";
 
+/**
+ * Tool-call tags a book generator leaked into the text (`</markdown>`, `</invoke>`…). content-core's validator calls
+ * them an error, with this same pattern; Pyxis drops them so they are never indexed or cited as passage text (#35).
+ */
+const GENERATOR_MARKUP = /<\/?(?:markdown|invoke|parameter|function_calls|antml:[\w-]+|tool_use|tool_result)(?=[\s/>])[^>]*>/gi;
+
+function readText(bytes: Uint8Array): string {
+  return strFromU8(bytes).replace(GENERATOR_MARKUP, "");
+}
+
 type ChapterMeta = { id: string; number: number; title: string; file: string };
 
 type SmartbookConfig = {
@@ -67,7 +77,7 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
   for (const chapter of config.chapters) {
     const raw = entries.read(`${prefix}chapters/${chapter.file}`);
     if (!raw) throw new Error("chapter-missing");
-    const parsed = parseChapterMarkdown(strFromU8(raw), chapter.number);
+    const parsed = parseChapterMarkdown(readText(raw), chapter.number);
     for (const paragraph of parsed.paragraphs) {
       const text = withFormulas(paragraph.content, parsed.formulas);
       if (text)
@@ -88,7 +98,7 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
     const raw = entries.read(`${prefix}${name}`);
     if (!raw) continue;
     const kind = name === "esami.md" ? "esame" : "esercizio";
-    for (const exercise of parseExercises(strFromU8(raw), kind)) {
+    for (const exercise of parseExercises(readText(raw), kind)) {
       exercises.push({
         question: exercise.question,
         solution: exercise.solution ?? null,
