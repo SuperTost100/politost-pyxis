@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -48,4 +48,24 @@ describe("folder import", () => {
     expect(listed.files.some((file) => file.endsWith("too-deep.txt"))).toBe(false);
     expect(listed.cappedDepth).toBe(true);
   });
+
+  // Windows has no chmod for folders, and root reads any folder.
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "skips a subfolder it cannot open and says so",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "pyxis-folder-locked-"));
+      writeFileSync(join(root, "notes.txt"), "");
+      const locked = join(root, "locked");
+      mkdirSync(locked);
+      writeFileSync(join(locked, "hidden.txt"), "");
+      chmodSync(locked, 0o000);
+      try {
+        const listed = listImportable(root);
+        expect(listed.files).toEqual([join(root, "notes.txt")]);
+        expect(listed.unreadable).toBe(true);
+      } finally {
+        chmodSync(locked, 0o700);
+      }
+    },
+  );
 });

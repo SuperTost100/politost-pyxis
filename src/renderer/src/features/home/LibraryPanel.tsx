@@ -128,6 +128,7 @@ export function LibraryPanel({
   const [folderCut, setFolderCut] = useState<{
     files: boolean;
     depth: boolean;
+    unreadable: boolean;
     limit: number;
   } | null>(null);
 
@@ -328,10 +329,11 @@ export function LibraryPanel({
       if (!folder) return;
       const scan = await invoke("sources.scanFolder", { path: folder });
       setFolderCut(
-        scan.cappedFiles || scan.cappedDepth
+        scan.cappedFiles || scan.cappedDepth || scan.unreadable
           ? {
               files: scan.cappedFiles,
               depth: scan.cappedDepth,
+              unreadable: scan.unreadable,
               limit: scan.limit,
             }
           : null,
@@ -847,6 +849,9 @@ export function LibraryPanel({
             <Notice tone="warning">
               {t("sources.folderCappedDepth", { depth: MAX_FOLDER_DEPTH })}
             </Notice>
+          ) : null}
+          {folderCut?.unreadable ? (
+            <Notice tone="warning">{t("sources.folderUnreadable")}</Notice>
           ) : null}
           {folderScanned != null && !scanning && !folderFiles.length && !result ? (
             <Notice tone="info">

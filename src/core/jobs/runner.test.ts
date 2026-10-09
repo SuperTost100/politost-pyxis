@@ -69,6 +69,24 @@ describe("job runner", () => {
     expect(called).toBe(true);
   });
 
+  it("fails a job whose stored step an update no longer knows", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, undefined, true);
+    runner.register("renamed", {
+      jobClass: "local",
+      steps: [{ name: "current", label: "current", run: async () => 1 }],
+    });
+    const job = runner.start("renamed");
+    database
+      .prepare("UPDATE job_steps SET name = 'removed' WHERE job_id = ?")
+      .run(job);
+    runner.activate();
+    expect(await until(database, job, ["failed", "running"])).toBe("failed");
+    expect(
+      database.prepare("SELECT error FROM jobs WHERE id = ?").get(job),
+    ).toEqual({ error: "missing-step:removed" });
+  });
+
   it("reacquires the local limit after two passive steps finish together", async () => {
     const database = db();
     const runner = createRunner(database, () => {}, {

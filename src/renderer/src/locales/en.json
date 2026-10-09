@@ -305,6 +305,7 @@
     "sentAsIsSize": "The engine saw the photo as stored: {{size}}.",
     "folderCappedFiles": "This folder holds more than {{count}} importable files. Only the first {{count}} are listed. Choose a subfolder to see the rest.",
     "folderCappedDepth": "Folders nested more than {{depth}} levels deep were not read. Choose a deeper folder to import from it.",
+    "folderUnreadable": "Some subfolders could not be opened, so their files are not listed. Check their permissions, or choose them directly.",
     "offSyllabusListed_one": "{{count}} section may be off syllabus",
     "offSyllabusListed_other": "{{count}} sections may be off syllabus",
     "offSyllabus_one": "{{count}} of {{total}} sections of this source look unrelated to {{plan}}: {{sections}}.",

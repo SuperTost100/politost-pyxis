@@ -305,6 +305,7 @@
     "sentAsIsSize": "Il motore ha visto la foto così com'è: {{size}}.",
     "folderCappedFiles": "Questa cartella contiene più di {{count}} file importabili. Sono elencati solo i primi {{count}}. Scegli una sottocartella per vedere gli altri.",
     "folderCappedDepth": "Le cartelle annidate oltre {{depth}} livelli non sono state lette. Scegli una cartella più interna per importarla.",
+    "folderUnreadable": "Alcune sottocartelle non si possono aprire, quindi i loro file non sono elencati. Controlla i permessi o sceglile direttamente.",
     "offSyllabusListed_one": "{{count}} sezione potrebbe essere fuori programma",
     "offSyllabusListed_other": "{{count}} sezioni potrebbero essere fuori programma",
     "offSyllabus_one": "{{count}} sezione su {{total}} di questa fonte sembra non c'entrare con {{plan}}: {{sections}}.",

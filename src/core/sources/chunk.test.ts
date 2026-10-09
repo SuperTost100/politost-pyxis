@@ -21,3 +21,12 @@ it("SRC-20 preserves long LaTeX and code blocks even above the chunk target", ()
   expect(chunks.some((chunk) => chunk.text.includes(code))).toBe(true);
   expect(chunks.some((chunk) => chunk.text.includes("Ending sentence."))).toBe(true);
 });
+
+it("SRC-20 splits text between distant dollar signs", () => {
+  const filler = Array.from({ length: 40 }, (_, i) => `Sentence ${i} has a useful detail.`).join(" ");
+  const text = `The book costs $5 today.\n\n${filler}\n\nThe second edition costs $7.`;
+  const chunks = chunkText(text, 200);
+  expect(chunks.length).toBeGreaterThan(5);
+  for (const chunk of chunks) expect(chunk.text.length).toBeLessThanOrEqual(200);
+  expect(chunkText("Area $A = \\pi r^2$ grows fast.", 12).some((chunk) => chunk.text.includes("$A = \\pi r^2$"))).toBe(true);
+});

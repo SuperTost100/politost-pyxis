@@ -53,7 +53,6 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
   if (isEncrypted(bytes)) {
     throw new Error("encrypted-smartbook");
   }
-  if (bytes.length > 80 * 1024 * 1024) throw new Error("archive-too-large");
   // Real output is counted, not the size the headers declare, and a member that is never read is never inflated.
   const entries = openZip(bytes, { maxEntries: 20_000, maxEntryBytes: 64 * 1024 * 1024, maxTotalBytes: 256 * 1024 * 1024 });
   const configKey = entries.names.find(

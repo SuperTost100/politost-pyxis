@@ -20,6 +20,14 @@ afterEach(() => {
 });
 
 describe("migrate", () => {
+  it("refuses a workspace written by a newer version", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
+    const db = openDatabase(file);
+    db.pragma("user_version = 1000");
+    db.close();
+    expect(() => openDatabase(file)).toThrow("workspace-newer");
+  });
+
   it("creates every table once and keeps rows on a second open", () => {
     const dir = mkdtempSync(join(tmpdir(), "pyxis-db-"));
     const file = join(dir, "pyxis.db");
