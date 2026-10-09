@@ -50,6 +50,17 @@ describe("gradeAnswer", () => {
         accepted: [["0"]],
       }),
     ).toBe(0);
+    // Whole numbers match exactly: a year or a count is right or wrong.
+    expect(
+      gradeAnswer({
+        kind: "completion",
+        answers: ["1860", "1848"],
+        accepted: [["1848"], ["1848"]],
+      }),
+    ).toBe(0.5);
+    expect(
+      gradeAnswer({ kind: "open", answer: "1849", reference: "1848" }),
+    ).toBe(0);
     expect(
       gradeAnswer({
         kind: "matching",

@@ -1038,9 +1038,15 @@
       }
     },
     "examAt": {
-      "type": [
-        "number",
-        "null"
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8640000000000000
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "target": {

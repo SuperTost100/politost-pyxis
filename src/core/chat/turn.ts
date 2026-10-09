@@ -3,6 +3,7 @@ import { splitChecks, solverChecks } from "./checks";
 import type { AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { splitCitationGroups } from "../../shared/smart-text";
 import { isAbort, IpcError } from "../../shared/ipc";
 import { generate } from "../engine/generate";
 import { capabilityWarning } from "../engine/capabilities";
@@ -604,7 +605,9 @@ export async function askTurn(
   }${checks.length ? `\n<checks>${JSON.stringify(checks)}</checks>` : ""}`;
   const messageId = uuidv7(now + 2);
   const used = new Set(
-    [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
+    [...splitCitationGroups(parsed.body).matchAll(/\[P(\d+)\]/g)].map((match) =>
+      Number(match[1]),
+    ),
   );
   const linked = citations.filter((cite) => used.has(cite.index));
   const grounding = replyGrounding({
@@ -674,7 +677,9 @@ function finishReply(
   const parsed = splitFollowups(text);
   const messageId = uuidv7(meta.now + 2);
   const used = new Set(
-    [...parsed.body.matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])),
+    [...splitCitationGroups(parsed.body).matchAll(/\[P(\d+)\]/g)].map((match) =>
+      Number(match[1]),
+    ),
   );
   const linked = meta.citations.filter((cite) => used.has(cite.index));
   const grounding = replyGrounding({

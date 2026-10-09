@@ -15,6 +15,7 @@ import {
   timedPicks,
 } from "./quizGrading";
 import { saveQuizDraft } from "./quizJobs";
+import { readSteps } from "../plans/steps";
 
 type Db = ReturnType<typeof openDatabase>;
 const open = (id: string, reference = "ten"): QuizQuestion => ({
@@ -190,6 +191,25 @@ describe("quiz grading job", () => {
       ["topic", 1],
     ]);
     db.close();
+  });
+
+  it("records a finished topic quiz as a step on the path, and a whole-plan quiz as none", async () => {
+    for (const topicId of ["topic", null]) {
+      const { db, attemptId } = fixture([mcq, { ...mcq, id: "second" }], "quiz");
+      db.prepare(
+        "UPDATE items SET topic_id = ? WHERE id = (SELECT item_id FROM attempts WHERE id = ?)",
+      ).run(topicId, attemptId);
+      const runner = createRunner(db, () => {});
+      registerQuizGradingJobs(db, runner, async () => {
+        throw new Error("Closed answers need no model");
+      });
+      submitQuiz(db, runner, attemptId, { m: "0", second: "1" });
+      await until(db, attemptId, (view) => view.state === "succeeded");
+      expect(
+        readSteps(db, "plan").map(({ activity, topicId, result }) => ({ activity, topicId, result })),
+      ).toEqual(topicId ? [{ activity: "quiz", topicId, result: { correct: 1, total: 2 } }] : []);
+      db.close();
+    }
   });
 
   it("makes no model call when every open answer is blank", async () => {

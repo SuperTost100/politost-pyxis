@@ -373,14 +373,12 @@ export async function generateQuiz(
           .find(Boolean),
       };
       if (row.kind === "mcq") {
-        const indexed = row.options.map((option, i) => ({
-          option,
-          correct: i === row.correct,
-        }));
-        for (let i = indexed.length - 1; i > 0; i--) {
-          const j = randomInt(i + 1);
-          [indexed[i], indexed[j]] = [indexed[j]!, indexed[i]!];
-        }
+        const indexed = shuffled(
+          row.options.map((option, i) => ({
+            option,
+            correct: i === row.correct,
+          })),
+        );
         questions.push({
           ...base,
           options: indexed.map((entry) => entry.option),
@@ -414,7 +412,7 @@ export async function generateQuiz(
         questions.push({
           ...base,
           left: row.pairs.map((pair) => pair[0]!),
-          right: row.pairs.map((pair) => pair[1]!).reverse(),
+          right: shuffled(row.pairs.map((pair) => pair[1]!)),
           grade: {
             kind: "matching",
             pairs: [],
@@ -425,6 +423,16 @@ export async function generateQuiz(
     if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
     onBatch?.();
   }
+}
+
+/** A copy in random order, so an option's position says nothing about the answer. */
+function shuffled<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
 }
 
 export function saveQuizSnapshot(

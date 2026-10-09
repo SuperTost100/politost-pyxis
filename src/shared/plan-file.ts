@@ -244,7 +244,7 @@ export const planFileSchema = z.object({
     )
     .max(1000)
     .optional(),
-  examAt: z.number().nullable().optional(),
+  examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable().optional(),
   target: z.number().min(0.5).max(1).optional(),
   language: z.enum(["it", "en"]).nullable().optional(),
   style: z.enum(["read", "practice", "decide"]).optional(),

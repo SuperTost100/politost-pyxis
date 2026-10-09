@@ -572,6 +572,19 @@ describe("specified mastery evidence", () => {
     expect(planMastery(db, "p", now)[0]!.mastery).toBe(0);
     db.close();
   });
+  it("leaves cards that were never reviewed out of mastery", () => {
+    const db = fixture();
+    const at = new Date(2026, 0, 1, 12).getTime();
+    db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('reviewed','p','a','Q','A',?)").run(at);
+    db.prepare(
+      "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('r','reviewed','good',?,?)",
+    ).run(JSON.stringify(review(newCard(at), "good", at)), at);
+    const before = planMastery(db, "p", at + 1000)[0]!.mastery;
+    for (let i = 0; i < 20; i++)
+      db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES(?,'p','a','Q','A',?)").run(`new${i}`, at);
+    expect(planMastery(db, "p", at + 1000)[0]!.mastery).toBe(before);
+    db.close();
+  });
 });
 
 

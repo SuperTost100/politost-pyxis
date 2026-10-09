@@ -9,7 +9,7 @@ import {
   readLinks,
   scoresForGap,
 } from "../study/gapRows";
-import { newCard, retrievability, type ScheduleState } from "../study/schedule";
+import { retrievability, type ScheduleState } from "../study/schedule";
 import { uuidv7 } from "../../shared/ids";
 import { masteryFor, type MasteryEvent } from "../study/mastery";
 import {
@@ -65,9 +65,9 @@ function masteryEvidence(
     state_json: string | null;
   }>;
   for (const card of cards) {
-    const state = card.state_json
-      ? (JSON.parse(card.state_json) as ScheduleState)
-      : newCard(now);
+    // A card never reviewed says nothing about recall yet; counting it as 0 would make new cards lower mastery.
+    if (!card.state_json) continue;
+    const state = JSON.parse(card.state_json) as ScheduleState;
     events.push({
       topicId: card.topic_id,
       kind: "card",

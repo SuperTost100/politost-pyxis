@@ -22,6 +22,9 @@ function numbersClose(left: string, right: string): boolean {
   const a = Number(left.replace(",", "."));
   const b = Number(right.replace(",", "."));
   if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  // Whole numbers such as years, counts or codes must match exactly; 1% would let 1860 pass for 1848.
+  const whole = /^\s*[-+]?\d+\s*$/;
+  if (whole.test(left) && whole.test(right)) return a === b;
   const scale = Math.max(Math.abs(a), Math.abs(b), 1);
   return Math.abs(a - b) <= scale * 0.01;
 }
