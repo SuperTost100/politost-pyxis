@@ -20,7 +20,9 @@ test("the window stays on the app page and refuses device permissions", async ()
   });
   try {
     const page = await app.firstWindow();
-    await page.waitForLoadState("load");
+    // A workspace without a profile always returns to onboarding, so finish it first.
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
     const appPage = page.url().split("#")[0];
     const foreign = pathToFileURL(join(userData, "page.html")).href;
     await page.evaluate((url) => {
@@ -35,7 +37,10 @@ test("the window stays on the app page and refuses device permissions", async ()
       location.hash = "#/settings";
     });
     await page.reload();
-    await expect.poll(() => page.url()).toContain("#/settings");
+    await expect(
+      page.getByRole("heading", { name: "Impostazioni" }),
+    ).toBeVisible();
+    expect(page.url()).toContain("#/settings");
 
     const permissions = await page.evaluate(async () => {
       const state = async (name: string) =>
