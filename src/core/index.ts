@@ -4,6 +4,7 @@ import { recordedPlanRun } from "./engine/recorded-plan";
 import { join } from "node:path";
 import { openDatabase } from "./db/connection";
 import { getFunnel, setApiKeys, setScratch } from "./engine/funnel";
+import { addInstallDirsToPath } from "./engine/install";
 import {
   attachRendererPort,
   addFileGrants,
@@ -27,6 +28,7 @@ import { setSourceWorkerDirectory } from "./sources/worker-client";
 import { markStoppedImport } from "./sources/jobs";
 
 setSourceWorkerDirectory(import.meta.dirname);
+addInstallDirsToPath();
 
 type CorePort = {
   on(event: "message", listener: (event: { data: unknown }) => void): void;
@@ -41,6 +43,7 @@ type ParentEvent = {
     workspacePath?: string;
     grants?: FileGrant[];
     dev?: boolean;
+    unpackaged?: boolean;
     removedProvider?: string;
     anthropic?: string;
     openai?: string;
@@ -77,7 +80,11 @@ if (!parent) {
     setTimeout(() => process.exit(1), 100);
   }
 
-  function bootstrap(workspacePath: string, dev: boolean): void {
+  function bootstrap(
+    workspacePath: string,
+    dev: boolean,
+    unpackaged: boolean,
+  ): void {
     setRuntimeSender((message) => port.postMessage(message));
     const db = openDatabase(join(workspacePath, "pyxis.db"));
     setScratch(join(workspacePath, "scratch"));
@@ -99,7 +106,11 @@ if (!parent) {
         Date.now(),
       );
     }
-    bindEngines(db);
+    // The installer stand-in runs a script, so unlike the recorded replies it needs an unpackaged build.
+    bindEngines(
+      db,
+      dev && unpackaged ? process.env["PYXIS_E2E_INSTALLER"] : undefined,
+    );
     const runner = createRunner(
       db,
       (job) => {
@@ -206,7 +217,7 @@ if (!parent) {
       void (async () => {
         if (delay > 0) await new Promise((r) => setTimeout(r, delay));
         try {
-          bootstrap(workspacePath, dev);
+          bootstrap(workspacePath, dev, data.unpackaged === true);
         } catch (err) {
           failBootstrap(err);
         }

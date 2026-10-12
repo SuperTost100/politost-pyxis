@@ -47,11 +47,28 @@
     },
     "engines": {
       "title": "Collega un motore AI",
-      "body": "Pyxis funziona con Claude Code, Codex, Cursor Agent o Antigravity, con il tuo account. Guardo cosa c'è già su questo computer.",
+      "body": "Pyxis usa un'AI che paghi già, quindi non spendi altro. La installo io e ti faccio accedere.",
       "found": "Ho trovato {{names}}.",
       "foundSignedOut": "Ho trovato {{names}}, ma serve ancora l'accesso.",
       "foundNone": "Non ho trovato nessun motore.",
-      "disclosure": "Più avanti, il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore del motore. Adesso non invio nulla a nessun modello."
+      "disclosure": "Più avanti, il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore del motore. Adesso non invio nulla a nessun modello.",
+      "question": "Quale di questi paghi già?",
+      "questionHint": "Scegli quello che usi di più. Gli altri puoi aggiungerli dopo in Impostazioni.",
+      "plans": {
+        "chatgpt": "ChatGPT Plus o Pro",
+        "claude": "Claude Pro o Max",
+        "google": "Google AI Plus, Pro o Ultra",
+        "cursor": "Cursor",
+        "none": "Nessuno di questi"
+      },
+      "startFree": "Gratis con un account Google",
+      "noneBody": "Parti con Antigravity, il motore di Google. Basta un account Google gratuito, con un limite di uso settimanale. PoliTost tiene una lista dei piani gratuiti e scontati per studenti.",
+      "offers": "Vedi le offerte per studenti",
+      "offersLink": "Piani gratuiti e per studenti di ogni AI",
+      "showAll": "Mostra tutti i motori",
+      "hideAll": "Nascondi l'elenco",
+      "setUp": "Configura",
+      "addAnother": "Configura un altro motore"
     },
     "photos": {
       "title": "Foto e scansioni",
@@ -62,6 +79,22 @@
     "privacy": {
       "title": "Segnalazioni di crash",
       "body": "Una sola scelta. Puoi cambiarla quando vuoi in Impostazioni, alla voce Privacy."
+    },
+    "welcome": {
+      "title": "Ciao, sono Pyxis",
+      "body": "Sono un tutor di studio che gira su questo computer.",
+      "points": {
+        "plan": "Trasformo appunti, slide e libri in un piano di studio, lezioni che citano il tuo materiale e quiz.",
+        "local": "I tuoi file e i tuoi progressi restano su questo computer.",
+        "account": "Lavoro con un'AI per cui hai già un account, come ChatGPT, Claude o Gemini. Pyxis è gratis.",
+        "time": "La configurazione richiede circa 3 minuti."
+      },
+      "start": "Inizia"
+    },
+    "ready": {
+      "title": "Tutto pronto",
+      "body": "Crea un esame e aggiungi il materiale. Il piano di studio lo preparo io.",
+      "create": "Crea il primo esame"
     }
   },
   "ask": {
@@ -1486,16 +1519,11 @@
     "notDetected": "Non rilevato",
     "searchFoldersUnavailable": "Questa versione di CLI Funnel non comunica le cartelle cercate. I percorsi dei programmi rilevati sono elencati sopra.",
     "modelAdvice": "Per i piani e la valutazione, scegli un modello di fascia media o superiore.",
-    "copyCommand": "Copia comando",
-    "copiedCommand": "Comando copiato.",
-    "copyFailed": "Impossibile copiare il comando. Selezionalo e copialo manualmente.",
     "terminalInstructions": "Esegui questo comando nel terminale per completare l'accesso.",
     "termsLink": "Condizioni del fornitore",
     "termsDetail": "Le condizioni, i limiti d'uso e l'informativa sulla privacy del fornitore si applicano a ogni chiamata. Pyxis non include un abbonamento AI.",
     "chooseEngine": "Scegli un motore e un modello",
     "cancel": "Annulla",
-    "openTerminal": "Apri terminale",
-    "terminalUnavailable": "Impossibile aprire il terminale. Aprilo manualmente ed esegui il comando mostrato.",
     "keyRemoved": "Chiave API rimossa. Scegli un altro motore predefinito se necessario.",
     "title": "Motori",
     "terms": "Una prova invia una frase corta al fornitore scelto.",
@@ -1557,8 +1585,7 @@
     "allEngines": "Tutti i motori",
     "automatic": "Automatico",
     "backToAuto": "Torna alla scelta automatica",
-    "installHelp": "Pyxis ha bisogno di un motore AI per rispondere. Installa Claude Code, Codex, Cursor Agent o Antigravity e accedi con il tuo account. Poi sceglie lui il modello.",
-    "installHelpLink": "Come si installa",
+    "installHelp": "Pyxis ha bisogno di un motore AI per rispondere. Premi Installa accanto all'AI che paghi già, poi accedi. Il modello lo sceglie Pyxis.",
     "auto": {
       "title": "Scelta automatica",
       "summary": "Pyxis usa {{parts}}.",
@@ -1767,5 +1794,44 @@
     "show": "Mostra",
     "hide": "Nascondi",
     "preparing": "Sto preparando un esercizio…"
+  },
+  "setup": {
+    "title": "Configura {{name}}",
+    "plan": {
+      "claude": "Serve un piano Claude Pro o Max.",
+      "codex": "Serve ChatGPT Plus o un piano superiore.",
+      "agent": "Funziona con il tuo account Cursor.",
+      "antigravity": "Funziona con qualsiasi account Google. Gli account gratuiti hanno un limite settimanale."
+    },
+    "stepDone": "fatto",
+    "install": {
+      "title": "Installa",
+      "body": "Avvio l'installer ufficiale di {{vendor}}. Ci vuole circa un minuto e non serve la password di amministratore. Il comando è questo:",
+      "action": "Installa {{name}}",
+      "running": "Installo {{name}}…",
+      "done": "Installato.",
+      "doneVersion": "Installato, versione {{version}}.",
+      "failed": "L'installazione di {{name}} non è finita.",
+      "retry": "Riprova",
+      "page": "Apri la pagina di {{vendor}}",
+      "cancelled": "Installazione annullata."
+    },
+    "signIn": {
+      "title": "Accedi",
+      "body": "Accedi con il tuo account {{account}}. Si apre il browser.",
+      "action": "Accedi con {{account}}",
+      "done": "Accesso fatto.",
+      "afterInstall": "Disponibile a installazione finita.",
+      "codeHint": "Se il browser mostra un codice, incollalo qui.",
+      "waitingTerminal": "Aspetto che tu faccia l'accesso nel terminale…",
+      "terminalUnavailable": "Non sono riuscito ad aprire un terminale. Aprilo tu, scrivi questo e premi Invio:"
+    },
+    "antigravity": {
+      "open": "Premi il pulsante qui sotto. Si apre una finestra del terminale con Antigravity.",
+      "choose": "Alla voce \"Select login method\", scegli Google OAuth con le frecce e premi Invio.",
+      "browser": "Accedi con Google nel browser. Se la pagina mostra invece un codice, incollalo nel terminale e premi Invio.",
+      "back": "Torna qui. Mi accorgo da solo dell'accesso, poi puoi chiudere il terminale.",
+      "action": "Apri Antigravity nel terminale"
+    }
   }
 }

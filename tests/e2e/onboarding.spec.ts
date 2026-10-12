@@ -4,6 +4,7 @@ import {
   expect,
   test,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from "@playwright/test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -83,10 +84,10 @@ const profile = (page: Page) =>
     displayName: string;
     crashReports: boolean;
   } | null>;
-const button = (page: Page, name: string | RegExp) =>
+const button = (page: Page | Locator, name: string | RegExp) =>
   page.getByRole("button", { name, exact: typeof name === "string" });
 
-test("First setup: name, engines found, photos later, crash reports on by default, then the switch in Settings", async () => {
+test("First setup: welcome, name, engines found, photos later, crash reports on by default, ready, then the switch in Settings", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
@@ -96,6 +97,14 @@ test("First setup: name, engines found, photos later, crash reports on by defaul
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
+    // Welcome: what Pyxis is, before any question.
+    await expect(
+      page.getByRole("heading", { name: "Ciao, sono Pyxis" }),
+    ).toBeVisible();
+    await expect(page.getByText(/Pyxis è gratis\./)).toBeVisible();
+    await expect(page.getByText("Passo 1 di 4")).toHaveCount(0);
+    await noAxeViolations(page);
+    await button(page, "Inizia").click();
     await expect(page.getByRole("heading", { name: "Iniziamo" })).toBeVisible();
     await expect(page.getByText("Passo 1 di 4")).toBeVisible();
     await page.getByLabel("Nome", { exact: true }).fill("Ada");
@@ -128,6 +137,9 @@ test("First setup: name, engines found, photos later, crash reports on by defaul
         timeout: 30000,
       },
     );
+    // With engines ready the subscription question stays out of the way.
+    await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
+    await expect(button(page, "Configura un altro motore")).toBeVisible();
     expect(
       (await page.evaluate(() => window.pyxis.invoke("engines.overview", {})))
         .filter((row) => row.id === "claude" || row.id === "codex")
@@ -163,12 +175,20 @@ test("First setup: name, engines found, photos later, crash reports on by defaul
     await expect(crash).toBeChecked();
     await expect(page.getByText(/^Acceso: /)).toBeVisible();
     await noAxeViolations(page);
-    await button(page, "Vai agli esami").click();
-    await expect(page).toHaveURL(/exams/);
+    await button(page, "Continua").click();
+
+    // Ready: the profile is saved and the next step is an exam.
+    await expect(
+      page.getByRole("heading", { name: "Tutto pronto" }),
+    ).toBeVisible();
     expect(await profile(page)).toMatchObject({
       displayName: "Ada",
       crashReports: true,
     });
+    await expect(button(page, "Crea il primo esame")).toBeVisible();
+    await noAxeViolations(page);
+    await button(page, "Vai agli esami").click();
+    await expect(page).toHaveURL(/exams/);
 
     // The Settings switch shows the stored choice, saves each change and matches the setup wording.
     await page.evaluate(() => {
@@ -198,32 +218,58 @@ test("First setup: name, engines found, photos later, crash reports on by defaul
   }
 });
 
-test("First setup: a signed-out engine offers sign-in, no engine shows install help, and I'll do it later continues", async () => {
+test("First setup: a signed-out engine offers sign-in, no engine asks what the student pays for, and I'll do it later continues", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
   const out = fakeBins({ claude: false, codex: null });
   let app = await launch(userData, out.env);
   try {
     let page = await app.firstWindow();
+    await button(page, "Inizia").click();
     await button(page, "Continua").click();
     await expect(
       page.getByText("Ho trovato Claude Code, ma serve ancora l'accesso."),
     ).toBeVisible({ timeout: 30000 });
-    await expect(button(page, "Accedi")).toBeVisible();
-    await expect(page.getByText("Come si installa")).toBeVisible();
+    // The installed engine is offered first: already installed, one sign-in left.
+    const setup = page.getByRole("region", { name: "Configura Claude Code" });
+    await expect(setup.getByText("Installato, versione 2.1.0.")).toBeVisible();
+    await expect(button(setup, "Accedi con Claude")).toBeVisible();
+    await expect(page.getByText("Quale di questi paghi già?")).toBeVisible();
     await noAxeViolations(page);
     await app.close();
 
     const none = fakeBins({ claude: null, codex: null });
     app = await launch(userData, none.env);
     page = await app.firstWindow();
+    await button(page, "Inizia").click();
     await button(page, "Continua").click();
     await expect(page.getByText("Non ho trovato nessun motore.")).toBeVisible({
       timeout: 30000,
     });
+    // Nothing found: the student says what they pay for and gets that engine's setup, never a GitHub page.
+    await expect(page.getByRole("region", { name: /^Configura / })).toHaveCount(
+      0,
+    );
+    await button(page, /^ChatGPT Plus o Pro/).click();
+    const codex = page.getByRole("region", { name: "Configura Codex" });
     await expect(
-      page.getByText(/Pyxis ha bisogno di un motore AI/),
+      codex.getByText(
+        "curl -fsSL 'https://chatgpt.com/codex/install.sh' | bash",
+      ),
     ).toBeVisible();
+    await expect(button(codex, "Installa Codex")).toBeVisible();
+    await expect(
+      codex.getByText("Disponibile a installazione finita."),
+    ).toBeVisible();
+    await button(page, /^Nessuno di questi/).click();
+    await expect(button(page, "Vedi le offerte per studenti")).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Configura Antigravity" }),
+    ).toBeVisible();
+    await button(page, "Mostra tutti i motori").click();
+    // Every engine Pyxis can install, each with its own Set up action.
+    await expect(button(page, "Configura")).toHaveCount(4);
     await noAxeViolations(page);
     // Nothing is ready, so the one primary action says what happens: carry on and sign in later.
     await button(page, "Lo farò dopo").click();
@@ -237,6 +283,68 @@ test("First setup: a signed-out engine offers sign-in, no engine shows install h
     await app.close();
     rmSync(userData, { recursive: true, force: true });
     rmSync(out.bin, { recursive: true, force: true });
+  }
+});
+
+test("First setup: Install runs the installer, shows its output, then signs in by itself", async () => {
+  test.skip(
+    process.platform === "win32",
+    "the installer stand-in is a shell script",
+  );
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
+  const { bin, env } = fakeBins({ claude: null, codex: null });
+  // Stands in for the vendor script: it prints progress and copies a signed-in claude to where the real installer puts it.
+  const staged = join(bin, "staged-claude");
+  writeFileSync(
+    staged,
+    `#!/bin/sh\ncase "$1" in --version) echo "2.1.0";; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac\n`,
+  );
+  chmodSync(staged, 0o755);
+  const installer = join(bin, "installer.sh");
+  writeFileSync(
+    installer,
+    [
+      'echo "Installing $1 into $HOME/.local/bin"',
+      'mkdir -p "$HOME/.local/bin"',
+      `cp '${staged}' "$HOME/.local/bin/claude"`,
+      "sleep 1",
+      'echo "Done: claude 2.1.0"',
+      "",
+    ].join("\n"),
+  );
+  const app = await launch(userData, {
+    ...env,
+    PYXIS_E2E_INSTALLER: installer,
+  });
+  try {
+    const page = await app.firstWindow();
+    await button(page, "Inizia").click();
+    await button(page, "Continua").click();
+    await expect(page.getByText("Non ho trovato nessun motore.")).toBeVisible({
+      timeout: 30000,
+    });
+    await button(page, /^Claude Pro o Max/).click();
+    const setup = page.getByRole("region", { name: "Configura Claude Code" });
+    await button(setup, "Installa Claude Code").click();
+    await expect(setup.getByText("Installo Claude Code…")).toBeVisible();
+    await expect(setup.getByText(/Installing claude into/)).toBeVisible();
+    await expect(setup.getByText("Installato, versione 2.1.0.")).toBeVisible({
+      timeout: 30000,
+    });
+    await expect(setup.getByText("Accesso fatto.")).toBeVisible({
+      timeout: 30000,
+    });
+    await expect(page.getByText("Ho trovato Claude Code.")).toBeVisible();
+    // The new engine still needs its notice before Pyxis sends it anything.
+    await expect(
+      page.getByRole("region", { name: "Cosa esce da questo computer" }),
+    ).toBeVisible();
+    await noAxeViolations(page);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
   }
 });
 
@@ -270,6 +378,7 @@ test("First setup: skipping leaves crash reports off, and the OCR download shows
     });
     try {
       const second = await app.firstWindow();
+      await button(second, "Inizia").click();
       await button(second, "Continua").click();
       await button(second, "Lo farò dopo").click();
       await button(second, /^Scarica [\d.,]+ MB$/).click();

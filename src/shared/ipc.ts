@@ -2,6 +2,7 @@ import { z } from "zod";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { planFileSchema } from "./plan-file";
 import { MAX_IMAGE_BASE64 } from "./source-types";
+import { installableProviders } from "./installers";
 
 import {
   conceptGraphSchema as conceptGraph,
@@ -437,6 +438,18 @@ export const requests = {
       message: z.string().optional(),
       command: z.array(z.string()).optional(),
     }),
+  },
+  "engines.install": {
+    input: z.object({ provider: z.enum(installableProviders) }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "engines.cancelInstall": {
+    input: z.object({ provider: z.enum(installableProviders) }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "engines.cancelLogin": {
+    input: z.object({ provider: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "engines.capability": {
     input: z.object({
@@ -1993,6 +2006,8 @@ export const broadcasts = {
   "job.updated": JobView,
   // Background recomputation of automatic engine choices finished.
   "engine.auto": z.object({}),
+  // A chunk of installer output while `engines.install` runs.
+  "engine.install": z.object({ provider: z.string(), text: z.string() }),
   "engine.login": z.object({
     provider: z.string(),
     type: z.string(),

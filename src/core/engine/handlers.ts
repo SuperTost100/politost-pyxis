@@ -10,6 +10,7 @@ import {
   runTurn,
   type ProviderId,
 } from "./funnel";
+import { isInstallable, runInstaller } from "./install";
 import type { StoredSelection } from "./selection";
 
 const features = [
@@ -43,6 +44,11 @@ function notice(
     command: "command" in event ? event.command : undefined,
   };
 }
+
+const installs = new Map<
+  string,
+  { promise: Promise<{ ok: true }>; abort: AbortController }
+>();
 
 const loginSessions = new Map<
   string,
@@ -216,7 +222,14 @@ function readFeatures(db: Database.Database): Record<string, StoredSelection> {
 export function engineHandlers(
   db: Database.Database,
   emit: (event: LoginNotice) => void,
-  options: { auto?: boolean; onAuto?: () => void } = {},
+  options: {
+    auto?: boolean;
+    onAuto?: () => void;
+    /** Installer output, line by line, so setup can show progress. */
+    onInstallLog?: (event: { provider: string; text: string }) => void;
+    /** Tests run this script instead of the vendor installer. */
+    installerFixture?: string;
+  } = {},
 ) {
   // Background recomputation is on in the app and off in unit tests, which
   // check the stored rows right after each call.
@@ -466,6 +479,54 @@ export function engineHandlers(
           loginSessions.delete(input.provider);
         throw new IpcError("cli-failed", "engines.errors.cli-failed");
       }
+    },
+    /**
+     * Runs the vendor's official installer for a CLI that is not on this computer yet. A second call while one runs
+     * waits for the same install.
+     */
+    install(input: { provider: ProviderId }) {
+      if (!isInstallable(input.provider) || disabled(input.provider))
+        throw new IpcError("unsupported", "engines.disabled");
+      const running = installs.get(input.provider);
+      if (running) return running.promise;
+      const abort = new AbortController();
+      const promise = runInstaller(input.provider, {
+        signal: abort.signal,
+        command: options.installerFixture
+          ? ["/bin/sh", [options.installerFixture, input.provider]]
+          : undefined,
+        onLog: (text) =>
+          options.onInstallLog?.({ provider: input.provider, text }),
+      })
+        .then(
+          () => {
+            reconfigureSoon();
+            return { ok: true as const };
+          },
+          (err: unknown) => {
+            if (abort.signal.aborted)
+              throw new IpcError("aborted", "setup.install.cancelled");
+            throw new IpcError(
+              "install-failed",
+              "setup.install.failed",
+              {},
+              err instanceof Error ? err.message : String(err),
+            );
+          },
+        )
+        .finally(() => installs.delete(input.provider));
+      installs.set(input.provider, { promise, abort });
+      return promise;
+    },
+    cancelInstall(input: { provider: ProviderId }) {
+      installs.get(input.provider)?.abort.abort();
+      return { ok: true as const };
+    },
+    /** Stops a sign-in the student walked away from, so its events cannot reach another engine's screen. */
+    cancelLogin(input: { provider: ProviderId }) {
+      loginSessions.get(input.provider)?.cancel();
+      loginSessions.delete(input.provider);
+      return { ok: true as const };
     },
     sendCode(input: { provider: ProviderId; code: string }) {
       const session = loginSessions.get(input.provider);
