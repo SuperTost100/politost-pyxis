@@ -14,9 +14,15 @@ export function findAntigravity(
   home: string = homedir(),
 ): string | null {
   const override = env.CLI_FUNNEL_AGY_BIN;
+  // The same folders CLI Funnel searches, so a CLI it reports installed can also be opened. An app started from the
+  // Finder has only the system folders on PATH.
   const dirs = [
     ...(env.PATH ?? env.Path ?? "").split(delimiter).filter(Boolean),
     join(home, ".local", "bin"),
+    join(home, ".bun", "bin"),
+    join(home, ".cursor", "bin"),
+    join(home, ".npm-global", "bin"),
+    ...(platform === "win32" ? [] : ["/opt/homebrew/bin", "/usr/local/bin"]),
     ...installDirs(platform, env, home),
   ];
   const exts = platform === "win32" ? [".exe", ".cmd", ""] : [""];
@@ -35,9 +41,13 @@ export function findAntigravity(
   return null;
 }
 
-function launch(file: string, args: string[]): Promise<void> {
+function launch(file: string, args: string[], verbatim = false): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(file, args, { detached: true, stdio: "ignore" });
+    const child = spawn(file, args, {
+      detached: true,
+      stdio: "ignore",
+      windowsVerbatimArguments: verbatim,
+    });
     child.once("error", () => reject(new Error("terminal-unavailable")));
     child.once("spawn", () => {
       child.unref();
@@ -62,7 +72,10 @@ export async function openTerminal(
     if (error) throw new Error("terminal-unavailable");
     return;
   }
-  if (process.platform === "win32")
-    return launch("cmd.exe", ["/c", "start", "", path ?? "cmd.exe"]);
+  if (process.platform === "win32") {
+    // cmd.exe reads the line itself, so the path is quoted here; a Windows path cannot contain a double quote.
+    const cmd = process.env.ComSpec ?? "C:\\Windows\\System32\\cmd.exe";
+    return launch(cmd, ["/d", "/s", "/c", `"start "" "${path ?? cmd}""`], true);
+  }
   return launch("x-terminal-emulator", path ? ["-e", path] : []);
 }

@@ -246,8 +246,8 @@ export function EnginesStep({
           ) : (
             <div className="px-onboarding-inline">
               <Button
-                type="link"
-                className="px-onboarding-link"
+                type="text"
+                className="linkish px-onboarding-link"
                 onClick={openOffers}
               >
                 {t("onboarding.engines.offersLink")}
@@ -264,8 +264,8 @@ export function EnginesStep({
           ) : null}
           <div className="px-onboarding-inline">
             <Button
-              type="link"
-              className="px-onboarding-link"
+              type="text"
+              className="linkish px-onboarding-link"
               aria-expanded={showAll}
               onClick={() => setShowAll((value) => !value)}
             >

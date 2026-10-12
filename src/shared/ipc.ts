@@ -447,6 +447,10 @@ export const requests = {
     input: z.object({ provider: z.enum(installableProviders) }),
     output: z.object({ ok: z.literal(true) }),
   },
+  "engines.cancelLogin": {
+    input: z.object({ provider: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "engines.capability": {
     input: z.object({
       model: z.string(),

@@ -1,6 +1,6 @@
 import { Button, Input } from "antd";
 import { Check } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import {
@@ -37,32 +37,31 @@ function errorDetail(err: unknown): string {
 }
 
 /**
- * The browser and terminal sign-in that core starts for a CLI. `done` runs when core reports the engine signed in.
- * Shared by first setup and Settings so both read the same.
+ * The browser and terminal sign-in that core starts for one CLI. `done` runs when core reports it signed in. Events
+ * for other engines are ignored, and a sign-in still pending when the card closes is cancelled.
  */
-export function useEngineSignIn(done: () => void) {
+function useEngineSignIn(provider: InstallableProvider, done: () => void) {
   const { t } = useTranslation();
   const [status, setStatus] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [codeFor, setCodeFor] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [terminal, setTerminal] = useState<string | null>(null);
+  const pending = useRef(false);
 
-  function handle(
-    event: {
-      provider?: string;
-      type: string;
-      url?: string;
-      command?: string[];
-    },
-    provider?: string,
-  ) {
+  function handle(event: {
+    provider?: string;
+    type: string;
+    url?: string;
+    command?: string[];
+  }) {
+    if (event.provider !== undefined && event.provider !== provider) return;
     if (event.type === "open-url" && event.url) {
       void window.pyxis.openExternal(event.url);
       setStatus(t("engines.waitingSignIn"));
     }
     if (event.type === "code-prompt") {
-      setCodeFor(event.provider ?? provider ?? null);
+      setCodeFor(provider);
       setStatus(t("setup.signIn.codeHint"));
     }
     if (event.type === "needs-terminal" && event.command) {
@@ -70,24 +69,35 @@ export function useEngineSignIn(done: () => void) {
       setStatus(t("setup.signIn.waitingTerminal"));
     }
     if (event.type === "done") {
+      pending.current = false;
       setStatus(null);
       setCodeFor(null);
       setTerminal(null);
       done();
     }
     if (event.type === "error") {
+      pending.current = false;
       setStatus(null);
       setFailed(true);
     }
   }
   useEffect(() => onBroadcast("engine.login", (event) => handle(event)));
+  useEffect(
+    () => () => {
+      if (pending.current)
+        void invoke("engines.cancelLogin", { provider }).catch(() => undefined);
+    },
+    [provider],
+  );
 
-  function start(provider: string) {
+  function start() {
+    pending.current = true;
     setFailed(false);
     setStatus(t("engines.waitingSignIn"));
     return invoke("engines.login", { provider }).then(
-      (event) => handle(event, provider),
+      (event) => handle({ ...event, provider }),
       () => {
+        pending.current = false;
         setStatus(null);
         setFailed(true);
       },
@@ -124,6 +134,14 @@ function useInstall(provider: InstallableProvider, done: () => void) {
   const [state, setState] = useState<"idle" | "running" | "failed">("idle");
   const [line, setLine] = useState("");
   const [detail, setDetail] = useState("");
+  // An install keeps running in core when its card closes; it must not then start a sign-in nobody asked for.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(
     () =>
       onBroadcast("engine.install", (event) => {
@@ -144,9 +162,11 @@ function useInstall(provider: InstallableProvider, done: () => void) {
     setDetail("");
     try {
       await invoke("engines.install", { provider });
+      if (!mounted.current) return;
       setState("idle");
       done();
     } catch (err) {
+      if (!mounted.current) return;
       const cancelled =
         err &&
         typeof err === "object" &&
@@ -157,7 +177,7 @@ function useInstall(provider: InstallableProvider, done: () => void) {
     }
   }
   function cancel() {
-    void invoke("engines.cancelInstall", { provider });
+    void invoke("engines.cancelInstall", { provider }).catch(() => undefined);
   }
   return { state, line, detail, run, cancel };
 }
@@ -212,10 +232,10 @@ export function ProviderSetup({
   const { vendor, account } = makers[provider];
   const installed = !!row?.installed;
   const signedIn = installed && !!row?.loggedIn;
-  const signIn = useEngineSignIn(onChanged);
+  const signIn = useEngineSignIn(provider, onChanged);
   const install = useInstall(provider, () => {
     onChanged();
-    if (provider !== "antigravity") void signIn.start(provider);
+    if (provider !== "antigravity") void signIn.start();
   });
   const [terminalNote, setTerminalNote] = useState<string | null>(null);
   const terminalSignIn = provider === "antigravity";
@@ -223,7 +243,7 @@ export function ProviderSetup({
   async function openAntigravity() {
     setTerminalNote(null);
     // Core watches for the sign-in while the student works in the terminal.
-    void signIn.start(provider);
+    void signIn.start();
     try {
       await window.pyxis.openTerminal("antigravity");
     } catch {
@@ -335,7 +355,7 @@ export function ProviderSetup({
                 <Button
                   type="primary"
                   shape="round"
-                  onClick={() => void signIn.start(provider)}
+                  onClick={() => void signIn.start()}
                 >
                   {t("setup.signIn.action", { account })}
                 </Button>

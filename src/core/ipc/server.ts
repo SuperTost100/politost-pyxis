@@ -275,6 +275,10 @@ async function dispatchValidated(
       const parsed = requests["engines.cancelInstall"].input.parse(input);
       return engines?.cancelInstall({ provider: parsed.provider });
     }
+    case "engines.cancelLogin": {
+      const parsed = requests["engines.cancelLogin"].input.parse(input);
+      return engines?.cancelLogin({ provider: parsed.provider as ProviderId });
+    }
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({

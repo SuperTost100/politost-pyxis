@@ -522,6 +522,12 @@ export function engineHandlers(
       installs.get(input.provider)?.abort.abort();
       return { ok: true as const };
     },
+    /** Stops a sign-in the student walked away from, so its events cannot reach another engine's screen. */
+    cancelLogin(input: { provider: ProviderId }) {
+      loginSessions.get(input.provider)?.cancel();
+      loginSessions.delete(input.provider);
+      return { ok: true as const };
+    },
     sendCode(input: { provider: ProviderId; code: string }) {
       const session = loginSessions.get(input.provider);
       if (!session)

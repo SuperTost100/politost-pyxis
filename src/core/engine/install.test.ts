@@ -78,6 +78,27 @@ describe("runInstaller", () => {
     ).rejects.toThrow(/exited with 3/);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "stops the whole installer, including a child that holds the output open",
+    async () => {
+      const abort = new AbortController();
+      const started = Date.now();
+      const run = runInstaller("claude", {
+        command: [
+          node,
+          [
+            "-e",
+            "require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'inherit' }); console.log('started'); setTimeout(() => {}, 60000)",
+          ],
+        ],
+        signal: abort.signal,
+        onLog: () => abort.abort(),
+      });
+      await expect(run).rejects.toMatchObject({ name: "AbortError" });
+      expect(Date.now() - started).toBeLessThan(5000);
+    },
+  );
+
   it("stops the installer when cancelled", async () => {
     const abort = new AbortController();
     const run = runInstaller("antigravity", {

@@ -503,6 +503,8 @@ function startCore(strict = false): Promise<void> {
     workspacePath,
     grants: [...pickedGrants.values()],
     dev: e2eSeam(),
+    // Seams that run code, such as the installer stand-in, stay off in a packaged app even with PYXIS_E2E=1.
+    unpackaged: !app.isPackaged,
   });
   child.on("exit", (code) => {
     if (timedOut) return;

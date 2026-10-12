@@ -96,8 +96,8 @@
 .px-onboarding-plans .choice {
   gap: var(--space-4);
 }
-.px-onboarding-engines .ant-btn-link.px-onboarding-link {
+/* Text links that line up with the content edge rather than sitting inside button padding. */
+.px-onboarding-engines .ant-btn-text.px-onboarding-link {
   padding-inline: 0;
   height: auto;
-  color: var(--primary-text);
 }

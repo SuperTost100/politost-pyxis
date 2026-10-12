@@ -15,7 +15,14 @@ function spawnArgs(
 ): [string, string[]] {
   return platform === "win32"
     ? [
-        "powershell.exe",
+        // By full path, so a powershell.exe in the working folder is never picked up.
+        win32.join(
+          process.env.SystemRoot ?? "C:\\Windows",
+          "System32",
+          "WindowsPowerShell",
+          "v1.0",
+          "powershell.exe",
+        ),
         [
           "-NoProfile",
           "-NonInteractive",
@@ -88,12 +95,17 @@ export function runInstaller(
   const platform = options.platform ?? process.platform;
   const [file, args] = options.command ?? spawnArgs(provider, platform);
   return new Promise((resolve, reject) => {
+    // On macOS and Linux the installer leads its own process group, so stopping it also stops curl and the vendor
+    // script. Otherwise they keep the output pipes open and the install looks like it never ends.
     const child = spawn(file, args, {
       env: { ...process.env, CODEX_NON_INTERACTIVE: "1" },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
+      detached: platform !== "win32",
     });
     let log = "";
+    let stopped: "cancelled" | "timeout" | null = null;
+    let settled = false;
     const take = (chunk: Buffer) => {
       const text = chunk.toString("utf8");
       log = (log + text).slice(-LOG_LIMIT);
@@ -101,25 +113,66 @@ export function runInstaller(
     };
     child.stdout.on("data", take);
     child.stderr.on("data", take);
-    const stop = () => child.kill();
-    const timer = setTimeout(stop, TIMEOUT_MS);
-    options.signal?.addEventListener("abort", stop, { once: true });
+    const stopTree = () => {
+      if (child.pid === undefined || child.exitCode !== null) return;
+      if (platform === "win32") {
+        spawn(
+          win32.join(
+            process.env.SystemRoot ?? "C:\\Windows",
+            "System32",
+            "taskkill.exe",
+          ),
+          ["/pid", String(child.pid), "/T", "/F"],
+          { stdio: "ignore", windowsHide: true },
+        ).once("error", () => child.kill());
+        return;
+      }
+      try {
+        process.kill(-child.pid, "SIGTERM");
+      } catch {
+        child.kill("SIGTERM");
+      }
+    };
+    const timer = setTimeout(() => {
+      stopped = "timeout";
+      stopTree();
+    }, TIMEOUT_MS);
+    const cancel = () => {
+      stopped = "cancelled";
+      stopTree();
+    };
+    options.signal?.addEventListener("abort", cancel, { once: true });
+    const finish = (code: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", cancel);
+      const tail = log.trim().split("\n").slice(-3).join(" ");
+      // A clean exit wins over a cancel that arrived too late to stop it.
+      if (code === 0) resolve();
+      else if (stopped === "cancelled")
+        reject(new DOMException("Install cancelled", "AbortError"));
+      else if (stopped === "timeout")
+        reject(new Error(`installer timed out after 10 minutes: ${tail}`));
+      else
+        reject(
+          new Error(`installer exited with ${code ?? "a signal"}: ${tail}`),
+        );
+    };
     child.once("error", (err) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       reject(err);
     });
-    child.once("close", (code) => {
-      clearTimeout(timer);
-      options.signal?.removeEventListener("abort", stop);
-      if (options.signal?.aborted)
-        reject(new DOMException("Install cancelled", "AbortError"));
-      else if (code === 0) resolve();
-      else
-        reject(
-          new Error(
-            `installer exited with ${code ?? "a signal"}: ${log.trim().split("\n").slice(-3).join(" ")}`,
-          ),
-        );
+    // Once stopped, settle when the installer itself exits, without waiting for pipes a stray child may hold.
+    child.once("exit", (code) => {
+      if (stopped) {
+        child.stdout.destroy();
+        child.stderr.destroy();
+        finish(code);
+      }
     });
+    child.once("close", (code) => finish(code));
   });
 }
