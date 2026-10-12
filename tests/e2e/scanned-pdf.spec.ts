@@ -84,6 +84,7 @@ function passages({
 }: Run): { page: number; text: string }[] {
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
     readOnly: true,
+    timeout: 10000,
   });
   try {
     return db

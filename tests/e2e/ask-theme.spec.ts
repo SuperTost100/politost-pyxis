@@ -22,7 +22,7 @@ const REPLY = [
 ].join("\n");
 
 function seed(userData: string) {
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
   db.exec(`
     INSERT INTO subjects(id,name,position,created_at) VALUES('s-fis','Fisica',0,1);
     INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('src-fis','excerpt','Appunti di fisica','ready',1,1,1);

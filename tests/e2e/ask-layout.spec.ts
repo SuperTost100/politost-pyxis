@@ -43,7 +43,7 @@ async function launch(extra: Record<string, string> = {}) {
 
 /** Two subjects, each with a plan and a source, plus a source in no plan. Fisica's source holds the passage the reply cites. */
 function seed(userData: string) {
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
   db.exec(`
     INSERT INTO subjects(id,name,position,created_at) VALUES('s-fis','Fisica',0,1),('s-an','Analisi 2',1,1);
     INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES

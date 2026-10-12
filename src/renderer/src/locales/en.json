@@ -1649,6 +1649,7 @@
     "run": "Run",
     "timeout": "Stopped after 10 seconds.",
     "missing": "Could not prepare Python. Try again.",
+    "slow": "Python took too long to start. Try again.",
     "code": "Python code",
     "sessionFiles": "Each run has its own temporary files.",
     "consentTitle": "Python needs a one-time download",

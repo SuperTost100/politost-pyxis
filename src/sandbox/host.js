@@ -1,5 +1,5 @@
 const BASE = "pyxis-runtime://sandbox/";
-const LOAD_TIMEOUT_MS = 30000;
+const LOAD_TIMEOUT_MS = 60000;
 const lanes = new Map();
 let nextId = 0;
 function lane(kind) {

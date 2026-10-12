@@ -22,7 +22,7 @@ vi.mock("./worker-client", async (original) => {
 
 const dirs: string[] = [];
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 it("SRC-08 compares a source with the plans that use it once it is indexed, and keeps the result", async () => {

@@ -93,6 +93,16 @@ test("Ask composer: a formula sits inline in the text, leaves as $...$ and rende
     const bubble = page.locator(".px-msg-user .px-msg-bubble");
     await expect(bubble.locator(".katex")).toBeVisible();
     expect(await bubble.innerText()).not.toContain("$");
+    // The bubble can still move while KaTeX fonts load and the thread scrolls; shoot once its box holds still.
+    let last = "";
+    await expect
+      .poll(async () => {
+        const now = JSON.stringify(await bubble.boundingBox());
+        const still = now === last;
+        last = now;
+        return still;
+      }, { intervals: [100] })
+      .toBe(true);
     await bubble.screenshot({ path: ".shots/math-composer-bubble-dark.png" });
     const stored = (await page.evaluate(() =>
       window.pyxis.invoke("chats.read", { chatId: location.hash.split("/").at(-1)! }),

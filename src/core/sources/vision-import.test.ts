@@ -14,9 +14,27 @@ import { enqueueReextract, enqueueSourceFile, registerSourceJobs, visionSelectio
 import { sourceHandlers } from "./handlers";
 
 const dirs: string[] = [];
-afterEach(() => {
+const opened: Array<{
+  db: ReturnType<typeof openDatabase>;
+  runner: ReturnType<typeof createRunner>;
+}> = [];
+afterEach(async () => {
+  // A job may still be writing into the workspace when a test ends early. Stop it, wait for it, then remove the files.
+  for (const { db, runner } of opened.splice(0)) {
+    if (!db.open) continue;
+    for (const job of runner.list())
+      if (job.state === "queued" || job.state === "running")
+        runner.cancel(job.id);
+    const deadline = Date.now() + 5000;
+    while (
+      Date.now() < deadline &&
+      db.prepare("SELECT 1 FROM jobs WHERE state = 'running'").get()
+    )
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    db.close();
+  }
   for (const dir of dirs.splice(0))
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 // A real 8x8 PNG: an image whose header does not read is refused before it is sent anywhere.
@@ -38,6 +56,7 @@ function setup(model: string | null) {
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('vision', ?, 1)",
     ).run(JSON.stringify({ provider: "claude", model }));
   const runner = createRunner(db, () => {});
+  opened.push({ db, runner });
   const path = join(workspace, "note.png");
   writeFileSync(path, png);
   return { workspace, db, runner, path };

@@ -1649,6 +1649,7 @@
     "run": "Esegui",
     "timeout": "Interrotto dopo 10 secondi.",
     "missing": "Non riesco a preparare Python. Riprova.",
+    "slow": "Python ci ha messo troppo ad avviarsi. Riprova.",
     "code": "Codice Python",
     "sessionFiles": "Ogni esecuzione ha i propri file temporanei.",
     "consentTitle": "Python richiede un download una tantum",

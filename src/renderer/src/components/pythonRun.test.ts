@@ -23,10 +23,13 @@ describe("pythonOutcome", () => {
       stderr: "",
       notice: "setup",
     });
-    for (const code of ["runtime-unavailable", "runtime-timeout"])
+    expect(
+      pythonOutcome({ ...run, stderr: "runtime-unavailable" }),
+    ).toMatchObject({ stderr: "", notice: "unavailable" });
+    for (const code of ["runtime-timeout", "runtime-load-timeout"])
       expect(pythonOutcome({ ...run, stderr: code })).toMatchObject({
         stderr: "",
-        notice: "unavailable",
+        notice: "slow",
       });
   });
 

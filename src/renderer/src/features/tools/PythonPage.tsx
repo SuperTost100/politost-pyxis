@@ -65,9 +65,11 @@ export function PythonPage() {
         setStderr("");
         void runtime.refetch();
       } else if (
-        result.stderr === "runtime-unavailable" ||
-        result.stderr === "runtime-timeout"
+        result.stderr === "runtime-timeout" ||
+        result.stderr === "runtime-load-timeout"
       )
+        setNotice(t("python.slow"));
+      else if (result.stderr === "runtime-unavailable")
         setNotice(t("python.missing"));
     } catch {
       setNotice(t("python.missing"));

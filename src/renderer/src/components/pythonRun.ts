@@ -14,7 +14,7 @@ export type PythonOutcome = {
   stderr: string;
   images: string[];
   /** Why the run is incomplete or could not start; null for a normal run. */
-  notice: "timeout" | "truncated" | "setup" | "unavailable" | null;
+  notice: "timeout" | "truncated" | "setup" | "unavailable" | "slow" | null;
 };
 
 /** Turns a sandbox result into what an inline block shows; the runtime's internal codes never reach the student. */
@@ -27,9 +27,11 @@ export function pythonOutcome(result: PythonResult): PythonOutcome {
   if (result.stderr === "runtime-missing")
     return { ...base, stderr: "", notice: "setup" };
   if (
-    result.stderr === "runtime-unavailable" ||
-    result.stderr === "runtime-timeout"
+    result.stderr === "runtime-timeout" ||
+    result.stderr === "runtime-load-timeout"
   )
+    return { ...base, stderr: "", notice: "slow" };
+  if (result.stderr === "runtime-unavailable")
     return { ...base, stderr: "", notice: "unavailable" };
   if (result.timedOut) return { ...base, notice: "timeout" };
   if (result.truncated) return { ...base, notice: "truncated" };

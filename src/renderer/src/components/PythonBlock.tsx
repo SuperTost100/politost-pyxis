@@ -87,6 +87,8 @@ export function PythonBlock({ code }: { code: string }) {
           </p>
         ) : outcome?.notice === "unavailable" ? (
           <p className="small">{t("python.missing")}</p>
+        ) : outcome?.notice === "slow" ? (
+          <p className="small">{t("python.slow")}</p>
         ) : outcome?.notice === "timeout" ? (
           <p className="small">{t("python.timeout")}</p>
         ) : outcome?.notice === "truncated" ? (
