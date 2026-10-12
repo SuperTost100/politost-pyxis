@@ -1803,6 +1803,31 @@ export const requests = {
       exercises: z.number(),
     }),
   },
+  "sources.books": {
+    input: z.object({}),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        subject: z.string(),
+        authors: z.array(z.string()),
+        version: z.string(),
+        chapters: z.number(),
+        bytes: z.number(),
+        /** The library source this exact book version already is. */
+        sourceId: z.string().nullable(),
+      }),
+    ),
+  },
+  "sources.importBook": {
+    input: z.object({ id: z.string().max(100) }),
+    output: z.object({
+      sourceId: z.string(),
+      jobId: z.string().optional(),
+      title: z.string(),
+      subject: z.string(),
+    }),
+  },
   "sources.linkPreview": {
     input: z.object({ url: z.string().url().max(4000) }),
     output: z.object({

@@ -1,0 +1,45 @@
+.px-books .px-books-intro {
+  margin: 0 0 var(--space-4);
+  color: var(--ink-muted);
+}
+.px-books p {
+  margin: 0;
+}
+.px-books-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-books-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-lg);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-books-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.px-books-meta {
+  color: var(--ink-muted);
+}
+.px-books-error {
+  color: var(--danger);
+}
+.px-books-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  color: var(--ink-muted);
+}

@@ -36,6 +36,7 @@ export function WizardSources({
   onPick,
   onRemove,
   onGuided,
+  onFreeBooks,
   blocked,
 }: {
   library: WizardSource[];
@@ -44,6 +45,8 @@ export function WizardSources({
   onPick: (sourceIds: string[]) => void;
   onRemove: (sourceId: string) => void;
   onGuided: () => void;
+  /** Opens the free PoliTost books. */
+  onFreeBooks: () => void;
   blocked: boolean;
 }) {
   const { t } = useTranslation();
@@ -89,6 +92,9 @@ export function WizardSources({
         </Button>
         <Button shape="round" onClick={() => setPicking(true)}>
           {t("wizard.fromLibrary")}
+        </Button>
+        <Button shape="round" onClick={onFreeBooks}>
+          {t("books.open")}
         </Button>
       </div>
       {inPlan.length === 0 ? (

@@ -94,7 +94,8 @@
     "ready": {
       "title": "You're ready",
       "body": "Create an exam and add your material. I build the study plan from it.",
-      "create": "Create your first exam"
+      "create": "Create your first exam",
+      "book": "Start from a free PoliTost book"
     }
   },
   "ask": {
@@ -381,7 +382,13 @@
     "saveLink": "Save link",
     "linkPreview": "Link preview",
     "webPage": "Web page",
-    "pdfPreviewHint": "This link points to a PDF. Save it to extract its pages."
+    "pdfPreviewHint": "This link points to a PDF. Save it to extract its pages.",
+    "books": {
+      "offline": "I couldn't reach books.politost.it. Check your connection and try again.",
+      "catalog": "The book list on books.politost.it can't be read right now. Try again later.",
+      "integrity": "The downloaded book doesn't match the list, so I didn't import it. Try again.",
+      "missing": "This book is no longer in the list."
+    }
   },
   "cards": {
     "rateFailed": "The card could not be rated. Try again.",
@@ -1833,5 +1840,21 @@
       "back": "Come back here. I notice the sign-in on my own, and then you can close the terminal.",
       "action": "Open Antigravity in a terminal"
     }
+  },
+  "books": {
+    "title": "Free PoliTost books",
+    "open": "Free PoliTost books",
+    "intro": "Smartbooks written for PoliTost, free to use. The list comes from books.politost.it, and Pyxis connects only while this window is open.",
+    "loading": "Loading the list from books.politost.it…",
+    "empty": "No books are published yet.",
+    "chapters_one": "{{count}} chapter",
+    "chapters_other": "{{count}} chapters",
+    "version": "version {{version}}",
+    "add": "Add",
+    "addNamed": "Add {{title}}",
+    "adding": "Downloading…",
+    "added": "Added",
+    "inLibrary": "In your library",
+    "retry": "Try again"
   }
 }

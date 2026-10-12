@@ -26,6 +26,7 @@ import { createRunner } from "./jobs/runner";
 
 import { setSourceWorkerDirectory } from "./sources/worker-client";
 import { markStoppedImport } from "./sources/jobs";
+import { folderTransport } from "./sources/books";
 
 setSourceWorkerDirectory(import.meta.dirname);
 addInstallDirsToPath();
@@ -121,7 +122,14 @@ if (!parent) {
       true,
     );
     jobRunner = runner;
-    bindSources(db, workspacePath, runner);
+    // Recorded fixtures may serve the free books from a folder instead of books.politost.it.
+    const booksFixture = dev ? process.env["PYXIS_E2E_BOOKS"] : undefined;
+    bindSources(
+      db,
+      workspacePath,
+      runner,
+      booksFixture ? folderTransport(booksFixture) : undefined,
+    );
     // Recorded replies require the explicit dev/test seam; packaged launches only enable it with PYXIS_E2E=1.
     bindChat(
       db,

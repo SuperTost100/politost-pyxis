@@ -18,6 +18,7 @@ import { planHandlers } from "../plans/handlers";
 import { studyHandlers } from "../study/handlers";
 import { profileHandlers } from "../profile/handlers";
 import { sourceHandlers } from "../sources/handlers";
+import type { BooksTransport } from "../sources/books";
 import type { ProviderId } from "../engine/funnel";
 import { jobHandlers } from "../jobs/handlers";
 import type { Runner } from "../jobs/runner";
@@ -620,6 +621,14 @@ async function dispatchValidated(
       );
     case "sources.link":
       return sources?.link(requests["sources.link"].input.parse(input));
+    case "sources.books":
+      requests["sources.books"].input.parse(input);
+      return sources?.books(signal);
+    case "sources.importBook":
+      return sources?.importBook(
+        requests["sources.importBook"].input.parse(input),
+        signal,
+      );
     case "sources.scanFolder":
       return sources?.scanFolder(
         requests["sources.scanFolder"].input.parse(input),
@@ -746,9 +755,15 @@ export function bindSources(
   db: Parameters<typeof sourceHandlers>[0],
   workspace: string,
   runner: Runner,
+  booksTransport?: BooksTransport,
 ): void {
   fileScratch = join(workspace, "scratch");
-  sources = sourceHandlers(db, workspace, runner, (path) =>
-    fileGrants.file(path),
+  sources = sourceHandlers(
+    db,
+    workspace,
+    runner,
+    (path) => fileGrants.file(path),
+    undefined,
+    booksTransport,
   );
 }

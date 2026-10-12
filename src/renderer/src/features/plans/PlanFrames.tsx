@@ -15,6 +15,7 @@ import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
+import { FreeBooks } from "../../components/FreeBooks";
 import { examInstant, type PlanFile } from "@shared/plan-file";
 import { ImportReview } from "./ImportReview";
 import { parsePlanText, type ImportRequest } from "./importPreview";
@@ -43,12 +44,24 @@ export function WizardFrame() {
   });
   // Back from the guided flow returns here with the answers already given.
   const location = useLocation();
-  const back = (location.state as { wizard?: unknown; step?: number } | null) ?? {};
+  const back =
+    (location.state as {
+      wizard?: unknown;
+      step?: number;
+      books?: boolean;
+    } | null) ?? {};
   const seed = isWizardSeed(back.wizard) ? back.wizard : null;
   const [wizardStep, setWizardStep] = useState(seed ? (back.step ?? 3) : 0);
   const [title, setTitle] = useState(seed?.title ?? "");
   const [subject, setSubject] = useState(seed?.subject ?? "");
   const [picked, setPicked] = useState<string[]>([]);
+  // "Start from a free PoliTost book" at the end of setup opens the wizard with the books already showing.
+  const [booksOpen, setBooksOpen] = useState(back.books === true);
+  const pick = (ids: string[]) =>
+    setPicked((current) => [
+      ...current,
+      ...ids.filter((id) => !current.includes(id)),
+    ]);
   const [examChoice, setExamChoice] = useState<"1" | "2" | "3" | "10">(
     seed?.examChoice ?? "10",
   );
@@ -492,16 +505,12 @@ export function WizardFrame() {
           <WizardSources
             library={sources.data ?? []}
             picked={picked}
-            onPick={(ids) =>
-              setPicked((current) => [
-                ...current,
-                ...ids.filter((id) => !current.includes(id)),
-              ])
-            }
+            onPick={pick}
             onRemove={(id) =>
               setPicked((current) => current.filter((item) => item !== id))
             }
             onGuided={startGuided}
+            onFreeBooks={() => setBooksOpen(true)}
             blocked={blockedSource}
           />
         ) : null}
@@ -565,6 +574,17 @@ export function WizardFrame() {
           </>
         ) : null}
       </div>
+      <FreeBooks
+        open={booksOpen}
+        added={picked}
+        onClose={() => setBooksOpen(false)}
+        onAdded={(book) => {
+          pick([book.sourceId]);
+          // A first book names the exam, unless the student already did.
+          setTitle((current) => current || book.title);
+          setSubject((current) => current || book.subject);
+        }}
+      />
     </FocusLayout>
   );
 }
