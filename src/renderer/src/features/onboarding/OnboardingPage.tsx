@@ -163,6 +163,12 @@ export function OnboardingPage() {
             {t("onboarding.done")}
           </Button>
           <Button
+            shape="round"
+            onClick={() => navigate("/plans/new", { state: { books: true } })}
+          >
+            {t("onboarding.ready.book")}
+          </Button>
+          <Button
             type="primary"
             shape="round"
             onClick={() => navigate("/plans/new")}

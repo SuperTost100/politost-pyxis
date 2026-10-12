@@ -20,6 +20,7 @@ import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
+import { FreeBooks } from "../../components/FreeBooks";
 import {
   MAX_FOLDER_DEPTH,
   REPLACE_EXTENSIONS,
@@ -70,6 +71,7 @@ export function LibraryPanel({
     queryFn: () => invoke("sources.list", {}),
   });
   const [addOpen, setAddOpen] = useState(importOnly);
+  const [booksOpen, setBooksOpen] = useState(false);
   const [addTab, setAddTab] = useState("file");
   const [filterText, setFilterText] = useState("");
   const [filterType, setFilterType] = useState("all");
@@ -1063,10 +1065,14 @@ export function LibraryPanel({
             ),
           ]}
         />
+        <Button shape="round" onClick={() => setBooksOpen(true)}>
+          {t("books.open")}
+        </Button>
         <Button type="primary" shape="round" onClick={() => setAddOpen(true)}>
           {t("exams.addSources")}
         </Button>
       </div>
+      <FreeBooks open={booksOpen} onClose={() => setBooksOpen(false)} />
       {/* An empty table is a scroll area with nothing to focus, and the empty state above already says so. */}
       {sources.length > 0 || list.isPending ? (
         <ProTable<SourceRow>

@@ -94,7 +94,8 @@
     "ready": {
       "title": "Tutto pronto",
       "body": "Crea un esame e aggiungi il materiale. Il piano di studio lo preparo io.",
-      "create": "Crea il primo esame"
+      "create": "Crea il primo esame",
+      "book": "Parti da un libro PoliTost gratuito"
     }
   },
   "ask": {
@@ -381,7 +382,13 @@
     "saveLink": "Salva link",
     "linkPreview": "Anteprima del link",
     "webPage": "Pagina web",
-    "pdfPreviewHint": "Il link punta a un PDF. Salvalo per estrarre le pagine."
+    "pdfPreviewHint": "Il link punta a un PDF. Salvalo per estrarre le pagine.",
+    "books": {
+      "offline": "Non riesco a raggiungere books.politost.it. Controlla la connessione e riprova.",
+      "catalog": "L'elenco dei libri su books.politost.it ora non si legge. Riprova più tardi.",
+      "integrity": "Il libro scaricato non corrisponde all'elenco, quindi non l'ho importato. Riprova.",
+      "missing": "Questo libro non è più nell'elenco."
+    }
   },
   "cards": {
     "rateFailed": "Non è stato possibile valutare la scheda. Riprova.",
@@ -1833,5 +1840,21 @@
       "back": "Torna qui. Mi accorgo da solo dell'accesso, poi puoi chiudere il terminale.",
       "action": "Apri Antigravity nel terminale"
     }
+  },
+  "books": {
+    "title": "Libri PoliTost gratuiti",
+    "open": "Libri PoliTost gratuiti",
+    "intro": "Smartbook scritti per PoliTost, gratuiti. L'elenco arriva da books.politost.it e Pyxis si collega solo mentre questa finestra è aperta.",
+    "loading": "Carico l'elenco da books.politost.it…",
+    "empty": "Non ci sono ancora libri pubblicati.",
+    "chapters_one": "{{count}} capitolo",
+    "chapters_other": "{{count}} capitoli",
+    "version": "versione {{version}}",
+    "add": "Aggiungi",
+    "addNamed": "Aggiungi {{title}}",
+    "adding": "Scarico…",
+    "added": "Aggiunto",
+    "inLibrary": "Nella tua libreria",
+    "retry": "Riprova"
   }
 }

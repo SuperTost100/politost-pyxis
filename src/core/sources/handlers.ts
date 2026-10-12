@@ -45,6 +45,12 @@ import { importPastedText } from "./paste";
 import { runSourceWorker } from "./worker-client";
 import { sniffImage } from "./vision-image";
 import { existingSourceFor, isDuplicateBlob, qualityFlags } from "./quality";
+import {
+  downloadBook,
+  fetchCatalog,
+  httpsTransport,
+  type BooksTransport,
+} from "./books";
 import { compareToPlans, storedSyllabus, syllabusFor } from "./syllabus";
 import { maxSourceBytes, MAX_IMAGE_BASE64, MAX_IMAGE_BYTES, MAX_SOURCE_BYTES } from "../../shared/source-types";
 import {
@@ -94,6 +100,11 @@ function sourceError(err: unknown): never {
     "source-busy": "sources.busy",
     "reextract-unavailable": "sources.reextractUnavailable",
     "title-empty": "sources.titleEmpty",
+    "books-offline": "sources.books.offline",
+    "books-catalog": "sources.books.catalog",
+    "books-too-big": "sources.books.catalog",
+    "books-integrity": "sources.books.integrity",
+    "books-missing": "sources.books.missing",
   };
   const messageKey = key[message];
   if (message === "encrypted-smartbook" || message === "licensed-smartbook") {
@@ -110,6 +121,8 @@ export function sourceHandlers(
   /** Checks a listed file against the folder grant. Returns the path to read, or throws. */
   authorizeFile: (path: string) => string = (path) => path,
   work: typeof runSourceWorker = runSourceWorker,
+  /** Where the free PoliTost books come from. Tests read them from a folder. */
+  booksTransport: BooksTransport = httpsTransport,
 ) {
   const modelDir = join(workspace, "models", "e5");
   const tess = join(workspace, "runtimes", "tesseract");
@@ -197,6 +210,62 @@ export function sourceHandlers(
     if (state !== "ready") throw new Error(`ocr-data-${state}`);
   };
   return {
+    /** The free PoliTost books, each with the library source it already is, if any. Only called when asked. */
+    async books(signal?: AbortSignal) {
+      try {
+        const books = await fetchCatalog(booksTransport, signal);
+        return books.map((book) => ({
+          id: book.id,
+          title: book.title,
+          subject: book.subject,
+          authors: book.authors,
+          version: book.version,
+          chapters: book.chapters,
+          bytes: book.bytes,
+          sourceId: existingSourceFor(db, book.sha256),
+        }));
+      } catch (err) {
+        sourceError(err);
+      }
+    },
+    /**
+     * Downloads a free book and imports it as a smartbook. The catalog is read again here, so the package address and
+     * checksum never come from the renderer. A book already in the library is returned as it is.
+     */
+    async importBook(input: { id: string }, signal?: AbortSignal) {
+      try {
+        const book = (await fetchCatalog(booksTransport, signal)).find(
+          (item) => item.id === input.id,
+        );
+        if (!book) throw new Error("books-missing");
+        const existing = existingSourceFor(db, book.sha256);
+        if (existing)
+          return { sourceId: existing, title: book.title, subject: book.subject };
+        if (!runner) throw new Error("source-missing");
+        const bytes = await downloadBook(
+          book,
+          booksTransport,
+          maxSourceBytes(".ptsb"),
+          signal,
+        );
+        const imported = enqueueSourceData(
+          db,
+          workspace,
+          runner,
+          bytes,
+          ".ptsb",
+          book.title,
+        );
+        return {
+          sourceId: imported.sourceId,
+          jobId: imported.jobId,
+          title: book.title,
+          subject: book.subject,
+        };
+      } catch (err) {
+        sourceError(err);
+      }
+    },
     async linkPreview(input: { url: string }, signal?: AbortSignal) {
       try {
         const snapshot = await fetchSnapshot(
