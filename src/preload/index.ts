@@ -189,7 +189,8 @@ const bridge: PyxisBridge = {
     const paths = Array.from(files, (file) => webUtils.getPathForFile(file));
     return ipcRenderer.invoke(mainChannels.dropGrant, paths);
   },
-  openTerminal: () => ipcRenderer.invoke(mainChannels.terminalOpen),
+  openTerminal: (program?: "antigravity") =>
+    ipcRenderer.invoke(mainChannels.terminalOpen, program),
   keys: {
     set: (provider: string, key: string) =>
       ipcRenderer.invoke(mainChannels.keysSet, provider, key),

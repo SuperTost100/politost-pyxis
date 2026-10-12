@@ -33,7 +33,8 @@ export interface PyxisBridge {
   getAppearance(): Promise<Appearance>;
   setAppearance(source: ThemeSource): Promise<Appearance>;
   onAppearance(cb: (appearance: Appearance) => void): () => void;
-  openTerminal(): Promise<void>;
+  /** Opens the system terminal, running Antigravity when asked so the student can sign in. */
+  openTerminal(program?: "antigravity"): Promise<void>;
   openExternal(url: string): Promise<void>;
   showOpenDialog(options: OpenDialogOptions): Promise<string[] | null>;
   showSaveDialog(options: SaveDialogOptions): Promise<string | null>;

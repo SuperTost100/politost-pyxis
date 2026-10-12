@@ -20,14 +20,16 @@ const levels = [
   "university",
   "other",
 ] as const;
+/** The numbered setup steps. A welcome screen comes before them and a "ready" screen after. */
 const stepIds = ["profile", "engines", "photos", "privacy"] as const;
-type StepId = (typeof stepIds)[number];
+const screens = ["welcome", ...stepIds, "ready"] as const;
+type ScreenId = (typeof screens)[number];
 
 export function OnboardingPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [step, setStep] = useState(0);
+  const [screen, setScreen] = useState(0);
   const [name, setName] = useState("");
   const [level, setLevel] = useState<(typeof levels)[number]>("university");
   const [year, setYear] = useState("");
@@ -40,15 +42,18 @@ export function OnboardingPage() {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
-  const id: StepId = stepIds[step]!;
+  const id: ScreenId = screens[screen]!;
+  const step = screen - 1;
+  const numbered = step >= 0 && step < stepIds.length;
 
   // A new screen starts at its heading, so keyboard and screen reader users do not land in the old controls.
   const first = useRef(true);
   useEffect(() => {
     if (first.current) first.current = false;
     else heading.current?.focus();
-  }, [step]);
+  }, [screen]);
 
+  /** Saves the profile. Skip saves an empty one and leaves setup; otherwise the "ready" screen follows. */
   async function finish(skip: boolean) {
     if (busy) return;
     setBusy(true);
@@ -69,7 +74,8 @@ export function OnboardingPage() {
             },
       );
       await client.invalidateQueries({ queryKey: ["profile"] });
-      navigate("/exams");
+      if (skip) navigate("/exams");
+      else setScreen(screens.indexOf("ready"));
     } catch {
       setFailed(true);
     } finally {
@@ -78,30 +84,44 @@ export function OnboardingPage() {
   }
 
   const next = () =>
-    setStep((value) => Math.min(value + 1, stepIds.length - 1));
-  const back = () => setStep((value) => Math.max(value - 1, 0));
+    setScreen((value) => Math.min(value + 1, screens.length - 1));
+  const back = () => setScreen((value) => Math.max(value - 1, 0));
 
   return (
     <div className="px-onboarding">
-      <Steps
-        size="small"
-        current={step}
-        items={stepIds.map((item) => ({
-          title: t(`onboarding.steps.${item}`),
-        }))}
-      />
-      <p className="meta px-onboarding-count">
-        {t("onboarding.stepCount", {
-          current: step + 1,
-          total: stepIds.length,
-        })}
-      </p>
+      {numbered ? (
+        <>
+          <Steps
+            size="small"
+            current={step}
+            items={stepIds.map((item) => ({
+              title: t(`onboarding.steps.${item}`),
+            }))}
+          />
+          <p className="meta px-onboarding-count">
+            {t("onboarding.stepCount", {
+              current: step + 1,
+              total: stepIds.length,
+            })}
+          </p>
+        </>
+      ) : null}
       <h1 className="display" tabIndex={-1} ref={heading}>
         {t(id === "profile" ? "onboarding.title" : `onboarding.${id}.title`)}
       </h1>
       <p className="body">
         {t(id === "profile" ? "onboarding.body" : `onboarding.${id}.body`)}
       </p>
+
+      {id === "welcome" ? (
+        <ul className="px-onboarding-points">
+          {(["plan", "local", "account", "time"] as const).map((point) => (
+            <li key={point} className="body">
+              {t(`onboarding.welcome.points.${point}`)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {id === "profile" ? (
         <ProfileStep
@@ -122,8 +142,8 @@ export function OnboardingPage() {
       {failed ? (
         <Notice tone="danger">{t("onboarding.saveFailed")}</Notice>
       ) : null}
-      <div className="px-onboarding-actions">
-        {id === "profile" ? (
+      {id === "welcome" ? (
+        <div className="px-onboarding-actions">
           <Button
             type="text"
             shape="round"
@@ -132,37 +152,68 @@ export function OnboardingPage() {
           >
             {t("onboarding.skip")}
           </Button>
-        ) : (
-          <Button type="text" shape="round" disabled={busy} onClick={back}>
-            {t("nav.back")}
-          </Button>
-        )}
-        {id === "photos" ? <span /> : null}
-        {id === "profile" ? (
           <Button type="primary" shape="round" onClick={next}>
-            {t("onboarding.continue")}
+            {t("onboarding.welcome.start")}
           </Button>
-        ) : null}
-        {id === "engines" ? (
-          <Button type="primary" shape="round" onClick={next}>
-            {t(
-              enginesReady === false
-                ? "onboarding.later"
-                : "onboarding.continue",
-            )}
+        </div>
+      ) : null}
+      {id === "ready" ? (
+        <div className="px-onboarding-actions is-end">
+          <Button shape="round" onClick={() => navigate("/exams")}>
+            {t("onboarding.done")}
           </Button>
-        ) : null}
-        {id === "privacy" ? (
           <Button
             type="primary"
             shape="round"
-            loading={busy}
-            onClick={() => void finish(false)}
+            onClick={() => navigate("/plans/new")}
           >
-            {t("onboarding.done")}
+            {t("onboarding.ready.create")}
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
+      {numbered ? (
+        <div className="px-onboarding-actions">
+          {id === "profile" ? (
+            <Button
+              type="text"
+              shape="round"
+              disabled={busy}
+              onClick={() => void finish(true)}
+            >
+              {t("onboarding.skip")}
+            </Button>
+          ) : (
+            <Button type="text" shape="round" disabled={busy} onClick={back}>
+              {t("nav.back")}
+            </Button>
+          )}
+          {id === "photos" ? <span /> : null}
+          {id === "profile" ? (
+            <Button type="primary" shape="round" onClick={next}>
+              {t("onboarding.continue")}
+            </Button>
+          ) : null}
+          {id === "engines" ? (
+            <Button type="primary" shape="round" onClick={next}>
+              {t(
+                enginesReady === false
+                  ? "onboarding.later"
+                  : "onboarding.continue",
+              )}
+            </Button>
+          ) : null}
+          {id === "privacy" ? (
+            <Button
+              type="primary"
+              shape="round"
+              loading={busy}
+              onClick={() => void finish(false)}
+            >
+              {t("onboarding.continue")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

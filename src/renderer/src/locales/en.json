@@ -47,11 +47,28 @@
     },
     "engines": {
       "title": "Connect an AI engine",
-      "body": "Pyxis works with Claude Code, Codex, Cursor Agent or Antigravity, signed in with your account. I check what is already on this computer.",
+      "body": "Pyxis uses an AI you already pay for, so it costs you nothing more. I install it and sign you in.",
       "found": "I found {{names}}.",
       "foundSignedOut": "I found {{names}}, but you still need to sign in.",
       "foundNone": "I did not find any engine.",
-      "disclosure": "Later, text, retrieved passages and attachments leave this computer and reach the engine's provider. Right now I send nothing to any model."
+      "disclosure": "Later, text, retrieved passages and attachments leave this computer and reach the engine's provider. Right now I send nothing to any model.",
+      "question": "Which of these do you already pay for?",
+      "questionHint": "Pick the one you use most. You can add others later in Settings.",
+      "plans": {
+        "chatgpt": "ChatGPT Plus or Pro",
+        "claude": "Claude Pro or Max",
+        "google": "Google AI Plus, Pro or Ultra",
+        "cursor": "Cursor",
+        "none": "None of those"
+      },
+      "startFree": "Free with a Google account",
+      "noneBody": "Start with Antigravity, Google's engine. A free Google account is enough, with a weekly usage limit. PoliTost keeps a list of free and discounted plans for students.",
+      "offers": "See student offers",
+      "offersLink": "Free and student plans for each AI",
+      "showAll": "Show all engines",
+      "hideAll": "Hide the list",
+      "setUp": "Set up",
+      "addAnother": "Set up another engine"
     },
     "photos": {
       "title": "Photos and scans",
@@ -62,6 +79,22 @@
     "privacy": {
       "title": "Crash reports",
       "body": "One choice. You can change it any time in Settings, under Privacy."
+    },
+    "welcome": {
+      "title": "Hi, I'm Pyxis",
+      "body": "I'm a study tutor that runs on this computer.",
+      "points": {
+        "plan": "I turn your notes, slides and books into a study plan, lessons that cite your material, and quizzes.",
+        "local": "Your files and your progress stay on this computer.",
+        "account": "I work through an AI you already have an account for, such as ChatGPT, Claude or Gemini. Pyxis itself is free.",
+        "time": "Setup takes about 3 minutes."
+      },
+      "start": "Start setup"
+    },
+    "ready": {
+      "title": "You're ready",
+      "body": "Create an exam and add your material. I build the study plan from it.",
+      "create": "Create your first exam"
     }
   },
   "ask": {
@@ -1486,16 +1519,11 @@
     "notDetected": "Not detected",
     "searchFoldersUnavailable": "This CLI Funnel version does not report the folders it searched. Detected program paths are listed above.",
     "modelAdvice": "Use a mid-tier model or better for plans and grading.",
-    "copyCommand": "Copy command",
-    "copiedCommand": "Command copied.",
-    "copyFailed": "Could not copy the command. Select and copy it manually.",
     "terminalInstructions": "Run this command in your terminal to finish sign-in.",
     "termsLink": "Provider terms",
     "termsDetail": "Your provider's terms, usage limits and privacy policy apply to every call. Pyxis does not include an AI subscription.",
     "chooseEngine": "Choose an engine and model",
     "cancel": "Cancel",
-    "openTerminal": "Open terminal",
-    "terminalUnavailable": "Could not open a terminal. Open your terminal and run the command shown.",
     "keyRemoved": "API key removed. Choose another default engine if needed.",
     "title": "Engines",
     "terms": "A test sends one short sentence to the provider you pick.",
@@ -1557,8 +1585,7 @@
     "allEngines": "All engines",
     "automatic": "Automatic",
     "backToAuto": "Back to automatic choice",
-    "installHelp": "Pyxis needs an AI engine to answer. Install Claude Code, Codex, Cursor Agent or Antigravity and sign in with your account. Pyxis then picks the model.",
-    "installHelpLink": "How to install",
+    "installHelp": "Pyxis needs an AI engine to answer. Press Install next to the AI you already pay for, then sign in. Pyxis picks the model.",
     "auto": {
       "title": "Automatic choice",
       "summary": "Pyxis uses {{parts}}.",
@@ -1767,5 +1794,44 @@
     "show": "Show",
     "hide": "Hide",
     "preparing": "Preparing an exercise…"
+  },
+  "setup": {
+    "title": "Set up {{name}}",
+    "plan": {
+      "claude": "Needs a Claude Pro or Max plan.",
+      "codex": "Needs ChatGPT Plus or a higher plan.",
+      "agent": "Works with your Cursor account.",
+      "antigravity": "Works with any Google account. Free accounts have a weekly limit."
+    },
+    "stepDone": "done",
+    "install": {
+      "title": "Install",
+      "body": "I run {{vendor}}'s official installer. It takes about a minute and needs no administrator password. This is the command:",
+      "action": "Install {{name}}",
+      "running": "Installing {{name}}…",
+      "done": "Installed.",
+      "doneVersion": "Installed, version {{version}}.",
+      "failed": "The {{name}} install did not finish.",
+      "retry": "Try again",
+      "page": "Open the {{vendor}} page",
+      "cancelled": "Install cancelled."
+    },
+    "signIn": {
+      "title": "Sign in",
+      "body": "Sign in with your {{account}} account. Your browser opens.",
+      "action": "Sign in with {{account}}",
+      "done": "Signed in.",
+      "afterInstall": "Available once the install finishes.",
+      "codeHint": "If the browser shows a code, paste it here.",
+      "waitingTerminal": "Waiting for you to sign in in the terminal…",
+      "terminalUnavailable": "I couldn't open a terminal. Open one yourself, type this and press Enter:"
+    },
+    "antigravity": {
+      "open": "Press the button below. A terminal window opens with Antigravity in it.",
+      "choose": "At \"Select login method\", choose Google OAuth with the arrow keys and press Enter.",
+      "browser": "Sign in with Google in your browser. If the page shows a code instead, paste it into the terminal and press Enter.",
+      "back": "Come back here. I notice the sign-in on my own, and then you can close the terminal.",
+      "action": "Open Antigravity in a terminal"
+    }
   }
 }

@@ -151,7 +151,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     // The first launch of a fresh install waits for core to create the workspace before onboarding shows; on a
     // Windows runner that can take longer than the default 5 s.
     await expect(
-      page.getByRole("heading", { name: "Iniziamo", exact: true }),
+      page.getByRole("heading", { name: "Ciao, sono Pyxis", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     await clean(page);
     await page.getByRole("button", { name: "Salta", exact: true }).focus();

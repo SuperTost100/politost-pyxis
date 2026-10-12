@@ -1,5 +1,4 @@
 import { decryptKeys } from "./decrypt-keys";
-import { spawn } from "node:child_process";
 import { writeKeyStore } from "./key-store";
 import { randomUUID } from "node:crypto";
 import {
@@ -9,6 +8,7 @@ import {
 } from "../core/ipc/file-grants";
 import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { fetchPlanText } from "./plan-fetch";
+import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
 import { renameSync } from "node:fs";
 import packageMetadata from "../../package.json";
@@ -768,32 +768,11 @@ function registerIpc(): void {
       throw new Error("unknown-provider");
     return provider;
   }
-  ipcMain.handle(mainChannels.terminalOpen, async (event) => {
+  ipcMain.handle(mainChannels.terminalOpen, async (event, program: unknown) => {
     authorizeKeys(event.sender.id);
-    if (process.platform === "darwin") {
-      const error = await shell.openPath(
-        "/System/Applications/Utilities/Terminal.app",
-      );
-      if (error) throw new Error("terminal-unavailable");
-      return;
-    }
-    await new Promise<void>((resolve, reject) => {
-      const child =
-        process.platform === "win32"
-          ? spawn("cmd.exe", ["/c", "start", "", "cmd.exe"], {
-              detached: true,
-              stdio: "ignore",
-            })
-          : spawn("x-terminal-emulator", [], {
-              detached: true,
-              stdio: "ignore",
-            });
-      child.once("error", () => reject(new Error("terminal-unavailable")));
-      child.once("spawn", () => {
-        child.unref();
-        resolve();
-      });
-    });
+    if (program !== undefined && program !== "antigravity")
+      throw new Error("unknown-program");
+    await openTerminal(program, (path) => shell.openPath(path));
   });
   ipcMain.handle(mainChannels.keysStatus, (event) => {
     authorizeKeys(event.sender.id);

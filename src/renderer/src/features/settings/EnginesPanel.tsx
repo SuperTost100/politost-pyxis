@@ -26,6 +26,12 @@ import {
 import { EngineRow } from "../../components/EngineRow";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
+import { ProviderSetup } from "../../components/ProviderSetup";
+import {
+  isInstallable,
+  offersPage,
+  type InstallableProvider,
+} from "@shared/installers";
 import { invoke, onBroadcast } from "../../lib/ipc";
 import "./EnginesPanel.css";
 
@@ -221,10 +227,8 @@ export function EnginesPanel() {
   );
   const [keyValue, setKeyValue] = useState("");
   const [keyBusy, setKeyBusy] = useState(false);
-  const [codeFor, setCodeFor] = useState<string | null>(null);
-  const [code, setCode] = useState("");
-  const [loginStatus, setLoginStatus] = useState<string | null>(null);
-  const [terminalCommand, setTerminalCommand] = useState<string | null>(null);
+  // A CLI that still needs installing or a sign-in, shown in the same setup card as first setup.
+  const [setupFor, setSetupFor] = useState<InstallableProvider | null>(null);
   // The notice for engines that are ready but not acknowledged. `then` runs the action the student was after.
   const [notice, setNotice] = useState<{
     engines: NoticeEngine[];
@@ -256,34 +260,6 @@ export function EnginesPanel() {
     ])
       void client.invalidateQueries({ queryKey });
   }
-  function loginEvent(
-    event: {
-      provider?: string;
-      type: string;
-      url?: string;
-      command?: string[];
-    },
-    provider?: string,
-  ) {
-    if (event.type === "open-url" && event.url) {
-      void window.pyxis.openExternal(event.url);
-      setLoginStatus(t("engines.waitingSignIn"));
-    }
-    if (event.type === "code-prompt")
-      setCodeFor(event.provider ?? provider ?? null);
-    if (event.type === "needs-terminal" && event.command)
-      setTerminalCommand(event.command.join(" "));
-    if (event.type === "done") {
-      setLoginStatus(null);
-      setCodeFor(null);
-      refresh();
-    }
-    if (event.type === "error") setLoginStatus(t("engines.signInFailed"));
-  }
-  useEffect(
-    () => onBroadcast("engine.login", (event) => loginEvent(event)),
-    [client, t],
-  );
   // Pyxis recomputes automatic choices in the background (startup, sign-in, a new CLI); show the result.
   useEffect(
     () =>
@@ -403,8 +379,13 @@ export function EnginesPanel() {
     manage.reset();
   }
   function act(row: Engine) {
-    if (!row.installed && row.kind === "cli") {
-      void window.pyxis.openExternal(docs);
+    if (
+      row.kind === "cli" &&
+      isInstallable(row.id) &&
+      !(row.installed && row.loggedIn)
+    ) {
+      setAdding(false);
+      setSetupFor(row.id);
       return;
     }
     if (row.loggedIn || row.kind === "api") {
@@ -420,13 +401,6 @@ export function EnginesPanel() {
           effort: selection?.effort,
           fast: selection?.fast,
         }),
-      );
-    } else {
-      setAdding(false);
-      setLoginStatus(t("engines.waitingSignIn"));
-      void invoke("engines.login", { provider: row.id }).then(
-        (event) => loginEvent(event, row.id),
-        () => setLoginStatus(t("engines.signInFailed")),
       );
     }
   }
@@ -642,65 +616,14 @@ export function EnginesPanel() {
           ? available.map((row) => renderRow(row))
           : simpleRows.map((row) => renderRow(row, true))}
       </div>
-      {loginStatus ? (
-        <p className="small" role="status">
-          {loginStatus}
-        </p>
-      ) : null}
-      {codeFor ? (
-        <form
-          className="px-form-inline"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void invoke("engines.sendCode", { provider: codeFor, code }).catch(
-              () => setLoginStatus(t("engines.signInFailed")),
-            );
-            setCodeFor(null);
-            setCode("");
-          }}
-        >
-          <Input
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            aria-label={t("engines.code")}
-          />
-          <Button htmlType="submit" shape="round" disabled={!code.trim()}>
-            {t("engines.sendCode")}
-          </Button>
-        </form>
-      ) : null}
-      {terminalCommand ? (
-        <div className="engines-terminal">
-          <p className="small">{t("engines.terminalInstructions")}</p>
-          <code>{terminalCommand}</code>
-          <Button
-            onClick={() => {
-              void window.pyxis
-                .openTerminal()
-                .catch(() => setResult(t("engines.terminalUnavailable")));
-            }}
-          >
-            {t("engines.openTerminal")}
-          </Button>
-          <Button
-            onClick={() => {
-              void navigator.clipboard.writeText(terminalCommand).then(
-                () => setResult(t("engines.copiedCommand")),
-                () => setResult(t("engines.copyFailed")),
-              );
-            }}
-          >
-            {t("engines.copyCommand")}
-          </Button>
-        </div>
-      ) : null}
       {!drawer && !adding ? feedback : null}
       {nothingReady && !advanced ? (
         <Notice
           tone="info"
           action={{
-            label: t("engines.installHelpLink"),
-            onClick: () => void window.pyxis.openExternal(docs),
+            label: t("onboarding.engines.offersLink"),
+            onClick: () =>
+              void window.pyxis.openExternal(offersPage(i18n.language)),
           }}
         >
           {t("engines.installHelp")}
@@ -1048,6 +971,20 @@ export function EnginesPanel() {
           ]}
         />
         {feedback}
+      </Modal>
+      <Modal
+        open={setupFor !== null}
+        footer={null}
+        onCancel={() => setSetupFor(null)}
+        destroyOnHidden
+      >
+        {setupFor ? (
+          <ProviderSetup
+            provider={setupFor}
+            row={overview.data?.find((row) => row.id === setupFor)}
+            onChanged={refresh}
+          />
+        ) : null}
       </Modal>
       <EngineNoticeModal
         engines={notice?.engines ?? []}

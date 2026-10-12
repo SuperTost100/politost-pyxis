@@ -65,3 +65,39 @@
 .px-onboarding-actions .ant-btn-text {
   border-color: var(--border-control);
 }
+.px-onboarding-actions.is-end {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.px-onboarding-points {
+  margin: 0;
+  padding-left: 1.25em;
+  display: grid;
+  gap: var(--space-2);
+}
+.px-onboarding .px-onboarding-points li {
+  margin: 0;
+}
+.px-onboarding-points li::marker {
+  color: var(--primary);
+}
+.px-onboarding-plans {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.px-onboarding-plans legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+}
+.px-onboarding-plans .choice {
+  gap: var(--space-4);
+}
+.px-onboarding-engines .ant-btn-link.px-onboarding-link {
+  padding-inline: 0;
+  height: auto;
+  color: var(--primary-text);
+}

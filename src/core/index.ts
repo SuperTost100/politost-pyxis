@@ -4,6 +4,7 @@ import { recordedPlanRun } from "./engine/recorded-plan";
 import { join } from "node:path";
 import { openDatabase } from "./db/connection";
 import { getFunnel, setApiKeys, setScratch } from "./engine/funnel";
+import { addInstallDirsToPath } from "./engine/install";
 import {
   attachRendererPort,
   addFileGrants,
@@ -27,6 +28,7 @@ import { setSourceWorkerDirectory } from "./sources/worker-client";
 import { markStoppedImport } from "./sources/jobs";
 
 setSourceWorkerDirectory(import.meta.dirname);
+addInstallDirsToPath();
 
 type CorePort = {
   on(event: "message", listener: (event: { data: unknown }) => void): void;
@@ -99,7 +101,8 @@ if (!parent) {
         Date.now(),
       );
     }
-    bindEngines(db);
+    // The installer stand-in follows the same dev/test seam as recorded replies.
+    bindEngines(db, dev ? process.env["PYXIS_E2E_INSTALLER"] : undefined);
     const runner = createRunner(
       db,
       (job) => {

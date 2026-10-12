@@ -267,6 +267,14 @@ async function dispatchValidated(
       return engines?.capability(
         requests["engines.capability"].input.parse(input),
       );
+    case "engines.install": {
+      const parsed = requests["engines.install"].input.parse(input);
+      return engines?.install({ provider: parsed.provider });
+    }
+    case "engines.cancelInstall": {
+      const parsed = requests["engines.cancelInstall"].input.parse(input);
+      return engines?.cancelInstall({ provider: parsed.provider });
+    }
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({
@@ -673,11 +681,16 @@ export function refreshAutoEngines(): void {
   void engines?.autoConfigure({}).catch(() => undefined);
 }
 
-export function bindEngines(db: Parameters<typeof engineHandlers>[0]): void {
+export function bindEngines(
+  db: Parameters<typeof engineHandlers>[0],
+  installerFixture?: string,
+): void {
   configureDisclosure(db);
   engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
+    onInstallLog: (event) => broadcast("engine.install", event),
+    installerFixture,
   });
 }
 
