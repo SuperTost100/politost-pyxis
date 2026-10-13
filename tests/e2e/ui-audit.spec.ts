@@ -31,6 +31,12 @@ const routes = [
   ["ask-thread", "/ask/audit-chat"],
   ["exams", "/exams"],
   ["library", "/exams/library"],
+  // The flashcard browser: cards grouped by subject, no cards at all, a search with no match, and its two dialogs.
+  ["cards-browser", "/exams/cards"],
+  ["cards-browser-empty", "/exams/cards"],
+  ["cards-browser-none", "/exams/cards"],
+  ["cards-browser-edit", "/exams/cards"],
+  ["cards-browser-delete", "/exams/cards"],
   ["library-vision", "/exams/library"],
   ["shared", "/exams/get"],
   ["import-review", "/exams/get"],
@@ -597,7 +603,37 @@ function auditScanBlob(): string {
   );
 }
 
+/** Cards of a second subject and of an exam with no subject, for the flashcard browser only. Every other state removes them. */
+function prepareCardBrowser(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM plans WHERE id IN ('audit-chem-plan','audit-loose-plan');
+      DELETE FROM subjects WHERE id = 'audit-chem';
+      UPDATE topics SET archived_at = NULL WHERE archived_at = 7;`);
+    if (!name.startsWith("cards-browser")) return;
+    // An archived topic hides its cards, so no topic holds a card: the browser has nothing to show.
+    if (name === "cards-browser-empty") {
+      db.exec("UPDATE topics SET archived_at = 7 WHERE archived_at IS NULL");
+      return;
+    }
+    const later = Date.now() + 9 * 86_400_000;
+    db.exec(`INSERT INTO subjects(id,name,position,created_at) VALUES('audit-chem','Chimica',1,1);
+      INSERT INTO plans(id,subject_id,title,status,content_language,target,created_at,updated_at) VALUES('audit-chem-plan','audit-chem','Chimica generale','ready','it',0.75,2,2);
+      INSERT INTO plans(id,title,status,content_language,target,created_at,updated_at) VALUES('audit-loose-plan','Appunti sparsi','ready','it',0.75,3,3);
+      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-atoms','audit-chem-plan','Struttura dell’atomo',0,1),('audit-loose-topic','audit-loose-plan','Varie',0,1);
+      INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,suspended,grounding,created_at) VALUES
+        ('audit-card-z','audit-chem-plan','audit-atoms','Che cos’è il numero atomico?','Il numero di protoni nel nucleo, $Z$.','z1',0,'sources',1),
+        ('audit-card-bohr','audit-chem-plan','audit-atoms','Perché l’atomo di Bohr non spiega gli spettri di tutti gli elementi, compresi quelli con molti elettroni e interazioni tra loro?','Perché trascura la repulsione tra elettroni.','z2',1,'sources',2),
+        ('audit-card-loose','audit-loose-plan','audit-loose-topic','Una scheda senza materia','Resta nel gruppo finale.','z3',0,'sources',1);
+      INSERT INTO cards(id,plan_id,topic_id,front,back,grounding,created_at) VALUES
+        ('audit-card-cloze','audit-chem-plan','audit-atoms','Gli {{c1::elettroni}} occupano i {{c2::livelli}} di energia.','Modello a gusci.','sources',3);`);
+    db.prepare(
+      "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('audit-review-z','audit-card-z','good',?,1)",
+    ).run(JSON.stringify({ intervalDays: 9, ease: 2, dueAt: later }));
+  });
+}
+
 function prepareState(name: string) {
+  prepareCardBrowser(name);
   if (name.startsWith("library")) {
     // A stored syllabus comparison, keyed the way the core keys it: the source version and each plan's compared texts.
     withDb((db) => {
@@ -1708,6 +1744,39 @@ async function openState(page: Page, name: string) {
     case "export-cards":
     case "export-simulation":
       await openExport(page);
+      break;
+    case "cards-browser":
+      await expect(
+        page.getByRole("heading", { level: 2, name: "Chimica" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { level: 2, name: both("Nessuna materia", "No subject") }),
+      ).toBeVisible();
+      await expect(page.locator(".px-cardbrowser-card .katex").first()).toBeVisible();
+      break;
+    case "cards-browser-empty":
+      await expect(
+        page.getByRole("heading", { name: both("Ancora nessuna scheda", "No flashcards yet") }),
+      ).toBeVisible();
+      break;
+    case "cards-browser-none":
+      await page
+        .getByRole("textbox", { name: both("Cerca nelle schede", "Search cards") })
+        .fill("zzzz");
+      await expect(
+        page.getByText(both("Nessuna scheda corrisponde.", "No card matches.")),
+      ).toBeVisible();
+      break;
+    case "cards-browser-edit":
+    case "cards-browser-delete":
+      await page
+        .getByRole("button", {
+          name: new RegExp(
+            `^${name === "cards-browser-edit" ? "(Modifica|Edit)" : "(Elimina|Delete)"}: Che cos’è il numero atomico`,
+          ),
+        })
+        .click();
+      await expect(dialog).toBeVisible();
       break;
     case "export-plan":
     case "export-plan-embed":

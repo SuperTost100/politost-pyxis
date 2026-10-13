@@ -16,3 +16,7 @@ The labels differ from the FSRS names on purpose. FSRS is tuned around Good, so 
 The JSON card state stores due date, stability, difficulty, elapsed/scheduled days, learning steps, repetitions, lapses, state and last review. `ease` remains as a compatibility field and holds the current difficulty after an FSRS review. A legacy row without full FSRS state starts from an empty FSRS card on its next review. Suspended and removed cards stay out of the due queue.
 
 Changing retention or scheduler parameters changes future scheduling. Keep persisted state readable and update `schedule.test.ts` when making that change.
+
+## Card browser
+
+The Flashcards tab (`/exams/cards`) reads the same stored state. A card with no review is new, one whose latest review has `dueAt` at or before now is due, and any other card shows its next review date. Editing a card changes only its front and back, so its `card_reviews` rows and schedule stay as they were. Deleting a seeded card sets `removed`, and Restore clears it. A hand-made card is deleted for good, so the browser asks first. Cards of an archived topic are not listed.

@@ -298,6 +298,14 @@ export function deleteCard(db: Database.Database, cardId: string): void {
   db.prepare(`DELETE FROM cards WHERE id = ?`).run(cardId);
 }
 
+/** Brings back a seeded card that deleteCard removed. A hand-made card is gone for good, so there is nothing to restore. */
+export function restoreCard(db: Database.Database, cardId: string): void {
+  const result = db
+    .prepare(`UPDATE cards SET removed = 0 WHERE id = ?`)
+    .run(cardId);
+  if (result.changes === 0) throw new Error("card-missing");
+}
+
 export function suspendedCards(
   db: Database.Database,
   planId: string,

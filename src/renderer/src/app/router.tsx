@@ -52,6 +52,7 @@ export const router = createHashRouter([
       { path: "ask/:chatId", element: <AskPage /> },
       { path: "exams", element: <ExamsHome /> },
       { path: "exams/library", element: <ExamsHome /> },
+      { path: "exams/cards", element: <ExamsHome /> },
       { path: "exams/get", element: <SharedPlanPage /> },
       { path: "plans/:planId", element: <PlanPage /> },
       { path: "plans/:planId/:view", element: <PlanPage /> },
