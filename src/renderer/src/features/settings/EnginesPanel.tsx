@@ -974,6 +974,15 @@ export function EnginesPanel() {
       </Modal>
       <Modal
         open={setupFor !== null}
+        title={
+          setupFor
+            ? t("setup.title", {
+                name:
+                  overview.data?.find((row) => row.id === setupFor)?.name ??
+                  setupFor,
+              })
+            : null
+        }
         footer={null}
         onCancel={() => setSetupFor(null)}
         destroyOnHidden
@@ -983,6 +992,7 @@ export function EnginesPanel() {
             provider={setupFor}
             row={overview.data?.find((row) => row.id === setupFor)}
             onChanged={refresh}
+            titled={false}
           />
         ) : null}
       </Modal>

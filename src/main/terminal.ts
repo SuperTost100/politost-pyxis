@@ -77,5 +77,22 @@ export async function openTerminal(
     const cmd = process.env.ComSpec ?? "C:\\Windows\\System32\\cmd.exe";
     return launch(cmd, ["/d", "/s", "/c", `"start "" "${path ?? cmd}""`], true);
   }
-  return launch("x-terminal-emulator", path ? ["-e", path] : []);
+  // Debian and Ubuntu provide x-terminal-emulator; elsewhere try the common terminals in turn.
+  const linux: Array<[string, string[]]> = [
+    ["x-terminal-emulator", path ? ["-e", path] : []],
+    ["gnome-terminal", path ? ["--", path] : []],
+    ["konsole", path ? ["-e", path] : []],
+    ["xfce4-terminal", path ? ["-x", path] : []],
+    ["kitty", path ? [path] : []],
+    ["alacritty", path ? ["-e", path] : []],
+    ["xterm", path ? ["-e", path] : []],
+  ];
+  for (const [file, args] of linux) {
+    try {
+      return await launch(file, args);
+    } catch {
+      // Not installed; try the next one.
+    }
+  }
+  throw new Error("terminal-unavailable");
 }
