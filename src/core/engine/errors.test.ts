@@ -11,6 +11,23 @@ describe("translateEngineError", () => {
     });
   });
 
+  it("reads the code CLI Funnel puts on plain stream errors", () => {
+    const err = Object.assign(new Error("Please run agent login"), {
+      code: "not-logged-in",
+    });
+    expect(translateEngineError(err, "agent").code).toBe("not-logged-in");
+  });
+
+  it("treats a refused login on a CLI engine as a lapsed sign-in, not a bad key", () => {
+    const err = new Error("Invalid API key · Please run /login");
+    expect(translateEngineError(err, "claude").messageKey).toBe(
+      "engines.errors.not-logged-in",
+    );
+    expect(translateEngineError(err, "anthropic-api").messageKey).toBe(
+      "engines.errors.refused",
+    );
+  });
+
   it("turns a refused key and a quota error into their own keys", () => {
     expect(translateEngineError(new Error("HTTP 401")).messageKey).toBe(
       "engines.errors.refused",

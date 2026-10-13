@@ -419,10 +419,11 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
   let app = await launch(userData, { ...env, ...reply });
   try {
     let page = await app.firstWindow();
-    // Setup that skips the engines step does not raise the notice by itself afterwards.
+    // Skipping setup still shows the notice once on arrival: no task could use these engines without it.
     await button(page, "Salta").click();
     await expect(page).toHaveURL(/exams/);
-    await page.waitForTimeout(1500);
+    await expect(notice(page)).toBeVisible({ timeout: 30000 });
+    await notice(page).getByRole("button", { name: "Non ora" }).click();
     await expect(notice(page)).toHaveCount(0);
     await app.close();
 

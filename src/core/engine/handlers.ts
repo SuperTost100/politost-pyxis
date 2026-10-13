@@ -28,18 +28,27 @@ export type LoginNotice = {
   provider: string;
   type: string;
   url?: string;
+  /** The CLI opened `url` itself, so the app shows it as a link instead of opening it again. */
+  opened?: boolean;
   message?: string;
   command?: string[];
 };
 
 function notice(
   provider: string,
-  event: { type: string; url?: string; message?: string; command?: string[] },
+  event: {
+    type: string;
+    url?: string;
+    opened?: boolean;
+    message?: string;
+    command?: string[];
+  },
 ): LoginNotice {
   return {
     provider,
     type: event.type,
     url: "url" in event ? event.url : undefined,
+    opened: "opened" in event ? event.opened === true : undefined,
     message: "message" in event ? event.message : undefined,
     command: "command" in event ? event.command : undefined,
   };
@@ -327,7 +336,7 @@ export function engineHandlers(
           inputTokens: result.inputTokens,
         };
       } catch (err) {
-        const translated = translateEngineError(err);
+        const translated = translateEngineError(err, input.provider);
         throw new IpcError(
           translated.code,
           translated.messageKey,
@@ -459,10 +468,10 @@ export function engineHandlers(
           try {
             let next = await iterator.next();
             while (!next.done) {
-              if (next.value.type === "done" && options.auto)
-                await reconfigure();
               if (next.value.type !== "log")
                 emit(notice(input.provider, next.value));
+              // Signed in is shown at once; choosing models can take seconds and happens after.
+              if (next.value.type === "done") reconfigureSoon();
               next = await iterator.next();
             }
           } catch {
@@ -472,8 +481,10 @@ export function engineHandlers(
               loginSessions.delete(input.provider);
           }
         })();
-        if (step.value?.type === "done" && options.auto) await reconfigure();
-        return step.value ?? { type: "error" as const, message: "no-event" };
+        if (step.value?.type === "done") reconfigureSoon();
+        return step.value
+          ? notice(input.provider, step.value)
+          : { provider: input.provider, type: "error", message: "no-event" };
       } catch {
         if (loginSessions.get(input.provider) === session)
           loginSessions.delete(input.provider);

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import {
@@ -129,6 +129,19 @@ export function EnginesStep({
   };
   const summary = engineSummaryText(summaryInput);
   const summaryLines = engineSummaryLines(summaryInput);
+  // After a sign-in the notice belongs next to the setup card the student is looking at, not above the plan list.
+  const noticeBelowSetup = picking && engine !== null;
+  const notice =
+    toAcknowledge.length > 0 ? (
+      <ScrollIntoView>
+        <EngineNoticePanel
+          engines={toAcknowledge}
+          onDone={() =>
+            void client.invalidateQueries({ queryKey: ["engines"] })
+          }
+        />
+      </ScrollIntoView>
+    ) : null;
   const openOffers = () =>
     void window.pyxis.openExternal(offersPage(i18n.language));
 
@@ -182,14 +195,7 @@ export function EnginesStep({
           </div>
         </div>
       ) : null}
-      {toAcknowledge.length > 0 ? (
-        <EngineNoticePanel
-          engines={toAcknowledge}
-          onDone={() =>
-            void client.invalidateQueries({ queryKey: ["engines"] })
-          }
-        />
-      ) : null}
+      {noticeBelowSetup ? null : notice}
       {overview.isSuccess && !picking ? (
         <div className="px-onboarding-inline">
           <Button shape="round" onClick={() => setAdding(true)}>
@@ -262,6 +268,7 @@ export function EnginesStep({
               onChanged={refresh}
             />
           ) : null}
+          {noticeBelowSetup ? notice : null}
           <div className="px-onboarding-inline">
             <Button
               type="text"
@@ -310,4 +317,13 @@ export function EnginesStep({
       ) : null}
     </div>
   );
+}
+
+/** Brings a block that just appeared into view, so a notice below the fold is not missed. */
+function ScrollIntoView({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView({ block: "nearest" });
+  }, []);
+  return <div ref={ref}>{children}</div>;
 }

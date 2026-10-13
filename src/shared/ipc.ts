@@ -437,6 +437,7 @@ export const requests = {
     output: z.object({
       type: z.string(),
       url: z.string().optional(),
+      opened: z.boolean().optional(),
       message: z.string().optional(),
       command: z.array(z.string()).optional(),
     }),
@@ -2045,6 +2046,7 @@ export const broadcasts = {
     provider: z.string(),
     type: z.string(),
     url: z.string().optional(),
+    opened: z.boolean().optional(),
     message: z.string().optional(),
     command: z.array(z.string()).optional(),
   }),

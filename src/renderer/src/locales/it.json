@@ -1546,7 +1546,8 @@
       "title": "Cosa esce da questo computer",
       "intro": "Quando usi un motore, il testo, i brani recuperati e gli allegati escono da questo computer. Pyxis non invia nulla finché non confermi.",
       "item": "{{name}} li invia a {{vendor}}.",
-      "later": "Non ora"
+      "later": "Non ora",
+      "itemRelay": "{{name}} li invia a {{vendor}}, che li passa al produttore del modello che usi (Anthropic, OpenAI o Google)."
     },
     "loading": "Cerco i motori installati.",
     "loadFailed": "Non riesco a leggere i motori.",
@@ -1574,7 +1575,7 @@
     "sendCode": "Invia",
     "errors": {
       "not-installed": "Il programma non è installato.",
-      "not-logged-in": "Accesso richiesto.",
+      "not-logged-in": "Non hai più l'accesso a questo motore. Rifallo in Impostazioni, Motori AI.",
       "unsupported": "Questo motore non è disponibile.",
       "invalid-selection": "La scelta non è valida.",
       "cli-failed": "Il motore ha risposto con un errore.",
@@ -1838,7 +1839,9 @@
       "afterInstall": "Disponibile a installazione finita.",
       "codeHint": "Se il browser mostra un codice, incollalo qui.",
       "waitingTerminal": "Aspetto che tu faccia l'accesso nel terminale…",
-      "terminalUnavailable": "Non sono riuscito ad aprire un terminale. Aprilo tu, scrivi questo e premi Invio:"
+      "terminalUnavailable": "Non sono riuscito ad aprire un terminale. Aprilo tu, scrivi questo e premi Invio:",
+      "waitingBrowser": "Completa l'accesso nel browser. Se non si è aperta nessuna pagina, o l'hai chiusa, riaprila qui sotto.",
+      "reopen": "Riapri la pagina di accesso"
     },
     "antigravity": {
       "open": "Premi il pulsante qui sotto. Si apre una finestra del terminale con Antigravity.",

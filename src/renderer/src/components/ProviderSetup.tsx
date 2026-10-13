@@ -47,18 +47,31 @@ function useEngineSignIn(provider: InstallableProvider, done: () => void) {
   const [codeFor, setCodeFor] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [terminal, setTerminal] = useState<string | null>(null);
+  // The sign-in page, kept so the student can open it again if the tab was closed or never appeared.
+  const [url, setUrl] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState(false);
+  const [detail, setDetail] = useState("");
   const pending = useRef(false);
+  const stopWaiting = () => {
+    pending.current = false;
+    setWaiting(false);
+    setUrl(null);
+  };
 
   function handle(event: {
     provider?: string;
     type: string;
     url?: string;
+    opened?: boolean;
+    message?: string;
     command?: string[];
   }) {
     if (event.provider !== undefined && event.provider !== provider) return;
     if (event.type === "open-url" && event.url) {
-      void window.pyxis.openExternal(event.url);
-      setStatus(t("engines.waitingSignIn"));
+      // Claude Code and Codex open the page themselves; opening it again gave the student two tabs.
+      if (!event.opened) void window.pyxis.openExternal(event.url);
+      setUrl(event.url);
+      setStatus(t("setup.signIn.waitingBrowser"));
     }
     if (event.type === "code-prompt") {
       setCodeFor(provider);
@@ -69,15 +82,17 @@ function useEngineSignIn(provider: InstallableProvider, done: () => void) {
       setStatus(t("setup.signIn.waitingTerminal"));
     }
     if (event.type === "done") {
-      pending.current = false;
+      stopWaiting();
       setStatus(null);
       setCodeFor(null);
       setTerminal(null);
       done();
     }
     if (event.type === "error") {
-      pending.current = false;
+      stopWaiting();
       setStatus(null);
+      setCodeFor(null);
+      setDetail(event.message ?? "");
       setFailed(true);
     }
   }
@@ -91,17 +106,28 @@ function useEngineSignIn(provider: InstallableProvider, done: () => void) {
   );
 
   function start() {
+    if (pending.current) return Promise.resolve();
     pending.current = true;
+    setWaiting(true);
     setFailed(false);
+    setDetail("");
     setStatus(t("engines.waitingSignIn"));
     return invoke("engines.login", { provider }).then(
       (event) => handle({ ...event, provider }),
       () => {
-        pending.current = false;
+        stopWaiting();
         setStatus(null);
         setFailed(true);
       },
     );
+  }
+
+  function cancel() {
+    void invoke("engines.cancelLogin", { provider }).catch(() => undefined);
+    stopWaiting();
+    setStatus(null);
+    setCodeFor(null);
+    setTerminal(null);
   }
 
   const codeForm = codeFor ? (
@@ -127,7 +153,17 @@ function useEngineSignIn(provider: InstallableProvider, done: () => void) {
       </Button>
     </form>
   ) : null;
-  return { status, failed, terminal, codeForm, start };
+  return {
+    status,
+    failed,
+    detail,
+    terminal,
+    url,
+    waiting,
+    codeForm,
+    start,
+    cancel,
+  };
 }
 
 function useInstall(provider: InstallableProvider, done: () => void) {
@@ -221,11 +257,14 @@ export function ProviderSetup({
   provider,
   row,
   onChanged,
+  titled = true,
 }: {
   provider: InstallableProvider;
   row: Engine | undefined;
   /** Something changed on disk or in the account: refresh the engine list. */
   onChanged: () => void;
+  /** False inside a dialog that already shows the same title. */
+  titled?: boolean;
 }) {
   const { t } = useTranslation();
   const name = row?.name ?? fallbackNames[provider];
@@ -254,7 +293,10 @@ export function ProviderSetup({
   return (
     <section className="px-setup" aria-labelledby={`setup-${provider}`}>
       <div className="px-setup-head">
-        <h2 className="title-3" id={`setup-${provider}`}>
+        <h2
+          className={titled ? "title-3" : "visually-hidden"}
+          id={`setup-${provider}`}
+        >
           {t("setup.title", { name })}
         </h2>
         <p className="small px-setup-muted">{t(`setup.plan.${provider}`)}</p>
@@ -355,6 +397,7 @@ export function ProviderSetup({
                 <Button
                   type="primary"
                   shape="round"
+                  loading={signIn.waiting}
                   onClick={() => void signIn.start()}
                 >
                   {t("setup.signIn.action", { account })}
@@ -362,10 +405,24 @@ export function ProviderSetup({
               </div>
             </>
           )}
-          {!signedIn && signIn.status ? (
-            <p className="small" role="status">
-              {signIn.status}
-            </p>
+          {/* Always present, so screen readers announce each new status. */}
+          <p className="small" role="status">
+            {signedIn ? "" : (signIn.status ?? "")}
+          </p>
+          {!signedIn && signIn.waiting ? (
+            <div className="px-setup-actions">
+              {signIn.url ? (
+                <Button
+                  shape="round"
+                  onClick={() => void window.pyxis.openExternal(signIn.url!)}
+                >
+                  {t("setup.signIn.reopen")}
+                </Button>
+              ) : null}
+              <Button type="text" shape="round" onClick={signIn.cancel}>
+                {t("engines.cancel")}
+              </Button>
+            </div>
           ) : null}
           {!signedIn ? signIn.codeForm : null}
           {!signedIn && signIn.terminal && !terminalSignIn ? (
@@ -375,7 +432,9 @@ export function ProviderSetup({
             </div>
           ) : null}
           {!signedIn && signIn.failed ? (
-            <Notice tone="danger">{t("engines.signInFailed")}</Notice>
+            <Notice tone="danger" details={signIn.detail || undefined}>
+              {t("engines.signInFailed")}
+            </Notice>
           ) : null}
         </SetupStep>
       </ol>

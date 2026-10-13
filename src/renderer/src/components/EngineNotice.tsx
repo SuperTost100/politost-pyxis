@@ -44,7 +44,9 @@ export function useAcknowledge(onDone: () => void) {
       // The reload can take seconds while engines are probed; show the answer now and let the reload confirm it.
       const ids = new Set<string>(engines.map((engine) => engine.id));
       client.setQueryData<NoticeEngine[]>(["engines"], (rows) =>
-        rows?.map((row) => (ids.has(row.id) ? { ...row, acknowledged: true } : row)),
+        rows?.map((row) =>
+          ids.has(row.id) ? { ...row, acknowledged: true } : row,
+        ),
       );
       for (const queryKey of [["engines"], ["engine-features"]])
         void client.invalidateQueries({ queryKey });
@@ -73,10 +75,16 @@ export function EngineNoticeBody({
       <ul className="engine-notice-list">
         {engines.map((engine) => (
           <li key={engine.id}>
-            {t("engines.notice.item", {
-              name: engine.name,
-              vendor: vendors[engine.id as EngineProvider] ?? engine.name,
-            })}
+            {/* Cursor passes the text on to the maker of the model the student picked. */}
+            {t(
+              engine.id === "agent"
+                ? "engines.notice.itemRelay"
+                : "engines.notice.item",
+              {
+                name: engine.name,
+                vendor: vendors[engine.id as EngineProvider] ?? engine.name,
+              },
+            )}
           </li>
         ))}
       </ul>
@@ -96,7 +104,10 @@ export function EngineNoticePanel({
   const { t } = useTranslation();
   const { acknowledge, busy, failed } = useAcknowledge(onDone);
   return (
-    <section className="px-card engine-notice" aria-label={t("engines.notice.title")}>
+    <section
+      className="px-card engine-notice"
+      aria-label={t("engines.notice.title")}
+    >
       <h2 className="engines-summary-title">{t("engines.notice.title")}</h2>
       <EngineNoticeBody engines={engines} failed={failed} />
       <Button
