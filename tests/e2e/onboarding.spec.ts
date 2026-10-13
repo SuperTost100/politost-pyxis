@@ -70,6 +70,21 @@ async function launch(
 }
 
 async function noAxeViolations(page: Page) {
+  // A dialog that is still fading in can measure as low contrast, so wait for finite animations to end first.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter(
+              (animation) =>
+                animation.playState === "running" &&
+                animation.effect?.getTiming().iterations !== Infinity,
+            ).length,
+      ),
+    )
+    .toBe(0);
   const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
     .violations;
   expect(

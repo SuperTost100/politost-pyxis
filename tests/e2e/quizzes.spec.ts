@@ -457,18 +457,21 @@ test("quiz screens in both languages and themes", async () => {
       await expect(page.locator(".px-quiz-feedback.is-correct")).toBeVisible();
       await shoot("correct");
       await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[1], pick: "2" });
-      // The open page saves its own draft half a second after loading, which can land after
-      // this one and move back to the first question, so set it again until it sticks.
-      await expect(async () => {
-        await invoke(page, "study.quizDraft", {
-          attemptId: started.attemptId,
-          planId,
-          picks: { [ids[0]!]: "0", [ids[1]!]: "2" },
-          index: 1,
-        });
-        await page.reload();
-        await expect(page.locator(".px-quiz-feedback.is-wrong")).toBeVisible({ timeout: 10000 });
-      }).toPass({ timeout: 30000 });
+      // An open quiz page saves its own draft shortly after loading and again when it closes, so a draft set while it
+      // is open can be overwritten on a slow runner. Set it with no quiz page open: leave, wait until the page is gone
+      // (its closing save is then already queued ahead of ours), save, and come back.
+      await go(page, "/exams");
+      await expect(page.locator(".px-opt")).toHaveCount(0);
+      await invoke(page, "study.quizDraft", {
+        attemptId: started.attemptId,
+        planId,
+        picks: { [ids[0]!]: "0", [ids[1]!]: "2" },
+        index: 1,
+      });
+      // Reload so the page reads the saved draft instead of the session it cached before leaving.
+      await go(page, view);
+      await page.reload();
+      await expect(page.locator(".px-quiz-feedback.is-wrong")).toBeVisible();
       await shoot("wrong");
       const picks: Record<string, string> = { [ids[0]!]: "0", [ids[1]!]: "2" };
       for (const id of ids.slice(2)) {
