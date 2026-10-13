@@ -31,6 +31,7 @@ import {
   type Wording,
 } from "./openLesson";
 import { answerSmartCheck, smartAnswers, smartSources } from "./smartText";
+import { currentSelfRatings, rateExercise, type SelfRating } from "./selfRating";
 import type { Rating } from "./schedule";
 import { runTurn } from "../engine/funnel";
 import {
@@ -109,10 +110,22 @@ export function studyHandlers(
         : null;
       if (input.generate && scope && runner)
         enqueueExercises(db, runner, scope);
+      const ratings = currentSelfRatings(db, input.topicId);
       return {
-        exercises: topicExercises(db, input.topicId).map(exerciseView),
+        exercises: topicExercises(db, input.topicId).map((exercise) => ({
+          ...exerciseView(exercise),
+          rating: ratings.get(exercise.id) ?? null,
+        })),
         job: scope ? exerciseJob(db, scope) : null,
       };
+    },
+    rateExercise(input: {
+      planId: string;
+      topicId: string;
+      exerciseId: string;
+      rating: SelfRating;
+    }) {
+      return rateExercise(db, input);
     },
     lesson(
       input: {

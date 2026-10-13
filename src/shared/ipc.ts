@@ -909,6 +909,8 @@ export const requests = {
             }),
           ),
           hints: z.array(z.string()),
+          /** The student's "Got it" or "Missed it" from this visit, if any. */
+          rating: z.enum(["got", "missed"]).nullable(),
         }),
       ),
       job: z
@@ -919,6 +921,15 @@ export const requests = {
         })
         .nullable(),
     }),
+  },
+  "study.rateExercise": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      exerciseId: z.string(),
+      rating: z.enum(["got", "missed"]),
+    }),
+    output: z.object({ rating: z.enum(["got", "missed"]) }),
   },
   "tools.check": {
     input: checkClaimSchema,

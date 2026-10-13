@@ -336,6 +336,10 @@ async function dispatchValidated(
       return study?.quizGrading(
         requests["study.quizGrading"].input.parse(input),
       );
+    case "study.rateExercise":
+      return study?.rateExercise(
+        requests["study.rateExercise"].input.parse(input),
+      );
     case "study.flag":
       return study?.flag(requests["study.flag"].input.parse(input));
     case "study.review":

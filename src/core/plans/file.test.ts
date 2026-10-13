@@ -22,6 +22,7 @@ import { importSmartbook, smartbookChapters } from "../sources/smartbook";
 import { loadLesson } from "../study/lesson";
 import { topicExercises } from "../study/exercises";
 import { deleteCard, rateCard } from "../study/cards";
+import { currentSelfRatings, rateExercise } from "../study/selfRating";
 import { planHandlers } from "./handlers";
 import { saveProfile } from "../profile/profile";
 import { planOrigin } from "./views";
@@ -927,6 +928,49 @@ function bookPlan(db: ReturnType<typeof openDatabase>) {
     .get(plan.planId) as { id: string };
   return { planId: plan.planId, topicId: topic.id };
 }
+
+describe("progress with exercise self-ratings", () => {
+  it("round-trips a rating onto the imported exercise, with the same mastery and no gap", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = bookPlan(db);
+    const [exercise] = topicExercises(db, topicId);
+    const at = Date.now() - 3_600_000;
+    rateExercise(db, { planId, topicId, exerciseId: exercise!.id, rating: "missed" }, at);
+    rateExercise(db, { planId, topicId, exerciseId: exercise!.id, rating: "got" }, at + 1000);
+    const before = planMastery(db, planId, at + 2000)[0]!.mastery;
+    expect(before).toBeCloseTo(0.5 / 3.5, 5);
+
+    const file = planFileSchema.parse(JSON.parse(JSON.stringify(exportPlan(db, planId, { progress: true }))));
+    const exported = file.progress!.filter((event) => (event.payload as { evidenceKind?: string }).evidenceKind === "self");
+    expect(exported).toHaveLength(2);
+    expect(exported[1]!.payload).toMatchObject({ exerciseId: exercise!.id, rating: "got", score: 1 });
+    expect(file.exercises?.map((x) => x.id)).toContain(exercise!.id);
+
+    const fresh = openDatabase(":memory:");
+    const copy = importPlan(fresh, file, at + 5000);
+    const copyTopic = (fresh.prepare("SELECT id FROM topics WHERE plan_id = ?").get(copy) as { id: string }).id;
+    const [copied] = topicExercises(fresh, copyTopic);
+    expect(copied!.id).not.toBe(exercise!.id);
+    const events = fresh
+      .prepare("SELECT payload_json FROM learning_events WHERE plan_id = ? AND kind = 'answer_given' ORDER BY created_at")
+      .all(copy)
+      .map((row) => JSON.parse((row as { payload_json: string }).payload_json));
+    expect(events).toHaveLength(2);
+    expect(events[1]).toEqual({
+      exerciseId: copied!.id,
+      rating: "got",
+      score: 1,
+      evidenceKind: "self",
+      questionScores: [{ id: copied!.id, score: 1 }],
+    });
+    expect(currentSelfRatings(fresh, copyTopic, at + 2000).get(copied!.id)).toBe("got");
+    expect(planMastery(fresh, copy, at + 2000)[0]!.mastery).toBeCloseTo(before, 10);
+    syncGaps(fresh, copy, at + 2000);
+    expect(fresh.prepare("SELECT count(*) AS n FROM gaps WHERE plan_id = ?").get(copy)).toEqual({ n: 0 });
+    db.close();
+    fresh.close();
+  });
+});
 
 describe("progress that names removed cards", () => {
   it("exports a rated card that was deleted or soft-removed and still imports with its evidence", () => {
