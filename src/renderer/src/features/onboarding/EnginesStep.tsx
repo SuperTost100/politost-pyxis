@@ -38,12 +38,16 @@ type Plan = (typeof plans)[number]["id"];
 /**
  * Asks which AI the student already pays for, then installs and signs in to the matching engine. It also says what
  * Pyxis found on this computer. It never calls a model: it reads the installed engines and lets core pick the models
- * (`engines.autoConfigure`). `onReady` tells the page whether to offer "Continue" or "I'll do it later".
+ * (`engines.autoConfigure`). `onReady` tells the page whether to offer "Continue" or "I'll do it later". On a rerun
+ * (`again`) the engines the student already set up stay as they are: Pyxis recomputes the automatic choices only if
+ * the set of ready engines changes while the screen is open.
  */
 export function EnginesStep({
   onReady,
+  again = false,
 }: {
   onReady: (ready: boolean) => void;
+  again?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
@@ -85,9 +89,14 @@ export function EnginesStep({
       onReady(readyKey !== "" && toAcknowledge.length === 0);
   }, [overview.isSuccess, readyKey, toAcknowledge.length, onReady]);
 
+  const openedWith = useRef<string | null>(null);
   // Let core choose the models once the set of ready engines is known, and again when it changes.
   useEffect(() => {
     if (!overview.isSuccess) return;
+    if (again) {
+      openedWith.current ??= readyKey;
+      if (readyKey === openedWith.current) return;
+    }
     let live = true;
     void invoke("engines.autoConfigure", {})
       .then(() => {
@@ -98,7 +107,7 @@ export function EnginesStep({
     return () => {
       live = false;
     };
-  }, [overview.isSuccess, readyKey, client]);
+  }, [overview.isSuccess, readyKey, again, client]);
 
   // Core recomputes the choices after the notice is confirmed.
   useEffect(

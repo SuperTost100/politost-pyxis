@@ -70,6 +70,8 @@ Current version is 15. A restored backup is migrated on a staging copy before it
 
 Schema declarations are in `src/core/db/migrations/0001_init.sql`; later changes are in `migrate.ts`. JSON payloads hold typed domain content without a new column for each prompt revision. Card payloads hold full FSRS state. Map payloads hold collections, graph edits, pinned positions and undo state. Attempt payloads hold question snapshots, deadlines, answers and model-grading checkpoints, so reopening does not silently replace the question set.
 
+A seeded card the student deletes is soft-deleted (`cards.removed = 1`, its `seed_key` stays), so a later generation run does not create it again. The Flashcards tab lists these under Removed and can restore them. A hand-made card has no `seed_key` and is deleted outright.
+
 Subjects have a stable saved position. Source documents and passages retain extraction and locator information; the blob hash identifies original bytes. Deleting cited passages is constrained by references. Flags have a target kind as well as an ID so a flagged exercise cannot accidentally suppress a card with the same ID.
 
 `learning_events` is the input for derived mastery, activity and gap calculations. Active-time events count time rather than evidence of knowledge. Flagged exercise evidence is excluded by progress queries. Graph and heatmap buckets use local calendar boundaries. Gap closure's distinct-day rule uses local calendar days too (`study/gaps.ts`). Each gap writes one `gap_opened` and one `gap_closed` event; see [mastery](mastery.md).
