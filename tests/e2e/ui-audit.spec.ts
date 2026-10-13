@@ -88,6 +88,7 @@ const routes = [
   ["export-plan", "/plans/audit-plan"],
   ["export-plan-embed", "/plans/audit-plan"],
   ["practice", "/plans/audit-plan/practice/audit-topic"],
+  ["practice-rated", "/plans/audit-plan/practice/audit-topic"],
   ["lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-rewrite", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-menu", "/plans/audit-plan/lesson/audit-topic"],
@@ -613,6 +614,9 @@ function auditScanBlob(): string {
   );
 }
 
+/** Whether the "practice-rated" state left its self-rating in the audit workspace. */
+let auditRating = false;
+
 /** Cards of a second subject and of an exam with no subject, for the flashcard browser only. Every other state removes them. */
 function prepareCardBrowser(name: string) {
   withDb((db) => {
@@ -644,6 +648,27 @@ function prepareCardBrowser(name: string) {
 
 function prepareState(name: string) {
   prepareCardBrowser(name);
+  // A rating from this visit shows as chosen on the practice page; every other state starts without one.
+  if (name === "practice-rated" || auditRating)
+    withDb((db) => {
+      db.exec(
+        "DELETE FROM learning_events WHERE json_extract(payload_json, '$.evidenceKind') = 'self'",
+      );
+      if (name === "practice-rated")
+        db.prepare(
+          "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('audit-self-rating','answer_given','audit-plan','audit-topic',?,?)",
+        ).run(
+          JSON.stringify({
+            exerciseId: "audit-exercise",
+            rating: "got",
+            score: 1,
+            evidenceKind: "self",
+            questionScores: [{ id: "audit-exercise", score: 1 }],
+          }),
+          Date.now(),
+        );
+    });
+  auditRating = name === "practice-rated";
   if (name.startsWith("library")) {
     // A stored syllabus comparison, keyed the way the core keys it: the source version and each plan's compared texts.
     withDb((db) => {
@@ -1313,6 +1338,17 @@ async function openState(page: Page, name: string) {
           .last(),
       ).toBeVisible();
       break;
+    case "practice-rated": {
+      const got = page.getByRole("button", {
+        name: both("Ce l'ho fatta", "Got it"),
+      });
+      const missed = page.getByRole("button", {
+        name: both("Non ce l'ho fatta", "Missed it"),
+      });
+      await expect(got).toHaveAttribute("aria-pressed", "true");
+      await expect(missed).toHaveAttribute("aria-pressed", "false");
+      break;
+    }
     case "lesson-menu":
       await page
         .getByRole("button", { name: both("Altre azioni", "More actions") })
@@ -1935,6 +1971,16 @@ async function keyboardCheck(page: Page, name: string) {
     await page.keyboard.press("1");
     await expect(first).toHaveAttribute("aria-pressed", "true");
     await expect(second).toHaveAttribute("aria-pressed", "false");
+  }
+  if (name === "practice-rated") {
+    // Changing the rating moves the pressed state and keeps focus on the button that was used.
+    const missed = page.getByRole("button", {
+      name: both("Non ce l'ho fatta", "Missed it"),
+    });
+    await missed.focus();
+    await page.keyboard.press("Space");
+    await expect(missed).toHaveAttribute("aria-pressed", "true");
+    await expect(missed).toBeFocused();
   }
   if (name === "practice") {
     const reveal = page

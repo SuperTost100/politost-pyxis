@@ -834,7 +834,12 @@
     "interrupted": "Writing was interrupted. Retry to continue.",
     "failed": "The exercises could not be written. Check the selected engine or retry.",
     "emptyGenerate": "The book has no exercises for this topic. Pyxis can write some from your sources.",
-    "generate": "Write exercises"
+    "generate": "Write exercises",
+    "rateLabel": "How did it go?",
+    "got": "Got it",
+    "missed": "Missed it",
+    "rateHint": "Optional. It counts a little toward your progress.",
+    "rateFailed": "Your rating was not saved. Try again."
   },
   "plans": {
     "export": "Export",

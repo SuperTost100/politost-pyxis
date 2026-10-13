@@ -834,7 +834,12 @@
     "interrupted": "La scrittura si è interrotta. Riprova per continuare.",
     "failed": "Non sono riuscito a scrivere gli esercizi. Controlla il motore scelto o riprova.",
     "emptyGenerate": "Il libro non ha esercizi per questo argomento. Pyxis può scriverne alcuni dalle tue fonti.",
-    "generate": "Scrivi esercizi"
+    "generate": "Scrivi esercizi",
+    "rateLabel": "Com'è andata?",
+    "got": "Ce l'ho fatta",
+    "missed": "Non ce l'ho fatta",
+    "rateHint": "Facoltativo. Conta un po' per i tuoi progressi.",
+    "rateFailed": "La valutazione non è stata salvata. Riprova."
   },
   "plans": {
     "export": "Esporta",
