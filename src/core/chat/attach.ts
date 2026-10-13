@@ -205,6 +205,8 @@ export async function stageFiles(
     }
     const extracted = await extractDocument(filePath, ext, bytes, signal);
     signal?.throwIfAborted();
+    // A scan has no text to answer from, and the chat cannot run page-by-page OCR. Say so instead of attaching an empty document.
+    if (extracted.scanned) throw new IpcError("attach-scanned", "errors.attachScanned", { name: basename(filePath) });
     documents.push({ filePath, ext, bytes, extracted });
   }
   signal?.throwIfAborted();

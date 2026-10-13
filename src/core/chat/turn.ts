@@ -1,6 +1,6 @@
 import { activeSimulation } from "../study/simulation";
 import { splitChecks, solverChecks } from "./checks";
-import type { AnchoredCheck } from "../../shared/math-check";
+import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { splitCitationGroups } from "../../shared/smart-text";
@@ -10,6 +10,7 @@ import { capabilityWarning } from "../engine/capabilities";
 import { selectionFor } from "../engine/selection";
 import type { Embedder, PassageHit } from "../sources/retrieve";
 import { contentWords, retrieveWithModel } from "../sources/retrieve";
+import { sha256 } from "../sources/quality";
 import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
 import { deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 import { contentLanguage, planLanguage } from "../engine/prompts";
@@ -79,6 +80,12 @@ type AskInput = {
 
 /** Passages a chat turn sends to the model. Questions that ask for a full explanation need more than the default eight. */
 const CHAT_PASSAGES = 12;
+/** Passages of a document attached to this turn that always go with it, whatever the question says. */
+const ATTACHED_PASSAGES = 4;
+/** At most this many passages are added for this turn's documents, on top of the ones retrieval found. */
+const ATTACHED_TOTAL = 12;
+/** Characters of earlier turns sent with a question. Whole messages are kept, newest first. */
+const HISTORY_CHARS = 6000;
 
 /**
  * What the reply message records, and so whether the "general knowledge" badge shows. The badge is only for a turn where
@@ -100,7 +107,8 @@ export function replyGrounding(turn: {
 }
 
 function splitFollowups(text: string): { body: string; followups: string[] } {
-  const match = text.match(/<followups>([\s\S]*?)<\/followups>/i);
+  // A reply cut short, or a model that forgets the closing tag, still has its suggestions read and kept out of the text.
+  const match = text.match(/<followups>([\s\S]*?)(?:<\/followups>|$)/i);
   if (!match?.[1]) return { body: text.trim(), followups: [] };
   const followups = match[1]
     .split("\n")
@@ -110,21 +118,90 @@ function splitFollowups(text: string): { body: string; followups: string[] } {
   return { body: text.replace(match[0], "").trim(), followups };
 }
 
+/**
+ * The chat so far, as the model reads it: the question being answered and the reply being replaced are left out, and an
+ * answer loses its check blocks and suggestions. Messages are kept whole, newest first, while they fit; only a newest
+ * message longer than the whole budget is cut, at its end.
+ */
 function historyText(
   db: Database.Database,
   chatId: string,
-  excludeId = "",
+  exclude: string[],
 ): string {
+  const ids = exclude.filter(Boolean);
   const rows = db
     .prepare(
-      `SELECT role, body FROM messages WHERE chat_id = ? AND id != ? ORDER BY created_at DESC LIMIT 8`,
+      `SELECT role, body FROM messages WHERE chat_id = ?${
+        ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""
+      } ORDER BY created_at DESC LIMIT 8`,
     )
-    .all(chatId, excludeId) as Array<{ role: string; body: string }>;
-  return rows
-    .reverse()
-    .map((row) => `${row.role}: ${splitChecks(row.body).body}`)
-    .join("\n")
-    .slice(-6000);
+    .all(chatId, ...ids) as Array<{ role: string; body: string }>;
+  const lines: string[] = [];
+  let used = 0;
+  for (const row of rows) {
+    const body =
+      row.role === "assistant"
+        ? stripCheckFences(splitFollowups(splitChecks(row.body).body).body).trim()
+        : row.body;
+    const line = `${row.role}: ${body}`;
+    if (used + line.length > HISTORY_CHARS) {
+      if (lines.length === 0) lines.push(`${line.slice(0, HISTORY_CHARS - 1)}…`);
+      break;
+    }
+    lines.push(line);
+    used += line.length + 1;
+  }
+  return lines.reverse().join("\n");
+}
+
+/**
+ * Passages of the documents attached to this turn, so a question like "summarise this" sees the file even when its
+ * words match nothing in it: the best matches retrieval found, then the best matches within each document, then its
+ * opening passages, up to ATTACHED_PASSAGES each.
+ */
+async function attachedPassages(
+  db: Database.Database,
+  text: string,
+  sourceIds: string[],
+  found: PassageHit[],
+  embed: AskInput["embed"],
+): Promise<PassageHit[]> {
+  const opening = db.prepare(
+    `SELECT p.id, p.source_id, p.text, p.section_path, p.locator_json FROM passages p
+     WHERE p.source_id = ? AND p.document_id = (
+       SELECT id FROM source_documents WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1
+     )
+     ORDER BY p.rowid LIMIT ?`,
+  );
+  const taken = new Set(found.map((hit) => hit.id));
+  const added: PassageHit[] = [];
+  for (const sourceId of sourceIds) {
+    const within = await retrieveWithModel(db, text, { sourceIds: [sourceId], embed, limit: ATTACHED_PASSAGES });
+    const first = (
+      opening.all(sourceId, ATTACHED_PASSAGES) as Array<{
+        id: string;
+        source_id: string;
+        text: string;
+        section_path: string | null;
+        locator_json: string | null;
+      }>
+    ).map((row) => ({
+      id: row.id,
+      sourceId: row.source_id,
+      text: row.text,
+      sectionPath: row.section_path,
+      locator: row.locator_json ? (JSON.parse(row.locator_json) as PassageHit["locator"]) : {},
+    }));
+    let have = found.filter((hit) => hit.sourceId === sourceId).length;
+    for (const hit of [...within.hits, ...first]) {
+      if (have >= ATTACHED_PASSAGES || added.length >= ATTACHED_TOTAL) break;
+      if (taken.has(hit.id)) continue;
+      taken.add(hit.id);
+      added.push(hit);
+      have += 1;
+    }
+  }
+  return added;
 }
 
 const FOLLOW = new Set([
@@ -274,18 +351,24 @@ function ensureChat(
   chatId: string | undefined,
   title: string,
   now: number,
-) {
+): { id: string; created: boolean } {
   if (chatId) {
     const existing = db
       .prepare(`SELECT id FROM chats WHERE id = ?`)
       .get(chatId) as { id: string } | undefined;
-    if (existing) return existing.id;
+    if (existing) return { id: existing.id, created: false };
   }
   const id = uuidv7(now);
   db.prepare(
     `INSERT INTO chats (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)`,
   ).run(id, chatTitleFrom(title), now, now);
-  return id;
+  return { id, created: true };
+}
+
+/** A reply stored for a chat deleted while it was written would fail on the missing chat. The turn ends as cancelled instead. */
+function requireChat(db: Database.Database, chatId: string) {
+  if (!db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(chatId))
+    throw new DOMException("chat-deleted", "AbortError");
 }
 
 async function gather(
@@ -378,7 +461,29 @@ export async function askTurn(
   requireTutorAvailable(db);
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
   const now = Date.now();
-  const chatId = ensureChat(db, input.chatId, input.text, now);
+  const chat = ensureChat(db, input.chatId, input.text, now);
+  try {
+    return await answer(db, input, replacing, chat.id, now);
+  } catch (err) {
+    // A chat this turn created and could not answer is removed with its question and attachments. The student's
+    // message goes back to the composer, so a retry starts one new chat instead of leaving an empty one behind.
+    if (
+      chat.created &&
+      db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(chat.id) &&
+      !db.prepare(`SELECT 1 FROM messages WHERE chat_id = ? AND role = 'assistant'`).get(chat.id)
+    )
+      deleteChat(db, input.workspace ?? "", chat.id);
+    throw err;
+  }
+}
+
+async function answer(
+  db: Database.Database,
+  input: AskInput,
+  replacing: { assistantId: string; userId: string } | undefined,
+  chatId: string,
+  now: number,
+): Promise<AskResult> {
   const prior = readScope(db, chatId);
   const planId = input.planId === undefined ? prior.planId : input.planId;
   if (
@@ -469,10 +574,27 @@ export async function askTurn(
         attach.run(uuidv7(now + 4), userMessageId, image.original.sha, image.original.mime, now);
     }
     db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
-    return { sourceIds, subject };
+    return { sourceIds, subject, userMessageId, attachedIds };
   };
-  const { sourceIds, subject } = staged
-    ? commitStaged(db, input.workspace!, staged, persist).value
+  // A document this chat already holds (a retry after a failed turn sends the same file again) is reused, not stored twice.
+  // Nothing awaits between this lookup and the commit, so the source cannot be removed in between.
+  const reused: string[] = [];
+  if (staged) {
+    const held = db.prepare(
+      `SELECT id FROM sources WHERE blob_sha = ? AND library = 0 AND status = 'ready' AND id IN (SELECT value FROM json_each(?))`,
+    );
+    const scope = JSON.stringify(readScope(db, chatId).ids);
+    staged = {
+      ...staged,
+      documents: staged.documents.filter((doc) => {
+        const row = held.get(sha256(doc.bytes), scope) as { id: string } | undefined;
+        if (row) reused.push(row.id);
+        return !row;
+      }),
+    };
+  }
+  const { sourceIds, subject, userMessageId, attachedIds } = staged
+    ? commitStaged(db, input.workspace!, staged, (ids) => persist([...new Set([...reused, ...ids])])).value
     : db.transaction(() => persist([]))();
 
   const seesImage =
@@ -482,12 +604,19 @@ export async function askTurn(
   const thisTurnFile = notes.length > 0 || seesImage;
   // The passages are the main reference, not a gate: a question they do not cover is still answered from the model's own
   // knowledge, and the reply shows it by citing nothing (see replyGrounding).
-  const found =
+  const gathered =
     input.allowGeneral ||
     (thisTurnFile && sourceIds.length === 0) ||
     (planId && sourceIds.length === 0)
       ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
       : await gather(db, chatId, input.text, sourceIds, input.embed);
+  const found = {
+    ...gathered,
+    hits: [
+      ...gathered.hits,
+      ...(await attachedPassages(db, input.text, attachedIds, gathered.hits, input.embed)),
+    ],
+  };
   const selected = sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
 
   const citations: ChatCitation[] = found.hits.map((hit, index) => ({
@@ -527,7 +656,7 @@ export async function askTurn(
     selected && !input.allowGeneral && !thisTurnFile && citations.length === 0
       ? "No passage matches this question.\n\n"
       : "";
-  const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}${noPassages}\n\nEarlier turns:\n${historyText(db, chatId, replacing?.assistantId)}\n\nQuestion:\n${input.text}`;
+  const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}${noPassages}\n\nEarlier turns:\n${historyText(db, chatId, [userMessageId, replacing?.assistantId ?? ""])}\n\nQuestion:\n${input.text}`;
   const selection = selectionFor(db, "chat");
   let streamed = "";
   let result;
@@ -598,6 +727,7 @@ export async function askTurn(
       : [];
 
   requireTutorAvailable(db);
+  requireChat(db, chatId);
   const stored = `${parsed.body}${
     parsed.followups.length > 0
       ? `\n<followups>\n${parsed.followups.join("\n")}\n</followups>`
@@ -674,6 +804,7 @@ function finishReply(
     now: number;
   },
 ): AskResult {
+  requireChat(db, chatId);
   const parsed = splitFollowups(text);
   const messageId = uuidv7(meta.now + 2);
   const used = new Set(

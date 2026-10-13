@@ -247,6 +247,28 @@ describe("ASK-04 a chat document is read off the core thread, then stored", () =
     });
   });
 
+  it("refuses a scanned PDF by name instead of attaching a document with no text", async () => {
+    const workspace = scratch();
+    const db = openDatabase(":memory:");
+    const path = join(workspace, "scansione.pdf");
+    writeFileSync(path, "%PDF-scanned pages only");
+    const refused = attach(db, workspace, path, async () => ({
+      pages: [{ text: "", locator: { page: 1 }, section: "" }],
+      scanned: true,
+    }));
+    await expect(refused).rejects.toBeInstanceOf(IpcError);
+    await expect(refused).rejects.toMatchObject({
+      code: "attach-scanned",
+      messageKey: "errors.attachScanned",
+      params: { name: "scansione.pdf" },
+    });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM sources`).get()).toEqual({
+      n: 0,
+    });
+    expect(readdirSync(workspace)).toEqual(["scansione.pdf"]);
+    db.close();
+  });
+
   it("refuses a file over the attachment cap before any worker starts", async () => {
     const workspace = scratch();
     const db = openDatabase(":memory:");
