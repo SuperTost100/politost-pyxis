@@ -20,9 +20,8 @@ Each release lists what changed for students, in English and Italian. The GitHub
 
 #### Exams
 
-- Pyxis no longer picks "Within 10 days" for you. Nothing is selected on the exam step, and Continue waits until you choose a quick option, a day or a month. Before, every plan got a deadline whether you had one or not.
-- If you only know the month, pick it with "Or just the month, if the day isn't set yet". The plan aims to have you ready by the 1st. The exams list and the plan header say "Exam in March 2027" instead of counting days, and the exam counts as past only when the month ends.
-- In the plan's settings, "I only know the month" switches the date to a month. Unticking it keeps the date as an exact day.
+- Pyxis no longer picks "Within 10 days" for you. Nothing is selected on the exam step, and Continue waits until you choose. Before, every plan got a deadline whether you had one or not.
+- If your exam has no date yet, choose "No date yet". The plan has no deadline, and you can add the date later in the plan's settings.
 - On the day of the exam the plan says "Exam today", and after it "Past exam", instead of "0 days".
 - In the plan's settings, past days can't be picked, and a shared plan keeps its day in every time zone. Plan titles are limited to 200 characters everywhere, and the topic editor stops at 30 subtopics instead of refusing the plan later.
 
@@ -88,9 +87,8 @@ Each release lists what changed for students, in English and Italian. The GitHub
 
 #### Esami
 
-- Pyxis non sceglie più "Entro 10 giorni" al posto tuo. Nel passo dell'esame non c'è nulla di selezionato e Continua aspetta che tu scelga un'opzione rapida, un giorno o un mese. Prima ogni piano riceveva una scadenza, che tu l'avessi o no.
-- Se sai solo il mese, sceglilo con "Oppure solo il mese, se il giorno non è ancora fissato". Il piano punta a farti arrivare pronto entro il giorno 1. L'elenco degli esami e l'intestazione del piano dicono "Esame a marzo 2027" invece di contare i giorni, e l'esame risulta passato solo a fine mese.
-- Nelle impostazioni del piano, "So solo il mese" trasforma la data in un mese. Se togli la spunta, la data resta come giorno preciso.
+- Pyxis non sceglie più "Entro 10 giorni" al posto tuo. Nel passo dell'esame non c'è nulla di selezionato e Continua aspetta la tua scelta. Prima ogni piano riceveva una scadenza, che tu l'avessi o no.
+- Se il tuo esame non ha ancora una data, scegli "Nessuna data per ora". Il piano non ha scadenza e puoi aggiungere la data dopo nelle impostazioni del piano.
 - Il giorno dell'esame il piano dice "Esame oggi", e dopo "Esame passato", invece di "0 giorni".
 - Nelle impostazioni del piano non si possono scegliere giorni passati, e un piano condiviso mantiene il suo giorno in ogni fuso orario. I titoli dei piani sono limitati a 200 caratteri ovunque, e l'editor degli argomenti si ferma a 30 sottoargomenti invece di rifiutare il piano dopo.
 
