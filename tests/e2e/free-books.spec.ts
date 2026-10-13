@@ -45,7 +45,7 @@ function booksSite(options: { tamper?: boolean } = {}) {
           id: "fisica-demo",
           title: "Fisica di prova",
           subject: "Fisica",
-          authors: ["Politost"],
+          authors: ["PoliTost"],
           version: "1.0.0",
           chapters: 1,
           package: "books/fisica-demo@1.0.0.ptsb",
