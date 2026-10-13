@@ -445,7 +445,7 @@ export function AskPage() {
           staleTime: 0,
         })
         .catch(() => undefined);
-      if (stillHere && result.message) announce(result.message.body);
+      if (stillHere && result.message) announce();
       void client.invalidateQueries({ queryKey: ["chats"] });
       if (stillHere && result.chatId !== chatNow.current) {
         arrived.current = result.chatId;
@@ -476,8 +476,11 @@ export function AskPage() {
     }
   }
 
-  function announce(body: string) {
-    setAnnouncement(`${t("components.chat.pyxis")}: ${replyPlainText(body)}`);
+  // A short notice, not the reply itself: the reply is already in the message list, and a second copy of its text would
+  // be read twice and confuse anything that looks the reply up by its words.
+  function announce() {
+    setAnnouncement("");
+    window.setTimeout(() => setAnnouncement(t("ask.replied")), 50);
   }
 
   function regenerate() {
@@ -528,7 +531,7 @@ export function AskPage() {
           .getQueryData<Awaited<ReturnType<typeof invoke<"chats.read">>>>(["chat", chatId])
           ?.messages.at(-1);
         if (chatNow.current === chatId && reply.covered && last?.role === "assistant")
-          announce(last.body);
+          announce();
       })
       .catch((err: unknown) => {
         if (errorKey(err) !== "errors.aborted" && dropped.current !== chatId) fail(err);

@@ -174,7 +174,8 @@
     "subjectDropped": "{{name}} posata nella posizione {{position}}.",
     "subjectDragCancelled": "Riordino annullato.",
     "retry": "Riprova",
-    "attachFilter": "Foto e documenti"
+    "attachFilter": "Foto e documenti",
+    "replied": "Pyxis ha risposto."
   },
   "exams": {
     "view": "Mostra",

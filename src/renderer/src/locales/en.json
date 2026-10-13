@@ -174,7 +174,8 @@
     "subjectDropped": "{{name}} placed at position {{position}}.",
     "subjectDragCancelled": "Reordering cancelled.",
     "retry": "Try again",
-    "attachFilter": "Photos and documents"
+    "attachFilter": "Photos and documents",
+    "replied": "Pyxis replied."
   },
   "exams": {
     "view": "Show",
