@@ -25,7 +25,7 @@ export type WorkspaceMove = {
   recoveryPath(): Promise<string>;
 };
 
-function inside(parent: string, child: string): boolean {
+export function inside(parent: string, child: string): boolean {
   const part = relative(parent, child);
   return (
     part === "" ||

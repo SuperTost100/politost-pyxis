@@ -48,7 +48,7 @@ The app is in English and Italian, with dark and light themes.
 
 **Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. The Σ button opens a formula keyboard, which also works in quiz, practice and simulation answers. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
 
-**Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Back up the whole workspace to one ZIP and restore it on another computer.
+**Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Back up the whole workspace to one ZIP and restore it on another computer. While Pyxis is open it also backs up once a day on its own, into `Pyxis backups` in your Documents folder, and keeps the three newest copies.
 
 Pyxis reads PDF, Word (`.docx`), PowerPoint (`.pptx`), Markdown, plain text, web pages, photos (JPEG, PNG, WebP, HEIC) and [PoliTost smartbooks](https://github.com/SuperTost100/politost-content) (`.ptsb`), which keep their chapters and exercises. Scanned pages go through local OCR or your model's vision support.
 
@@ -127,7 +127,7 @@ Pyxis runs the CLIs in text-only mode, so they can't use their shell, file or we
 
 ## Your data
 
-Sources, plans, progress and generated material stay in a local workspace. Settings → Data shows its path and lets you move it.
+Sources, plans, progress and generated material stay in a local workspace. Settings → Data shows its path and lets you move it. It also controls automatic backups: turn them off, pick another folder (not one inside the workspace or the app's own data), or back up now.
 
 These actions send data off your computer:
 

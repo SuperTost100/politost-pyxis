@@ -27,6 +27,31 @@ export type KeyStatus = {
   configured: Array<"anthropic" | "openai">;
 };
 
+/** Why an automatic backup did not finish. The renderer names the reason and the fix. */
+export type AutoBackupFailure =
+  | "folder-missing"
+  | "folder-inside-data"
+  | "permission"
+  | "disk-full"
+  | "too-large"
+  | "too-many-files"
+  | "failed";
+
+export type AutoBackupStatus = {
+  enabled: boolean;
+  /** The folder backups go to: the chosen one, or "Pyxis backups" in Documents. */
+  folder: string;
+  isDefaultFolder: boolean;
+  running: boolean;
+  lastSuccessAt: number | null;
+  last:
+    | { at: number; ok: true; size: number }
+    | { at: number; ok: false; reason: AutoBackupFailure; size?: number }
+    | null;
+  /** A failed automatic backup the student has not dismissed yet. */
+  notice: AutoBackupFailure | null;
+};
+
 export interface PyxisBridge {
   platform: string;
   dev: boolean;
@@ -67,6 +92,17 @@ export interface PyxisBridge {
     | { status: "moved"; path: string; cleanupPending: boolean }
   >;
   wipeWorkspace(): Promise<"wiped">;
+  autoBackups: {
+    status(): Promise<AutoBackupStatus>;
+    setEnabled(enabled: boolean): Promise<AutoBackupStatus>;
+    /** Opens a folder picker. Rejects with `backup-folder-inside-data`, `backup-folder-permission` or `backup-folder-missing`. */
+    chooseFolder(): Promise<AutoBackupStatus | null>;
+    openFolder(): Promise<void>;
+    /** Backs up to the automatic folder now, without waiting for jobs. */
+    runNow(): Promise<AutoBackupStatus>;
+    dismissNotice(): Promise<AutoBackupStatus>;
+    onStatus(cb: (status: AutoBackupStatus) => void): () => void;
+  };
   fetchPlan(url: string): Promise<string>;
   saveArtifact(input: {
     filename: string;
@@ -100,6 +136,13 @@ export const mainChannels = {
   workspacePath: "workspace:path",
   workspaceMove: "workspace:move",
   workspaceWipe: "workspace:wipe",
+  autoBackupStatus: "auto-backup:status",
+  autoBackupSetEnabled: "auto-backup:set-enabled",
+  autoBackupChooseFolder: "auto-backup:choose-folder",
+  autoBackupOpenFolder: "auto-backup:open-folder",
+  autoBackupRunNow: "auto-backup:run-now",
+  autoBackupDismiss: "auto-backup:dismiss",
+  autoBackupChanged: "auto-backup:changed",
   planFetch: "plan:fetch",
   artifactSave: "artifact:save",
   pdfExport: "artifact:pdf",

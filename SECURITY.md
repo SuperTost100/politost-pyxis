@@ -12,6 +12,8 @@ Electron stores app configuration under its OS-specific `userData` directory. It
 
 API keys are encrypted with Electron `safeStorage` and stored in `userData/keys.json`, outside the workspace. Main decrypts them for the core provider adapter; renderer queries cannot read the key file. Linux refuses key storage when only the plaintext `basic_text` backend is available. CLI-provider credentials belong to the CLI and its authentication system.
 
+Automatic backups are on by default. Once a day while the app is open, main writes `pyxis-auto-backup-<date>-<time>.zip` to `Pyxis backups` in the Documents folder, or to the folder chosen in Settings > Data, and deletes older files with exactly that name pattern beyond the newest three. It never deletes other files in that folder or manual backups. A folder inside the workspace or inside `userData` is refused. The setting, the folder and the last result live in `userData/backups.json`, outside the workspace.
+
 Workspace backups include the study database and source blobs. They omit API keys, downloaded runtime/model caches, scratch files and the exports folder. Restore keeps runtime/model caches already present on the destination computer. Plan exports omit progress unless selected, but include saved study content and cited source excerpts. Embedding original sources requires a separate export choice. The plan export dialog also offers a profile-name choice for its author metadata. Treat backups, PDFs, Anki decks and shared plans as private documents when their content is private.
 
 ## Network requests

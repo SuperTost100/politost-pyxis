@@ -398,17 +398,64 @@ function vacuumInto(db: Database.Database, dest: string): void {
 
 type BlobFile = { name: string; path: string };
 
-/** Lists blob files (names only) after validating names, pairing and metadata. */
-function collectBlobFiles(workspace: string): BlobFile[] {
+/** The hash in a blob or metadata archive name. */
+function shaOf(name: string): string {
+  return name.endsWith(".json") ? name.slice(-69, -5) : name.slice(-64);
+}
+
+/** What a live copy knows about blob use, to tell a blob core deleted after the snapshot from one it never had. */
+type LiveBlobs = {
+  /** Hashes the snapshot uses. */
+  referenced: ReadonlySet<string>;
+  /** Whether the live database still uses a hash. */
+  stillUsed: (sha: string) => boolean;
+};
+
+/**
+ * Lists blob files (names only) after validating names, pairing and metadata. In a live copy core keeps writing and
+ * deleting while this walks: a file that disappears, or a blob without its metadata, is left out when the snapshot does
+ * not use it (core is still writing it, or deleted it). When the snapshot uses it but the live database no longer does,
+ * core deleted it after the snapshot and the copy stops with `backup-changed`. Otherwise it is damage, refused as in a
+ * manual backup.
+ */
+function collectBlobFiles(workspace: string, live?: LiveBlobs): BlobFile[] {
   const blobsRoot = join(workspace, "blobs");
-  const out: BlobFile[] = [];
+  let out: BlobFile[] = [];
   if (!existsSync(blobsRoot)) return out;
   identity(blobsRoot);
+  const vanished = (error: unknown): void => {
+    if (!live || (error as NodeJS.ErrnoException)?.code !== "ENOENT")
+      throw error;
+  };
+  const drop = new Set<string>();
+  const missing = (sha: string, error?: unknown): void => {
+    if (!live) {
+      if (error) throw error;
+      corrupt();
+    }
+    if (!live.referenced.has(sha)) drop.add(sha);
+    else if (!live.stillUsed(sha)) throw new Error("backup-changed");
+    else if (error) throw error;
+    else corrupt();
+  };
 
   const walk = (dir: string) => {
-    for (const name of readdirSync(dir)) {
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch (error) {
+      vanished(error);
+      return;
+    }
+    for (const name of names) {
       const full = join(dir, name);
-      const info = lstatSync(full);
+      let info: ReturnType<typeof lstatSync>;
+      try {
+        info = lstatSync(full);
+      } catch (error) {
+        vanished(error);
+        continue;
+      }
       if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile()))
         throw new Error("backup-unsafe-file");
       // A crash before atomic blob rename can leave an unpublished temporary file.
@@ -438,14 +485,43 @@ function collectBlobFiles(workspace: string): BlobFile[] {
     if (kind !== "blob" && kind !== "meta") corrupt();
     // A crash between the two atomic publications can leave an unpaired blob.
     // Refuse the backup rather than omit recoverable bytes or invent their MIME metadata.
-    if (kind === "blob" && !names.has(`${file.name}.json`)) corrupt();
+    if (kind === "blob" && !names.has(`${file.name}.json`))
+      missing(shaOf(file.name));
     if (kind === "meta") {
-      if (!names.has(file.name.slice(0, -5))) corrupt();
-      if (lstatSync(file.path).size > MAX_META) corrupt();
-      validateMeta(readFileSync(file.path));
+      if (!names.has(file.name.slice(0, -5))) {
+        missing(shaOf(file.name));
+        continue;
+      }
+      let size: number;
+      let bytes: Buffer;
+      try {
+        size = lstatSync(file.path).size;
+        bytes = size > MAX_META ? Buffer.alloc(0) : readFileSync(file.path);
+      } catch (error) {
+        vanished(error);
+        missing(shaOf(file.name), error);
+        continue;
+      }
+      if (size > MAX_META) corrupt();
+      validateMeta(bytes);
     }
   }
+  if (drop.size) out = out.filter((file) => !drop.has(shaOf(file.name)));
   return out;
+}
+
+function openArchiveFile(path: string): number {
+  const fd = openSync(
+    path,
+    fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    if (!fstatSync(fd).isFile()) throw new Error("backup-unsafe-file");
+    return fd;
+  } catch (error) {
+    closeSync(fd);
+    throw error;
+  }
 }
 
 /** Streams a file into the archive; blob bytes must hash to their file name. */
@@ -454,56 +530,207 @@ function addFile(
   name: string,
   path: string,
   budget: { total: number },
+  stopped?: () => boolean,
 ): void {
-  const fd = openSync(
-    path,
-    fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
-  );
+  const fd = openArchiveFile(path);
   try {
-    if (!fstatSync(fd).isFile()) throw new Error("backup-unsafe-file");
-    const entry = new ZipDeflate(name);
-    zip.add(entry);
-    const kind = classify(name);
-    const hash = kind === "blob" ? createHash("sha256") : undefined;
-    const metadata: Uint8Array[] = [];
-    let metadataSize = 0;
-    const buffer = Buffer.allocUnsafe(IO_CHUNK);
-    for (;;) {
-      const n = readSync(fd, buffer, 0, buffer.length, null);
-      if (n === 0) break;
-      budget.total += n;
-      if (budget.total > MAX_EXPANDED)
-        throw new Error(`backup-too-large:${budget.total}`);
-      const chunk = new Uint8Array(buffer.subarray(0, n));
-      hash?.update(chunk);
-      if (kind === "meta") {
-        metadataSize += n;
-        if (metadataSize > MAX_META) corrupt();
-        metadata.push(chunk);
-      }
-      entry.push(chunk, false);
-    }
-    if (kind === "meta") validateMeta(Buffer.concat(metadata));
-    entry.push(new Uint8Array(0), true);
-    if (hash && hash.digest("hex") !== name.slice(-64)) corrupt();
+    addOpenFile(zip, name, fd, budget, stopped);
   } finally {
     closeSync(fd);
   }
 }
 
+function addOpenFile(
+  zip: Zip,
+  name: string,
+  fd: number,
+  budget: { total: number },
+  stopped?: () => boolean,
+): void {
+  const entry = new ZipDeflate(name);
+  zip.add(entry);
+  const kind = classify(name);
+  const hash = kind === "blob" ? createHash("sha256") : undefined;
+  const metadata: Uint8Array[] = [];
+  let metadataSize = 0;
+  const buffer = Buffer.allocUnsafe(IO_CHUNK);
+  for (;;) {
+    if (stopped?.()) throw new Error("backup-cancelled");
+    const n = readSync(fd, buffer, 0, buffer.length, null);
+    if (n === 0) break;
+    budget.total += n;
+    if (budget.total > MAX_EXPANDED)
+      throw new Error(`backup-too-large:${budget.total}`);
+    const chunk = new Uint8Array(buffer.subarray(0, n));
+    hash?.update(chunk);
+    if (kind === "meta") {
+      metadataSize += n;
+      if (metadataSize > MAX_META) corrupt();
+      metadata.push(chunk);
+    }
+    entry.push(chunk, false);
+  }
+  if (kind === "meta") validateMeta(Buffer.concat(metadata));
+  entry.push(new Uint8Array(0), true);
+  if (hash && hash.digest("hex") !== name.slice(-64)) corrupt();
+}
+
+/**
+ * Adds a blob and its metadata together. In a live copy core may delete a blob after the listing (a deleted chat's
+ * attachment). That is harmless when the snapshot does not use it; when it does, the copy would miss bytes it needs, so
+ * the backup stops with `backup-changed` and is tried again later.
+ */
+function addBlobPair(
+  zip: Zip,
+  blob: BlobFile,
+  meta: BlobFile,
+  budget: { total: number },
+  referenced: ReadonlySet<string> | undefined,
+  stopped?: () => boolean,
+): void {
+  const open: number[] = [];
+  try {
+    try {
+      open.push(openArchiveFile(blob.path), openArchiveFile(meta.path));
+    } catch (error) {
+      if (!referenced || (error as NodeJS.ErrnoException).code !== "ENOENT")
+        throw error;
+      if (referenced.has(shaOf(blob.name))) throw new Error("backup-changed");
+      return;
+    }
+    addOpenFile(zip, blob.name, open[0]!, budget, stopped);
+    addOpenFile(zip, meta.name, open[1]!, budget, stopped);
+  } finally {
+    for (const fd of open) closeSync(fd);
+  }
+}
+
+/** Every blob hash the database refers to. */
+function referencedBlobs(db: Database.Database): Set<string> {
+  const rows = db
+    .prepare(
+      `SELECT blob_sha AS sha FROM sources
+       UNION SELECT blob_sha FROM attachments
+       UNION SELECT blob_sha FROM whiteboards
+       UNION SELECT json_extract(tree_json, '$.blobSha') FROM source_documents
+       UNION SELECT json_extract(tree_json, '$.sourceSha') FROM source_documents`,
+    )
+    .all() as Array<{ sha: unknown }>;
+  return new Set(
+    rows
+      .map((row) => row.sha)
+      .filter(
+        (sha): sha is string =>
+          typeof sha === "string" && /^[a-f0-9]{64}$/.test(sha),
+      ),
+  );
+}
+
+/** Whether the live database still refers to a blob. */
+function stillReferenced(db: Database.Database, sha: string): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM sources WHERE blob_sha = ?
+         UNION ALL SELECT 1 FROM attachments WHERE blob_sha = ?
+         UNION ALL SELECT 1 FROM whiteboards WHERE blob_sha = ?
+         UNION ALL SELECT 1 FROM source_documents WHERE json_extract(tree_json, '$.blobSha') = ? OR json_extract(tree_json, '$.sourceSha') = ?
+         LIMIT 1`,
+      )
+      .get(sha, sha, sha, sha, sha) !== undefined
+  );
+}
+
+/** A read-only connection to a database another process (core) keeps writing. It never migrates or writes. */
+function openLiveDatabase(file: string): Database.Database {
+  const db = new Database(file, { readonly: true, fileMustExist: true });
+  try {
+    db.loadExtension(
+      getLoadablePath().replaceAll("app.asar", "app.asar.unpacked"),
+    );
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+}
+
+/** Whether a job is queued or running. An automatic backup waits for them so it does not compete for the disk. */
+export function hasActiveJobs(workspace: string): boolean {
+  const db = openLiveDatabase(join(workspace, "pyxis.db"));
+  try {
+    return (
+      db
+        .prepare(
+          `SELECT 1 FROM jobs WHERE state IN ('queued', 'running') LIMIT 1`,
+        )
+        .get() !== undefined
+    );
+  } finally {
+    db.close();
+  }
+}
+
+export type BackupOptions = {
+  /**
+   * Copy a workspace whose core keeps running. The database is read through its own read-only connection, so VACUUM
+   * INTO copies one committed state while core goes on writing. Blobs are immutable once published and only deleted
+   * when no row uses them, so the copy checks that every blob the snapshot uses made it into the archive.
+   */
+  live?: boolean;
+  /** Checked between chunks. When it returns true the backup stops with `backup-cancelled`. */
+  stopped?: () => boolean;
+  /** Receives the temporary folder before anything is written in it, so a caller that kills the worker can remove it. */
+  onTemporary?: (path: string) => void;
+};
+
 function removeTree(path: string): void {
   if (existsSync(path)) rmSync(path, { recursive: true, force: true });
 }
 
-export function backupWorkspace(workspace: string, destZip: string): void {
+export function backupWorkspace(
+  workspace: string,
+  destZip: string,
+  options: BackupOptions = {},
+): void {
   const dbPath = join(workspace, "pyxis.db");
   const temporary = mkdtempSync(join(dirname(destZip), ".pyxis-backup-"));
+  options.onTemporary?.(temporary);
   const tempDb = join(temporary, "pyxis.db");
   let db: Database.Database | undefined;
   try {
-    db = openDatabase(dbPath);
+    db = options.live ? openLiveDatabase(dbPath) : openDatabase(dbPath);
     vacuumInto(db, tempDb);
-    const blobs = collectBlobFiles(workspace);
+    if (options.stopped?.()) throw new Error("backup-cancelled");
+    let live: LiveBlobs | undefined;
+    if (options.live) {
+      const snapshot = new Database(tempDb, {
+        readonly: true,
+        fileMustExist: true,
+      });
+      try {
+        const source = db;
+        live = {
+          referenced: referencedBlobs(snapshot),
+          stillUsed: (sha) => stillReferenced(source, sha),
+        };
+      } finally {
+        snapshot.close();
+      }
+    }
+    const blobs = collectBlobFiles(workspace, live);
+    if (live) {
+      const listed = new Set(
+        blobs
+          .filter((blob) => classify(blob.name) === "blob")
+          .map((blob) => shaOf(blob.name)),
+      );
+      // A used blob that is not on disk: if the live database still uses it, it was already missing and a manual
+      // backup would copy the workspace the same way. If not, core deleted it after the snapshot.
+      for (const sha of live.referenced)
+        if (!listed.has(sha) && !live.stillUsed(sha))
+          throw new Error("backup-changed");
+    }
     // The message carries the size so the student sees how far over the limit the workspace is.
     const size = [tempDb, ...blobs.map((blob) => blob.path)].reduce(
       (sum, path) => sum + lstatSync(path).size,
@@ -518,8 +745,19 @@ export function backupWorkspace(workspace: string, destZip: string): void {
         if (error) throw error;
         writeAll(fd, chunk);
       });
-      addFile(zip, "pyxis.db", tempDb, budget);
-      for (const blob of blobs) addFile(zip, blob.name, blob.path, budget);
+      addFile(zip, "pyxis.db", tempDb, budget, options.stopped);
+      const byName = new Map(blobs.map((blob) => [blob.name, blob]));
+      for (const blob of blobs) {
+        if (classify(blob.name) !== "blob") continue;
+        addBlobPair(
+          zip,
+          blob,
+          byName.get(`${blob.name}.json`)!,
+          budget,
+          live?.referenced,
+          options.stopped,
+        );
+      }
       zip.end();
       fsyncSync(fd);
     } finally {
