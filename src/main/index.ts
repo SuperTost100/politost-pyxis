@@ -60,6 +60,21 @@ function e2eSeam(): boolean {
   // ponytail: a normal install ignores these paths. The dist test sets PYXIS_E2E=1.
   return !app.isPackaged || process.env["PYXIS_E2E"] === "1";
 }
+/**
+ * The interface language a new profile starts in: the first of Italian or English in the computer's preferred
+ * languages, and English when neither is listed. Tests pin Italian, the language their copy is written in, unless
+ * they list system languages themselves.
+ */
+function systemLanguage(): "it" | "en" {
+  const testing = e2eSeam() && process.env["PYXIS_E2E"] === "1";
+  const forced = testing ? process.env["PYXIS_E2E_SYSTEM_LANGUAGES"] : undefined;
+  const preferred = forced?.split(",") ?? (testing ? ["it"] : app.getPreferredSystemLanguages());
+  for (const tag of preferred) {
+    const primary = tag.trim().toLowerCase().split(/[-_]/)[0];
+    if (primary === "it" || primary === "en") return primary;
+  }
+  return "en";
+}
 const userDataOverride = process.env["PYXIS_USER_DATA"];
 if (userDataOverride) app.setPath("userData", userDataOverride);
 // One Pyxis per profile folder. A second copy would open the same database, mark the first one's running jobs as
@@ -890,6 +905,9 @@ function registerIpc(): void {
   });
   ipcMain.on("app:dev", (event) => {
     event.returnValue = !app.isPackaged;
+  });
+  ipcMain.on("app:system-language", (event) => {
+    event.returnValue = systemLanguage();
   });
   ipcMain.handle("dev:killCore", (event) => {
     if (app.isPackaged) return;
