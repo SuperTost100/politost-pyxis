@@ -6,6 +6,7 @@ import { CanvasLayout } from "../../app/layouts/TaskLayouts";
 import { useAppState } from "../../app/app-state";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
+import { lastAskChat } from "../ask/attachments";
 import { strokeHits } from "./strokes";
 import "./WhiteboardPage.css";
 
@@ -150,7 +151,9 @@ export function WhiteboardPage() {
       // Only Attach hands the image to Ask, and Ask takes it together with the staged file.
       if (attach) {
         sessionStorage.setItem("pyxis-board-png", url);
-        navigate("/ask");
+        // Back to the chat the student came from, where their draft and picked files wait.
+        const chat = lastAskChat(sessionStorage);
+        navigate(chat ? `/ask/${chat}` : "/ask");
       }
     } catch {
       setError(true);

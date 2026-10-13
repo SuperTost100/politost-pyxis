@@ -4,6 +4,7 @@
 .px-msg-bubble { max-width: 80%; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--surface-raised); font: 400 calc(15px * var(--text-scale))/calc(22px * var(--text-scale)) var(--font-sans); }
 .px-msg-avatar { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--ink); }
 .px-msg-body { flex: 1; min-width: 0; }
+.px-msg-tags { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
 .px-msg-text { font: 400 calc(17px * var(--text-scale))/calc(28px * var(--text-scale)) var(--font-sans); max-width: 68ch; margin: 0; }
 .px-msg-foot { display: flex; align-items: center; gap: var(--space-1); margin-top: var(--space-2); flex-wrap: wrap; }
 .px-msg-engine { margin-left: auto; font: 400 calc(12px * var(--text-scale))/calc(16px * var(--text-scale)) var(--font-mono); color: var(--ink-subtle); }

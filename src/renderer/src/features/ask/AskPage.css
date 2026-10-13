@@ -102,3 +102,9 @@
   max-height: 48px;
   border-radius: var(--radius-sm);
 }
+
+/* Try again sits under the question it would answer, on the student's side. */
+.ask-retry {
+  display: flex;
+  justify-content: flex-end;
+}

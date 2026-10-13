@@ -7,7 +7,6 @@ import {
   type AnchoredCheck,
   type MathCheck,
 } from "@shared/math-check";
-import { splitCitationGroups } from "@shared/smart-text";
 import type { ComponentPropsWithoutRef } from "react";
 import { isValidElement, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,26 +16,14 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import "katex/contrib/mhchem";
-import {
-  mapOutsideCode,
-  normalizeMathDelimiters,
-} from "../markdown/normalizeMathDelimiters";
+import { linkCitations, type CitationResolver } from "../markdown/citations";
+import { normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
 import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
 import { PythonBlock, RunnablePython } from "./PythonBlock";
 import "./MarkdownView.css";
 
-export type CitationResolver = (passageId: number) => string | undefined;
-
-function linkCitations(markdown: string, resolver?: CitationResolver): string {
-  return mapOutsideCode(markdown, (text) =>
-    splitCitationGroups(text).replace(/\[P(\d+)\]/g, (_, raw: string) => {
-      const id = Number(raw);
-      const label = resolver?.(id) ?? `P${id}`;
-      return `[${label}](cite:p${id})`;
-    }),
-  );
-}
+export type { CitationResolver };
 
 export function MarkdownView({
   children,
@@ -112,6 +99,12 @@ export function MarkdownView({
               </a>
             );
           },
+          // A wide table scrolls in its own box instead of pushing the page sideways.
+          table: ({ children: tableChildren, ...rest }) => (
+            <div className="px-table-scroll" tabIndex={0}>
+              <table {...rest}>{tableChildren}</table>
+            </div>
+          ),
           pre: ({ children: preChildren, ...rest }) => {
             let codeText = "";
             let lang = "";

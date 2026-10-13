@@ -13,12 +13,15 @@ export function ChatPanel({
   chatId,
   onOpenChat,
   onNew,
+  onDeleted,
 }: {
   open: boolean;
   onClose: () => void;
   chatId?: string;
   onOpenChat: (id: string) => void;
   onNew: () => void;
+  /** Called once the chat is gone, so a reply still being written for it can be stopped. */
+  onDeleted?: (id: string) => void;
 }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
@@ -60,6 +63,7 @@ export function ChatPanel({
     setRemoving(true);
     try {
       await invoke("chats.delete", { chatId: target.id });
+      onDeleted?.(target.id);
       setDeleting(null);
       if (target.id === chatId) onNew();
     } catch {

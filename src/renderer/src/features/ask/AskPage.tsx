@@ -1,7 +1,7 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
-import { PanelLeft, Plus, X } from "lucide-react";
+import { PanelLeft, Plus, RefreshCw, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
@@ -14,11 +14,19 @@ import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
-import { fileName, takeBoardAttachment } from "./attachments";
+import {
+  draftKey,
+  fileName,
+  readPendingFiles,
+  takeBoardAttachment,
+  writePendingFiles,
+} from "./attachments";
 import { ChatPanel } from "./ChatPanel";
+import { replyPlainText } from "./replyText";
 import { addIds, applySubject, scopeItems, type ScopeItem } from "./scope";
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
+import { latestEvery } from "./throttle";
 import "./AskPage.css";
 
 function errorKey(err: unknown): string {
@@ -27,13 +35,23 @@ function errorKey(err: unknown): string {
     : "errors.internal";
 }
 
+function errorParams(err: unknown): Record<string, unknown> {
+  const params =
+    err && typeof err === "object" && "params" in err
+      ? (err as { params: unknown }).params
+      : undefined;
+  return params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+}
+
 export function AskPage() {
   const { t } = useTranslation();
   const { chatId } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
+  // The draft and picked files belong to the chat on screen; each chat keeps its own for the session (see draftKey).
+  const composerFor = useRef(chatId);
   const [draft, setDraft] = useState(
-    () => sessionStorage.getItem("pyxis-draft") ?? "",
+    () => sessionStorage.getItem(draftKey(chatId)) ?? "",
   );
   const profile = useQuery({
     queryKey: ["profile"],
@@ -52,6 +70,12 @@ export function AskPage() {
   const [uncovered, setUncovered] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState("");
+  // Each delta carries the whole reply so far. Rendering it at most every 100 ms keeps long answers with math responsive.
+  const liveUpdates = useRef(latestEvery<string>(100, setLive));
+  // The finished reply, read out once by screen readers.
+  const [announcement, setAnnouncement] = useState("");
+  // A chat deleted while its reply streams: its turn ends quietly, without putting the message back.
+  const dropped = useRef<string | null>(null);
   // The question just sent, shown at once: the stored message only arrives with the reply.
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
@@ -59,14 +83,30 @@ export function AskPage() {
   // the reply to its new chat only if the student is still on the chat it was sent from.
   const [streamIn, setStreamIn] = useState<string | null>(null);
   const streamHere = streamIn === (chatId ?? "");
+  const streamNow = useRef(streamIn);
+  streamNow.current = streamIn;
   const chatNow = useRef(chatId);
   chatNow.current = chatId;
   const arrived = useRef<string | null>(null);
   const [subject, setSubject] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<string[]>(() =>
+    readPendingFiles(sessionStorage, chatId),
+  );
   // Whiteboard images staged by Attach, keyed by the file they belong to.
   const [previews, setPreviews] = useState<Record<string, string>>({});
+  // Picked files are kept by path, so opening the whiteboard or the graph and coming back does not lose them.
+  useEffect(() => {
+    writePendingFiles(sessionStorage, composerFor.current, files);
+  }, [files]);
+  // Moving to another chat shows that chat's own draft and files.
+  useLayoutEffect(() => {
+    if (composerFor.current === chatId) return;
+    composerFor.current = chatId;
+    setDraft(sessionStorage.getItem(draftKey(chatId)) ?? "");
+    setFiles(readPendingFiles(sessionStorage, chatId));
+    setPreviews({});
+  }, [chatId]);
   useEffect(() => {
     const board = takeBoardAttachment(sessionStorage);
     if (!board) return;
@@ -77,6 +117,11 @@ export function AskPage() {
     if (preview) setPreviews((current) => ({ ...current, [path]: preview }));
   }, []);
   const [error, setError] = useState<string | null>(null);
+  const [errorValues, setErrorValues] = useState<Record<string, unknown>>({});
+  function fail(err: unknown) {
+    setError(errorKey(err));
+    setErrorValues(errorParams(err));
+  }
   // Saved photos the last answer did not see, so a shorter context is never silent.
   const [skipped, setSkipped] = useState<
     Array<"too-large" | "unreadable" | "over-limit">
@@ -188,9 +233,10 @@ export function AskPage() {
 
   const messages = thread.data?.messages ?? [];
   const held = thread.data?.held ?? [];
-  const lastTutor = [...messages]
-    .reverse()
-    .find((row) => row.role === "assistant");
+  // Regenerate and the suggestions belong to the answer that ends the chat. A question left without one gets Try again.
+  const lastRow = messages.at(-1);
+  const lastTutor = lastRow?.role === "assistant" ? lastRow : undefined;
+  const unanswered = lastRow?.role === "user";
   const items = scopeItems({
     planId,
     planTitle: (plans.data ?? []).find((plan) => plan.id === planId)?.title,
@@ -311,10 +357,24 @@ export function AskPage() {
     setBusy(true);
     const startedIn = chatId ?? "";
     setStreamIn(startedIn);
+    dropped.current = null;
+    // Stop works from the first moment, also while the subject's sources are still loading.
+    let stoppedEarly = false;
+    stop.current = () => {
+      stoppedEarly = true;
+    };
     await scopeReady.current.catch(() => undefined);
+    if (stoppedEarly) {
+      stop.current = null;
+      setStreamIn(null);
+      setBusy(false);
+      return;
+    }
     const ids = visible(pickedNow.current);
+    liveUpdates.current.cancel();
     setLive("");
     setError(null);
+    setAnnouncement("");
     setSkipped([]);
     setPendingQuestion(trimmed);
     following.current = true;
@@ -325,16 +385,23 @@ export function AskPage() {
       setDraft("");
       setFiles([]);
       setPreviews({});
-      sessionStorage.removeItem("pyxis-draft");
+      sessionStorage.removeItem(draftKey(chatId));
     }
+    // The message goes back to the chat it was sent from, even if the student has moved to another one since.
     const restore = () => {
-      if (options.textOnly) return;
-      setDraft((current) => current || held.draft);
-      setFiles((current) => (current.length > 0 ? current : held.files));
-      setPreviews((current) =>
-        Object.keys(current).length > 0 ? current : held.previews,
-      );
-      if (held.draft) sessionStorage.setItem("pyxis-draft", held.draft);
+      if (options.textOnly || dropped.current === startedIn) return;
+      const from = startedIn || undefined;
+      if ((composerFor.current ?? "") === startedIn) {
+        setDraft((current) => current || held.draft);
+        setFiles((current) => (current.length > 0 ? current : held.files));
+        setPreviews((current) =>
+          Object.keys(current).length > 0 ? current : held.previews,
+        );
+      } else if (readPendingFiles(sessionStorage, from).length === 0) {
+        writePendingFiles(sessionStorage, from, held.files);
+      }
+      if (held.draft && !sessionStorage.getItem(draftKey(from)))
+        sessionStorage.setItem(draftKey(from), held.draft);
     };
     const handle = window.pyxis.stream(
       "chats.ask",
@@ -352,7 +419,7 @@ export function AskPage() {
       },
       (event) => {
         const data = event as { text?: string };
-        if (typeof data.text === "string") setLive(data.text);
+        if (typeof data.text === "string") liveUpdates.current.push(data.text);
       },
     );
     stop.current = handle.cancel;
@@ -377,22 +444,39 @@ export function AskPage() {
           staleTime: 0,
         })
         .catch(() => undefined);
+      if (stillHere && result.message) announce(result.message.body);
       void client.invalidateQueries({ queryKey: ["chats"] });
       if (stillHere && result.chatId !== chatNow.current) {
         arrived.current = result.chatId;
+        // Anything typed or picked while the first reply was written moves with the student to the new chat.
+        if (!chatNow.current) {
+          const typed = sessionStorage.getItem(draftKey());
+          if (typed) sessionStorage.setItem(draftKey(result.chatId), typed);
+          sessionStorage.removeItem(draftKey());
+          writePendingFiles(sessionStorage, result.chatId, readPendingFiles(sessionStorage));
+          writePendingFiles(sessionStorage, undefined, []);
+          composerFor.current = result.chatId;
+        }
         navigate(`/ask/${result.chatId}`);
       }
     } catch (err) {
       restore();
-      const key = errorKey(err);
-      if (key !== "errors.aborted") setError(key);
+      // An existing chat keeps the question it stored, so the thread shows it with Try again.
+      if (startedIn && dropped.current !== startedIn)
+        void client.invalidateQueries({ queryKey: ["chat", startedIn] });
+      if (errorKey(err) !== "errors.aborted" && dropped.current !== startedIn) fail(err);
     } finally {
       stop.current = null;
+      liveUpdates.current.cancel();
       setLive("");
       setPendingQuestion(null);
       setStreamIn(null);
       setBusy(false);
     }
+  }
+
+  function announce(body: string) {
+    setAnnouncement(`${t("components.chat.pyxis")}: ${replyPlainText(body)}`);
   }
 
   function regenerate() {
@@ -401,6 +485,9 @@ export function AskPage() {
     setStreamIn(chatId);
     setRegenerating(true);
     setError(null);
+    setAnnouncement("");
+    dropped.current = null;
+    liveUpdates.current.cancel();
     setLive("");
     following.current = true;
     const handle = window.pyxis.stream(
@@ -416,7 +503,7 @@ export function AskPage() {
       },
       (event) => {
         const data = event as { text?: string };
-        if (typeof data.text === "string") setLive(data.text);
+        if (typeof data.text === "string") liveUpdates.current.push(data.text);
       },
     );
     stop.current = handle.cancel;
@@ -436,13 +523,18 @@ export function AskPage() {
           );
         }
         await client.invalidateQueries({ queryKey: ["chat", chatId] });
+        const last = client
+          .getQueryData<Awaited<ReturnType<typeof invoke<"chats.read">>>>(["chat", chatId])
+          ?.messages.at(-1);
+        if (chatNow.current === chatId && reply.covered && last?.role === "assistant")
+          announce(last.body);
       })
       .catch((err: unknown) => {
-        const key = errorKey(err);
-        if (key !== "errors.aborted") setError(key);
+        if (errorKey(err) !== "errors.aborted" && dropped.current !== chatId) fail(err);
       })
       .finally(() => {
         stop.current = null;
+        liveUpdates.current.cancel();
         setLive("");
         setRegenerating(false);
         setStreamIn(null);
@@ -460,6 +552,16 @@ export function AskPage() {
 
   function openChat(id: string) {
     navigate(`/ask/${id}`);
+  }
+
+  /** A deleted chat's reply stops being written, and its saved draft and files go with it. */
+  function chatDeleted(id: string) {
+    sessionStorage.removeItem(draftKey(id));
+    writePendingFiles(sessionStorage, id, []);
+    if (streamNow.current === id) {
+      dropped.current = id;
+      stop.current?.();
+    }
   }
 
   return (
@@ -488,6 +590,7 @@ export function AskPage() {
         chatId={chatId}
         onOpenChat={openChat}
         onNew={() => navigate("/ask")}
+        onDeleted={chatDeleted}
       />
       {!conversation ? (
         <div className="ask-greeting">
@@ -519,7 +622,8 @@ export function AskPage() {
                     : (row.modelId ?? row.provider ?? undefined)
                 }
                 general={row.grounding === "general"}
-                text={row.body}
+                stopped={row.stopped}
+                text={replyPlainText(row.body)}
                 reaction={row.reaction}
                 regenerateDisabled={busy}
                 onRegenerate={
@@ -537,8 +641,9 @@ export function AskPage() {
                   void invoke("chats.rate", {
                     messageId: row.id,
                     reaction,
-                  }).then(() =>
-                    client.invalidateQueries({ queryKey: ["chat", chatId] }),
+                  }).then(
+                    () => client.invalidateQueries({ queryKey: ["chat", chatId] }),
+                    fail,
                   );
                 }}
               >
@@ -563,19 +668,35 @@ export function AskPage() {
               </ChatMessage>
             ),
           )}
+          {unanswered && chatId && !(busy && streamHere) ? (
+            <div className="ask-retry">
+              <Button
+                shape="round"
+                size="small"
+                icon={<RefreshCw size={14} aria-hidden />}
+                onClick={regenerate}
+                disabled={busy}
+              >
+                {t("ask.retry")}
+              </Button>
+            </div>
+          ) : null}
           {streamHere && pendingQuestion !== null && !regenerating ? (
             <ChatMessage role="user">
               <MathText text={pendingQuestion} />
             </ChatMessage>
           ) : null}
           {streamHere && busy && live ? (
-            <ChatMessage role="tutor">
+            <ChatMessage role="tutor" streaming>
               <MarkdownView>{live}</MarkdownView>
             </ChatMessage>
           ) : null}
           {streamHere && busy && !live ? <ThinkingMessage usesSources={usesSources} /> : null}
         </div>
       )}
+      <div className="visually-hidden" role="status" aria-live="polite">
+        {announcement}
+      </div>
       <div className="ask-dock">
         {isOcrRefusal(error) ? (
           // The message and attached photos stay in the composer. Sending again is the student's call, since it asks the tutor.
@@ -594,7 +715,7 @@ export function AskPage() {
             }
           />
         ) : error ? (
-          <Notice tone="danger">{t(error)}</Notice>
+          <Notice tone="danger">{t(error, errorValues)}</Notice>
         ) : null}
         {(["too-large", "unreadable"] as const).map((reason) => {
           const count = skipped.filter((item) => item === reason).length;
@@ -639,6 +760,7 @@ export function AskPage() {
                       });
                       void client.invalidateQueries({ queryKey: ["sources"] });
                     },
+                    fail,
                   );
                 }}
               >
@@ -660,7 +782,7 @@ export function AskPage() {
               if (!chatId) return;
               void invoke("chats.clearContext", { chatId }).then(() => {
                 void client.invalidateQueries({ queryKey: ["chat", chatId] });
-              });
+              }, fail);
             }}
           />
         ) : null}
@@ -736,7 +858,7 @@ export function AskPage() {
           value={draft}
           onValueChange={(next) => {
             setDraft(next);
-            sessionStorage.setItem("pyxis-draft", next);
+            sessionStorage.setItem(draftKey(composerFor.current), next);
           }}
           mode={mode}
           onModeChange={setMode}
@@ -749,7 +871,7 @@ export function AskPage() {
                 properties: ["openFile", "multiSelections"],
                 filters: [
                   {
-                    name: "Files",
+                    name: t("ask.attachFilter"),
                     extensions: [
                       "png",
                       "jpg",
@@ -769,7 +891,7 @@ export function AskPage() {
               .then((chosen) => {
                 if (chosen && chosen.length > 0)
                   setFiles((current) => [...current, ...chosen]);
-              });
+              }, fail);
           }}
         />
       </div>

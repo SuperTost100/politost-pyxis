@@ -69,8 +69,22 @@ test("R14-3 a suggestion sends only its own text and leaves the draft and photos
     await expect(box).toHaveText("Bozza da tenere");
     await expect(page.getByText("appunti.txt")).toBeVisible();
     expect(
-      await page.evaluate(() => sessionStorage.getItem("pyxis-draft")),
+      await page.evaluate(() =>
+        sessionStorage.getItem(`pyxis-draft:${location.hash.split("/").at(-1)}`),
+      ),
     ).toBe("Bozza da tenere");
+
+    // Each chat keeps its own draft and files: a new chat starts empty, and coming back finds them again.
+    const here = await page.evaluate(() => location.hash.slice(1));
+    await page.getByRole("button", { name: "Nuova chat" }).first().click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await expect(box).toHaveText("");
+    await expect(page.getByText("appunti.txt")).toHaveCount(0);
+    await page.evaluate((path) => {
+      location.hash = path;
+    }, here);
+    await expect(box).toHaveText("Bozza da tenere");
+    await expect(page.getByText("appunti.txt")).toBeVisible();
 
     // Remove is a real control with the file's name.
     await page.getByRole("button", { name: /appunti\.txt/ }).click();
