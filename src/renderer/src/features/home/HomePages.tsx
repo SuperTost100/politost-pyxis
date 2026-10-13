@@ -14,6 +14,7 @@ import { SubjectManagerModal } from "../ask/SubjectPicker";
 import { ImportReview } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
 import { examDaysLabel } from "../plans/examDays";
+import { CalendarButton } from "../share/CalendarButton";
 
 export function ExamsHome() {
   const { t } = useTranslation();
@@ -94,6 +95,13 @@ export function ExamsHome() {
               label={t("exams.importPlan")}
               onImported={() =>
                 void client.invalidateQueries({ queryKey: ["plans"] })
+              }
+            />
+            <CalendarButton
+              blocked={
+                plans.data?.some((plan) => (plan.daysToExam ?? -1) >= 0)
+                  ? undefined
+                  : t("calendar.noneUpcoming")
               }
             />
             <Button

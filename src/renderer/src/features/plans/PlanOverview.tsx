@@ -34,6 +34,7 @@ import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { Notice } from "../../components/Notice";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
+import { CalendarButton } from "../share/CalendarButton";
 import { ExportButton } from "../share/ExportButton";
 import { PlanProgress } from "./PlanProgress";
 import { RebuildDialog } from "./RebuildDialog";
@@ -94,6 +95,8 @@ export function PlanPage() {
   const [error, setError] = useState("");
   const busyRef = useRef(false);
   const [form] = Form.useForm();
+  // The date field as edited, so the calendar button never exports an older saved date.
+  const [draftExamAt, setDraftExamAt] = useState<dayjs.Dayjs | null>(null);
   const [modal, modalContext] = Modal.useModal();
   const tab = ["progress", "topics", "sources"].includes(view ?? "")
     ? view!
@@ -130,6 +133,17 @@ export function PlanPage() {
     setError("");
     setCreateOpen(true);
   }
+  const savedExamDay = plan.data?.examAt
+    ? dayjs(plan.data.examAt).format("YYYY-MM-DD")
+    : null;
+  const calendarBlocked =
+    (draftExamAt?.format("YYYY-MM-DD") ?? null) !== savedExamDay
+      ? t("calendar.saveFirst")
+      : savedExamDay === null
+        ? t("calendar.oneNoDate")
+        : savedExamDay < dayjs().format("YYYY-MM-DD")
+          ? t("calendar.onePast")
+          : undefined;
   function openSettings() {
     if (!plan.data) return;
     form.setFieldsValue({
@@ -137,6 +151,7 @@ export function PlanPage() {
       target: Math.round(plan.data.target * 100),
       examAt: plan.data.examAt ? dayjs(plan.data.examAt) : null,
     });
+    setDraftExamAt(plan.data.examAt ? dayjs(plan.data.examAt) : null);
     setError("");
     setSettingsOpen(true);
   }
@@ -643,7 +658,13 @@ export function PlanPage() {
         }
       >
         {error && <Notice tone="danger">{error}</Notice>}
-        <Form form={form} layout="vertical">
+        <Form
+          form={form}
+          layout="vertical"
+          onValuesChange={(changed) => {
+            if ("examAt" in changed) setDraftExamAt(changed.examAt ?? null);
+          }}
+        >
           <Form.Item
             name="title"
             label={t("wizard.planTitle")}
@@ -684,6 +705,11 @@ export function PlanPage() {
         <PlanEducationLevel planId={planId} disabled={busy} />
         <section className="px-plan-settings-tools">
           <ExportButton planId={planId} kind="plan" disabled={busy} />
+          <CalendarButton
+            planId={planId}
+            disabled={busy}
+            blocked={calendarBlocked}
+          />
           <Button
             disabled={busy || !plan.data?.sources.length}
             onClick={() => setRebuildOpen(true)}

@@ -467,6 +467,8 @@ async function dispatchValidated(
       return plans?.build(requests["plans.build"].input.parse(input));
     case "plans.intro":
       return plans?.intro(requests["plans.intro"].input.parse(input));
+    case "plans.calendar":
+      return plans?.calendar(requests["plans.calendar"].input.parse(input));
     case "plans.list":
       requests["plans.list"].input.parse(input);
       return plans?.list() ?? [];

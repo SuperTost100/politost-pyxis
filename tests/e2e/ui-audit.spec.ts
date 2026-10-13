@@ -410,6 +410,13 @@ function seed(db: DatabaseSync) {
     INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('audit-ready-plan','Prepared exam','ready','it',1,1);
     INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-ready-topic','audit-ready-plan','Force',0,1);
   `);
+  // One plan with an exam date, so the Exams page audits Add to calendar when it is on.
+  const examDay = new Date(now);
+  examDay.setDate(examDay.getDate() + 40);
+  examDay.setHours(12, 0, 0, 0);
+  db.prepare("UPDATE plans SET exam_at = ? WHERE id = 'audit-ready-plan'").run(
+    examDay.getTime(),
+  );
   db.prepare(
     "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('audit-ready-build','simulation-build',?,'succeeded',1,?,?)",
   ).run(

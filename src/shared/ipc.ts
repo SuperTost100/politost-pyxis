@@ -518,6 +518,18 @@ export const requests = {
       cardCount: z.number().int().nonnegative(),
     }),
   },
+  "plans.calendar": {
+    input: z.object({
+      planId: z.string().optional(),
+      language: z.enum(["en", "it"]),
+    }),
+    // count is 0 when no exam is upcoming and dated; there is then nothing to save.
+    output: z.object({
+      filename: z.string(),
+      base64: z.string(),
+      count: z.number().int().nonnegative(),
+    }),
+  },
   "study.csv": {
     input: z.object({ planId: z.string(), topicId: z.string().optional() }),
     output: z.object({ filename: z.string(), csv: z.string() }),

@@ -43,6 +43,7 @@ const replayable = new Set([
   "study.markdown",
   "study.csv",
   "study.exercises",
+  "plans.calendar",
   "plans.list",
   "subjects.list",
   "study.queue",
