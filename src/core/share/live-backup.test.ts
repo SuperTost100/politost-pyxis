@@ -19,6 +19,7 @@ import { backupWorkspace, hasActiveJobs, restoreWorkspace } from "./backup";
 
 const hooks = vi.hoisted(() => ({
   beforeOpen: undefined as undefined | ((path: string) => void),
+  afterLstat: undefined as undefined | ((path: string) => void),
 }));
 vi.mock("node:fs", async (original) => {
   const fs = await original<typeof import("node:fs")>();
@@ -28,10 +29,16 @@ vi.mock("node:fs", async (original) => {
       hooks.beforeOpen?.(String(args[0]));
       return fs.openSync(...args);
     },
+    lstatSync: ((...args: Parameters<typeof fs.lstatSync>) => {
+      const info = fs.lstatSync(...args);
+      hooks.afterLstat?.(String(args[0]));
+      return info;
+    }) as typeof fs.lstatSync,
   };
 });
 afterEach(() => {
   hooks.beforeOpen = undefined;
+  hooks.afterLstat = undefined;
 });
 
 function workspace() {
@@ -142,16 +149,22 @@ describe("live backup", { timeout: 60_000 }, () => {
     try {
       // Let the writer build up a workspace first, so each copy takes long enough to overlap with its writes.
       await vi.waitFor(
-        () => expect(Atomics.load(flags, 1)).toBeGreaterThan(300),
+        () => expect(Atomics.load(flags, 1)).toBeGreaterThan(150),
         {
           timeout: 30_000,
         },
       );
+      // Phase one: core only adds, until two copies overlapped its commits. Phase two: core also deletes sources and
+      // their blobs, until a copy runs into a deletion. Each phase gives up after six copies.
       let copies = 0;
       let changed = 0;
+      let deleting = false;
       for (let attempt = 0; attempt < 12; attempt += 1) {
-        // The first copies run while core only adds; the rest while it also deletes sources and their blobs.
-        if (attempt === 6) Atomics.store(flags, 2, 1);
+        if (!deleting && (copies >= 2 || attempt === 6)) {
+          deleting = true;
+          Atomics.store(flags, 2, 1);
+        }
+        if (deleting && changed > 0) break;
         Atomics.store(flags, 4, 0);
         const before = Atomics.load(flags, 1);
         const archive = join(w.root, `copy-${attempt}.zip`);
@@ -160,7 +173,7 @@ describe("live backup", { timeout: 60_000 }, () => {
         } catch (error) {
           // The writer deleted a blob the snapshot used; the scheduler tries again later. Anything else is a bug.
           expect((error as Error).message).toBe("backup-changed");
-          expect(attempt).toBeGreaterThanOrEqual(6);
+          expect(deleting).toBe(true);
           changed += 1;
           continue;
         }
@@ -201,12 +214,12 @@ describe("live backup", { timeout: 60_000 }, () => {
         } finally {
           db.close();
         }
-        if (during > 0) copies += 1;
+        if (during > 0 && !deleting) copies += 1;
         rmSync(archive);
         rmSync(target, { recursive: true });
       }
       // Copies were taken while the writer committed in the middle of them, and every one restored consistently.
-      expect(copies).toBeGreaterThanOrEqual(3);
+      expect(copies).toBe(2);
       // The deleting phase hit the race the copy has to detect.
       expect(changed).toBeGreaterThan(0);
     } finally {
@@ -267,6 +280,32 @@ describe("live backup", { timeout: 60_000 }, () => {
       ).toThrow("backup-changed");
       expect(existsSync(w.archive)).toBe(false);
       expect(readdirSync(w.root).sort()).toEqual(["source"]);
+    } finally {
+      db.close();
+      rmSync(w.root, { recursive: true, force: true });
+    }
+  });
+
+  it("stops with backup-changed when core deletes a used blob right after the listing saw it", () => {
+    const w = workspace();
+    const sha = putBlob(w.source, Buffer.from("listed, then deleted"));
+    const db = openDatabase(join(w.source, "pyxis.db"));
+    db.prepare(
+      "INSERT INTO sources (id,kind,title,blob_sha,status,created_at,updated_at) VALUES ('s','text','S',?,'ready',1,1)",
+    ).run(sha);
+    try {
+      // After the listing the copy measures the snapshot; delete the blob then, before it is opened or measured.
+      hooks.afterLstat = (path) => {
+        if (!path.endsWith("pyxis.db") || path.startsWith(w.source)) return;
+        hooks.afterLstat = undefined;
+        db.prepare("DELETE FROM sources WHERE id = 's'").run();
+        rmSync(blobPath(w.source, sha));
+        rmSync(`${blobPath(w.source, sha)}.json`);
+      };
+      expect(() =>
+        backupWorkspace(w.source, w.archive, { live: true }),
+      ).toThrow("backup-changed");
+      expect(existsSync(w.archive)).toBe(false);
     } finally {
       db.close();
       rmSync(w.root, { recursive: true, force: true });

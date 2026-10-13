@@ -396,7 +396,15 @@ function vacuumInto(db: Database.Database, dest: string): void {
   }
 }
 
-type BlobFile = { name: string; path: string };
+type BlobFile = { name: string; path: string; size: number };
+
+/**
+ * Whether a file failed because it is gone: deleted (ENOENT), or on Windows pending deletion, where opening or
+ * stat-ing it fails with a permission error while it is no longer reachable by its name.
+ */
+function isGone(error: unknown, path: string): boolean {
+  return (error as NodeJS.ErrnoException)?.code === "ENOENT" || !existsSync(path);
+}
 
 /** The hash in a blob or metadata archive name. */
 function shaOf(name: string): string {
@@ -423,9 +431,8 @@ function collectBlobFiles(workspace: string, live?: LiveBlobs): BlobFile[] {
   let out: BlobFile[] = [];
   if (!existsSync(blobsRoot)) return out;
   identity(blobsRoot);
-  const vanished = (error: unknown): void => {
-    if (!live || (error as NodeJS.ErrnoException)?.code !== "ENOENT")
-      throw error;
+  const vanished = (error: unknown, path: string): void => {
+    if (!live || !isGone(error, path)) throw error;
   };
   const drop = new Set<string>();
   const missing = (sha: string, error?: unknown): void => {
@@ -444,7 +451,7 @@ function collectBlobFiles(workspace: string, live?: LiveBlobs): BlobFile[] {
     try {
       names = readdirSync(dir);
     } catch (error) {
-      vanished(error);
+      vanished(error, dir);
       return;
     }
     for (const name of names) {
@@ -453,7 +460,7 @@ function collectBlobFiles(workspace: string, live?: LiveBlobs): BlobFile[] {
       try {
         info = lstatSync(full);
       } catch (error) {
-        vanished(error);
+        vanished(error, full);
         continue;
       }
       if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile()))
@@ -473,6 +480,7 @@ function collectBlobFiles(workspace: string, live?: LiveBlobs): BlobFile[] {
         out.push({
           name: relative(workspace, full).split(sep).join("/"),
           path: full,
+          size: info.size,
         });
     }
   };
@@ -498,7 +506,7 @@ function collectBlobFiles(workspace: string, live?: LiveBlobs): BlobFile[] {
         size = lstatSync(file.path).size;
         bytes = size > MAX_META ? Buffer.alloc(0) : readFileSync(file.path);
       } catch (error) {
-        vanished(error);
+        vanished(error, file.path);
         missing(shaOf(file.name), error);
         continue;
       }
@@ -590,13 +598,15 @@ function addBlobPair(
 ): void {
   const open: number[] = [];
   try {
-    try {
-      open.push(openArchiveFile(blob.path), openArchiveFile(meta.path));
-    } catch (error) {
-      if (!referenced || (error as NodeJS.ErrnoException).code !== "ENOENT")
-        throw error;
-      if (referenced.has(shaOf(blob.name))) throw new Error("backup-changed");
-      return;
+    for (const file of [blob, meta]) {
+      try {
+        open.push(openArchiveFile(file.path));
+      } catch (error) {
+        if (!referenced || !isGone(error, file.path)) throw error;
+        if (referenced.has(shaOf(blob.name)))
+          throw new Error("backup-changed");
+        return;
+      }
     }
     addOpenFile(zip, blob.name, open[0]!, budget, stopped);
     addOpenFile(zip, meta.name, open[1]!, budget, stopped);
@@ -731,10 +741,11 @@ export function backupWorkspace(
         if (!listed.has(sha) && !live.stillUsed(sha))
           throw new Error("backup-changed");
     }
-    // The message carries the size so the student sees how far over the limit the workspace is.
-    const size = [tempDb, ...blobs.map((blob) => blob.path)].reduce(
-      (sum, path) => sum + lstatSync(path).size,
-      0,
+    // The message carries the size so the student sees how far over the limit the workspace is. Blob sizes come
+    // from the listing: a live copy must not stat a blob again that core may have deleted since.
+    const size = blobs.reduce(
+      (sum, blob) => sum + blob.size,
+      lstatSync(tempDb).size,
     );
     if (size > MAX_EXPANDED) throw new Error(`backup-too-large:${size}`);
     const archive = join(temporary, "backup.zip");

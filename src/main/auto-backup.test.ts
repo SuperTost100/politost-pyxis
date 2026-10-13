@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -141,7 +142,8 @@ describe("retention", () => {
       "notes.txt",
       `${automatic[0]}.part`,
       "pyxis-auto-backup-2026-10-01-0900.zip",
-      "Pyxis-auto-backup-2026-10-01-090000.zip",
+      // Differently cased, on a date no real backup here uses: macOS and Windows would treat the same name as one file.
+      "Pyxis-auto-backup-2026-10-09-090000.zip",
     ];
     for (const name of others) writeFileSync(join(folder, name), "keep");
     // A folder and a link with a backup's name are not files Pyxis wrote.
@@ -206,7 +208,7 @@ describe("checkBackupFolder", () => {
         workspace: p.workspace,
         userData: p.userData,
       }),
-    ).toBe(folder);
+    ).toBe(realpathSync.native(folder));
     // The write probe leaves nothing behind.
     expect(readdirSync(folder)).toEqual([]);
     // Next to a moved workspace is fine: only inside it is refused.
@@ -215,7 +217,7 @@ describe("checkBackupFolder", () => {
         workspace: p.moved,
         userData: p.userData,
       }),
-    ).toBe(join(p.root, "Moved"));
+    ).toBe(realpathSync.native(join(p.root, "Moved")));
   });
 
   it("refuses a folder inside the workspace or inside the app data", () => {
