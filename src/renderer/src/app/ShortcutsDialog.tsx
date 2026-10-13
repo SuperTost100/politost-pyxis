@@ -19,6 +19,7 @@ function groups(mac: boolean): Group[] {
         { id: "goAsk", keys: ["mod", "1"] },
         { id: "goExams", keys: ["mod", "2"] },
         { id: "goLibrary", keys: ["mod", "3"] },
+        { id: "goFlashcards", keys: ["mod", "4"] },
         { id: "back", keys: mac ? ["mod", "bracket"] : ["alt", "left"] },
         { id: "shortcuts", keys: ["mod", "slash"] },
         { id: "zoomIn", keys: ["mod", "plus"] },

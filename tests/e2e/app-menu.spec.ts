@@ -151,6 +151,8 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await expect(page).toHaveURL(/#\/ask$/);
     await pick(app, "library");
     await expect(page).toHaveURL(/#\/exams\/library$/);
+    await pick(app, "flashcards");
+    await expect(page).toHaveURL(/#\/exams\/cards$/);
     await pick(app, "exams");
     await expect(page).toHaveURL(/#\/exams$/);
     await pick(app, "new-chat");

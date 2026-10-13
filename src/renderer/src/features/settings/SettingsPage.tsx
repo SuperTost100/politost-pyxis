@@ -277,6 +277,15 @@ export function SettingsPage() {
             setDraftInterests(null);
           }}
         />
+        <div className="px-settings-setup">
+          <Button
+            shape="round"
+            onClick={() => navigate("/onboarding?again=1")}
+          >
+            {t("settings.runSetup")}
+          </Button>
+          <p className="small section-hint">{t("settings.runSetupHint")}</p>
+        </div>
       </>
     ),
     privacy: (

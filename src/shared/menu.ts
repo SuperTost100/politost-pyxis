@@ -8,6 +8,7 @@ export const goPages = [
   { command: "ask", accelerator: "CmdOrCtrl+1", path: "/ask" },
   { command: "exams", accelerator: "CmdOrCtrl+2", path: "/exams" },
   { command: "library", accelerator: "CmdOrCtrl+3", path: "/exams/library" },
+  { command: "flashcards", accelerator: "CmdOrCtrl+4", path: "/exams/cards" },
 ] as const;
 
 /** Menu commands that open a fixed page. */

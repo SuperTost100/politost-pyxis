@@ -97,6 +97,11 @@ async function noAxeViolations(page: Page) {
 const profile = (page: Page) =>
   page.evaluate(() => window.pyxis.invoke("profile.get", {})) as Promise<{
     displayName: string;
+    school: string;
+    year: string;
+    course: string;
+    educationLevel: string;
+    contentLanguage: string;
     crashReports: boolean;
   } | null>;
 const button = (page: Page | Locator, name: string | RegExp) =>
@@ -419,6 +424,138 @@ test("First setup: skipping leaves crash reports off, and the OCR download shows
   } finally {
     rmSync(skipped, { recursive: true, force: true });
     rmSync(engines.bin, { recursive: true, force: true });
+  }
+});
+
+test("Run setup again: Settings reopens setup filled in, without Skip, leaves engines alone and returns to Settings", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
+  const { bin, env } = fakeBins({ claude: true, codex: true });
+  const app = await launch(userData, env);
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+
+    // First setup: a name, a school, a level, and crash reports turned off.
+    await button(page, "Inizia").click();
+    await page.getByLabel("Nome", { exact: true }).fill("Ada");
+    await page.getByLabel("Scuola", { exact: true }).fill("Liceo Volta");
+    await button(page, "Superiore").click();
+    await button(page, "Continua").click();
+    await expect(page.getByText("Ho trovato Claude Code e Codex.")).toBeVisible(
+      { timeout: 30000 },
+    );
+    await page
+      .getByRole("region", { name: "Cosa esce da questo computer" })
+      .getByRole("button", { name: "Ho capito" })
+      .click();
+    await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toBeVisible(
+      { timeout: 30000 },
+    );
+    await button(page, "Continua").click();
+    await button(page, "Più tardi").click();
+    await page
+      .getByRole("switch", { name: "Invia segnalazioni di crash" })
+      .click();
+    await button(page, "Continua").click();
+    await expect(
+      page.getByRole("heading", { name: "Tutto pronto" }),
+    ).toBeVisible();
+    await expect(button(page, "Torna alle impostazioni")).toHaveCount(0);
+    await button(page, "Vai agli esami").click();
+    const stored = await profile(page);
+    expect(stored).toMatchObject({
+      displayName: "Ada",
+      school: "Liceo Volta",
+      educationLevel: "upper-secondary",
+      crashReports: false,
+    });
+    const featuresBefore = await page.evaluate(() =>
+      window.pyxis.invoke("engines.features", {}),
+    );
+    expect(Object.keys(featuresBefore).length).toBeGreaterThan(0);
+
+    // Settings > Profile offers the rerun.
+    await page.evaluate(() => {
+      location.hash = "/settings/profile";
+    });
+    await expect(page.getByLabel("Nome", { exact: true })).toHaveValue("Ada");
+    await noAxeViolations(page);
+    await button(page, "Rifai la configurazione").click();
+    await expect(page).toHaveURL(/#\/onboarding\?again=1$/);
+
+    // Welcome has no Skip. Cancel leaves without saving.
+    await expect(
+      page.getByRole("heading", { name: "Ciao, sono Pyxis" }),
+    ).toBeVisible();
+    await expect(button(page, "Salta")).toHaveCount(0);
+    await noAxeViolations(page);
+    await button(page, "Annulla").click();
+    await expect(page).toHaveURL(/#\/settings\/profile$/);
+    await button(page, "Rifai la configurazione").click();
+    await button(page, "Inizia").click();
+
+    // Profile: every answer is filled in, and there is Back instead of Skip.
+    await expect(page.getByLabel("Nome", { exact: true })).toHaveValue("Ada");
+    await expect(page.getByLabel("Scuola", { exact: true })).toHaveValue(
+      "Liceo Volta",
+    );
+    await expect(
+      button(page, "Superiore").and(
+        page.locator("[aria-pressed=true]"),
+      ),
+    ).toBeVisible();
+    await expect(button(page, "Salta")).toHaveCount(0);
+    await expect(button(page, "Indietro")).toBeVisible();
+    await noAxeViolations(page);
+    await page.getByLabel("Nome", { exact: true }).fill("Ada L.");
+    await button(page, "Continua").click();
+
+    // Engines: shows what is set up and asks nothing. No launch notice appears.
+    await expect(page.getByText("Ho trovato Claude Code e Codex.")).toBeVisible(
+      { timeout: 30000 },
+    );
+    await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
+    await button(page, "Continua").click();
+    await button(page, "Più tardi").click();
+
+    // Crash reports show the stored choice (off), not the first-run default.
+    const crash = page.getByRole("switch", {
+      name: "Invia segnalazioni di crash",
+    });
+    await expect(crash).not.toBeChecked();
+    await button(page, "Continua").click();
+
+    // The end goes back to Settings > Profile.
+    await expect(
+      page.getByRole("heading", { name: "Configurazione aggiornata" }),
+    ).toBeVisible();
+    await expect(button(page, "Vai agli esami")).toHaveCount(0);
+    await expect(button(page, "Crea il primo esame")).toHaveCount(0);
+    await noAxeViolations(page);
+    await button(page, "Torna alle impostazioni").click();
+    await expect(page).toHaveURL(/#\/settings\/profile$/);
+    await expect(page.getByLabel("Nome", { exact: true })).toHaveValue(
+      "Ada L.",
+    );
+    await expect(page.getByLabel("Scuola", { exact: true })).toHaveValue(
+      "Liceo Volta",
+    );
+    expect(await profile(page)).toEqual({
+      ...stored,
+      displayName: "Ada L.",
+    });
+    // The engines the student already had are untouched.
+    expect(
+      await page.evaluate(() => window.pyxis.invoke("engines.features", {})),
+    ).toEqual(featuresBefore);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
   }
 });
 

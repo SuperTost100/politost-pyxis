@@ -42,13 +42,13 @@ The app is in English and Italian, with dark and light themes.
 
 **Learn from cited lessons.** Pick a simple, balanced or technical register. Math renders with KaTeX. Rewrite a lesson, flag a wrong claim, export it as PDF, or turn the topic into a concept map.
 
-**Practise.** Quizzes mix multiple choice, true/false, matching, fill-in and open questions. The model grades open answers and written simulations against a reference answer and tells you which points you missed. Flashcards are scheduled with [FSRS](docs/scheduler.md) and export to Anki.
+**Practise.** Quizzes mix multiple choice, true/false, matching, fill-in and open questions. The model grades open answers and written simulations against a reference answer and tells you which points you missed. Flashcards are scheduled with [FSRS](docs/scheduler.md) and export to Anki. The Flashcards tab under Exams lists every card from every plan, grouped by subject. You can search it without worrying about accents, filter by exam and topic, and edit, suspend, delete or restore a card there.
 
 **Close knowledge gaps.** Two wrong answers on a topic in one quiz open a gap. Pyxis asks the model what misconception the answers show, builds a drill for it, and closes the gap after two clean sessions on different days.
 
 **Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. The Σ button opens a formula keyboard, which also works in quiz, practice and simulation answers. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
 
-**Keyboard and menus.** Every platform has an application menu in your interface language. On Windows and Linux it stays hidden until you press Alt. It holds New exam (Ctrl/Cmd+N), New chat (Ctrl/Cmd+Shift+N), Settings (Ctrl/Cmd+,), Ask, Exams and Library (Ctrl/Cmd+1 to 3), Back, zoom, and Help. Press Ctrl/Cmd+/ to see every shortcut, including the ones in the chat, flashcards, quizzes and whiteboard. Menu commands wait while you are in setup, answering a quiz, sitting a simulation, in a dialog, or typing text that Pyxis would lose.
+**Keyboard and menus.** Every platform has an application menu in your interface language. On Windows and Linux it stays hidden until you press Alt. It holds New exam (Ctrl/Cmd+N), New chat (Ctrl/Cmd+Shift+N), Settings (Ctrl/Cmd+,), Ask, Exams, Library and Flashcards (Ctrl/Cmd+1 to 4), Back, zoom, and Help. Press Ctrl/Cmd+/ to see every shortcut, including the ones in the chat, flashcards, quizzes and whiteboard. Menu commands wait while you are in setup, answering a quiz, sitting a simulation, in a dialog, or typing text that Pyxis would lose.
 
 **Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Back up the whole workspace to one ZIP and restore it on another computer.
 
@@ -113,6 +113,8 @@ A welcome screen says what Pyxis does. Then come four short steps, and Skip jump
 4. **Privacy.** The crash-report switch. For now it only records your choice. Pyxis has no crash reporter yet.
 
 The last screen offers to create your first exam, or to start one from a free PoliTost book.
+
+To go through it again, open Settings → Profile and choose "Run setup again". The screens open with your current answers filled in and have no Skip. Your engines stay as they are unless you set one up. At the end you return to Settings → Profile.
 
 | Engine        | How it connects                           |
 | ------------- | ----------------------------------------- |
