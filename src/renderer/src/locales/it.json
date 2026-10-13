@@ -25,6 +25,11 @@
     "course": "Corso",
     "continue": "Continua",
     "skip": "Salta",
+    "again": {
+      "readyTitle": "Configurazione aggiornata",
+      "readyBody": "Le risposte sono salvate. Puoi cambiarle quando vuoi nelle impostazioni.",
+      "done": "Torna alle impostazioni"
+    },
     "done": "Vai agli esami",
     "contentLanguage": "Italian",
     "levels": {
@@ -1147,6 +1152,8 @@
     "moveSymlink": "Lo spazio di lavoro contiene un collegamento simbolico. Rimuovilo prima di spostarlo.",
     "moveRecovery": "Non riesco a riaprire uno spazio di lavoro valido. Ho conservato entrambe le cartelle. Ripristina una copia di sicurezza prima di continuare.",
     "profile": "Profilo e interessi",
+    "runSetup": "Rifai la configurazione",
+    "runSetupHint": "Ripassa la configurazione iniziale con le tue risposte già inserite. Il profilo si salva quando arrivi in fondo.",
     "enginesTitle": "Motori AI",
     "diagnostics": "Diagnostica dei motori",
     "diagnosticsHint": "Controlla qui la connessione e il modello di un motore. I risultati restano nell'app.",

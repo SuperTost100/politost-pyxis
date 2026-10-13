@@ -112,6 +112,8 @@ A welcome screen says what Pyxis does. Then come four short steps, and Skip jump
 
 The last screen offers to create your first exam, or to start one from a free PoliTost book.
 
+To go through it again, open Settings → Profile and choose "Run setup again". The screens open with your current answers filled in and have no Skip. Your engines stay as they are unless you set one up. At the end you return to Settings → Profile.
+
 | Engine        | How it connects                           |
 | ------------- | ----------------------------------------- |
 | Claude Code   | Your installed and signed-in `claude` CLI |
