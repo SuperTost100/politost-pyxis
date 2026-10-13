@@ -428,6 +428,16 @@ html[data-platform="darwin"] .canvas-bar {
   gap: var(--space-1);
 }
 
+.job-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.job-title {
+  overflow-wrap: anywhere;
+}
+
 .job-error {
   margin: 4px 0 0;
   color: var(--danger);

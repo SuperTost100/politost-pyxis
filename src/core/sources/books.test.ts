@@ -98,3 +98,31 @@ describe("downloadBook", () => {
     ).rejects.toThrow("source-too-big");
   });
 });
+
+describe("download timeout", () => {
+  /** Sends the package in four parts, `gap` ms apart, and stops when the signal aborts. */
+  const slow =
+    (gap: number): BooksTransport =>
+    (_url, _max, signal, progress) =>
+      new Promise((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        let sent = 0;
+        const next = () => {
+          if (signal.aborted) return;
+          sent += 1;
+          progress?.();
+          if (sent === 4) resolve(pkg);
+          else setTimeout(next, gap);
+        };
+        setTimeout(next, gap);
+      });
+
+  it("lets a slow download finish while bytes keep arriving", async () => {
+    // Four parts 40 ms apart take 160 ms in all, past the 100 ms limit, but no single wait reaches it.
+    await expect(downloadBook(book, slow(40), 1024, undefined, 100)).resolves.toEqual(pkg);
+  });
+
+  it("calls a download that stops sending offline", async () => {
+    await expect(downloadBook(book, slow(150), 1024, undefined, 100)).rejects.toThrow("books-offline");
+  });
+});

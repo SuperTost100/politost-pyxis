@@ -138,6 +138,18 @@ test("Free books: from the end of setup a book goes into a new exam, and the Lib
     });
     await expect(again.getByRole("button", { name: /^Aggiungi/ })).toHaveCount(0);
     expect(await imported()).toHaveLength(1);
+
+    // Removed from the Library, the book can be added again: the dialog no longer calls it in the library.
+    await again.getByRole("button", { name: /Close|Chiudi/ }).click();
+    page.on("dialog", (prompt) => void prompt.accept());
+    await button(page, "Azioni per Fisica di prova").click();
+    await page.getByRole("menuitem", { name: "Rimuovi" }).click();
+    await expect.poll(async () => (await imported()).length).toBe(0);
+    await button(page, "Libri PoliTost gratuiti").click();
+    await expect(
+      again.getByRole("button", { name: "Aggiungi Fisica di prova" }),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(again.getByText("Nella tua libreria")).toHaveCount(0);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

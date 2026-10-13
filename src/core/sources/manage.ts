@@ -92,7 +92,7 @@ export async function replaceSourceFile(
   const ext = extname(filePath).toLowerCase();
   const extracted = await extractByExt(bytes, ext);
   return addDocumentVersion(db, workspace, sourceId, {
-    title: basename(filePath, ext),
+    title: basename(filePath, extname(filePath)),
     mime: mimeFor(ext),
     ext,
     bytes,

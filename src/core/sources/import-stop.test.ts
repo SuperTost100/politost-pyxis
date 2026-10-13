@@ -7,6 +7,8 @@ import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
 import { sourceHandlers } from "./handlers";
 import { enqueueReextract, enqueueSourceFile, markStoppedImport, registerSourceJobs } from "./jobs";
+import { extractPlain } from "./documents";
+import { retrieve } from "./retrieve";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -108,5 +110,74 @@ describe("a stopped photo import does not stay extracting", () => {
     sourceHandlers(db, workspace, runner);
     expect(sourceStatus(db, "fresh")).toBe("interrupted");
     expect(sourceStatus(db, "again")).toBe("failed");
+  });
+
+  describe("a stopped replacement keeps the earlier version in use", () => {
+    // A text source is imported, then replaced by a file whose reading fails, is cancelled, or is cut off.
+    async function replaced(stop: "fail" | "cancel") {
+      const { workspace, db, runner } = setup();
+      let replacing = false;
+      let jobId = "";
+      registerSourceJobs(db, workspace, runner, async (_input, signal) => {
+        if (!replacing) return { document: extractPlain("La conservazione dell'energia meccanica vale senza attrito.", false) };
+        if (stop === "fail") throw new Error("archive-corrupt");
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError")));
+          setTimeout(() => runner.cancel(jobId), 5);
+        });
+      });
+      const first = join(workspace, "energia.txt");
+      writeFileSync(first, "energia");
+      const imported = await enqueueSourceFile(db, workspace, runner, first);
+      await expect.poll(jobState(db, imported.jobId)).toBe("succeeded");
+      replacing = true;
+      const second = join(workspace, "energia-2.txt");
+      writeFileSync(second, "energia 2");
+      jobId = (await enqueueSourceFile(db, workspace, runner, second, imported.sourceId)).jobId;
+      await expect.poll(jobState(db, jobId)).toBe(stop === "fail" ? "failed" : "cancelled");
+      return { db, sourceId: imported.sourceId };
+    }
+
+    it("after a failure", async () => {
+      const { db, sourceId } = await replaced("fail");
+      expect(sourceStatus(db, sourceId)).toBe("ready");
+      const found = retrieve(db, "conservazione energia meccanica");
+      expect(found.hits.map((hit) => hit.sourceId)).toContain(sourceId);
+    });
+
+    it("after a cancel", async () => {
+      const { db, sourceId } = await replaced("cancel");
+      expect(sourceStatus(db, sourceId)).toBe("ready");
+    });
+
+    it("after a restart cut it off", () => {
+      const { workspace, db } = setup();
+      db.prepare(
+        `INSERT INTO sources (id, kind, title, status, mime, created_at, updated_at) VALUES ('scan', 'pdf', 'scan', 'extracting', 'application/pdf', 1, 1)`,
+      ).run();
+      db.prepare(
+        `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES ('job-scan', 'source-import', ?, 'running', 0, 1, 1)`,
+      ).run(JSON.stringify({ sourceId: "scan", replace: true, previousStatus: "needs-ocr" }));
+      sourceHandlers(db, workspace, createRunner(db, () => {}));
+      expect(sourceStatus(db, "scan")).toBe("needs-ocr");
+    });
+  });
+
+  it("removing a source cancels its import", async () => {
+    const { workspace, db, runner } = setup();
+    // The handlers register the real import jobs; the stand-in that never finishes replaces them.
+    const handlers = sourceHandlers(db, workspace, runner);
+    registerSourceJobs(db, workspace, runner, (_input, signal) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError")));
+      }),
+    );
+    const path = join(workspace, "lento.txt");
+    writeFileSync(path, "testo");
+    const result = await enqueueSourceFile(db, workspace, runner, path);
+    await expect.poll(jobState(db, result.jobId)).toBe("running");
+    expect(handlers.remove({ sourceId: result.sourceId, confirmed: false })).toEqual({ removed: true, inUse: false });
+    await expect.poll(jobState(db, result.jobId)).toBe("cancelled");
+    expect(sourceStatus(db, result.sourceId)).toBe("removed");
   });
 });

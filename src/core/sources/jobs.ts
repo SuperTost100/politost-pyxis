@@ -40,6 +40,8 @@ type ImportParams = {
   url?: string;
   fetched?: boolean;
   replace?: boolean;
+  /** For a replacement, the status the source had before it. A replacement that stops goes back to it. */
+  previousStatus?: string;
   /** Read the stored original again as a new version. The file, name and type stay, and old passages are kept. */
   reextract?: boolean;
   version: number;
@@ -50,6 +52,15 @@ export type Extraction = {
   book?: ParsedSmartbook;
   document?: ExtractedDocument;
 };
+
+/** The source a job works on, as the library names it now (after a rename, or a link's page title), or as queued. */
+export function sourceTitle(db: Database.Database, params: unknown): string | null {
+  const { sourceId, title } = params as { sourceId?: string; title?: string };
+  const row = sourceId
+    ? (db.prepare(`SELECT title FROM sources WHERE id = ?`).get(sourceId) as { title: string } | undefined)
+    : undefined;
+  return row?.title ?? title ?? null;
+}
 
 /** A photo goes to the vision feature engine when that model sees images. Otherwise local OCR reads it. */
 export function visionSelection(
@@ -105,6 +116,7 @@ export function registerSourceJobs(
   const modelDir = join(workspace, "models", "e5");
   const base: JobSpec = {
     jobClass: "local",
+    title: (params) => sourceTitle(db, params),
     steps: [
       {
         name: "extract",
@@ -409,23 +421,60 @@ export function registerSourceJobs(
   });
 }
 
+const IMPORT_KINDS = ["source-import", "source-import-vision"];
+
+/**
+ * The status a source shows once its import job stopped, or null to leave it as it is. A source read again keeps its
+ * earlier reading, so its status never changed. A replacement keeps using the version it was replacing, so it goes
+ * back to the status it had before (a replacement queued before 0.2.3 has none saved; its source had text, so `ready`).
+ */
+function stoppedStatus(params: Partial<ImportParams>, state: string): string | null {
+  if (params.reextract) return null;
+  if (params.replace) return params.previousStatus ?? "ready";
+  return state;
+}
+
 /**
  * A source whose import job stopped (failed, cancelled, interrupted) shows that state instead of "extracting". Photos
- * read by the vision engine (`source-import-vision`) count like any import. A source read again keeps its earlier
- * reading when the job stops, so its status stays as it was.
+ * read by the vision engine (`source-import-vision`) count like any import. A source read again or replaced keeps
+ * its earlier version in use when the job stops, so it keeps the status that version had.
  */
 export function markStoppedImport(db: Database.Database, job: JobView): void {
   if (
-    (job.kind !== "source-import" && job.kind !== "source-import-vision") ||
+    !IMPORT_KINDS.includes(job.kind) ||
     !["failed", "cancelled", "interrupted"].includes(job.state)
   )
     return;
+  const row = db
+    .prepare(`SELECT params_json FROM jobs WHERE id = ?`)
+    .get(job.id) as { params_json: string } | undefined;
+  if (!row) return;
+  const params = JSON.parse(row.params_json) as Partial<ImportParams>;
+  const status = stoppedStatus(params, job.state);
+  if (!status || !params.sourceId) return;
   db.prepare(
-    `UPDATE sources SET status = ?, updated_at = ?
-    WHERE id = (SELECT json_extract(params_json, '$.sourceId') FROM jobs WHERE id = ?)
-      AND status != 'removed'
-      AND NOT EXISTS (SELECT 1 FROM jobs WHERE id = ? AND json_extract(params_json, '$.reextract') = 1)`,
-  ).run(job.state, Date.now(), job.id, job.id);
+    `UPDATE sources SET status = ?, updated_at = ? WHERE id = ? AND status != 'removed'`,
+  ).run(status, Date.now(), params.sourceId);
+}
+
+/**
+ * At startup the runner has turned running jobs into interrupted ones without telling anyone, so their sources still say
+ * they are being read. Each gets the status `markStoppedImport` would give it. A source that reached ready stays ready.
+ */
+export function markInterruptedImports(db: Database.Database): void {
+  const rows = db
+    .prepare(
+      `SELECT params_json FROM jobs WHERE kind IN ('source-import', 'source-import-vision') AND state = 'interrupted'`,
+    )
+    .all() as Array<{ params_json: string }>;
+  const update = db.prepare(
+    `UPDATE sources SET status = ? WHERE id = ? AND status NOT IN ('removed', 'ready')`,
+  );
+  for (const row of rows) {
+    const params = JSON.parse(row.params_json) as Partial<ImportParams>;
+    const status = stoppedStatus(params, "interrupted");
+    if (status && params.sourceId) update.run(status, params.sourceId);
+  }
 }
 
 /**
@@ -521,7 +570,8 @@ export async function enqueueSourceFile(
     runner,
     bytes,
     ext,
-    basename(path, ext),
+    // The name without its extension, whatever its case: "Notes.PDF" becomes "Notes".
+    basename(path, extname(path)),
     undefined,
     existingId,
   );
@@ -562,6 +612,7 @@ export function enqueueSourceData(
   const sha = putBlob(workspace, bytes, mime, ext.slice(1));
   if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: import transaction start");
   const jobId = db.transaction(() => {
+    let previousStatus: string | undefined;
     if (existingId) {
       if (
         !db
@@ -570,6 +621,9 @@ export function enqueueSourceData(
       )
         throw new Error("source-missing");
       if (hasUnfinishedJob(db, existingId)) throw new Error("source-busy");
+      previousStatus = (
+        db.prepare(`SELECT status FROM sources WHERE id = ?`).get(existingId) as { status: string }
+      ).status;
       db.prepare(
         `UPDATE sources SET status = 'queued', updated_at = ? WHERE id = ?`,
       ).run(Date.now(), existingId);
@@ -595,6 +649,7 @@ export function enqueueSourceData(
       url,
       version,
       replace: Boolean(existingId),
+      ...(previousStatus ? { previousStatus } : {}),
       ...(vision ? { vision } : {}),
     } satisfies ImportParams);
   })();

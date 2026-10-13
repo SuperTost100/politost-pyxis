@@ -26,6 +26,8 @@ export type JobSpec = {
   steps: StepSpec[];
   /** Refresh settings only on an explicit retry; interruption resume keeps its snapshot. */
   retryParams?: (params: unknown) => unknown;
+  /** What the job works on, such as a file's name, for the jobs list. */
+  title?: (params: unknown) => string | null;
 };
 
 export type Limits = Record<JobClass, number>;
@@ -94,9 +96,11 @@ export function createRunner(
     const job = jobStmt.get(jobId) as JobRow | undefined;
     if (!job) return null;
     const steps = stepsStmt.all(jobId) as StepRow[];
+    const title = specs.get(job.kind)?.title?.(JSON.parse(job.params_json));
     return {
       id: job.id,
       kind: job.kind,
+      ...(title ? { title } : {}),
       state: job.state,
       progress: job.progress,
       stepLabel: job.step_label,

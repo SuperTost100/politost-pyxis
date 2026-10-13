@@ -21,7 +21,9 @@ import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
 import { FreeBooks } from "../../components/FreeBooks";
+import { jobErrorKey } from "../jobs/jobErrors";
 import {
+  MAX_DROPPED_FILES,
   MAX_FOLDER_DEPTH,
   REPLACE_EXTENSIONS,
   SOURCE_EXTENSIONS,
@@ -213,6 +215,9 @@ export function LibraryPanel({
       let paths: string[];
       let skipped = 0;
       if (input.dropped) {
+        // Main refuses a larger drop as a whole. Saying how many fit is more use than a general failure.
+        if (input.dropped.length > MAX_DROPPED_FILES)
+          throw { messageKey: "sources.dropTooMany" };
         const granted = await window.pyxis.grantDroppedFiles(input.dropped);
         paths = granted.paths;
         skipped = granted.skipped;
@@ -249,7 +254,9 @@ export function LibraryPanel({
                 text: t("sources.blurry"),
               });
             if (preview.existingSourceId) {
-              // The same bytes are already in the library. That source is used, no second copy is made.
+              // The same bytes are already a source. That source is used, no second copy is made. A copy a chat or a
+              // plan file left out of the library joins it, so it shows here and deleting that chat keeps it.
+              await invoke("sources.promote", { sourceId: preview.existingSourceId });
               outcome.notes.push({
                 name: fileName(path),
                 text: t("sources.reused"),
@@ -556,6 +563,11 @@ export function LibraryPanel({
               {t("sources.offSyllabusListed", { count: source.syllabusOff })}
             </p>
           ) : null}
+          {source.error ? (
+            <p className="small px-library-flag">
+              {t(jobErrorKey(source.error))}
+            </p>
+          ) : null}
         </>
       ),
     },
@@ -575,11 +587,7 @@ export function LibraryPanel({
       width: 90,
       render: (_, source) => (
         <span className="meta">
-          {source.bytes == null
-            ? "—"
-            : new Intl.NumberFormat(i18n.language, {
-                maximumFractionDigits: 1,
-              }).format(source.bytes / 1024) + " KB"}
+          {source.bytes == null ? "—" : sizeText(source.bytes)}
         </span>
       ),
     },
@@ -683,7 +691,7 @@ export function LibraryPanel({
       }
     />
   ) : error ? (
-    <Notice tone="danger">{t(error)}</Notice>
+    <Notice tone="danger">{t(error, { max: MAX_DROPPED_FILES })}</Notice>
   ) : null;
   const addModal = (
     <Modal

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
-import { enqueueSourceFile, registerSourceJobs } from "./jobs";
+import { enqueueSourceFile, markStoppedImport, registerSourceJobs } from "./jobs";
 import { extractPlain, storeExtracted } from "./documents";
 import { sourceHandlers } from "./handlers";
 
@@ -98,5 +98,42 @@ it("SRC-04 marks a photo with empty OCR as failed instead of ready", async () =>
   await expect.poll(() => db.prepare("SELECT state FROM jobs WHERE id = ?").get(result.jobId)).toEqual({ state: "succeeded" });
   expect(db.prepare("SELECT status FROM sources WHERE id = ?").get(result.sourceId)).toEqual({ status: "failed" });
   expect(db.prepare("SELECT COUNT(*) AS n FROM passages WHERE source_id = ?").get(result.sourceId)).toEqual({ n: 0 });
+  db.close();
+});
+
+it("names the file in an import job and strips an upper-case extension from the title", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pyxis-import-title-"));
+  dirs.push(workspace);
+  const db = openDatabase(":memory:");
+  const runner = createRunner(db, () => {});
+  registerSourceJobs(db, workspace, runner, async () => {
+    throw new Error("archive-corrupt");
+  });
+  const path = join(workspace, "Appunti Fisica.TXT");
+  writeFileSync(path, "Energia e lavoro");
+  const result = await enqueueSourceFile(db, workspace, runner, path);
+  expect(result.title).toBe("Appunti Fisica");
+  await expect.poll(() => runner.list().find((job) => job.id === result.jobId)?.state).toBe("failed");
+  expect(runner.list().find((job) => job.id === result.jobId)?.title).toBe("Appunti Fisica");
+  // A rename shows in the job too, so the list names the source as the library does.
+  db.prepare(`UPDATE sources SET title = 'Fisica 1' WHERE id = ?`).run(result.sourceId);
+  expect(runner.list().find((job) => job.id === result.jobId)?.title).toBe("Fisica 1");
+  db.close();
+});
+
+it("the library row of a failed import says why it failed", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pyxis-import-reason-"));
+  dirs.push(workspace);
+  const db = openDatabase(":memory:");
+  const runner = createRunner(db, (job) => markStoppedImport(db, job));
+  const handlers = sourceHandlers(db, workspace, runner);
+  registerSourceJobs(db, workspace, runner, async () => {
+    throw new Error("archive-too-large");
+  });
+  const path = join(workspace, "slides.txt");
+  writeFileSync(path, "Energia e lavoro");
+  const result = await enqueueSourceFile(db, workspace, runner, path);
+  await expect.poll(() => handlers.list().find((source) => source.id === result.sourceId)?.status).toBe("failed");
+  expect(handlers.list().find((source) => source.id === result.sourceId)?.error).toBe("archive-too-large");
   db.close();
 });

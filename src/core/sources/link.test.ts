@@ -9,6 +9,7 @@ import { searchPassages } from "./smartbook";
 import { createRunner } from "../jobs/runner";
 import { enqueueSourceData, registerSourceJobs } from "./jobs";
 import { extractPlain } from "./documents";
+import { sourceHandlers } from "./handlers";
 
 type PinnedRequest = {
   dispatcher: {
@@ -248,4 +249,69 @@ it("cancels an endless failed-response body before closing its pinned agent", as
   } finally {
     transport.mode = "normal";
   }
+});
+
+describe("link details", () => {
+  function bytesResponse(bytes: Uint8Array, headers: Record<string, string>): Response {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: (name: string) => headers[name.toLowerCase()] ?? null },
+      body: null,
+      arrayBuffer: async () =>
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    } as unknown as Response;
+  }
+  // "velocità" in Latin-1: the à is the single byte 0xE0, which is not valid UTF-8.
+  const latin1 = (text: string) => Uint8Array.from([...text].map((char) => char.charCodeAt(0)));
+  const body = `<p>${"La velocità è la derivata dello spazio rispetto al tempo. ".repeat(10)}</p>`;
+
+  it("names a PDF link after its file, decoded", async () => {
+    const page = await fetchSnapshot(
+      "https://example.com/corsi/Appunti%20di%20Fisica%20%C3%A8.pdf",
+      (async () => bytesResponse(new Uint8Array([37, 80, 68, 70]), { "content-type": "application/pdf" })) as typeof fetch,
+      publicHost,
+    );
+    expect(page.title).toBe("Appunti di Fisica è");
+  });
+
+  it("reads a page in the charset its header names", async () => {
+    const page = await fetchSnapshot(
+      "https://example.com/latin",
+      (async () =>
+        bytesResponse(latin1(`<html><head><title>Cinematica</title></head><body>${body}</body></html>`), {
+          "content-type": "text/html; charset=ISO-8859-1",
+        })) as typeof fetch,
+      publicHost,
+    );
+    expect(page.markdown).toContain("velocità");
+  });
+
+  it("reads a page in the charset its meta tag names", async () => {
+    const page = await fetchSnapshot(
+      "https://example.com/latin",
+      (async () =>
+        bytesResponse(
+          latin1(`<html><head><meta charset="windows-1252"><title>Cinematica</title></head><body>${body}</body></html>`),
+          { "content-type": "text/html" },
+        )) as typeof fetch,
+      publicHost,
+    );
+    expect(page.markdown).toContain("velocità");
+  });
+
+  it("calls text that is not a web address a link it cannot save", async () => {
+    await expect(fetchSnapshot("appunti di fisica")).rejects.toThrow(/link-scheme/);
+    const db = openDatabase(":memory:");
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-link-invalid-"));
+    try {
+      const handlers = sourceHandlers(db, dir, createRunner(db, () => {}));
+      await expect(handlers.link({ url: "appunti di fisica" })).rejects.toMatchObject({
+        messageKey: "sources.linkScheme",
+      });
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

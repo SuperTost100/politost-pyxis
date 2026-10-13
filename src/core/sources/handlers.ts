@@ -1,9 +1,10 @@
-import { fetchSnapshot } from "./link";
+import { fetchSnapshot, parseLinkUrl } from "./link";
 import { readBlob } from "../blobs";
 import { statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type Database from "better-sqlite3";
 import { IpcError, isAbort } from "../../shared/ipc";
+import { sourceErrorKey } from "../../shared/source-errors";
 import { importDocumentFile, type Extractor } from "./documents";
 import {
   downloadModel,
@@ -19,7 +20,9 @@ import {
   enqueueSourceFile,
   enqueueSourceData,
   assertLocalOcrReady,
+  markInterruptedImports,
   registerSourceJobs,
+  sourceTitle,
 } from "./jobs";
 import { retrieveWithModel, setRetrievalModel } from "./retrieve";
 import { PASTE_MIN } from "./paste";
@@ -66,52 +69,10 @@ import {
 
 function sourceError(err: unknown): never {
   const message = err instanceof Error ? err.message : "";
-  const key: Record<string, string> = {
-    "encrypted-smartbook": "sources.encrypted",
-    "licensed-smartbook": "sources.encrypted",
-    "paste-short": "sources.pasteShort",
-    "page-empty": "sources.pageEmpty",
-    "link-scheme": "sources.linkScheme",
-    "link-failed": "sources.linkFailed",
-    "link-timeout": "sources.linkFailed",
-    "link-redirect": "sources.linkFailed",
-    "link-too-big": "sources.linkFailed",
-    "heic-invalid": "sources.importFailed",
-    "heic-too-large": "sources.importFailed",
-    "source-too-big": "sources.tooBig",
-    "source-changed": "sources.changed",
-    "source-unreadable": "sources.unreadable",
-    "vision-image-unsupported": "sources.imageUnsupported",
-    "vision-image-too-large": "sources.imageTooLarge",
-    "heic-decoder-unavailable": "sources.importFailed",
-    "ocr-data-missing": "sources.ocrDataMissing",
-    "ocr-data-integrity": "sources.ocrDataIntegrity",
-    "ocr-data-offline": "sources.ocrDataOffline",
-    "ocr-data-download": "sources.ocrDataOffline",
-    "ocr-data-too-big": "sources.ocrDataIntegrity",
-    "ocr-data-declined": "sources.ocrDataMissing",
-    "embed-hash": "sources.embedHash",
-    "embed-unpinned": "sources.embedHash",
-    "source-missing": "sources.importFailed",
-    "source-file-missing": "sources.fileMissing",
-    "ocr-out-of-order": "sources.ocrInterrupted",
-    "ocr-not-active": "sources.ocrInterrupted",
-    "ocr-stale": "sources.ocrInterrupted",
-    "source-busy": "sources.busy",
-    "reextract-unavailable": "sources.reextractUnavailable",
-    "title-empty": "sources.titleEmpty",
-    "books-offline": "sources.books.offline",
-    "books-catalog": "sources.books.catalog",
-    "books-too-big": "sources.books.catalog",
-    "books-integrity": "sources.books.integrity",
-    "books-missing": "sources.books.missing",
-  };
-  const messageKey = key[message];
   if (message === "encrypted-smartbook" || message === "licensed-smartbook") {
     throw new IpcError("unsupported", "sources.encrypted");
   }
-  if (messageKey) throw new IpcError("invalid-output", messageKey, {}, message);
-  throw new IpcError("invalid-output", "sources.importFailed", {}, message);
+  throw new IpcError("invalid-output", sourceErrorKey(message) ?? "sources.importFailed", {}, message);
 }
 
 export function sourceHandlers(
@@ -136,15 +97,11 @@ export function sourceHandlers(
     return (await embedTexts(modelDir, [text], signal))[0] ?? null;
   });
   if (runner) {
-    db.prepare(
-      `UPDATE sources SET status = 'interrupted' WHERE status NOT IN ('removed', 'ready')
-      AND EXISTS (SELECT 1 FROM jobs j WHERE j.kind IN ('source-import', 'source-import-vision') AND j.state = 'interrupted'
-      AND json_extract(j.params_json, '$.sourceId') = sources.id
-      AND COALESCE(json_extract(j.params_json, '$.reextract'), 0) != 1)`,
-    ).run();
+    markInterruptedImports(db);
     registerSourceJobs(db, workspace, runner);
     runner.register("source-index", {
       jobClass: "local",
+      title: (params) => sourceTitle(db, params),
       steps: [
         {
           name: "index",
@@ -222,7 +179,7 @@ export function sourceHandlers(
           version: book.version,
           chapters: book.chapters,
           bytes: book.bytes,
-          sourceId: existingSourceFor(db, book.sha256),
+          sourceId: existingSourceFor(db, book.sha256, true),
         }));
       } catch (err) {
         sourceError(err);
@@ -239,8 +196,11 @@ export function sourceHandlers(
         );
         if (!book) throw new Error("books-missing");
         const existing = existingSourceFor(db, book.sha256);
-        if (existing)
+        if (existing) {
+          // A copy a chat or a plan file brought in joins the library, so the book shows there.
+          promoteSource(db, existing);
           return { sourceId: existing, title: book.title, subject: book.subject };
+        }
         if (!runner) throw new Error("source-missing");
         const bytes = await downloadBook(
           book,
@@ -285,6 +245,11 @@ export function sourceHandlers(
       }
     },
     list() {
+      const failure = db.prepare(
+        `SELECT error FROM jobs WHERE kind IN ('source-import', 'source-import-vision') AND state = 'failed'
+         AND error IS NOT NULL AND json_extract(params_json, '$.sourceId') = ?
+         ORDER BY created_at DESC LIMIT 1`,
+      );
       return listSources(db).map((source) => {
         let bytes: number | null = null;
         if (source.blobSha) {
@@ -298,7 +263,17 @@ export function sourceHandlers(
         const off = source.planCount > 0
           ? (storedSyllabus(db, source.id) ?? []).reduce((sum, check) => sum + check.off, 0)
           : 0;
-        return { ...source, bytes, ...(off > 0 ? { syllabusOff: off } : {}) };
+        // A failed import keeps its reason on the job until the student dismisses it, so the row can say why.
+        const error =
+          source.status === "failed"
+            ? (failure.get(source.id) as { error: string } | undefined)?.error
+            : undefined;
+        return {
+          ...source,
+          bytes,
+          ...(off > 0 ? { syllabusOff: off } : {}),
+          ...(error ? { error } : {}),
+        };
       });
     },
     async importFile(input: { path: string }) {
@@ -339,9 +314,7 @@ export function sourceHandlers(
     async link(input: { url: string }) {
       try {
         if (runner) {
-          const url = new URL(input.url);
-          if (!["http:", "https:"].includes(url.protocol))
-            throw new Error("link-scheme");
+          const url = parseLinkUrl(input.url);
           return enqueueSourceData(
             db,
             workspace,
@@ -408,7 +381,8 @@ export function sourceHandlers(
         return {
           duplicate: flags.includes("duplicate"),
           blurry: flags.includes("blurry"),
-          // The source to use instead of importing the same bytes a second time.
+          // The source to use instead of importing the same bytes a second time. It may be hidden in a chat or a plan
+          // file, so the caller promotes it before using it.
           ...(existingSourceId ? { existingSourceId } : {}),
         };
       } catch (err) {
@@ -472,7 +446,18 @@ export function sourceHandlers(
     },
     remove(input: { sourceId: string; confirmed: boolean }) {
       try {
-        return removeSource(db, input.sourceId, input.confirmed);
+        const result = removeSource(db, input.sourceId, input.confirmed);
+        // An import or index still working on the source stops, so it does not keep reading a file nobody sees.
+        if (result.removed && runner) {
+          const jobs = db
+            .prepare(
+              `SELECT id FROM jobs WHERE kind IN ('source-import', 'source-import-vision', 'source-index')
+               AND json_extract(params_json, '$.sourceId') = ? AND state IN ('queued', 'running', 'interrupted')`,
+            )
+            .all(input.sourceId) as Array<{ id: string }>;
+          for (const job of jobs) runner.cancel(job.id);
+        }
+        return result;
       } catch (err) {
         sourceError(err);
       }
