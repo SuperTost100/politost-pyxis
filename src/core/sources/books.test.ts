@@ -14,7 +14,7 @@ const book: CatalogBook = {
   id: "esempio",
   title: "Guida di esempio",
   subject: "Esempio",
-  authors: ["Politost"],
+  authors: ["PoliTost"],
   version: "1.0.0",
   chapters: 3,
   package: "books/esempio@1.0.0.ptsb",
