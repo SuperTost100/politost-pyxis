@@ -41,7 +41,7 @@ Current version is 15. A restored backup is migrated on a staging copy before it
 | passages_vec     | The embedding index of passages.                                                        |
 | smartbooks       | Metadata for a PoliTost smartbook source.                                               |
 | exercises        | An exercise from a smartbook or a model.                                                |
-| plans            | A study plan. `exam_at`, `target`, `content_language` and `style` come from the wizard. |
+| plans            | A study plan. `exam_at`, `exam_month`, `target`, `content_language` and `style` come from the wizard. `exam_month` is 1 when the student knows only the month; `exam_at` is then noon on its 1st. |
 | plan_sources     | A source attached to a plan.                                                            |
 | topics           | A node in a plan's topic tree.                                                          |
 | topic_passages   | Passages that support a topic.                                                          |
