@@ -3,10 +3,13 @@ import { Button, Input } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { useMenuLock } from "../../app/menu-state";
 import { pythonMaxChars } from "../../components/pythonRun";
 import { invoke } from "../../lib/ipc";
 import { useJobs } from "../jobs/queries";
 import "./PythonPage.css";
+
+const INITIAL_CODE = "print(1 + 1)";
 
 export function PythonPage() {
   const { t, i18n } = useTranslation();
@@ -15,7 +18,9 @@ export function PythonPage() {
       minimumFractionDigits: 1,
       maximumFractionDigits: 1,
     }).format(bytes / 1e6);
-  const [code, setCode] = useState("print(1 + 1)");
+  const [code, setCode] = useState(INITIAL_CODE);
+  // Code the student changed is not saved anywhere, so the menu leaves the page alone until it is back to the example.
+  useMenuLock(code !== INITIAL_CODE);
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
   const [images, setImages] = useState<string[]>([]);

@@ -137,8 +137,11 @@ test("the menu follows the interface language and hides its bar on Windows and L
 test("menu items open their pages, the shortcuts list, the updates check and the issue tracker", async () => {
   const { app, page, userData } = await launch({ onboarded: true });
   try {
-    await pick(app, "new-exam");
-    await expect(page).toHaveURL(/#\/plans\/new$/);
+    // The renderer starts listening a moment after the page shows, and a command sent earlier is dropped. Retry the first.
+    await expect(async () => {
+      await pick(app, "new-exam");
+      await expect(page).toHaveURL(/#\/plans\/new$/, { timeout: 500 });
+    }).toPass();
     await pick(app, "back");
     await expect(page).toHaveURL(/#\/exams$/);
 
@@ -155,36 +158,24 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await pick(app, "about");
     await expect(page).toHaveURL(/#\/settings\/about$/);
 
-    // The check starts on arrival: the page shows it running, which only a new check does.
-    await pick(app, "exams");
-    await page.evaluate(() => {
-      location.hash = "/settings/updates";
-    });
-    await expect(page.getByRole("status")).not.toHaveText(
-      /Controllo delle versioni/,
-    );
-    await page.evaluate(() => {
-      location.hash = "/exams";
-    });
-    await page.evaluate(() => {
-      const seen = ((window as unknown as { seen?: boolean }).seen = false);
-      void seen;
-      new MutationObserver(() => {
-        if (document.body.innerText.includes("Controllo delle versioni"))
-          (window as unknown as { seen: boolean }).seen = true;
-      }).observe(document.body, {
-        subtree: true,
-        childList: true,
-        characterData: true,
+    // The check runs on arrival. Main counts the requests that reach it.
+    await app.evaluate(({ ipcMain }) => {
+      const counter = globalThis as unknown as { checks: number };
+      counter.checks = 0;
+      ipcMain.removeHandler("updates:check");
+      ipcMain.handle("updates:check", () => {
+        counter.checks += 1;
+        return { state: "current", current: "0.2.3", checkedAt: Date.now() };
       });
     });
+    await pick(app, "exams");
+    await expect(page).toHaveURL(/#\/exams$/);
+    const checks = () =>
+      app.evaluate(() => (globalThis as unknown as { checks: number }).checks);
+    const before = await checks();
     await pick(app, "check-updates");
     await expect(page).toHaveURL(/#\/settings\/updates$/);
-    await expect
-      .poll(() =>
-        page.evaluate(() => (window as unknown as { seen: boolean }).seen),
-      )
-      .toBe(true);
+    await expect.poll(checks).toBe(before + 1);
 
     // Keyboard shortcuts: an accessible dialog with the menu's keys and the page keys.
     await pick(app, "shortcuts");
@@ -310,6 +301,24 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
       page.getByRole("textbox", { name: "Messaggio" }),
     ).toContainText("bozza della domanda");
 
+    // Code typed into the Python tool is not saved. With focus moved off the editor, only the page's lock holds the menu.
+    await page.evaluate(() => {
+      location.hash = "/tools/python";
+    });
+    const editor = page.getByRole("textbox", { name: /codice|code/i });
+    await editor.fill("print('quasi finito')");
+    await editor.blur();
+    await pick(app, "exams");
+    await pick(app, "settings");
+    await settle(page);
+    await expect(page).toHaveURL(/#\/tools\/python$/);
+    await expect(editor).toHaveValue("print('quasi finito')");
+    // Back at the starting example, there is nothing to lose.
+    await editor.fill("print(1 + 1)");
+    await editor.blur();
+    await pick(app, "exams");
+    await expect(page).toHaveURL(/#\/exams$/);
+
     // A quiz being answered, and a simulation that is running.
     const now = Date.now();
     seed(userData, (db) => {
@@ -340,6 +349,7 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
         "/plans/menu-plan/quiz/menu-topic?attempt=menu-quiz-attempt";
     });
     await expect(page.locator(".px-quiz-question")).toBeVisible();
+    await settle(page);
     const quiz = page.url();
     for (const id of [
       "settings",
@@ -386,7 +396,8 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
     await page.evaluate(() => {
       location.hash = "/plans/menu-plan/exam/menu-exam-attempt";
     });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("timer")).toBeVisible();
+    await settle(page);
     const exam = page.url();
     for (const id of ["settings", "ask", "library", "new-exam"]) {
       await pick(app, id);
