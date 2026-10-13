@@ -20,6 +20,7 @@ import {
   readPendingFiles,
   takeBoardAttachment,
   writePendingFiles,
+  addPendingFiles,
 } from "./attachments";
 import { ChatPanel } from "./ChatPanel";
 import { replyPlainText } from "./replyText";
@@ -890,7 +891,7 @@ export function AskPage() {
               })
               .then((chosen) => {
                 if (chosen && chosen.length > 0)
-                  setFiles((current) => [...current, ...chosen]);
+                  setFiles((current) => addPendingFiles(current, chosen));
               }, fail);
           }}
         />

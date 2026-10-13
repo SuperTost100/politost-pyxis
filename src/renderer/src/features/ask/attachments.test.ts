@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addPendingFiles,
   draftKey,
   fileName,
   lastAskChat,
@@ -74,5 +75,13 @@ describe("Ask attachments", () => {
     expect(lastAskChat(store({ "pyxis.lastDoorPath": '{"ask":"/ask/0199-abc","exams":"/exams"}' }))).toBe("0199-abc");
     expect(lastAskChat(store({ "pyxis.lastDoorPath": '{"ask":"/ask"}' }))).toBeUndefined();
     expect(lastAskChat(store({}))).toBeUndefined();
+  });
+});
+
+describe("addPendingFiles", () => {
+  it("adds each picked file once, keeping the order", () => {
+    expect(
+      addPendingFiles(["/a/foto.png"], ["/a/foto.png", "/a/notes.pdf"]),
+    ).toEqual(["/a/foto.png", "/a/notes.pdf"]);
   });
 });

@@ -63,3 +63,13 @@ export function lastAskChat(store: Pick<Storage, "getItem">): string | undefined
     return undefined;
   }
 }
+
+/**
+ * Adds picked files to the pending list once each. Pending files survive leaving the chat, so picking a file that is
+ * already waiting would otherwise attach it twice.
+ */
+export function addPendingFiles(current: string[], chosen: string[]): string[] {
+  const next = [...current];
+  for (const file of chosen) if (!next.includes(file)) next.push(file);
+  return next;
+}
