@@ -118,7 +118,8 @@ function handle(data: unknown): void {
   const item = pending.get(message.id);
   if (!item) return;
   pending.delete(message.id);
-  if (message.id) canceled.delete(message.id);
+  canceled.delete(message.id);
+  streams.delete(message.id);
   if (message.ok) item.resolve(message.value);
   else item.reject(message.error);
 }
