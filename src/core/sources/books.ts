@@ -8,7 +8,8 @@ import { fetchPublicResponse } from "./link";
 export const BOOKS_ORIGIN = "https://books.politost.it";
 const CATALOG_URL = `${BOOKS_ORIGIN}/catalog.json`;
 const MAX_CATALOG_BYTES = 2 * 1024 * 1024;
-const TIMEOUT_MS = 30_000;
+/** How long a request may wait for its next bytes. A slow download that keeps receiving is not cut off. */
+const IDLE_MS = 30_000;
 
 const bookSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,80}$/),
@@ -23,15 +24,16 @@ const bookSchema = z.object({
 });
 export type CatalogBook = z.infer<typeof bookSchema>;
 
-/** Reads bytes from the books site, refusing anything bigger than `max`. */
+/** Reads bytes from the books site, refusing anything bigger than `max`. `progress` is called as each part arrives. */
 export type BooksTransport = (
   url: string,
   max: number,
   signal: AbortSignal,
+  progress?: () => void,
 ) => Promise<Uint8Array>;
 
 /** The production transport: every resolved address is checked as public and the socket is pinned to it. */
-export const httpsTransport: BooksTransport = async (url, max, signal) => {
+export const httpsTransport: BooksTransport = async (url, max, signal, progress) => {
   const { response, agent } = await fetchPublicResponse(url, {
     redirect: "manual",
     signal,
@@ -51,6 +53,7 @@ export const httpsTransport: BooksTransport = async (url, max, signal) => {
     for (;;) {
       const part = await reader.read();
       if (part.done) break;
+      progress?.();
       size += part.value.byteLength;
       if (size > max) {
         await reader.cancel();
@@ -74,19 +77,48 @@ export function folderTransport(dir: string): BooksTransport {
   };
 }
 
-function withTimeout(signal?: AbortSignal): AbortSignal {
-  const timeout = AbortSignal.timeout(TIMEOUT_MS);
-  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+/**
+ * Reads `url` through `transport`, giving up when no bytes arrive for `idleMs`. The wait restarts with each part, so a
+ * large book on a slow connection can take as long as it needs.
+ */
+async function readIdle(
+  transport: BooksTransport,
+  url: string,
+  max: number,
+  idleMs: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const idle = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const restart = () => {
+    clearTimeout(timer);
+    timer = setTimeout(
+      () => idle.abort(new DOMException("No data arrived in time", "TimeoutError")),
+      idleMs,
+    );
+  };
+  restart();
+  try {
+    return await transport(
+      url,
+      max,
+      signal ? AbortSignal.any([signal, idle.signal]) : idle.signal,
+      restart,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Fetches the catalog. A malformed entry is left out rather than hiding every other book. */
 export async function fetchCatalog(
   transport: BooksTransport,
   signal?: AbortSignal,
+  idleMs = IDLE_MS,
 ): Promise<CatalogBook[]> {
   let bytes: Uint8Array;
   try {
-    bytes = await transport(CATALOG_URL, MAX_CATALOG_BYTES, withTimeout(signal));
+    bytes = await readIdle(transport, CATALOG_URL, MAX_CATALOG_BYTES, idleMs, signal);
   } catch (error) {
     if (signal?.aborted) throw error;
     if (error instanceof Error && error.message === "books-too-big")
@@ -125,13 +157,14 @@ export async function downloadBook(
   transport: BooksTransport,
   maxBytes: number,
   signal?: AbortSignal,
+  idleMs = IDLE_MS,
 ): Promise<Uint8Array> {
   const url = packageUrl(book);
   if (!url) throw new Error("books-catalog");
   if (book.bytes > maxBytes) throw new Error("source-too-big");
   let bytes: Uint8Array;
   try {
-    bytes = await transport(url, book.bytes, withTimeout(signal));
+    bytes = await readIdle(transport, url, book.bytes, idleMs, signal);
   } catch (error) {
     if (signal?.aborted) throw error;
     if (error instanceof Error && error.message === "books-too-big")

@@ -1,10 +1,11 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import {
+  addDocumentVersion,
   blankPdf,
   extractPdf,
   extractPlain,
@@ -12,6 +13,8 @@ import {
   importDocumentFile,
   manyPagePdf,
   onePagePdf,
+  storeExtracted,
+  type ExtractedDocument,
 } from "./documents";
 import { listSources } from "./smartbook";
 
@@ -107,5 +110,79 @@ describe("document extract", () => {
     expect(extracted.scanned).toBe(false);
     expect(extracted.pages).toHaveLength(600);
     expect(extracted.pages[599]?.text).toContain("600");
+  });
+});
+
+describe("documents that are partly or wholly scanned", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  const workspace = (name: string) => {
+    const dir = mkdtempSync(join(tmpdir(), name));
+    dirs.push(dir);
+    return dir;
+  };
+  const text = "Il primo principio della termodinamica lega calore, lavoro ed energia interna.";
+  // One page with a text layer and two scanned pages: most pages are thin, so the PDF counts as a scan.
+  const mixed: ExtractedDocument = {
+    pages: [
+      { text, locator: { page: 1 }, section: "p. 1" },
+      { text: "", locator: { page: 2 }, section: "p. 2" },
+      { text: "12", locator: { page: 3 }, section: "p. 3" },
+    ],
+    scanned: true,
+  };
+  const scan: ExtractedDocument = {
+    pages: [{ text: "", locator: { page: 1 }, section: "p. 1" }],
+    scanned: true,
+  };
+  const pagesOf = (db: ReturnType<typeof openDatabase>, sourceId: string) =>
+    db
+      .prepare(
+        `SELECT DISTINCT json_extract(locator_json, '$.page') AS page FROM passages
+         WHERE source_id = ? AND version = (SELECT MAX(version) FROM source_documents WHERE source_id = ?)`,
+      )
+      .all(sourceId, sourceId);
+
+  it("keeps the text pages of a mixed PDF and leaves only the thin pages to OCR", () => {
+    const dir = workspace("pyxis-mixed-");
+    const db = openDatabase(":memory:");
+    const stored = storeExtracted(db, dir, {
+      title: "Termodinamica", kind: "pdf", mime: "application/pdf", ext: ".pdf",
+      bytes: new Uint8Array([1]), extracted: mixed,
+    });
+    expect(listSources(db)[0]?.status).toBe("needs-ocr");
+    expect(pagesOf(db, stored.sourceId)).toEqual([{ page: 1 }]);
+  });
+
+  it("keeps the text pages of a mixed PDF that replaces a file", () => {
+    const dir = workspace("pyxis-mixed-replace-");
+    const db = openDatabase(":memory:");
+    const stored = storeExtracted(db, dir, {
+      title: "Vecchio", kind: "text", mime: "text/plain", ext: ".txt",
+      bytes: new Uint8Array([1]), extracted: extractPlain("Testo precedente della fonte, abbastanza lungo.", false),
+    });
+    addDocumentVersion(db, dir, stored.sourceId, {
+      title: "Nuovo", mime: "application/pdf", ext: ".pdf", bytes: new Uint8Array([2]), extracted: mixed,
+    });
+    expect(pagesOf(db, stored.sourceId)).toEqual([{ page: 1 }]);
+    expect(listSources(db)[0]?.status).toBe("needs-ocr");
+  });
+
+  it("refuses a replacement with no text and keeps the version in use", () => {
+    const dir = workspace("pyxis-scan-replace-");
+    const db = openDatabase(":memory:");
+    const stored = storeExtracted(db, dir, {
+      title: "Vecchio", kind: "text", mime: "text/plain", ext: ".txt",
+      bytes: new Uint8Array([1]), extracted: extractPlain("Testo precedente della fonte, abbastanza lungo.", false),
+    });
+    expect(() =>
+      addDocumentVersion(db, dir, stored.sourceId, {
+        title: "Scansione", mime: "application/pdf", ext: ".pdf", bytes: new Uint8Array([2]), extracted: scan,
+      }),
+    ).toThrow("replace-no-text");
+    expect(listSources(db)[0]).toMatchObject({ title: "Vecchio", status: "ready", kind: "text" });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM source_documents WHERE source_id = ?`).get(stored.sourceId)).toEqual({ n: 1 });
   });
 });

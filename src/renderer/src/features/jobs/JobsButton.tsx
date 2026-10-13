@@ -3,46 +3,28 @@ import { ListChecks, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { JobView } from "@shared/ipc";
 import { Notice } from "../../components/Notice";
-import { ocrErrorKey } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
+import { jobErrorKey } from "./jobErrors";
 import { useJobs } from "./queries";
 
 function stepText(label: string, t: (key: string) => string): string {
   return t(label);
 }
 
-function errorText(error: string, t: (key: string) => string): string {
-  const ocr = ocrErrorKey(error);
-  return error === "demo-step-failed"
-    ? t("jobs.demoFailed")
-    : error.includes("engine-missing")
-      ? t("engines.errors.engine-missing")
-      : error === "reextract-no-text"
-        ? t("sources.reextractNoText")
-        : error === "source-changed"
-          ? t("sources.changed")
-          : error === "source-unreadable"
-            ? t("sources.unreadable")
-            : error === "vision-image-unsupported"
-              ? t("sources.imageUnsupported")
-              : error === "vision-image-too-large"
-                ? t("sources.imageTooLarge")
-                : ocr
-                  ? t(ocr)
-                  : t("jobs.failedGeneral");
-}
-
 function JobList({ jobs }: { jobs: JobView[] }) {
   const { t } = useTranslation();
+  const stateText = (job: JobView) =>
+    job.stepLabel ? stepText(job.stepLabel, t) : t(`jobs.state.${job.state}`);
   return (
     <ul className="job-list">
       {jobs.map((job) => (
         <li key={job.id}>
           <div className="job-row">
-            <span>
-              {job.stepLabel
-                ? stepText(job.stepLabel, t)
-                : t(`jobs.state.${job.state}`)}
+            <span className="job-text">
+              {job.title ? (
+                <span className="body-strong job-title">{job.title}</span>
+              ) : null}
+              <span>{stateText(job)}</span>
             </span>
             {job.state === "queued" || job.state === "running" ? (
               <Button
@@ -92,7 +74,7 @@ function JobList({ jobs }: { jobs: JobView[] }) {
           </div>
           {job.error ? (
             <Notice tone="danger" details={job.error.slice(0, 2000)}>
-              {errorText(job.error, t)}
+              {t(jobErrorKey(job.error))}
             </Notice>
           ) : null}
           {job.state === "running" || job.state === "queued" ? (
@@ -100,9 +82,7 @@ function JobList({ jobs }: { jobs: JobView[] }) {
               percent={Math.round(job.progress * 100)}
               showInfo={false}
               aria-label={
-                job.stepLabel
-                  ? stepText(job.stepLabel, t)
-                  : t(`jobs.state.${job.state}`)
+                job.title ? `${job.title}: ${stateText(job)}` : stateText(job)
               }
               size="small"
               strokeColor="var(--primary)"

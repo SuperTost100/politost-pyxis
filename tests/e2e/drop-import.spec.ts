@@ -88,6 +88,32 @@ test("SRC-07 a dropped file gets a native grant and nothing else does", async ()
       script,
     );
     expect(refused).toBe("file-access-denied");
+
+    // A drop over the limit says how many files fit, and imports none of them.
+    await page.evaluate(() => {
+      const probe = document.querySelector<HTMLInputElement>("#drop-probe")!;
+      const transfer = new DataTransfer();
+      const file = Array.from(probe.files ?? [])[0]!;
+      for (let index = 0; index < 21; index += 1) transfer.items.add(file);
+      document
+        .querySelector(".px-library-upload")!
+        .dispatchEvent(
+          new DragEvent("drop", {
+            dataTransfer: transfer,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+    });
+    await expect(
+      dialog.getByText("Puoi trascinare al massimo 20 file alla volta.", {
+        exact: false,
+      }),
+    ).toBeVisible();
+    const titles = await page.evaluate(() =>
+      window.pyxis.invoke("sources.list", {}),
+    );
+    expect(titles.map((row) => row.title)).toEqual(["note"]);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

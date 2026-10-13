@@ -235,7 +235,7 @@ export function commitStaged<T = undefined>(
     return db.transaction(() => {
       const sourceIds = documents.map(({ filePath, ext, bytes, extracted }) => {
         const source = storeExtracted(db, workspace, {
-          title: basename(filePath, ext),
+          title: basename(filePath, extname(filePath)),
           kind: kindFor(ext),
           mime: documentMime(ext),
           ext,

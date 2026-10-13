@@ -162,6 +162,8 @@ export const JobStepView = z.object({
 export const JobView = z.object({
   id: z.string(),
   kind: z.string(),
+  /** What the job works on, such as the source being imported. */
+  title: z.string().optional(),
   state: JobState,
   progress: z.number(),
   stepLabel: z.string().nullable(),
@@ -1566,6 +1568,8 @@ export const requests = {
         planCount: z.number().int().nonnegative(),
         /** Sections a stored comparison flags as off the syllabus of the plans that use the source. Absent when none or not yet compared. */
         syllabusOff: z.number().int().positive().optional(),
+        /** The error code a failed import stopped with, while its job is still listed. */
+        error: z.string().optional(),
       }),
     ),
   },
@@ -1829,7 +1833,8 @@ export const requests = {
     }),
   },
   "sources.linkPreview": {
-    input: z.object({ url: z.string().url().max(4000) }),
+    // Core checks the address, so text that is not a web link gets the link message rather than a validation error.
+    input: z.object({ url: z.string().max(4000) }),
     output: z.object({
       title: z.string(),
       excerpt: z.string(),
@@ -1868,7 +1873,10 @@ export const requests = {
     output: z.object({
       duplicate: z.boolean(),
       blurry: z.boolean(),
-      /** The newest usable source with the same file. Importing it again would only make a second copy. */
+      /**
+       * The newest usable source with the same file. Importing it again would only make a second copy. It can be a
+       * source hidden in a chat or a plan file, so a library import promotes it (`sources.promote`) before using it.
+       */
       existingSourceId: z.string().optional(),
     }),
   },

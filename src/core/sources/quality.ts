@@ -70,23 +70,28 @@ export async function hashFiles(paths: string[], maxBytes: number): Promise<Arra
 /**
  * The newest source whose current file has this hash and that is still usable: reading, waiting or ready.
  * A removed, failed, cancelled or interrupted source does not count, so importing that file again starts over.
+ * A chat attachment or a plan file can leave a usable source out of the library (`library = 0`). `libraryOnly` skips
+ * those, for answers about what the library holds. A flow that reuses a hidden source must promote it.
  */
 export function existingSourceFor(
   db: Database.Database,
   sha: string,
+  libraryOnly = false,
 ): string | null {
   const row = db
     .prepare(
       `SELECT id FROM sources
        WHERE blob_sha = ? AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+         AND (? = 0 OR library = 1)
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
-    .get(sha) as { id: string } | undefined;
+    .get(sha, libraryOnly ? 1 : 0) as { id: string } | undefined;
   return row?.id ?? null;
 }
 
+/** Whether the library already shows a usable source with this file. */
 export function isDuplicateBlob(db: Database.Database, sha: string): boolean {
-  return existingSourceFor(db, sha) != null;
+  return existingSourceFor(db, sha, true) != null;
 }
 
 export function qualityFlags(input: {

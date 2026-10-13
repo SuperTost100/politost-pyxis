@@ -208,9 +208,7 @@ export function storeExtracted(
     input.ext.replace(/^\./, ""),
   );
   const status = input.extracted.scanned ? "needs-ocr" : "ready";
-  const kept = input.extracted.scanned
-    ? []
-    : input.extracted.pages.filter((page) => page.text);
+  const kept = keptPages(input.extracted);
   db.transaction(() => {
     db.prepare(
       `INSERT INTO sources
@@ -301,9 +299,15 @@ function insertPages(
   }
 }
 
-/** The pages a document keeps: a scan has no text layer yet, and empty pages carry nothing. */
+/**
+ * The pages a document keeps. Empty pages carry nothing. In a scan, a page with almost no text (a page number, a stray
+ * mark) is left for OCR, and a page with a real text layer is kept: OCR skips a page that already has passages, so a
+ * PDF that mixes text and scanned pages keeps its text and has only the scanned pages read.
+ */
 function keptPages(extracted: ExtractedDocument): ExtractedPage[] {
-  return extracted.scanned ? [] : extracted.pages.filter((page) => page.text.trim());
+  return extracted.pages.filter((page) =>
+    extracted.scanned ? page.text.trim().length >= emptyPage : page.text.trim(),
+  );
 }
 
 /**
@@ -338,7 +342,11 @@ function appendVersion(
   })();
 }
 
-/** New extraction of an existing source from a new file. Older passages stay for citations. */
+/**
+ * New extraction of an existing source from a new file. Older passages stay for citations. A file with no text at all
+ * (a wholly scanned PDF, an empty file) is refused as `replace-no-text` rather than published, as a re-read is: an
+ * empty version would hide the text in use until OCR finished. Added as a new source, a scan can be read with OCR.
+ */
 export function addDocumentVersion(
   db: Database.Database,
   workspace: string,
@@ -355,6 +363,8 @@ export function addDocumentVersion(
     .prepare(`SELECT id FROM sources WHERE id = ? AND status != 'removed'`)
     .get(sourceId);
   if (!existing) throw new Error("source-missing");
+  const kept = keptPages(input.extracted);
+  if (kept.length === 0) throw new Error("replace-no-text");
   const sha = putBlob(
     workspace,
     input.bytes,
@@ -362,7 +372,6 @@ export function addDocumentVersion(
     input.ext.replace(/^\./, ""),
   );
   const status = input.extracted.scanned ? "needs-ocr" : "ready";
-  const kept = keptPages(input.extracted);
   const kind = kindFor(input.ext);
   appendVersion(db, sourceId, sha, kind, kept, input.extracted.extractor, (now) => {
     db.prepare(
@@ -423,7 +432,7 @@ export async function importDocumentFile(
   const ext = extname(filePath).toLowerCase();
   const extracted = await extractByExt(bytes, ext);
   return storeExtracted(db, workspace, {
-    title: basename(filePath, ext),
+    title: basename(filePath, extname(filePath)),
     kind: kindFor(ext),
     mime: mimeFor(ext),
     ext,

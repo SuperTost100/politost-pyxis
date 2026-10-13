@@ -19,6 +19,46 @@ function allowed(url: URL): void {
     throw new Error("link-scheme");
 }
 
+/** The address a student typed, as a URL. Text that is not an http or https address is refused as `link-scheme`. */
+export function parseLinkUrl(raw: string): URL {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    throw new Error("link-scheme");
+  }
+  allowed(url);
+  return url;
+}
+
+/** A PDF link is named after its file, decoded and without the extension: `.../Appunti%20di%20Fisica.pdf` is "Appunti di Fisica". */
+function pdfTitle(url: URL): string {
+  const name = url.pathname.split("/").filter(Boolean).pop() ?? "";
+  let decoded = name;
+  try {
+    decoded = decodeURIComponent(name);
+  } catch {
+    /* A malformed escape keeps the name as written. */
+  }
+  return decoded.replace(/\.pdf$/i, "").trim() || url.hostname;
+}
+
+/**
+ * Page text in the charset the page declares: the Content-Type header first, then a `<meta>` tag near the top.
+ * Without one, or with a label the decoder does not know, the bytes are read as UTF-8.
+ */
+function decodeHtml(bytes: Uint8Array, contentType: string): string {
+  const declared = (text: string) => /charset\s*=\s*["']?([\w.:-]+)/i.exec(text)?.[1];
+  const label =
+    declared(contentType) ??
+    declared(new TextDecoder("latin1").decode(bytes.subarray(0, 1024)));
+  try {
+    return new TextDecoder(label ?? "utf-8").decode(bytes);
+  } catch {
+    return new TextDecoder().decode(bytes);
+  }
+}
+
 function ipv4FromMapped(host: string): string | null {
   const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host);
   if (dotted?.[1]) return dotted[1];
@@ -162,7 +202,7 @@ export async function fetchSnapshot(
   },
   signal?: AbortSignal,
 ): Promise<PageSnapshot> {
-  let current = new URL(rawUrl);
+  let current = parseLinkUrl(rawUrl);
   const pin = fetchImpl === fetch;
   let response: Response | null = null;
   let agent: { close: () => Promise<void> } | null = null;
@@ -225,12 +265,12 @@ export async function fetchSnapshot(
     ) {
       return {
         finalUrl: current.toString(),
-        title: current.pathname,
+        title: pdfTitle(current),
         markdown: "",
         pdf: bytes,
       };
     }
-    const html = new TextDecoder().decode(bytes);
+    const html = decodeHtml(bytes, type);
     const article = articleFromHtml(html, current.toString());
     return {
       finalUrl: current.toString(),

@@ -64,7 +64,7 @@ export async function importImageFile(
   // Decode first: a corrupt or non-HEIC file is rejected before any source row exists.
   const pixels = isHeicExt(ext) ? (await decodeHeic(bytes, filePath)).png : bytes;
   const stored = storeExtracted(db, workspace, {
-    title: basename(filePath, ext),
+    title: basename(filePath, extname(filePath)),
     kind: "image",
     mime: imageMime(ext),
     ext,

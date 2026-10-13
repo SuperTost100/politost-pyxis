@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "antd";
 import { Check } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import { invoke } from "../lib/ipc";
@@ -36,7 +36,8 @@ export function FreeBooks({
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const books = useQuery({
-    queryKey: ["free-books"],
+    // Under "sources", so a change to the library (an import, a removal) also marks the list as out of date.
+    queryKey: ["sources", "free-books"],
     queryFn: () => invoke("sources.books", {}),
     enabled: open,
     retry: false,
@@ -48,6 +49,8 @@ export function FreeBooks({
   );
   // Sources added while the dialog is open, so the row says so before the list reloads.
   const [done, setDone] = useState<Record<string, string>>({});
+  // Once the list reloads it says which books are in the library, including one removed since it was added here.
+  useEffect(() => setDone({}), [books.dataUpdatedAt]);
 
   async function add(book: Book) {
     setBusy(book.id);
@@ -57,7 +60,6 @@ export function FreeBooks({
       setDone((current) => ({ ...current, [book.id]: result.sourceId }));
       onAdded?.(result);
       void client.invalidateQueries({ queryKey: ["sources"] });
-      void client.invalidateQueries({ queryKey: ["free-books"] });
     } catch (err) {
       setFailed({ id: book.id, key: errorKey(err) });
     } finally {
@@ -87,7 +89,9 @@ export function FreeBooks({
         shape="round"
         loading={busy === book.id}
         disabled={busy !== null && busy !== book.id}
-        aria-label={t("books.addNamed", { title: book.title })}
+        aria-label={t(busy === book.id ? "books.addingNamed" : "books.addNamed", {
+          title: book.title,
+        })}
         onClick={() => void add(book)}
       >
         {busy === book.id ? t("books.adding") : t("books.add")}
