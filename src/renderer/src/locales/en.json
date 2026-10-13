@@ -25,6 +25,11 @@
     "course": "Course",
     "continue": "Continue",
     "skip": "Skip",
+    "again": {
+      "readyTitle": "Setup updated",
+      "readyBody": "Your answers are saved. Change them any time in Settings.",
+      "done": "Back to Settings"
+    },
     "done": "Go to exams",
     "contentLanguage": "English",
     "levels": {
@@ -1147,6 +1152,8 @@
     "moveSymlink": "The workspace contains a symbolic link. Remove the link before moving it.",
     "moveRecovery": "The move could not reopen a valid workspace. Both folders were kept. Restore a backup before continuing.",
     "profile": "Profile and interests",
+    "runSetup": "Run setup again",
+    "runSetupHint": "Go through the first setup again with your answers filled in. Your profile is saved when you reach the end.",
     "enginesTitle": "AI engines",
     "diagnostics": "Engine diagnostics",
     "diagnosticsHint": "Check an engine's connection and model here. Results stay in this app.",

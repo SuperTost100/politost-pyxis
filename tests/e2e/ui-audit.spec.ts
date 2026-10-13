@@ -27,6 +27,7 @@ import { imageOnlyPdf } from "./scanned-pdf-fixture";
 const routes = [
   ["root", "/"],
   ["onboarding", "/onboarding"],
+  ["onboarding-again", "/onboarding?again=1"],
   ["ask-new", "/ask"],
   ["ask-thread", "/ask/audit-chat"],
   ["exams", "/exams"],

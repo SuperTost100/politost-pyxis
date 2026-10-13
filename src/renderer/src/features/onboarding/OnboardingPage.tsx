@@ -1,42 +1,59 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Steps } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { invoke } from "../../lib/ipc";
 import { useJobs } from "../jobs/queries";
 import { EnginesStep } from "./EnginesStep";
+import {
+  firstAnswers,
+  levels,
+  savedProfile,
+  type Level,
+  type StoredProfile,
+} from "./setup";
 import "./OnboardingPage.css";
 
-const levels = [
-  "primary",
-  "lower-secondary",
-  "upper-secondary",
-  "technical",
-  "vocational",
-  "university",
-  "other",
-] as const;
 /** The numbered setup steps. A welcome screen comes before them and a "ready" screen after. */
 const stepIds = ["profile", "engines", "photos", "privacy"] as const;
 const screens = ["welcome", ...stepIds, "ready"] as const;
 type ScreenId = (typeof screens)[number];
 
+/**
+ * First setup, or with `?again=1` (Settings > Profile > Run setup again) the same screens for a student who already
+ * has a profile. A rerun waits for the stored profile so the screens open filled in.
+ */
 export function OnboardingPage() {
+  const [params] = useSearchParams();
+  const again = params.get("again") === "1";
+  const profile = useQuery({
+    queryKey: ["profile"],
+    queryFn: () => invoke("profile.get", {}),
+    enabled: again,
+  });
+  if (again && profile.isPending) return null;
+  // A rerun link without a profile is a first setup.
+  return <Setup stored={again ? (profile.data ?? null) : null} />;
+}
+
+function Setup({ stored }: { stored: StoredProfile | null }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
+  const again = stored !== null;
   const [screen, setScreen] = useState(0);
-  const [name, setName] = useState("");
-  const [level, setLevel] = useState<(typeof levels)[number]>("university");
-  const [year, setYear] = useState("");
-  const [school, setSchool] = useState("");
-  const [course, setCourse] = useState("");
-  // On for a new install. The student sees the switch already on and can turn it off before finishing.
-  const [crashReports, setCrashReports] = useState(true);
+  const [start] = useState(() => firstAnswers(stored));
+  const [name, setName] = useState(start.name);
+  const [level, setLevel] = useState<Level>(start.level);
+  const [year, setYear] = useState(start.year);
+  const [school, setSchool] = useState(start.school);
+  const [course, setCourse] = useState(start.course);
+  // On for a new install, so the student sees the switch already on and can turn it off. A rerun shows the stored choice.
+  const [crashReports, setCrashReports] = useState(start.crashReports);
   // Unknown until the engines are read, so the button says Continue rather than flicker to "later".
   const [enginesReady, setEnginesReady] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,15 +80,11 @@ export function OnboardingPage() {
         "profile.save",
         skip
           ? { displayName: "" }
-          : {
-              displayName: name.trim(),
-              educationLevel: level,
-              year: year.trim(),
-              school: school.trim(),
-              course: course.trim(),
-              contentLanguage: t("onboarding.contentLanguage"),
-              crashReports,
-            },
+          : savedProfile(
+              { name, level, year, school, course, crashReports },
+              t("onboarding.contentLanguage"),
+              stored,
+            ),
       );
       await client.invalidateQueries({ queryKey: ["profile"] });
       if (skip) navigate("/exams");
@@ -83,6 +96,8 @@ export function OnboardingPage() {
     }
   }
 
+  // A rerun ends where it started.
+  const backToSettings = () => navigate("/settings/profile", { replace: true });
   const next = () =>
     setScreen((value) => Math.min(value + 1, screens.length - 1));
   const back = () => setScreen((value) => Math.max(value - 1, 0));
@@ -107,10 +122,22 @@ export function OnboardingPage() {
         </>
       ) : null}
       <h1 className="display" tabIndex={-1} ref={heading}>
-        {t(id === "profile" ? "onboarding.title" : `onboarding.${id}.title`)}
+        {t(
+          id === "profile"
+            ? "onboarding.title"
+            : again && id === "ready"
+              ? "onboarding.again.readyTitle"
+              : `onboarding.${id}.title`,
+        )}
       </h1>
       <p className="body">
-        {t(id === "profile" ? "onboarding.body" : `onboarding.${id}.body`)}
+        {t(
+          id === "profile"
+            ? "onboarding.body"
+            : again && id === "ready"
+              ? "onboarding.again.readyBody"
+              : `onboarding.${id}.body`,
+        )}
       </p>
 
       {id === "welcome" ? (
@@ -129,7 +156,9 @@ export function OnboardingPage() {
           set={{ setName, setLevel, setYear, setSchool, setCourse }}
         />
       ) : null}
-      {id === "engines" ? <EnginesStep onReady={setEnginesReady} /> : null}
+      {id === "engines" ? (
+        <EnginesStep onReady={setEnginesReady} again={again} />
+      ) : null}
       {id === "photos" ? <PhotosStep onNext={next} /> : null}
       {id === "privacy" ? (
         <CrashReportsSwitch
@@ -144,20 +173,33 @@ export function OnboardingPage() {
       ) : null}
       {id === "welcome" ? (
         <div className="px-onboarding-actions">
-          <Button
-            type="text"
-            shape="round"
-            disabled={busy}
-            onClick={() => void finish(true)}
-          >
-            {t("onboarding.skip")}
-          </Button>
+          {again ? (
+            <Button type="text" shape="round" onClick={backToSettings}>
+              {t("wizard.cancel")}
+            </Button>
+          ) : (
+            <Button
+              type="text"
+              shape="round"
+              disabled={busy}
+              onClick={() => void finish(true)}
+            >
+              {t("onboarding.skip")}
+            </Button>
+          )}
           <Button type="primary" shape="round" onClick={next}>
             {t("onboarding.welcome.start")}
           </Button>
         </div>
       ) : null}
-      {id === "ready" ? (
+      {id === "ready" && again ? (
+        <div className="px-onboarding-actions is-end">
+          <Button type="primary" shape="round" onClick={backToSettings}>
+            {t("onboarding.again.done")}
+          </Button>
+        </div>
+      ) : null}
+      {id === "ready" && !again ? (
         <div className="px-onboarding-actions is-end">
           <Button shape="round" onClick={() => navigate("/exams")}>
             {t("onboarding.done")}
@@ -179,7 +221,7 @@ export function OnboardingPage() {
       ) : null}
       {numbered ? (
         <div className="px-onboarding-actions">
-          {id === "profile" ? (
+          {id === "profile" && !again ? (
             <Button
               type="text"
               shape="round"
