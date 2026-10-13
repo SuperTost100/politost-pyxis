@@ -20,7 +20,11 @@ import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
-import { FreeBooks } from "../../components/FreeBooks";
+import {
+  FreeBooks,
+  useBookUpdate,
+  useFreeBooks,
+} from "../../components/FreeBooks";
 import { jobErrorKey } from "../jobs/jobErrors";
 import {
   MAX_DROPPED_FILES,
@@ -451,6 +455,30 @@ export function LibraryPanel({
   });
   const sources = list.data ?? [];
   type SourceRow = (typeof sources)[number];
+  // New versions of free books are checked only while the Library is open, and only when it holds a smartbook.
+  const freeBooks = useFreeBooks(
+    !importOnly && sources.some((source) => source.kind === "smartbook"),
+  );
+  const newVersions = new Map(
+    (freeBooks.data ?? []).flatMap((book) =>
+      book.sourceId && book.update === "available"
+        ? [[book.sourceId, book.version] as const]
+        : [],
+    ),
+  );
+  const bookUpdate = useBookUpdate();
+  async function updateBook(source: SourceRow) {
+    setInfo(null);
+    setError(null);
+    setAgain(null);
+    try {
+      const version = await bookUpdate.update(source.id);
+      if (version)
+        setInfo(t("books.updateStarted", { title: source.title, version }));
+    } catch (err) {
+      fail(err);
+    }
+  }
   function select(source: SourceRow) {
     setPreferOpened(false);
     setSourceId(source.id);
@@ -566,6 +594,32 @@ export function LibraryPanel({
           {source.error ? (
             <p className="small px-library-flag">
               {t(jobErrorKey(source.error))}
+            </p>
+          ) : null}
+          {newVersions.has(source.id) ? (
+            <p className="small px-library-update">
+              <span>
+                {t("books.newVersionNamed", {
+                  version: newVersions.get(source.id),
+                })}
+              </span>
+              <Button
+                shape="round"
+                size="small"
+                loading={bookUpdate.busy === source.id}
+                disabled={
+                  bookUpdate.busy !== null && bookUpdate.busy !== source.id
+                }
+                aria-label={t(
+                  bookUpdate.busy === source.id
+                    ? "books.updatingNamed"
+                    : "books.updateNamed",
+                  { title: source.title },
+                )}
+                onClick={() => void updateBook(source)}
+              >
+                {t("books.update")}
+              </Button>
             </p>
           ) : null}
         </>

@@ -45,6 +45,14 @@
   margin: 0;
   color: var(--warning);
 }
+.px-library-update {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-1) 0 0;
+  color: var(--primary-text);
+}
 .px-library-status {
   display: flex;
   align-items: center;

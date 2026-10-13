@@ -22,10 +22,13 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 13             | `topics.archived_at`. A rebuild archives unmatched topics instead of deleting them      |
 | 14             | `gaps.misconception` and `gaps.severity` (`severe` or `minor`), from the model analysis |
 | 15             | `gaps.origin`, `gaps.comparison`, `gaps.merged_into` and the `gap_answers` table        |
+| 16             | `sources.catalog_id` and `sources.catalog_version`, the free book a smartbook is        |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
-Current version is 15. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 16 links a smartbook to the free PoliTost book it came from: its catalog id and the version it holds. Adding a book from the books list sets both. A book imported before 0.3 gets them the next time the list or the Sources page reads the catalog: by the package's SHA-256 when the catalog lists that package, otherwise by the `id` and semver `version` in the package's own `smartbook.json`. An update to a newer version adds the next `source_documents` version of the same source, rewrites `smartbooks.meta_json`, and keeps exercise ids (matched by the book's exercise id and kind). An exercise the new version dropped loses its `smartbook_id` but keeps its row, so flags and history on it still resolve. Lesson and quiz citations whose exact passage text is gone from the new version get `item_passages.stale = 1`.
+
+Current version is 16. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table            | A row is                                                                                |
 | ---------------- | --------------------------------------------------------------------------------------- |

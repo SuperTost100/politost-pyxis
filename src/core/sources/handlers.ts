@@ -17,6 +17,7 @@ import {
 import type { Runner } from "../jobs/runner";
 import {
   enqueueReextract,
+  hasUnfinishedJob,
   enqueueSourceFile,
   enqueueSourceData,
   assertLocalOcrReady,
@@ -30,6 +31,7 @@ import { listImportable, MAX_FOLDER_FILES } from "./folder";
 import { importImageFile, importLink, isImageExt, ocrPngPage } from "./intake";
 import {
   extForMime,
+  plansUsing,
   promoteSource,
   removeSource,
   renameSource,
@@ -52,8 +54,11 @@ import {
   downloadBook,
   fetchCatalog,
   httpsTransport,
+  isNewerBook,
   type BooksTransport,
+  type CatalogBook,
 } from "./books";
+import { bookState, linkCatalogBooks, linkedBookSource } from "./book-update";
 import { compareToPlans, storedSyllabus, syllabusFor } from "./syllabus";
 import { maxSourceBytes, MAX_IMAGE_BASE64, MAX_IMAGE_BYTES, MAX_SOURCE_BYTES } from "../../shared/source-types";
 import {
@@ -66,6 +71,9 @@ import {
   smartbookMeta,
   sourcePassages,
 } from "./smartbook";
+
+/** How long a catalog read answers the Library's checks before books.politost.it is asked again. */
+const CATALOG_FRESH_MS = 5 * 60_000;
 
 function sourceError(err: unknown): never {
   const message = err instanceof Error ? err.message : "";
@@ -162,15 +170,28 @@ export function sourceHandlers(
   const activeJob = (kind: string) =>
     runner?.list().find((job) => job.kind === kind && ["queued", "running"].includes(job.state))?.id;
   const activeOcrDownload = () => activeJob("ocr-data-download");
+  // The catalog read last, so the Library can check for new versions each time its list changes without asking
+  // books.politost.it again. A download (add or update) always reads it fresh.
+  let catalog: { at: number; books: CatalogBook[] } | null = null;
+  const readCatalog = async (signal?: AbortSignal, fresh = false) => {
+    if (!fresh && catalog && Date.now() - catalog.at < CATALOG_FRESH_MS) return catalog.books;
+    const books = await fetchCatalog(booksTransport, signal);
+    catalog = { at: Date.now(), books };
+    return books;
+  };
   const requireOcrData = async () => {
     const { state } = await ocrDataStatus(tess);
     if (state !== "ready") throw new Error(`ocr-data-${state}`);
   };
   return {
-    /** The free PoliTost books, each with the library source it already is, if any. Only called when asked. */
+    /**
+     * The free PoliTost books, each with the library source it already is, if any, and whether a newer version can
+     * update that source in place. Only called while the books list or the Library is open.
+     */
     async books(signal?: AbortSignal) {
       try {
-        const books = await fetchCatalog(booksTransport, signal);
+        const books = await readCatalog(signal);
+        linkCatalogBooks(db, books);
         return books.map((book) => ({
           id: book.id,
           title: book.title,
@@ -179,7 +200,7 @@ export function sourceHandlers(
           version: book.version,
           chapters: book.chapters,
           bytes: book.bytes,
-          sourceId: existingSourceFor(db, book.sha256, true),
+          ...bookState(db, book),
         }));
       } catch (err) {
         sourceError(err);
@@ -191,11 +212,13 @@ export function sourceHandlers(
      */
     async importBook(input: { id: string }, signal?: AbortSignal) {
       try {
-        const book = (await fetchCatalog(booksTransport, signal)).find(
+        const book = (await readCatalog(signal, true)).find(
           (item) => item.id === input.id,
         );
         if (!book) throw new Error("books-missing");
-        const existing = existingSourceFor(db, book.sha256);
+        // An older version already here is used as it is. Its row offers the update.
+        const existing =
+          existingSourceFor(db, book.sha256) ?? linkedBookSource(db, book.id);
         if (existing) {
           // A copy a chat or a plan file brought in joins the library, so the book shows there.
           promoteSource(db, existing);
@@ -215,6 +238,9 @@ export function sourceHandlers(
           bytes,
           ".ptsb",
           book.title,
+          undefined,
+          undefined,
+          { id: book.id, version: book.version },
         );
         return {
           sourceId: imported.sourceId,
@@ -222,6 +248,53 @@ export function sourceHandlers(
           title: book.title,
           subject: book.subject,
         };
+      } catch (err) {
+        sourceError(err);
+      }
+    },
+    /**
+     * Updates a free book in place to the version the catalog lists now: the same source gets the new package as its
+     * next version, through the import job. A book that plans use needs `confirmed` (`started: false`, `inUse`), and
+     * nothing is downloaded until then. The catalog is read again and the package checked against it, as for Add.
+     * Errors: `source-missing` (also a removed book), `source-busy`, `book-up-to-date`, and the download's `books-*`.
+     */
+    async updateBook(input: { sourceId: string; confirmed: boolean }, signal?: AbortSignal) {
+      try {
+        if (!runner) throw new Error("source-missing");
+        const read = () => db
+          .prepare(
+            `SELECT catalog_id AS catalogId, catalog_version AS version, blob_sha AS sha FROM sources
+             WHERE id = ? AND kind = 'smartbook' AND status != 'removed'`,
+          )
+          .get(input.sourceId) as
+          { catalogId: string | null; version: string | null; sha: string | null } | undefined;
+        let source = read();
+        if (!source) throw new Error("source-missing");
+        // A book imported before the link existed is linked first, as the books list would.
+        if (!source.catalogId) {
+          linkCatalogBooks(db, await readCatalog(signal));
+          source = read() ?? source;
+        }
+        if (hasUnfinishedJob(db, input.sourceId)) throw new Error("source-busy");
+        const inUse = plansUsing(db, input.sourceId);
+        if (inUse > 0 && !input.confirmed) return { started: false, inUse };
+        const book = source.catalogId
+          ? (await readCatalog(signal, true)).find((item) => item.id === source.catalogId)
+          : undefined;
+        if (!book || !isNewerBook(book, source)) throw new Error("book-up-to-date");
+        const bytes = await downloadBook(book, booksTransport, maxSourceBytes(".ptsb"), signal);
+        const queued = enqueueSourceData(
+          db,
+          workspace,
+          runner,
+          bytes,
+          ".ptsb",
+          book.title,
+          undefined,
+          input.sourceId,
+          { id: book.id, version: book.version },
+        );
+        return { started: true, inUse, jobId: queued.jobId, version: book.version };
       } catch (err) {
         sourceError(err);
       }

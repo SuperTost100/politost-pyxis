@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "antd";
-import { Check } from "lucide-react";
+import { Check, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
@@ -15,6 +15,53 @@ function errorKey(err: unknown): string {
   return err && typeof err === "object" && "messageKey" in err
     ? String((err as { messageKey: unknown }).messageKey)
     : "sources.books.offline";
+}
+
+/**
+ * The free books list, with each book's library source and whether a newer version can update it. Under "sources",
+ * so a change to the library (an import, a removal, an update) reads it again; core keeps the catalog for a few
+ * minutes, so that does not ask books.politost.it each time. Only enabled while the list or the Library is open.
+ */
+export function useFreeBooks(enabled: boolean) {
+  return useQuery({
+    queryKey: ["sources", "free-books"],
+    queryFn: () => invoke("sources.books", {}),
+    enabled,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Updates a free book in place. A book that plans use asks first, as Replace does. Resolves with the version being
+ * installed, or null when the student declined. Errors are thrown to the caller, which shows them where it acted.
+ */
+export function useBookUpdate() {
+  const { t } = useTranslation();
+  const client = useQueryClient();
+  const [busy, setBusy] = useState<string | null>(null);
+  async function update(sourceId: string): Promise<string | null> {
+    setBusy(sourceId);
+    try {
+      let result = await invoke("sources.updateBook", {
+        sourceId,
+        confirmed: false,
+      });
+      if (!result.started && result.inUse > 0) {
+        if (!window.confirm(t("books.updateInUse", { count: result.inUse })))
+          return null;
+        result = await invoke("sources.updateBook", {
+          sourceId,
+          confirmed: true,
+        });
+      }
+      void client.invalidateQueries({ queryKey: ["sources"] });
+      return result.started ? (result.version ?? null) : null;
+    } finally {
+      setBusy(null);
+    }
+  }
+  return { update, busy };
 }
 
 /**
@@ -35,14 +82,8 @@ export function FreeBooks({
 }) {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
-  const books = useQuery({
-    // Under "sources", so a change to the library (an import, a removal) also marks the list as out of date.
-    queryKey: ["sources", "free-books"],
-    queryFn: () => invoke("sources.books", {}),
-    enabled: open,
-    retry: false,
-    staleTime: 5 * 60_000,
-  });
+  const books = useFreeBooks(open);
+  const updater = useBookUpdate();
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<{ id: string; key: string } | null>(
     null,
@@ -67,6 +108,16 @@ export function FreeBooks({
     }
   }
 
+  async function update(book: Book) {
+    if (!book.sourceId) return;
+    setFailed(null);
+    try {
+      await updater.update(book.sourceId);
+    } catch (err) {
+      setFailed({ id: book.id, key: errorKey(err) });
+    }
+  }
+
   const size = (bytes: number) =>
     new Intl.NumberFormat(i18n.language, {
       style: "unit",
@@ -76,6 +127,34 @@ export function FreeBooks({
 
   function action(book: Book) {
     const sourceId = done[book.id] ?? book.sourceId;
+    const working = busy !== null || updater.busy !== null;
+    if (sourceId && book.update === "running")
+      return (
+        <span className="small px-books-state">
+          <LoaderCircle size={14} aria-hidden />
+          {t("books.updating")}
+        </span>
+      );
+    // A newer version updates the copy in the library. A caller that still needs the book can add the copy as it is.
+    if (sourceId && book.update === "available")
+      return (
+        <span className="px-books-actions">
+          {onAdded && !added.includes(sourceId) ? addButton(book) : null}
+          <Button
+            shape="round"
+            type="primary"
+            loading={updater.busy === sourceId}
+            disabled={working && updater.busy !== sourceId}
+            aria-label={t(
+              updater.busy === sourceId ? "books.updatingNamed" : "books.updateNamed",
+              { title: book.title },
+            )}
+            onClick={() => void update(book)}
+          >
+            {updater.busy === sourceId ? t("books.adding") : t("books.update")}
+          </Button>
+        </span>
+      );
     // In the library already. Without a caller to add it to, there is nothing to do.
     if (sourceId && (!onAdded || added.includes(sourceId)))
       return (
@@ -84,11 +163,17 @@ export function FreeBooks({
           {t(onAdded ? "books.added" : "books.inLibrary")}
         </span>
       );
+    return addButton(book);
+  }
+
+  function addButton(book: Book) {
     return (
       <Button
         shape="round"
         loading={busy === book.id}
-        disabled={busy !== null && busy !== book.id}
+        disabled={
+          (busy !== null && busy !== book.id) || updater.busy !== null
+        }
         aria-label={t(busy === book.id ? "books.addingNamed" : "books.addNamed", {
           title: book.title,
         })}
@@ -146,6 +231,11 @@ export function FreeBooks({
                     .filter(Boolean)
                     .join(" · ")}
                 </span>
+                {book.sourceId && book.update === "available" ? (
+                  <span className="small px-books-new">
+                    {t("books.newVersion")}
+                  </span>
+                ) : null}
                 {failed?.id === book.id ? (
                   <span className="small px-books-error" role="alert">
                     {t(failed.key)}

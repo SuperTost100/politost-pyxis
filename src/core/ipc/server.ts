@@ -633,6 +633,11 @@ async function dispatchValidated(
         requests["sources.importBook"].input.parse(input),
         signal,
       );
+    case "sources.updateBook":
+      return sources?.updateBook(
+        requests["sources.updateBook"].input.parse(input),
+        signal,
+      );
     case "sources.scanFolder":
       return sources?.scanFolder(
         requests["sources.scanFolder"].input.parse(input),

@@ -403,7 +403,8 @@
       "offline": "I couldn't reach books.politost.it. Check your connection and try again.",
       "catalog": "The book list on books.politost.it can't be read right now. Try again later.",
       "integrity": "The downloaded book doesn't match the list, so I didn't import it. Try again.",
-      "missing": "This book is no longer in the list."
+      "missing": "This book is no longer in the list.",
+      "upToDate": "This book already has the newest version."
     }
   },
   "cards": {
@@ -1810,7 +1811,7 @@
     "openViewer": "Open in viewer",
     "askTopic": "Ask the tutor",
     "topicActions": "Actions for {{title}}",
-    "rebuildSuggested": "New sources are attached. Rebuild the path to include their material.",
+    "rebuildSuggested": "Your sources changed since the topics were built. Rebuild the path to include their material.",
     "rebuildNew_one": "1 new topic",
     "rebuildNew_other": "{{count}} new topics",
     "rebuildNoneNew": "No new topics. The attached sources are already covered.",
@@ -1923,7 +1924,7 @@
   "books": {
     "title": "Free PoliTost books",
     "open": "Free PoliTost books",
-    "intro": "Smartbooks written for PoliTost, free to use. The list comes from books.politost.it, and Pyxis connects only while this window is open.",
+    "intro": "Smartbooks written for PoliTost, free to use. The list comes from books.politost.it. Pyxis connects only while this window is open, or while the Sources page is open and holds one of these books, to check for a new version.",
     "loading": "Loading the list from books.politost.it…",
     "empty": "No books are published yet.",
     "chapters_one": "{{count}} chapter",
@@ -1935,6 +1936,15 @@
     "adding": "Downloading…",
     "added": "Added",
     "inLibrary": "In your library",
+    "update": "Update",
+    "updateNamed": "Update {{title}}",
+    "updatingNamed": "Downloading the new version of {{title}}",
+    "updating": "Updating…",
+    "newVersion": "New version available",
+    "newVersionNamed": "New version available: {{version}}",
+    "updateStarted": "{{title}} is being updated to version {{version}}. Follow it in the background tasks.",
+    "updateInUse_one": "{{count}} plan uses this book. Updating keeps the old text for that plan's citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in the plan to pick up new chapters. Update it?",
+    "updateInUse_other": "{{count}} plans use this book. Updating keeps the old text for those plans' citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in each plan to pick up new chapters. Update it?",
     "retry": "Try again"
   }
 }
