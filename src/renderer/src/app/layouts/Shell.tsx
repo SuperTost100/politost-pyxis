@@ -12,6 +12,7 @@ import { JobsButton } from "../../features/jobs/JobsButton";
 import { invoke } from "../../lib/ipc";
 import { useAppState } from "../app-state";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
+import { useMenuLock } from "../menu-state";
 
 type Door = "ask" | "exams";
 
@@ -34,6 +35,12 @@ function doorForPath(pathname: string): Door | null {
   if (pathname.startsWith("/exams") || pathname.startsWith("/plans"))
     return "exams";
   return null;
+}
+
+/** Where a door leads from `pathname`: back to where it was left, or to its root when it is already open. */
+export function doorTarget(door: Door, pathname: string): string {
+  if (doorForPath(pathname) === door) return door === "ask" ? "/ask" : "/exams";
+  return readLast()[door];
 }
 
 /** antd's Segmented shows no selection when its value matches no option. */
@@ -61,6 +68,8 @@ export function Shell() {
     enabled: profile.isSuccess && Boolean(profile.data),
     refetchInterval: 1000,
   });
+  // The menu leaves a running simulation alone, like the redirect below.
+  useMenuLock(Boolean(activeSimulation.data));
   useEffect(() => {
     if (activeSimulation.data && location.pathname.startsWith("/ask"))
       navigate(

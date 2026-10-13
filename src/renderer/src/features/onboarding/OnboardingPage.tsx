@@ -7,6 +7,7 @@ import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { invoke } from "../../lib/ipc";
+import { useMenuLock } from "../../app/menu-state";
 import { useJobs } from "../jobs/queries";
 import { EnginesStep } from "./EnginesStep";
 import "./OnboardingPage.css";
@@ -29,6 +30,8 @@ export function OnboardingPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
+  // Setup is not left through the menu: Shell sends a profile-less student back here.
+  useMenuLock(true);
   const [screen, setScreen] = useState(0);
   const [name, setName] = useState("");
   const [level, setLevel] = useState<(typeof levels)[number]>("university");

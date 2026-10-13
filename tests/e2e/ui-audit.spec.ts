@@ -153,6 +153,8 @@ const routes = [
   ["ask-sources-menu", "/ask/audit-chat"],
   // The formula keyboard docked in the composer, with a formula already typed.
   ["ask-formula", "/ask/audit-chat"],
+  // Help > Keyboard shortcuts, opened through the application menu.
+  ["shortcuts-dialog", "/exams"],
 ] as const;
 
 /** The pinned OCR files the runtime task downloaded once. The audit stages these bytes, it never fetches them. */
@@ -1147,6 +1149,16 @@ async function openState(page: Page, name: string) {
     case "guided-style":
     case "guided-tree":
       await openGuided(page, name.slice("guided-".length) as "period");
+      break;
+    case "shortcuts-dialog":
+      await auditApp!.evaluate(({ Menu }) => {
+        Menu.getApplicationMenu()?.getMenuItemById("shortcuts")?.click();
+      });
+      await expect(
+        page.getByRole("dialog", {
+          name: both("Scorciatoie da tastiera", "Keyboard shortcuts"),
+        }),
+      ).toBeVisible();
       break;
     case "ask-panel":
       await page

@@ -1,3 +1,4 @@
+import type { MenuCommand, MenuLanguage } from "./menu";
 import type { UpdateView } from "./updates";
 export type ThemeSource = "system" | "dark" | "light";
 export type ResolvedTheme = "dark" | "light";
@@ -79,6 +80,10 @@ export interface PyxisBridge {
   printData(): Promise<{ markdown: string } | null>;
   printReady(): Promise<void>;
   checkUpdates(): Promise<UpdateView>;
+  /** Tells main which language to write the application menu in. Main rebuilds the menu when it changes. */
+  setMenuLanguage(language: MenuLanguage): Promise<void>;
+  /** Runs when the student picks a menu item or presses its shortcut. Unknown commands never arrive. */
+  onMenuCommand(cb: (command: MenuCommand) => void): () => void;
 }
 
 export const mainChannels = {
@@ -106,4 +111,6 @@ export const mainChannels = {
   printData: "print:data",
   printReady: "print:ready",
   updatesCheck: "updates:check",
+  menuLanguage: "menu:language",
+  menuCommand: "menu:command",
 } as const;

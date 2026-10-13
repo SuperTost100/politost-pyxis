@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { isMenuCommand, type MenuLanguage } from "../shared/menu";
 import {
   mainChannels,
   type Appearance,
@@ -278,6 +279,15 @@ const bridge: PyxisBridge = {
   printData: () => ipcRenderer.invoke(mainChannels.printData),
   printReady: () => ipcRenderer.invoke(mainChannels.printReady),
   checkUpdates: () => ipcRenderer.invoke(mainChannels.updatesCheck),
+  setMenuLanguage: (language: MenuLanguage) =>
+    ipcRenderer.invoke(mainChannels.menuLanguage, language),
+  onMenuCommand: (cb) => {
+    const listener = (_event: unknown, command: unknown) => {
+      if (isMenuCommand(command)) cb(command);
+    };
+    ipcRenderer.on(mainChannels.menuCommand, listener);
+    return () => ipcRenderer.removeListener(mainChannels.menuCommand, listener);
+  },
 };
 
 contextBridge.exposeInMainWorld("pyxis", bridge);
