@@ -43,7 +43,10 @@ async function reach(page: Page, step: "modules" | "tree") {
   });
   await page.reload();
   await page.getByRole("textbox", { name: /Titolo|Title/, exact: true }).fill("Fisica audit");
-  for (let i = 0; i < 4; i++) await next(page).click();
+  await next(page).click();
+  // Nothing is chosen for the student on the exam step.
+  await page.getByRole("button", { name: both("Entro 10 giorni", "Within 10 days") }).click();
+  for (let i = 0; i < 3; i++) await next(page).click();
   await page.getByRole("group", { name: both("Periodo", "Period") }).getByRole("button").first().click();
   await next(page).click();
   if (step === "modules") return;

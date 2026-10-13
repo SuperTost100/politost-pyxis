@@ -16,10 +16,16 @@ import { BuildingMark } from "../../components/BuildingMark";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { FreeBooks } from "../../components/FreeBooks";
-import { examInstant, PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
+import { PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
 import { ImportReview } from "./ImportReview";
 import { parsePlanText, type ImportRequest } from "./importPreview";
-import { isWizardSeed, type WizardSeed } from "./wizardSeed";
+import {
+  examChosen,
+  examFromChoice,
+  isWizardSeed,
+  type ExamChoice,
+  type WizardSeed,
+} from "./wizardSeed";
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();
@@ -62,8 +68,9 @@ export function WizardFrame() {
       ...current,
       ...ids.filter((id) => !current.includes(id)),
     ]);
-  const [examChoice, setExamChoice] = useState<"1" | "2" | "3" | "10">(
-    seed?.examChoice ?? "10",
+  // Nothing is chosen for the student: a made-up deadline would start pushing simulations within days.
+  const [examChoice, setExamChoice] = useState<ExamChoice>(
+    seed?.examChoice ?? "",
   );
   const [date, setDate] = useState(seed?.date ?? "");
   const [target, setTarget] = useState(seed?.target ?? 75);
@@ -107,22 +114,11 @@ export function WizardFrame() {
     if (!name || busy) return;
     setStarting(true);
     try {
-      const days =
-        examChoice === "1"
-          ? 1
-          : examChoice === "2"
-            ? 2
-            : examChoice === "3"
-              ? 3
-              : 10;
-      const fromDate = date
-        ? new Date(`${date}T12:00:00`).getTime()
-        : examInstant(days);
       const result = await invoke("plans.create", {
         title: name,
         subject: subject.trim() || undefined,
         sourceIds: picked,
-        examAt: Number.isFinite(fromDate) ? fromDate : null,
+        examAt: examFromChoice(examChoice, date),
         target: target / 100,
         language: language === "en" ? "en" : "it",
         style,
@@ -280,9 +276,7 @@ export function WizardFrame() {
     : blockedSource
       ? t("wizard.sourceNotReady")
       : null;
-  const examAt = date
-    ? dayjs(date).hour(12).valueOf()
-    : examInstant(Number(examChoice));
+  const examAt = examFromChoice(examChoice, date);
   return (
     <FocusLayout
       title={t("wizard.title")}
@@ -305,7 +299,10 @@ export function WizardFrame() {
           <Button
             type="primary"
             shape="round"
-            disabled={wizardStep === 0 && !title.trim()}
+            disabled={
+              (wizardStep === 0 && !title.trim()) ||
+              (wizardStep === 1 && !examChosen(examChoice, date))
+            }
             onClick={() =>
               wizardStep === 3 && picked.length === 0
                 ? startGuided()
@@ -424,6 +421,7 @@ export function WizardFrame() {
                   ["1", t("wizard.tomorrow")],
                   ["3", t("wizard.inTwoOrThree")],
                   ["10", t("wizard.inTen")],
+                  ["none", t("wizard.noDate")],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -459,14 +457,20 @@ export function WizardFrame() {
                 }
               />
             </div>
-            <p className="body ink-muted">
-              {t("wizard.examSummary", {
-                date: new Intl.DateTimeFormat(i18n.language, {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                }).format(examAt),
-              })}
+            <p className="body ink-muted" aria-live="polite">
+              {examAt != null
+                ? t("wizard.examSummary", {
+                    date: new Intl.DateTimeFormat(i18n.language, {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    }).format(examAt),
+                  })
+                : t(
+                    examChoice === "none"
+                      ? "wizard.noDateSummary"
+                      : "wizard.examRequired",
+                  )}
             </p>
           </>
         ) : null}

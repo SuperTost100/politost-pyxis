@@ -910,6 +910,9 @@ async function openWizard(page: Page, step: number) {
         .click();
       await expect(picker).toBeHidden();
     }
+    // Nothing is chosen for the student on the exam step.
+    if (at === 2)
+      await page.getByRole("button", { name: both("Entro 10 giorni", "Within 10 days") }).click();
     await page
       .getByRole("button", { name: /Continua|Continue/, exact: true })
       .click();
@@ -930,7 +933,9 @@ async function openGuided(
       .getByRole("button", { name: /Continua|Continue/, exact: true })
       .click();
   // No material chosen: the last Continue of the wizard leads to the guided flow.
-  for (let i = 0; i < 4; i++) await next();
+  await next();
+  await page.getByRole("button", { name: both("Entro 10 giorni", "Within 10 days") }).click();
+  for (let i = 0; i < 3; i++) await next();
   const periods = page.getByRole("group", { name: both("Periodo", "Period") });
   await expect(periods).toBeVisible();
   if (upTo === "period") return;

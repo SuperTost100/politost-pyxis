@@ -173,8 +173,10 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await page.getByTitle("Piani", { exact: true }).click();
     await page.getByRole("button", { name: "Nuovo piano", exact: true }).click();
     await page.locator("#plan-title").fill("Fisica");
-    for (let step = 0; step < 3; step++)
+    for (let step = 0; step < 3; step++) {
+      if (step === 1) await page.getByRole("button", { name: "Entro 10 giorni", exact: true }).click();
       await page.getByRole("button", { name: "Continua", exact: true }).click();
+    }
     await expect(page.getByText("0 fonti nel piano")).toBeVisible();
     await expect(page.getByRole("button", { name: "Non ho materiale" })).toBeVisible();
     await expect(page.getByRole("button", { name: "vecchio", exact: true })).toHaveCount(0);

@@ -214,6 +214,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .click();
     await page.locator("#plan-title").fill("Motion");
     for (let step = 0; step < 3; step++) {
+      if (step === 1) await page.getByRole("button", { name: "Entro 10 giorni", exact: true }).click();
       await page.getByRole("button", { name: "Continua", exact: true }).click();
     }
     // The book is in the library already, so it comes in through the library picker.
