@@ -69,15 +69,14 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
       window.location.hash = "/plans/new";
     });
     await page.getByLabel("Titolo", { exact: true }).fill("Fisica generale");
-    // The exam step: the student knows only the month, March of next year.
-    const year = new Date().getFullYear() + 1;
+    // The exam step: nothing is chosen for the student, who has no date yet.
     for (let i = 0; i < 3; i += 1) {
       if (i === 1) {
         await expect(page.getByRole("button", { name: "Continua", exact: true })).toBeDisabled();
-        await page.getByLabel("Oppure solo il mese, se il giorno non è ancora fissato").fill(`03/${year}`);
-        await page.keyboard.press("Enter");
+        await expect(page.getByText("Scegli una di queste opzioni per continuare.")).toBeVisible();
+        await page.getByRole("button", { name: "Nessuna data per ora", exact: true }).click();
         await expect(
-          page.getByText(`Esame a marzo ${year}. Il piano punta a prepararti entro l'inizio del mese.`),
+          page.getByText("Nessuna data d'esame per ora. Puoi aggiungerla dopo nelle impostazioni del piano."),
         ).toBeVisible();
       }
       await page.getByRole("button", { name: "Continua", exact: true }).click();
@@ -103,7 +102,7 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
     await expect(
       page.getByText("dalla conoscenza generale del modello", { exact: false }),
     ).toBeVisible();
-    await expect(page.getByText(`Esame a marzo ${year}`, { exact: false })).toBeVisible();
+    await expect(page.getByText("Nessuna data d'esame", { exact: false })).toBeVisible();
 
     const planId = await page.evaluate(async () => {
       const list = await window.pyxis.invoke("plans.list", {});
@@ -113,8 +112,7 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
       page.evaluate((x) => window.pyxis.invoke("plans.read", { planId: x }), id);
     const plan = await read(planId);
     expect(plan!.status).toBe("draft");
-    expect(plan!.examMonth).toBe(true);
-    expect(new Date(plan!.examAt!)).toEqual(new Date(year, 2, 1, 12));
+    expect(plan!.examAt).toBeNull();
     expect(plan!.topics.map((t) => [t.title, t.grounding])).toEqual([
       ["Cinematica rivista", "general"],
       ["Dinamica", "general"],
@@ -134,19 +132,18 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
     const copy = await read(imported.planId);
     expect(copy!.topics.map((t) => t.grounding)).toEqual(["general", "general"]);
     expect(copy!.status).toBe("draft");
-    expect(copy!.examMonth).toBe(true);
+    expect(copy!.examAt).toBeNull();
 
-    // Plan settings keep the month, and switching to a day stores an exact date.
+    // The date can come later, from the plan's settings.
+    const year = new Date().getFullYear() + 1;
     await page.getByRole("button", { name: "Impostazioni del piano" }).click();
     const settings = page.getByRole("dialog", { name: "Impostazioni del piano" });
-    await expect(settings.getByRole("checkbox", { name: "So solo il mese" })).toBeChecked();
-    await expect(settings.getByLabel("Data dell'esame")).toHaveValue(`03/${year}`);
-    await settings.getByRole("checkbox", { name: "So solo il mese" }).uncheck();
+    await expect(settings.getByLabel("Data dell'esame")).toHaveValue("");
+    await settings.getByLabel("Data dell'esame").fill(`15/03/${year}`);
+    await page.keyboard.press("Enter");
     await settings.getByRole("button", { name: "Salva modifiche" }).click();
     await expect(settings).toBeHidden();
-    const exact = await read(planId);
-    expect(exact!.examMonth).toBe(false);
-    expect(new Date(exact!.examAt!)).toEqual(new Date(year, 2, 1, 12));
+    expect(new Date((await read(planId))!.examAt!)).toEqual(new Date(year, 2, 15, 12));
     await page.evaluate((id) => {
       window.location.hash = `/plans/${id}`;
     }, imported.planId);

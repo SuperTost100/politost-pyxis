@@ -58,7 +58,6 @@ describe("plan file", () => {
       title: "Fisica 1",
       sourceIds: [imported.sourceId],
       examAt: 90_000,
-      examMonth: true,
       target: 0.8,
       language: "en",
       style: "read",
@@ -91,19 +90,16 @@ describe("plan file", () => {
     expect(cards).toEqual([{ front: "fronte", back: "retro" }]);
     const stored = db
       .prepare(
-        `SELECT exam_at, exam_month, target, content_language, style FROM plans WHERE id = ?`,
+        `SELECT exam_at, target, content_language, style FROM plans WHERE id = ?`,
       )
       .get(copyId) as {
       exam_at: number;
-      exam_month: number;
       target: number;
       content_language: string;
       style: string;
     };
-    expect(file.examMonth).toBe(true);
     expect(stored).toEqual({
       exam_at: 90_000,
-      exam_month: 1,
       target: 0.8,
       content_language: "en",
       style: "read",
@@ -172,10 +168,6 @@ describe("plan file", () => {
       },
       70_000,
     );
-    // A file with progress takes the other import path, which keeps the month too.
-    expect(
-      db.prepare("SELECT exam_month FROM plans WHERE id=?").get(restored),
-    ).toEqual({ exam_month: 1 });
     expect(
       db.prepare("SELECT suspended FROM cards WHERE plan_id=?").get(restored),
     ).toEqual({ suspended: 1 });

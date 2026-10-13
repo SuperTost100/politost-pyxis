@@ -18,7 +18,7 @@ Nothing on the path is locked. Every activity is open at any time and in any ord
 1. Due cards or severe gaps on any topic. When several topics qualify, the recommendation score below picks the topic, and its due cards come before its gaps.
 2. On a plan with no study yet, the introduction (when the plan has one), then the diagnostic.
 3. A simulation, once every topic has reached the target.
-4. A simulation, when the exam is 0 to 3 days away and some study has happened. An exam known only by its month counts down to the 1st and stays 0 days away until the month ends.
+4. A simulation, when the exam is 0 to 3 days away and some study has happened.
 5. Exercises on the topic whose lesson was just read, while that topic is below the target.
 6. A quiz on the topic just practiced, while that topic is below the target. Practice is not graded, so it leaves mastery where it was; without the quiz, rule 8 would suggest practice on the same topic again and again.
 7. The lesson of the next unread topic, in plan order.

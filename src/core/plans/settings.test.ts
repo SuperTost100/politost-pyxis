@@ -5,21 +5,6 @@ import { requests } from "../../shared/ipc";
 import { PLAN_TITLE_MAX } from "../../shared/plan-file";
 
 describe("plan settings", () => {
-  it("stores whether the student knows only the exam month", () => {
-    const db = openDatabase(":memory:");
-    db.prepare(
-      "INSERT INTO plans(id,title,status,created_at,updated_at) VALUES('p','Old','ready',1,1)",
-    ).run();
-    const month = () => db.prepare("SELECT exam_at, exam_month FROM plans").get();
-    savePlanSettings(db, { planId: "p", title: "P", target: 0.8, examAt: 1000, examMonth: true });
-    expect(month()).toEqual({ exam_at: 1000, exam_month: 1 });
-    savePlanSettings(db, { planId: "p", title: "P", target: 0.8, examAt: 1000 });
-    expect(month()).toEqual({ exam_at: 1000, exam_month: 0 });
-    // Without a date there is no month to remember.
-    savePlanSettings(db, { planId: "p", title: "P", target: 0.8, examAt: null, examMonth: true });
-    expect(month()).toEqual({ exam_at: null, exam_month: 0 });
-  });
-
   it("changes editable fields while keeping content language and material", () => {
     const db = openDatabase(":memory:");
     db.prepare(

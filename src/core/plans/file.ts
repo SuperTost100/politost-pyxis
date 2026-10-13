@@ -63,13 +63,12 @@ export function exportPlan(
 ): PlanFile {
   const plan = db
     .prepare(
-      `SELECT title, exam_at, exam_month, target, content_language, style FROM plans WHERE id = ?`,
+      `SELECT title, exam_at, target, content_language, style FROM plans WHERE id = ?`,
     )
     .get(planId) as
     | {
         title: string;
         exam_at: number | null;
-        exam_month: number;
         target: number;
         content_language: string | null;
         style: string;
@@ -187,7 +186,6 @@ export function exportPlan(
         : {}),
     })),
     examAt: plan.exam_at,
-    ...(plan.exam_at != null && plan.exam_month === 1 ? { examMonth: true } : {}),
     target: clampTarget(plan.target),
     language:
       plan.content_language === "it" || plan.content_language === "en"
@@ -549,14 +547,13 @@ export function importPlan(
   });
   const run = db.transaction(() => {
     db.prepare(
-      `INSERT INTO plans (id, title, status, content_language, exam_at, exam_month, target, style, created_at, updated_at)
-       VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO plans (id, title, status, content_language, exam_at, target, style, created_at, updated_at)
+       VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?)`,
     ).run(
       planId,
       parsed.title.slice(0, PLAN_TITLE_MAX),
       parsed.language ?? null,
       parsed.examAt ?? null,
-      parsed.examAt != null && parsed.examMonth ? 1 : 0,
       parsed.target ?? 0.75,
       parsed.style ?? "decide",
       now,
@@ -1300,7 +1297,7 @@ function importPortablePlan(
     if (!opened.has(g.id) || (g.closedAt != null && !closed.has(g.id))) throw new Error("plan-file");
   return db.transaction(() => {
     db.prepare(
-      "INSERT INTO plans(id,title,status,content_language,exam_at,exam_month,target,style,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO plans(id,title,status,content_language,exam_at,target,style,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
     ).run(
       planId,
       file.title.slice(0, PLAN_TITLE_MAX),
@@ -1311,7 +1308,6 @@ function importPortablePlan(
         : "ready",
       file.language ?? null,
       file.examAt ?? null,
-      file.examAt != null && file.examMonth ? 1 : 0,
       file.target ?? 0.75,
       file.style ?? "decide",
       now,

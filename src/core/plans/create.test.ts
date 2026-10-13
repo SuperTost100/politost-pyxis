@@ -392,25 +392,3 @@ it("orders upcoming exams by date and past exams last", () => {
   ]);
   db.close();
 });
-
-it("keeps an exam known only by its month upcoming until that month ends", () => {
-  const db = openDatabase(":memory:");
-  // 4 October 2026, noon local time.
-  const now = new Date(2026, 9, 4, 12).getTime();
-  const insert = db.prepare(
-    "INSERT INTO plans (id,title,status,exam_at,exam_month,created_at,updated_at) VALUES (?,?,'ready',?,?,1,1)",
-  );
-  insert.run("this-month", "This month", new Date(2026, 9, 1, 12).getTime(), 1);
-  insert.run("next-month", "Next month", new Date(2026, 10, 1, 12).getTime(), 1);
-  insert.run("last-month", "Last month", new Date(2026, 8, 1, 12).getTime(), 1);
-  // The same day as an exact date is already past.
-  insert.run("exact", "Exact", new Date(2026, 9, 1, 12).getTime(), 0);
-  const plans = listPlans(db, now);
-  expect(plans.map((p) => [p.id, p.daysToExam, p.examMonth])).toEqual([
-    ["this-month", 0, true],
-    ["next-month", 28, true],
-    ["last-month", -33, true],
-    ["exact", -3, false],
-  ]);
-  db.close();
-});

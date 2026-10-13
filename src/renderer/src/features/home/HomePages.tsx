@@ -13,10 +13,10 @@ import type { PlanFile } from "@shared/plan-file";
 import { SubjectManagerModal } from "../ask/SubjectPicker";
 import { ImportReview } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
-import { examLabel } from "../plans/examDays";
+import { examDaysLabel } from "../plans/examDays";
 
 export function ExamsHome() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const client = useQueryClient();
@@ -155,17 +155,9 @@ export function ExamsHome() {
                   cta={t("onboarding.continue")}
                   continueLabel={t("exams.continuePlan", { title: plan.title })}
                   meta={[
-                    plan.daysToExam == null || plan.examAt == null
+                    plan.daysToExam == null
                       ? null
-                      : examLabel(
-                          t,
-                          {
-                            examAt: plan.examAt,
-                            examMonth: plan.examMonth,
-                            days: plan.daysToExam,
-                          },
-                          i18n.language,
-                        ),
+                      : examDaysLabel(t, plan.daysToExam),
                     t("exams.aligned", {
                       ready: plan.alignedTopics,
                       count: plan.totalTopics,

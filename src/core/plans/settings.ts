@@ -7,7 +7,6 @@ export const planSettingsSchema = z.object({
   title: z.string().trim().min(1).max(PLAN_TITLE_MAX),
   target: z.number().finite().min(0.5).max(1),
   examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable(),
-  examMonth: z.boolean().optional(),
 });
 
 export function savePlanSettings(
@@ -18,13 +17,12 @@ export function savePlanSettings(
   const settings = planSettingsSchema.parse(input);
   const result = db
     .prepare(
-      "UPDATE plans SET title=?,target=?,exam_at=?,exam_month=?,updated_at=? WHERE id=? AND status!='building'",
+      "UPDATE plans SET title=?,target=?,exam_at=?,updated_at=? WHERE id=? AND status!='building'",
     )
     .run(
       settings.title,
       settings.target,
       settings.examAt,
-      settings.examAt != null && settings.examMonth ? 1 : 0,
       now,
       settings.planId,
     );
