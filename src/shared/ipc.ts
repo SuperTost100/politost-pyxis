@@ -859,6 +859,61 @@ export const requests = {
     input: z.object({ cardId: z.string(), suspended: z.boolean() }),
     output: z.object({ ok: z.boolean() }),
   },
+  "study.browse": {
+    // Cards across every exam, in subject order, one page at a time. `query` matches the front or the back, ignoring case and accents.
+    input: z.object({
+      query: z.string().max(200).optional(),
+      planId: z.string().optional(),
+      topicId: z.string().optional(),
+      status: z.enum(["all", "due", "suspended", "removed"]).optional(),
+      offset: z.number().int().min(0).optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+    }),
+    output: z.object({
+      total: z.number().int(),
+      cards: z.array(
+        z.object({
+          id: z.string(),
+          front: z.string(),
+          back: z.string(),
+          planId: z.string(),
+          planTitle: z.string(),
+          topicId: z.string().nullable(),
+          topicTitle: z.string().nullable(),
+          subjectId: z.string().nullable(),
+          subjectName: z.string().nullable(),
+          suspended: z.boolean(),
+          removed: z.boolean(),
+          handMade: z.boolean(),
+          state: z.enum(["new", "due", "scheduled"]),
+          dueAt: z.number().nullable(),
+        }),
+      ),
+      groups: z.array(
+        z.object({
+          subjectId: z.string().nullable(),
+          subject: z.string().nullable(),
+          count: z.number().int(),
+        }),
+      ),
+      plans: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          subjectId: z.string().nullable(),
+          subject: z.string().nullable(),
+        }),
+      ),
+      topics: z.array(
+        z.object({ id: z.string(), planId: z.string(), title: z.string() }),
+      ),
+    }),
+  },
+  "study.restore": {
+    // Brings back a seeded card that was deleted. A hand-made card cannot come back.
+    input: z.object({ cardId: z.string() }),
+    output: z.object({ ok: z.boolean() }),
+  },
   "study.suspended": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.array(z.object({ id: z.string(), front: z.string() })),

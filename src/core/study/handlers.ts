@@ -5,10 +5,12 @@ import {
   dueCards,
   queueCounts,
   rateCard,
+  restoreCard,
   saveCard,
   setSuspended,
   suspendedCards,
 } from "./cards";
+import { browseCards } from "./cardBrowser";
 import {
   enqueueTopicCards,
   generateTopicCards,
@@ -343,6 +345,13 @@ export function studyHandlers(
     },
     suspend(input: { cardId: string; suspended: boolean }) {
       setSuspended(db, input.cardId, input.suspended);
+      return { ok: true as const };
+    },
+    browse(input: Parameters<typeof browseCards>[1]) {
+      return browseCards(db, input, Date.now());
+    },
+    restore(input: { cardId: string }) {
+      restoreCard(db, input.cardId);
       return { ok: true as const };
     },
     suspended(input: { planId: string; topicId: string }) {

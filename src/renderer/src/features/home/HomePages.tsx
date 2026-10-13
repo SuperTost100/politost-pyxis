@@ -6,6 +6,7 @@ import { Search, Settings2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
+import { CardBrowser } from "./CardBrowser";
 import { LibraryPanel } from "./LibraryPanel";
 import { PlanCard } from "../../components/PlanCard";
 import { Notice } from "../../components/Notice";
@@ -29,7 +30,9 @@ export function ExamsHome() {
   const [managing, setManaging] = useState(false);
   const tab = location.pathname.startsWith("/exams/library")
     ? "sources"
-    : "plans";
+    : location.pathname.startsWith("/exams/cards")
+      ? "cards"
+      : "plans";
   const subjects = [
     ...new Set(
       (plans.data ?? []).map((plan) => plan.subject).filter((name) => name),
@@ -54,11 +57,18 @@ export function ExamsHome() {
           aria-label={t("exams.view")}
           value={tab}
           onChange={(value) =>
-            navigate(value === "sources" ? "/exams/library" : "/exams")
+            navigate(
+              value === "sources"
+                ? "/exams/library"
+                : value === "cards"
+                  ? "/exams/cards"
+                  : "/exams",
+            )
           }
           options={[
             { value: "plans", label: t("exams.plans") },
             { value: "sources", label: t("exams.sources") },
+            { value: "cards", label: t("exams.cards") },
           ]}
         />
         {tab === "plans" ? (
@@ -80,6 +90,8 @@ export function ExamsHome() {
       />
       {tab === "sources" ? (
         <LibraryPanel />
+      ) : tab === "cards" ? (
+        <CardBrowser />
       ) : (plans.data?.length ?? 0) > 0 ? (
         <div>
           <div className="gallery-row">
