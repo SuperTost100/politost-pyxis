@@ -141,7 +141,13 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
       .toEqual(["Motion"]);
     await app.close();
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    // Windows can hold the folder for a moment after the app exits.
+    rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 200,
+    });
   }
 });
 
@@ -224,6 +230,12 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
     ).toBe(false);
     await app.close();
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    // Windows can hold the folder for a moment after the app exits.
+    rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 200,
+    });
   }
 });
