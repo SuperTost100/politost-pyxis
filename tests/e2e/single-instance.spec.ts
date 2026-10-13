@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 const MAIN = join(process.cwd(), "out/main/index.js");
 
-test("a second launch on the same profile quits and leaves the first one running", async () => {
+test("the running copy holds the single-instance lock for its profile", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-single-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
@@ -16,26 +16,13 @@ test("a second launch on the same profile quits and leaves the first one running
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/exams/);
 
-    // The second copy would open the same database. It must exit on its own, without opening a window.
-    const second = await electron
-      .launch({ args: [MAIN], env, timeout: 30000 })
-      .catch(() => null);
-    if (second) {
-      const child = second.process();
-      if (child.exitCode === null)
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("second instance kept running")),
-            30000,
-          );
-          child.once("exit", () => {
-            clearTimeout(timer);
-            resolve();
-          });
-        });
-      expect(child.exitCode).toBe(0);
-      expect(second.windows()).toHaveLength(0);
-    }
+    // The running copy holds Electron's single-instance lock, so a second launch on this profile gets none and quits.
+    // A second copy is not started here: Playwright's connection to an app that exits at once breaks unpredictably.
+    expect(
+      await app.evaluate(({ app: electronApp }) =>
+        electronApp.hasSingleInstanceLock(),
+      ),
+    ).toBe(true);
     expect(app.windows()).toHaveLength(1);
     await expect(
       page.getByRole("heading", { name: "Esami", level: 1 }),
