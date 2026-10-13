@@ -167,7 +167,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     await expect
       .poll(() => invoke("study.reviewSession", { planId }))
       .toBeNull();
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true });
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true, timeout: 10000 });
     const events = db
       .prepare(
         "SELECT topic_id, payload_json FROM learning_events WHERE kind = 'answer_given' AND plan_id = ?",
@@ -220,7 +220,16 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
     await page.getByRole("button", { name: "Esegui" }).click();
     const output = page.getByLabel("Risultato");
     // Pyodide's first start takes over a minute on the hosted macOS x64 runner (each python.spec case there takes ~20 s).
-    await expect(output).toHaveText("42\n", { timeout: 150000 });
+    // A notice under the block (setup, unavailable, slow) means no output will come, so fail on it at once.
+    const notice = page.locator(".px-python-block p.small");
+    for (const deadline = Date.now() + 150000; Date.now() < deadline; ) {
+      if (await output.isVisible()) break;
+      const shown = await notice.allInnerTexts();
+      if (shown.length > 0)
+        throw new Error(`The Python block showed a notice instead of output: ${shown.join(" | ")}`);
+      await page.waitForTimeout(250);
+    }
+    await expect(output).toHaveText("42\n", { timeout: 5000 });
     // The captured output scrolls by keyboard, so it must take focus.
     await output.focus();
     await expect(output).toBeFocused();

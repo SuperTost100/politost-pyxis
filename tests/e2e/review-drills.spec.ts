@@ -217,7 +217,7 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
 
     // The cancelled drill no longer blocks the finish; the adopted topic is credited with exactly its questions.
     const read = (sql: string, ...args: string[]) => {
-      const db = new DatabaseSync(dbPath(userData), { readOnly: true });
+      const db = new DatabaseSync(dbPath(userData), { readOnly: true, timeout: 10000 });
       try {
         return db.prepare(sql).all(...args) as Array<{ topic_id: string; payload_json: string; n: number }>;
       } finally {
@@ -270,7 +270,7 @@ test("LES-13 discarding an unfinished Review frees a new one, keeps the cards an
     // The student's card is still in the new review.
     expect(second.progress.cardsTotal).toBe(1);
     expect(second.drills.map((drill) => drill.jobId).sort()).toEqual([...building].sort());
-    const db = new DatabaseSync(dbPath(userData), { readOnly: true });
+    const db = new DatabaseSync(dbPath(userData), { readOnly: true, timeout: 10000 });
     const started = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE kind = 'gap-drill'").get() as { n: number };
     db.close();
     expect(started.n).toBe(building.length);

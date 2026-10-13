@@ -188,6 +188,8 @@ function execute(
   tails[operation] = turn.catch(() => undefined);
   return turn;
 }
+// Covers booting Pyodide (host.js allows 60 s) plus the run itself (at most 11 s). Old Intel Macs take over a minute to boot.
+const RUN_CEILING_MS = 90000;
 async function dispatch(
   operation: "run" | "check",
   payload: unknown,
@@ -210,7 +212,7 @@ async function dispatch(
             )
             .catch(() => undefined);
           reject(new Error("runtime-timeout"));
-        }, 45000);
+        }, RUN_CEILING_MS);
       }),
       new Promise((_, reject) => {
         onClosed = () => reject(new Error("runtime-crashed"));

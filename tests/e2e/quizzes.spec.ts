@@ -337,7 +337,7 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     await expect
       .poll(
         () => {
-          const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true });
+          const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true, timeout: 10000 });
           const row = db
             .prepare(
               "SELECT body_json FROM items WHERE plan_id = ? AND kind = 'diagnostic' ORDER BY created_at DESC LIMIT 1",
@@ -467,7 +467,7 @@ test("quiz screens in both languages and themes", async () => {
           index: 1,
         });
         await page.reload();
-        await expect(page.locator(".px-quiz-feedback.is-wrong")).toBeVisible({ timeout: 3000 });
+        await expect(page.locator(".px-quiz-feedback.is-wrong")).toBeVisible({ timeout: 10000 });
       }).toPass({ timeout: 30000 });
       await shoot("wrong");
       const picks: Record<string, string> = { [ids[0]!]: "0", [ids[1]!]: "2" };

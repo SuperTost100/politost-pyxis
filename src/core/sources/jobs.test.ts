@@ -10,7 +10,7 @@ import { extractPlain, storeExtracted } from "./documents";
 import { sourceHandlers } from "./handlers";
 
 const dirs: string[] = [];
-afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
 it("SRC-11 retries extraction from the stored original and creates passages only once", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "pyxis-import-job-"));

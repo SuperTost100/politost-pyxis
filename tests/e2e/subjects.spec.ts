@@ -58,7 +58,11 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       for (const width of [1280, 960]) {
         await page.setViewportSize({ width, height: width === 960 ? 640 : 832 });
-        await page.screenshot({ path: `.shots/m5-subjects-it-${theme}-${width}.png`, animations: "disabled" });
+        // Under xvfb the first capture after a resize can fail; let two frames paint, then retry until it takes.
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        await expect(async () => {
+          await page.screenshot({ path: `.shots/m5-subjects-it-${theme}-${width}.png`, animations: "disabled" });
+        }).toPass({ timeout: 10000 });
       }
     }
     expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);

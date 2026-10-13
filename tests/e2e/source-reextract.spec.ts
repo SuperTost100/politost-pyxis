@@ -11,7 +11,7 @@ const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"
 
 /** Reads the workspace database next to the running app; WAL lets a second reader see committed rows. */
 function rows<T>(userData: string, sql: string, ...args: string[]): T[] {
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true });
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true, timeout: 10000 });
   try {
     return db.prepare(sql).all(...args) as T[];
   } finally {

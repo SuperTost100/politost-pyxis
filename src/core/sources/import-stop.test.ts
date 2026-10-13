@@ -10,7 +10,7 @@ import { enqueueReextract, enqueueSourceFile, markStoppedImport, registerSourceJ
 
 const dirs: string[] = [];
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 const png = PNG.sync.write(new PNG({ width: 8, height: 8 }));

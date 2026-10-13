@@ -210,7 +210,7 @@ it("link import jobs keep DNS pinning while composing cancellation", async () =>
   call.dispatcher.options.connect.lookup("rebind.example", {}, callback);
   expect(callback).toHaveBeenLastCalledWith(null, "93.184.216.34", 4);
   db.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 it("caller cancellation reaches the pinned transport during the request", async () => {
