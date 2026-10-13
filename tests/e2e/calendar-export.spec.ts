@@ -1,6 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { _electron as electron, expect, test } from "@playwright/test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -64,6 +70,18 @@ test("CAL-01 exam dates export to an .ics file from Exams and from one plan", as
         name: /^(Aggiungi al calendario|Add to calendar)$/,
       });
     const toast = (text: RegExp) => page.getByText(text).first();
+    // The saved file, once it is complete. Each export starts from no file, so a toast left from the previous export
+    // can't let the test read a file that is still being written.
+    const exported = async () => {
+      await expect
+        .poll(
+          () =>
+            existsSync(saved) &&
+            readFileSync(saved, "utf8").endsWith("END:VCALENDAR\r\n"),
+        )
+        .toBe(true);
+      return readFileSync(saved, "utf8");
+    };
 
     // Nothing upcoming: the button is off and says why.
     await page.evaluate(() => {
@@ -83,9 +101,10 @@ test("CAL-01 exam dates export to an .ics file from Exams and from one plan", as
     await expect(calendarButton()).toBeEnabled();
 
     // Exams page, Italian: every upcoming dated plan, none of the others.
+    rmSync(saved, { force: true });
     await calendarButton().click();
     await expect(toast(/File del calendario salvato/)).toBeVisible();
-    let ics = readFileSync(saved, "utf8");
+    let ics = await exported();
     expect(ics.startsWith("BEGIN:VCALENDAR\r\n")).toBe(true);
     expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
     for (const line of ics.split("\r\n"))
@@ -112,9 +131,9 @@ test("CAL-01 exam dates export to an .ics file from Exams and from one plan", as
 
     // Saving again from the same plans keeps the same UIDs, so an import updates them.
     const uids = lines.filter((l) => l.startsWith("UID:"));
+    rmSync(saved, { force: true });
     await calendarButton().click();
-    await expect(toast(/File del calendario salvato/).last()).toBeVisible();
-    ics = readFileSync(saved, "utf8");
+    ics = await exported();
     expect(unfold(ics).filter((l) => l.startsWith("UID:"))).toEqual(uids);
 
     for (const [language, theme] of [
@@ -150,12 +169,13 @@ test("CAL-01 exam dates export to an .ics file from Exams and from one plan", as
     await page.screenshot({
       path: ".shots/calendar-plan-settings-en-light.png",
     });
+    rmSync(saved, { force: true });
     await calendarButton().click();
     await expect(
       dialog.getByRole("button", { name: "Add to calendar" }),
     ).toBeEnabled();
     await expect(toast(/Calendar file saved/)).toBeVisible();
-    lines = unfold(readFileSync(saved, "utf8"));
+    lines = unfold(await exported());
     expect(lines.filter((l) => l === "BEGIN:VEVENT")).toHaveLength(1);
     expect(lines).toContain("UID:plan-near@pyxis.politost.it");
     expect(lines).toContain("SUMMARY:Exam: Analisi 1");
