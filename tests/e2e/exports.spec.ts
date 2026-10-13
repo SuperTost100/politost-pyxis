@@ -86,7 +86,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
         answers: true,
       }),
     )) as { filename: string; markdown: string };
-    expect(markdown.markdown).toContain("Answer: $2x$");
+    // The plan is in Italian, so the export labels are too.
+    expect(markdown.markdown).toContain("Risposta: $2x$");
     expect(markdown.markdown).toContain("2. $x$");
     expect(markdown.markdown).not.toContain("WRONG LATEST ITEM");
     await expect(

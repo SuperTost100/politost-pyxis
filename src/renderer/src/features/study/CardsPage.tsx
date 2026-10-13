@@ -12,6 +12,7 @@ import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
+import { nextLearningDue, trackLearning, type LearningCards } from "./learningCards";
 
 import { review } from "../../../../core/study/schedule";
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
@@ -40,6 +41,9 @@ export function CardsPage() {
   const [showBack, setShowBack] = useState(false);
   const [intervalDays, setIntervalDays] = useState<number | null>(null);
   const [seen, setSeen] = useState<Array<(typeof RATINGS)[number]>>([]);
+  // Cards rated into a short learning step come back in this session instead of ending it.
+  const [learning, setLearning] = useState<LearningCards>({});
+  const [clock, setClock] = useState(Date.now());
   const [editing, setEditing] = useState(false);
   const [draftFront, setDraftFront] = useState("");
   const [draftBack, setDraftBack] = useState("");
@@ -148,7 +152,30 @@ export function CardsPage() {
       return false;
     }
   }
-  const sessionOver = !reviewing && seen.length > 0 && cards.isSuccess && !card;
+  const learningDue = reviewing ? null : nextLearningDue(learning);
+  const waiting = !card && cards.isSuccess && learningDue != null;
+  useEffect(() => {
+    if (!waiting || learningDue == null) return;
+    const tick = window.setInterval(() => setClock(Date.now()), 15_000);
+    const due = window.setTimeout(
+      () => {
+        void cards.refetch().then(() => {
+          // A card that is still due shows up now; one deleted or suspended meanwhile stops the wait.
+          const now = Date.now();
+          setLearning((current) =>
+            Object.fromEntries(Object.entries(current).filter(([, at]) => at > now)),
+          );
+        });
+      },
+      Math.max(0, learningDue - Date.now()) + 500,
+    );
+    return () => {
+      clearInterval(tick);
+      clearTimeout(due);
+    };
+  }, [waiting, learningDue]);
+  const sessionOver =
+    !reviewing && seen.length > 0 && cards.isSuccess && !card && learningDue == null;
   useEffect(() => {
     if (sessionOver) void finishSession();
   }, [sessionOver]);
@@ -183,6 +210,9 @@ export function CardsPage() {
       setIntervalDays(state.intervalDays);
       setShowBack(false);
       setSeen((current) => [...current, rating]);
+      const now = Date.now();
+      setClock(now);
+      setLearning((current) => trackLearning(current, card.id, state.dueAt, now));
       await refresh();
     } catch {
       setRatingError(true);
@@ -308,7 +338,13 @@ export function CardsPage() {
           <Notice tone="danger">{t("planOverview.failed")}</Notice>
         ) : null}
         {!card ? (
-          building ? null : (
+          building ? null : waiting && learningDue != null ? (
+            <p className="body" role="status">
+              {t("cards.learningWait", {
+                count: Math.max(1, Math.ceil((learningDue - clock) / 60_000)),
+              })}
+            </p>
+          ) : (
             <p className="body">{t("cards.empty")}</p>
           )
         ) : (

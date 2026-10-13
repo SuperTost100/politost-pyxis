@@ -113,4 +113,26 @@ describe("Anki package", () => {
       expect(() => exportAnki(db, "missing")).toThrow("plan-missing");
     } finally { first.close(); second.close(); db.close(); }
   });
+
+  it("labels the card source in the plan's content language", () => {
+    const { db } = fixture();
+    db.exec(`
+      UPDATE plans SET content_language = 'it' WHERE id = 'plan';
+      INSERT INTO sources (id,title,kind,status,created_at,updated_at) VALUES ('s','Libro','txt','ready',1,1);
+      INSERT INTO source_documents (id,source_id,version,tree_json,created_at) VALUES ('d','s',1,'{}',1);
+      INSERT INTO passages (id,source_id,document_id,text,section_path,created_at) VALUES ('p','s','d','Testo','1. Moti',1);
+      INSERT INTO cards (id, plan_id, topic_id, front, back, passage_id, created_at) VALUES ('c', 'plan', 'topic', 'F', 'B', 'p', 1);
+    `);
+    const fields = () => {
+      const col = unpack(exportAnki(db, "plan").bytes);
+      try {
+        return (col.prepare("SELECT flds FROM notes").get() as { flds: string }).flds;
+      } finally {
+        col.close();
+      }
+    };
+    expect(fields()).toContain("Fonte: 1. Moti");
+    db.prepare("UPDATE plans SET content_language = 'en'").run();
+    expect(fields()).toContain("Source: 1. Moti");
+  });
 });

@@ -113,6 +113,42 @@ describe("planMastery", () => {
     db.close();
   });
 
+  it("counts topics without passages in preparation", () => {
+    const db = openDatabase(":memory:");
+    const now = 1_700_000_000_000;
+    db.exec(`
+      INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('p','Physics','ready',1,1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','Motion',0,1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('u','p','Forces',1,1);
+    `);
+    db.prepare(
+      "INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at) VALUES ('e', 'answer_given', 'p', 't', ?, ?)",
+    ).run(JSON.stringify({ score: 1, scores: Array(10).fill(1) }), now);
+    const mastery = planMastery(db, "p", now)[0]!.mastery;
+    expect(mastery).toBeGreaterThan(0.5);
+    expect(listPlans(db, now)[0]!.mastery).toBeCloseTo(mastery / 2);
+    expect(planSeries(db, "p", now).preparation.mastery).toBeCloseTo(mastery / 2);
+    db.close();
+  });
+
+  it("treats a 100% target as reached at the reachable 99%", () => {
+    const db = openDatabase(":memory:");
+    const now = 1_700_000_000_000;
+    db.exec(`
+      INSERT INTO plans (id,title,status,target,created_at,updated_at) VALUES ('p','Physics','ready',1,1,1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','Motion',0,1);
+    `);
+    db.prepare(
+      "INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at) VALUES ('e', 'answer_given', 'p', 't', ?, ?)",
+    ).run(JSON.stringify({ score: 1, scores: Array(400).fill(1) }), now);
+    expect(planMastery(db, "p", now)[0]!.mastery).toBeGreaterThan(0.99);
+    expect(listPlans(db, now)[0]!.alignedTopics).toBe(1);
+    const series = planSeries(db, "p", now);
+    expect(series.preparation.onTrack).toBe(1);
+    expect(series.preparation.target).toBe(1);
+    db.close();
+  });
+
   it("lists a finished simulation with its score and minutes", () => {
     const db = openDatabase(":memory:");
     const planId = uuidv7(1);

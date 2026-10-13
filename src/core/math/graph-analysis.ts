@@ -13,7 +13,14 @@ export function graphExpression(input: string): string {
     .replace(/\\(?:,|;|!|quad)/g, "")
     .replace(/\\(?:sin|cos|tan|exp|log|ln|sqrt|abs|pi)\b/g, (x) =>
       x.slice(1).replace(/^ln$/, "log"),
-    );
+    )
+    // Plain ln, the Italian sen and π map to the grammar's names.
+    .replace(/(?<=^|[^a-zA-Z]|(?:^|[^a-zA-Z])x)(ln|sen)(?![a-zA-Z])/g, (name) =>
+      name === "ln" ? "log" : "sin",
+    )
+    .replace(/π/g, " pi ")
+    // The grammar has no argument lists, so a comma between digits can only be a decimal comma.
+    .replace(/(\d)(?:,|\{,\})(?=\d)/g, "$1.");
   let cursor = 0;
   function group(): string {
     if (source[cursor] !== "{") throw new Error("graph-latex");

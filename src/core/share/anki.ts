@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import { strToU8, zipSync } from "fflate";
+import { planExportLabels } from "./markdown";
 
 const BASIC = 1600000000101;
 const CLOZE = 1600000000102;
@@ -93,6 +94,7 @@ export function exportAnki(
       AND (c.topic_id IS NULL OR NOT EXISTS (SELECT 1 FROM topics t WHERE t.id = c.topic_id AND t.archived_at IS NOT NULL))
     ORDER BY c.created_at, c.id`).all(planId, options.topicId ?? null, options.topicId ?? null) as
     Array<{ id: string; front: string; back: string; suspended: number; source: string | null }>;
+  const labels = planExportLabels(db, planId);
   const now = options.now ?? Date.now();
   const mod = Math.floor(now / 1000);
   const deckId = stableId(`deck:${planId}`);
@@ -127,7 +129,7 @@ export function exportAnki(
         const front = fieldHtml(row.front);
         const ords = [...new Set([...front.matchAll(/\{\{c([1-9]\d{0,3})::[\s\S]+?}}/g)]
           .map((match) => Number(match[1]) - 1))].sort((a, b) => a - b);
-        const back = fieldHtml(row.back + (row.source?.trim() ? `\n\nSource: ${row.source.trim()}` : ""));
+        const back = fieldHtml(row.back + (row.source?.trim() ? `\n\n${labels.source}: ${row.source.trim()}` : ""));
         const nid = allocate(`note:${row.id}`);
         const guid = createHash("sha256").update(`pyxis:${row.id}`).digest("base64url").slice(0, 22);
         const sort = sortField(front);

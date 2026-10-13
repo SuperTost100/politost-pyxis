@@ -3,6 +3,9 @@ import { uuidv7 } from "../../shared/ids";
 import { flaggedIds } from "./flags";
 import { gradeAnswer, type Grade } from "./grade";
 
+/** Answers sent this long after a timed quiz or simulation deadline are still kept (absorbs a save already in flight). */
+export const DRAFT_GRACE_MS = 5_000;
+
 export { QUIZ_MAX_QUESTIONS } from "../../shared/quiz";
 
 export type QuizQuestion = {

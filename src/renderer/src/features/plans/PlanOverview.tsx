@@ -18,6 +18,8 @@ import dateEn from "antd/es/date-picker/locale/en_GB";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
+import { PLAN_TITLE_MAX } from "@shared/plan-file";
+import { examDaysLabel } from "./examDays";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { invoke } from "../../lib/ipc";
 import { MasteryBar } from "../../components/MasteryBar";
@@ -228,12 +230,10 @@ export function PlanPage() {
         <h1 className="title-1">{plan.data?.title ?? t("wizard.title")}</h1>
         <p className="meta ink-muted">
           {plan.data?.examAt != null
-            ? t("exams.days", {
-                count: Math.max(
-                  0,
-                  dayjs(plan.data.examAt).startOf("day").diff(dayjs().startOf("day"), "day"),
-                ),
-              })
+            ? examDaysLabel(
+                t,
+                dayjs(plan.data.examAt).startOf("day").diff(dayjs().startOf("day"), "day"),
+              )
             : t("plans.noExam")}{" "}
           ·{" "}
           {t("progress.onTrack", {
@@ -630,8 +630,9 @@ export function PlanPage() {
                   planId,
                   title: values.title,
                   target: values.target / 100,
+                  // Noon, as in the wizard, so a shared plan keeps its day in another time zone.
                   examAt: values.examAt
-                    ? values.examAt.endOf("day").valueOf()
+                    ? values.examAt.startOf("day").hour(12).valueOf()
                     : null,
                 });
                 await refresh();
@@ -648,7 +649,7 @@ export function PlanPage() {
             label={t("wizard.planTitle")}
             rules={[{ required: true, whitespace: true }]}
           >
-            <Input maxLength={200} disabled={busy} />
+            <Input maxLength={PLAN_TITLE_MAX} disabled={busy} />
           </Form.Item>
           <Form.Item name="target" label={t("planOverview.target")}>
             <Slider
@@ -665,6 +666,9 @@ export function PlanPage() {
                 i18n.language.startsWith("it") ? "DD/MM/YYYY" : "DD/MM/YYYY"
               }
               disabled={busy}
+              disabledDate={(value) =>
+                value.startOf("day").isBefore(dayjs().startOf("day"))
+              }
               style={{ width: "100%" }}
             />
           </Form.Item>

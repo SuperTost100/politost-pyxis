@@ -16,6 +16,7 @@ import {
   drop,
   fromProposal,
   isTopic,
+  MAX_SUBTOPICS,
   canDrop,
   move,
   remove,
@@ -508,6 +509,10 @@ function TreeEditor({
                     size="small"
                     aria-label={t("wizard.guided.addSubtopic", { title })}
                     icon={<Plus size={14} />}
+                    disabled={
+                      (nodes.find((node) => node.key === key)?.subtopics.length ?? 0) >=
+                      MAX_SUBTOPICS
+                    }
                     onClick={() => {
                       const next = addSubtopic(nodes, key);
                       onChange(next.nodes);

@@ -218,6 +218,47 @@ describe("M11 model-graded simulations", () => {
     expect(done.submitted).toBe(true);
     db.close();
   });
+  it("keeps an answer saved or submitted within a few seconds of time-up", async () => {
+    const { db, planId } = fixture();
+    const runner = createRunner(db, () => {});
+    registerSimulationJobs(db, runner, run);
+    // The clock ran out one second ago, while the last answer was still on its way.
+    const deadline = Date.now() - 1000;
+    const opened = startSimulation(db, planId, 30, deadline - 30 * 60000, "exam");
+    const [first, second] = opened.questions;
+    saveSimulationDraft(db, opened.attemptId, { [first!.id]: "dieci metri al secondo" });
+    expect(readSimulation(db, opened.attemptId, deadline + 2000).grading).toBeUndefined();
+    submitSimulation(
+      db,
+      opened.attemptId,
+      { [first!.id]: "dieci metri al secondo", [second!.id]: "dieci newton" },
+      deadline + 3000,
+    );
+    // A save after the grace changes nothing.
+    saveSimulationDraft(db, opened.attemptId, { [first!.id]: "late" }, deadline + 9000);
+    const done = await until(db, opened.attemptId, "succeeded");
+    expect(done.picks).toEqual({
+      [first!.id]: "dieci metri al secondo",
+      [second!.id]: "dieci newton",
+    });
+    db.close();
+  });
+  it("freezes the saved answers once the grace after time-up is over", async () => {
+    const { db, planId } = fixture();
+    const runner = createRunner(db, () => {});
+    registerSimulationJobs(db, runner, run);
+    const started = Date.now();
+    const opened = startSimulation(db, planId, 30, started, "exam");
+    const deadline = started + 30 * 60000;
+    saveSimulationDraft(db, opened.attemptId, { [opened.questions[0]!.id]: "uno" }, deadline + 4000);
+    const late = readSimulation(db, opened.attemptId, deadline + 6000);
+    expect(late.grading).toBeDefined();
+    expect(late.picks[opened.questions[0]!.id]).toBe("uno");
+    saveSimulationDraft(db, opened.attemptId, { [opened.questions[0]!.id]: "due" }, deadline + 5500);
+    expect(readSimulation(db, opened.attemptId, deadline + 7000).picks[opened.questions[0]!.id]).toBe("uno");
+    await until(db, opened.attemptId, "succeeded");
+    db.close();
+  });
   it("submits once under concurrent delivery and keeps actual engine provenance", async () => {
     const { db, planId } = fixture();
     let calls = 0;

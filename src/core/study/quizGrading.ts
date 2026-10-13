@@ -11,6 +11,7 @@ import { syncGaps } from "../plans/progress";
 import { enqueueGapInsights } from "./gapInsight";
 import {
   answerOf,
+  DRAFT_GRACE_MS,
   expectedText,
   submitAttempt,
   type AttemptResult,
@@ -43,8 +44,6 @@ export function checkedAnswer(
     ? (JSON.parse(row.payload_json) as { check: CheckedAnswer }).check
     : undefined;
 }
-/** Answers sent this long after the saved deadline are not kept (absorbs a save already in flight). */
-export const DRAFT_GRACE_MS = 5_000;
 /** The saved draft, and the deadline that its first save started, when the quiz is timed. */
 export function quizDraft(db: Database.Database, attemptId: string) {
   const row = db
@@ -366,17 +365,22 @@ export function finalizeAttempt(
           { activity: row.kind, topicId: null, result: stepResult(scored.results) },
           now + 1,
         );
+      // A retaken diagnostic asks the same questions again; only the first answer to each counts as evidence.
+      const seen = row.kind === "diagnostic" ? askedBefore(db, row.plan_id, attemptId) : new Set<string>();
+      const fresh = questions.flatMap((question, index) => {
+        const result = scored.results[index];
+        return result && !seen.has(question.id) ? [{ question, result }] : [];
+      });
       // Every diagnostic question carries its answer kind so open answers keep their 1.5 weight.
       recordTopicScores(
         db,
         row.plan_id,
-        row.kind === "diagnostic"
-          ? questions.map((question) => ({
-              ...question,
-              answer: question.answer ?? { kind: "open" },
-            }))
-          : questions,
-        scored.results,
+        fresh.map(({ question }) =>
+          row.kind === "diagnostic"
+            ? { ...question, answer: question.answer ?? { kind: "open" } }
+            : question,
+        ),
+        fresh.map(({ result }) => result),
         now,
         row.kind === "simulation" ? "simulation" : "quiz",
         attemptId,
@@ -385,6 +389,24 @@ export function finalizeAttempt(
     }
     return scored;
   })();
+}
+
+/** Question ids of the plan's diagnostics submitted before this attempt. */
+function askedBefore(db: Database.Database, planId: string, attemptId: string) {
+  const rows = db
+    .prepare(
+      `SELECT i.body_json FROM attempts a JOIN items i ON i.id = a.item_id
+       WHERE a.plan_id = ? AND i.kind = 'diagnostic' AND a.id <> ? AND a.submitted_at IS NOT NULL`,
+    )
+    .all(planId, attemptId) as Array<{ body_json: string }>;
+  return new Set(
+    rows.flatMap(
+      (row) =>
+        (JSON.parse(row.body_json) as { questions?: Array<{ id: string }> }).questions?.map(
+          (question) => question.id,
+        ) ?? [],
+    ),
+  );
 }
 
 type GradeParams = {

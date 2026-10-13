@@ -10,8 +10,8 @@ import {
   type QuizInput,
   type QuizSnapshot,
 } from "./configuredQuiz";
-import { startAttempt, type AttemptResult } from "./attempt";
-import { checkedAnswer, DRAFT_GRACE_MS } from "./quizGrading";
+import { DRAFT_GRACE_MS, startAttempt, type AttemptResult } from "./attempt";
+import { checkedAnswer } from "./quizGrading";
 
 type Params = {
   input: QuizInput;

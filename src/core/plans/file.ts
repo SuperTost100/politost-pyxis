@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { uuidv7 } from "../../shared/ids";
 import { cardReviewSchema } from "../../shared/card-schedule";
-import { planFileSchema, type PlanFile } from "../../shared/plan-file";
+import { PLAN_TITLE_MAX, planFileSchema, type PlanFile } from "../../shared/plan-file";
 import { putBlob, readBlob } from "../blobs";
 import { validateGraph, type ConceptGraph } from "../maps/graph";
 
@@ -551,7 +551,7 @@ export function importPlan(
        VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?)`,
     ).run(
       planId,
-      parsed.title,
+      parsed.title.slice(0, PLAN_TITLE_MAX),
       parsed.language ?? null,
       parsed.examAt ?? null,
       parsed.target ?? 0.75,
@@ -1300,7 +1300,7 @@ function importPortablePlan(
       "INSERT INTO plans(id,title,status,content_language,exam_at,target,style,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
     ).run(
       planId,
-      file.title,
+      file.title.slice(0, PLAN_TITLE_MAX),
       // PLAN-11: a plan whose active topics are all general knowledge stays a draft after import.
       file.topics.some((t) => !t.archived) &&
         file.topics.every((t) => t.archived || t.grounding === "general")

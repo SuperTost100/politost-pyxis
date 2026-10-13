@@ -6,6 +6,7 @@ import { createPlan } from "./create";
 import { exportPlan, importPlan } from "./file";
 import { planHandlers } from "./handlers";
 import { planEducation, setPlanEducation } from "./education";
+import type { Runner } from "../jobs/runner";
 
 function db(level: "university" | "upper-secondary" = "university") {
   const database = openDatabase(":memory:");
@@ -61,5 +62,33 @@ describe("ASK-09 plan education level", () => {
     expect(planEducation(target, importPlan(target, older))).toBe("university");
     source.close();
     target.close();
+  });
+});
+
+describe("plan delete", () => {
+  it("cancels the plan's gap analyses and removes its generated exercises", () => {
+    const database = db();
+    const cancelled: string[] = [];
+    const runner = { register: () => {}, cancel: (id: string) => void cancelled.push(id) } as unknown as Runner;
+    const keep = createPlan(database, { title: "Altro", sourceIds: [], draftTopics: [{ title: "Onde" }] });
+    const { planId } = createPlan(database, { title: "Fisica", sourceIds: [], draftTopics: [{ title: "Moto" }] });
+    const topicOf = (id: string) =>
+      (database.prepare("SELECT id FROM topics WHERE plan_id = ?").get(id) as { id: string }).id;
+    for (const [id, plan] of [["insight", planId], ["other-insight", keep.planId]] as const)
+      database
+        .prepare("INSERT INTO jobs (id, kind, params_json, state, created_at, updated_at) VALUES (?, 'gap-insight', ?, 'running', 1, 1)")
+        .run(id, JSON.stringify({ planId: plan, topicId: topicOf(plan), attemptId: "a" }));
+    for (const [id, plan] of [["generated", planId], ["other-generated", keep.planId]] as const)
+      database
+        .prepare("INSERT INTO exercises (id, prompt, answer, locator_json, created_at) VALUES (?, 'Quanto?', '1', ?, 1)")
+        .run(id, JSON.stringify({ kind: "generated", topicId: topicOf(plan) }));
+    database.prepare("INSERT INTO flags (id, target_kind, target_id, reason, created_at) VALUES ('f', 'exercise', 'generated', 'wrong', 1)").run();
+    planHandlers(database, "", runner).delete({ planId });
+    expect(cancelled).toContain("insight");
+    expect(cancelled).not.toContain("other-insight");
+    expect(database.prepare("SELECT id FROM jobs WHERE kind = 'gap-insight'").all()).toEqual([{ id: "other-insight" }]);
+    expect(database.prepare("SELECT id FROM exercises").all()).toEqual([{ id: "other-generated" }]);
+    expect(database.prepare("SELECT COUNT(*) AS n FROM flags").get()).toEqual({ n: 0 });
+    database.close();
   });
 });

@@ -28,6 +28,7 @@ const removal = vi.hoisted(() => ({
   beforeOpen: undefined as undefined | ((path: string) => void),
   failJournalWrite: false,
   largeInodes: false,
+  extraFileBytes: 0,
   opened: new Map<number, string>(),
 }));
 vi.mock("node:fs", async (original) => {
@@ -39,6 +40,10 @@ vi.mock("node:fs", async (original) => {
       if (removal.largeInodes && args[1]?.bigint && info?.isDirectory()) {
         (info as import("node:fs").BigIntStats).ino += 2n ** 60n;
       }
+      if (removal.extraFileBytes && !args[1]?.bigint && info?.isFile())
+        return Object.assign(Object.create(Object.getPrototypeOf(info)), info, {
+          size: Number(info.size) + removal.extraFileBytes,
+        });
       return info;
     },
     openSync: (...args: Parameters<typeof fs.openSync>) => {
@@ -73,6 +78,7 @@ afterEach(() => {
   removal.beforeOpen = undefined;
   removal.failJournalWrite = false;
   removal.largeInodes = false;
+  removal.extraFileBytes = 0;
   removal.opened.clear();
 });
 
@@ -93,6 +99,18 @@ describe("backupWorkspace / restoreWorkspace", { timeout: 30_000 }, () => {
       expect(BigInt(journal.staged.ino)).toBeGreaterThan(BigInt(Number.MAX_SAFE_INTEGER));
       expect(commitWorkspaceRestore(target)).toBe(true);
       expect(existsSync(`${target}.old`)).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  it("refuses a workspace over the size limit before writing, and names its size", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-large-backup-"));
+    try {
+      const source = join(root, "source"), archive = join(root, "backup.zip");
+      mkdirSync(source);
+      openDatabase(join(source, "pyxis.db")).close();
+      removal.extraFileBytes = 2 * 1024 ** 3;
+      expect(() => backupWorkspace(source, archive)).toThrow(/^backup-too-large:\d{10,}$/);
+      expect(existsSync(archive)).toBe(false);
+      expect(readdirSync(root)).toEqual(["source"]);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
   it("restores the exact plan list into a fresh workspace and keeps it after corruption", () => {

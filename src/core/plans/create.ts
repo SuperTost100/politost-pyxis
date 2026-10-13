@@ -6,7 +6,7 @@ import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { suggestStep, topicSuggestion, type Stage, type TopicStatus } from "./path";
 import { readSteps } from "./steps";
-import { dueCards } from "../study/cards";
+import { countDueCards } from "../study/cards";
 import { gapSeverity, planMastery, syncGaps, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
 
@@ -364,7 +364,9 @@ export function listPlans(db: Database.Database, now = Date.now()) {
       mastery,
       target: row.target,
       imported: Boolean(row.imported),
-      alignedTopics: topics.filter((topic) => topic.mastery >= row.target)
+      alignedTopics: topics.filter(
+        (topic) => topic.mastery >= reachableTarget(row.target),
+      )
         .length,
       totalTopics: topics.length,
     };
@@ -401,7 +403,7 @@ export function planGuide(
     return {
       id: topic.id,
       mastery: topic.mastery,
-      dueCards: dueCards(db, planId, now, topic.id).length,
+      dueCards: countDueCards(db, planId, now, topic.id),
       // Only gaps Progress would call severe count as such; a minor reading is not a severe gap.
       severeGaps: open.filter(
         (gap) => gapSeverity(gap.severity, topic.mastery, meta.target) === "severe",

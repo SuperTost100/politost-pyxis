@@ -360,6 +360,9 @@ export function examInstant(days: number, now = new Date()): number {
   return date.getTime();
 }
 
+/** The longest plan title, the same when creating a plan, in its settings and on import. */
+export const PLAN_TITLE_MAX = 200;
+
 export function reachableTarget(target: number): number {
   // ponytail: a weighted average never returns to 1 after a miss. 100% means 0.99. Upgrade path is the mastery formula in the plan.
   return target >= 1 ? 0.99 : target;

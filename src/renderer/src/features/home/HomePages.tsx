@@ -13,6 +13,7 @@ import type { PlanFile } from "@shared/plan-file";
 import { SubjectManagerModal } from "../ask/SubjectPicker";
 import { ImportReview } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
+import { examDaysLabel } from "../plans/examDays";
 
 export function ExamsHome() {
   const { t } = useTranslation();
@@ -156,9 +157,7 @@ export function ExamsHome() {
                   meta={[
                     plan.daysToExam == null
                       ? null
-                      : plan.daysToExam < 0
-                        ? t("exams.pastExam")
-                        : t("exams.days", { count: plan.daysToExam }),
+                      : examDaysLabel(t, plan.daysToExam),
                     t("exams.aligned", {
                       ready: plan.alignedTopics,
                       count: plan.totalTopics,
