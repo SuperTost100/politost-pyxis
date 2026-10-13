@@ -471,6 +471,8 @@ async function dispatchValidated(
       return plans?.build(requests["plans.build"].input.parse(input));
     case "plans.intro":
       return plans?.intro(requests["plans.intro"].input.parse(input));
+    case "plans.calendar":
+      return plans?.calendar(requests["plans.calendar"].input.parse(input));
     case "plans.list":
       requests["plans.list"].input.parse(input);
       return plans?.list() ?? [];
@@ -588,6 +590,10 @@ async function dispatchValidated(
       return chats?.rename(requests["chats.rename"].input.parse(input));
     case "chats.delete":
       return chats?.remove(requests["chats.delete"].input.parse(input));
+    case "chats.search":
+      return chats?.search(requests["chats.search"].input.parse(input));
+    case "chats.export":
+      return chats?.exportChat(requests["chats.export"].input.parse(input));
     case "chats.ask":
       return chats?.ask({
         ...requests["chats.ask"].input.parse(input),

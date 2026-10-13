@@ -38,6 +38,7 @@ import { queueSyllabusChecks } from "../sources/syllabus";
 import { readProfile } from "../profile/profile";
 import { planMastery, planSeries } from "./progress";
 import { planDiskUsage } from "../share/usage";
+import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
 import type { PlanFile } from "../../shared/plan-file";
 
@@ -56,6 +57,9 @@ export function planHandlers(
   return {
     list() {
       return listPlans(db);
+    },
+    calendar(input: Parameters<typeof exportCalendar>[1]) {
+      return exportCalendar(db, input);
     },
     subjects() {
       return listSubjects(db);

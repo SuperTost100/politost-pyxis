@@ -1,4 +1,6 @@
 import type Database from "better-sqlite3";
+import { exportChat, type ChatExportLanguage } from "./export";
+import { searchChats } from "./search";
 import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat } from "./turn";
 
 /** Recorded reply for tests. With a delay it waits, then streams the words, so the thinking and streaming states can be seen. */
@@ -68,6 +70,12 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
     remove(input: { chatId: string }) {
       deleteChat(db, workspace, input.chatId);
       return { ok: true as const };
+    },
+    search(input: { query: string }) {
+      return searchChats(db, input.query);
+    },
+    exportChat(input: { chatId: string; language: ChatExportLanguage }) {
+      return exportChat(db, input.chatId, input.language);
     },
     regenerate(input: {
       chatId: string;
