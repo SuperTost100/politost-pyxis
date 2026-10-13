@@ -20,6 +20,8 @@ import {
   paceFacts,
   weeklyCounts,
   seriesEvidence,
+  isLightEvidence,
+  withoutReplacedRatings,
   type SeriesEvent,
 } from "../study/series";
 
@@ -324,7 +326,7 @@ export function planSeries(
 ) {
   syncGaps(db, planId, now);
   const topics = planMastery(db, planId, now);
-  const events = readSeries(db, planId);
+  const events = withoutReplacedRatings(readSeries(db, planId));
   const studied = events.filter(
     (event): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } =>
       event.kind !== "active",
@@ -385,7 +387,7 @@ export function planSeries(
     return {
       ...topic,
       exercisesSolved: rows
-        .filter((event) => event.kind === "quiz" && event.evidenceKind !== "check")
+        .filter((event) => event.kind === "quiz" && !isLightEvidence(event))
         .reduce(
           (sum, event) =>
             sum +
@@ -444,7 +446,7 @@ export function planSeries(
           .filter(
             (event) =>
               event.kind === "quiz" &&
-              event.evidenceKind !== "check" &&
+              !isLightEvidence(event) &&
               event.topicId === gap.topicId &&
               event.at >= gap.openedAt,
           )
@@ -513,7 +515,7 @@ type ScorePayload = {
   score?: number;
   scores?: number[];
   seconds?: number;
-  evidenceKind?: "quiz" | "simulation" | "check";
+  evidenceKind?: "quiz" | "simulation" | "check" | "self";
   questionScores?: Array<{
     id?: string;
     sourceIds?: string[];

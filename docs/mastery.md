@@ -9,7 +9,28 @@ mastery  = sum(weight_i * score_i) / (3 + sum(weight_i))
 
 One perfect fresh answer gives `1 / 4 = 0.25`. Three perfect fresh answers give `3 / 6 = 0.5`. Six perfect fresh answers give `6 / 9 ≈ 0.667`. After 14 days with no new evidence, their combined weight halves, so six perfect answers give `3 / 6 = 0.5`. The prior prevents one lucky result from looking like mastery; decay prevents old evidence from counting forever.
 
-Each quiz answer contributes one observation with weight 1, or 1.5 for open answers. Each simulation answer has weight 2. Reading a lesson contributes no mastery. Each active card that has been reviewed at least once contributes its current FSRS retrievability once, with weight 0.5 and age zero; repeated ratings cannot accumulate mastery. A card never reviewed contributes nothing, so creating cards does not lower mastery. Flagged exercise evidence is excluded. Topics without evidence appear at zero. Plan mastery weights topics by their passage counts, including untouched topics. A topic without passages weighs 1, so a plan built without sources, or after its sources were removed, still shows progress. Historical charts replay answer evidence and the latest card review at each date. Older events recover question types from stored attempts when available; otherwise they use weight 1.
+Each quiz answer contributes one observation with weight 1, or 1.5 for open answers. Each simulation answer has weight 2. A lesson's quick check answer, and a self-rating of a practice exercise, are light evidence with weight 0.5, half a quiz answer. Reading a lesson contributes no mastery. Each active card that has been reviewed at least once contributes its current FSRS retrievability once, with weight 0.5 and age zero; repeated ratings cannot accumulate mastery. A card never reviewed contributes nothing, so creating cards does not lower mastery. Flagged exercise evidence is excluded. Topics without evidence appear at zero. Plan mastery weights topics by their passage counts, including untouched topics. A topic without passages weighs 1, so a plan built without sources, or after its sources were removed, still shows progress. Historical charts replay answer evidence and the latest card review at each date. Older events recover question types from stored attempts when available; otherwise they use weight 1.
+
+| Evidence                       | Weight |
+| ------------------------------ | ------ |
+| Quiz answer                    | 1      |
+| Open quiz answer               | 1.5    |
+| Simulation answer              | 2      |
+| Quick check in a lesson        | 0.5    |
+| Self-rating of an exercise     | 0.5    |
+| Reviewed card (retrievability) | 0.5    |
+
+## Self-rating of exercises
+
+After a practice exercise the student can choose "Got it" (score 1) or "Missed it" (score 0). It is optional: "Mark as done" works without any rating, and an unrated exercise adds nothing. Each rating is an `answer_given` event with `evidenceKind: "self"`, the exercise id and a `questionScores` entry for that exercise, so flagging the exercise removes the rating like any other evidence from it. Three rules follow from its being light evidence:
+
+- It decays like other evidence (half-life 14 days) and has weight 0.5.
+- Like a quick check, it never opens or closes a gap, and a "Missed it" is not a wrong answer on a gap. Gaps follow graded answers only.
+- It does not count as a solved exercise on Progress.
+
+The student can change a rating. Every choice is stored, but mastery counts one rating per exercise per visit: a rating replaces the exercise's previous rating when it comes less than 6 hours after it (`SELF_RATING_WINDOW_MS`). Choosing the same rating again writes nothing. Six hours or more later, a rating is a new observation on top of the old one, which has decayed. The practice page shows the rating from the last 6 hours as chosen and starts a new visit unrated. Replaying an earlier date keeps the rating that stood at that date.
+
+One "Got it" on a fresh topic gives `0.5 / 3.5 ≈ 0.143`, against `0.25` for one perfect quiz answer. Changing it to "Missed it" within the window gives `0`, not the average of the two.
 
 ## Path rules
 
@@ -20,7 +41,7 @@ Nothing on the path is locked. Every activity is open at any time and in any ord
 3. A simulation, once every topic has reached the target.
 4. A simulation, when the exam is 0 to 3 days away and some study has happened.
 5. Exercises on the topic whose lesson was just read, while that topic is below the target.
-6. A quiz on the topic just practiced, while that topic is below the target. Practice is not graded, so it leaves mastery where it was; without the quiz, rule 8 would suggest practice on the same topic again and again.
+6. A quiz on the topic just practiced, while that topic is below the target. Practice is not graded: a self-rating moves mastery only a little, and many students rate nothing. Without the quiz, rule 8 would suggest practice on the same topic again and again.
 7. The lesson of the next unread topic, in plan order.
 8. Exercises on the weakest topic.
 

@@ -1,5 +1,5 @@
 import { shouldClose, shouldOpen, type OpenGap } from "./gaps";
-import { masteryFor, type MasteryEvent } from "./mastery";
+import { currentRatings, masteryFor, type MasteryEvent } from "./mastery";
 
 export type SeriesEvent = {
   topicId: string;
@@ -7,14 +7,39 @@ export type SeriesEvent = {
   score: number;
   scores?: number[];
   answerKinds?: Array<string | undefined>;
-  /** "check": a lesson's quick check; it counts for mastery but never opens or closes a gap. */
-  evidenceKind?: "quiz" | "simulation" | "check";
+  /**
+   * "check": a lesson's quick check. "self": the student's "Got it" or "Missed it" on a practice exercise (its id is the
+   * only entry of `answers`). Both count for mastery but never open or close a gap.
+   */
+  evidenceKind?: "quiz" | "simulation" | "check" | "self";
   /** The attempt this event came from and its answers by question id, when recorded; links wrong answers to gaps. */
   attemptId?: string;
   answers?: Array<{ id?: string; score: number }>;
   kind: "quiz" | "card" | "lesson" | "active";
   seconds?: number;
 };
+
+/** Light evidence: it counts for mastery but is not a graded answer, so it is no solved exercise, wrong answer or gap. */
+export function isLightEvidence(event: Pick<SeriesEvent, "evidenceKind">): boolean {
+  return event.evidenceKind === "check" || event.evidenceKind === "self";
+}
+
+const ratedExercise = (event: SeriesEvent) =>
+  event.evidenceKind === "self" ? event.answers?.[0]?.id : undefined;
+
+/** Leaves out the ratings a later rating of the same exercise replaced, so a changed mind counts once. */
+export function withoutReplacedRatings(events: SeriesEvent[]): SeriesEvent[] {
+  const kept = new Set(
+    currentRatings(
+      events.filter((event) => event.evidenceKind === "self"),
+      (event) => {
+        const exercise = ratedExercise(event);
+        return exercise ? `${event.topicId}\u0000${exercise}` : undefined;
+      },
+    ),
+  );
+  return events.filter((event) => event.evidenceKind !== "self" || kept.has(event));
+}
 
 function dayStart(at: number): number {
   const date = new Date(at);
@@ -73,6 +98,7 @@ export function seriesEvidence(events: SeriesEvent[]): MasteryEvent[] {
     return (event.scores ?? [event.score]).map((score, index) => ({
       topicId: event.topicId,
       kind: event.evidenceKind ?? "quiz",
+      exerciseId: ratedExercise(event),
       answerKind: event.answerKinds?.[index],
       score,
       at: event.at,
@@ -159,7 +185,7 @@ export function replayGaps(
 ): TrackedGap[] {
   const byTopic = new Map<string, SeriesEvent[]>();
   for (const event of events) {
-    if (event.kind !== "quiz" || event.evidenceKind === "check") continue;
+    if (event.kind !== "quiz" || isLightEvidence(event)) continue;
     byTopic.set(event.topicId, [...(byTopic.get(event.topicId) ?? []), event]);
   }
   for (const gap of known) if (!byTopic.has(gap.topicId)) byTopic.set(gap.topicId, []);

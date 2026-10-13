@@ -4,16 +4,89 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { Icon } from "../../components/Icon";
 import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
+import "./PracticePage.css";
 
 type Exercise = Awaited<ReturnType<typeof invoke<"study.exercises">>>["exercises"][number];
 
-function ExerciseCard({ exercise }: { exercise: Exercise }) {
+type Rating = "got" | "missed";
+
+/** Optional "Got it" / "Missed it": light evidence for mastery. The student can change it; the chosen one is pressed. */
+function SelfRating({
+  exerciseId,
+  initial,
+  planId,
+  topicId,
+}: {
+  exerciseId: string;
+  initial: Rating | null;
+  planId: string;
+  topicId: string;
+}) {
+  const { t } = useTranslation();
+  const client = useQueryClient();
+  const [rating, setRating] = useState<Rating | null>(initial);
+  const save = useMutation({
+    mutationFn: (next: Rating) =>
+      invoke("study.rateExercise", { planId, topicId, exerciseId, rating: next }),
+    onSuccess: () =>
+      Promise.all(
+        ["series", "plan", "recommend"].map((key) =>
+          client.invalidateQueries({ queryKey: [key, planId] }),
+        ),
+      ),
+  });
+  const choose = (next: Rating) => {
+    if (next === rating) return;
+    const before = rating;
+    setRating(next);
+    save.mutate(next, { onError: () => setRating(before) });
+  };
+  const labelId = `rate-${exerciseId}`;
+  return (
+    <div className="px-rate">
+      <span id={labelId} className="meta">
+        {t("practice.rateLabel")}
+      </span>
+      <div className="px-rate-choices" role="group" aria-labelledby={labelId}>
+        {(["got", "missed"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={rating === value ? "choice is-selected" : "choice"}
+            aria-pressed={rating === value}
+            onClick={() => choose(value)}
+          >
+            {rating === value ? <Icon name="check" size={16} /> : null}
+            {t(`practice.${value}`)}
+          </button>
+        ))}
+      </div>
+      <span className="meta">{t("practice.rateHint")}</span>
+      {save.isError ? (
+        <p className="meta px-rate-error" role="alert">
+          {t("practice.rateFailed")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ExerciseCard({
+  exercise,
+  planId,
+  topicId,
+}: {
+  exercise: Exercise;
+  planId: string | undefined;
+  topicId: string | undefined;
+}) {
   const { t } = useTranslation();
   const [answer, setAnswer] = useState("");
   const [steps, setSteps] = useState(0);
@@ -79,6 +152,14 @@ function ExerciseCard({ exercise }: { exercise: Exercise }) {
           </Button>
         ) : null}
       </div>
+      {planId && topicId ? (
+        <SelfRating
+          exerciseId={exercise.id}
+          initial={exercise.rating}
+          planId={planId}
+          topicId={topicId}
+        />
+      ) : null}
     </li>
   );
 }
@@ -198,7 +279,7 @@ export function PracticePage() {
       {list.length > 0 ? (
         <ol className="choice-list">
           {list.map((exercise) => (
-            <ExerciseCard key={exercise.id} exercise={exercise} />
+            <ExerciseCard key={exercise.id} exercise={exercise} planId={planId} topicId={topicId} />
           ))}
         </ol>
       ) : null}
