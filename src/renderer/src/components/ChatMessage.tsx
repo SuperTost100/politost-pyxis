@@ -19,6 +19,8 @@ export function ChatMessage({
   onReact,
   onRegenerate,
   regenerateDisabled,
+  stopped,
+  streaming,
 }: {
   role?: "user" | "tutor";
   children: ReactNode;
@@ -31,12 +33,25 @@ export function ChatMessage({
   onRegenerate?: () => void;
   regenerateDisabled?: boolean;
   onReact?: (reaction: "up" | "down") => void;
+  /** The student stopped this reply before it finished. */
+  stopped?: boolean;
+  /** The reply is still being written, so there is nothing yet to copy, rate or rewrite. */
+  streaming?: boolean;
 }) {
   const { t } = useTranslation();
+  const [copied, setCopied] = useState<"done" | "failed" | null>(null);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(null), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
   if (role === "user") {
     return (
       <div className="px-msg px-msg-user">
-        <div className="px-msg-bubble">{children}</div>
+        <div className="px-msg-bubble">
+          <span className="visually-hidden">{t("components.chat.you")}: </span>
+          {children}
+        </div>
       </div>
     );
   }
@@ -46,52 +61,73 @@ export function ChatMessage({
         <Logo size={22} />
       </span>
       <div className="px-msg-body">
-        {general ? (
-          <div style={{ marginBottom: 8 }}>
-            <Tag tone="general">{t("components.chat.generalTag")}</Tag>
+        <span className="visually-hidden">{t("components.chat.pyxis")}: </span>
+        {general || stopped ? (
+          <div className="px-msg-tags">
+            {general ? <Tag tone="general">{t("components.chat.generalTag")}</Tag> : null}
+            {stopped ? <Tag>{t("ask.stopped")}</Tag> : null}
           </div>
         ) : null}
         <div className="px-msg-text">
           <RunnablePython.Provider value>{children}</RunnablePython.Provider>
         </div>
-        <div className="px-msg-foot">
-          <IconButton
-            icon="copy"
-            label={t("components.chat.copy")}
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (text) void navigator.clipboard.writeText(text);
-            }}
-          />
-          <IconButton
-            icon="thumbs-up"
-            label={t("components.chat.helpful")}
-            variant="ghost"
-            size="sm"
-            pressed={reaction === "up"}
-            onClick={() => onReact?.("up")}
-          />
-          <IconButton
-            icon="thumbs-down"
-            label={t("components.chat.notHelpful")}
-            variant="ghost"
-            size="sm"
-            pressed={reaction === "down"}
-            onClick={() => onReact?.("down")}
-          />
-          {onRegenerate ? (
+        {streaming ? null : (
+          <div className="px-msg-foot">
             <IconButton
-              icon="refresh-cw"
-              label={t("components.chat.regenerate")}
+              icon={copied === "done" ? "check" : "copy"}
+              label={
+                copied === "done"
+                  ? t("components.chat.copied")
+                  : copied === "failed"
+                    ? t("components.chat.copyFailed")
+                    : t("components.chat.copy")
+              }
               variant="ghost"
               size="sm"
-              disabled={regenerateDisabled}
-              onClick={onRegenerate}
+              onClick={() => {
+                if (!text) return;
+                navigator.clipboard.writeText(text).then(
+                  () => setCopied("done"),
+                  () => setCopied("failed"),
+                );
+              }}
             />
-          ) : null}
-          {engine ? <span className="px-msg-engine">{engine}</span> : null}
-        </div>
+            <span className="visually-hidden" role="status">
+              {copied === "done"
+                ? t("components.chat.copied")
+                : copied === "failed"
+                  ? t("components.chat.copyFailed")
+                  : ""}
+            </span>
+            <IconButton
+              icon="thumbs-up"
+              label={t("components.chat.helpful")}
+              variant="ghost"
+              size="sm"
+              pressed={reaction === "up"}
+              onClick={() => onReact?.("up")}
+            />
+            <IconButton
+              icon="thumbs-down"
+              label={t("components.chat.notHelpful")}
+              variant="ghost"
+              size="sm"
+              pressed={reaction === "down"}
+              onClick={() => onReact?.("down")}
+            />
+            {onRegenerate ? (
+              <IconButton
+                icon="refresh-cw"
+                label={t("components.chat.regenerate")}
+                variant="ghost"
+                size="sm"
+                disabled={regenerateDisabled}
+                onClick={onRegenerate}
+              />
+            ) : null}
+            {engine ? <span className="px-msg-engine">{engine}</span> : null}
+          </div>
+        )}
         {suggestions ? (
           <div className="px-msg-chips">
             {suggestions.map((s) => (

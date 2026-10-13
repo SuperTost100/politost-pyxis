@@ -172,7 +172,10 @@
     "subjectPicked": "Materia {{name}} selezionata.",
     "subjectMoved": "{{name}}, posizione {{position}} di {{count}}.",
     "subjectDropped": "{{name}} posata nella posizione {{position}}.",
-    "subjectDragCancelled": "Riordino annullato."
+    "subjectDragCancelled": "Riordino annullato.",
+    "retry": "Riprova",
+    "attachFilter": "Foto e documenti",
+    "replied": "Pyxis ha risposto."
   },
   "exams": {
     "view": "Mostra",
@@ -1195,7 +1198,8 @@
     "attachTooBig": "Il file è troppo grande. Ogni allegato sta sotto i 15 MB, e al massimo otto file.",
     "invalidSubject": "Inserisci una materia da 1 a 120 caratteri.",
     "subjectExists": "Esiste già una materia con questo nome.",
-    "coreUnavailable": "Il motore interno non riesce ad avviarsi. Riprova oppure apri le Impostazioni per ripristinare una copia di sicurezza."
+    "coreUnavailable": "Il motore interno non riesce ad avviarsi. Riprova oppure apri le Impostazioni per ripristinare una copia di sicurezza.",
+    "attachScanned": "{{name}} è una scansione, quindi qui non ci trovo testo da leggere. Aggiungila alla libreria e scegli Leggi la scansione."
   },
   "dev": {
     "kicker": "Galleria",
@@ -1274,7 +1278,11 @@
       "copy": "Copia",
       "helpful": "Utile",
       "notHelpful": "Non utile",
-      "regenerate": "Rigenera"
+      "regenerate": "Rigenera",
+      "you": "Tu",
+      "pyxis": "Pyxis",
+      "copied": "Copiato",
+      "copyFailed": "Non sono riuscito a copiare. Riprova."
     },
     "quiz": {
       "correct": "Corretta",

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { fileName, takeBoardAttachment } from "./attachments";
+import {
+  addPendingFiles,
+  draftKey,
+  fileName,
+  lastAskChat,
+  readPendingFiles,
+  takeBoardAttachment,
+  writePendingFiles,
+} from "./attachments";
 
 function store(entries: Record<string, string>) {
   const data = new Map(Object.entries(entries));
@@ -7,6 +15,7 @@ function store(entries: Record<string, string>) {
     data,
     getItem: (key: string) => data.get(key) ?? null,
     removeItem: (key: string) => void data.delete(key),
+    setItem: (key: string, value: string) => void data.set(key, value),
   };
 }
 
@@ -42,5 +51,37 @@ describe("Ask attachments", () => {
       "pyxis-board-png": "https://example.test/x.png",
     });
     expect(takeBoardAttachment(s)).toEqual({ path: "/tmp/a.png" });
+  });
+
+  it("keeps each chat's draft and picked files apart, as paths only", () => {
+    const s = store({});
+    writePendingFiles(s, "a", ["/tmp/uno.pdf"]);
+    writePendingFiles(s, undefined, ["/tmp/nuovo.png"]);
+    expect(readPendingFiles(s, "a")).toEqual(["/tmp/uno.pdf"]);
+    expect(readPendingFiles(s, "b")).toEqual([]);
+    expect(readPendingFiles(s)).toEqual(["/tmp/nuovo.png"]);
+    expect(draftKey("a")).not.toBe(draftKey("b"));
+    expect(draftKey()).toBe("pyxis-draft");
+    writePendingFiles(s, "a", []);
+    expect([...s.data.keys()]).toEqual(["pyxis-files"]);
+  });
+
+  it("reads no files from a value that is not a list of paths", () => {
+    expect(readPendingFiles(store({ "pyxis-files:a": "{" }), "a")).toEqual([]);
+    expect(readPendingFiles(store({ "pyxis-files:a": '[1,"/tmp/x.txt"]' }), "a")).toEqual(["/tmp/x.txt"]);
+  });
+
+  it("names the chat Ask last showed, or none for a new chat", () => {
+    expect(lastAskChat(store({ "pyxis.lastDoorPath": '{"ask":"/ask/0199-abc","exams":"/exams"}' }))).toBe("0199-abc");
+    expect(lastAskChat(store({ "pyxis.lastDoorPath": '{"ask":"/ask"}' }))).toBeUndefined();
+    expect(lastAskChat(store({}))).toBeUndefined();
+  });
+});
+
+describe("addPendingFiles", () => {
+  it("adds each picked file once, keeping the order", () => {
+    expect(
+      addPendingFiles(["/a/foto.png"], ["/a/foto.png", "/a/notes.pdf"]),
+    ).toEqual(["/a/foto.png", "/a/notes.pdf"]);
   });
 });

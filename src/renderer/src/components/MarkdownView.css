@@ -9,6 +9,14 @@
     var(--font-sans);
 }
 
+/* A long URL or unbroken word wraps instead of widening the message. */
+.px-markdown {
+  overflow-wrap: break-word;
+}
+.px-markdown a {
+  overflow-wrap: anywhere;
+}
+
 .px-markdown :where(p, ul, ol, blockquote) {
   margin: 0 0 var(--space-3);
 }
@@ -30,10 +38,23 @@
   margin-top: 0;
 }
 
+/* Wide tables and display formulas scroll sideways inside the message. */
+.px-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 var(--space-4);
+}
+
 .px-markdown :where(table) {
   width: 100%;
   border-collapse: collapse;
-  margin: 0 0 var(--space-4);
+}
+
+.px-markdown .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--space-1) 0;
 }
 
 .px-markdown :where(th, td) {

@@ -172,7 +172,10 @@
     "subjectPicked": "Picked up {{name}}.",
     "subjectMoved": "{{name}}, position {{position}} of {{count}}.",
     "subjectDropped": "{{name}} placed at position {{position}}.",
-    "subjectDragCancelled": "Reordering cancelled."
+    "subjectDragCancelled": "Reordering cancelled.",
+    "retry": "Try again",
+    "attachFilter": "Photos and documents",
+    "replied": "Pyxis replied."
   },
   "exams": {
     "view": "Show",
@@ -1195,7 +1198,8 @@
     "attachTooBig": "That file is too large. Keep each attachment under 15 MB, and eight files at most.",
     "invalidSubject": "Enter a subject name of 1 to 120 characters.",
     "subjectExists": "A subject with that name already exists.",
-    "coreUnavailable": "The internal engine could not start. Retry, or open Settings to restore a backup."
+    "coreUnavailable": "The internal engine could not start. Retry, or open Settings to restore a backup.",
+    "attachScanned": "{{name}} is a scan, so I find no text in it to read here. Add it to the library and choose Read the scan."
   },
   "dev": {
     "kicker": "Gallery",
@@ -1274,7 +1278,11 @@
       "copy": "Copy",
       "helpful": "Helpful",
       "notHelpful": "Not helpful",
-      "regenerate": "Regenerate"
+      "regenerate": "Regenerate",
+      "you": "You",
+      "pyxis": "Pyxis",
+      "copied": "Copied",
+      "copyFailed": "Couldn't copy. Try again."
     },
     "quiz": {
       "correct": "Correct",

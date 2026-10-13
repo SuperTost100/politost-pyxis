@@ -6,6 +6,7 @@ import { toPng } from "html-to-image";
 import katex from "katex";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
+import { draftKey, lastAskChat } from "../ask/attachments";
 import {
   analyzeGraph,
   graphExpression,
@@ -105,13 +106,15 @@ export function GraphPage() {
       if (attach) {
         const staged = await invoke("tools.stagePng", { dataUrl });
         sessionStorage.setItem("pyxis-board-file", staged.path);
+        // Back to the chat the student came from, with the formula added to that chat's draft.
+        const chat = lastAskChat(sessionStorage);
         sessionStorage.setItem(
-          "pyxis-draft",
-          [sessionStorage.getItem("pyxis-draft") ?? "", `$f(x) = ${latex}$`]
+          draftKey(chat),
+          [sessionStorage.getItem(draftKey(chat)) ?? "", `$f(x) = ${latex}$`]
             .filter(Boolean)
             .join("\n\n"),
         );
-        navigate("/ask");
+        navigate(chat ? `/ask/${chat}` : "/ask");
       } else {
         const saved = await window.pyxis.saveArtifact({
           filename: "graph.png",
