@@ -838,6 +838,7 @@
         "examSoon": "The exam is in a few days: test yourself.",
         "ready": "Every topic has reached your target.",
         "consolidate": "Lock in what you just read.",
+        "check": "Check what the exercises taught you.",
         "next": "The next topic in order.",
         "weakest": "It's your weakest topic."
       }

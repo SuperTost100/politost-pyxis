@@ -1224,6 +1224,7 @@ export const requests = {
               "examSoon",
               "ready",
               "consolidate",
+              "check",
               "next",
               "weakest",
             ]),
