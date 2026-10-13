@@ -3,6 +3,10 @@ import { dirname } from "node:path";
 import type { UpdateView } from "../shared/updates";
 
 const DAY = 24 * 60 * 60 * 1000;
+// GitHub allows 60 unauthenticated requests an hour per address, which a shared campus network uses up. A failed check
+// is tried again after 15 minutes instead of blocking the button for a day.
+const FAILED_RETRY = 15 * 60 * 1000;
+const freshFor = (state: string) => (state === "failed" ? FAILED_RETRY : DAY);
 export function githubRepository(value: unknown): string | null {
   const url =
     typeof value === "string"
@@ -66,7 +70,7 @@ export function releaseChecker(input: {
     if (
       recent?.checkedAt != null &&
       at >= recent.checkedAt &&
-      at - recent.checkedAt < DAY
+      at - recent.checkedAt < freshFor(recent.state)
     )
       return recent;
     try {
@@ -80,7 +84,7 @@ export function releaseChecker(input: {
         view?.current === input.current &&
         Number.isFinite(view.checkedAt) &&
         at >= view.checkedAt! &&
-        at - view.checkedAt! < DAY &&
+        at - view.checkedAt! < freshFor(view.state) &&
         ["current", "available", "failed", "unpublished"].includes(view.state)
       ) {
         const cached: UpdateView = {

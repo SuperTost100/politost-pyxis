@@ -126,7 +126,8 @@ it("keeps the daily request budget in memory when the cache cannot be written", 
       expect(first.state).toBe(state);
       expect(concurrent).toEqual(first);
       expect(await check()).toEqual(first);
-      now += 24 * 60 * 60 * 1000 - 1;
+      // A failure is retried after 15 minutes; any answer from GitHub holds for a day.
+      now += (state === "failed" ? 15 * 60 * 1000 : 24 * 60 * 60 * 1000) - 1;
       expect(await check()).toEqual(first);
       expect(fetcher).toHaveBeenCalledTimes(1);
       now += 1;
@@ -185,6 +186,33 @@ it("reconstructs cached release URLs and discards malformed cached notes", async
     );
     expect((await releaseChecker(options)()).release?.notes).toBe("Checked");
     expect(fetcher).toHaveBeenCalledTimes(1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("tries again 15 minutes after a failed check, from memory and from the saved cache", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pyxis-update-retry-"));
+  let now = 1800000000000;
+  let online = false;
+  const fetcher = vi.fn(async () => {
+    if (!online) throw new Error("rate limited");
+    return new Response(JSON.stringify({ tag_name: "v1.2.0", body: "Notes" }));
+  });
+  try {
+    const options = {
+      repository: "a/b",
+      current: "1.0.0",
+      cachePath: join(root, "updates.json"),
+      fetch: fetcher,
+      now: () => now,
+    };
+    expect((await releaseChecker(options)()).state).toBe("failed");
+    online = true;
+    now += 15 * 60 * 1000;
+    // A restarted app reads the failure from disk and does not wait a day either.
+    expect((await releaseChecker(options)()).state).toBe("available");
+    expect(fetcher).toHaveBeenCalledTimes(2);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

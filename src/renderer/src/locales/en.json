@@ -1688,7 +1688,7 @@
     "title": "Updates",
     "unpublished": "The release channel has not been published yet.",
     "current": "You have the latest stable version.",
-    "failed": "The release check could not connect. It will try again tomorrow.",
+    "failed": "The release check could not connect. Try again in 15 minutes.",
     "checking": "Checking for a release…",
     "available": "Pyxis {{version}} is available.",
     "installed": "Installed version: {{version}}",

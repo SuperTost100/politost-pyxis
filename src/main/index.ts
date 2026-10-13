@@ -26,6 +26,7 @@ import {
   crashReporter,
   BrowserWindow,
   dialog,
+  Menu,
   ipcMain,
   MessageChannelMain,
   nativeTheme,
@@ -61,6 +62,10 @@ function e2eSeam(): boolean {
 }
 const userDataOverride = process.env["PYXIS_USER_DATA"];
 if (userDataOverride) app.setPath("userData", userDataOverride);
+// One Pyxis per profile folder. A second copy would open the same database, mark the first one's running jobs as
+// interrupted and run them twice, and a move or restore in one would pull the folder from under the other.
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
 if (e2eSeam() && process.env.PYXIS_E2E === "1" && process.env.PYXIS_CRASH_DIR) {
   mkdirSync(process.env.PYXIS_CRASH_DIR, { recursive: true });
   app.setPath("crashDumps", resolve(process.env.PYXIS_CRASH_DIR));
@@ -302,8 +307,22 @@ function createWindow(): void {
     const bounds = mainWindow.getBounds();
     writeFileSync(userFile("window.json"), JSON.stringify(bounds));
   };
-  mainWindow.on("resize", saveBounds);
-  mainWindow.on("move", saveBounds);
+  // Moving or resizing fires many events a second; write once the window settles, and once more on close.
+  let boundsTimer: NodeJS.Timeout | undefined;
+  const saveBoundsSoon = (): void => {
+    clearTimeout(boundsTimer);
+    boundsTimer = setTimeout(saveBounds, 500);
+  };
+  mainWindow.on("resize", saveBoundsSoon);
+  mainWindow.on("move", saveBoundsSoon);
+  mainWindow.on("close", () => {
+    clearTimeout(boundsTimer);
+    saveBounds();
+  });
+  // On macOS the app outlives its window; core restart messages must not reach a destroyed one.
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 
   const hash = process.env["PYXIS_ROUTE"];
   if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
@@ -413,10 +432,16 @@ function waitForCoreReady(
       if (err) reject(err);
       else resolve();
     };
-    const onMessage = (data: { type?: string }) => {
+    const onMessage = (data: { type?: string; reason?: string }) => {
       if (data?.type === "core-ready") done();
       else if (data?.type === "core-failed")
-        done(new Error("core-bootstrap-failed"));
+        done(
+          new Error(
+            data.reason === "workspace-newer"
+              ? "workspace-newer"
+              : "core-bootstrap-failed",
+          ),
+        );
     };
     const onExit = () => done(new Error("core-exited"));
     const timer = setTimeout(
@@ -525,6 +550,14 @@ function startCore(strict = false): Promise<void> {
   let deliveringKeys = false;
   return healthy
     .catch((err: unknown) => {
+      // Restarting cannot help: this workspace needs a newer Pyxis. Stop the restarts and say so once.
+      if (err instanceof Error && err.message === "workspace-newer") {
+        coreRestartFailures = 5;
+        if (!newerWorkspaceShown) {
+          newerWorkspaceShown = true;
+          void showNewerWorkspace();
+        }
+      }
       if (err instanceof Error && err.message === "core-ready-timeout") {
         // Terminate the unhealthy core; it must not restart on its own.
         timedOut = true;
@@ -561,12 +594,61 @@ function startCore(strict = false): Promise<void> {
       if (coreChild !== child || startupFailed || exitedCores.has(child))
         return;
       if (!startupFailed) {
-        coreRestartFailures = 0;
+        // Only a core that stays up counts as recovered. A crash that comes back right after each restart (a replayed
+        // request that crashes it again) must still reach the 5-failure stop instead of looping forever.
+        const stable = setTimeout(() => {
+          if (coreChild === child && !exitedCores.has(child))
+            coreRestartFailures = 0;
+        }, 30_000);
+        child.once("exit", () => clearTimeout(stable));
         mainWindow?.webContents.send(mainChannels.coreUnavailable, false);
       }
       keysReadyFor = child;
       connectRenderer();
     });
+}
+
+/**
+ * Packaged builds replace Electron's default English menu, which offers developer tools and links to electronjs.org.
+ * macOS keeps the standard app, edit and window menus (macOS names their items, and Edit carries copy and paste);
+ * Windows and Linux get no menu bar. Development builds keep the default menu.
+ */
+function installMenu(): void {
+  if (!app.isPackaged) return;
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { role: "appMenu" },
+      { role: "editMenu" },
+      { role: "windowMenu" },
+    ]),
+  );
+}
+
+let newerWorkspaceShown = false;
+
+async function showNewerWorkspace(): Promise<void> {
+  const options = {
+    type: "warning" as const,
+    title: "PoliTost Pyxis",
+    message:
+      "This workspace was saved by a newer version of Pyxis.\n\nQuesti dati sono stati salvati da una versione più recente di Pyxis.",
+    detail:
+      "Install the latest Pyxis to open it. Your data has not been changed.\n\nInstalla l'ultima versione di Pyxis per aprirli. I tuoi dati non sono stati modificati.",
+    buttons: ["Download / Scarica", "OK"],
+    defaultId: 0,
+    cancelId: 1,
+  };
+  const { response } = mainWindow
+    ? await dialog.showMessageBox(mainWindow, options)
+    : await dialog.showMessageBox(options);
+  if (response === 0)
+    await shell.openExternal(
+      "https://github.com/SuperTost100/politost-pyxis/releases/latest",
+    );
 }
 
 function pauseCore(): Promise<void> {
@@ -902,8 +984,14 @@ function registerIpc(): void {
         holdCore = false;
       } catch (error) {
         await pauseCore();
-        await runArchive("recover");
-        await resumeCore();
+        try {
+          await runArchive("recover");
+        } finally {
+          // Even if recovery fails, core must come back or say it can't: a held core leaves every screen waiting.
+          await resumeCore().catch(() =>
+            mainWindow?.webContents.send(mainChannels.coreUnavailable, true),
+          );
+        }
         throw error;
       }
       // The old copy is held until core has validated and opened the restored
@@ -1017,7 +1105,15 @@ function registerProtocols(): void {
   registerRuntimeProtocol(session.defaultSession, () => workspacePath);
 }
 
+app.on("second-instance", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
+
 app.whenReady().then(() => {
+  if (!primaryInstance) return;
   if (
     process.platform === "darwin" &&
     e2eSeam() &&
@@ -1026,7 +1122,30 @@ app.whenReady().then(() => {
     app.setActivationPolicy("prohibited");
   mkdirSync(app.getPath("userData"), { recursive: true });
   try {
-    workspacePath = ensureWorkspace();
+    for (;;) {
+      try {
+        workspacePath = ensureWorkspace();
+        break;
+      } catch (err) {
+        if (!(err instanceof Error && err.message === "workspace-missing"))
+          throw err;
+        const retry = dialog.showMessageBoxSync({
+          type: "warning",
+          title: "PoliTost Pyxis",
+          message:
+            "Pyxis can't find its data folder.\n\nPyxis non trova la cartella dei dati.",
+          detail:
+            "If you moved it to an external drive, connect the drive and try again. Nothing has been changed.\n\nSe l'hai spostata su un disco esterno, collegalo e riprova. Non è stato modificato nulla.",
+          buttons: ["Try again / Riprova", "Quit / Esci"],
+          defaultId: 0,
+          cancelId: 1,
+        });
+        if (retry !== 0) {
+          app.exit(0);
+          return;
+        }
+      }
+    }
     recoverInterruptedWipe(workspacePath);
   } catch (err) {
     console.error(
@@ -1047,6 +1166,7 @@ app.whenReady().then(() => {
   }
   applyAppearance(readAppearanceSource());
   installCsp();
+  installMenu();
   installNavigationGuards();
   installPermissionHandlers();
   registerProtocols();

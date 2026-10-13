@@ -76,7 +76,11 @@ if (!parent) {
       "pyxis-core: bootstrap failed",
       err instanceof Error ? err.message : "unknown",
     );
-    port.postMessage({ type: "core-failed" });
+    // Main tells the student when the reason is something they can act on, such as a workspace from a newer Pyxis.
+    port.postMessage({
+      type: "core-failed",
+      reason: err instanceof Error ? err.message : "unknown",
+    });
     // Main also terminates this process; exiting here covers a lost message.
     setTimeout(() => process.exit(1), 100);
   }
