@@ -14,7 +14,7 @@ import { renameSync } from "node:fs";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
 import { updateInstaller } from "./update-install";
-import { fixtureFetch } from "./update-fixture";
+import { updateSeam } from "./update-fixture";
 import { spawn } from "node:child_process";
 import { registerArtifactHandlers } from "./artifacts";
 import { invalidateRuntime } from "./runtime-pack";
@@ -822,22 +822,12 @@ function registerIpc(): void {
     };
   });
   const metadata = packageMetadata as { repository?: unknown; version: string };
-  const releaseFixture =
-    e2eSeam() && process.env["PYXIS_E2E_RELEASE"]
-      ? JSON.parse(process.env["PYXIS_E2E_RELEASE"]!)
-      : null;
   // The e2e seam stands in for GitHub, serves installers from a folder and installs into a stand-in AppImage.
-  const fixture = releaseFixture
-    ? fixtureFetch({
-        release: releaseFixture,
-        assets: process.env["PYXIS_E2E_UPDATE_ASSETS"],
-        hold: process.env["PYXIS_E2E_UPDATE_HOLD"],
-      })
-    : undefined;
-  const testAppImage = releaseFixture
-    ? process.env["PYXIS_E2E_APPIMAGE"]
-    : undefined;
-  const repository = releaseFixture
+  // Unpackaged builds only, like the installer stand-in.
+  const seam = e2eSeam() ? updateSeam(process.env, app.isPackaged) : null;
+  const fixture = seam?.fetch;
+  const testAppImage = seam?.appImage;
+  const repository = seam
     ? "PoliTost/pyxis-test"
     : githubRepository(metadata.repository);
   const current = app.isPackaged ? app.getVersion() : metadata.version;

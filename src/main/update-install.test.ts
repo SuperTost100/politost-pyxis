@@ -24,6 +24,7 @@ import {
   replaceAppImage,
   updateInstaller,
 } from "./update-install";
+import { updateSeam } from "./update-fixture";
 
 const roots: string[] = [];
 function temp(): string {
@@ -632,4 +633,22 @@ it("never downloads when the latest release is not newer than this install", asy
   await instance.start();
   expect(instance.state()).toEqual({ state: "failed", error: "not-newer" });
   expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("uses the fake-release seam only in an unpackaged build", async () => {
+  const env = {
+    PYXIS_E2E: "1",
+    PYXIS_E2E_RELEASE: JSON.stringify({ tag_name: "v9.0.0", assets: [] }),
+    PYXIS_E2E_APPIMAGE: "/tmp/Pyxis.AppImage",
+  };
+  expect(updateSeam(env, true)).toBeNull();
+  expect(updateSeam({ PYXIS_E2E: "1" }, false)).toBeNull();
+  const seam = updateSeam(env, false);
+  expect(seam?.appImage).toBe("/tmp/Pyxis.AppImage");
+  const release = await seam!.fetch(
+    "https://api.github.com/repos/PoliTost/pyxis-test/releases/latest",
+  );
+  expect(((await release.json()) as { tag_name: string }).tag_name).toBe(
+    "v9.0.0",
+  );
 });

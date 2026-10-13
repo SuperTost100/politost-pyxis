@@ -5,6 +5,25 @@ import { basename, join } from "node:path";
 const CHUNK = 64 * 1024;
 
 /**
+ * The fake-release seam for end-to-end tests, or null. A packaged app never uses it, even with `PYXIS_E2E=1`: it must
+ * not fetch from a fake release or replace a file because of environment variables.
+ */
+export function updateSeam(
+  env: NodeJS.ProcessEnv,
+  packaged: boolean,
+): { fetch: typeof fetch; appImage?: string } | null {
+  if (packaged || !env["PYXIS_E2E_RELEASE"]) return null;
+  return {
+    fetch: fixtureFetch({
+      release: JSON.parse(env["PYXIS_E2E_RELEASE"]),
+      assets: env["PYXIS_E2E_UPDATE_ASSETS"],
+      hold: env["PYXIS_E2E_UPDATE_HOLD"],
+    }),
+    appImage: env["PYXIS_E2E_APPIMAGE"],
+  };
+}
+
+/**
  * End-to-end tests only: a stand-in for GitHub. The releases API answers with `release`, a release download redirects
  * to the release-asset host the way GitHub does, and that host serves files from `assets`. While the `hold` file
  * exists the last chunk of a file longer than one chunk waits, so a test can see a download in progress.
