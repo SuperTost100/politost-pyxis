@@ -5,6 +5,7 @@ import {
   canDrop,
   drop,
   fromProposal,
+  MAX_SUBTOPICS,
   move,
   remove,
   rename,
@@ -119,5 +120,22 @@ describe("PLAN-12 draft topic tree", () => {
       { title: "Derivate", summary: "Pendenza", subtopics: ["Regole"] },
       { title: "Integrali", summary: "Area", subtopics: [] },
     ]);
+  });
+
+  it("stops at the subtopic limit plans.create accepts, by adding or by dragging", () => {
+    let nodes = tree();
+    const full = nodes[0]!.key;
+    while (nodes[0]!.subtopics.length < MAX_SUBTOPICS)
+      nodes = addSubtopic(nodes, full).nodes;
+    const extra = addSubtopic(nodes, full);
+    expect(extra.nodes[0]!.subtopics).toHaveLength(MAX_SUBTOPICS);
+    expect(extra.key).toBe("");
+    // A subtopic from another topic cannot be dropped into or next to a full one.
+    const other = nodes[1]!.subtopics[0]!.key;
+    expect(canDrop(nodes, other, full, 0)).toBe(false);
+    expect(canDrop(nodes, other, nodes[0]!.subtopics[0]!.key, 1)).toBe(false);
+    // Reordering inside the full topic still works.
+    expect(canDrop(nodes, nodes[0]!.subtopics[1]!.key, nodes[0]!.subtopics[0]!.key, -1)).toBe(true);
+    expect(MAX_SUBTOPICS).toBe(30);
   });
 });

@@ -11,6 +11,7 @@ import {
 } from "../study/gapRows";
 import { retrievability, type ScheduleState } from "../study/schedule";
 import { uuidv7 } from "../../shared/ids";
+import { reachableTarget } from "../../shared/plan-file";
 import { masteryFor, type MasteryEvent } from "../study/mastery";
 import {
   activeMinutes,
@@ -88,7 +89,7 @@ export function gapSeverity(
   return proposed === "severe" || mastery < target / 2 ? "severe" : "minor";
 }
 
-/** A topic without passages contributes zero weight, including untouched topics with passages. */
+/** Topics weigh by passage count, untouched ones included. A topic without passages weighs 1, so a plan without any still shows progress. */
 export function weightedPlanMastery(
   topics: Array<{ id: string; mastery: number }>,
   passageCounts: ReadonlyMap<string, number>,
@@ -96,7 +97,7 @@ export function weightedPlanMastery(
   let weighted = 0;
   let count = 0;
   for (const topic of topics) {
-    const passages = passageCounts.get(topic.id) ?? 0;
+    const passages = Math.max(1, passageCounts.get(topic.id) ?? 0);
     weighted += topic.mastery * passages;
     count += passages;
   }
@@ -331,6 +332,7 @@ export function planSeries(
   const plan = db.prepare("SELECT target FROM plans WHERE id=?").get(planId) as
     { target: number } | undefined;
   const target = plan?.target ?? 0.8;
+  const reached = reachableTarget(target);
   const passageCounts = new Map(
     (
       db
@@ -397,7 +399,7 @@ export function planSeries(
       lastStudied,
       idle:
         now - (lastStudied ?? topicDates.get(topic.id) ?? now) >=
-          21 * 86400000 && topic.mastery < target,
+          21 * 86400000 && topic.mastery < reached,
     };
   });
   const activity = activeMinutes(events, now);
@@ -481,7 +483,7 @@ export function planSeries(
             return at.getTime();
           })(),
         ),
-      onTrack: topics.filter((topic) => topic.mastery >= target).length,
+      onTrack: topics.filter((topic) => topic.mastery >= reached).length,
       totalTopics: topics.length,
       lessons: completed.filter((row) => row.created_at <= now).length,
     },

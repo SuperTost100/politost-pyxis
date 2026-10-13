@@ -8,6 +8,7 @@ import {
   cancelCheck,
   checkQuestion,
   checkedAnswer,
+  finalizeAttempt,
   gradeQuizQuestion,
   readQuizGrading,
   registerQuizGradingJobs,
@@ -535,6 +536,29 @@ describe("quiz grading job", () => {
     expect(timedPicks(db, attemptId, { cfg: "last" }, 60_000 + 6_000)).toEqual({
       cfg: "saved",
     });
+    db.close();
+  });
+});
+
+describe("diagnostic retakes", () => {
+  it("records mastery evidence only for the first attempt on the same questions", () => {
+    const { db, attemptId } = fixture([mcq], "diagnostic");
+    finalizeAttempt(db, attemptId, { m: "0" });
+    const evidence = () =>
+      db
+        .prepare("SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'answer_given'")
+        .get() as { n: number };
+    expect(evidence()).toEqual({ n: 1 });
+    const { item_id: itemId } = db
+      .prepare("SELECT item_id FROM attempts WHERE id = ?")
+      .get(attemptId) as { item_id: string };
+    // A retake of the same diagnostic still gets its result and its step, but no new evidence.
+    const retake = startAttempt(db, "plan", itemId).attemptId;
+    expect(finalizeAttempt(db, retake, { m: "0" }).score).toBe(1);
+    expect(evidence()).toEqual({ n: 1 });
+    expect(
+      readSteps(db, "plan").filter((step) => step.activity === "diagnostic"),
+    ).toHaveLength(2);
     db.close();
   });
 });

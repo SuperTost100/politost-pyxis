@@ -430,7 +430,7 @@ function collectBlobFiles(workspace: string): BlobFile[] {
     }
   };
   walk(blobsRoot);
-  if (out.length + 1 > MAX_ENTRIES) throw new Error("backup-too-large");
+  if (out.length + 1 > MAX_ENTRIES) throw new Error("backup-too-many-files");
   out.sort((a, b) => (a.name < b.name ? -1 : 1));
   const names = new Set(out.map((file) => file.name));
   for (const file of out) {
@@ -472,7 +472,8 @@ function addFile(
       const n = readSync(fd, buffer, 0, buffer.length, null);
       if (n === 0) break;
       budget.total += n;
-      if (budget.total > MAX_EXPANDED) throw new Error("backup-too-large");
+      if (budget.total > MAX_EXPANDED)
+        throw new Error(`backup-too-large:${budget.total}`);
       const chunk = new Uint8Array(buffer.subarray(0, n));
       hash?.update(chunk);
       if (kind === "meta") {
@@ -503,6 +504,12 @@ export function backupWorkspace(workspace: string, destZip: string): void {
     db = openDatabase(dbPath);
     vacuumInto(db, tempDb);
     const blobs = collectBlobFiles(workspace);
+    // The message carries the size so the student sees how far over the limit the workspace is.
+    const size = [tempDb, ...blobs.map((blob) => blob.path)].reduce(
+      (sum, path) => sum + lstatSync(path).size,
+      0,
+    );
+    if (size > MAX_EXPANDED) throw new Error(`backup-too-large:${size}`);
     const archive = join(temporary, "backup.zip");
     const fd = openSync(archive, "wx", 0o600);
     try {

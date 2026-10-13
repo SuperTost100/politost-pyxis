@@ -73,6 +73,39 @@ export function seedCards(
   return ids;
 }
 
+/** Active, due cards of a plan; parameters: planId, topicId twice, ids JSON twice, now twice. */
+const DUE_FROM = `FROM cards c
+       WHERE c.plan_id = ?
+         AND c.suspended = 0
+         AND c.removed = 0
+         AND (c.topic_id IS NULL OR c.topic_id NOT IN (SELECT id FROM topics WHERE archived_at IS NOT NULL))
+         AND (? IS NULL OR c.topic_id = ?)
+         AND (? IS NULL OR c.id IN (SELECT value FROM json_each(?)))
+         AND COALESCE(
+           CAST(json_extract(
+             (SELECT cr.state_json FROM card_reviews cr
+              WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1),
+             '$.dueAt'
+           ) AS INTEGER),
+           ?
+         ) <= ?`;
+
+/** How many cards are due, without the session limit of dueCards. */
+export function countDueCards(
+  db: Database.Database,
+  planId: string,
+  now: number,
+  topicId?: string,
+): number {
+  return (
+    db
+      .prepare(`SELECT COUNT(*) AS n ${DUE_FROM}`)
+      .get(planId, topicId ?? null, topicId ?? null, null, null, now, now) as {
+      n: number;
+    }
+  ).n;
+}
+
 export function dueCards(
   db: Database.Database,
   planId: string,
@@ -98,21 +131,7 @@ export function dueCards(
           ) AS INTEGER),
           ?
         ) AS due_at
-       FROM cards c
-       WHERE c.plan_id = ?
-         AND c.suspended = 0
-         AND c.removed = 0
-         AND (c.topic_id IS NULL OR c.topic_id NOT IN (SELECT id FROM topics WHERE archived_at IS NOT NULL))
-         AND (? IS NULL OR c.topic_id = ?)
-         AND (? IS NULL OR c.id IN (SELECT value FROM json_each(?)))
-         AND COALESCE(
-           CAST(json_extract(
-             (SELECT cr.state_json FROM card_reviews cr
-              WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1),
-             '$.dueAt'
-           ) AS INTEGER),
-           ?
-         ) <= ?
+       ${DUE_FROM}
        ORDER BY due_at ASC
        LIMIT 20`,
     )

@@ -645,6 +645,9 @@ export function MapPage() {
                   if (
                     event.target instanceof HTMLInputElement ||
                     event.target instanceof HTMLTextAreaElement ||
+                    (event.target instanceof HTMLElement &&
+                      (event.target.isContentEditable ||
+                        event.target.closest("math-field"))) ||
                     disabled
                   )
                     return;
@@ -652,7 +655,11 @@ export function MapPage() {
                     event.preventDefault();
                     rename();
                   }
-                  if (event.key === "Delete" && selectedNode?.parent) {
+                  // A Mac keyboard's delete key sends Backspace.
+                  if (
+                    (event.key === "Delete" || event.key === "Backspace") &&
+                    selectedNode?.parent
+                  ) {
                     event.preventDefault();
                     void patch([{ op: "delete", id: selectedNode.id }]);
                   }

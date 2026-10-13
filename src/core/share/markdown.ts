@@ -4,10 +4,29 @@ import { readLesson } from "../study/openLesson";
 import { planLanguage } from "../engine/prompts";
 import { smartLabels, smartTextToMarkdown } from "../../shared/smart-text";
 
+export type ExportLabels = {
+  sources: string;
+  source: string;
+  answer: string;
+  true: string;
+  false: string;
+};
+
+export const exportLabels: Record<"it" | "en", ExportLabels> = {
+  it: { sources: "Fonti", source: "Fonte", answer: "Risposta", true: "vero", false: "falso" },
+  en: { sources: "Sources", source: "Source", answer: "Answer", true: "true", false: "false" },
+};
+
+/** Exports speak the plan's content language, like the material they carry. */
+export function planExportLabels(db: Database.Database, planId: string): ExportLabels {
+  return planLanguage(db, planId) === "Italian" ? exportLabels.it : exportLabels.en;
+}
+
 export function lessonMarkdown(
   title: string,
   body: string,
   sources: string[],
+  labels: ExportLabels = exportLabels.en,
 ): string {
   const unique = [
     ...new Set(sources.map((source) => source.trim()).filter(Boolean)),
@@ -15,19 +34,20 @@ export function lessonMarkdown(
   const cites =
     unique.length === 0
       ? ""
-      : `\n\n## Sources\n\n${unique.map((source) => `- ${source}`).join("\n")}`;
+      : `\n\n## ${labels.sources}\n\n${unique.map((source) => `- ${source}`).join("\n")}`;
   return `# ${title}\n\n${body}${cites}\n`;
 }
 
 export function cardsMarkdown(
   cards: Array<{ front: string; back: string; source?: string | null }>,
+  labels: ExportLabels = exportLabels.en,
 ): string {
   if (cards.length === 0) return "";
   return (
     cards
       .map((card) => {
         const source = card.source?.trim()
-          ? `\n\nSource: ${card.source.trim()}`
+          ? `\n\n${labels.source}: ${card.source.trim()}`
           : "";
         return `## ${card.front}\n\n${card.back}${source}`;
       })
@@ -45,17 +65,18 @@ export function quizMarkdown(
     right?: string[];
   }>,
   withAnswers: boolean,
+  labels: ExportLabels = exportLabels.en,
 ): string {
   if (questions.length === 0) return "";
   return (
     questions
       .map((question, index) => {
         const source = question.source?.trim()
-          ? `\n\nSource: ${question.source.trim()}`
+          ? `\n\n${labels.source}: ${question.source.trim()}`
           : "";
         const answer =
           withAnswers && question.answer
-            ? `\n\nAnswer: ${question.answer}`
+            ? `\n\n${labels.answer}: ${question.answer}`
             : "";
         const choices = question.options?.length
           ? `\n\n${question.options.map((option, i) => `${i + 1}. ${option}`).join("\n")}`
@@ -95,11 +116,12 @@ function htmlField(value: string): string {
 
 export function cardsCsv(
   cards: Array<{ front: string; back: string; source?: string | null }>,
+  labels: ExportLabels = exportLabels.en,
 ): string {
   if (cards.length === 0) return "";
   const rows = cards.map((card) => {
     const back = card.source?.trim()
-      ? `${card.back}\n\nSource: ${card.source.trim()}`
+      ? `${card.back}\n\n${labels.source}: ${card.source.trim()}`
       : card.back;
     const note = /\{\{c\d+::/.test(card.front) ? "Cloze" : "Basic";
     return `${note},${csvCell(htmlField(card.front))},${csvCell(htmlField(back))}`;
@@ -124,10 +146,14 @@ function planCards(db: Database.Database, planId: string, topicId?: string) {
   }>;
 }
 
-function answerLine(answer: Grade | undefined, options?: string[]): string {
+function answerLine(
+  answer: Grade | undefined,
+  options: string[] | undefined,
+  labels: ExportLabels,
+): string {
   if (!answer) return "";
   if (answer.kind === "mcq") return options?.[answer.correct] ?? "";
-  if (answer.kind === "tf") return answer.correct ? "true" : "false";
+  if (answer.kind === "tf") return answer.correct ? labels.true : labels.false;
   if (answer.kind === "matching")
     return answer.correct.map((pair) => pair.join(" = ")).join("; ");
   if (answer.kind === "open") return answer.reference;
@@ -160,6 +186,7 @@ export function exportMarkdown(
     .get(input.planId) as { title: string } | undefined;
   if (!plan) throw new Error("plan-missing");
   const filename = fileName(plan.title);
+  const words = planExportLabels(db, input.planId);
   if (input.kind === "lesson") {
     if (!input.topicId) throw new Error("topic-missing");
     const topic = db
@@ -175,12 +202,13 @@ export function exportMarkdown(
         topic.title,
         smartTextToMarkdown(lesson.markdown, labels),
         sectionPaths(db, lesson.passageIds),
+        words,
       ),
     };
   }
   if (input.kind === "cards") {
     const cards = planCards(db, input.planId, input.topicId);
-    return { filename, markdown: cardsMarkdown(cards) };
+    return { filename, markdown: cardsMarkdown(cards, words) };
   }
   const item = (
     input.attemptId
@@ -244,12 +272,12 @@ export function exportMarkdown(
           ].filter(Boolean),
         ),
       ].join("; "),
-      answer: answerLine(question.answer, question.options),
+      answer: answerLine(question.answer, question.options, words),
     };
   });
   return {
     filename,
-    markdown: `# ${plan.title}\n\n${quizMarkdown(questions, input.answers === true)}`,
+    markdown: `# ${plan.title}\n\n${quizMarkdown(questions, input.answers === true, words)}`,
   };
 }
 
@@ -263,6 +291,9 @@ export function exportCardsCsv(
   if (!plan) throw new Error("plan-missing");
   return {
     filename: fileName(plan.title, "csv"),
-    csv: cardsCsv(planCards(db, input.planId, input.topicId)),
+    csv: cardsCsv(
+      planCards(db, input.planId, input.topicId),
+      planExportLabels(db, input.planId),
+    ),
   };
 }

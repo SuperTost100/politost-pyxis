@@ -16,7 +16,7 @@ import { BuildingMark } from "../../components/BuildingMark";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { FreeBooks } from "../../components/FreeBooks";
-import { examInstant, type PlanFile } from "@shared/plan-file";
+import { examInstant, PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
 import { ImportReview } from "./ImportReview";
 import { parsePlanText, type ImportRequest } from "./importPreview";
 import { isWizardSeed, type WizardSeed } from "./wizardSeed";
@@ -353,7 +353,7 @@ export function WizardFrame() {
               <Input
                 id="plan-title"
                 placeholder={t("wizard.planTitlePlaceholder")}
-                maxLength={500}
+                maxLength={PLAN_TITLE_MAX}
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
               />

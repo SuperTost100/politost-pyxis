@@ -10,6 +10,7 @@ import {
   seedCards,
   setSuspended,
 } from "./cards";
+import { planGuide } from "../plans/create";
 
 const T0 = Date.UTC(2026, 2, 15, 10, 0, 0);
 
@@ -72,6 +73,21 @@ describe("cards", () => {
     expect(second).toHaveLength(1);
     const due = dueCards(db, planId, T0, other);
     expect(due.map((card) => card.back)).toEqual(["B"]);
+  });
+
+  it("counts every due card for the suggestion, not just one session's worth", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    seedCards(db, {
+      planId,
+      topicId,
+      pairs: Array.from({ length: 25 }, (_, index) => ({
+        front: `Domanda ${index}`,
+        back: `Risposta ${index}`,
+      })),
+    });
+    expect(dueCards(db, planId, T0)).toHaveLength(20);
+    expect(planGuide(db, planId, T0)?.topics[0]?.dueCards).toBe(25);
   });
 
   it("treats a new card as due now", () => {

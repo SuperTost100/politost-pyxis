@@ -17,6 +17,7 @@ import type { Runner } from "../jobs/runner";
 import { recordStep, stepResult } from "../plans/steps";
 import { topicExercises } from "./exercises";
 import { acrossTopics } from "./topicQuiz";
+import { DRAFT_GRACE_MS } from "./attempt";
 
 type Stored = {
   minutes: number;
@@ -657,7 +658,9 @@ function freezeSimulation(
       }
       return;
     }
-    const expired = now >= row.started_at + row.body.minutes * 60000;
+    // Answers sent within the save grace after time-up still count, as for a timed quiz.
+    const expired =
+      now > row.started_at + row.body.minutes * 60000 + DRAFT_GRACE_MS;
     row.body.picks = Object.fromEntries(
       row.body.questions.map((q) => [
         q.id,
@@ -711,7 +714,12 @@ export function readSimulation(
   let row = simulationRow(db, attemptId);
   const deadline = row.started_at + row.body.minutes * 60000;
   let blocked: string | undefined;
-  if (row.submitted_at == null && now >= deadline && !row.body.gradingJobId) {
+  // Grading waits out the save grace so an answer still in flight at time-up is kept.
+  if (
+    row.submitted_at == null &&
+    now > deadline + DRAFT_GRACE_MS &&
+    !row.body.gradingJobId
+  ) {
     // A missing engine must not make the exam unreadable; the page offers settings and a retry.
     try {
       freezeSimulation(db, attemptId, undefined, now);
@@ -782,12 +790,13 @@ export function saveSimulationDraft(
   db: Database.Database,
   attemptId: string,
   picks: Record<string, string>,
+  now = Date.now(),
 ) {
   const row = simulationRow(db, attemptId);
   if (
     row.submitted_at == null &&
     row.body.gradingStartedAt == null &&
-    Date.now() < row.started_at + row.body.minutes * 60000
+    now <= row.started_at + row.body.minutes * 60000 + DRAFT_GRACE_MS
   ) {
     row.body.picks = Object.fromEntries(
       row.body.questions.map((q) => [q.id, picks[q.id] ?? ""]),

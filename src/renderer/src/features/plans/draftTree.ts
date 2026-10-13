@@ -9,6 +9,8 @@ export type DraftNode = {
   subtopics: DraftSub[];
 };
 export type DropPosition = -1 | 0 | 1;
+/** The most subtopics one topic can have; plans.create refuses more. */
+export const MAX_SUBTOPICS = 30;
 
 let seq = 0;
 const nextKey = (prefix: string) => `${prefix}${(seq += 1)}`;
@@ -23,6 +25,9 @@ export function fromProposal(
     subtopics: topic.subtopics.map((title) => ({ key: nextKey("s"), title })),
   }));
 }
+
+const ownerOf = (nodes: DraftNode[], key: string) =>
+  nodes.find((node) => node.key === key || node.subtopics.some((sub) => sub.key === key));
 
 /** Blank rows are dropped, so a half-added row never reaches the plan. */
 export function toDraftTopics(nodes: DraftNode[]) {
@@ -73,6 +78,9 @@ export function addSubtopic(
   nodes: DraftNode[],
   topicKey: string,
 ): { nodes: DraftNode[]; key: string } {
+  // A full topic gets no new row; the empty key says nothing was added.
+  const topic = nodes.find((node) => node.key === topicKey);
+  if (topic && topic.subtopics.length >= MAX_SUBTOPICS) return { nodes, key: "" };
   const key = nextKey("s");
   return {
     key,
@@ -131,6 +139,12 @@ export function canDrop(
   position: DropPosition,
 ): boolean {
   if (dragKey === targetKey) return false;
+  // A subtopic may join another topic only while that topic has room.
+  if (!isTopic(nodes, dragKey)) {
+    const to = ownerOf(nodes, targetKey);
+    if (to && to !== ownerOf(nodes, dragKey) && to.subtopics.length >= MAX_SUBTOPICS)
+      return false;
+  }
   return isTopic(nodes, dragKey)
     ? isTopic(nodes, targetKey) && position !== 0
     : isTopic(nodes, targetKey)

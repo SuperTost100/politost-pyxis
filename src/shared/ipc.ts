@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
-import { planFileSchema } from "./plan-file";
+import { PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { MAX_IMAGE_BASE64 } from "./source-types";
 import { installableProviders } from "./installers";
 
@@ -1175,7 +1175,7 @@ export const requests = {
   "plans.settings": {
     input: z.object({
       planId: z.string().min(1),
-      title: z.string().trim().min(1).max(200),
+      title: z.string().trim().min(1).max(PLAN_TITLE_MAX),
       target: z.number().finite().min(0.5).max(1),
       examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable(),
     }),
@@ -1364,7 +1364,7 @@ export const requests = {
   },
   "plans.create": {
     input: z.object({
-      title: z.string(),
+      title: z.string().trim().min(1).max(PLAN_TITLE_MAX),
       subject: z.string().optional(),
       sourceIds: z.array(z.string()),
       examAt: z.number().nullable().optional(),

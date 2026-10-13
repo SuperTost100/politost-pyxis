@@ -9,11 +9,23 @@ mastery  = sum(weight_i * score_i) / (3 + sum(weight_i))
 
 One perfect fresh answer gives `1 / 4 = 0.25`. Three perfect fresh answers give `3 / 6 = 0.5`. Six perfect fresh answers give `6 / 9 ≈ 0.667`. After 14 days with no new evidence, their combined weight halves, so six perfect answers give `3 / 6 = 0.5`. The prior prevents one lucky result from looking like mastery; decay prevents old evidence from counting forever.
 
-Each quiz answer contributes one observation with weight 1, or 1.5 for open answers. Each simulation answer has weight 2. Reading a lesson contributes no mastery. Each active card that has been reviewed at least once contributes its current FSRS retrievability once, with weight 0.5 and age zero; repeated ratings cannot accumulate mastery. A card never reviewed contributes nothing, so creating cards does not lower mastery. Flagged exercise evidence is excluded. Topics without evidence appear at zero. Plan mastery weights topics by their passage counts, including untouched topics. Historical charts replay answer evidence and the latest card review at each date. Older events recover question types from stored attempts when available; otherwise they use weight 1.
+Each quiz answer contributes one observation with weight 1, or 1.5 for open answers. Each simulation answer has weight 2. Reading a lesson contributes no mastery. Each active card that has been reviewed at least once contributes its current FSRS retrievability once, with weight 0.5 and age zero; repeated ratings cannot accumulate mastery. A card never reviewed contributes nothing, so creating cards does not lower mastery. Flagged exercise evidence is excluded. Topics without evidence appear at zero. Plan mastery weights topics by their passage counts, including untouched topics. A topic without passages weighs 1, so a plan built without sources, or after its sources were removed, still shows progress. Historical charts replay answer evidence and the latest card review at each date. Older events recover question types from stored attempts when available; otherwise they use weight 1.
 
 ## Path rules
 
-Before the simulation is complete, the path caps each topic's usable mastery at `0.5`. Completing the simulation removes that cap without inventing a mastery increase. The next topic's lesson and the current topic's practice/cards/gaps use the `0.5` threshold. Simulation requires every topic at least `0.5`; final check uses the plan's saved target. A target of 1 is treated as `0.99` by `reachableTarget`. Only the current path node may be completed.
+Nothing on the path is locked. Every activity is open at any time and in any order; the path only suggests what to do first. `suggestStep` in `src/core/plans/path.ts` picks the first of these that applies:
+
+1. Due cards or severe gaps on any topic. When several topics qualify, the recommendation score below picks the topic, and its due cards come before its gaps.
+2. On a plan with no study yet, the introduction (when the plan has one), then the diagnostic.
+3. A simulation, once every topic has reached the target.
+4. A simulation, when the exam is 0 to 3 days away and some study has happened.
+5. Exercises on the topic whose lesson was just read, while that topic is below the target.
+6. The lesson of the next unread topic, in plan order.
+7. Exercises on the weakest topic.
+
+Exercises means practice for a topic under `0.5` mastery and a quiz from `0.5` up. The suggestion shown on each topic follows the same order for that topic alone: due cards, severe gaps, the lesson while it is unread, then practice or quiz by the same `0.5` line.
+
+The target is the plan's saved target, except that a target of 1 is treated as `0.99` by `reachableTarget`, because a decayed weighted mean never returns to 1 after a miss. The same reachable target decides which topics count as on track in the plan list and on Progress. Finishing an activity records a step on the path whenever it happens.
 
 ## Knowledge gaps
 
@@ -46,4 +58,4 @@ score = 3 * due_cards + 4 * severe_gap_count
 
 For two due cards, one severe gap, target `0.75`, mastery `0.5`, five days to the exam, two idle days and a matching style, the score is `6 + 4 + 0.7 + 2 + 1 = 13.7`. The explanation prefers due cards, then gaps, then the next lesson. Equal scores keep the first candidate.
 
-The caller syncs the gap rows first, then passes only the open gaps that Progress would call severe (see Severity above) as `severeGaps`; a minor gap does not count. It considers only current path nodes, so the score does not unlock or skip a locked lesson. Recommendation weights are rules in code, not a predictive model. Progress forecasts are estimates and never promise an exam result.
+The caller syncs the gap rows first, then passes only the open gaps that Progress would call severe (see Severity above) as `severeGaps`; a minor gap does not count. It only ranks topics that have due cards or severe gaps; it does not decide which lesson comes next. Recommendation weights are rules in code, not a predictive model. Progress forecasts are estimates and never promise an exam result.

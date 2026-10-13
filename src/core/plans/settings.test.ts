@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { savePlanSettings } from "./settings";
+import { requests } from "../../shared/ipc";
+import { PLAN_TITLE_MAX } from "../../shared/plan-file";
 
 describe("plan settings", () => {
   it("changes editable fields while keeping content language and material", () => {
@@ -56,5 +58,20 @@ describe("plan settings", () => {
       title: "Mechanics",
     });
     db.close();
+  });
+});
+
+describe("plan title limit", () => {
+  it("accepts the same longest title when creating a plan and in its settings", () => {
+    const create = (title: string) =>
+      requests["plans.create"].input.safeParse({ title, sourceIds: [] }).success;
+    const settings = (title: string) =>
+      requests["plans.settings"].input.safeParse({ planId: "p", title, target: 0.8, examAt: null })
+        .success;
+    expect(create("a".repeat(PLAN_TITLE_MAX))).toBe(true);
+    expect(settings("a".repeat(PLAN_TITLE_MAX))).toBe(true);
+    expect(create("a".repeat(PLAN_TITLE_MAX + 1))).toBe(false);
+    expect(settings("a".repeat(PLAN_TITLE_MAX + 1))).toBe(false);
+    expect(create("   ")).toBe(false);
   });
 });

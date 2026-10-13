@@ -15,6 +15,9 @@ import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import "./SimulationPage.css";
 
+/** How long typing pauses before the answers are saved. */
+const DRAFT_DELAY_MS = 500;
+
 export function SimulationPage() {
   const { t } = useTranslation();
   const { planId = "", attemptId } = useParams();
@@ -32,6 +35,20 @@ export function SimulationPage() {
   const [confirm, setConfirm] = useState(false);
   const [now, setNow] = useState(Date.now());
   const drafts = useRef<Promise<unknown>>(Promise.resolve());
+  // Typing saves at most every DRAFT_DELAY_MS; time-up, submit and leaving the page save at once.
+  const pending = useRef<{ attemptId: string; picks: Record<string, string> } | null>(null);
+  const saveTimer = useRef<number | undefined>(undefined);
+  function flushDraft() {
+    window.clearTimeout(saveTimer.current);
+    const next = pending.current;
+    pending.current = null;
+    if (next)
+      drafts.current = drafts.current
+        .catch(() => undefined)
+        .then(() => invoke("study.simulationDraft", next))
+        .catch(() => setNotice(t("simulation.saveFailed")));
+    return drafts.current;
+  }
   const plan = useQuery({
     queryKey: ["plan", planId],
     queryFn: () => invoke("plans.read", { planId }),
@@ -112,6 +129,7 @@ export function SimulationPage() {
     setPicks({});
     setIndex(0);
   }, [run?.attemptId]);
+  useEffect(() => () => void flushDraft(), []);
   const seconds = run?.locked
     ? 0
     : run
@@ -120,6 +138,9 @@ export function SimulationPage() {
   const locked = Boolean(
     run && (run.submitted || run.grading || seconds === 0),
   );
+  useEffect(() => {
+    if (locked) void flushDraft();
+  }, [locked]);
   const shown = locked
     ? (run?.picks ?? {})
     : { ...(run?.picks ?? {}), ...picks };
@@ -142,7 +163,7 @@ export function SimulationPage() {
     setBusy(true);
     setNotice("");
     try {
-      await drafts.current;
+      await flushDraft();
       await invoke("study.simulationSubmit", {
         attemptId: run.attemptId,
         picks: shown,
@@ -522,15 +543,9 @@ export function SimulationPage() {
                 onChange={(answer) => {
                   const next = { ...shown, [question.id]: answer };
                   setPicks(next);
-                  drafts.current = drafts.current
-                    .catch(() => undefined)
-                    .then(() =>
-                      invoke("study.simulationDraft", {
-                        attemptId: run.attemptId,
-                        picks: next,
-                      }),
-                    )
-                    .catch(() => setNotice(t("simulation.saveFailed")));
+                  pending.current = { attemptId: run.attemptId, picks: next };
+                  window.clearTimeout(saveTimer.current);
+                  saveTimer.current = window.setTimeout(flushDraft, DRAFT_DELAY_MS);
                 }}
               />
             </>

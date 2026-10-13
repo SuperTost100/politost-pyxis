@@ -383,8 +383,8 @@ export function SettingsPage() {
                   if (status === "saved")
                     setDataNote(t("settings.backupSaved"));
                 })
-                .catch(() => {
-                  setDataNote(t("settings.backupFailed"));
+                .catch((error: unknown) => {
+                  setDataNote(backupError(error, locale, t));
                 })
                 .finally(() => setArchiving(null));
             }}
@@ -586,6 +586,26 @@ export function SettingsPage() {
       )}
     </div>
   );
+}
+
+const GIB = 1024 ** 3;
+/** Names the size and the limit when the workspace is too big for one backup. */
+function backupError(
+  error: unknown,
+  locale: Locale,
+  t: (key: string, params?: Record<string, string>) => string,
+): string {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("backup-too-many-files"))
+    return t("settings.backupTooManyFiles");
+  const size = /backup-too-large:(\d+)/.exec(message)?.[1];
+  if (!size) return t("settings.backupFailed");
+  const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
+  return t("settings.backupTooLarge", {
+    // Rounded up, so a workspace just over the limit never reads as equal to it.
+    size: number.format(Math.ceil((Number(size) / GIB) * 10) / 10),
+    limit: number.format(2),
+  });
 }
 
 /** A size in the interface language, from bytes up to gigabytes ("1,5 MB" in Italian). */

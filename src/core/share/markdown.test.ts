@@ -8,6 +8,7 @@ import {
   cardsMarkdown,
   exportCardsCsv,
   exportMarkdown,
+  exportLabels,
   lessonMarkdown,
   quizMarkdown,
 } from "./markdown";
@@ -135,6 +136,7 @@ describe("markdown export", () => {
     const plan = createPlan(db, {
       title: "Fisica/1",
       sourceIds: [imported.sourceId],
+      language: "en",
     });
     const topic = db
       .prepare(`SELECT id FROM topics WHERE plan_id = ?`)
@@ -216,5 +218,43 @@ describe("markdown export", () => {
     });
     expect(simulation.markdown).toContain("Source: 1");
     expect(simulation.markdown).not.toContain("2x");
+  });
+
+  it("labels exports in the plan's content language", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans (id,title,status,content_language,created_at,updated_at) VALUES ('it','Fisica','ready','it',1,1);
+      INSERT INTO plans (id,title,status,content_language,created_at,updated_at) VALUES ('en','Physics','ready','en',1,1);
+      INSERT INTO sources (id,title,kind,status,created_at,updated_at) VALUES ('s','Libro','txt','ready',1,1);
+      INSERT INTO source_documents (id,source_id,version,tree_json,created_at) VALUES ('d','s',1,'{}',1);
+      INSERT INTO passages (id,source_id,document_id,text,section_path,created_at) VALUES ('p','s','d','Testo','1. Moti',1);
+    `);
+    for (const plan of ["it", "en"]) {
+      db.prepare(
+        `INSERT INTO cards (id, plan_id, front, back, passage_id, grounding, created_at) VALUES (?, ?, 'F', 'B', 'p', 'sources', 1)`,
+      ).run(`card-${plan}`, plan);
+      db.prepare(
+        `INSERT INTO items (id, plan_id, kind, body_json, grounding, created_at) VALUES (?, ?, 'quiz', ?, 'sources', 1)`,
+      ).run(
+        `quiz-${plan}`,
+        plan,
+        JSON.stringify({
+          questions: [
+            { stem: "Vero?", sourceIds: ["p"], answer: { kind: "tf", picked: null, correct: true } },
+          ],
+        }),
+      );
+    }
+    const italian = exportMarkdown(db, { planId: "it", kind: "quiz", answers: true }).markdown;
+    expect(italian).toContain("Fonte: 1. Moti");
+    expect(italian).toContain("Risposta: vero");
+    expect(exportMarkdown(db, { planId: "it", kind: "cards" }).markdown).toContain("Fonte: 1. Moti");
+    expect(exportCardsCsv(db, { planId: "it" }).csv).toContain("Fonte: 1. Moti");
+    const english = exportMarkdown(db, { planId: "en", kind: "quiz", answers: true }).markdown;
+    expect(english).toContain("Source: 1. Moti");
+    expect(english).toContain("Answer: true");
+    expect(exportCardsCsv(db, { planId: "en" }).csv).toContain("Source: 1. Moti");
+    expect(lessonMarkdown("Moti", "Testo", ["1. Moti"], exportLabels.it)).toContain("## Fonti\n\n- 1. Moti");
+    db.close();
   });
 });
