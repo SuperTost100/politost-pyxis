@@ -46,7 +46,7 @@ The app is in English and Italian, with dark and light themes.
 
 **Close knowledge gaps.** Two wrong answers on a topic in one quiz open a gap. Pyxis asks the model what misconception the answers show, builds a drill for it, and closes the gap after two clean sessions on different days.
 
-**Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. The Σ button opens a formula keyboard, which also works in quiz, practice and simulation answers. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
+**Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. The chat list searches titles and message text, ignoring case and accents, and each chat exports as Markdown or PDF with its sources. The Σ button opens a formula keyboard, which also works in quiz, practice and simulation answers. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
 
 **Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Back up the whole workspace to one ZIP and restore it on another computer.
 

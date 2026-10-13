@@ -106,7 +106,7 @@ export function replyGrounding(turn: {
   return turn.question && turn.passages > 0 ? "sources" : "general";
 }
 
-function splitFollowups(text: string): { body: string; followups: string[] } {
+export function splitFollowups(text: string): { body: string; followups: string[] } {
   // A reply cut short, or a model that forgets the closing tag, still has its suggestions read and kept out of the text.
   const match = text.match(/<followups>([\s\S]*?)(?:<\/followups>|$)/i);
   if (!match?.[1]) return { body: text.trim(), followups: [] };
