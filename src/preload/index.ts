@@ -128,6 +128,19 @@ function post(message: unknown): void {
   else queued.push(message);
 }
 
+// Two reads can also write: a lesson asked to regenerate calls the model again, and exercises asked to generate queue a
+// job. Those are not replayed, or a restart would run them twice.
+function writes(message: unknown): boolean {
+  const { name, input } = message as {
+    name?: string;
+    input?: { regenerate?: unknown; generate?: unknown };
+  };
+  return (
+    (name === "study.lesson" && input?.regenerate === true) ||
+    (name === "study.exercises" && input?.generate === true)
+  );
+}
+
 ipcRenderer.on("pyxis:port", (event) => {
   const next = event.ports[0];
   if (!next) return;
@@ -143,7 +156,11 @@ ipcRenderer.on("pyxis:port", (event) => {
         streams.delete(id);
         continue;
       }
-      if (message.name && replayable.has(message.name)) {
+      if (
+        message.name &&
+        replayable.has(message.name) &&
+        !writes(item.message)
+      ) {
         replay.push(item.message);
         continue;
       }

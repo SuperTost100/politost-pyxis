@@ -1694,7 +1694,7 @@
     "title": "Aggiornamenti",
     "unpublished": "Il canale delle versioni non è ancora pubblicato.",
     "current": "Hai l’ultima versione stabile.",
-    "failed": "Non è stato possibile controllare le versioni. Il controllo riproverà domani.",
+    "failed": "Non è stato possibile controllare le versioni. Riprova tra 15 minuti.",
     "checking": "Controllo delle versioni…",
     "available": "Pyxis {{version}} è disponibile.",
     "installed": "Versione installata: {{version}}",

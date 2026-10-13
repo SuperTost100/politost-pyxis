@@ -62,6 +62,7 @@ export function SettingsPage() {
   const [wipeArmed, setWipeArmed] = useState(false);
   const [restoreArmed, setRestoreArmed] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [archiving, setArchiving] = useState<"backup" | "restore" | null>(null);
   const place = useQuery({
     queryKey: ["workspace-path"],
     queryFn: () => window.pyxis.workspacePath(),
@@ -362,15 +363,19 @@ export function SettingsPage() {
             <li key={plan.id} className="small">
               {t("settings.planSize", {
                 title: plan.title,
-                size: formatBytes(plan.bytes),
+                size: formatBytes(plan.bytes, i18n.language),
               })}
             </li>
           ))}
         </ul>
         <div className="gallery-row">
           <Button
-            disabled={moving}
+            disabled={moving || (archiving !== null && archiving !== "backup")}
+            loading={archiving === "backup"}
             onClick={() => {
+              // A second click while the first backup runs used to fail as "workspace busy" and say the backup failed.
+              if (archiving) return;
+              setArchiving("backup");
               setDataNote(null);
               void window.pyxis
                 .backupWorkspace()
@@ -380,21 +385,25 @@ export function SettingsPage() {
                 })
                 .catch(() => {
                   setDataNote(t("settings.backupFailed"));
-                });
+                })
+                .finally(() => setArchiving(null));
             }}
           >
             {t("settings.backup")}
           </Button>
           <Button
-            disabled={moving}
+            disabled={moving || (archiving !== null && archiving !== "restore")}
+            loading={archiving === "restore"}
             danger={restoreArmed}
             onClick={() => {
+              if (archiving) return;
               if (!restoreArmed) {
                 setRestoreArmed(true);
                 return;
               }
               setRestoreArmed(false);
               setDataNote(null);
+              setArchiving("restore");
               void window.pyxis
                 .restoreWorkspace()
                 .then((status) => {
@@ -406,7 +415,8 @@ export function SettingsPage() {
                 })
                 .catch(() => {
                   setDataNote(t("settings.restoreFailed"));
-                });
+                })
+                .finally(() => setArchiving(null));
             }}
           >
             {restoreArmed
@@ -578,9 +588,20 @@ export function SettingsPage() {
   );
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  return `${Math.round(bytes / 1024)} KB`;
+/** A size in the interface language, from bytes up to gigabytes ("1,5 MB" in Italian). */
+function formatBytes(bytes: number, locale: string): string {
+  const units = ["byte", "kilobyte", "megabyte", "gigabyte"] as const;
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return new Intl.NumberFormat(locale, {
+    style: "unit",
+    unit: units[unit],
+    maximumFractionDigits: unit === 0 ? 0 : 1,
+  }).format(value);
 }
 
 function Choice(props: {

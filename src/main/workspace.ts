@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { app } from "electron";
 import { recoverInterruptedRestore } from "../core/share/backup";
@@ -28,6 +28,13 @@ export function ensureWorkspace(): string {
       ? saved.workspacePath
       : join(app.getPath("userData"), "workspace");
   recoverInterruptedRestore(workspace);
+  // A folder chosen with Move always holds pyxis.db. Without it the folder is most likely on a drive that isn't
+  // connected; creating an empty workspace there would open setup as if the student's data were gone.
+  if (
+    workspace !== join(app.getPath("userData"), "workspace") &&
+    !existsSync(join(workspace, "pyxis.db"))
+  )
+    throw new Error("workspace-missing");
   ensureWorkspaceDirs(workspace);
   if (saved?.workspacePath !== workspace) {
     writeFileSync(

@@ -40,7 +40,7 @@ function doorForPath(pathname: string): Door | null {
 const NO_DOOR = "" as Door;
 
 export function Shell() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const client = useQueryClient();
@@ -91,6 +91,17 @@ export function Shell() {
     if (location.pathname.startsWith("/onboarding")) return;
     navigate("/onboarding");
   }, [profile.isSuccess, profile.data, location.pathname, navigate]);
+
+  // Answers outside a plan use the profile's content language, which must follow the interface. Profiles saved before
+  // 0.2.3 could keep "Italian" under an English interface.
+  const storedLanguage = profile.data?.contentLanguage;
+  const interfaceLanguage = i18n.language === "en" ? "English" : "Italian";
+  useEffect(() => {
+    if (!storedLanguage || storedLanguage === interfaceLanguage) return;
+    void invoke("profile.save", { contentLanguage: interfaceLanguage })
+      .then(() => client.invalidateQueries({ queryKey: ["profile"] }))
+      .catch(() => undefined);
+  }, [storedLanguage, interfaceLanguage, client]);
 
   useEffect(() => {
     const door = doorForPath(location.pathname);
