@@ -16,10 +16,11 @@ import { BuildingMark } from "../../components/BuildingMark";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { FreeBooks } from "../../components/FreeBooks";
-import { examInstant, PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
+import { PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
 import { ImportReview } from "./ImportReview";
 import { parsePlanText, type ImportRequest } from "./importPreview";
-import { isWizardSeed, type WizardSeed } from "./wizardSeed";
+import { examFromChoice, isWizardSeed, type WizardSeed } from "./wizardSeed";
+import { monthName } from "./examDays";
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();
@@ -62,8 +63,9 @@ export function WizardFrame() {
       ...current,
       ...ids.filter((id) => !current.includes(id)),
     ]);
-  const [examChoice, setExamChoice] = useState<"1" | "2" | "3" | "10">(
-    seed?.examChoice ?? "10",
+  // Nothing is chosen for the student: a made-up deadline would start pushing simulations within days.
+  const [examChoice, setExamChoice] = useState<WizardSeed["examChoice"]>(
+    seed?.examChoice ?? "",
   );
   const [date, setDate] = useState(seed?.date ?? "");
   const [target, setTarget] = useState(seed?.target ?? 75);
@@ -107,22 +109,11 @@ export function WizardFrame() {
     if (!name || busy) return;
     setStarting(true);
     try {
-      const days =
-        examChoice === "1"
-          ? 1
-          : examChoice === "2"
-            ? 2
-            : examChoice === "3"
-              ? 3
-              : 10;
-      const fromDate = date
-        ? new Date(`${date}T12:00:00`).getTime()
-        : examInstant(days);
       const result = await invoke("plans.create", {
         title: name,
         subject: subject.trim() || undefined,
         sourceIds: picked,
-        examAt: Number.isFinite(fromDate) ? fromDate : null,
+        ...examFromChoice(examChoice, date),
         target: target / 100,
         language: language === "en" ? "en" : "it",
         style,
@@ -280,9 +271,8 @@ export function WizardFrame() {
     : blockedSource
       ? t("wizard.sourceNotReady")
       : null;
-  const examAt = date
-    ? dayjs(date).hour(12).valueOf()
-    : examInstant(Number(examChoice));
+  const exam = examFromChoice(examChoice, date);
+  const examMonth = /^\d{4}-\d{2}$/.test(date);
   return (
     <FocusLayout
       title={t("wizard.title")}
@@ -305,7 +295,10 @@ export function WizardFrame() {
           <Button
             type="primary"
             shape="round"
-            disabled={wizardStep === 0 && !title.trim()}
+            disabled={
+              (wizardStep === 0 && !title.trim()) ||
+              (wizardStep === 1 && exam.examAt == null)
+            }
             onClick={() =>
               wizardStep === 3 && picked.length === 0
                 ? startGuided()
@@ -448,7 +441,7 @@ export function WizardFrame() {
               </label>
               <DatePicker
                 id="plan-date"
-                value={date ? dayjs(date) : null}
+                value={date && !examMonth ? dayjs(date) : null}
                 locale={i18n.language.startsWith("it") ? dateIt : dateEn}
                 format="DD/MM/YYYY"
                 disabledDate={(value) =>
@@ -459,14 +452,38 @@ export function WizardFrame() {
                 }
               />
             </div>
-            <p className="body ink-muted">
-              {t("wizard.examSummary", {
-                date: new Intl.DateTimeFormat(i18n.language, {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                }).format(examAt),
-              })}
+            <div className="px-form-field">
+              <label className="label" htmlFor="plan-month">
+                {t("wizard.examMonth")}
+              </label>
+              <DatePicker
+                id="plan-month"
+                picker="month"
+                value={examMonth ? dayjs(`${date}-01`) : null}
+                locale={i18n.language.startsWith("it") ? dateIt : dateEn}
+                format="MM/YYYY"
+                disabledDate={(value) =>
+                  value.startOf("month").isBefore(dayjs().startOf("month"))
+                }
+                onChange={(value) =>
+                  setDate(value ? value.format("YYYY-MM") : "")
+                }
+              />
+            </div>
+            <p className="body ink-muted" aria-live="polite">
+              {exam.examAt == null
+                ? t("wizard.examRequired")
+                : exam.examMonth
+                  ? t("wizard.examMonthSummary", {
+                      month: monthName(exam.examAt, i18n.language),
+                    })
+                  : t("wizard.examSummary", {
+                      date: new Intl.DateTimeFormat(i18n.language, {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      }).format(exam.examAt),
+                    })}
             </p>
           </>
         ) : null}

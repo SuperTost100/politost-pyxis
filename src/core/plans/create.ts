@@ -51,6 +51,8 @@ export function createPlan(
     title: string;
     sourceIds: string[];
     examAt?: number | null;
+    /** The student knows only the month: examAt is noon on its 1st. */
+    examMonth?: boolean;
     target?: number;
     language?: string;
     style?: "read" | "practice" | "decide";
@@ -92,8 +94,8 @@ export function createPlan(
       subjectId = addSubject(db, subjectName).id;
     }
     db.prepare(
-      `INSERT INTO plans (id, title, status, subject_id, content_language, exam_at, target, style, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO plans (id, title, status, subject_id, content_language, exam_at, exam_month, target, style, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`,
     ).run(
       planId,
@@ -102,6 +104,7 @@ export function createPlan(
       subjectId,
       input.language ?? null,
       input.examAt ?? null,
+      input.examAt != null && input.examMonth ? 1 : 0,
       input.target ?? 0.75,
       input.style ?? "decide",
       now,
@@ -265,7 +268,7 @@ export function deletePlan(db: Database.Database, planId: string): void {
 export function readPlan(db: Database.Database, planId: string) {
   const plan = db
     .prepare(
-      `SELECT p.id, p.title, p.status, p.target, p.exam_at AS examAt, p.content_language AS contentLanguage, s.name AS subject FROM plans p LEFT JOIN subjects s ON s.id=p.subject_id WHERE p.id = ?`,
+      `SELECT p.id, p.title, p.status, p.target, p.exam_at AS examAt, p.exam_month AS examMonth, p.content_language AS contentLanguage, s.name AS subject FROM plans p LEFT JOIN subjects s ON s.id=p.subject_id WHERE p.id = ?`,
     )
     .get(planId) as
     | {
@@ -274,6 +277,7 @@ export function readPlan(db: Database.Database, planId: string) {
         status: string;
         target: number;
         examAt: number | null;
+        examMonth: number;
         contentLanguage: string | null;
         subject: string | null;
       }
@@ -297,6 +301,7 @@ export function readPlan(db: Database.Database, planId: string) {
   }));
   return {
     ...plan,
+    examMonth: plan.examMonth === 1,
     ...planOrigin(db, planId),
     topics: topicViews,
     steps: readSteps(db, planId),
@@ -324,21 +329,40 @@ function daysUntil(examAt: number, now: number): number {
   return Math.round((exam.getTime() - today.getTime()) / 86_400_000);
 }
 
+/** Midnight on the 1st of the month `at` falls in. */
+function monthStart(at: number): number {
+  const start = new Date(at);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(1);
+  return start.getTime();
+}
+
+/**
+ * Days until the exam. An exam known only by its month counts to the 1st of that month, then stays at 0 until the
+ * month ends: any day of it can be the exam.
+ */
+export function examDays(examAt: number, examMonth: boolean, now: number): number {
+  const days = daysUntil(examAt, now);
+  return examMonth && days < 0 && monthStart(examAt) === monthStart(now) ? 0 : days;
+}
+
 export function listPlans(db: Database.Database, now = Date.now()) {
   const rows = db
     .prepare(
-      `SELECT p.id, p.title, p.status, p.exam_at, p.target, s.name AS subject,
+      `SELECT p.id, p.title, p.status, p.exam_at, p.exam_month, p.target, s.name AS subject,
        EXISTS(SELECT 1 FROM settings x WHERE x.key = 'plan-import:' || p.id) AS imported
        FROM plans p
        LEFT JOIN subjects s ON s.id = p.subject_id
-       ORDER BY CASE WHEN p.exam_at < ? THEN 2 WHEN p.exam_at IS NULL THEN 1 ELSE 0 END,
+       ORDER BY CASE WHEN p.exam_at < (CASE WHEN p.exam_month = 1 THEN ? ELSE ? END) THEN 2
+                     WHEN p.exam_at IS NULL THEN 1 ELSE 0 END,
                 p.exam_at ASC, p.updated_at DESC`,
     )
-    .all(new Date(now).setHours(0, 0, 0, 0)) as Array<{
+    .all(monthStart(now), new Date(now).setHours(0, 0, 0, 0)) as Array<{
     id: string;
     title: string;
     status: string;
     exam_at: number | null;
+    exam_month: number;
     target: number;
     imported: number;
     subject: string | null;
@@ -360,7 +384,10 @@ export function listPlans(db: Database.Database, now = Date.now()) {
       title: row.title,
       status: row.status,
       subject: row.subject,
-      daysToExam: row.exam_at == null ? null : daysUntil(row.exam_at, now),
+      examAt: row.exam_at,
+      examMonth: row.exam_month === 1,
+      daysToExam:
+        row.exam_at == null ? null : examDays(row.exam_at, row.exam_month === 1, now),
       mastery,
       target: row.target,
       imported: Boolean(row.imported),
@@ -383,9 +410,10 @@ export function planGuide(
   now = Date.now(),
 ) {
   const meta = db
-    .prepare(`SELECT exam_at, target, status FROM plans WHERE id = ?`)
+    .prepare(`SELECT exam_at, exam_month, target, status FROM plans WHERE id = ?`)
     .get(planId) as
-    { exam_at: number | null; target: number; status: string } | undefined;
+    | { exam_at: number | null; exam_month: number; target: number; status: string }
+    | undefined;
   if (!meta || meta.status === "building") return null;
   syncGaps(db, planId, now);
   const steps = readSteps(db, planId);
@@ -423,7 +451,8 @@ export function planGuide(
       steps,
       hasIntro,
       target: reachableTarget(meta.target),
-      daysToExam: meta.exam_at == null ? null : daysUntil(meta.exam_at, now),
+      daysToExam:
+        meta.exam_at == null ? null : examDays(meta.exam_at, meta.exam_month === 1, now),
     }),
     hasIntro,
     topics: topics.map((topic) => ({

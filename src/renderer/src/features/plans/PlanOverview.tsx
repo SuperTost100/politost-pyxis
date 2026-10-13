@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
+  Checkbox,
   DatePicker,
   Form,
   Input,
@@ -19,7 +20,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
-import { examDaysLabel } from "./examDays";
+import { daysToExam, examLabel } from "./examDays";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { invoke } from "../../lib/ipc";
 import { MasteryBar } from "../../components/MasteryBar";
@@ -94,6 +95,7 @@ export function PlanPage() {
   const [error, setError] = useState("");
   const busyRef = useRef(false);
   const [form] = Form.useForm();
+  const examMonthOnly = Form.useWatch("examMonth", form) === true;
   const [modal, modalContext] = Modal.useModal();
   const tab = ["progress", "topics", "sources"].includes(view ?? "")
     ? view!
@@ -136,6 +138,7 @@ export function PlanPage() {
       title: plan.data.title,
       target: Math.round(plan.data.target * 100),
       examAt: plan.data.examAt ? dayjs(plan.data.examAt) : null,
+      examMonth: plan.data.examMonth,
     });
     setError("");
     setSettingsOpen(true);
@@ -230,9 +233,14 @@ export function PlanPage() {
         <h1 className="title-1">{plan.data?.title ?? t("wizard.title")}</h1>
         <p className="meta ink-muted">
           {plan.data?.examAt != null
-            ? examDaysLabel(
+            ? examLabel(
                 t,
-                dayjs(plan.data.examAt).startOf("day").diff(dayjs().startOf("day"), "day"),
+                {
+                  examAt: plan.data.examAt,
+                  examMonth: plan.data.examMonth,
+                  days: daysToExam(plan.data.examAt, plan.data.examMonth),
+                },
+                i18n.language,
               )
             : t("plans.noExam")}{" "}
           ·{" "}
@@ -630,10 +638,15 @@ export function PlanPage() {
                   planId,
                   title: values.title,
                   target: values.target / 100,
-                  // Noon, as in the wizard, so a shared plan keeps its day in another time zone.
+                  // Noon, as in the wizard, so a shared plan keeps its day in another time zone. A month-only
+                  // exam is stored as the 1st of the month.
                   examAt: values.examAt
-                    ? values.examAt.startOf("day").hour(12).valueOf()
+                    ? values.examAt
+                        .startOf(values.examMonth ? "month" : "day")
+                        .hour(12)
+                        .valueOf()
                     : null,
+                  examMonth: Boolean(values.examMonth),
                 });
                 await refresh();
                 setSettingsOpen(false);
@@ -661,16 +674,20 @@ export function PlanPage() {
           </Form.Item>
           <Form.Item name="examAt" label={t("wizard.exam")}>
             <DatePicker
+              picker={examMonthOnly ? "month" : "date"}
               locale={i18n.language.startsWith("it") ? dateIt : dateEn}
-              format={
-                i18n.language.startsWith("it") ? "DD/MM/YYYY" : "DD/MM/YYYY"
-              }
+              format={examMonthOnly ? "MM/YYYY" : "DD/MM/YYYY"}
               disabled={busy}
               disabledDate={(value) =>
-                value.startOf("day").isBefore(dayjs().startOf("day"))
+                value
+                  .startOf(examMonthOnly ? "month" : "day")
+                  .isBefore(dayjs().startOf(examMonthOnly ? "month" : "day"))
               }
               style={{ width: "100%" }}
             />
+          </Form.Item>
+          <Form.Item name="examMonth" valuePropName="checked">
+            <Checkbox disabled={busy}>{t("planOverview.examMonthOnly")}</Checkbox>
           </Form.Item>
           <p className="small">
             <strong>{t("planOverview.language")}: </strong>

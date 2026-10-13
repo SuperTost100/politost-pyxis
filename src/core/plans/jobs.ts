@@ -715,13 +715,14 @@ export function enqueuePlan(
       ? addSubject(db, input.subject).id
       : null;
     db.prepare(
-      `INSERT INTO plans (id, title, status, subject_id, content_language, exam_at, target, style, created_at, updated_at) VALUES (?, ?, 'building', ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO plans (id, title, status, subject_id, content_language, exam_at, exam_month, target, style, created_at, updated_at) VALUES (?, ?, 'building', ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       planId,
       input.title,
       subjectId,
       input.language ?? "it",
       input.examAt ?? null,
+      input.examAt != null && input.examMonth ? 1 : 0,
       input.target ?? 0.75,
       input.style ?? "decide",
       Date.now(),

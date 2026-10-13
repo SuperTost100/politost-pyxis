@@ -78,6 +78,11 @@ CREATE TABLE gap_answers (
 );
 CREATE INDEX gap_answers_attempt ON gap_answers (attempt_id, question_id);`,
   },
+  // A student who knows only the exam month: exam_at holds noon on the 1st of that month and exam_month is 1.
+  {
+    version: 16,
+    sql: `ALTER TABLE plans ADD COLUMN exam_month INTEGER NOT NULL DEFAULT 0 CHECK (exam_month IN (0, 1));`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

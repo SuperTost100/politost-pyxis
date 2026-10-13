@@ -160,7 +160,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
         title: seed.title.trim(),
         subject: seed.subject.trim() || undefined,
         sourceIds: [],
-        examAt: seedExamAt(seed),
+        ...seedExamAt(seed),
         target: seed.target / 100,
         language,
         style,

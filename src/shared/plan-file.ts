@@ -245,6 +245,8 @@ export const planFileSchema = z.object({
     .max(1000)
     .optional(),
   examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable().optional(),
+  /** The student knew only the month: examAt is noon on its 1st. */
+  examMonth: z.boolean().optional(),
   target: z.number().min(0.5).max(1).optional(),
   language: z.enum(["it", "en"]).nullable().optional(),
   style: z.enum(["read", "practice", "decide"]).optional(),
