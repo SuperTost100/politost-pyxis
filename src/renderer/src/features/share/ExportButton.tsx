@@ -8,7 +8,7 @@ import "./ExportButton.css";
 type Kind = "plan" | "lesson" | "cards" | "quiz" | "simulation";
 type Format = "pyxis" | "pdf" | "markdown" | "anki" | "csv";
 
-function textBase64(text: string): string {
+export function textBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let binary = "";
   for (let i = 0; i < bytes.length; i += 8192) {

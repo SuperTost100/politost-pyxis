@@ -165,6 +165,15 @@
     "scopeSubject": "I answer from the material in {{subject}}.",
     "chatsOpen": "Open chats",
     "chatsClose": "Close chats",
+    "searchLabel": "Search chats",
+    "searchPlaceholder": "Search chats",
+    "searchResults": "Search results",
+    "searchCount_one": "{{count}} chat found",
+    "searchCount_other": "{{count}} chats found",
+    "searchNone": "No chat matches “{{query}}”.",
+    "exportMarkdown": "Export as Markdown",
+    "exportPdf": "Export as PDF",
+    "exporting": "Preparing the file…",
     "chatsEmpty": "Your chats appear here.",
     "chatActions": "Actions for {{title}}",
     "renameLabel": "Chat name",
@@ -663,6 +672,16 @@
     "introPrompt": "Answer the questions to complete the introduction.",
     "introMissing": "This course has no introduction yet.",
     "introFailed": "The introduction could not be opened."
+  },
+  "calendar": {
+    "add": "Add to calendar",
+    "saved": "Calendar file saved. Open it to add the exam dates.",
+    "failed": "Could not save the calendar file. Try again.",
+    "nothing": "No upcoming exam has a date yet.",
+    "noneUpcoming": "No upcoming exam has a date yet. Set one to add it to a calendar.",
+    "oneNoDate": "This exam has no date yet. Set one to add it to a calendar.",
+    "onePast": "This exam date has passed.",
+    "saveFirst": "Save the new date first."
   },
   "export": {
     "markdown": "Markdown",
