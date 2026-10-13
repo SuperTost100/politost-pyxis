@@ -619,6 +619,16 @@
     "introMissing": "Questo corso non ha ancora un'introduzione.",
     "introFailed": "Non è stato possibile aprire l'introduzione."
   },
+  "calendar": {
+    "add": "Aggiungi al calendario",
+    "saved": "File del calendario salvato. Aprilo per aggiungere le date degli esami.",
+    "failed": "Impossibile salvare il file del calendario. Riprova.",
+    "nothing": "Nessun esame in arrivo ha una data.",
+    "noneUpcoming": "Nessun esame in arrivo ha una data. Imposta una data per aggiungerlo a un calendario.",
+    "oneNoDate": "Questo esame non ha ancora una data. Imposta una data per aggiungerlo a un calendario.",
+    "onePast": "La data di questo esame è passata.",
+    "saveFirst": "Salva prima la nuova data."
+  },
   "export": {
     "markdown": "Markdown",
     "csv": "CSV",

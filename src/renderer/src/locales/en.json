@@ -619,6 +619,16 @@
     "introMissing": "This course has no introduction yet.",
     "introFailed": "The introduction could not be opened."
   },
+  "calendar": {
+    "add": "Add to calendar",
+    "saved": "Calendar file saved. Open it to add the exam dates.",
+    "failed": "Could not save the calendar file. Try again.",
+    "nothing": "No upcoming exam has a date yet.",
+    "noneUpcoming": "No upcoming exam has a date yet. Set one to add it to a calendar.",
+    "oneNoDate": "This exam has no date yet. Set one to add it to a calendar.",
+    "onePast": "This exam date has passed.",
+    "saveFirst": "Save the new date first."
+  },
   "export": {
     "markdown": "Markdown",
     "csv": "CSV",

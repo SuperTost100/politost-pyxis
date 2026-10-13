@@ -48,7 +48,7 @@ The app is in English and Italian, with dark and light themes.
 
 **Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. The chat list searches titles and message text, ignoring case and accents, and each chat exports as Markdown or PDF with its sources. The Σ button opens a formula keyboard, which also works in quiz, practice and simulation answers. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
 
-**Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Back up the whole workspace to one ZIP and restore it on another computer.
+**Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Save your exam dates as a calendar file (`.ics`) with a reminder the day before; importing it again updates the events. Back up the whole workspace to one ZIP and restore it on another computer.
 
 Pyxis reads PDF, Word (`.docx`), PowerPoint (`.pptx`), Markdown, plain text, web pages, photos (JPEG, PNG, WebP, HEIC) and [PoliTost smartbooks](https://github.com/SuperTost100/politost-content) (`.ptsb`), which keep their chapters and exercises. Scanned pages go through local OCR or your model's vision support.
 
