@@ -53,7 +53,13 @@ describe("suggestStep", () => {
 
   it("suggests a smart text on the next unread topic in the plan's order", () => {
     const topics = [topic("a", 0.4), topic("b"), topic("c")];
-    const steps = [step("intro"), step("diagnostic"), step("lesson", "a"), step("practice", "a")];
+    const steps = [
+      step("intro"),
+      step("diagnostic"),
+      step("lesson", "a"),
+      step("practice", "a"),
+      step("quiz", "a"),
+    ];
     expect(suggestStep({ ...base, topics, steps })).toMatchObject({
       activity: "lesson",
       topicId: "b",
@@ -76,6 +82,35 @@ describe("suggestStep", () => {
         ...base,
         topics: all,
         steps: [step("lesson", "a"), step("lesson", "b"), step("quiz", "b")],
+      }),
+    ).toMatchObject({ activity: "practice", topicId: "b", reason: "weakest" });
+  });
+
+  it("follows exercises with a quiz on the same topic, so practice never repeats forever", () => {
+    // Practice is not graded and leaves mastery where it was: without the quiz the weakest topic gets practice again.
+    const all = [topic("a", 0.7), topic("b", 0.3)];
+    const read = [step("lesson", "a"), step("lesson", "b")];
+    expect(
+      suggestStep({ ...base, topics: all, steps: [...read, step("practice", "b")] }),
+    ).toMatchObject({ activity: "quiz", topicId: "b", reason: "check" });
+    // Practice on a topic just read is checked the same way, before the next lesson.
+    expect(
+      suggestStep({
+        ...base,
+        topics: [topic("a", 0.2), topic("b")],
+        steps: [step("lesson", "a"), step("practice", "a")],
+      }),
+    ).toMatchObject({ activity: "quiz", topicId: "a", reason: "check" });
+    // Once the quiz is taken, the weakest topic is back to exercises.
+    expect(
+      suggestStep({ ...base, topics: all, steps: [...read, step("practice", "b"), step("quiz", "b")] }),
+    ).toMatchObject({ activity: "practice", topicId: "b", reason: "weakest" });
+    // A topic already at the target needs no check.
+    expect(
+      suggestStep({
+        ...base,
+        topics: [topic("a", 0.9), topic("b", 0.3)],
+        steps: [...read, step("practice", "a")],
       }),
     ).toMatchObject({ activity: "practice", topicId: "b", reason: "weakest" });
   });

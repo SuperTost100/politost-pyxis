@@ -30,6 +30,8 @@ export type KeyStatus = {
 export interface PyxisBridge {
   platform: string;
   dev: boolean;
+  /** The interface language a new profile starts in, from the computer's preferred languages. */
+  systemLanguage: "it" | "en";
   getAppearance(): Promise<Appearance>;
   setAppearance(source: ThemeSource): Promise<Appearance>;
   onAppearance(cb: (appearance: Appearance) => void): () => void;

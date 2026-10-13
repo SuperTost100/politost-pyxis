@@ -69,6 +69,7 @@ export type SuggestReason =
   | "examSoon"
   | "ready"
   | "consolidate"
+  | "check"
   | "next"
   | "weakest";
 
@@ -110,8 +111,8 @@ export function topicSuggestion(topic: TopicStatus, read: boolean): Activity {
 /**
  * The suggested next step. Nothing is locked: this only picks what to offer first.
  * Due cards and severe gaps come first; a new plan then starts with the introduction and the diagnostic; a simulation
- * once every topic reaches the target or the exam is close, exercises on a lesson just read, the next unread topic in
- * the plan's order, and finally exercises on the weakest topic.
+ * once every topic reaches the target or the exam is close, exercises on a lesson just read, a quiz on exercises just
+ * done, the next unread topic in the plan's order, and finally exercises on the weakest topic.
  */
 export function suggestStep(input: {
   topics: TopicStatus[];
@@ -177,6 +178,12 @@ export function suggestStep(input: {
   const last = steps.at(-1);
   const justRead = last?.activity === "lesson" && topics.find((topic) => topic.id === last.topicId);
   if (justRead && justRead.mastery < target) return exercise(justRead, "consolidate");
+  // Exercises are not graded, so they leave mastery where it was. A quiz measures what they taught; without it the
+  // weakest topic would get exercises again and again.
+  const justPracticed =
+    last?.activity === "practice" && topics.find((topic) => topic.id === last.topicId);
+  if (justPracticed && justPracticed.mastery < target)
+    return { activity: "quiz", topicId: justPracticed.id, reason: "check", count: 0 };
   const unread = topics.find((topic) => !read.has(topic.id));
   if (unread) return { activity: "lesson", topicId: unread.id, reason: "next", count: 0 };
   const weak = topics.reduce((low, topic) => (topic.mastery < low.mastery ? topic : low));

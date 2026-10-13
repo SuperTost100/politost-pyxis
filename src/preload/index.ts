@@ -186,6 +186,7 @@ ipcRenderer.on("pyxis:port", (event) => {
 const bridge: PyxisBridge = {
   platform: process.platform,
   dev: ipcRenderer.sendSync("app:dev") === true,
+  systemLanguage: ipcRenderer.sendSync("app:system-language") === "en" ? "en" : "it",
   getAppearance: () => ipcRenderer.invoke(mainChannels.appearanceGet),
   setAppearance: (source: ThemeSource) =>
     ipcRenderer.invoke(mainChannels.appearanceSet, source),

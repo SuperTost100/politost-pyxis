@@ -12,7 +12,8 @@ const STORAGE_KEY = "pyxis.lang";
 
 function storedLocale(): Locale {
   const value = localStorage.getItem(STORAGE_KEY);
-  return value === "en" ? "en" : "it";
+  if (value === "en" || value === "it") return value;
+  return window.pyxis.systemLanguage;
 }
 
 function applyLocale(lng: string): void {

@@ -491,3 +491,33 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
     rmSync(bin, { recursive: true, force: true });
   }
 });
+
+test("First setup: a new profile starts in the computer's language, and a choice in Settings outlasts it", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-lang-"));
+  try {
+    // French comes first but Pyxis has no French copy, so the next language it speaks wins.
+    let app = await launch(userData, {
+      PYXIS_E2E_SYSTEM_LANGUAGES: "fr-FR,en-GB,it-IT",
+    });
+    let page = await app.firstWindow();
+    await expect(button(page, "Skip")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe("en");
+    await button(page, "Skip").click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.evaluate(() => {
+      location.hash = "/settings/language";
+    });
+    await button(page, "Italiano").click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "it");
+    await app.close();
+
+    app = await launch(userData, { PYXIS_E2E_SYSTEM_LANGUAGES: "en-US" });
+    page = await app.firstWindow();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(page.locator("html")).toHaveAttribute("lang", "it");
+    await app.close();
+  } finally {
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
