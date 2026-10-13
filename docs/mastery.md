@@ -20,8 +20,9 @@ Nothing on the path is locked. Every activity is open at any time and in any ord
 3. A simulation, once every topic has reached the target.
 4. A simulation, when the exam is 0 to 3 days away and some study has happened.
 5. Exercises on the topic whose lesson was just read, while that topic is below the target.
-6. The lesson of the next unread topic, in plan order.
-7. Exercises on the weakest topic.
+6. A quiz on the topic just practiced, while that topic is below the target. Practice is not graded, so it leaves mastery where it was; without the quiz, rule 8 would suggest practice on the same topic again and again.
+7. The lesson of the next unread topic, in plan order.
+8. Exercises on the weakest topic.
 
 Exercises means practice for a topic under `0.5` mastery and a quiz from `0.5` up. The suggestion shown on each topic follows the same order for that topic alone: due cards, severe gaps, the lesson while it is unread, then practice or quiz by the same `0.5` line.
 
