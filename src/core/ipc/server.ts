@@ -584,6 +584,10 @@ async function dispatchValidated(
       return chats?.rename(requests["chats.rename"].input.parse(input));
     case "chats.delete":
       return chats?.remove(requests["chats.delete"].input.parse(input));
+    case "chats.search":
+      return chats?.search(requests["chats.search"].input.parse(input));
+    case "chats.export":
+      return chats?.exportChat(requests["chats.export"].input.parse(input));
     case "chats.ask":
       return chats?.ask({
         ...requests["chats.ask"].input.parse(input),

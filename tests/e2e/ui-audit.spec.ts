@@ -149,6 +149,8 @@ const routes = [
   ["ask-ocr-ready", "/ask"],
   // The chat panel, the composer's subject menu and its sources popover.
   ["ask-panel", "/ask/audit-chat"],
+  ["ask-search", "/ask/audit-chat"],
+  ["ask-search-empty", "/ask/audit-chat"],
   ["ask-subject-menu", "/ask/audit-chat"],
   ["ask-sources-menu", "/ask/audit-chat"],
   // The formula keyboard docked in the composer, with a formula already typed.
@@ -1156,6 +1158,26 @@ async function openState(page: Page, name: string) {
         page.getByRole("list", { name: both("Chat", "Chats") }),
       ).toBeVisible();
       break;
+    case "ask-search":
+    case "ask-search-empty": {
+      await page
+        .getByRole("button", { name: both("Apri le chat", "Open chats") })
+        .click();
+      const empty = name === "ask-search-empty";
+      await page
+        .getByRole("textbox", {
+          name: both("Cerca nelle chat", "Search chats"),
+        })
+        .fill(empty ? "zzzz" : "forza");
+      await expect(
+        empty
+          ? page.getByText(/Nessuna chat contiene|No chat matches/)
+          : page.getByRole("list", {
+              name: both("Risultati della ricerca", "Search results"),
+            }),
+      ).toBeVisible();
+      break;
+    }
     case "ask-subject-menu":
       await page.getByRole("button", { name: /^(Materia|Subject):/ }).click();
       await expect(

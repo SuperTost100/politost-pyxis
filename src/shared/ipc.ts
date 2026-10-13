@@ -1652,6 +1652,27 @@ export const requests = {
     input: z.object({ chatId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
   },
+  "chats.search": {
+    input: z.object({ query: z.string().max(200) }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string().nullable(),
+        updatedAt: z.number(),
+        snippet: z
+          .object({
+            text: z.string(),
+            start: z.number().int().nonnegative(),
+            end: z.number().int().nonnegative(),
+          })
+          .nullable(),
+      }),
+    ),
+  },
+  "chats.export": {
+    input: z.object({ chatId: z.string(), language: z.enum(["en", "it"]) }),
+    output: z.object({ filename: z.string(), markdown: z.string() }),
+  },
   "chats.regenerate": {
     input: z.object({
       chatId: z.string(),
