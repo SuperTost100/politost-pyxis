@@ -27,44 +27,44 @@ Migration 15 gives each distinct misconception its own gap. `origin` is `answers
 
 Current version is 15. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
-| Table            | A row is                                                                                |
-| ---------------- | --------------------------------------------------------------------------------------- |
-| profile          | The student's profile. The renderer writes it.                                          |
-| settings         | One app setting, keyed by name.                                                         |
-| engines          | A configured model provider.                                                            |
-| feature_engines  | Which engine a feature uses.                                                            |
-| subjects         | A school subject.                                                                       |
-| sources          | An imported file or link.                                                               |
-| source_documents | One extraction version of a source.                                                     |
-| passages         | An immutable chunk of a document.                                                       |
-| passages_fts     | The full-text index of passages.                                                        |
-| passages_vec     | The embedding index of passages.                                                        |
-| smartbooks       | Metadata for a PoliTost smartbook source.                                               |
-| exercises        | An exercise from a smartbook or a model.                                                |
+| Table            | A row is                                                                                                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| profile          | The student's profile. The renderer writes it.                                                                                                                                                    |
+| settings         | One app setting, keyed by name.                                                                                                                                                                   |
+| engines          | A configured model provider.                                                                                                                                                                      |
+| feature_engines  | Which engine a feature uses.                                                                                                                                                                      |
+| subjects         | A school subject.                                                                                                                                                                                 |
+| sources          | An imported file or link.                                                                                                                                                                         |
+| source_documents | One extraction version of a source.                                                                                                                                                               |
+| passages         | An immutable chunk of a document.                                                                                                                                                                 |
+| passages_fts     | The full-text index of passages.                                                                                                                                                                  |
+| passages_vec     | The embedding index of passages.                                                                                                                                                                  |
+| smartbooks       | Metadata for a PoliTost smartbook source.                                                                                                                                                         |
+| exercises        | An exercise from a smartbook or a model.                                                                                                                                                          |
 | plans            | A study plan. `exam_at`, `exam_month`, `target`, `content_language` and `style` come from the wizard. `exam_month` is 1 when the student knows only the month; `exam_at` is then noon on its 1st. |
-| plan_sources     | A source attached to a plan.                                                            |
-| topics           | A node in a plan's topic tree.                                                          |
-| topic_passages   | Passages that support a topic.                                                          |
-| path_nodes       | One step on a plan's path.                                                              |
-| items            | A generated lesson, question, or explanation.                                           |
-| item_passages    | Passages cited by an item. Deleting a passage is restricted.                            |
-| cards            | A flashcard. `passage_id` is the source passage shown on the back.                      |
-| card_reviews     | One rating of a card.                                                                   |
-| attempts         | A quiz or exercise attempt.                                                             |
-| attempt_answers  | One answer inside an attempt.                                                           |
-| gaps             | An open or closed knowledge gap. A topic can have several, one per misconception.       |
-| gap_items        | The drill quiz built for a gap.                                                         |
-| gap_answers      | A wrong answer (attempt and question) that counts for a gap.                            |
-| maps             | A concept map.                                                                          |
-| chats            | A tutor conversation.                                                                   |
-| messages         | One turn in a chat.                                                                     |
-| message_passages | Passages cited by a message.                                                            |
-| attachments      | A file attached to a message, stored as a blob hash.                                    |
-| whiteboards      | A whiteboard scene.                                                                     |
-| flags            | A student flag on a generated item.                                                     |
-| learning_events  | An append-only study event. Mastery is computed from these, not stored.                 |
-| jobs             | A long task: extraction, plan build, download.                                          |
-| job_steps        | One named step of a job. A retry skips steps that already stored output.                |
+| plan_sources     | A source attached to a plan.                                                                                                                                                                      |
+| topics           | A node in a plan's topic tree.                                                                                                                                                                    |
+| topic_passages   | Passages that support a topic.                                                                                                                                                                    |
+| path_nodes       | One step on a plan's path.                                                                                                                                                                        |
+| items            | A generated lesson, question, or explanation.                                                                                                                                                     |
+| item_passages    | Passages cited by an item. Deleting a passage is restricted.                                                                                                                                      |
+| cards            | A flashcard. `passage_id` is the source passage shown on the back.                                                                                                                                |
+| card_reviews     | One rating of a card.                                                                                                                                                                             |
+| attempts         | A quiz or exercise attempt.                                                                                                                                                                       |
+| attempt_answers  | One answer inside an attempt.                                                                                                                                                                     |
+| gaps             | An open or closed knowledge gap. A topic can have several, one per misconception.                                                                                                                 |
+| gap_items        | The drill quiz built for a gap.                                                                                                                                                                   |
+| gap_answers      | A wrong answer (attempt and question) that counts for a gap.                                                                                                                                      |
+| maps             | A concept map.                                                                                                                                                                                    |
+| chats            | A tutor conversation.                                                                                                                                                                             |
+| messages         | One turn in a chat.                                                                                                                                                                               |
+| message_passages | Passages cited by a message.                                                                                                                                                                      |
+| attachments      | A file attached to a message, stored as a blob hash.                                                                                                                                              |
+| whiteboards      | A whiteboard scene.                                                                                                                                                                               |
+| flags            | A student flag on a generated item.                                                                                                                                                               |
+| learning_events  | An append-only study event. Mastery is computed from these, not stored.                                                                                                                           |
+| jobs             | A long task: extraction, plan build, download.                                                                                                                                                    |
+| job_steps        | One named step of a job. A retry skips steps that already stored output.                                                                                                                          |
 
 ## Saved content and history
 
