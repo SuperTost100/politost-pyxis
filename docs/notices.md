@@ -1,6 +1,6 @@
 # Third-party notices
 
-`npm run notices` reads installed production dependencies, installed optional dependencies and installed peers. It follows each package's dependency resolution directory, retains multiple installed versions, and excludes unrelated development packages. The two bundled Fontsource 5.3.0 fonts are included explicitly with their local OFL text.
+`npm run notices` reads installed production dependencies, installed optional dependencies and installed peers, plus the `devDependencies` named in the `bundledByVite` list of `package.json`. Those packages (the renderer's libraries and the content-core parser) are not in the installer's `node_modules`, but Vite bundles their code into `out/`, so their notices stay. It follows each package's dependency resolution directory, retains multiple installed versions, and excludes unrelated development packages. The two bundled Fontsource 5.3.0 fonts are included explicitly with their local OFL text.
 
 `prebuild` and `predev` run this generator. Settings imports the application version and MIT text from `src/renderer/src/generated/build-info.json`. It loads `third-party-notices.json` only when the notices section opens. `docs/THIRD-PARTY-NOTICES.txt` is the standalone text copy.
 

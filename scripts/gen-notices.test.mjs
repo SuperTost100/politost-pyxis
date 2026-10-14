@@ -99,6 +99,40 @@ test("notices follow the installed production, optional and peer closure, retain
     await rm(root, { recursive: true, force: true });
   }
 });
+test("packages bundled by Vite keep their notices as development dependencies", async () => {
+  const root = await fixture();
+  try {
+    await pkg(root, "first", {});
+    await pkg(root, "renderer-only", {
+      dependencies: { "renderer-helper": "1.0.0" },
+    });
+    await pkg(root, "renderer-helper", {});
+    await pkg(root, "tooling", {});
+    const manifest = JSON.parse(await readFile(join(root, "package.json")));
+    manifest.devDependencies = { "renderer-only": "1.0.0", tooling: "1.0.0" };
+    manifest.bundledByVite = ["renderer-only"];
+    await writeFile(join(root, "package.json"), JSON.stringify(manifest));
+    await run(process.execPath, [script, root]);
+    const names = JSON.parse(
+      await readFile(
+        join(root, "src/renderer/src/generated/third-party-notices.json"),
+        "utf8",
+      ),
+    ).map((p) => p.name);
+    assert.ok(names.includes("renderer-only"));
+    assert.ok(names.includes("renderer-helper"));
+    assert.equal(names.includes("tooling"), false);
+    manifest.bundledByVite = ["tooling", "first"];
+    await writeFile(join(root, "package.json"), JSON.stringify(manifest));
+    await assert.rejects(
+      run(process.execPath, [script, root]),
+      /not a devDependency: first/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("notice generation refuses binary license files", async () => {
   const root = await fixture();
   try {
