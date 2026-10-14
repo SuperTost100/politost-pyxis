@@ -79,9 +79,6 @@
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
-.px-cards .px-card-interval {
-  font-size: 11px;
-}
 .px-review-progress {
   display: flex;
   flex-direction: column;

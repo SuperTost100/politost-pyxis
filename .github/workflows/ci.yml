@@ -54,6 +54,9 @@ jobs:
       - name: Markdown formatting
         if: runner.os == 'Linux'
         run: npx prettier --check "**/*.md"
+      - name: Packaging script checks
+        if: runner.os == 'Linux' && !inputs.windows_trace
+        run: node --test scripts/gen-notices.test.mjs scripts/after-pack.test.mjs
       - name: Unit checks
         if: ${{ !inputs.windows_trace }}
         run: npm test -- --maxWorkers=2

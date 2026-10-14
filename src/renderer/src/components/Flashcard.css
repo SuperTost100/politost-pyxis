@@ -57,9 +57,13 @@
 .px-fc-rate:hover {
   background: var(--surface-raised);
 }
-.px-fc-rate kbd {
-  font: 400 10px/12px var(--font-mono);
-  color: var(--ink-subtle);
+.px-fc-rate-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.px-fc-rate-primary:hover {
+  background: var(--primary-hover);
 }
 
 .px-fc-source {

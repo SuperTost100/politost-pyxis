@@ -6,8 +6,6 @@ import { generate, type GenerateInput } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
-import { seedCards } from "./cards";
-import { topicExercises } from "./exercises";
 import { requireTopic } from "./openLesson";
 
 const TEMPLATE = "cards.generate";
@@ -17,24 +15,30 @@ const ACTIVE = "('queued', 'running', 'interrupted')";
 type Params = { planId: string; topicId: string; selection?: ReturnType<typeof selectionFor> };
 type Passage = { id: string; text: string };
 
+// A card asks for one fact, definition, formula or idea. These caps keep a worked exercise out.
+const FRONT_MAX = 200;
+const BACK_MAX = 300;
+/** A cloze sentence carries its {{c1::...}} markup, so it gets a little more room. */
+const CLOZE_MAX = 240;
+
 const text = (max: number) => z.string().trim().min(1).max(max);
 const card = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("qa"),
-    front: text(400),
-    back: text(800),
+    front: text(FRONT_MAX),
+    back: text(BACK_MAX),
     passageId: z.string(),
   }),
   z.object({
     kind: z.literal("concept"),
-    term: text(200),
-    definition: text(800),
+    term: text(FRONT_MAX),
+    definition: text(BACK_MAX),
     passageId: z.string(),
   }),
   z.object({
     kind: z.literal("cloze"),
-    text: text(800),
-    extra: text(400),
+    text: text(CLOZE_MAX),
+    extra: text(BACK_MAX),
     passageId: z.string(),
   }),
 ]);
@@ -42,32 +46,23 @@ type GeneratedCard = z.infer<typeof card>;
 
 const norm = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
 
+const DISPLAY_MATH = /\$\$|\\\[|\\begin\{/;
+const LIST_LINE = /^\s*(?:\d+[.)]|[-*\u2022])\s/;
+
+/** Why a face is a worked solution rather than one fact, or null when it is fine. */
+function solutionLike(face: string): string | null {
+  if (DISPLAY_MATH.test(face)) return "A card holds no display-math derivation";
+  if (/\n\s*\n/.test(face)) return "A card holds one paragraph";
+  const lines = face.split("\n").filter((line) => line.trim());
+  if (lines.length > 2 || lines.filter((line) => LIST_LINE.test(line)).length > 1)
+    return "A card holds one fact, not steps";
+  return null;
+}
+
 function faces(row: GeneratedCard): { front: string; back: string } {
   if (row.kind === "qa") return { front: row.front, back: row.back };
   if (row.kind === "concept") return { front: row.term, back: row.definition };
   return { front: row.text, back: row.extra };
-}
-
-/** Exercises with a worked answer are already real question/answer pairs, so they need no model. */
-export function seedExerciseCards(
-  db: Database.Database,
-  planId: string,
-  topicId: string,
-): void {
-  const pairs = topicExercises(db, topicId)
-    .slice(0, 20)
-    .flatMap((exercise) =>
-      exercise.answer
-        ? [
-            {
-              front: exercise.prompt.slice(0, 400),
-              back: exercise.answer.slice(0, 600),
-              passageId: exercise.passageId,
-            },
-          ]
-        : [],
-    );
-  seedCards(db, { planId, topicId, pairs });
 }
 
 /** Passages that no generated card (kept, edited or deleted) points to yet. */
@@ -112,6 +107,10 @@ function batchSchema(batch: Passage[]) {
         if (!passage) return issue("Unknown passage ID");
         covered.add(row.passageId);
         const { front, back } = faces(row);
+        for (const face of [front, back]) {
+          const reason = solutionLike(face);
+          if (reason) issue(reason);
+        }
         const key = norm(front);
         if (seen.has(key)) issue("Repeated front");
         seen.add(key);
@@ -244,14 +243,13 @@ export function registerCardJobs(
   });
 }
 
-/** Seeds exercise cards and starts one durable build for the topic's missing cards. */
+/** Starts one durable build for the topic's missing cards. */
 export function enqueueTopicCards(
   db: Database.Database,
   runner: Runner,
   input: Params,
 ): { jobId: string | null } {
   requireTopic(db, input.planId, input.topicId);
-  seedExerciseCards(db, input.planId, input.topicId);
   const active = db
     .prepare(
       `SELECT id FROM jobs WHERE kind = 'cards-build' AND state IN ${ACTIVE}

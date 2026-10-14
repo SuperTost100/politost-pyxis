@@ -57,6 +57,28 @@ GitHub turns the spaces in electron-builder's file names into dots. Upload one `
 
 Use stable semantic-version tags that compare correctly to the installed `package.json` version. A fork without a repository URL makes no request, and Settings reports that the release channel is unpublished. Don't invent a placeholder owner or repository to hide that state.
 
+## Installer size
+
+Four things keep the installers small. Each applies per platform and architecture, so check a change against all four CI packaging jobs.
+
+| Rule                                                                               | Where                                     | Effect                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Only libraries that main, core, the workers or the preload load are `dependencies` | `package.json`                            | electron-builder packs the production tree. Renderer libraries and the content-core parser are `devDependencies` because Vite bundles them into `out/`.                                                                                                                                                                                                                             |
+| Exclusion globs for `node_modules`                                                 | `files` in `electron-builder.yml`         | Drops source maps, declaration files, Markdown other than license and notice files, `test` and `docs` folders, the onnxruntime-web runtime, transformers' browser bundles, unused libheif and pdf.js builds, `@napi-rs/canvas`, zod's TypeScript sources and better-sqlite3's C sources. In `node_modules` only exclusion patterns count; a later pattern cannot bring a file back. |
+| Native binaries of the other targets                                               | `pruneUnpacked` in `build/after-pack.cjs` | Keeps `onnxruntime-node/bin/napi-v3/<platform>/<arch>` and `better-sqlite3/prebuilds/<platform>-<arch>.node`, and removes the CUDA, TensorRT and DirectML providers. It runs before macOS signing and fails the build if the target's binary is missing.                                                                                                                            |
+| `electronLanguages`                                                                | `electron-builder.yml`                    | Keeps `en-US` and `it` (on macOS `en` and `it`). Chromium falls back to `en-US`.                                                                                                                                                                                                                                                                                                    |
+
+The asar header still lists the files that `pruneUnpacked` deleted from `app.asar.unpacked`, so `asar extract` reports them as missing. Nothing reads them at run time.
+
+Left in on purpose, with the reason:
+
+- `tesseract.js-core` (45 MB, 21 files). The variant is chosen at run time from the CPU's SIMD support and the engine mode, so removing one needs a per-CPU check.
+- sharp's libvips (19 MB). transformers imports `sharp` statically.
+- Both `libonnxruntime.so.1` and `libonnxruntime.so.1.21.0` on Linux. Only the first is a `NEEDED` entry of the binding, but the files differ, so a build should show the second is unused before removing it.
+- `LICENSES.chromium.html` twice (the Electron copy and the one in `electron-licenses/`), about 20 MB each before compression.
+
+`node --test scripts/after-pack.test.mjs` checks the pruning rules for macOS arm64 and x64, Windows x64 and Linux x64 against a fake tree. CI runs it with the notice tests.
+
 ## macOS packaging
 
 `npm run dist` builds in a private temporary directory outside synced folders, then copies the completed artifacts into `dist/`. This avoids File Provider adding Finder metadata to the app bundle before the DMG is sealed. Verify the app mounted from the DMG with `codesign --verify --deep --strict`; an unpacked bundle copied into a synced folder can acquire metadata after packaging.

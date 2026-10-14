@@ -8,7 +8,32 @@ afterPack: build/after-pack.cjs
 files:
   - out/**/*
   - package.json
+  # Only exclusions apply inside node_modules. Production dependencies are the packages main, core and the workers load;
+  # the packages Vite bundles into out/ (the renderer libraries, the content-core parser) are devDependencies.
+  - "!**/node_modules/**/*.map"
+  - "!**/node_modules/**/*.d.{mts,cts}"
+  # Keeps LICENSE, LICENCE, NOTICE and COPYING files in any case and spelling.
+  - "!**/node_modules/**/!(LICENSE*|LICENCE*|License*|Licence*|license*|licence*|NOTICE*|Notice*|notice*|COPYING*|Copying*|copying*).{md,markdown}"
+  - "!**/node_modules/{*,@*/*}/{test,tests,__tests__,docs,doc,example,examples,demo,benchmark,benchmarks}/**"
+  # better-sqlite3 loads a prebuilt binary (the target's is kept in build/after-pack.cjs); its sources are only for node-gyp.
+  - "!**/node_modules/better-sqlite3/{deps,src,binding.gyp}"
+  # Embeddings run on onnxruntime-node (device "cpu"). transformers' node entry imports only onnxruntime-node and
+  # onnxruntime-common, so the browser runtime and the browser bundles are never loaded.
+  - "!**/node_modules/onnxruntime-web/**"
+  - "!**/node_modules/@huggingface/transformers/dist/!(transformers.node.mjs|transformers.node.cjs)"
+  # HEIC decoding imports libheif-js/wasm-bundle.js, which requires only libheif-wasm/libheif-bundle.js.
+  - "!**/node_modules/libheif-js/libheif/**"
+  - "!**/node_modules/libheif-js/libheif-wasm/{libheif.js,libheif.wasm,libheif-bundle.mjs}"
+  # zod's TypeScript sources are for its "@zod/source" export condition, which nothing here sets.
+  - "!**/node_modules/zod/src/**"
+  # Main reads PDFs through the modern build. The legacy build loads @napi-rs/canvas, which main does not use.
+  - "!**/node_modules/pdfjs-dist/legacy/**"
+  - "!**/node_modules/@napi-rs/canvas{,-*}/**"
 asar: true
+# Pyxis is English and Italian. Chromium falls back to en-US; macOS matches "en-us" to en.lproj and drops en_GB.
+electronLanguages:
+  - en-US
+  - it
 extraResources:
   - from: node_modules/electron/dist/LICENSE
     to: electron-licenses/LICENSE

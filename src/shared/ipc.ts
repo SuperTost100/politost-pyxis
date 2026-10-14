@@ -265,6 +265,8 @@ const engineSelection = z.object({
   effort: z.string().optional(),
   fast: z.boolean().optional(),
   auto: z.boolean().optional(),
+  /** The reasoning effort the student picked for a task Pyxis chose the model for. */
+  effortChoice: z.string().optional(),
 });
 
 const SmartAnswers = z.record(z.string(), z.number().int());
@@ -402,6 +404,14 @@ export const requests = {
       fast: z.boolean().optional(),
     }),
     output: z.object({ warning: z.string().nullable() }),
+  },
+  "engines.setEffort": {
+    input: z.object({
+      feature: engineFeature,
+      /** Leave out to return the task to its automatic level. */
+      effort: z.string().optional(),
+    }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "engines.features": {
     input: z.object({}),

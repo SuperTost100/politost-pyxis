@@ -241,6 +241,10 @@ async function dispatchValidated(
         provider: parsed.provider as ProviderId,
       });
     }
+    case "engines.setEffort":
+      return engines?.setEffort(
+        requests["engines.setEffort"].input.parse(input),
+      );
     case "engines.features":
       requests["engines.features"].input.parse(input);
       return engines?.features();
