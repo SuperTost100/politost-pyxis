@@ -464,12 +464,20 @@ test("quiz screens in both languages and themes", async () => {
       // (its closing save is then already queued ahead of ours), save, and come back.
       await go(page, "/exams");
       await expect(page.locator(".px-opt")).toHaveCount(0);
-      await invoke(page, "study.quizDraft", {
-        attemptId: started.attemptId,
-        planId,
-        picks: { [ids[0]!]: "0", [ids[1]!]: "2" },
-        index: 1,
-      });
+      // The page's own closing save can still land after ours on a slow runner, so save until the stored draft holds.
+      const wanted = { [ids[0]!]: "0", [ids[1]!]: "2" };
+      await expect(async () => {
+        await invoke(page, "study.quizDraft", {
+          attemptId: started.attemptId,
+          planId,
+          picks: wanted,
+          index: 1,
+        });
+        const stored = (await invoke(page, "study.quizRead", { attemptId: started.attemptId, planId })) as {
+          draft?: { picks: Record<string, string>; index: number };
+        };
+        expect(stored.draft).toEqual({ picks: wanted, index: 1 });
+      }).toPass({ timeout: 15000 });
       // Reload so the page reads the saved draft instead of the session it cached before leaving.
       await go(page, view);
       await page.reload();
