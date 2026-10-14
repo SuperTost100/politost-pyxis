@@ -18,6 +18,7 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
+import { animationsSettled } from "./settled";
 
 const MAIN = join(
   process.cwd(),
@@ -138,6 +139,8 @@ test("OCR data: a refused photo asks first, the app downloads the pinned files o
     // A HEIC photo is refused before any row exists, and nothing is fetched until the student agrees.
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await animationsSettled(page);
     await app.evaluate((_, path) => {
       process.env.PYXIS_E2E_FILE = path;
     }, HEIC);

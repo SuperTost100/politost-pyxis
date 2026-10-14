@@ -6,6 +6,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/documents";
+import { animationsSettled } from "./settled";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
@@ -50,6 +51,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     await expect(page).toHaveURL(/#\/exams$/);
     await page.getByText("Fonti", { exact: true }).click();
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
+    await animationsSettled(page);
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Scegli i file", exact: true })

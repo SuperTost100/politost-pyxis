@@ -8,6 +8,7 @@ import {
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { animationsSettled } from "./settled";
 
 /**
  * The native picker is answered by main's real handler, so grants for files and folders go through the same path
@@ -66,21 +67,7 @@ async function openAdd(page: Page, tab?: string) {
   await page.getByRole("button", { name: "Aggiungi fonti", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  // The dialog zooms in; a click before the animation ends can be lost on a slow runner.
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          document
-            .getAnimations()
-            .filter(
-              (animation) =>
-                animation.playState === "running" &&
-                animation.effect?.getTiming().iterations !== Infinity,
-            ).length,
-      ),
-    )
-    .toBe(0);
+  await animationsSettled(page);
   if (tab) await dialog.getByRole("radio", { name: tab }).locator("..").click();
   return dialog;
 }
