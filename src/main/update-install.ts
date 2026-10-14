@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants, createReadStream } from "node:fs";
 import {
+  access,
   chmod,
   copyFile,
   mkdir,
@@ -283,16 +284,30 @@ export function updateInstaller(deps: {
   emit: (view: UpdateInstallView) => void;
   openPath: (path: string) => Promise<string>;
   showItemInFolder: (path: string) => void;
-  launch: (path: string) => Promise<void>;
+  /**
+   * Starts the installer at `path` once Pyxis has exited, never before: the installer must not find Pyxis running.
+   * Main starts it from the app's `quit` event, by its full path and without a shell.
+   */
+  launchAfterQuit: (path: string) => void;
   relaunch: (path: string) => void;
   quit: () => void;
   max?: number;
+  log?: (message: string) => void;
 }) {
   const fetcher = deps.fetch ?? fetch;
   let view: UpdateInstallView = { state: "idle" };
   let controller: AbortController | null = null;
   let verified: { path: string; kind: InstallKind } | null = null;
-  let cleared = rm(deps.dir, { recursive: true, force: true });
+  // Windows can refuse to remove a folder an antivirus scan or an open file still holds (EBUSY, EPERM). The folder is
+  // emptied again before the next download, so a refusal is logged and never stops anything.
+  const clear = () =>
+    rm(deps.dir, { recursive: true, force: true }).catch((error: unknown) =>
+      deps.log?.(
+        `pyxis: downloads folder not cleared (${(error as { code?: string } | null)?.code ?? "unknown"})`,
+      ),
+    );
+  let cleared = clear();
+  let finishing = false;
 
   function set(next: UpdateInstallView) {
     view = next;
@@ -426,7 +441,7 @@ export function updateInstaller(deps: {
       } catch (error) {
         verified = null;
         // Nothing half-downloaded stays behind, whatever stopped the download.
-        cleared = rm(deps.dir, { recursive: true, force: true });
+        cleared = clear();
         await cleared;
         if (signal.aborted) set({ state: "idle" });
         else set({ state: "failed", error: failure(error) });
@@ -448,8 +463,9 @@ export function updateInstaller(deps: {
       } else deps.showItemInFolder(verified.path);
     },
     /**
-     * Closes Pyxis to finish an update: starts the Windows installer first, or restarts into the replaced AppImage.
-     * Workspace work must finish first and running jobs need the student's confirmation.
+     * Closes Pyxis to finish an update: the Windows installer starts after Pyxis has exited, or Pyxis restarts into the
+     * replaced AppImage. Workspace work must finish first and running jobs need the student's confirmation. A second
+     * call while the first is closing Pyxis does nothing, so one click cannot start two installers.
      */
     async finish(input: {
       workspaceBusy: boolean;
@@ -458,18 +474,24 @@ export function updateInstaller(deps: {
     }): Promise<UpdateFinishResult> {
       const blocked = finishBlock(input);
       if (blocked) return blocked;
+      if (finishing) return "done";
       if (view.state !== "verified" || !verified)
         throw new Error("update-not-ready");
       if (view.handover === "exe-ready") {
+        finishing = true;
         try {
-          await deps.launch(verified.path);
+          // Once Pyxis has quit it cannot say the file is gone, so look now.
+          await access(verified.path);
         } catch {
+          finishing = false;
           set({ state: "failed", error: "handover" });
           return "done";
         }
-      } else if (view.handover === "appimage-replaced")
+        deps.launchAfterQuit(verified.path);
+      } else if (view.handover === "appimage-replaced") {
+        finishing = true;
         deps.relaunch(verified.path);
-      else if (view.handover !== "dmg-opened")
+      } else if (view.handover !== "dmg-opened")
         throw new Error("update-not-ready");
       deps.quit();
       return "done";

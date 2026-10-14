@@ -1,16 +1,35 @@
 import { useEffect, useState } from "react";
 import "./UpdatesPanel.css";
-import { useQuery } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { App, Button, Progress } from "antd";
 import { useTranslation } from "react-i18next";
 import type { UpdateInstallView } from "@shared/updates";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 
+/** The next fetch comes from the student pressing a button, so it skips the cache. Automatic fetches keep it. */
+let forceNext = false;
+
+/** Check for updates now: the Settings button and Help > Check for updates. Main still limits how often GitHub is asked. */
+export function checkUpdatesNow(client: QueryClient): Promise<void> {
+  forceNext = true;
+  return client.refetchQueries({ queryKey: ["updates"] }).finally(() => {
+    forceNext = false;
+  });
+}
+
 function useUpdates() {
   return useQuery({
     queryKey: ["updates"],
-    queryFn: () => window.pyxis.checkUpdates(),
+    queryFn: () => {
+      const force = forceNext;
+      forceNext = false;
+      return window.pyxis.checkUpdates(force);
+    },
     retry: false,
     staleTime: 24 * 60 * 60 * 1000,
   });
@@ -242,6 +261,7 @@ export function UpdateNotice() {
 export function UpdatesPanel() {
   const { t, i18n } = useTranslation();
   const query = useUpdates();
+  const client = useQueryClient();
   const state = query.isError ? "failed" : query.data?.state;
   return (
     <section className="px-updates" aria-labelledby="updates-heading">
@@ -272,7 +292,7 @@ export function UpdatesPanel() {
       <Button
         shape="round"
         loading={query.isFetching}
-        onClick={() => void query.refetch()}
+        onClick={() => void checkUpdatesNow(client)}
       >
         {t("updates.check")}
       </Button>

@@ -217,3 +217,75 @@ it("tries again 15 minutes after a failed check, from memory and from the saved 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it("bypasses the cache for a forced check, at most once a minute, and leaves automatic checks on the cache", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pyxis-update-force-"));
+  let now = 1800000000000;
+  let tag = "v1.0.0";
+  const fetcher = vi.fn(
+    async () => new Response(JSON.stringify({ tag_name: tag, body: "Notes" })),
+  );
+  try {
+    const check = releaseChecker({
+      repository: "a/b",
+      current: "1.0.0",
+      cachePath: join(root, "updates.json"),
+      fetch: fetcher,
+      now: () => now,
+    });
+    expect((await check()).state).toBe("current");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // An automatic check a minute later still reads the cache.
+    now += 60_000;
+    expect((await check()).state).toBe("current");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    tag = "v1.1.0";
+    expect((await check(true)).state).toBe("available");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    // Pressing the button again at once does not call GitHub again.
+    now += 10_000;
+    tag = "v1.2.0";
+    expect((await check(true)).release?.version).toBe("v1.1.0");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    // An automatic check keeps the cache, forced checks before it or not.
+    expect((await check()).release?.version).toBe("v1.1.0");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    now += 50_000;
+    expect((await check(true)).release?.version).toBe("v1.2.0");
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("lets a forced check wait for a running automatic one instead of sharing its cached answer", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pyxis-update-force-wait-"));
+  const now = 1800000000000;
+  let tag = "v1.0.0";
+  const fetcher = vi.fn(
+    async () => new Response(JSON.stringify({ tag_name: tag, body: "Notes" })),
+  );
+  try {
+    const options = {
+      repository: "a/b",
+      current: "1.0.0",
+      cachePath: join(root, "updates.json"),
+      fetch: fetcher,
+      now: () => now,
+    };
+    await releaseChecker(options)();
+    tag = "v1.1.0";
+    const check = releaseChecker(options);
+    const [automatic, forced] = await Promise.all([check(), check(true)]);
+    expect(automatic.state).toBe("current");
+    expect(forced.release?.version).toBe("v1.1.0");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    // Two forced checks together share one request.
+    const [a, b] = await Promise.all([check(true), check(true)]);
+    expect(a).toEqual(b);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
