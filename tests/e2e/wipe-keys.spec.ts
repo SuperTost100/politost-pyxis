@@ -12,6 +12,8 @@ test("SET-05 deleting all data removes saved engine keys across a restart", asyn
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     await expect.poll(() => page.evaluate(() => window.pyxis.invoke("profile.get", {}))).not.toBeNull();
     const status = await page.evaluate(() => window.pyxis.keys.status());
     test.skip(!status.canSave, "This platform has no secure key store.");

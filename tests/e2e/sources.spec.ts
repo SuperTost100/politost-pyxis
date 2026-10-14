@@ -46,6 +46,8 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     await page.getByText("Fonti", { exact: true }).click();
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     await page
@@ -181,6 +183,8 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const source = (await page.evaluate(() =>
       window.pyxis.invoke("sources.paste", {
         title: "Dinamica",

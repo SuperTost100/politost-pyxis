@@ -56,6 +56,8 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     await expect(
       page.getByRole("heading", { name: "Esami", exact: true }),
     ).toBeVisible();
@@ -175,6 +177,8 @@ test("PLAN-21 live Claude builds the owner's smartbook plan", async () => {
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const imported = (await importPickedSource(
       page,
       app,

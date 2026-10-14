@@ -147,6 +147,8 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const { sourceId } = (await importPickedSource(page, app, book)) as { sourceId: string };
     await expect
       .poll(async () =>

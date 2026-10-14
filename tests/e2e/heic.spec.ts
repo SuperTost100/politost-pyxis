@@ -29,6 +29,8 @@ test("SRC-04 real HEIC preview runs in a worker and blank OCR is not ready", asy
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     await page.evaluate(() => window.pyxis.invoke("sources.list", {}));
     // No OCR data yet: the import is refused up front, with the key the consent card listens for, and nothing is stored.
     await app.evaluate(({ dialog }, selected) => {
