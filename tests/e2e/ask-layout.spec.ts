@@ -260,6 +260,15 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
     // The earlier replies, from a chat with nothing selected, carry no badge.
     await expect(page.getByText("Conoscenza generale, non dalle tue fonti")).toHaveCount(1);
 
+    // The page scrolls to the newest message after the reply ends; a slow runner can measure before it gets there.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const root = document.scrollingElement!;
+          return root.scrollHeight - root.scrollTop - root.clientHeight;
+        }),
+      )
+      .toBeLessThan(4);
     const layout = await page.evaluate(() => {
       const top = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
       const chips = [...document.querySelectorAll(".px-msg-chips .px-chip")].map((el) => el.getBoundingClientRect());
