@@ -146,67 +146,86 @@ export async function latestRelease(
   };
 }
 
+/** A check the student asks for skips the cache, but never calls GitHub more often than this. */
+const FORCED_INTERVAL = 60 * 1000;
+
+/**
+ * The check behind the Updates page. Automatic calls read the cache (a day, or 15 minutes after a failure). A call with
+ * `force` is a student pressing a button: it asks GitHub again, at most once a minute, and otherwise answers as an
+ * automatic call would.
+ */
 export function releaseChecker(input: {
   repository: string | null;
   current: string;
   cachePath: string;
   fetch?: typeof fetch;
   now?: () => number;
-}): () => Promise<UpdateView> {
-  let pending: Promise<UpdateView> | null = null;
+}): (force?: boolean) => Promise<UpdateView> {
+  let pending: { promise: Promise<UpdateView>; force: boolean } | null = null;
   let recent: UpdateView | undefined;
+  let lastForcedAt: number | null = null;
   const now = input.now ?? Date.now;
   const fetchRelease = input.fetch ?? fetch;
   const key = `${input.repository}@${input.current}`;
-  async function check(): Promise<UpdateView> {
+  async function check(force: boolean): Promise<UpdateView> {
     if (!input.repository)
       return { state: "unpublished", current: input.current };
     const at = now();
+    // A clock set back counts as an interval that has passed.
+    const refresh =
+      force &&
+      (lastForcedAt === null ||
+        at < lastForcedAt ||
+        at - lastForcedAt >= FORCED_INTERVAL);
+    if (refresh) lastForcedAt = at;
     if (
+      !refresh &&
       recent?.checkedAt != null &&
       at >= recent.checkedAt &&
       at - recent.checkedAt < freshFor(recent.state)
     )
       return recent;
-    try {
-      const cache = JSON.parse(await readFile(input.cachePath, "utf8")) as {
-        key?: string;
-        view?: UpdateView;
-      };
-      const view = cache.view;
-      if (
-        cache.key === key &&
-        view?.current === input.current &&
-        Number.isFinite(view.checkedAt) &&
-        at >= view.checkedAt! &&
-        at - view.checkedAt! < freshFor(view.state) &&
-        ["current", "available", "failed", "unpublished"].includes(view.state)
-      ) {
-        const cached: UpdateView = {
-          state: view.state,
-          current: input.current,
-          checkedAt: view.checkedAt,
+    if (!refresh) {
+      try {
+        const cache = JSON.parse(await readFile(input.cachePath, "utf8")) as {
+          key?: string;
+          view?: UpdateView;
         };
-        if (view.state === "available") {
-          const release = view.release;
-          if (
-            !release ||
-            typeof release.version !== "string" ||
-            typeof release.notes !== "string" ||
-            release.notes.length > 1024 * 1024 ||
-            !newerStable(release.version, input.current)
-          )
-            throw new Error("update-cache");
-          cached.release = {
-            version: release.version,
-            notes: release.notes,
-            url: `https://github.com/${input.repository}/releases/tag/${encodeURIComponent(release.version)}`,
+        const view = cache.view;
+        if (
+          cache.key === key &&
+          view?.current === input.current &&
+          Number.isFinite(view.checkedAt) &&
+          at >= view.checkedAt! &&
+          at - view.checkedAt! < freshFor(view.state) &&
+          ["current", "available", "failed", "unpublished"].includes(view.state)
+        ) {
+          const cached: UpdateView = {
+            state: view.state,
+            current: input.current,
+            checkedAt: view.checkedAt,
           };
+          if (view.state === "available") {
+            const release = view.release;
+            if (
+              !release ||
+              typeof release.version !== "string" ||
+              typeof release.notes !== "string" ||
+              release.notes.length > 1024 * 1024 ||
+              !newerStable(release.version, input.current)
+            )
+              throw new Error("update-cache");
+            cached.release = {
+              version: release.version,
+              notes: release.notes,
+              url: `https://github.com/${input.repository}/releases/tag/${encodeURIComponent(release.version)}`,
+            };
+          }
+          return (recent = cached);
         }
-        return (recent = cached);
+      } catch {
+        /* A missing cache starts the first check. */
       }
-    } catch {
-      /* A missing cache starts the first check. */
     }
     let view: UpdateView;
     try {
@@ -244,11 +263,16 @@ export function releaseChecker(input: {
     }
     return view;
   }
-  return () => {
-    if (!pending)
-      pending = check().finally(() => {
-        pending = null;
-      });
-    return pending;
+  return (force = false) => {
+    // A running check answers a caller that accepts the cache. A forced call waits for it, then asks GitHub itself.
+    if (pending && (!force || pending.force)) return pending.promise;
+    const before = pending?.promise;
+    const promise: Promise<UpdateView> = (
+      before ? before.then(() => check(force)) : check(force)
+    ).finally(() => {
+      if (pending?.promise === promise) pending = null;
+    });
+    pending = { promise, force };
+    return promise;
   };
 }

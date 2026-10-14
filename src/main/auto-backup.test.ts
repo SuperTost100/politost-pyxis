@@ -163,6 +163,22 @@ describe("retention", () => {
     expect(readFileSync(outside, "utf8")).toBe("outside");
   });
 
+  it("never prunes the backup just written, even when the clock went back", () => {
+    const folder = tempRoot();
+    const older = [1, 2, 3].map((day) =>
+      autoBackupName(new Date(2026, 9, day, 9, 0, 0)),
+    );
+    // The clock was set back a year, so the new backup sorts before every old one.
+    const written = autoBackupName(new Date(2025, 9, 1, 9, 0, 0));
+    for (const name of [...older, written])
+      writeFileSync(join(folder, name), "zip");
+
+    // Without the name the oldest-looking file is pruned: that is the bug this guards.
+    expect(pruneAutoBackups(folder, 3, written)).toEqual([older[0]]);
+    expect(readdirSync(folder).sort()).toEqual([written, older[1], older[2]]);
+    expect(pruneAutoBackups(folder, 3, written)).toEqual([]);
+  });
+
   it("removes only stale temporary folders a backup left behind", () => {
     const folder = tempRoot();
     const old = (Date.now() - 2 * DAY) / 1000;
@@ -511,6 +527,106 @@ describe("AutoBackups", () => {
       "120000.zip",
       "120001.zip",
     ]);
+  });
+
+  it("keeps the backup it just wrote when the clock went back", async () => {
+    const t = setup();
+    const folder = join(t.documents, "Pyxis backups");
+    mkdirSync(folder);
+    const older = [1, 2, 3].map((day) =>
+      autoBackupName(new Date(2026, 9, day, 9, 0, 0)),
+    );
+    for (const name of older) writeFileSync(join(folder, name), "zip");
+    t.setNow(new Date(2025, 9, 1, 9, 0, 0).getTime());
+    expect(await t.backups.check()).toBe("saved");
+    const written = autoBackupName(new Date(2025, 9, 1, 9, 0, 0));
+    expect(readdirSync(folder).sort()).toEqual([written, older[1], older[2]]);
+  });
+
+  it("stops its timers on dispose and no longer checks", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      t.backups.start(1000, 2000);
+      t.backups.dispose();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(t.runs).toHaveLength(0);
+      expect(await t.backups.check()).toBe("off");
+      expect(t.runs).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not record a finished backup in the state of a folder chosen while it ran", async () => {
+    const t = setup();
+    const chosen = join(t.root, "Other drive");
+    mkdirSync(chosen);
+    let finish!: () => void;
+    const backups = new AutoBackups({
+      stateFile: t.stateFile,
+      defaultFolder: () => join(t.documents, "Pyxis backups"),
+      workspace: () => join(t.root, "userData", "workspace"),
+      userData: join(t.root, "userData"),
+      busy: () => false,
+      now: () => NOON,
+      changed: () => undefined,
+      start: (zip) => ({
+        done: new Promise<void>((resolve) => {
+          finish = () => {
+            writeFileSync(zip, "backup bytes");
+            resolve();
+          };
+        }),
+        stop: async () => undefined,
+      }),
+    });
+    const check = backups.check();
+    await vi.waitFor(() => expect(backups.running).toBe(true));
+    backups.setFolder(chosen);
+    finish();
+    await check;
+    // The new folder has not been backed up yet, so its first check must still run.
+    expect(readAutoBackupState(t.stateFile)).toMatchObject({
+      folder: chosen,
+      lastSuccessAt: null,
+      lastAttemptAt: null,
+      last: null,
+    });
+    expect(backups.status()).toMatchObject({ folder: chosen, notice: null });
+  });
+
+  it("does not record a failure in the state of a folder chosen while it ran", async () => {
+    const t = setup();
+    const chosen = join(t.root, "Other drive");
+    mkdirSync(chosen);
+    let fail!: () => void;
+    const backups = new AutoBackups({
+      stateFile: t.stateFile,
+      defaultFolder: () => join(t.documents, "Pyxis backups"),
+      workspace: () => join(t.root, "userData", "workspace"),
+      userData: join(t.root, "userData"),
+      busy: () => false,
+      now: () => NOON,
+      changed: () => undefined,
+      start: () => ({
+        done: new Promise<void>((_, reject) => {
+          fail = () => reject(new BackupError("backup-failed", "ENOSPC"));
+        }),
+        stop: async () => undefined,
+      }),
+    });
+    const check = backups.check();
+    await vi.waitFor(() => expect(backups.running).toBe(true));
+    backups.setFolder(chosen);
+    fail();
+    await check;
+    expect(readAutoBackupState(t.stateFile)).toMatchObject({
+      folder: chosen,
+      last: null,
+      lastAttemptAt: null,
+    });
+    expect(backups.status().notice).toBeNull();
   });
 
   it("stops a running backup when the workspace is needed", async () => {

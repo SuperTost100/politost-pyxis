@@ -11,7 +11,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { AutoBackupFailure, AutoBackupStatus } from "../shared/bridge";
 import { inside } from "./workspace-move";
@@ -136,10 +136,16 @@ export function autoBackupName(at: Date): string {
 
 /**
  * Deletes automatic backups beyond the newest `keep`. Only regular files whose whole name matches the automatic
- * pattern count; folders, links and every other file in the folder are left alone.
+ * pattern count; folders, links and every other file in the folder are left alone. `written` names the backup just
+ * made: it is always kept and counts as one of the `keep`, even when a clock set back gives it an older name than the
+ * rest.
  */
-export function pruneAutoBackups(folder: string, keep = KEEP): string[] {
-  const backups = readdirSync(folder)
+export function pruneAutoBackups(
+  folder: string,
+  keep = KEEP,
+  written?: string,
+): string[] {
+  const all = readdirSync(folder)
     .filter((name) => AUTO_BACKUP_NAME.test(name))
     .filter((name) => {
       const info = lstatSync(join(folder, name));
@@ -148,7 +154,10 @@ export function pruneAutoBackups(folder: string, keep = KEEP): string[] {
     // The name holds the date and time, so it sorts by age.
     .sort()
     .reverse();
-  const removed = backups.slice(keep);
+  const kept = written !== undefined && all.includes(written);
+  const removed = all
+    .filter((name) => name !== written)
+    .slice(kept ? Math.max(keep - 1, 0) : keep);
   for (const name of removed) rmSync(join(folder, name), { force: true });
   return removed;
 }
@@ -350,6 +359,7 @@ export class AutoBackups {
   private dismissed: AutoBackupFailure | null = null;
   private waitingSince: number | null = null;
   private timers: NodeJS.Timeout[] = [];
+  private disposed = false;
   private readonly now: () => number;
 
   constructor(private readonly deps: AutoBackupDeps) {
@@ -406,7 +416,9 @@ export class AutoBackups {
     );
   }
 
+  /** Stops the timers for good. Quitting calls it first, so no check starts a backup while Pyxis closes. */
   dispose(): void {
+    this.disposed = true;
     for (const timer of this.timers) clearTimeout(timer);
     this.timers = [];
   }
@@ -450,6 +462,7 @@ export class AutoBackups {
   async check(): Promise<
     "off" | "not-due" | "busy" | "running" | "saved" | "postponed" | "failed"
   > {
+    if (this.disposed) return "off";
     if (this.current) return "running";
     const state = this.state();
     if (!state.enabled) return "off";
@@ -474,8 +487,12 @@ export class AutoBackups {
     automatic: boolean,
   ): Promise<"saved" | "postponed" | "failed"> {
     const started = this.now();
-    let folder = this.folder();
+    const startState = this.state();
+    let folder = this.folder(startState);
     let run: LiveBackupRun | null = null;
+    // The student can choose another folder while the copy runs. The result then belongs to the old folder: recording
+    // it would tell the new folder it has a backup when it has none.
+    const folderChanged = () => this.state().folder !== startState.folder;
     try {
       if (!existsSync(join(this.deps.workspace(), "pyxis.db")))
         return "postponed";
@@ -497,16 +514,18 @@ export class AutoBackups {
       await run.done;
       this.waitingSince = null;
       const size = statSync(zip).size;
-      this.notice = null;
-      this.dismissed = null;
-      this.save({
-        ...this.state(),
-        lastSuccessAt: started,
-        lastAttemptAt: started,
-        last: { at: started, ok: true, size },
-        toldTooLarge: false,
-      });
-      this.tidy(folder);
+      if (!folderChanged()) {
+        this.notice = null;
+        this.dismissed = null;
+        this.save({
+          ...this.state(),
+          lastSuccessAt: started,
+          lastAttemptAt: started,
+          last: { at: started, ok: true, size },
+          toldTooLarge: false,
+        });
+      }
+      this.tidy(folder, basename(zip));
       return "saved";
     } catch (error) {
       const message = error instanceof Error ? error.message : "backup-failed";
@@ -515,6 +534,12 @@ export class AutoBackups {
           ? error.code
           : (error as NodeJS.ErrnoException)?.code;
       if (message === "backup-jobs-active") this.waitingSince ??= started;
+      if (folderChanged()) {
+        this.deps.log?.(
+          `pyxis: automatic backup ended after the folder changed (${message})`,
+        );
+        return "postponed";
+      }
       if (POSTPONED.has(message)) {
         this.deps.log?.(`pyxis: automatic backup postponed (${message})`);
         return "postponed";
@@ -545,13 +570,15 @@ export class AutoBackups {
       if (run && this.current === run) {
         this.current = null;
         this.deps.changed(this.status());
+        // setFolder's own check found this run still going; the new folder gets its first backup now.
+        if (folderChanged() && this.timers.length) void this.check();
       }
     }
   }
 
-  private tidy(folder: string): void {
+  private tidy(folder: string, written: string): void {
     try {
-      pruneAutoBackups(folder);
+      pruneAutoBackups(folder, KEEP, written);
       removeStaleTemporaries(folder, this.now());
     } catch (error) {
       // The new backup is safe; an old one that could not be removed is tried again after the next backup.

@@ -6,6 +6,7 @@ import { menuCommandAllowed } from "./menu-guard";
 import { readMenuContext } from "./menu-state";
 import { router } from "./router";
 import { doorTarget } from "./layouts/Shell";
+import { checkUpdatesNow } from "../features/settings/UpdatesPanel";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 
 /**
@@ -47,8 +48,7 @@ export function MenuCommands() {
               pageCommands[command as keyof typeof pageCommands]);
         if (path !== pathname) void router.navigate(path);
         // The Updates page shows the check, so it starts there.
-        if (command === "check-updates")
-          void client.refetchQueries({ queryKey: ["updates"] });
+        if (command === "check-updates") void checkUpdatesNow(client);
       }),
     [client],
   );
