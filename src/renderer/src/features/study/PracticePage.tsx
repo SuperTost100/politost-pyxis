@@ -32,12 +32,6 @@ function SelfRating({
   const { t } = useTranslation();
   const client = useQueryClient();
   const [rating, setRating] = useState<Rating | null>(initial);
-  // The saved rating can change under the page (a refetch, another visit with cached data): follow it.
-  const [seen, setSeen] = useState(initial);
-  if (initial !== seen) {
-    setSeen(initial);
-    setRating(initial);
-  }
   const save = useMutation({
     mutationFn: (next: Rating) =>
       invoke("study.rateExercise", { planId, topicId, exerciseId, rating: next }),
@@ -50,6 +44,13 @@ function SelfRating({
         client.invalidateQueries({ queryKey: ["exercises", planId, topicId] }),
       ]),
   });
+  // The saved rating can change under the page (a refetch, another visit with cached data): follow it, but not while
+  // a choice is still being saved, or an older refetch would undo it.
+  const [seen, setSeen] = useState(initial);
+  if (initial !== seen && !save.isPending) {
+    setSeen(initial);
+    setRating(initial);
+  }
   const choose = (next: Rating) => {
     if (next === rating) return;
     const before = rating;
