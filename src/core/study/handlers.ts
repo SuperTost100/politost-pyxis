@@ -16,7 +16,6 @@ import {
   generateTopicCards,
   readCardsBuild,
   registerCardJobs,
-  seedExerciseCards,
 } from "./cardsFromBook";
 import { enqueueGapDrill, readGapDrill, registerGapJobs } from "./gapDrill";
 import { registerGapInsightJobs } from "./gapInsight";
@@ -329,7 +328,6 @@ export function studyHandlers(
       if (runner) return enqueueTopicCards(db, runner, input);
       // ponytail: without a runner (unit tests) generate inline; the app always has one.
       requireTopic(db, input.planId, input.topicId);
-      seedExerciseCards(db, input.planId, input.topicId);
       await generateTopicCards(db, input, run);
       return { jobId: null };
     },

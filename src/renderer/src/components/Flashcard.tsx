@@ -23,10 +23,10 @@ export function Flashcard({
   const [flipped, setFlipped] = useState(!!initialFlipped);
   const c = counters ?? { nuove: 12, apprendimento: 4, padroneggiate: 20 };
   const rates = [
-    { label: t("components.flashcard.rate1"), key: "1" },
-    { label: t("components.flashcard.rate2"), key: "2" },
-    { label: t("components.flashcard.rate3"), key: "3" },
-    { label: t("components.flashcard.rate4"), key: "4" },
+    t("components.flashcard.rate1"),
+    t("components.flashcard.rate2"),
+    t("components.flashcard.rate3"),
+    t("components.flashcard.rate4"),
   ];
   return (
     <div className="px-fc">
@@ -75,15 +75,15 @@ export function Flashcard({
       ) : null}
       {flipped ? (
         <div className="px-fc-rates">
-          {rates.map((r, i) => (
+          {rates.map((label, i) => (
             <button
-              key={r.key}
+              key={label}
               type="button"
-              className="px-fc-rate"
+              className={i === 2 ? "px-fc-rate px-fc-rate-primary" : "px-fc-rate"}
+              aria-keyshortcuts={String(i + 1)}
               onClick={() => onRate?.(i + 1)}
             >
-              {r.label}
-              <kbd>{r.key}</kbd>
+              {label}
             </button>
           ))}
         </div>
