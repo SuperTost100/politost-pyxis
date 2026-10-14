@@ -301,8 +301,10 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     expect(Math.abs((await close.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "A. La velocità" })).toBeEnabled();
-    await page.keyboard.press("1");
+    // The options are shown in a shuffled order, so each answer is picked by its text.
+    const option = (text: string) => page.getByRole("button", { name: new RegExp(`^[A-D]\\. ${text}$`) });
+    await expect(option("La velocità")).toBeEnabled();
+    await option("La velocità").click();
     await page.keyboard.press("Enter");
     const feedback = page.locator(".px-quiz-feedback");
     await expect(feedback).toContainText("Corretto");
@@ -310,13 +312,13 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     await expect(feedback.locator(".px-cite")).toHaveCount(1);
     expect(await feedback.innerText()).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
     await page.keyboard.press("Enter");
-    await page.keyboard.press("2");
+    await option("La massa").click();
     await page.keyboard.press("Enter");
     await expect(feedback).toContainText("Sbagliato");
     await page.keyboard.press("Enter");
     for (let i = 2; i < 10; i++) {
       await expect(page.getByText(`Domanda ${i + 1} di 10`, { exact: true })).toBeVisible();
-      await page.keyboard.press("1");
+      await option("La velocità").click();
       await page.keyboard.press("Enter");
       await expect(feedback).toContainText("Corretto");
       await page.keyboard.press("Enter");
@@ -438,12 +440,16 @@ test("quiz screens in both languages and themes", async () => {
       await expect(page.locator(".px-quiz-intro")).toBeVisible();
       await expect(page.locator(".px-quiz-facts li")).toHaveCount(3);
       await shoot("start");
-      const started = await invoke<{ attemptId: string; questions: Array<{ id: string }> }>(
-        page,
-        "study.diagnosticStart",
-        { planId },
-      );
+      const started = await invoke<{
+        attemptId: string;
+        questions: Array<{ id: string; options: string[] }>;
+      }>(page, "study.diagnosticStart", { planId });
       const ids = started.questions.map((question) => question.id);
+      // The options are shown in a shuffled order: the right one is the text "La velocità", and any other is wrong.
+      const right = started.questions.map((question) => String(question.options.indexOf("La velocità")));
+      const wrong = started.questions.map((question) =>
+        String(question.options.findIndex((text) => text !== "La velocità")),
+      );
       const view = `/plans/${planId}/diagnostic?attempt=${started.attemptId}`;
       await invoke(page, "study.quizDraft", {
         attemptId: started.attemptId,
@@ -454,18 +460,18 @@ test("quiz screens in both languages and themes", async () => {
       await go(page, view);
       await expect(page.locator(".px-opt.is-selected")).toHaveCount(1);
       await shoot("question");
-      await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[0], pick: "0" });
+      await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[0], pick: right[0] });
       await page.reload();
       await expect(page.locator(".px-quiz-feedback.is-correct")).toBeVisible();
       await shoot("correct");
-      await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[1], pick: "2" });
+      await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[1], pick: wrong[1] });
       // An open quiz page saves its own draft shortly after loading and again when it closes, so a draft set while it
       // is open can be overwritten on a slow runner. Set it with no quiz page open: leave, wait until the page is gone
       // (its closing save is then already queued ahead of ours), save, and come back.
       await go(page, "/exams");
       await expect(page.locator(".px-opt")).toHaveCount(0);
       // The page's own closing save can still land after ours on a slow runner, so save until the stored draft holds.
-      const wanted = { [ids[0]!]: "0", [ids[1]!]: "2" };
+      const wanted = { [ids[0]!]: right[0]!, [ids[1]!]: wrong[1]! };
       await expect(async () => {
         await invoke(page, "study.quizDraft", {
           attemptId: started.attemptId,
@@ -483,9 +489,9 @@ test("quiz screens in both languages and themes", async () => {
       await page.reload();
       await expect(page.locator(".px-quiz-feedback.is-wrong")).toBeVisible();
       await shoot("wrong");
-      const picks: Record<string, string> = { [ids[0]!]: "0", [ids[1]!]: "2" };
-      for (const id of ids.slice(2)) {
-        picks[id] = id === ids[4] ? "3" : "0";
+      const picks: Record<string, string> = { [ids[0]!]: right[0]!, [ids[1]!]: wrong[1]! };
+      for (const [offset, id] of ids.slice(2).entries()) {
+        picks[id] = id === ids[4] ? wrong[offset + 2]! : right[offset + 2]!;
         await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: id, pick: picks[id] });
       }
       await invoke(page, "study.quizSubmit", { attemptId: started.attemptId, picks });

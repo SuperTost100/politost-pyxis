@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import type { Grade } from "./grade";
 
 export type MixedQuestion = {
@@ -33,10 +34,18 @@ function shuffle<T>(items: T[], random: () => number): T[] {
   return copy;
 }
 
-/** Build a mixed quiz from book exercises. No model call. */
-export function mixQuestions(rows: Row[], limit = 20): MixedQuestion[] {
+/**
+ * Build a mixed quiz from book exercises. No model call. The seed decides the option order and the matching
+ * column; each call draws a new one unless the caller passes its own, so the same exercises are not laid out the
+ * same way every attempt. The questions are saved with the attempt, so one attempt keeps its order.
+ */
+export function mixQuestions(
+  rows: Row[],
+  limit = 20,
+  seed = randomInt(1, 2 ** 31),
+): MixedQuestion[] {
   const usable = rows.filter((row) => row.answer.trim());
-  const random = mix(usable.length * 17 + limit);
+  const random = mix(seed);
   const questions: MixedQuestion[] = [];
   const kinds = ["mcq", "tf", "completion", "matching", "open"] as const;
   let cursor = 0;

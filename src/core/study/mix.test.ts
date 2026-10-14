@@ -45,6 +45,32 @@ const book = {
 };
 
 describe("mixed quiz", () => {
+  it("lays options out differently each attempt, the same for one seed, with the right one tracked", () => {
+    const rows = ["forza", "energia", "lavoro", "potenza", "calore", "massa"].map((name, index) => ({
+      id: `e${index}`,
+      prompt: `Che cos'è ${name}?`,
+      answer: name,
+    }));
+    const layout = (questions: ReturnType<typeof mixQuestions>) =>
+      questions.flatMap((question) =>
+        question.grade.kind === "mcq" ? [question.options!, question.grade.correct] : [],
+      );
+    const first = mixQuestions(rows, 20, 7);
+    expect(layout(mixQuestions(rows, 20, 7))).toEqual(layout(first));
+    for (const question of first)
+      if (question.grade.kind === "mcq")
+        expect(question.options![question.grade.correct]).toBe(question.explanation);
+    // Without a seed each call draws its own, so repeated attempts on the same exercises differ.
+    const layouts = new Set(Array.from({ length: 12 }, () => JSON.stringify(layout(mixQuestions(rows)))));
+    expect(layouts.size).toBeGreaterThan(1);
+    // The right option is not stuck in one place across attempts.
+    const places = new Set<number>();
+    for (let attempt = 0; attempt < 30; attempt++)
+      for (const question of mixQuestions(rows))
+        if (question.grade.kind === "mcq") places.add(question.grade.correct);
+    expect(places.size).toBeGreaterThan(1);
+  });
+
   it("uses every closed type and grades a true or false item", () => {
     const questions = mixQuestions(
       ["forza", "energia", "lavoro", "potenza"].map((name, index) => ({

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { seededRandom, shuffleChoices } from "./choices";
 
 /**
  * Smart text: lesson Markdown with interactive blocks written inline by the model as fenced code blocks
@@ -50,9 +51,13 @@ const exampleSchema = z.object({
 });
 
 export type CheckData = z.infer<typeof checkSchema>;
-export type CheckQuestion = CheckData & { id: string };
+/**
+ * `options` and `answer` are in the order shown, which parsing derives from the model's order and the question's id.
+ * `order[i]` is the position shown option `i` had in the model's text.
+ */
+export type CheckQuestion = CheckData & { id: string; order: number[] };
 export type SmartBlock =
-  | ({ kind: "check"; id: string } & CheckData)
+  | ({ kind: "check"; id: string } & CheckData & { order: number[] })
   | ({ kind: "try"; id: string } & z.infer<typeof trySchema>)
   | ({ kind: "reveal"; id: string } & z.infer<typeof revealSchema>)
   | ({ kind: "example"; id: string } & z.infer<typeof exampleSchema>)
@@ -60,9 +65,19 @@ export type SmartBlock =
 
 type BlockData = SmartBlock extends infer B
   ? B extends SmartBlock
-    ? Omit<B, "id">
+    ? Omit<B, "id" | "order">
     : never
   : never;
+
+/** The question with its options in a fixed order that only its id decides: the same on every render and reload. */
+function arranged(question: CheckData, id: string): CheckData & { order: number[] } {
+  const { options, correct, order } = shuffleChoices(
+    question.options,
+    question.answer,
+    seededRandom(id),
+  );
+  return { ...question, options, answer: correct, order };
+}
 
 export type SmartSegment =
   | { type: "markdown"; text: string }
@@ -285,7 +300,11 @@ function repairBlock(
 
 const OPEN = /^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)\s*$/;
 
-/** Splits smart text into prose and blocks. `streaming` turns an unfinished last block into a placeholder. */
+/**
+ * Splits smart text into prose and blocks. `streaming` turns an unfinished last block into a placeholder.
+ * A block's id comes from the model's own text, so a closed block has the same id, order and answer in a streamed
+ * prefix as in the saved lesson.
+ */
 export function parseSmartText(
   markdown: string,
   options: { streaming?: boolean } = {},
@@ -345,11 +364,13 @@ export function parseSmartText(
               ...repaired,
               id,
               questions: repaired.questions.map((question, index) => ({
-                ...question,
+                ...arranged(question, `${id}.${index + 1}`),
                 id: `${id}.${index + 1}`,
               })),
             }
-          : ({ ...repaired, id } as SmartBlock),
+          : repaired.kind === "check"
+            ? { ...repaired, ...arranged(repaired, id), id }
+            : ({ ...repaired, id } as SmartBlock),
     });
   }
   flush();

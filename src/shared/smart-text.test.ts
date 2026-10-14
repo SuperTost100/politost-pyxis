@@ -68,10 +68,12 @@ describe("smart text", () => {
     expect(block).toMatchObject({
       kind: "check",
       question: "Cos'è \\frac{a}{b} con \\alpha e \\nabla?\n Scegli.",
-      options: ["\\theta", "\\beta"],
-      answer: 1,
       explanation: "Riga\nnuova",
     });
+    // The options are shown in a seeded order; the answer follows its option.
+    if (block?.kind !== "check") throw new Error("not a check");
+    expect([...block.options].sort()).toEqual(["\\beta", "\\theta"]);
+    expect(block.options[block.answer]).toBe("\\beta");
     expect(parseLooseJson('{"a": "\\times \\rho \\ne \\nuovo"}')).toEqual({
       // \ne and \nuovo stay line breaks: only whole LaTeX names after \n count as commands.
       a: "\\times \\rho \ne \nuovo",
@@ -157,11 +159,83 @@ describe("smart text", () => {
   it("writes blocks out with answers for export", () => {
     const text = smartTextToMarkdown(lesson, smartLabels.it);
     expect(text).toContain("**Verifica rapida.** Quanto vale $F$");
-    expect(text).toContain("B. $6$ N");
-    expect(text).toContain("> Risposta: B. $6$ N");
+    // The options are shown in a seeded order; the stated answer is the letter of the right one.
+    const letter = /^([A-C])\. \$6\$ N$/m.exec(text)?.[1];
+    expect(letter).toBeTruthy();
+    expect(text).toContain(`> Risposta: ${letter}. $6$ N`);
     expect(text).toContain("*Soluzione:*\n\n1. $a=F/m$\n2. $a=2$");
     expect(text).toContain("### Ripasso finale");
     expect(text).not.toContain("pyxis-");
+  });
+
+  describe("option order", () => {
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, n) => ({
+        question: `Domanda ${n}?`,
+        options: ["giusta", "uno", "due", "tre"],
+        answer: 0,
+        explanation: "Perché.",
+      }));
+    const text = (questions: ReturnType<typeof many>) =>
+      questions.map((q) => `\`\`\`pyxis-check\n${JSON.stringify(q)}\n\`\`\``).join("\n\n");
+    const checks = (markdown: string, streaming = false) =>
+      parseSmartText(markdown, { streaming }).flatMap((segment) =>
+        segment.type === "block" && segment.block.kind === "check" ? [segment.block] : [],
+      );
+
+    it("rearranges each check without losing the right option", () => {
+      const blocks = checks(text(many(30)));
+      expect(blocks).toHaveLength(30);
+      for (const block of blocks) {
+        expect(block.options).toHaveLength(4);
+        expect([...block.options].sort()).toEqual(["due", "giusta", "tre", "uno"]);
+        expect(block.options[block.answer]).toBe("giusta");
+        // order[i] is where shown option i sat in the model's text.
+        expect(block.order.map((from) => ["giusta", "uno", "due", "tre"][from])).toEqual(block.options);
+      }
+      // A model that always writes the right option first does not get a right option that is always first.
+      expect(new Set(blocks.map((block) => block.answer)).size).toBeGreaterThan(1);
+    });
+
+    it("keeps the same order on every parse, and ids that ignore the order", () => {
+      const markdown = text(many(5));
+      expect(checks(markdown)).toEqual(checks(markdown));
+      const ids = checks(markdown).map((block) => block.id);
+      expect(new Set(ids).size).toBe(5);
+      // The id comes from what the model wrote, so a lesson answered before options were rearranged keeps its ids.
+      expect(ids[0]).toBe(
+        parseSmartText(text(many(1)))
+          .flatMap((segment) => (segment.type === "block" ? [segment.block.id] : []))[0],
+      );
+    });
+
+    it("gives a streamed prefix the ids, order and answer of the saved lesson", () => {
+      const markdown = text(many(6));
+      const saved = checks(markdown);
+      // Cut inside the fifth block: four closed checks and a placeholder.
+      const cut = markdown.indexOf("Domanda 4") + 5;
+      const streamed = parseSmartText(markdown.slice(0, cut), { streaming: true });
+      expect(streamed.at(-1)).toEqual({ type: "pending", kind: "check" });
+      expect(checks(markdown.slice(0, cut), true)).toEqual(saved.slice(0, 4));
+    });
+
+    it("gives identical checks their own order and answers", () => {
+      const same = text([many(1)[0]!, many(1)[0]!]);
+      const [first, second] = checks(same);
+      expect(first!.id).not.toBe(second!.id);
+      expect(first!.options[first!.answer]).toBe("giusta");
+      expect(second!.options[second!.answer]).toBe("giusta");
+    });
+
+    it("rearranges recap questions too, each on its own id", () => {
+      const recap = parseSmartText(
+        `\`\`\`pyxis-recap\n${JSON.stringify({ questions: many(5) })}\n\`\`\``,
+      )[0];
+      const questions = recap?.type === "block" && recap.block.kind === "recap" ? recap.block.questions : [];
+      expect(questions).toHaveLength(5);
+      for (const question of questions) expect(question.options[question.answer]).toBe("giusta");
+      expect(new Set(questions.map((question) => question.answer)).size).toBeGreaterThan(1);
+    });
   });
 
   it("strips passage references from old introductions", () => {

@@ -15,7 +15,11 @@ type SmartItem = {
   kind: "lesson" | "intro";
 };
 
-/** The student's saved pick for each answered question of one lesson or introduction, by question id. */
+/**
+ * The student's saved pick for each answered question of one lesson or introduction, by question id, as an index into
+ * the options as shown. An answer saved before options were rearranged holds the model's own index; it is moved to
+ * where that option sits now, so an earlier answer stays on the option the student chose.
+ */
 export function smartAnswers(
   db: Database.Database,
   itemId: string,
@@ -27,17 +31,30 @@ export function smartAnswers(
        ORDER BY created_at, id`,
     )
     .all(itemId) as Array<{ payload_json: string }>;
+  if (!rows.length) return {};
+  const item = db
+    .prepare(`SELECT body_json FROM items WHERE id = ?`)
+    .get(itemId) as { body_json: string } | undefined;
+  const questions: ReturnType<typeof smartQuestions> = item
+    ? smartQuestions(parseSmartText(markdownOf(item.body_json)))
+    : new Map();
   const answers: Record<string, number> = {};
   for (const row of rows) {
     const payload = JSON.parse(row.payload_json) as {
       blockId?: string;
       pick?: number;
+      shown?: boolean;
     };
-    if (payload.blockId && typeof payload.pick === "number" && !(payload.blockId in answers))
-      answers[payload.blockId] = payload.pick;
+    if (!payload.blockId || typeof payload.pick !== "number" || payload.blockId in answers)
+      continue;
+    const moved = payload.shown ? -1 : questions.get(payload.blockId)?.order.indexOf(payload.pick);
+    answers[payload.blockId] = moved != null && moved >= 0 ? moved : payload.pick;
   }
   return answers;
 }
+
+const markdownOf = (bodyJson: string) =>
+  (JSON.parse(bodyJson) as { markdown?: string }).markdown ?? "";
 
 /**
  * The questions whose answers finish the reading: the closing recap of a lesson. An introduction has only quick
@@ -85,9 +102,7 @@ export function answerSmartCheck(
     | (SmartItem & { body_json: string })
     | undefined;
   if (!item) throw new Error("item-missing");
-  const segments = parseSmartText(
-    (JSON.parse(item.body_json) as { markdown?: string }).markdown ?? "",
-  );
+  const segments = parseSmartText(markdownOf(item.body_json));
   const question = smartQuestions(segments).get(input.blockId);
   if (!question || input.pick < 0 || input.pick >= question.options.length)
     throw new Error("question-missing");
@@ -104,6 +119,8 @@ export function answerSmartCheck(
         payload: {
           blockId: input.blockId,
           pick,
+          // The pick is an index into the options as shown; an event without this holds the model's own index.
+          shown: true,
           score: correct ? 1 : 0,
           evidenceKind: "check",
         },

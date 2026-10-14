@@ -442,6 +442,50 @@ describe("PLAN-21 durable plan build", () => {
     ]);
     db.close();
   });
+  it("saves the diagnostic options in a shuffled order and keeps the right one marked", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const sourceId = source(db);
+    const run: GenerateInput["run"] = async (input) => {
+      if (input.system?.startsWith("Write")) return response({ markdown: "Il moto." });
+      const content = JSON.parse(input.prompt) as { passages: Array<{ id: string }> };
+      // The model always writes the right option first.
+      return response({
+        questions: Array.from({ length: 10 }, (_, i) => ({
+          stem: `Domanda ${i}`,
+          options: [`giusta ${i}`, "x", "y", "z"],
+          correct: 0,
+          topicIndex: 0,
+          passageIds: [content.passages[0]!.id],
+          explanation: "Spiegazione",
+        })),
+      });
+    };
+    const runner = createRunner(db, () => {});
+    registerPlanJobs(db, runner, run);
+    const built = enqueuePlan(db, runner, { title: "Fisica", sourceIds: [sourceId] });
+    await until(db, built.planId, "succeeded");
+    const body = JSON.parse(
+      (
+        db.prepare("SELECT body_json FROM items WHERE kind = 'diagnostic'").get() as {
+          body_json: string;
+        }
+      ).body_json,
+    ) as {
+      questions: Array<{ stem: string; options: string[]; answer: { kind: string; correct: number } }>;
+    };
+    expect(body.questions).toHaveLength(10);
+    for (const [i, q] of body.questions.entries()) {
+      expect(q.answer.kind).toBe("mcq");
+      expect([...q.options].sort()).toEqual([`giusta ${i}`, "x", "y", "z"]);
+      expect(q.options[q.answer.correct]).toBe(`giusta ${i}`);
+    }
+    // Ten questions whose model index was always 0 do not all keep the right option first.
+    expect(new Set(body.questions.map((q) => q.answer.correct)).size).toBeGreaterThan(1);
+    db.close();
+  });
   it("tells the diagnostic which topic owns each passage and repairs a citation from another topic", async () => {
     const db = openDatabase(":memory:");
     db.prepare(

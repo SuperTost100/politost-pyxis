@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import type { GenerateInput } from "./generate";
 
@@ -12,7 +13,15 @@ export function recordedPlanRun(
       signal: input.signal,
     });
     if (!input.responseSchema) {
-      const markdown = replies.markdown as { markdown?: string } | undefined;
+      const markdown = replies.markdown as
+        | { markdown?: string; streamed?: string; hold?: string }
+        | undefined;
+      // A streamed lesson can show a first part, then wait for the test to create the hold file before it ends.
+      if (input.onDelta && markdown?.streamed) {
+        input.onDelta(markdown.streamed);
+        while (markdown.hold && !existsSync(markdown.hold))
+          await delay(50, undefined, { signal: input.signal });
+      }
       return {
         text: markdown?.markdown ?? "Recorded lesson [P1].",
         model: "recorded-plan",

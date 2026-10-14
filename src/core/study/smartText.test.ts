@@ -11,6 +11,7 @@ import { cacheKey, saveLesson } from "./lesson";
 import { answerSmartCheck, smartAnswers, smartSources } from "./smartText";
 import { studyHandlers } from "./handlers";
 import { exportMarkdown } from "../share/markdown";
+import { appendEvent } from "../events";
 
 const check = (question: string, answer = 0) =>
   [
@@ -118,23 +119,27 @@ describe("smart lessons", () => {
     ]);
 
     const segments = parseSmartText(lesson.markdown);
-    const [first] = [...smartQuestions(segments).keys()];
+    const shown = smartQuestions(segments);
+    const [first] = [...shown.keys()];
     const ids = finalRecap(segments)!.questions.map((q) => q.id);
+    // Options are shown in a seeded order, so right and wrong are read from the question as shown.
+    const right = (id: string) => shown.get(id)!.answer;
+    const wrong = (id: string) => (right(id) + 1) % shown.get(id)!.options.length;
     const answer = (blockId: string, pick: number) =>
       answerSmartCheck(db, { planId, itemId: lesson.itemId!, blockId, pick });
 
-    expect(answer(first!, 1)).toEqual({ correct: false, pick: 1, finished: false });
+    expect(answer(first!, wrong(first!))).toEqual({ correct: false, pick: wrong(first!), finished: false });
     // The first answer stays: a second try returns the saved result and writes nothing.
-    expect(answer(first!, 0)).toEqual({ correct: false, pick: 1, finished: false });
-    expect(answer(ids[0]!, 0)).toMatchObject({ correct: true, finished: false });
+    expect(answer(first!, right(first!))).toEqual({ correct: false, pick: wrong(first!), finished: false });
+    expect(answer(ids[0]!, right(ids[0]!))).toMatchObject({ correct: true, finished: false });
     expect(learn()).toBe(false);
-    expect(answer(ids[1]!, 0)).toMatchObject({ correct: false, finished: true });
+    expect(answer(ids[1]!, wrong(ids[1]!))).toMatchObject({ correct: false, finished: true });
     expect(learn()).toBe(true);
     expect(completed(db)).toBe(before + 1);
     expect(smartAnswers(db, lesson.itemId!)).toEqual({
-      [first!]: 1,
-      [ids[0]!]: 0,
-      [ids[1]!]: 0,
+      [first!]: wrong(first!),
+      [ids[0]!]: right(ids[0]!),
+      [ids[1]!]: wrong(ids[1]!),
     });
     const reopened = await studyHandlers(db, undefined, run).lesson({ planId, topicId });
     expect(reopened.answers).toEqual(smartAnswers(db, lesson.itemId!));
@@ -152,7 +157,7 @@ describe("smart lessons", () => {
         planId,
         itemId: lesson.itemId!,
         blockId: question.id,
-        pick: question.answer === 0 ? 1 : 0,
+        pick: (question.answer + 1) % question.options.length,
       });
     // All wrong: no mastery, and still no gap, which quizzes alone open.
     expect(planMastery(db, planId).find((t) => t.id === topicId)?.mastery).toBe(0);
@@ -168,6 +173,55 @@ describe("smart lessons", () => {
     db.close();
   });
 
+  it("grades the option the reader sees, whatever order the model wrote", async () => {
+    const { db, planId, topicId, run, reply } = setup();
+    // The model always puts the right option first.
+    reply(Array.from({ length: 12 }, (_, n) => check(`Domanda ${n}?`, 0)).join("\n\n"));
+    const lesson = await writeLesson(db, planId, topicId, run);
+    const questions = [...smartQuestions(parseSmartText(lesson.markdown)).values()];
+    expect(questions).toHaveLength(12);
+    expect(new Set(questions.map((question) => question.answer)).size).toBeGreaterThan(1);
+    for (const [index, question] of questions.entries()) {
+      const pick = question.options.indexOf(index % 2 ? "Giusta" : "Sbagliata");
+      expect(
+        answerSmartCheck(db, { planId, itemId: lesson.itemId!, blockId: question.id, pick }),
+      ).toMatchObject({ correct: index % 2 === 1, pick });
+    }
+    // The pick is saved as shown, and reads back as shown.
+    expect(smartAnswers(db, lesson.itemId!)[questions[1]!.id]).toBe(questions[1]!.options.indexOf("Giusta"));
+    db.close();
+  });
+
+  it("keeps an answer saved before options were rearranged on the option the student chose", async () => {
+    const { db, planId, topicId, run, reply } = setup();
+    reply(Array.from({ length: 6 }, (_, n) => check(`Domanda ${n}?`, 0)).join("\n\n"));
+    const lesson = await writeLesson(db, planId, topicId, run);
+    const questions = [...smartQuestions(parseSmartText(lesson.markdown)).values()];
+    // An old event holds the model's own index (1 is "Sbagliata") and no `shown` marker.
+    for (const question of questions)
+      appendEvent(db, {
+        kind: "answer_given",
+        planId,
+        topicId,
+        itemId: lesson.itemId!,
+        payload: { blockId: question.id, pick: 1, score: 0, evidenceKind: "check" },
+        at: 1,
+      });
+    const saved = smartAnswers(db, lesson.itemId!);
+    for (const question of questions) expect(question.options[saved[question.id]!]).toBe("Sbagliata");
+    // Answering again returns that saved pick as wrong and writes nothing.
+    expect(
+      answerSmartCheck(db, {
+        planId,
+        itemId: lesson.itemId!,
+        blockId: questions[0]!.id,
+        pick: questions[0]!.answer,
+      }),
+    ).toEqual({ correct: false, pick: saved[questions[0]!.id], finished: false });
+    expect(smartAnswers(db, lesson.itemId!)).toEqual(saved);
+    db.close();
+  });
+
   it("an introduction finishes when its quick checks are answered", () => {
     const { db, planId } = setup();
     const fresh = createPlan(db, { title: "Altro", sourceIds: [] });
@@ -176,14 +230,20 @@ describe("smart lessons", () => {
     ).run(fresh.planId, JSON.stringify({ markdown: `Benvenuto.\n\n${check("Ricordi?")}`, passageIds: [] }));
     const intro = () => readPlan(db, fresh.planId)!.steps.some((step) => step.activity === "intro");
     expect(intro()).toBe(false);
-    const [id] = [...smartQuestions(parseSmartText(`${check("Ricordi?")}`)).keys()];
+    const [question] = [...smartQuestions(parseSmartText(`${check("Ricordi?")}`)).values()];
+    const id = question!.id;
     expect(
-      answerSmartCheck(db, { planId: fresh.planId, itemId: "intro-item", blockId: id!, pick: 2 }),
+      answerSmartCheck(db, {
+        planId: fresh.planId,
+        itemId: "intro-item",
+        blockId: id,
+        pick: question!.options.indexOf("Altra"),
+      }),
     ).toMatchObject({ correct: false, finished: true });
     expect(intro()).toBe(true);
     // Another plan's item is not reachable through this plan.
     expect(() =>
-      answerSmartCheck(db, { planId, itemId: "intro-item", blockId: id!, pick: 0 }),
+      answerSmartCheck(db, { planId, itemId: "intro-item", blockId: id, pick: 0 }),
     ).toThrow("item-missing");
     db.close();
   });
