@@ -33,6 +33,39 @@ function backupsIn(folder: string): string[] {
     : [];
 }
 
+/**
+ * Removes a test folder. Windows can hold files for a while after Pyxis quits, so this retries for up to 30 s, then
+ * fails naming every file still held, so a process that outlives Pyxis shows up instead of a bare EPERM.
+ */
+function removeTestFolder(root: string) {
+  try {
+    rmSync(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 60,
+      retryDelay: 500,
+    });
+  } catch (error) {
+    const held: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else
+          try {
+            rmSync(path, { force: true });
+          } catch {
+            held.push(path);
+          }
+      }
+    };
+    walk(root);
+    throw new Error(
+      `${(error as Error).message}; still held: ${held.join(", ") || "only folders"}`,
+    );
+  }
+}
+
 test("automatic backups: first launch, not twice a day, a day later with retention, and restore", async () => {
   test.setTimeout(180_000);
   const root = mkdtempSync(join(tmpdir(), "pyxis-auto-backup-"));
@@ -151,13 +184,7 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
       .toBe(false);
     await app.close();
   } finally {
-    // Windows can hold the folder for a moment after the app exits.
-    rmSync(root, {
-      recursive: true,
-      force: true,
-      maxRetries: 20,
-      retryDelay: 500,
-    });
+    removeTestFolder(root);
   }
 });
 
@@ -243,12 +270,6 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
     ).toBe(false);
     await app.close();
   } finally {
-    // Windows can hold the folder for a moment after the app exits.
-    rmSync(root, {
-      recursive: true,
-      force: true,
-      maxRetries: 20,
-      retryDelay: 500,
-    });
+    removeTestFolder(root);
   }
 });
