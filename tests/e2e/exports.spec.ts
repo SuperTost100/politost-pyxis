@@ -34,6 +34,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,
@@ -227,6 +229,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     try {
       const freshPage = await fresh.firstWindow();
       await freshPage.getByRole("button", { name: "Salta" }).click();
+      // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+      await expect(freshPage).toHaveURL(/#\/exams$/);
       await expect(
         freshPage.evaluate(() => window.pyxis.restoreWorkspace()),
       ).resolves.toBe("restored");

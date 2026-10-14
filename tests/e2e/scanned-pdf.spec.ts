@@ -50,6 +50,8 @@ async function openScan(): Promise<Run> {
   const app = await electron.launch({ args: [MAIN], env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
+  // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+  await expect(page).toHaveURL(/#\/exams$/);
   await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
   const pngs = await drawScanPages(page);
   const pdf = join(userData, "scan.pdf");

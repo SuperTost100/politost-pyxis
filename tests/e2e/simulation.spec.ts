@@ -83,6 +83,8 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const source = (await importPickedSource(page, app, file)) as {
       sourceId: string;
     };

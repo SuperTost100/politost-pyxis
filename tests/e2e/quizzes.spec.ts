@@ -67,6 +67,8 @@ async function launch(replies: Record<string, unknown>, delay = 0) {
   const app: ElectronApplication = await electron.launch({ args: [MAIN], env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
+  // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+  await expect(page).toHaveURL(/#\/exams$/);
   const source = (await importPickedSource(page, app, file)) as { sourceId: string };
   await expect
     .poll(async () =>
@@ -530,6 +532,8 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const models = (await page.evaluate(() =>
       window.pyxis.invoke("engines.models", { provider: "claude" }),
     )) as Array<{ id: string; name: string }>;

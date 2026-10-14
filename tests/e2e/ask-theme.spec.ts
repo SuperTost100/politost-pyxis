@@ -114,6 +114,8 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     seed(userData);
     await page.evaluate(() => window.pyxis.setAppearance("light"));
     await page.evaluate(() => {

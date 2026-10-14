@@ -43,6 +43,8 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const invoke = <T>(channel: string, input: object) =>
       page.evaluate(
         ([c, i]) =>

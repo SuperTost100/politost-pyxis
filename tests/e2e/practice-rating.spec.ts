@@ -75,6 +75,8 @@ test("practice: rate two exercises, change one, finish, and mastery moves by two
     page.on("pageerror", (error) => errors.push(error.message));
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const { sourceId } = (await importPickedSource(page, app, book)) as {
       sourceId: string;
     };

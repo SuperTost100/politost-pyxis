@@ -117,6 +117,8 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const source = (await importPickedSource(page, app, file)) as {
       sourceId: string;
     };

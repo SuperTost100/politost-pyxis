@@ -51,6 +51,8 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
     let page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const imported = (await importPickedSource(page, app, sourcePath)) as {
       sourceId: string;
     };
