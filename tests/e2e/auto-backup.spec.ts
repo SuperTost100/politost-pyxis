@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { closeAndTrace, processTable } from "./app-exit";
 
 const automatic = /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip$/;
 const HOUR = 60 * 60 * 1000;
@@ -74,9 +75,11 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
   mkdirSync(documents);
   const folder = join(documents, "Pyxis backups");
   const env = { PYXIS_USER_DATA: userData, PYXIS_E2E_DOCUMENTS: documents };
+  let app: Awaited<ReturnType<typeof launch>> | undefined;
+  let bodyError: unknown;
   try {
     // First launch: the folder does not exist yet; Pyxis creates it and backs up shortly after starting.
-    let app = await launch(env);
+    app = await launch(env);
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
@@ -100,7 +103,7 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
       "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('auto-plan','Motion','ready',1,1)",
     );
     db.close();
-    await app.close();
+    await closeAndTrace(app, "first launch");
 
     // Second launch the same day: no new backup.
     app = await launch(env);
@@ -112,7 +115,7 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
     // The first check runs a second after core starts; give it time to do nothing.
     await page.waitForTimeout(4000);
     expect(backupsIn(folder)).toEqual([first]);
-    await app.close();
+    await closeAndTrace(app, "second launch");
 
     // A day later, with three older automatic backups and two other files in the folder.
     const stateFile = join(userData, "backups.json");
@@ -184,9 +187,25 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
         ),
       )
       .toBe(false);
-    await app.close();
+    await closeAndTrace(app, "after restore");
+    app = undefined;
+  } catch (error) {
+    bodyError = error;
+    console.log(`[exit-trace] body failed: ${(error as Error).message}`);
+    throw error;
   } finally {
-    removeTestFolder(root);
+    if (bodyError && app) await closeAndTrace(app, "after failure");
+    try {
+      removeTestFolder(root);
+    } catch (error) {
+      const electrons = processTable().filter((proc) =>
+        /electron|pyxis/i.test(proc.command),
+      );
+      console.log(
+        `[exit-trace] cleanup failed; Electron processes now:\n  ${electrons.map((p) => `${p.pid} (parent ${p.ppid}) ${p.command.slice(0, 240)}`).join("\n  ")}`,
+      );
+      if (!bodyError) throw error;
+    }
   }
 });
 
