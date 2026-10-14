@@ -2,19 +2,23 @@ import { App, Button, Tooltip } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
+import { IconButton } from "../../components/IconButton";
 
 /**
- * Saves upcoming exam dates as an .ics file: every exam, or just one plan's.
- * When `blocked` is set the button is off and that text says why.
+ * Saves one plan's exam date as an .ics file. When `blocked` is set the button
+ * is off and that text says why. `icon` draws the round icon-only button the
+ * plan header uses next to its settings button.
  */
 export function CalendarButton({
   planId,
   blocked,
   disabled = false,
+  icon = false,
 }: {
-  planId?: string;
+  planId: string;
   blocked?: string;
   disabled?: boolean;
+  icon?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const { message } = App.useApp();
@@ -44,6 +48,15 @@ export function CalendarButton({
     }
   }
 
+  if (icon)
+    return (
+      <IconButton
+        icon="calendar-plus"
+        label={t("calendar.add")}
+        disabled={disabled || busy || Boolean(blocked)}
+        onClick={() => void save()}
+      />
+    );
   const button = (
     <Button
       shape="round"

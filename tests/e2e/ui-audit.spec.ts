@@ -31,6 +31,8 @@ const routes = [
   ["ask-new", "/ask"],
   ["ask-thread", "/ask/audit-chat"],
   ["exams", "/exams"],
+  ["exams-empty", "/exams"],
+  ["exams-import-menu", "/exams"],
   ["library", "/exams/library"],
   // The flashcard browser: cards grouped by subject, no cards at all, a search with no match, and its two dialogs.
   ["cards-browser", "/exams/cards"],
@@ -60,6 +62,7 @@ const routes = [
     (step) => [`wizard-${step}`, "/plans/new"] as const,
   ),
   ["plan", "/plans/audit-plan"],
+  ["plan-dated", "/plans/audit-ready-plan"],
   ["plan-topics", "/plans/audit-plan/topics"],
   ["plan-sources", "/plans/audit-plan/sources"],
   ["plan-progress", "/plans/audit-plan/progress"],
@@ -434,7 +437,7 @@ function seed(db: DatabaseSync) {
     INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('audit-ready-plan','Prepared exam','ready','it',1,1);
     INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-ready-topic','audit-ready-plan','Force',0,1);
   `);
-  // One plan with an exam date, so the Exams page audits Add to calendar when it is on.
+  // One plan with an exam date, so its card shows the days left and its header audits Add to calendar.
   const examDay = new Date(now);
   examDay.setDate(examDay.getDate() + 40);
   examDay.setHours(12, 0, 0, 0);
@@ -754,7 +757,27 @@ function prepareBackupState(name: string) {
   else rmSync(file, { force: true });
 }
 
+/** The empty Exams page: the plans move to a side table and come back for every other state. Foreign keys are off on this connection only, so nothing that belongs to a plan is deleted with it. */
+function prepareExamsEmpty(name: string) {
+  withDb((db) => {
+    db.exec("PRAGMA foreign_keys = OFF");
+    const hidden = db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'audit_hidden_plans'",
+      )
+      .get();
+    if (name === "exams-empty") {
+      if (hidden) return;
+      db.exec(`CREATE TABLE audit_hidden_plans AS SELECT * FROM plans;
+        DELETE FROM plans;`);
+    } else if (hidden)
+      db.exec(`INSERT INTO plans SELECT * FROM audit_hidden_plans;
+        DROP TABLE audit_hidden_plans;`);
+  });
+}
+
 function prepareState(name: string) {
+  prepareExamsEmpty(name);
   prepareCardBrowser(name);
   prepareBackupState(name);
   prepareUpdate(name);
@@ -1929,6 +1952,12 @@ async function openState(page: Page, name: string) {
         ),
       ).toBeVisible();
       break;
+    case "exams-import-menu":
+      await page
+        .getByRole("button", { name: /^(Importa|Import)$/ })
+        .click();
+      await expect(page.getByRole("menuitem").first()).toBeVisible();
+      break;
     case "library-row-menu":
       await page
         .getByRole("button", {
@@ -2515,7 +2544,8 @@ test("M14 every application route in both languages, themes and supported widths
               await keyboardCheck(page, name);
               // Tabbing beyond a dropdown closes it. Reopen it for visual/axe checks.
               if (
-                name === "library-row-menu" &&
+                (name === "library-row-menu" ||
+                  name === "exams-import-menu") &&
                 !(await page.getByRole("menuitem").first().isVisible())
               )
                 await openState(page, name);

@@ -15,14 +15,12 @@ const words = {
     exam: "Exam",
     description: "Exam date from PoliTost Pyxis.",
     subject: "Subject",
-    all: "Pyxis exams",
     fallback: "exam",
   },
   it: {
     exam: "Esame",
     description: "Data dell’esame da PoliTost Pyxis.",
     subject: "Materia",
-    all: "Esami Pyxis",
     fallback: "esame",
   },
 } as const;
@@ -156,25 +154,23 @@ function fileName(title: string, fallback: string): string {
   return `${safe || fallback}.ics`;
 }
 
+/** One plan's exam as an .ics file named after the plan. */
 export function exportCalendar(
   db: Database.Database,
-  input: { planId?: string; language: CalendarLanguage },
+  input: { planId: string; language: CalendarLanguage },
   now = Date.now(),
 ): { filename: string; base64: string; count: number } {
-  const rows = db
+  const row = db
     .prepare(
       `SELECT p.id AS planId, p.title, s.name AS subject, p.exam_at AS examAt
        FROM plans p LEFT JOIN subjects s ON s.id = p.subject_id
-       ${input.planId ? "WHERE p.id = ?" : ""}`,
+       WHERE p.id = ?`,
     )
-    .all(...(input.planId ? [input.planId] : [])) as CalendarExam[];
-  if (input.planId && rows.length === 0) throw new Error("plan-missing");
-  const { ics, count } = buildCalendar(rows, input.language, now);
-  const w = words[input.language];
+    .get(input.planId) as CalendarExam | undefined;
+  if (!row) throw new Error("plan-missing");
+  const { ics, count } = buildCalendar([row], input.language, now);
   return {
-    filename: input.planId
-      ? fileName(rows[0]!.title, w.fallback)
-      : `${w.all}.ics`,
+    filename: fileName(row.title, words[input.language].fallback),
     base64: Buffer.from(ics, "utf8").toString("base64"),
     count,
   };

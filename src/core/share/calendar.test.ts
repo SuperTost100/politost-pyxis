@@ -334,21 +334,22 @@ describe("exportCalendar", () => {
   const decode = (base64: string) =>
     Buffer.from(base64, "base64").toString("utf8");
 
-  it("exports every upcoming dated plan, with its subject", () => {
+  it("exports one plan with its subject, and no other plan", () => {
     const { db, add } = fixture();
     add("a", "Analisi", noon(2026, 11, 3), "s1");
     add("b", "Chimica", noon(2026, 11, 20));
-    add("c", "Senza data", null);
-    add("d", "Passato", noon(2026, 9, 1));
-    const file = exportCalendar(db, { language: "it" }, NOW);
-    expect(file.count).toBe(2);
-    expect(file.filename).toBe("Esami Pyxis.ics");
-    const text = decode(file.base64);
-    expect(text).toContain("SUMMARY:Esame: Analisi");
-    expect(text).toContain("Materia: Fisica");
-    expect(text).toContain("SUMMARY:Esame: Chimica");
-    expect(text).not.toContain("Senza data");
-    expect(text).not.toContain("Passato");
+    const file = exportCalendar(db, { planId: "a", language: "it" }, NOW);
+    expect(file.count).toBe(1);
+    expect(file.filename).toBe("Analisi.ics");
+    const lines = unfold(decode(file.base64));
+    expect(lines.filter((l) => l === "BEGIN:VEVENT")).toHaveLength(1);
+    expect(lines).toContain("UID:a@pyxis.politost.it");
+    expect(lines).toContain("SUMMARY:Esame: Analisi");
+    expect(lines).toContain("DTSTART;VALUE=DATE:20261103");
+    expect(lines.find((l) => l.startsWith("DESCRIPTION:Data"))).toContain(
+      "Materia: Fisica",
+    );
+    expect(decode(file.base64)).not.toContain("Chimica");
   });
 
   it("exports one plan and names the file after it", () => {
@@ -369,17 +370,25 @@ describe("exportCalendar", () => {
     expect(Buffer.byteLength(file.filename, "utf8")).toBeLessThanOrEqual(244);
   });
 
-  it("returns nothing to save when no exam is upcoming", () => {
+  it("returns nothing to save for a plan with no date or a past date", () => {
     const { db, add } = fixture();
     add("a", "Analisi", null);
     add("b", "Passato", noon(2026, 9, 1));
-    expect(exportCalendar(db, { language: "en" }, NOW)).toMatchObject({
-      count: 0,
-      base64: "",
-    });
-    expect(exportCalendar(db, { planId: "b", language: "en" }, NOW).count).toBe(
-      0,
-    );
+    for (const planId of ["a", "b"])
+      expect(exportCalendar(db, { planId, language: "en" }, NOW)).toMatchObject(
+        { count: 0, base64: "" },
+      );
+  });
+
+  it("names an untitled plan's file with the fallback word", () => {
+    const { db, add } = fixture();
+    add("a", ' / : * ? " ', noon(2026, 11, 3));
+    expect(
+      exportCalendar(db, { planId: "a", language: "it" }, NOW).filename,
+    ).toBe("esame.ics");
+    expect(
+      exportCalendar(db, { planId: "a", language: "en" }, NOW).filename,
+    ).toBe("exam.ics");
   });
 
   it("rejects a plan that does not exist", () => {
