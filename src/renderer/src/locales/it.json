@@ -888,7 +888,12 @@
     "interrupted": "La scrittura si è interrotta. Riprova per continuare.",
     "failed": "Non sono riuscito a scrivere gli esercizi. Controlla il motore scelto o riprova.",
     "emptyGenerate": "Il libro non ha esercizi per questo argomento. Pyxis può scriverne alcuni dalle tue fonti.",
-    "generate": "Scrivi esercizi"
+    "generate": "Scrivi esercizi",
+    "rateLabel": "Com'è andata?",
+    "got": "Ce l'ho fatta",
+    "missed": "Non ce l'ho fatta",
+    "rateHint": "Facoltativo. Conta un po' per i tuoi progressi.",
+    "rateFailed": "La valutazione non è stata salvata. Riprova."
   },
   "plans": {
     "export": "Esporta",
@@ -1846,7 +1851,46 @@
     "download": "Apri la pagina della versione",
     "notes": "Novità della versione",
     "hint": "Pyxis controlla al massimo una volta al giorno. Decidi tu quando scaricare e installare.",
-    "dismiss": "Chiudi avviso"
+    "dismiss": "Chiudi avviso",
+    "install": {
+      "start": "Scarica e installa",
+      "startHint": "Pyxis scarica da GitHub il programma di installazione per questo computer e lo controlla con i checksum della versione prima di usarlo.",
+      "preparing": "Preparo il download…",
+      "downloading": "Scarico Pyxis {{version}}",
+      "progress": "{{received}} di {{total}}, {{percent}}%",
+      "cancel": "Annulla il download",
+      "retry": "Riprova",
+      "quit": "Esci da Pyxis",
+      "install": "Chiudi Pyxis e installa",
+      "restart": "Riavvia Pyxis",
+      "openImage": "Riapri l’immagine disco",
+      "showFile": "Mostra di nuovo il file",
+      "verified": {
+        "dmg-opened": "Pyxis {{version}} è scaricato e controllato, e la sua immagine disco è aperta nel Finder. Esci da Pyxis, trascina PoliTost Pyxis in Applicazioni e scegli Sostituisci. Poi riapri Pyxis.",
+        "exe-ready": "Pyxis {{version}} è scaricato e controllato. Quando lo installi, Pyxis si chiude e parte il programma di installazione. Al termine Pyxis si riapre.",
+        "appimage-replaced": "Pyxis {{version}} è installato. Riavvia Pyxis per usarlo.",
+        "appimage-folder": "Pyxis {{version}} è scaricato e controllato, ma Pyxis non può scrivere nella cartella della sua AppImage. Il nuovo file è aperto nella sua cartella. Spostalo al posto della vecchia AppImage, poi riapri Pyxis.",
+        "deb-shown": "Pyxis {{version}} è scaricato e controllato. Il pacchetto è aperto nella sua cartella. Aprilo con il programma che installa il software, poi riapri Pyxis."
+      },
+      "errors": {
+        "network": "Il download si è interrotto perché Pyxis ha perso la connessione con GitHub. Riprova, oppure scarica il programma di installazione dalla pagina della versione.",
+        "not-newer": "GitHub non indica più una versione stabile più recente. Controlla di nuovo gli aggiornamenti.",
+        "no-asset": "Questa versione non ha un programma di installazione per questo computer. La pagina della versione elenca i file che contiene.",
+        "no-checksum": "Questa versione non ha il checksum del programma di installazione, quindi Pyxis non l’ha scaricato. Scaricalo dalla pagina della versione.",
+        "too-large": "Il programma di installazione supera 1 GB, il limite di Pyxis, quindi Pyxis non l’ha scaricato. Scaricalo dalla pagina della versione.",
+        "mismatch": "Il file scaricato non corrisponde al suo checksum, quindi Pyxis l’ha eliminato. Riprova, oppure scarica il programma di installazione dalla pagina della versione.",
+        "blocked": "Il download puntava fuori dai file delle versioni di GitHub, quindi Pyxis l’ha fermato. Scarica il programma di installazione dalla pagina della versione.",
+        "disk": "Pyxis non è riuscito a salvare il download. Controlla che il computer abbia spazio libero, poi riprova.",
+        "handover": "Pyxis non è riuscito ad aprire il programma di installazione. Scaricalo dalla pagina della versione."
+      },
+      "workspaceBusy": "Pyxis sta ancora eseguendo un backup, un ripristino o uno spostamento. Aspetta che finisca, poi riprova.",
+      "finishFailed": "Pyxis non è riuscito a chiudersi per l’aggiornamento. Riprova.",
+      "jobsTitle": "Chiudere Pyxis con attività in corso?",
+      "jobsBody_one": "{{count}} attività è in corso. Si ferma ora e potrai riprenderla dalle attività quando riapri Pyxis.",
+      "jobsBody_other": "{{count}} attività sono in corso. Si fermano ora e potrai riprenderle dalle attività quando riapri Pyxis.",
+      "jobsConfirm": "Chiudi Pyxis",
+      "jobsWait": "Aspetta"
+    }
   },
   "about": {
     "version": "Versione",

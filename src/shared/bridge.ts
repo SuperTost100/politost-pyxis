@@ -1,5 +1,9 @@
 import type { MenuCommand, MenuLanguage } from "./menu";
-import type { UpdateView } from "./updates";
+import type {
+  UpdateFinishResult,
+  UpdateInstallView,
+  UpdateView,
+} from "./updates";
 export type ThemeSource = "system" | "dark" | "light";
 export type ResolvedTheme = "dark" | "light";
 
@@ -84,6 +88,19 @@ export interface PyxisBridge {
   setMenuLanguage(language: MenuLanguage): Promise<void>;
   /** Runs when the student picks a menu item or presses its shortcut. Unknown commands never arrive. */
   onMenuCommand(cb: (command: MenuCommand) => void): () => void;
+  /** Downloads and verifies the installer for this computer. Only a click on Download and install calls it. */
+  installUpdate(): Promise<void>;
+  /** Stops a running download, or clears a finished or failed one. */
+  cancelUpdate(): Promise<void>;
+  updateState(): Promise<UpdateInstallView>;
+  onUpdateState(cb: (view: UpdateInstallView) => void): () => void;
+  /** Opens the disk image again, or shows the downloaded file in its folder again. */
+  revealUpdate(): Promise<void>;
+  /** Closes Pyxis to finish the update, once workspace work is done and running jobs are confirmed. */
+  finishUpdate(input: {
+    activeJobs: number;
+    confirmed: boolean;
+  }): Promise<UpdateFinishResult>;
 }
 
 export const mainChannels = {
@@ -113,4 +130,10 @@ export const mainChannels = {
   updatesCheck: "updates:check",
   menuLanguage: "menu:language",
   menuCommand: "menu:command",
+  updatesInstall: "updates:install",
+  updatesCancel: "updates:cancel",
+  updatesState: "updates:state",
+  updatesChanged: "updates:changed",
+  updatesReveal: "updates:reveal",
+  updatesFinish: "updates:finish",
 } as const;

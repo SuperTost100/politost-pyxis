@@ -8,6 +8,7 @@ import {
   type SaveDialogOptions,
   type ThemeSource,
 } from "../shared/bridge";
+import type { UpdateInstallView } from "../shared/updates";
 
 type Pending = {
   resolve: (value: unknown) => void;
@@ -290,6 +291,17 @@ const bridge: PyxisBridge = {
     ipcRenderer.on(mainChannels.menuCommand, listener);
     return () => ipcRenderer.removeListener(mainChannels.menuCommand, listener);
   },
+  installUpdate: () => ipcRenderer.invoke(mainChannels.updatesInstall),
+  cancelUpdate: () => ipcRenderer.invoke(mainChannels.updatesCancel),
+  updateState: () => ipcRenderer.invoke(mainChannels.updatesState),
+  onUpdateState: (cb) => {
+    const listener = (_event: unknown, view: UpdateInstallView) => cb(view);
+    ipcRenderer.on(mainChannels.updatesChanged, listener);
+    return () =>
+      ipcRenderer.removeListener(mainChannels.updatesChanged, listener);
+  },
+  revealUpdate: () => ipcRenderer.invoke(mainChannels.updatesReveal),
+  finishUpdate: (input) => ipcRenderer.invoke(mainChannels.updatesFinish, input),
 };
 
 contextBridge.exposeInMainWorld("pyxis", bridge);
