@@ -79,7 +79,9 @@ export function Flashcard({
             <button
               key={label}
               type="button"
-              className={i === 2 ? "px-fc-rate px-fc-rate-primary" : "px-fc-rate"}
+              className={
+                i === 2 ? "px-fc-rate px-fc-rate-primary" : "px-fc-rate"
+              }
               aria-keyshortcuts={String(i + 1)}
               onClick={() => onRate?.(i + 1)}
             >
