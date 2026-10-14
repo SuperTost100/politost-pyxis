@@ -46,6 +46,8 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
     let app = await launch(env);
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
+    await expect(page).toHaveURL(/#\/exams$/);
     await expect
       .poll(() => backupsIn(folder), { timeout: 30_000 })
       .toHaveLength(1);
@@ -176,7 +178,8 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
     const notice = page.locator(".px-backup-notice");
     await expect(notice).toContainText(
       "La copia automatica non è riuscita. La cartella delle copie non è disponibile.",
-      { timeout: 30_000 },
+      // The first check waits for core to start and its queue to empty, which can take a while on a slow runner.
+      { timeout: 60_000 },
     );
     expect(
       (
@@ -189,6 +192,8 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
     mkdirSync(".shots", { recursive: true });
     await page.screenshot({ path: ".shots/auto-backup-notice.png" });
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
+    await expect(page).toHaveURL(/#\/exams$/);
     await notice
       .getByRole("button", { name: "Impostazioni copie", exact: true })
       .click();
