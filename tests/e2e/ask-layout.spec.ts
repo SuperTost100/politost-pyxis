@@ -309,3 +309,39 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
     await finish(app, userData);
   }
 });
+
+test("Ask: content that grows after a reply, such as the suggestion chips, stays in view", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  try {
+    seed(userData);
+    await page.setViewportSize({ width: 960, height: 640 });
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await page.reload();
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    for (const text of ["Come si risolve un integrale per parti?", "Una seconda domanda"]) {
+      await box.fill(text);
+      await box.press("Enter");
+      await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
+    }
+    const gap = () =>
+      page.evaluate(() => {
+        const root = document.scrollingElement!;
+        return root.scrollHeight - root.scrollTop - root.clientHeight;
+      });
+    await expect.poll(gap).toBeLessThan(4);
+    // Late content, like the chips that arrive after the reply, and a scroll event before Pyxis has caught up with it.
+    // A slow computer does exactly this; the student never scrolled up, so the page must still follow.
+    await page.evaluate(() => {
+      const late = document.createElement("div");
+      late.style.height = "300px";
+      document.querySelector(".ask-page")!.append(late);
+      window.dispatchEvent(new Event("scroll"));
+    });
+    await expect.poll(gap).toBeLessThan(4);
+  } finally {
+    await finish(app, userData);
+  }
+});
