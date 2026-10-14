@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { automaticEffort, studentEffort } from "../../shared/effort";
 import { engineProviders, IpcError } from "../../shared/ipc";
 import { autoFeatures, planAuto, type AutoProvider } from "./auto";
 import { capabilityWarning, type Need } from "./capabilities";
@@ -10,6 +11,7 @@ import {
   runTurn,
   type ProviderId,
 } from "./funnel";
+import { effortsOf, rememberModels } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
 import type { StoredSelection } from "./selection";
 
@@ -152,6 +154,7 @@ export async function autoConfigureEngines(
   for (const row of ready.filter((candidate) => candidate.acknowledged)) {
     try {
       const models = await getFunnel().models(row.id as ProviderId);
+      rememberModels(row.id, models);
       listed.push({
         id: row.id,
         kind: row.kind,
@@ -173,6 +176,15 @@ export async function autoConfigureEngines(
   const apply = db.transaction(() => {
     // A reset that cannot read any model list would leave every feature without an engine.
     if (unreadable) return;
+    const before = new Map(
+      (
+        db
+          .prepare("SELECT feature, selection_json FROM feature_engines")
+          .all() as StoredRow[]
+      ).map((row) => [row.feature, JSON.parse(row.selection_json)]),
+    ) as Map<string, StoredSelection>;
+    // Handing one task back to Pyxis keeps the effort the student picked for it. Resetting everything does not.
+    const keepsEffort = !options.reset || !!options.features?.length;
     if (options.reset) {
       const scope = options.features;
       if (scope?.length)
@@ -203,7 +215,20 @@ export async function autoConfigureEngines(
           );
         continue;
       }
-      const next = JSON.stringify({ ...choice, auto: true });
+      const picked = keepsEffort
+        ? studentEffort(before.get(feature))
+        : undefined;
+      const efforts = listed
+        .find((provider) => provider.id === choice.provider)
+        ?.models.find((model) => model.id === choice.model)
+        ?.efforts.map((option) => option.id);
+      const next = JSON.stringify({
+        ...choice,
+        // The pick applies while the new model still lists it, and waits otherwise.
+        ...(picked && efforts?.includes(picked) ? { effort: picked } : {}),
+        auto: true,
+        ...(picked ? { effortChoice: picked } : {}),
+      });
       if (current !== undefined && current === next) continue;
       db.prepare(
         `INSERT INTO feature_engines (feature, selection_json, updated_at)
@@ -287,6 +312,7 @@ export function engineHandlers(
     },
     async models(input: { provider: ProviderId }) {
       const list = await getFunnel().models(input.provider);
+      rememberModels(input.provider, list);
       return list.map((model) => ({
         id: model.id,
         name: model.name,
@@ -394,6 +420,50 @@ export function engineHandlers(
         now,
       );
       return { warning };
+    },
+    /** Sets, or with no `effort` clears, the student's reasoning effort for one task. */
+    setEffort(input: { feature: (typeof features)[number]; effort?: string }) {
+      const row = db
+        .prepare(`SELECT selection_json FROM feature_engines WHERE feature = ?`)
+        .get(input.feature) as { selection_json: string } | undefined;
+      if (!row)
+        throw new IpcError(
+          "invalid-selection",
+          "engines.errors.invalid-selection",
+        );
+      const {
+        effort: _old,
+        effortChoice: _choice,
+        ...rest
+      } = JSON.parse(row.selection_json) as StoredSelection;
+      const listed = effortsOf(rest.provider, rest.model);
+      if (
+        input.effort &&
+        (rest.provider.endsWith("-api") ||
+          (listed && !listed.includes(input.effort)))
+      )
+        throw new IpcError(
+          "invalid-selection",
+          "engines.errors.invalid-selection",
+        );
+      // Pyxis's own rows keep the pick beside the effort it works out; a pinned row stores the pick as its effort.
+      const effort =
+        input.effort ??
+        (rest.auto && listed
+          ? automaticEffort(input.feature, listed)
+          : undefined);
+      db.prepare(
+        `UPDATE feature_engines SET selection_json = ?, updated_at = ? WHERE feature = ?`,
+      ).run(
+        JSON.stringify({
+          ...rest,
+          ...(effort ? { effort } : {}),
+          ...(rest.auto && input.effort ? { effortChoice: input.effort } : {}),
+        }),
+        Date.now(),
+        input.feature,
+      );
+      return { ok: true as const };
     },
     clearFeature(input: {
       feature: Exclude<(typeof features)[number], "default">;

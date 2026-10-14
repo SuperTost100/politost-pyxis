@@ -1,4 +1,5 @@
 import tiers from "../../../resources/model-tiers.json";
+import { nearestEffort } from "../../shared/effort";
 import { modelCapability } from "./capabilities";
 
 export type Tier = "fast" | "mid" | "strong";
@@ -100,13 +101,16 @@ function choiceFor(
   const models = usableModels(provider, feature);
   const model = pickModel(provider, tier, models.length ? models : undefined);
   if (!model) return undefined;
-  const effort = data.effort[tier];
+  const effort = provider.effort
+    ? nearestEffort(
+        data.effort[tier]!,
+        model.efforts.map((option) => option.id),
+      )
+    : undefined;
   return {
     provider: provider.id,
     model: model.id,
-    ...(provider.effort && model.efforts.some((option) => option.id === effort)
-      ? { effort }
-      : {}),
+    ...(effort ? { effort } : {}),
   };
 }
 

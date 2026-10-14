@@ -57,6 +57,16 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
             page.locator(".engines-list .px-engine").first(),
           ).toBeVisible({ timeout: 30000 });
           await expect(page.locator(".engines-feature-row")).toHaveCount(7);
+          // Each task has its own reasoning effort next to its model.
+          await expect(
+            page.getByRole("combobox", {
+              name:
+                language === "en"
+                  ? "Chat: Reasoning effort"
+                  : "Chat: Livello di ragionamento",
+            }),
+          ).toBeVisible();
+          await expect(page.locator('[id^="engine-effort-"]')).toHaveCount(7);
           // CLI Funnel enforces text-only access for every offered engine, so none is disabled.
           for (const name of ["Cursor Agent", "Antigravity"])
             await expect(
@@ -216,11 +226,34 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     const chat = page
       .locator(".engines-feature-row")
       .filter({ has: page.locator('label[for="engine-chat"]') })
-      .locator(".ant-select");
+      .locator(".engines-feature-model .ant-select");
     await expect(chat).toContainText("Automatic");
     await expect(page.locator(".engines-auto-model").first()).toBeVisible();
+    // Every task starts at its own reasoning level: low for chat, high for plans.
+    const effortOf = (task: string) =>
+      page.getByRole("combobox", { name: `${task}: Reasoning effort` });
+    await expect(effortOf("Chat")).toBeEnabled();
+    await expect(
+      page.locator(".engines-feature-effort", { has: effortOf("Chat") }),
+    ).toContainText("Automatic · Low");
+    await expect(
+      page.locator(".engines-feature-effort", { has: effortOf("Plans") }),
+    ).toContainText("Automatic · High");
+    // The student's pick is kept, and shows after a reload of the stored choices.
+    await effortOf("Plans").click();
+    await page
+      .locator(".ant-select-item-option")
+      .filter({ hasText: /^Maximum$/ })
+      .click();
+    await expect(
+      page.locator(".engines-feature-effort", { has: effortOf("Plans") }),
+    ).toContainText("Maximum");
+    const stored = await page.evaluate(
+      () => window.pyxis.invoke("engines.features", {}) as Promise<Record<string, { effort?: string; effortChoice?: string }>>,
+    );
+    expect(stored.plan).toMatchObject({ effort: "max", effortChoice: "max" });
     // Pin chat to a Claude model, then return everything to automatic.
-    await page.getByRole("combobox", { name: "Chat" }).click();
+    await page.getByRole("combobox", { name: "Chat", exact: true }).click();
     await page
       .locator(".ant-select-item-option")
       .filter({ hasText: /claude · /i })
@@ -234,6 +267,10 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await back.click();
     await expect(chat).toContainText("Automatic");
     await expect(back).toBeDisabled();
+    // Back to automatic also returns the efforts to the tasks' own levels.
+    await expect(
+      page.locator(".engines-feature-effort", { has: effortOf("Plans") }),
+    ).toContainText("Automatic · High");
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
