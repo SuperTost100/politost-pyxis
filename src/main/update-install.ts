@@ -293,6 +293,8 @@ export function updateInstaller(deps: {
   quit: () => void;
   max?: number;
   log?: (message: string) => void;
+  /** Removes the downloads folder. Tests replace it to make removal fail the way Windows does (EBUSY, EPERM). */
+  removeDir?: (path: string) => Promise<void>;
 }) {
   const fetcher = deps.fetch ?? fetch;
   let view: UpdateInstallView = { state: "idle" };
@@ -300,8 +302,10 @@ export function updateInstaller(deps: {
   let verified: { path: string; kind: InstallKind } | null = null;
   // Windows can refuse to remove a folder an antivirus scan or an open file still holds (EBUSY, EPERM). The folder is
   // emptied again before the next download, so a refusal is logged and never stops anything.
+  const removeDir =
+    deps.removeDir ?? ((path) => rm(path, { recursive: true, force: true }));
   const clear = () =>
-    rm(deps.dir, { recursive: true, force: true }).catch((error: unknown) =>
+    removeDir(deps.dir).catch((error: unknown) =>
       deps.log?.(
         `pyxis: downloads folder not cleared (${(error as { code?: string } | null)?.code ?? "unknown"})`,
       ),
@@ -347,7 +351,7 @@ export function updateInstaller(deps: {
     if (!sha256) throw new InstallError("no-checksum");
 
     await cleared;
-    await rm(deps.dir, { recursive: true, force: true });
+    await removeDir(deps.dir);
     await mkdir(deps.dir, { recursive: true });
     const idle = new AbortController();
     let timer = setTimeout(() => idle.abort(), IDLE_TIMEOUT);

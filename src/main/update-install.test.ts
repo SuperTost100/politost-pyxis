@@ -698,8 +698,6 @@ it("does not quit for a Windows update whose installer file is gone", async () =
 
 it("ends a download as failed when the downloads folder cannot be cleared, with no unhandled rejection", async () => {
   const root = temp();
-  // A folder under a file cannot be removed or made on any platform: rm reports ENOTDIR.
-  writeFileSync(join(root, "not-a-folder"), "");
   const name = "PoliTost.Pyxis.Setup.0.3.0.exe";
   const bytes = new Uint8Array(300).fill(9);
   const { repo, fetcher } = fakeGithub({
@@ -714,7 +712,7 @@ it("ends a download as failed when the downloads folder cannot be cleared, with 
     const instance = updateInstaller({
       repository: repo,
       current: "0.2.3",
-      dir: join(root, "not-a-folder", "updates"),
+      dir: join(root, "updates"),
       target: { platform: "win32", arch: "x64" },
       fetch: fetcher as typeof fetch,
       emit: () => {},
@@ -724,6 +722,12 @@ it("ends a download as failed when the downloads folder cannot be cleared, with 
       relaunch: () => {},
       quit: () => {},
       log: (message) => logs.push(message),
+      // What Windows does when a scan or an open file holds the folder.
+      removeDir: async () => {
+        throw Object.assign(new Error("resource busy or locked"), {
+          code: "EBUSY",
+        });
+      },
     });
     await instance.start();
     expect(instance.state()).toEqual({ state: "failed", error: "disk" });
@@ -731,6 +735,7 @@ it("ends a download as failed when the downloads folder cannot be cleared, with 
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(rejections).toEqual([]);
     expect(logs.length).toBeGreaterThan(0);
+    expect(logs.every((message) => message.includes("EBUSY"))).toBe(true);
   } finally {
     process.off("unhandledRejection", onRejection);
   }
