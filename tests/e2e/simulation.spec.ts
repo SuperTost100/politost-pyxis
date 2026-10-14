@@ -134,6 +134,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       await page.getByRole("button", { name: "Chiedi", exact: true }).count(),
     ).toBe(0);
     expect(await page.getByText("DOMANDA DI PRATICA").count()).toBe(0);
+    const openedAt = Date.now();
     let run = (await page.evaluate(
       (planId) => window.pyxis.invoke("study.simulationOpen", { planId }),
       plan.planId,
@@ -180,12 +181,17 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await expect(
       page.getByRole("textbox", { name: "La tua risposta" }),
     ).toHaveText(picks[run.questions[0]!.id]!);
+    const reopenedAt = Date.now();
     run = (await page.evaluate(
       (planId) => window.pyxis.invoke("study.simulationOpen", { planId }),
       plan.planId,
     )) as typeof run;
+    // The timer kept running while Pyxis was closed, by the time that passed and no more. A slow runner can take well
+    // over 20 s for the restart, so compare with the clock rather than a fixed allowance.
     expect(run.leftMs).toBeLessThan(before);
-    expect(run.leftMs).toBeGreaterThan(before - 20000);
+    const elapsed = Date.now() - openedAt;
+    expect(run.leftMs).toBeGreaterThanOrEqual(before - elapsed - 2000);
+    expect(run.leftMs).toBeLessThanOrEqual(before - (reopenedAt - openedAt) + 2000);
     for (const [language, theme, width] of [
       ["it", "dark", 1280],
       ["it", "light", 960],
