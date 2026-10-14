@@ -1,8 +1,26 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron, expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+// Waits until antd's open and close animations are done, so a click can't land on a dialog or popover still moving in.
+async function settled(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter(
+              (animation) =>
+                animation.playState === "running" &&
+                animation.effect?.getTiming().iterations !== Infinity,
+            ).length,
+      ),
+    )
+    .toBe(0);
+}
 
 test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by keyboard, remove", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-subject-check-"));
@@ -21,9 +39,12 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     await page.evaluate(() => { window.location.hash = "#/settings/subjects"; });
     await expect(page).toHaveURL(/#\/exams$/);
     await page.getByRole("button", { name: "Gestisci materie" }).click();
+    await settled(page);
     for (const name of ["Fisica", "Analisi"]) {
       await page.getByRole("textbox", { name: "Nuova materia" }).fill(name);
       await page.getByRole("button", { name: "Aggiungi", exact: true }).click();
+      // A failed save shows a notice and keeps the text; say so instead of only timing out on the field.
+      await expect(page.getByText("Non è stato possibile salvare le materie.", { exact: false })).toHaveCount(0);
       await expect(page.getByRole("textbox", { name: "Nuova materia" })).toHaveValue("");
     }
     // Renaming keeps the row and refuses a name already in use.
@@ -67,6 +88,7 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     }
     expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
     await page.getByRole("button", { name: "Rimuovi Analisi", exact: true }).click();
+    await settled(page);
     await page.getByRole("button", { name: "Rimuovi", exact: true }).last().click();
     await expect(page.getByRole("button", { name: "Riordina Analisi" })).not.toBeVisible();
     await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("subjects.list", {})) as Array<{ name: string }>).map((row) => row.name)).toEqual(["Fisica"]);
