@@ -367,3 +367,36 @@ test("quitting during an automatic backup stops it and leaves no Pyxis process b
     removeTestFolder(root);
   }
 });
+
+test("a check that finds core still starting waits for it instead of failing", async () => {
+  test.setTimeout(60_000);
+  const root = mkdtempSync(join(tmpdir(), "pyxis-auto-backup-start-"));
+  const userData = join(root, "userData");
+  const documents = join(root, "Documents");
+  mkdirSync(join(userData, "workspace"), { recursive: true });
+  mkdirSync(documents);
+  // Core has created pyxis.db but not its tables yet, and stays there for 4 s, past the first check after 1 s.
+  writeFileSync(join(userData, "workspace", "pyxis.db"), "");
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launch({
+      PYXIS_USER_DATA: userData,
+      PYXIS_E2E_DOCUMENTS: documents,
+      PYXIS_E2E_CORE_DELAY: "4000",
+    });
+    const page = await app.firstWindow();
+    await expect
+      .poll(() => backupsIn(join(documents, "Pyxis backups")), {
+        timeout: 30_000,
+      })
+      .toHaveLength(1);
+    expect(
+      (await page.evaluate(() => window.pyxis.autoBackups.status())).notice,
+    ).toBeNull();
+    await quitPyxis(app);
+    app = undefined;
+  } finally {
+    await closeAfterFailure(app);
+    removeTestFolder(root);
+  }
+});

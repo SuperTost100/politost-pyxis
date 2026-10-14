@@ -78,7 +78,6 @@ export async function quitPyxis(app: ElectronApplication, limit = 10_000) {
   const tree = await processTree(app);
   await app.close();
   const closed = Date.now();
-  const atClose = tree.filter((proc) => running(proc.pid)).map(describe);
   let left = tree;
   for (;;) {
     left = left.filter((proc) => running(proc.pid));
@@ -89,7 +88,4 @@ export async function quitPyxis(app: ElectronApplication, limit = 10_000) {
     throw new Error(
       `Pyxis processes still running ${limit / 1000} s after quitting: ${left.map(describe).join(", ")}`,
     );
-  console.log(
-    `[exit-trace] ${tree.length} processes; running when app.close() returned: ${atClose.join(", ") || "none"}; all gone after ${Date.now() - closed} ms`,
-  );
 }

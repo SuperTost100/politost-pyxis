@@ -295,7 +295,12 @@ function setUpAutoBackups(): void {
       join(documents ?? app.getPath("documents"), "Pyxis backups"),
     workspace: () => workspacePath,
     userData: app.getPath("userData"),
-    busy: () => workspaceBusy,
+    // Until core reports ready, pyxis.db can exist without its tables; a copy then would fail and wait an hour.
+    busy: () =>
+      workspaceBusy ||
+      !coreChild ||
+      keysReadyFor !== coreChild ||
+      exitedCores.has(coreChild),
     start: (zip, waitForJobs) =>
       startLiveBackupWorker(
         join(import.meta.dirname, "archive-worker.js"),
