@@ -17,6 +17,7 @@ import {
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
+import { automaticEffort, studentEffort } from "@shared/effort";
 import { engineProviders as providers, type RequestOutput } from "@shared/ipc";
 import {
   EngineNoticeModal,
@@ -241,6 +242,8 @@ export function EnginesPanel() {
     if (!row || row.acknowledged) action();
     else setNotice({ engines: [row], then: action });
   }
+  const levelLabel = (id: string) =>
+    t(`engines.effortLevel.${id}`, { defaultValue: id });
   const engine = overview.data?.find((row) => row.id === drawer);
   const models = modelsByProvider[drawer ?? ""] ?? [];
   const model = models.find((row) => row.id === selectedModel);
@@ -315,6 +318,12 @@ export function EnginesPanel() {
     },
     onSuccess: refresh,
   });
+  // The student's reasoning effort for one task. No effort returns the task to its automatic level.
+  const setEffortFor = useMutation({
+    mutationFn: ({ feature, effort }: { feature: Feature; effort?: string }) =>
+      invoke("engines.setEffort", { feature, effort }),
+    onSuccess: refresh,
+  });
   // Returns one feature, or all of them, to Pyxis's own choice.
   const automatic = useMutation({
     mutationFn: (feature?: Feature) =>
@@ -366,11 +375,7 @@ export function EnginesPanel() {
           );
     const chosen = selection?.model ?? modelsByProvider[row.id]?.[0]?.id ?? "";
     setSelectedModel(chosen);
-    setEffort(
-      selection?.effort ??
-        modelsByProvider[row.id]?.find((model) => model.id === chosen)
-          ?.defaultEffort,
-    );
+    setEffort(studentEffort(selection));
     setFast(selection?.fast ?? false);
     setAdding(false);
     setDrawer(row.id);
@@ -398,7 +403,7 @@ export function EnginesPanel() {
         test.mutate({
           provider: row.id,
           model: selection?.model,
-          effort: selection?.effort,
+          effort: studentEffort(selection),
           fast: selection?.fast,
         }),
       );
@@ -425,6 +430,10 @@ export function EnginesPanel() {
   const pinnedCount = featureNames.filter(
     (feature) => features.data?.[feature] && !features.data[feature]!.auto,
   ).length;
+  // Returning to automatic also undoes efforts the student picked on tasks Pyxis chose the model for.
+  const customised =
+    pinnedCount > 0 ||
+    featureNames.some((feature) => !!features.data?.[feature]?.effortChoice);
   const readyRows = (overview.data ?? []).filter(
     (row) => row.installed && row.loggedIn && !row.disabled,
   );
@@ -635,25 +644,44 @@ export function EnginesPanel() {
             <h2 className="title-3">{t("engines.perFeature")}</h2>
             <Button
               shape="round"
-              disabled={automatic.isPending || pinnedCount === 0}
+              disabled={automatic.isPending || !customised}
               onClick={() => automatic.mutate(undefined)}
             >
               {t("engines.backToAuto")}
             </Button>
           </div>
           <div className="engines-feature-table">
+            <div className="engines-feature-head small" aria-hidden="true">
+              <span>{t("engines.taskHeading")}</span>
+              <span>{t("engines.model")}</span>
+              <span>{t("engines.effort")}</span>
+            </div>
             {featureNames.map((feature) => {
               const selection = features.data?.[feature];
               const isAuto = !selection || selection.auto === true;
               const value = selection
                 ? JSON.stringify([selection.provider, selection.model])
                 : "";
+              const row = overview.data?.find(
+                (item) => item.id === selection?.provider,
+              );
+              const listed = (
+                modelsByProvider[selection?.provider ?? ""]?.find(
+                  (item) => item.id === selection?.model,
+                )?.efforts ?? []
+              ).filter(() => row?.capabilities.effort);
+              const picked = studentEffort(selection);
+              const pickedListed = listed.some((option) => option.id === picked);
+              const taskLevel = automaticEffort(
+                feature,
+                listed.map((option) => option.id),
+              );
               return (
                 <div className="engines-feature-row" key={feature}>
                   <label htmlFor={`engine-${feature}`}>
                     {t(`engines.feature.${feature}`)}
                   </label>
-                  <div>
+                  <div className="engines-feature-model">
                     <Select
                       id={`engine-${feature}`}
                       aria-label={t(`engines.feature.${feature}`)}
@@ -675,14 +703,22 @@ export function EnginesPanel() {
                           : []),
                         ...choices,
                       ]}
-                      onChange={(next) =>
-                        next === AUTO
-                          ? automatic.mutate(feature)
-                          : withNotice(
-                              (JSON.parse(next) as [string, string])[0],
-                              () => configure.mutate({ feature, value: next }),
-                            )
-                      }
+                      onChange={(next) => {
+                        if (next === AUTO) return automatic.mutate(feature);
+                        const [provider] = JSON.parse(next) as [string, string];
+                        withNotice(provider, () =>
+                          configure.mutate({
+                            feature,
+                            value: next,
+                            // The pick travels with the task and applies wherever the new model lists it.
+                            effort: overview.data?.find(
+                              (item) => item.id === provider,
+                            )?.capabilities.effort
+                              ? picked
+                              : undefined,
+                          }),
+                        );
+                      }}
                     />
                     {isAuto && selection ? (
                       <p className="small engines-auto-model">
@@ -696,14 +732,66 @@ export function EnginesPanel() {
                       </p>
                     ) : null}
                   </div>
+                  <div className="engines-feature-effort">
+                    <span className="small engines-effort-caption">
+                      {t("engines.effort")}
+                    </span>
+                    <Select
+                      id={`engine-effort-${feature}`}
+                      aria-label={`${t(`engines.feature.${feature}`)}: ${t("engines.effort")}`}
+                      disabled={
+                        !listed.length ||
+                        setEffortFor.isPending ||
+                        configure.isPending ||
+                        automatic.isPending
+                      }
+                      value={pickedListed ? picked : AUTO}
+                      options={
+                        listed.length
+                          ? [
+                              {
+                                value: AUTO,
+                                label: taskLevel
+                                  ? t("engines.effortAuto", {
+                                      level: levelLabel(taskLevel),
+                                    })
+                                  : t("engines.automatic"),
+                              },
+                              ...listed.map((option) => ({
+                                value: option.id,
+                                label: levelLabel(option.id),
+                              })),
+                            ]
+                          : [{ value: AUTO, label: t("engines.effortNone") }]
+                      }
+                      onChange={(next) =>
+                        setEffortFor.mutate({
+                          feature,
+                          effort: next === AUTO ? undefined : next,
+                        })
+                      }
+                    />
+                    {picked && listed.length && !pickedListed ? (
+                      <p className="small engines-warning">
+                        {t("engines.effortFellBack", {
+                          level: levelLabel(picked),
+                        })}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               );
             })}
           </div>
           <p className="small engines-hint">{t("engines.modelAdvice")}</p>
-          {configure.error || automatic.error ? (
+          <p className="small engines-hint">{t("engines.effortAdvice")}</p>
+          {configure.error || automatic.error || setEffortFor.error ? (
             <Notice tone="danger">
-              {t(messageKey(configure.error ?? automatic.error))}
+              {t(
+                messageKey(
+                  configure.error ?? automatic.error ?? setEffortFor.error,
+                ),
+              )}
             </Notice>
           ) : null}
           <details className="engines-diagnostics">
@@ -773,8 +861,13 @@ export function EnginesPanel() {
                 }))}
                 onChange={(value) => {
                   setSelectedModel(value);
+                  // Keep the pick only where the new model offers it; otherwise the task's own level applies.
                   setEffort(
-                    models.find((model) => model.id === value)?.defaultEffort,
+                    models
+                      .find((model) => model.id === value)
+                      ?.efforts.some((option) => option.id === effort)
+                      ? effort
+                      : undefined,
                   );
                   setFast(false);
                 }}
@@ -793,7 +886,7 @@ export function EnginesPanel() {
                   placeholder={t("engines.effortDefault")}
                   options={model.efforts.map((option) => ({
                     value: option.id,
-                    label: option.label,
+                    label: levelLabel(option.id),
                   }))}
                   onChange={setEffort}
                 />

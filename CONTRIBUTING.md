@@ -25,6 +25,8 @@ Prompts live alongside their feature with template and version constants. Change
 
 Use the existing design tokens and components. Keep English and Italian copy in sync. Check both themes, keyboard operation and the nearby layout before finishing a UI change.
 
+A package goes in `dependencies` only when main, core, a worker or the preload loads it from `node_modules` at run time; electron-builder packs exactly that tree. A package that Vite bundles into `out/` (the renderer's libraries) goes in `devDependencies` and in the `bundledByVite` list in `package.json`, so its license notice still ships. Check which packages the built main files import with `grep -rhoE "from ?\"[^./][^\"]*\"" out/main`. [Release checks](docs/releasing.md#installer-size) lists what else the packager removes.
+
 Commit messages should name the area and the change, for example `fix: preserve quiz answers on retry`. Keep fixes reviewable and explain a deliberate limitation. Do not commit API keys, user workspaces, `.tmp/`, `.reviews/`, `out/` or `dist/`. Screenshots committed under `docs/screenshots/` must use fixture material.
 
 The workflow in `.github/workflows/ci.yml` checks and packages macOS arm64, macOS x64, Windows x64 and Linux x64 on pull requests and pushes to `main`; other branches can start it manually. Tests, route audits and packaging run as parallel jobs. Pull requests skip the macOS x64 route audit, which runs on `main`. Source tests, route audits and packaged-app checks must pass before release. See [release checklist](docs/releasing.md) for checksums, provenance and installed-app checks.

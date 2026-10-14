@@ -148,6 +148,13 @@ for (const name of Object.keys(app.dependencies ?? {}).sort())
   await visit(name, root, !!app.optionalDependencies?.[name]);
 for (const name of Object.keys(app.optionalDependencies ?? {}).sort())
   await visit(name, root, true);
+// Packages whose code Vite bundles into out/ (the renderer's libraries and the content-core parser) are development
+// dependencies, so the installer carries no node_modules copy of them. Their notices still ship.
+for (const name of [...(app.bundledByVite ?? [])].sort()) {
+  if (!app.devDependencies?.[name])
+    throw new Error(`bundledByVite package is not a devDependency: ${name}`);
+  await visit(name, root);
+}
 
 for (const [name, file] of [
   ["Figtree", "Figtree-OFL.txt"],

@@ -1,7 +1,7 @@
 /**
  * FSRS scheduler (`ts-fsrs`, default parameters, retention 0.9, fuzz off).
  *
- * Button map (the labels are Impossible, Hard, Easy, Very easy):
+ * Button map (the labels are Again, Hard, Good, Easy):
  * again -> Again, hard -> Hard, good -> Good, easy -> Easy.
  *
  * `intervalDays` is FSRS `scheduled_days`. `ease` keeps the last difficulty
