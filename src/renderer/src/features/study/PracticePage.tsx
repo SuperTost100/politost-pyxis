@@ -32,15 +32,23 @@ function SelfRating({
   const { t } = useTranslation();
   const client = useQueryClient();
   const [rating, setRating] = useState<Rating | null>(initial);
+  // The saved rating can change under the page (a refetch, another visit with cached data): follow it.
+  const [seen, setSeen] = useState(initial);
+  if (initial !== seen) {
+    setSeen(initial);
+    setRating(initial);
+  }
   const save = useMutation({
     mutationFn: (next: Rating) =>
       invoke("study.rateExercise", { planId, topicId, exerciseId, rating: next }),
     onSuccess: () =>
-      Promise.all(
-        ["series", "plan", "recommend"].map((key) =>
+      Promise.all([
+        ...["series", "plan", "recommend"].map((key) =>
           client.invalidateQueries({ queryKey: [key, planId] }),
         ),
-      ),
+        // The exercise list holds each rating; left stale it would show the old one on the next visit.
+        client.invalidateQueries({ queryKey: ["exercises", planId, topicId] }),
+      ]),
   });
   const choose = (next: Rating) => {
     if (next === rating) return;

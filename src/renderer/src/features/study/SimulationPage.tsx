@@ -160,6 +160,8 @@ export function SimulationPage() {
         .map((r) => `${r.provider} · ${r.model}`) ?? [],
     ),
   ].join(", ");
+  // A plan file carries that the exam was handed in, not the answers or the grade.
+  const noAnswers = Boolean(run?.submitted) && run?.score === undefined && !run?.results?.length;
   async function submit() {
     if (!run || busy) return;
     setConfirm(false);
@@ -400,64 +402,72 @@ export function SimulationPage() {
               <span className="small">{t("simulation.outOf100")}</span>
             </div>
           )}
-          <Notice tone="info">
-            {provenance
-              ? t("simulation.modelGrade", { model: provenance })
-              : t("simulation.localGrade")}
-          </Notice>
-          <h2 className="title-2">{t("simulation.byTopic")}</h2>
-          <ul className="px-sim-topics">
-            {run.topics.map((topic) => (
-              <li key={topic.id}>
-                <span className="body-strong">{topic.title}</span>
-                <MasteryBar
-                  value={Math.round(topic.score * 100)}
-                  label={topic.title}
-                />
-              </li>
-            ))}
-          </ul>
-          {run.questions.map((q, i) => {
-            const result = run.results?.find((r) => r.id === q.id);
-            return (
-              <details className="px-sim-feedback" key={q.id}>
-                <summary className="body-strong">
-                  {t("simulation.question", { count: i + 1 })}
-                  {result && (
-                    <span className="code">
-                      {Math.round(result.score * 100)} / 100
-                    </span>
-                  )}
-                </summary>
-                <MarkdownView>{q.stem}</MarkdownView>
-                <h3 className="body-strong">{t("quiz.yourAnswer")}</h3>
-                <MarkdownView>
-                  {shown[q.id] || t("simulation.blank")}
-                </MarkdownView>
-                {result && (
-                  <>
-                    <MarkdownView>{result.feedback}</MarkdownView>
-                    {result.missed.length > 0 && (
+          {noAnswers ? (
+            <Notice tone="info">{t("quiz.answersNotShared")}</Notice>
+          ) : (
+            <Notice tone="info">
+              {provenance
+                ? t("simulation.modelGrade", { model: provenance })
+                : t("simulation.localGrade")}
+            </Notice>
+          )}
+          {noAnswers ? null : (
+            <>
+              <h2 className="title-2">{t("simulation.byTopic")}</h2>
+              <ul className="px-sim-topics">
+                {run.topics.map((topic) => (
+                  <li key={topic.id}>
+                    <span className="body-strong">{topic.title}</span>
+                    <MasteryBar
+                      value={Math.round(topic.score * 100)}
+                      label={topic.title}
+                    />
+                  </li>
+                ))}
+              </ul>
+              {run.questions.map((q, i) => {
+                const result = run.results?.find((r) => r.id === q.id);
+                return (
+                  <details className="px-sim-feedback" key={q.id}>
+                    <summary className="body-strong">
+                      {t("simulation.question", { count: i + 1 })}
+                      {result && (
+                        <span className="code">
+                          {Math.round(result.score * 100)} / 100
+                        </span>
+                      )}
+                    </summary>
+                    <MarkdownView>{q.stem}</MarkdownView>
+                    <h3 className="body-strong">{t("quiz.yourAnswer")}</h3>
+                    <MarkdownView>
+                      {shown[q.id] || t("simulation.blank")}
+                    </MarkdownView>
+                    {result && (
                       <>
-                        <h3 className="body-strong">
-                          {t("simulation.missed")}
-                        </h3>
-                        <ul>
-                          {result.missed.map((text, j) => (
-                            <li key={j}>
-                              <MarkdownView variant="body">{text}</MarkdownView>
-                            </li>
-                          ))}
-                        </ul>
+                        <MarkdownView>{result.feedback}</MarkdownView>
+                        {result.missed.length > 0 && (
+                          <>
+                            <h3 className="body-strong">
+                              {t("simulation.missed")}
+                            </h3>
+                            <ul>
+                              {result.missed.map((text, j) => (
+                                <li key={j}>
+                                  <MarkdownView variant="body">{text}</MarkdownView>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                        <h3 className="body-strong">{t("simulation.reference")}</h3>
+                        <MarkdownView>{result.expected}</MarkdownView>
                       </>
                     )}
-                    <h3 className="body-strong">{t("simulation.reference")}</h3>
-                    <MarkdownView>{result.expected}</MarkdownView>
-                  </>
-                )}
-              </details>
-            );
-          })}
+                  </details>
+                );
+              })}
+            </>
+          )}
         </section>
       ) : run.grading ? (
         <section className="px-sim-grading">

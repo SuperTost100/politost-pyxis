@@ -12,6 +12,7 @@ import { MarkdownView } from "./MarkdownView";
 import { QuizOption } from "./QuizOption";
 import "./SmartText.css";
 
+/** Saves a pick. A rejection with `dropped: true` means the pick was discarded on purpose: the check reverts without an error. */
 export type SmartAnswer = (questionId: string, pick: number) => Promise<unknown>;
 
 type Answers = {
@@ -55,9 +56,9 @@ export function SmartText({
       if (!onAnswer || questionId in answers || questionId in local) return;
       setFailed(null);
       setLocal((current) => ({ ...current, [questionId]: pick }));
-      onAnswer(questionId, pick).catch(() => {
+      onAnswer(questionId, pick).catch((error: unknown) => {
         setLocal(({ [questionId]: _dropped, ...rest }) => rest);
-        setFailed(questionId);
+        if (!(error as { dropped?: unknown } | null)?.dropped) setFailed(questionId);
       });
     },
   };

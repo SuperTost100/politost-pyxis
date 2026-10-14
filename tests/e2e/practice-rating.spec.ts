@@ -179,6 +179,20 @@ test("practice: rate two exercises, change one, finish, and mastery moves by two
     await expect(missed(power)).toHaveAttribute("aria-pressed", "false");
     await expect.poll(ratings).toEqual(["got", "got"]);
 
+    // Leaving and coming back inside the app shows the saved choice, not what the page loaded with.
+    await page.evaluate(
+      ({ planId, topicId }) => {
+        location.hash = `/plans/${planId}`;
+        setTimeout(() => {
+          location.hash = `/plans/${planId}/practice/${topicId}`;
+        }, 300);
+      },
+      { planId, topicId },
+    );
+    await expect(got(work)).toHaveAttribute("aria-pressed", "true");
+    await expect(got(power)).toHaveAttribute("aria-pressed", "true");
+    await expect(missed(power)).toHaveAttribute("aria-pressed", "false");
+
     // The choice survives a reload, and the page passes axe with ratings selected.
     await page.reload();
     await expect(got(work)).toHaveAttribute("aria-pressed", "true");

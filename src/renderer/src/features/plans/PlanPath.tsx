@@ -8,6 +8,7 @@ import { Icon, type IconName } from "../../components/Icon";
 import { MasteryBar } from "../../components/MasteryBar";
 import { PathNode } from "../../components/PathNode";
 import { Tag } from "../../components/Tag";
+import { reopenPath } from "./reopen";
 import "./PlanPath.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -101,23 +102,13 @@ export function PlanPath({
   }
   /**
    * Opens a finished step to look at again without recording anything: the lesson or introduction to reread, a quiz,
-   * drill, diagnostic or simulation read-only with its answers (Redo starts a new one), exercises without "Mark as done".
+   * drill, diagnostic or simulation read-only with its answers (Redo starts a new one), exercises without "Mark as done",
+   * cards without generating more or recording a step unless one is rated.
    * A step without its attempt opens the topic's lesson, or the activity's own page.
    */
   function reopen(step: Step) {
-    const base = `/plans/${planId}`;
-    const topic = step.topicId;
-    const attempt = step.attemptId ? `?attempt=${encodeURIComponent(step.attemptId)}` : "";
-    if (step.activity === "intro") navigate(`${base}/intro`);
-    else if (step.activity === "diagnostic") navigate(`${base}/diagnostic${attempt}`);
-    else if (step.activity === "simulation")
-      navigate(step.attemptId ? `${base}/exam/${step.attemptId}` : `${base}/simulation`);
-    else if (!topic) return;
-    else if (step.activity === "practice") navigate(`${base}/practice/${topic}?review=1`);
-    else if (step.activity === "cards") navigate(`${base}/cards/${topic}`);
-    else if ((step.activity === "quiz" || step.activity === "gaps") && attempt)
-      navigate(`${base}/quiz/${topic}${attempt}`);
-    else navigate(`${base}/lesson/${topic}`);
+    const to = reopenPath(planId, step);
+    if (to) navigate(to);
   }
   /** Opens the chooser on one topic, from a planned box. */
   function choose(topic: string | null) {

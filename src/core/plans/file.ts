@@ -125,6 +125,8 @@ export function exportPlan(
   }>;
   const education = planEducation(db, planId);
   const content = exportContent(db, planId, index, options?.progress === true);
+  // exportGapState keeps the order of `items`, so these positions hold in the finished file.
+  const itemIndex = new Map((content.items ?? []).map((item, i) => [item.id, i]));
   const referencedSources = [
     ...new Set([
       ...(content.passages ?? []).flatMap((p) =>
@@ -235,7 +237,7 @@ export function exportPlan(
           progress: (
             db
               .prepare(
-                `SELECT kind, topic_id, payload_json, created_at FROM learning_events
+                `SELECT kind, topic_id, item_id, payload_json, created_at FROM learning_events
                  WHERE plan_id = ? ORDER BY created_at, rowid`,
               )
               .all(planId) as Array<{
@@ -249,6 +251,7 @@ export function exportPlan(
                 | "gap_opened"
                 | "gap_closed";
               topic_id: string | null;
+              item_id: string | null;
               payload_json: string;
               created_at: number;
             }>
@@ -258,6 +261,10 @@ export function exportPlan(
               event.topic_id == null
                 ? null
                 : (index.get(event.topic_id) ?? null),
+            // The item an answer belongs to, by position in `items`; an item the file leaves out is not named.
+            ...(event.item_id != null && itemIndex.has(event.item_id)
+              ? { item: itemIndex.get(event.item_id)! }
+              : {}),
             payload: exportedPayload(
               event.kind,
               JSON.parse(event.payload_json) as unknown,
@@ -1287,10 +1294,14 @@ function importPortablePlan(
           ...(gap.mergedInto != null ? { into: ref(gap.mergedInto) } : {}),
         };
       }
-      return [{ ...e, topicId: topicRef(topicIds, e.topic), payload }];
+      return [{ ...e, topicId: topicRef(topicIds, e.topic), itemId: null, payload }];
     }
     payload = remap(importedPayload(e.kind, payload, nodeIds));
-    return [{ ...e, topicId: topicRef(topicIds, e.topic), payload }];
+    const itemId = e.item == null ? null : (itemIds[e.item] ?? null);
+    // Only a lesson or introduction has quick checks to answer.
+    if (e.item != null && !["lesson", "intro"].includes(file.items?.[e.item]?.kind ?? ""))
+      throw new Error("plan-file");
+    return [{ ...e, topicId: topicRef(topicIds, e.topic), itemId, payload }];
   });
   // A file with gap rows carries exactly one opened event per gap and one closed event per closed gap.
   for (const g of gapRows)
@@ -1558,13 +1569,14 @@ function importPortablePlan(
     progress.forEach((event) =>
       db
         .prepare(
-          "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES(?,?,?,?,?,?)",
+          "INSERT INTO learning_events(id,kind,plan_id,topic_id,item_id,payload_json,created_at) VALUES(?,?,?,?,?,?,?)",
         )
         .run(
           uuidv7(now + sequence++),
           event.kind,
           planId,
           event.topicId,
+          event.itemId,
           JSON.stringify(event.payload),
           event.at,
         ),

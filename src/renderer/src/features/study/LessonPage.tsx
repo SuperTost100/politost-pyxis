@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import {
   finalRecap,
@@ -57,7 +57,12 @@ export function LessonPage() {
   // Picks on checks the stream has closed; they wait here until the lesson is saved.
   const [queued] = useState(createAnswerQueue);
   const regenerate = useRef(false);
-  const key = ["lesson", planId, topicId, chosen ?? null];
+  // Opened from a finished step: that saved lesson is shown as it was read, until the student picks a level or
+  // rewrites it. Without it (or if it is gone) the topic's lesson opens as usual.
+  const [searchParams] = useSearchParams();
+  const [reopened] = useState(() => searchParams.get("item") ?? undefined);
+  const reading = useRef(true);
+  const key = ["lesson", planId, topicId, chosen ?? null, reopened ?? null];
   const lesson = useQuery({
     queryKey: key,
     enabled: Boolean(planId && topicId),
@@ -68,6 +73,7 @@ export function LessonPage() {
       queued.drop();
       const again = regenerate.current;
       regenerate.current = false;
+      if (again || chosen) reading.current = false;
       const handle = window.pyxis.stream(
         "study.lesson",
         {
@@ -75,6 +81,7 @@ export function LessonPage() {
           topicId,
           ...(chosen ? { wording: chosen } : {}),
           ...(again ? { regenerate: true } : {}),
+          ...(reopened && reading.current ? { itemId: reopened } : {}),
         },
         (event) => {
           const data = event as { text?: string; passageIds?: string[] };
@@ -171,7 +178,9 @@ export function LessonPage() {
   }
 
   // While the lesson is written, a pick has no saved lesson to count against: the reader sees the result at once and
-  // the pick is sent when the lesson is saved. A stop, a failure or the book fallback drops it.
+  // the pick is sent when the lesson is saved. A stop, a failure or the book fallback drops it without an error: the
+  // partial lesson is not saved, and its notice says so. Until the new text starts, the old lesson on screen is not
+  // the one being written, so its checks take no pick.
   async function answer(blockId: string, pick: number) {
     if (writing) return queued.add(blockId, pick);
     if (data?.itemId) await save(data.itemId, blockId, pick);
@@ -337,7 +346,9 @@ export function LessonPage() {
         <SmartText
           streaming={writing}
           answers={data?.answers}
-          onAnswer={writing || (model && data?.itemId) ? answer : undefined}
+          onAnswer={
+            writing ? (live ? answer : undefined) : model && data?.itemId ? answer : undefined
+          }
           onCitationClick={(number) => {
             const passageId = (writing || cancelled ? livePassages : data?.passageIds)?.[
               number - 1

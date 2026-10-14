@@ -1,3 +1,11 @@
+/**
+ * Why a pick was not sent: the lesson was stopped, failed or replaced. It is not a failure to save, so the reader
+ * sees the check unanswered again without an error (`dropped` is how `SmartText` tells the two apart).
+ */
+function dropped(): Error {
+  return Object.assign(new Error("answer-dropped"), { dropped: true });
+}
+
 type Entry = {
   pick: number;
   promise: Promise<void>;
@@ -44,7 +52,7 @@ export function createAnswerQueue() {
       await Promise.all(
         take().map(([blockId, entry]) => {
           if (!accepts(blockId)) {
-            entry.reject(new Error("answer-dropped"));
+            entry.reject(dropped());
             return undefined;
           }
           return send(blockId, entry.pick).then(entry.resolve, entry.reject);
@@ -52,7 +60,7 @@ export function createAnswerQueue() {
       );
     },
     drop() {
-      for (const [, entry] of take()) entry.reject(new Error("answer-dropped"));
+      for (const [, entry] of take()) entry.reject(dropped());
     },
   };
 }

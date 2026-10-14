@@ -125,17 +125,34 @@ export function loadLesson(
       `SELECT id, body_json, engine_provider, grounding FROM items
        WHERE plan_id = ? AND kind = ? AND json_extract(body_json, '$.cacheKey') = ?`,
     )
-    .get(input.planId, input.kind, input.key) as
-    | {
-        id: string;
-        body_json: string;
-        engine_provider: string | null;
-        grounding: string | null;
-      }
-    | undefined;
+    .get(input.planId, input.kind, input.key) as LessonRow | undefined;
+  return row ? loaded(db, row) : null;
+}
 
+/** A saved lesson by its item, for reading it again as it was; the topic must be the one it was written for. */
+export function loadLessonById(
+  db: Database.Database,
+  input: { planId: string; topicId: string; itemId: string },
+): (LoadedLesson & { key: string | null }) | null {
+  const row = db
+    .prepare(
+      `SELECT id, body_json, engine_provider, grounding FROM items
+       WHERE id = ? AND plan_id = ? AND topic_id = ? AND kind = 'lesson'`,
+    )
+    .get(input.itemId, input.planId, input.topicId) as LessonRow | undefined;
   if (!row) return null;
+  const key = (JSON.parse(row.body_json) as { cacheKey?: string }).cacheKey ?? null;
+  return { ...loaded(db, row), key };
+}
 
+type LessonRow = {
+  id: string;
+  body_json: string;
+  engine_provider: string | null;
+  grounding: string | null;
+};
+
+function loaded(db: Database.Database, row: LessonRow): LoadedLesson {
   const body = JSON.parse(row.body_json) as {
     cacheKey: string;
     markdown: string;

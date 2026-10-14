@@ -472,6 +472,7 @@
     }
   },
   "cards": {
+    "reviewing": "Hai già fatto queste schede. Rivederle non aggiunge un passo al percorso, a meno che tu non valuti una scheda.",
     "rateFailed": "Non è stato possibile valutare la scheda. Riprova.",
     "actionFailed": "Non ha funzionato. Riprova.",
     "spaceKey": "Spazio",
@@ -872,7 +873,8 @@
     "continue": "Continua",
     "reviewMistakes": "Ripassa gli errori",
     "redo": "Rifai",
-    "answeredOn": "Le tue risposte del {{date}}"
+    "answeredOn": "Le tue risposte del {{date}}",
+    "answersNotShared": "Le risposte di questo tentativo non erano incluse nel piano condiviso."
   },
   "practice": {
     "title": "Esercizi del libro",

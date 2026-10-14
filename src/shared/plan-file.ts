@@ -274,6 +274,11 @@ export const planFileSchema = z.object({
           "gap_closed",
         ]),
         topic: index.nullable(),
+        /**
+         * The lesson or introduction the event belongs to (a quick check answer), as an index into `items`. Without
+         * it an imported lesson shows every check unanswered. Files from before it existed stay valid.
+         */
+        item: index.nullable().optional(),
         payload: json,
         at: z.number(),
       }),

@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { generate } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
-import { cacheKey, loadLesson, saveLesson } from "./lesson";
+import { cacheKey, loadLesson, loadLessonById, saveLesson } from "./lesson";
 import { IpcError } from "../../shared/ipc";
 import { replaceSection, smartSections } from "../../shared/smart-text";
 
@@ -236,6 +236,44 @@ export function readLesson(
         markdown: bookMarkdown(context.all),
         passageIds: context.all.map((row) => row.id),
       };
+}
+
+/**
+ * The lesson a finished step read, exactly as it was saved, without generating or writing anything. A student's
+ * profile wording or level, the language or the material can have changed since, so the lesson that opening the topic
+ * would give is another one; `earlier` is set then, because a part of this one cannot be rewritten (that works on the
+ * current lesson). Null when the item is gone or belongs to another topic: the caller then opens the topic as usual.
+ */
+export function readLessonItem(
+  db: Database.Database,
+  planId: string,
+  topicId: string,
+  itemId: string,
+): LessonResult | null {
+  const lesson = loadLessonById(db, { planId, topicId, itemId });
+  if (!lesson) return null;
+  const wording = wordings.find(
+    (item) => item === (lesson.key ? promptVariant(lesson.key)[1] : undefined),
+  );
+  return {
+    markdown: lesson.markdown,
+    passageIds: lesson.passageIds,
+    itemId: lesson.itemId,
+    ...(wording ? { wording } : {}),
+    ...(lesson.grounding === "general" ? { general: true } : {}),
+    ...(lesson.provider ? {} : { fallback: true }),
+    ...(lesson.provider && lesson.key !== modelContext(db, planId, topicId).key ? { earlier: true } : {}),
+  };
+}
+
+/** The parts of a lesson's prompt version after the template version: complete-2, wording, level, school, course, language. */
+function promptVariant(key: string): string[] {
+  try {
+    const version = (JSON.parse(key) as { promptVersion?: unknown }).promptVersion;
+    return typeof version === "string" ? version.split("|").slice(1) : [];
+  } catch {
+    return [];
+  }
 }
 
 export type LessonResult = {
