@@ -746,7 +746,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       o && h('span', { className: 'px-opt-state' }, h(Icon, { name: o[0], size: 16, strokeWidth: 2 }), o[1]));
   }
 
-  var RATES = [['Impossibile', '1'], ['Difficile', '2'], ['Facile', '3'], ['Facilissima', '4']];
+  var RATES = [['Da rivedere', '1'], ['Difficile', '2'], ['Bene', '3'], ['Facile', '4']];
   function Flashcard(p) {
     var f = useState(!!p.flipped), flipped = f[0];
     var c = p.counters || { nuove: 12, apprendimento: 4, padroneggiate: 20 };
@@ -757,7 +757,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         h('p', { className: 'px-fc-q' }, p.front),
         flipped ? h('p', { className: 'px-fc-a' }, p.back) : h('span', { className: 'px-fc-hint' }, 'clic o spazio per girare'),
         flipped && p.source && h(CitationChip, null, p.source)),
-      flipped && h('div', { className: 'px-fc-rates' }, RATES.map(function (r) { return h('button', { key: r[1], type: 'button', className: 'px-fc-rate' }, r[0], h('kbd', null, r[1])); })));
+      flipped && h('div', { className: 'px-fc-rates' }, RATES.map(function (r) { return h('button', { key: r[1], type: 'button', className: r[1] === '3' ? 'px-fc-rate px-fc-rate-primary' : 'px-fc-rate' }, r[0]); })));
   }
 
   var ENG_ICON = { cli: 'terminal', api: 'key-round', local: 'hard-drive', remote: 'cloud' };

@@ -316,7 +316,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .fill("Displacement divided by elapsed time.");
     await page.getByRole("button", { name: "Salva", exact: true }).click();
     await page.getByRole("button", { name: /^Gira\b/ }).click();
-    await page.getByRole("button", { name: /^Facile\b/ }).click();
+    await page.getByRole("button", { name: /^Bene\b/ }).click();
     await expect
       .poll(
         async () =>

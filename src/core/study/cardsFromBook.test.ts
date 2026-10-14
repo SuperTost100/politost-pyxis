@@ -158,6 +158,21 @@ describe("generated topic cards", () => {
     expect(removed(oldStudied)).toBe(0);
   });
 
+  it("never turns an exercise into a card", async () => {
+    const db = fixture();
+    db.prepare(
+      "INSERT INTO exercises (id, prompt, answer, locator_json, created_at) VALUES ('ex', 'Determinare il dominio di f(x)=sqrt(ln(x+2))/(x-1).', 'x>-1, x!=0', ?, 1)",
+    ).run(JSON.stringify({ kind: "generated", topicId: "topic" }));
+    await studyHandlers(db, undefined, counting().run).cardsGenerate({
+      planId: "plan",
+      topicId: "topic",
+    });
+    const fronts = db.prepare("SELECT front FROM cards").all() as Array<{ front: string }>;
+    expect(fronts).toHaveLength(4);
+    expect(fronts.some((row) => /dominio/.test(row.front))).toBe(false);
+    db.close();
+  });
+
   it("never generates from a read", () => {
     const db = fixture();
     const handlers = studyHandlers(db, undefined, async () => {
@@ -224,4 +239,68 @@ it("covers every passage in successive bounded batches without a 20-passage ceil
       .get(),
   ).toEqual({ n: 24 });
   db.close();
+});
+
+describe("one fact per card", () => {
+  const good = (id: string) => ({
+    kind: "qa",
+    front: "Che cosa misura la velocità?",
+    back: "Lo spostamento per unità di tempo.",
+    passageId: id,
+  });
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `${i + 1}. passo ${i}`).join("\n");
+  const bad: Record<string, Record<string, unknown>> = {
+    "a front over 200 characters": { front: `Determinare il dominio ${"x".repeat(200)}` },
+    "a back over 300 characters": { back: "y".repeat(301) },
+    "a back with two paragraphs": { back: "Primo passo.\n\nSecondo passo." },
+    "a back with numbered steps": { back: lines(2) },
+    "a back with three lines": { back: "a\nb\nc" },
+    "a derivation in display math": { back: "Poniamo $$x+2>0$$ e poi risolviamo." },
+    "a front with a display block": { front: "Calcola $$\\int_0^1 x\\,dx$$" },
+  };
+
+  async function run(first: Record<string, unknown> | null, repeats: number) {
+    const db = fixture();
+    db.prepare("DELETE FROM topic_passages WHERE passage_id = 'p2'").run();
+    let calls = 0;
+    const outcome = await generateTopicCards(db, { planId: "plan", topicId: "topic" }, async () => {
+      calls += 1;
+      const structured = {
+        cards: [calls <= repeats && first ? { ...good("p1"), ...first } : good("p1")],
+      };
+      return { structured, text: JSON.stringify(structured), provider: "claude", model: "m", inputTokens: 1 };
+    }).then(
+      () => "ok",
+      (error: { code?: string }) => error.code ?? "failed",
+    );
+    const n = (db.prepare("SELECT COUNT(*) AS n FROM cards").get() as { n: number }).n;
+    db.close();
+    return { outcome, calls, n };
+  }
+
+  for (const [name, patch] of Object.entries(bad))
+    it(`asks again when a card has ${name}`, async () => {
+      expect(await run(patch, 1)).toEqual({ outcome: "ok", calls: 2, n: 1 });
+    });
+
+  it("fails visibly, without a silent empty topic, when every answer is rejected", async () => {
+    const result = await run(bad["a back with two paragraphs"]!, 9);
+    expect(result).toEqual({ outcome: "invalid-output", calls: 3, n: 0 });
+  });
+
+  it("accepts a short card with inline math and a cloze", async () => {
+    const db = fixture();
+    db.prepare("DELETE FROM topic_passages WHERE passage_id = 'p2'").run();
+    const structured = {
+      cards: [
+        { ...good("p1"), front: "Quanto vale $e^{i\\pi}$?", back: "$-1$" },
+        { kind: "cloze", text: "{{c1::Velocità}} è lo spostamento per unità di tempo.", extra: "Grandezza vettoriale.", passageId: "p1" },
+      ],
+    };
+    await generateTopicCards(db, { planId: "plan", topicId: "topic" }, async () => ({
+      structured, text: "", provider: "claude", model: "m", inputTokens: 1,
+    }));
+    expect(db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({ n: 2 });
+    db.close();
+  });
 });

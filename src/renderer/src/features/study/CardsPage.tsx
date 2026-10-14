@@ -14,7 +14,6 @@ import { useActiveTime } from "./activeTime";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
 import { nextLearningDue, trackLearning, type LearningCards } from "./learningCards";
 
-import { review } from "../../../../core/study/schedule";
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
 import { Notice } from "../../components/Notice";
 
@@ -450,30 +449,10 @@ export function CardsPage() {
                       shape="round"
                       type={rating === "good" ? "primary" : "default"}
                       disabled={ratingPending}
+                      aria-keyshortcuts={String(index + 1)}
                       onClick={() => void rate(rating)}
                     >
-                      {t(`cards.${rating}`)} <kbd>{index + 1}</kbd>
-                      <span className="px-card-interval">
-                        {(() => {
-                          const now = Date.now();
-                          const minutes = Math.max(
-                            1,
-                            Math.round(
-                              (review(card.state, rating, now).dueAt - now) /
-                                60000,
-                            ),
-                          );
-                          return minutes < 60
-                            ? t("cards.intervalMinutes", { count: minutes })
-                            : minutes < 1440
-                              ? t("cards.intervalHours", {
-                                  count: Math.round(minutes / 60),
-                                })
-                              : t("cards.intervalDays", {
-                                  count: Math.round(minutes / 1440),
-                                });
-                        })()}
-                      </span>
+                      {t(`cards.${rating}`)}
                     </Button>
                   ))}
                 </div>

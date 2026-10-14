@@ -27,6 +27,7 @@ import { createRunner } from "./jobs/runner";
 import { setSourceWorkerDirectory } from "./sources/worker-client";
 import { markStoppedImport } from "./sources/jobs";
 import { folderTransport } from "./sources/books";
+import { retireExerciseCards } from "./study/exerciseCards";
 
 setSourceWorkerDirectory(import.meta.dirname);
 addInstallDirsToPath();
@@ -92,6 +93,7 @@ if (!parent) {
   ): void {
     setRuntimeSender((message) => port.postMessage(message));
     const db = openDatabase(join(workspacePath, "pyxis.db"));
+    retireExerciseCards(db);
     setScratch(join(workspacePath, "scratch"));
     // Explicit recorded fixtures may use a deterministic selection in their
     // private test workspace. Normal launches require a confirmed engine.

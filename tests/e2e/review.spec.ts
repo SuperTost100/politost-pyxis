@@ -125,6 +125,15 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     const questions = total - 5;
     expect(questions).toBeGreaterThan(0);
 
+    // The rating buttons carry a label only: no key, no next review time. Bene is the primary one.
+    await page.keyboard.press("Space");
+    const labels = ["Da rivedere", "Difficile", "Bene", "Facile"];
+    for (const name of labels)
+      await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+    await expect(page.locator(".px-cards-actions").first()).toHaveText(labels.join(""));
+    await expect(page.getByRole("button", { name: "Bene", exact: true })).toHaveClass(/ant-btn-primary/);
+    await page.keyboard.press("Space");
+
     // Every rating is Again, so a recycling queue would show a card twice.
     const seen: string[] = [];
     for (let done = 0; done < 2; done += 1) {

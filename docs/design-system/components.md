@@ -206,7 +206,7 @@ A flashcard review with queue counters and the four review ratings (FC-02…FC-0
 
 **Consumer provides** `front`, `back`, `source`, `counters` (`{nuove, apprendimento, padroneggiate}`), `flipped`, and a rating handler.
 
-- Click or Space flips; keys 1–4 rate: Impossibile, Difficile, Facile, Facilissima.
+- Click or Space flips; keys 1–4 rate: Da rivedere, Difficile, Bene, Facile. The buttons show the label only, no key and no next date; Bene is the primary button.
 - Ratings appear only after the flip. The back always carries its citation.
 - Custom component.
 
