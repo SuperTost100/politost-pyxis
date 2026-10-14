@@ -148,6 +148,10 @@ const routes = [
   ["ocr-download-offline", "/settings/data"],
   ["ocr-download-cancelled", "/settings/data"],
   ["ocr-jobs-popover", "/exams"],
+  // Automatic backups in Settings > Data: on after a backup, off, and a failed backup with its fix.
+  ["backup-settings-on", "/settings/data"],
+  ["backup-settings-off", "/settings/data"],
+  ["backup-settings-failed", "/settings/data"],
   // A scan with no stored file offers Replace instead of a read that cannot run. A timed exam in progress adds Resume to every Shell page.
   ["library-scan-no-file", "/exams/library"],
   ["shell-exam-active", "/exams"],
@@ -717,8 +721,35 @@ function prepareCardBrowser(name: string) {
   });
 }
 
+/** Saves the automatic-backup state as main leaves it. Main reads the file again for every status request. */
+function prepareBackupState(name: string) {
+  const file = join(auditUserData, "backups.json");
+  const at = new Date(2026, 9, 12, 21, 5).getTime();
+  const saved = {
+    enabled: true,
+    folder: null,
+    lastSuccessAt: at,
+    lastAttemptAt: at,
+    last: { at, ok: true, size: 48_213_504 },
+    toldTooLarge: false,
+  };
+  const states: Record<string, unknown> = {
+    "backup-settings-on": saved,
+    "backup-settings-off": { ...saved, enabled: false },
+    "backup-settings-failed": {
+      ...saved,
+      folder: "/Volumes/CHIAVETTA/Pyxis",
+      lastSuccessAt: at - 3 * 24 * 60 * 60 * 1000,
+      last: { at, ok: false, reason: "folder-missing" },
+    },
+  };
+  if (name in states) writeFileSync(file, JSON.stringify(states[name]));
+  else rmSync(file, { force: true });
+}
+
 function prepareState(name: string) {
   prepareCardBrowser(name);
+  prepareBackupState(name);
   prepareUpdate(name);
   // A rating from this visit shows as chosen on the practice page; every other state starts without one.
   if (name === "practice-rated" || auditRating)
@@ -1590,6 +1621,38 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       await expect(
         page.getByRole("button", { name: /^(Riprova|Try again)$/ }),
+      ).toBeVisible();
+      break;
+    case "backup-settings-on":
+    case "backup-settings-off": {
+      const on = name === "backup-settings-on";
+      const toggle = page.getByRole("switch", {
+        name: both("Copia di sicurezza automatica", "Back up automatically"),
+      });
+      if (on) await expect(toggle).toBeChecked();
+      else await expect(toggle).not.toBeChecked();
+      await expect(
+        page.getByText(on ? /^(Una volta al giorno|Once a day)/ : /^(Spenta|Off)\./),
+      ).toBeVisible();
+      await expect(
+        page.getByText(/^(Ultima copia|Last backup): .+\.$/),
+      ).toBeVisible();
+      break;
+    }
+    case "backup-settings-failed":
+      await expect(
+        page.getByText(/^(La copia del|The backup of) .+ (non è riuscita|did not finish)\.$/),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          /^(La cartella delle copie non è disponibile|The backup folder is not available)\./,
+        ),
+      ).toBeVisible();
+      await expect(
+        page.getByText(/^(Cartella|Folder): \/Volumes\/CHIAVETTA\/Pyxis$/),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: both("Cambia cartella", "Change folder") }),
       ).toBeVisible();
       break;
     case "ocr-download-cancelled":

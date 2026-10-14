@@ -78,6 +78,12 @@ Subjects have a stable saved position. Source documents and passages retain extr
 
 Plan files are a portability format, not a database dump. Version 2 includes study content and cited source excerpts, remaps IDs on import and optionally carries progress/original sources. With progress it also carries the gap rows, the attempts events name, the wrong answers each gap owns and its drill quiz. See [plan file](plan-file.md). Workspace backups preserve the study database and source blobs. They exclude provider keys, runtime/model caches, scratch files and the exports folder. Restore preserves runtime/model caches already downloaded in the destination workspace; a fresh workspace can download them again. Restore validates and migrates a staging copy before replacing the active workspace.
 
+### Automatic backups
+
+Automatic backups use the same archive format, so Restore accepts them unchanged. Main takes them while core keeps running. It opens `pyxis.db` through its own read-only connection and runs `VACUUM INTO`, which copies one committed state while core goes on writing in WAL mode. A transaction still open at that moment is left out. Blobs are immutable once published and only deleted after no row uses them, so the copy checks every blob the snapshot uses against the archive. If core deleted one after the snapshot (a deleted chat's attachment), the backup stops with `backup-changed` and runs again at the next check. A blob that core is still writing, and that the snapshot does not use, is left out.
+
+The settings and the last result are main-process state in `userData/backups.json`, not a row in the `settings` table. The folder is a path on this computer, and a restore or a move must not roll back the record of the last backup.
+
 ## Restore safety
 
 Restore validates and migrates a staging copy, keeps the original workspace until the new core is healthy, and recovers from an interrupted swap. The steps are in [architecture](architecture.md#restore-safety).

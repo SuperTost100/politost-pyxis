@@ -19,7 +19,7 @@ isolated Python renderer -> fresh Pyodide worker -> MEMFS
 sandboxed print renderer -> main printToPDF -> chosen save path
 ```
 
-Main creates the default `userData/workspace`, records its path in `userData/config.json`, and starts core. Main owns the BrowserWindow, CSP, `safeStorage`, native dialogs, backup/restore coordination, workspace moves and `pyxis-blob:`/runtime protocols. The protocol handlers resolve the current workspace on every request, including after a move. A workspace move stops core, verifies a staged copy, commits the path, then starts the replacement core before removing the original.
+Main creates the default `userData/workspace`, records its path in `userData/config.json`, and starts core. Main owns the BrowserWindow, CSP, `safeStorage`, native dialogs, backup/restore coordination, workspace moves and `pyxis-blob:`/runtime protocols. The protocol handlers resolve the current workspace on every request, including after a move. A workspace move stops core, verifies a staged copy, commits the path, then starts the replacement core before removing the original. Automatic backups run in a worker thread while core keeps running; a manual backup, restore, move or wipe stops a running one first. See [automatic backups](data-model.md#automatic-backups).
 
 Core owns `pyxis.db`, blob storage and domain handlers. `src/shared/ipc.ts` defines request, response and event shapes. Core parses inputs with Zod before dispatching. Errors use `{ code, messageKey, params, detail }`. `src/shared/bridge.ts` describes privileged main/preload operations separately.
 
