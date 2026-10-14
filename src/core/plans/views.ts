@@ -169,6 +169,23 @@ export function removePlanSource(
     return { ok: true as const };
   })();
 }
+/** A source changed under the plans that use it (a book updated in place): each of them suggests Rebuild topics. */
+export function suggestSourceRebuild(
+  db: Database.Database,
+  sourceId: string,
+  now = Date.now(),
+) {
+  const plans = db
+    .prepare("SELECT plan_id AS id FROM plan_sources WHERE source_id=?")
+    .all(sourceId) as { id: string }[];
+  for (const plan of plans)
+    savePending(
+      db,
+      plan.id,
+      [...new Set([...pending(db, plan.id), sourceId])],
+      now,
+    );
+}
 export function finishSourceRebuild(
   db: Database.Database,
   planId: string,

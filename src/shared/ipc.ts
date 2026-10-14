@@ -1919,10 +1919,23 @@ export const requests = {
         version: z.string(),
         chapters: z.number(),
         bytes: z.number(),
-        /** The library source this exact book version already is. */
+        /** The library source this book already is: this exact version, or an older one linked to it. */
         sourceId: z.string().nullable(),
+        /** A newer version can update `sourceId` in place (`available`), or that update is being read (`running`). */
+        update: z.enum(["available", "running"]).nullable(),
       }),
     ),
+  },
+  "sources.updateBook": {
+    input: z.object({ sourceId: z.string(), confirmed: z.boolean() }),
+    output: z.object({
+      started: z.boolean(),
+      /** Plans that use the book. Above zero and unconfirmed, nothing was downloaded or started. */
+      inUse: z.number(),
+      jobId: z.string().optional(),
+      /** The version being installed. */
+      version: z.string().optional(),
+    }),
   },
   "sources.importBook": {
     input: z.object({ id: z.string().max(100) }),

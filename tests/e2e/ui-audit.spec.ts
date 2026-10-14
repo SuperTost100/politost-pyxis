@@ -154,6 +154,9 @@ const routes = [
   ["backup-settings-failed", "/settings/data"],
   // A scan with no stored file offers Replace instead of a read that cannot run. A timed exam in progress adds Resume to every Shell page.
   ["library-scan-no-file", "/exams/library"],
+  // A free book with a newer version in the catalog: the Library row and the books list offer the update.
+  ["library-book-update", "/exams/library"],
+  ["library-books-update", "/exams/library"],
   ["shell-exam-active", "/exams"],
   ["library-ocr-refused", "/exams/library"],
   ["library-ocr-ready", "/exams/library"],
@@ -563,6 +566,8 @@ const untranslatedKey = new RegExp(
   `\\b(?:${Object.keys(JSON.parse(readFileSync(join(process.cwd(), "src/renderer/src/locales/en.json"), "utf8"))).join("|")})\\.[A-Za-z][\\w.-]+`,
   "g",
 );
+/** Copy that looks like a key: the books site's host name starts with the `books` section. */
+const notKeys = new Set(["books.politost.it"]);
 const both = (it: string, en: string) => new RegExp(`^(${it}|${en})$`);
 
 async function openAdvancedEngines(page: Page) {
@@ -898,6 +903,17 @@ function prepareState(name: string) {
       );
     });
   }
+  // A free book the fixture catalog lists at a newer version. Only the book-update states put it in the Library.
+  withDb((db) => {
+    db.prepare(
+      "INSERT OR IGNORE INTO sources(id,kind,title,blob_sha,mime,status,library,catalog_id,catalog_version,created_at,updated_at) VALUES('audit-free-book','smartbook','Fisica di prova',?,'application/vnd.politost.ptsb','ready',0,'fisica-demo','1.0.0',2,2)",
+    ).run("a".repeat(64));
+    db.prepare(
+      "UPDATE sources SET library = ? WHERE id = 'audit-free-book'",
+    ).run(
+      name.includes("book-update") || name.includes("books-update") ? 1 : 0,
+    );
+  });
   // PRO-02: gaps with the model's reading of the mistakes; a topic can hold several, one per distinct misconception.
   withDb((db) => {
     db.prepare("DELETE FROM gaps WHERE plan_id = 'audit-plan'").run();
@@ -1077,7 +1093,9 @@ async function openWizard(page: Page, step: number) {
     if (at === 4 && step > 4) {
       // The seeded source is in the library, so it comes in through the library picker.
       await page
-        .getByRole("button", { name: both("Dalla tua libreria", "From your library") })
+        .getByRole("button", {
+          name: both("Dalla tua libreria", "From your library"),
+        })
         .click();
       const picker = page.getByRole("dialog");
       await picker.getByRole("checkbox", { name: /Appunti di fisica/ }).check();
@@ -1088,7 +1106,11 @@ async function openWizard(page: Page, step: number) {
     }
     // Nothing is chosen for the student on the exam step.
     if (at === 2)
-      await page.getByRole("button", { name: both("Entro 10 giorni", "Within 10 days") }).click();
+      await page
+        .getByRole("button", {
+          name: both("Entro 10 giorni", "Within 10 days"),
+        })
+        .click();
     await page
       .getByRole("button", { name: /Continua|Continue/, exact: true })
       .click();
@@ -1110,7 +1132,9 @@ async function openGuided(
       .click();
   // No material chosen: the last Continue of the wizard leads to the guided flow.
   await next();
-  await page.getByRole("button", { name: both("Entro 10 giorni", "Within 10 days") }).click();
+  await page
+    .getByRole("button", { name: both("Entro 10 giorni", "Within 10 days") })
+    .click();
   for (let i = 0; i < 3; i++) await next();
   const periods = page.getByRole("group", { name: both("Periodo", "Period") });
   await expect(periods).toBeVisible();
@@ -1456,7 +1480,9 @@ async function openState(page: Page, name: string) {
       break;
     case "ask-formula": {
       await page
-        .getByRole("button", { name: both("Inserisci formula", "Insert formula") })
+        .getByRole("button", {
+          name: both("Inserisci formula", "Insert formula"),
+        })
         .click();
       const keys = page.getByRole("group", {
         name: both("Tastiera per formule", "Formula keyboard"),
@@ -1518,7 +1544,10 @@ async function openState(page: Page, name: string) {
         .getByRole("button", { name: both("Altre azioni", "More actions") })
         .click();
       await page
-        .getByRole("menuitem", { name: both("Riscrivi", "Rewrite"), exact: true })
+        .getByRole("menuitem", {
+          name: both("Riscrivi", "Rewrite"),
+          exact: true,
+        })
         .click();
       await expect(
         page
@@ -1873,6 +1902,33 @@ async function openState(page: Page, name: string) {
       }
       break;
     }
+    case "library-book-update":
+      await expect(
+        page.getByText(
+          both(
+            "Nuova versione disponibile: 1.1.0",
+            "New version available: 1.1.0",
+          ),
+        ),
+      ).toBeVisible();
+      break;
+    case "library-books-update":
+      await page
+        .getByRole("button", {
+          name: both("Libri PoliTost gratuiti", "Free PoliTost books"),
+        })
+        .click();
+      await expect(
+        dialog.getByRole("button", {
+          name: both("Aggiorna Fisica di prova", "Update Fisica di prova"),
+        }),
+      ).toBeVisible();
+      await expect(
+        dialog.getByText(
+          both("Nuova versione disponibile", "New version available"),
+        ),
+      ).toBeVisible();
+      break;
     case "library-row-menu":
       await page
         .getByRole("button", {
@@ -2037,18 +2093,27 @@ async function openState(page: Page, name: string) {
         page.getByRole("heading", { level: 2, name: "Chimica" }),
       ).toBeVisible();
       await expect(
-        page.getByRole("heading", { level: 2, name: both("Nessuna materia", "No subject") }),
+        page.getByRole("heading", {
+          level: 2,
+          name: both("Nessuna materia", "No subject"),
+        }),
       ).toBeVisible();
-      await expect(page.locator(".px-cardbrowser-card .katex").first()).toBeVisible();
+      await expect(
+        page.locator(".px-cardbrowser-card .katex").first(),
+      ).toBeVisible();
       break;
     case "cards-browser-empty":
       await expect(
-        page.getByRole("heading", { name: both("Ancora nessuna scheda", "No flashcards yet") }),
+        page.getByRole("heading", {
+          name: both("Ancora nessuna scheda", "No flashcards yet"),
+        }),
       ).toBeVisible();
       break;
     case "cards-browser-none":
       await page
-        .getByRole("textbox", { name: both("Cerca nelle schede", "Search cards") })
+        .getByRole("textbox", {
+          name: both("Cerca nelle schede", "Search cards"),
+        })
         .fill("zzzz");
       await expect(
         page.getByText(both("Nessuna scheda corrisponde.", "No card matches.")),
@@ -2257,8 +2322,30 @@ test("M14 every application route in both languages, themes and supported widths
   );
   mkdirSync(deep, { recursive: true });
   writeFileSync(join(deep, "profondo.txt"), "Troppo in fondo.");
+  // books.politost.it as a folder: the catalog lists the seeded free book at a newer version. Nothing is downloaded.
+  const booksSite = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-books-"));
+  writeFileSync(
+    join(booksSite, "catalog.json"),
+    JSON.stringify({
+      catalogVersion: 1,
+      books: [
+        {
+          id: "fisica-demo",
+          title: "Fisica di prova",
+          subject: "Fisica",
+          authors: ["PoliTost"],
+          version: "1.1.0",
+          chapters: 3,
+          package: "books/fisica-demo@1.1.0.ptsb",
+          bytes: 1024,
+          sha256: "b".repeat(64),
+        },
+      ],
+    }),
+  );
   const env = {
     ...process.env,
+    PYXIS_E2E_BOOKS: booksSite,
     PYXIS_USER_DATA: userData,
     PYXIS_E2E: "1",
     PYXIS_E2E_FILE: importFolder,
@@ -2457,10 +2544,10 @@ test("M14 every application route in both languages, themes and supported widths
                 animations: "disabled",
               });
               const errors = pageErrors.slice(before);
-              const untranslated = (
-                await page.locator("body").innerText()
-              ).match(untranslatedKey);
-              if (untranslated)
+              const untranslated = (await page.locator("body").innerText())
+                .match(untranslatedKey)
+                ?.filter((match) => !notKeys.has(match.replace(/\.+$/, "")));
+              if (untranslated?.length)
                 errors.push(
                   `Untranslated labels: ${[...new Set(untranslated)].join(", ")}`,
                 );
@@ -2527,6 +2614,7 @@ test("M14 every application route in both languages, themes and supported widths
     await app.close();
     rmSync(userData, { recursive: true, force: true });
     rmSync(importFolder, { recursive: true, force: true });
+    rmSync(booksSite, { recursive: true, force: true });
     rmSync(updateFolder, { recursive: true, force: true });
   }
   expect(failures, failures.join("\n")).toEqual([]);

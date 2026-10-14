@@ -16,7 +16,7 @@ import {
 import { embeddingConsent, embeddingReady, indexModelVectors } from "./embed";
 import { ocrDataStatus } from "./ocr-data";
 import { compareToPlans } from "./syllabus";
-import { storeSmartbook, type ParsedSmartbook } from "./smartbook";
+import { addSmartbookVersion, storeSmartbook, type ParsedSmartbook } from "./smartbook";
 import { imageMime, isHeicBytes, isHeicExt, MAX_HEIC_BYTES } from "./heic";
 import { runSourceWorker } from "./worker-client";
 import { loadVisionImage, type VisionImage } from "./vision-image";
@@ -47,6 +47,8 @@ type ImportParams = {
   version: number;
   /** The vision engine chosen when the image was queued or last retried. */
   vision?: StoredSelection;
+  /** A free PoliTost book: the catalog book and version these bytes are. An update records it once it is published. */
+  catalog?: { id: string; version: string };
 };
 export type Extraction = {
   book?: ParsedSmartbook;
@@ -210,7 +212,12 @@ export function registerSourceJobs(
                 )
                 .get(input.sourceId, input.version)
             ) {
-              if (value.book)
+              if (value.book && input.replace)
+                addSmartbookVersion(db, input.sourceId, value.book, {
+                  sha: input.sha,
+                  catalog: input.catalog,
+                });
+              else if (value.book)
                 storeSmartbook(db, value.book, Date.now(), input.sourceId);
               else if (value.document && input.reextract)
                 addExtractionVersion(db, input.sourceId, value.document);
@@ -484,7 +491,7 @@ export function markInterruptedImports(db: Database.Database): void {
  * only embeds the latest version's passages, so it holds nothing back, and the plan-edit checks queue it on their own,
  * so the student never sees it to dismiss it.
  */
-function hasUnfinishedJob(db: Database.Database, sourceId: string): boolean {
+export function hasUnfinishedJob(db: Database.Database, sourceId: string): boolean {
   return (
     db
       .prepare(
@@ -586,6 +593,8 @@ export function enqueueSourceData(
   title: string,
   url?: string,
   existingId?: string,
+  /** The free book these bytes are, from the catalog. A new source records it; an update records it once published. */
+  catalog?: { id: string; version: string },
 ) {
   if (!IMPORT_EXTENSIONS.has(ext)) {
     throw new Error("unsupported-file");
@@ -629,9 +638,19 @@ export function enqueueSourceData(
       ).run(Date.now(), existingId);
     } else {
       db.prepare(
-        `INSERT INTO sources (id, kind, title, blob_sha, mime, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)`,
-      ).run(sourceId, kind, title, sha, mime, Date.now(), Date.now());
+        `INSERT INTO sources (id, kind, title, blob_sha, mime, status, catalog_id, catalog_version, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
+      ).run(
+        sourceId,
+        kind,
+        title,
+        sha,
+        mime,
+        catalog?.id ?? null,
+        catalog?.version ?? null,
+        Date.now(),
+        Date.now(),
+      );
     }
     const version = (
       db
@@ -651,6 +670,7 @@ export function enqueueSourceData(
       replace: Boolean(existingId),
       ...(previousStatus ? { previousStatus } : {}),
       ...(vision ? { vision } : {}),
+      ...(catalog ? { catalog } : {}),
     } satisfies ImportParams);
   })();
   if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: import transaction committed");

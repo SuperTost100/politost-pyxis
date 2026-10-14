@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  compareBookVersions,
   downloadBook,
+  isNewerBook,
   fetchCatalog,
   packageUrl,
   type BooksTransport,
@@ -124,5 +126,37 @@ describe("download timeout", () => {
 
   it("calls a download that stops sending offline", async () => {
     await expect(downloadBook(book, slow(150), 1024, undefined, 100)).rejects.toThrow("books-offline");
+  });
+});
+
+describe("book versions", () => {
+  it("orders semver versions the way the books repository does", () => {
+    expect(compareBookVersions("1.0.1", "1.0.0")).toBe(1);
+    expect(compareBookVersions("1.10.0", "1.9.3")).toBe(1);
+    expect(compareBookVersions("2.0.0", "10.0.0")).toBe(-1);
+    expect(compareBookVersions("1.0.0", "1.0.0+build.7")).toBe(0);
+    // A prerelease comes before its release, and numeric identifiers compare as numbers.
+    expect(compareBookVersions("1.1.0-beta.2", "1.1.0")).toBe(-1);
+    expect(compareBookVersions("1.1.0-beta.10", "1.1.0-beta.2")).toBe(1);
+    expect(compareBookVersions("1.1.0-beta", "1.1.0-1")).toBe(1);
+    expect(compareBookVersions("1.1.0-beta", "1.1.0-beta.1")).toBe(-1);
+    expect(compareBookVersions("1.1", "1.0.0")).toBeNull();
+    expect(compareBookVersions("1.0.0", "edizione 2")).toBeNull();
+  });
+
+  it("offers only a different package with a higher version", () => {
+    const at = (version: string, sha = "b".repeat(64)) => ({ version, sha256: sha });
+    const mine = { version: "1.0.0", sha: "a".repeat(64) };
+    expect(isNewerBook(at("1.1.0"), mine)).toBe(true);
+    expect(isNewerBook(at("1.0.0"), mine)).toBe(false);
+    // A catalog that went back to an older version offers nothing.
+    expect(isNewerBook(at("0.9.0"), mine)).toBe(false);
+    // The same bytes are the same book, whatever the version says.
+    expect(isNewerBook(at("2.0.0", "a".repeat(64)), mine)).toBe(false);
+    // Without semver on both sides, a different version string with a different package counts as newer.
+    expect(isNewerBook(at("edizione 2"), { ...mine, version: "edizione 1" })).toBe(true);
+    expect(isNewerBook(at("edizione 1"), { ...mine, version: "edizione 1" })).toBe(false);
+    // A copy with no known version is never offered an update.
+    expect(isNewerBook(at("1.1.0"), { ...mine, version: null })).toBe(false);
   });
 });

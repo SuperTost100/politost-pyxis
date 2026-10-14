@@ -78,6 +78,13 @@ CREATE TABLE gap_answers (
 );
 CREATE INDEX gap_answers_attempt ON gap_answers (attempt_id, question_id);`,
   },
+  // A free PoliTost book remembers which catalog book and version it is, so a newer version can be offered in place.
+  // Books imported before this are linked when the catalog is next read, by their package's SHA-256.
+  {
+    version: 16,
+    sql: `ALTER TABLE sources ADD COLUMN catalog_id TEXT;
+ALTER TABLE sources ADD COLUMN catalog_version TEXT;`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

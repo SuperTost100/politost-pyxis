@@ -143,7 +143,7 @@ These actions send data off your computer:
 - **Generating or grading.** The prompt, the source passages it needs and any attachments go to the provider you picked. Its retention and billing rules apply.
 - **Importing a link.** Pyxis fetches the page from that site.
 - **Installing an engine.** Setup downloads the maker's install script from claude.ai, chatgpt.com, cursor.com or antigravity.google and runs it. Signing in happens in your browser with that maker.
-- **Free PoliTost books.** Opening the list asks books.politost.it for its catalog, and adding a book downloads it from there. Each book is checked against the catalog's SHA-256.
+- **Free PoliTost books.** Opening the list asks books.politost.it for its catalog, and adding a book downloads it from there. While the Sources page is open and holds a smartbook, Pyxis reads the catalog too, to offer a newer version, which Update downloads in place. Each book is checked against the catalog's SHA-256.
 - **Optional downloads.** The search model, the Python runtime and the OCR language files are fetched once, after you agree, and checked against pinned SHA-256 hashes.
 - **Update check.** Pyxis asks GitHub for the latest release tag, at most once a day, or again after 15 minutes if the check failed. It sends no workspace content.
 - **Installing an update.** Only after you press Download and install, Pyxis downloads the installer for your system and `SHA256SUMS` from that GitHub release.

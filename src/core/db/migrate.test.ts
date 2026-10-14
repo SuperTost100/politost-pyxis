@@ -80,7 +80,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(15);
+    expect(db.pragma("user_version", { simple: true })).toBe(16);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -95,7 +95,33 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(15);
+    expect(again.pragma("user_version", { simple: true })).toBe(16);
+  });
+
+  it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
+    const db = openDatabase(file);
+    db.pragma("user_version = 15");
+    db.exec(
+      "ALTER TABLE sources DROP COLUMN catalog_id; ALTER TABLE sources DROP COLUMN catalog_version;",
+    );
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('book', 'smartbook', 'Libro', 'ready', 1, 1)`,
+    ).run();
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(16);
+    expect(
+      again
+        .prepare(
+          "SELECT catalog_id, catalog_version FROM sources WHERE id = 'book'",
+        )
+        .get(),
+    ).toEqual({
+      catalog_id: null,
+      catalog_version: null,
+    });
   });
 
   it("inserts and queries a vector", () => {

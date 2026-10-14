@@ -11,6 +11,7 @@ import { chunkText } from "./chunk";
 import { putBlob } from "../blobs";
 import { uuidv7 } from "../../shared/ids";
 import { retrieve, type Embedder, type PassageHit } from "./retrieve";
+import { suggestSourceRebuild } from "../plans/views";
 
 /**
  * Tool-call tags a book generator leaked into the text (`</markdown>`, `</invoke>`…). content-core's validator calls
@@ -27,6 +28,7 @@ type ChapterMeta = { id: string; number: number; title: string; file: string };
 type SmartbookConfig = {
   id: string;
   title: string;
+  version?: unknown;
   subject?: string;
   access?: string;
   chapters: ChapterMeta[];
@@ -132,11 +134,6 @@ export function storeSmartbook(
   let passages = 0;
   let exercises = 0;
 
-  const insertPassage = db.prepare(
-    `INSERT INTO passages
-      (id, source_id, document_id, version, text, locator_json, section_path, char_start, char_end, created_at)
-     VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
-  );
   const insertExercise = db.prepare(
     `INSERT INTO exercises (id, smartbook_id, passage_id, prompt, answer, locator_json, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -161,23 +158,7 @@ export function storeSmartbook(
       `INSERT INTO smartbooks (id, source_id, meta_json, created_at) VALUES (?, ?, ?, ?)`,
     ).run(smartbookId, sourceId, JSON.stringify(config), now);
 
-    for (const paragraph of parsed.paragraphs) {
-      insertPassage.run(
-        uuidv7(now + passages + 3),
-        sourceId,
-        documentId,
-        paragraph.text,
-        JSON.stringify({
-          chapter: paragraph.chapter,
-          paragraph: paragraph.paragraph,
-        }),
-        paragraph.section,
-        paragraph.start,
-        paragraph.end,
-        now,
-      );
-      passages += 1;
-    }
+    passages = insertBookPassages(db, sourceId, documentId, 1, parsed, now);
     for (const exercise of parsed.exercises) {
       insertExercise.run(
         uuidv7(now + 10000 + exercises),
@@ -203,6 +184,144 @@ export function storeSmartbook(
     passages,
     exercises,
   };
+}
+
+/**
+ * A newer version of a smartbook the library already holds, published in place as the source's next document version.
+ * Plans, cards and citations keep working: earlier passages stay, and only items citing a passage whose text is gone
+ * from the new version are marked stale. Exercises keep their ids, matched by the book's own exercise id and kind, so
+ * flags and history on them stay attached; one the new version dropped leaves the book (no `smartbook_id`) but its
+ * row stays for whatever refers to it. The plans that use the book suggest Rebuild topics, which picks up new or
+ * renumbered chapters. Everything is one transaction: a failure leaves the earlier version as it was.
+ * `title` follows the book unless the student renamed it. Errors: `source-missing`.
+ */
+export function addSmartbookVersion(
+  db: Database.Database,
+  sourceId: string,
+  parsed: ParsedSmartbook,
+  input: { sha: string; catalog?: { id: string; version: string } },
+  now = Date.now(),
+): ImportedSmartbook {
+  const { config } = parsed;
+  let passages = 0;
+  db.transaction(() => {
+    const source = db
+      .prepare(
+        `SELECT s.title, b.id AS bookId, b.meta_json AS meta FROM sources s
+         LEFT JOIN smartbooks b ON b.source_id = s.id
+         WHERE s.id = ? AND s.kind = 'smartbook' AND s.status != 'removed'`,
+      )
+      .get(sourceId) as { title: string; bookId: string | null; meta: string | null } | undefined;
+    if (!source) throw new Error("source-missing");
+    const { n } = db
+      .prepare(`SELECT COALESCE(MAX(version), 0) + 1 AS n FROM source_documents WHERE source_id = ?`)
+      .get(sourceId) as { n: number };
+    const documentId = uuidv7(now);
+    db.prepare(
+      `INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(documentId, sourceId, n, JSON.stringify({ chapters: config.chapters }), now);
+    passages = insertBookPassages(db, sourceId, documentId, n, parsed, now);
+
+    // Only a citation whose exact text the new version no longer has goes out of date.
+    const kept = new Set(parsed.paragraphs.map((paragraph) => paragraph.text));
+    const markStale = db.prepare(`UPDATE item_passages SET stale = 1 WHERE passage_id = ?`);
+    for (const cited of db
+      .prepare(
+        `SELECT DISTINCT p.id, p.text FROM item_passages ip JOIN passages p ON p.id = ip.passage_id
+         WHERE p.source_id = ? AND p.document_id != ?`,
+      )
+      .all(sourceId, documentId) as Array<{ id: string; text: string }>)
+      if (!kept.has(cited.text)) markStale.run(cited.id);
+
+    let bookId = source.bookId;
+    if (bookId)
+      db.prepare(`UPDATE smartbooks SET meta_json = ? WHERE id = ?`).run(JSON.stringify(config), bookId);
+    else {
+      bookId = uuidv7(now + 1);
+      db.prepare(`INSERT INTO smartbooks (id, source_id, meta_json, created_at) VALUES (?, ?, ?, ?)`).run(
+        bookId,
+        sourceId,
+        JSON.stringify(config),
+        now,
+      );
+    }
+    const keyOf = (kind: unknown, id: unknown) => `${String(kind)}|${String(id)}`;
+    const existing = new Map<string, string[]>();
+    for (const row of db
+      .prepare(`SELECT id, locator_json FROM exercises WHERE smartbook_id = ? ORDER BY created_at, rowid`)
+      .all(bookId) as Array<{ id: string; locator_json: string | null }>) {
+      const locator = row.locator_json
+        ? (JSON.parse(row.locator_json) as { kind?: unknown; exercise?: unknown })
+        : {};
+      const key = keyOf(locator.kind, locator.exercise);
+      existing.set(key, [...(existing.get(key) ?? []), row.id]);
+    }
+    const update = db.prepare(`UPDATE exercises SET prompt = ?, answer = ?, locator_json = ? WHERE id = ?`);
+    const insert = db.prepare(
+      `INSERT INTO exercises (id, smartbook_id, passage_id, prompt, answer, locator_json, created_at)
+       VALUES (?, ?, NULL, ?, ?, ?, ?)`,
+    );
+    parsed.exercises.forEach((exercise, index) => {
+      const locator = JSON.stringify({ chapter: exercise.chapter, exercise: exercise.id, kind: exercise.kind });
+      const id = existing.get(keyOf(exercise.kind, exercise.id))?.shift();
+      if (id) update.run(exercise.question, exercise.solution, locator, id);
+      else insert.run(uuidv7(now + 10000 + index), bookId, exercise.question, exercise.solution, locator, now);
+    });
+    const detach = db.prepare(`UPDATE exercises SET smartbook_id = NULL WHERE id = ?`);
+    for (const ids of existing.values()) for (const id of ids) detach.run(id);
+
+    const oldTitle = source.meta ? (JSON.parse(source.meta) as { title?: unknown }).title : undefined;
+    db.prepare(
+      `UPDATE sources SET title = ?, blob_sha = ?, mime = 'application/vnd.politost.ptsb', status = 'ready',
+         catalog_id = COALESCE(?, catalog_id), catalog_version = COALESCE(?, catalog_version), updated_at = ?
+       WHERE id = ?`,
+    ).run(
+      source.title === oldTitle ? config.title : source.title,
+      input.sha,
+      input.catalog?.id ?? null,
+      input.catalog?.version ?? null,
+      now,
+      sourceId,
+    );
+    suggestSourceRebuild(db, sourceId, now);
+  })();
+  return {
+    sourceId,
+    title: config.title,
+    chapters: config.chapters.length,
+    passages,
+    exercises: parsed.exercises.length,
+  };
+}
+
+function insertBookPassages(
+  db: Database.Database,
+  sourceId: string,
+  documentId: string,
+  version: number,
+  parsed: ParsedSmartbook,
+  now: number,
+): number {
+  const insert = db.prepare(
+    `INSERT INTO passages
+      (id, source_id, document_id, version, text, locator_json, section_path, char_start, char_end, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  parsed.paragraphs.forEach((paragraph, index) =>
+    insert.run(
+      uuidv7(now + index + 3),
+      sourceId,
+      documentId,
+      version,
+      paragraph.text,
+      JSON.stringify({ chapter: paragraph.chapter, paragraph: paragraph.paragraph }),
+      paragraph.section,
+      paragraph.start,
+      paragraph.end,
+      now,
+    ),
+  );
+  return parsed.paragraphs.length;
 }
 
 function displayLatex(latex: string): string {

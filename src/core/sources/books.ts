@@ -176,3 +176,59 @@ export async function downloadBook(
     throw new Error("books-integrity");
   return bytes;
 }
+
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
+
+/** Whether a version is semver, as the books repository requires of every book. */
+export function isSemverVersion(version: string): boolean {
+  return SEMVER.test(version);
+}
+
+/**
+ * Semver precedence as the books repository defines it (`scripts/books.ts` there): negative when `a` is older. A
+ * prerelease sorts before its release. Null when either side is not semver, so the caller decides another way.
+ */
+export function compareBookVersions(a: string, b: string): number | null {
+  const left = SEMVER.exec(a);
+  const right = SEMVER.exec(b);
+  if (!left || !right) return null;
+  const core =
+    Number(left[1]) - Number(right[1]) ||
+    Number(left[2]) - Number(right[2]) ||
+    Number(left[3]) - Number(right[3]);
+  if (core) return Math.sign(core);
+  const [aPre, bPre] = [left[4], right[4]];
+  if (aPre === bPre) return 0;
+  if (aPre === undefined) return 1;
+  if (bPre === undefined) return -1;
+  const aParts = aPre.split(".");
+  const bParts = bPre.split(".");
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i += 1) {
+    const x = aParts[i];
+    const y = bParts[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const xNum = /^\d+$/.test(x);
+    const yNum = /^\d+$/.test(y);
+    if (xNum && yNum) {
+      if (Number(x) !== Number(y)) return Math.sign(Number(x) - Number(y));
+    } else if (xNum !== yNum) return xNum ? -1 : 1;
+    else if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Whether the catalog's entry is a newer version of the copy the student has. The same package is never newer. Two
+ * semver versions compare by precedence, so the catalog going back to an older version offers nothing. Otherwise a
+ * different version string is newer, since the catalog only ever lists a book's current version.
+ */
+export function isNewerBook(
+  book: Pick<CatalogBook, "version" | "sha256">,
+  installed: { version: string | null; sha: string | null },
+): boolean {
+  if (installed.sha === book.sha256) return false;
+  if (installed.version == null) return false;
+  const order = compareBookVersions(book.version, installed.version);
+  return order == null ? book.version !== installed.version : order > 0;
+}

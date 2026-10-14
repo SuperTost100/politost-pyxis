@@ -50,6 +50,7 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "books-too-big": "sources.books.catalog",
   "books-integrity": "sources.books.integrity",
   "books-missing": "sources.books.missing",
+  "book-up-to-date": "sources.books.upToDate",
 };
 
 /** The message key for a source error code, or null when the code has no specific message. */

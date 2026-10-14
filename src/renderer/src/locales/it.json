@@ -466,7 +466,8 @@
       "offline": "Non riesco a raggiungere books.politost.it. Controlla la connessione e riprova.",
       "catalog": "L'elenco dei libri su books.politost.it ora non si legge. Riprova più tardi.",
       "integrity": "Il libro scaricato non corrisponde all'elenco, quindi non l'ho importato. Riprova.",
-      "missing": "Questo libro non è più nell'elenco."
+      "missing": "Questo libro non è più nell'elenco.",
+      "upToDate": "Questo libro è già all'ultima versione."
     }
   },
   "cards": {
@@ -1962,7 +1963,7 @@
     "openViewer": "Apri nel lettore",
     "askTopic": "Chiedi al tutor",
     "topicActions": "Azioni per {{title}}",
-    "rebuildSuggested": "Hai aggiunto nuove fonti. Ricostruisci il percorso per includere il loro materiale.",
+    "rebuildSuggested": "Le fonti sono cambiate da quando hai creato gli argomenti. Ricostruisci il percorso per includere il loro materiale.",
     "rebuildNew_one": "1 argomento nuovo",
     "rebuildNew_other": "{{count}} argomenti nuovi",
     "rebuildNoneNew": "Nessun argomento nuovo. Le fonti collegate sono già coperte.",
@@ -2075,7 +2076,7 @@
   "books": {
     "title": "Libri PoliTost gratuiti",
     "open": "Libri PoliTost gratuiti",
-    "intro": "Smartbook scritti per PoliTost, gratuiti. L'elenco arriva da books.politost.it e Pyxis si collega solo mentre questa finestra è aperta.",
+    "intro": "Smartbook scritti per PoliTost, gratuiti. L'elenco arriva da books.politost.it. Pyxis si collega solo mentre questa finestra è aperta, o mentre è aperta la pagina Fonti e contiene uno di questi libri, per controllare se c'è una nuova versione.",
     "loading": "Carico l'elenco da books.politost.it…",
     "empty": "Non ci sono ancora libri pubblicati.",
     "chapters_one": "{{count}} capitolo",
@@ -2087,6 +2088,15 @@
     "adding": "Scarico…",
     "added": "Aggiunto",
     "inLibrary": "Nella tua libreria",
+    "update": "Aggiorna",
+    "updateNamed": "Aggiorna {{title}}",
+    "updatingNamed": "Scarico la nuova versione di {{title}}",
+    "updating": "Aggiornamento…",
+    "newVersion": "Nuova versione disponibile",
+    "newVersionNamed": "Nuova versione disponibile: {{version}}",
+    "updateStarted": "{{title}} si sta aggiornando alla versione {{version}}. Seguilo nelle attività.",
+    "updateInUse_one": "{{count}} piano usa questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quel piano e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti nel piano per aggiungere i nuovi capitoli. Vuoi aggiornarlo?",
+    "updateInUse_other": "{{count}} piani usano questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quei piani e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti in ogni piano per aggiungere i nuovi capitoli. Vuoi aggiornarlo?",
     "retry": "Riprova"
   }
 }
