@@ -180,15 +180,19 @@ test("practice: rate two exercises, change one, finish, and mastery moves by two
     await expect.poll(ratings).toEqual(["got", "got"]);
 
     // Leaving and coming back inside the app shows the saved choice, not what the page loaded with.
+    // Each move waits for its page, so the checks below run on the page we came back to, not the one we left.
+    await page.evaluate((planId) => {
+      location.hash = `/plans/${planId}`;
+    }, planId);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(work).toBeHidden();
     await page.evaluate(
       ({ planId, topicId }) => {
-        location.hash = `/plans/${planId}`;
-        setTimeout(() => {
-          location.hash = `/plans/${planId}/practice/${topicId}`;
-        }, 300);
+        location.hash = `/plans/${planId}/practice/${topicId}`;
       },
       { planId, topicId },
     );
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/practice/${topicId}`));
     await expect(got(work)).toHaveAttribute("aria-pressed", "true");
     await expect(got(power)).toHaveAttribute("aria-pressed", "true");
     await expect(missed(power)).toHaveAttribute("aria-pressed", "false");
