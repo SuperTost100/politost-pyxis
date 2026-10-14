@@ -1,4 +1,5 @@
 import { UpdateNotice } from "../features/settings/UpdatesPanel";
+import { BackupNotice } from "../features/settings/AutoBackups";
 import { PrintPage } from "../features/share/PrintPage";
 import { App as AntApp, ConfigProvider } from "antd";
 import { ProConfigProvider } from "@ant-design/pro-components";
@@ -111,7 +112,10 @@ function StudyApp() {
         <ProConfigProvider dark={appearance.resolved === "dark"} hashed={false}>
           <AntApp>
             <JobsSync />
-            <UpdateNotice />
+            <div className="px-corner-notices">
+              <BackupNotice />
+              <UpdateNotice />
+            </div>
             <CoreNotice />
             <MenuCommands />
             <RouterProvider router={router} />

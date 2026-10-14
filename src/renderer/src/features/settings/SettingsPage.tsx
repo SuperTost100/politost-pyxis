@@ -1,5 +1,6 @@
 import { AboutPanel } from "./AboutPanel";
 import { UpdatesPanel } from "./UpdatesPanel";
+import { AutoBackupsSection } from "./AutoBackups";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "antd";
 import {
@@ -446,6 +447,12 @@ export function SettingsPage() {
         ) : (
           <p className="small section-hint">{t("settings.dataHint")}</p>
         )}
+        <div className="label section-label">
+          {t("settings.autoBackup.title")}
+        </div>
+        <AutoBackupsSection
+          formatSize={(bytes) => formatBytes(bytes, i18n.language)}
+        />
         <div className="px-settings-danger">
           <p className="small ink-muted">{t("settings.wipeHint")}</p>
           <Button

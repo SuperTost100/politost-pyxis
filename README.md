@@ -50,7 +50,7 @@ The app is in English and Italian, with dark and light themes.
 
 **Keyboard and menus.** Every platform has an application menu in your interface language. On Windows and Linux it stays hidden until you press Alt. It holds New exam (Ctrl/Cmd+N), New chat (Ctrl/Cmd+Shift+N), Settings (Ctrl/Cmd+,), Ask, Exams, Library and Flashcards (Ctrl/Cmd+1 to 4), Back, zoom, and Help. Press Ctrl/Cmd+/ to see every shortcut, including the ones in the chat, flashcards, quizzes and whiteboard. Menu commands wait while you are in setup, answering a quiz, sitting a simulation, in a dialog, or typing text that Pyxis would lose.
 
-**Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Save your exam dates as a calendar file (`.ics`) with a reminder the day before; importing it again updates the events. Back up the whole workspace to one ZIP and restore it on another computer.
+**Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Save your exam dates as a calendar file (`.ics`) with a reminder the day before; importing it again updates the events. Back up the whole workspace to one ZIP and restore it on another computer. While Pyxis is open it also backs up once a day on its own, into `Pyxis backups` in your Documents folder, and keeps the three newest copies.
 
 Pyxis reads PDF, Word (`.docx`), PowerPoint (`.pptx`), Markdown, plain text, web pages, photos (JPEG, PNG, WebP, HEIC) and [PoliTost smartbooks](https://github.com/SuperTost100/politost-content) (`.ptsb`), which keep their chapters and exercises. Scanned pages go through local OCR or your model's vision support.
 
@@ -136,7 +136,7 @@ Pyxis runs the CLIs in text-only mode, so they can't use their shell, file or we
 
 ## Your data
 
-Sources, plans, progress and generated material stay in a local workspace. Settings → Data shows its path and lets you move it.
+Sources, plans, progress and generated material stay in a local workspace. Settings → Data shows its path and lets you move it. It also controls automatic backups: turn them off, pick another folder (not one inside the workspace or the app's own data), or back up now.
 
 These actions send data off your computer:
 

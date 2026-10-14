@@ -1,0 +1,55 @@
+.px-autobackup {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-4);
+}
+.px-autobackup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+}
+.px-autobackup-text {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.px-autobackup-text p {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-autobackup-row .ant-switch {
+  flex: none;
+}
+.px-autobackup-path {
+  margin: 0;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.px-autobackup > .section-hint {
+  margin: 0;
+}
+
+/* The update and backup notices share the bottom corner and stack instead of covering each other. */
+.px-corner-notices {
+  position: fixed;
+  z-index: 30;
+  right: var(--space-6);
+  bottom: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(420px, calc(100vw - 48px));
+}
+.px-corner-notices > .px-update-notice {
+  position: static;
+  width: auto;
+}
+.px-backup-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

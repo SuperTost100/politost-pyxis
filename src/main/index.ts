@@ -10,6 +10,11 @@ import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { fetchPlanText } from "./plan-fetch";
 import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
+import {
+  AutoBackups,
+  checkBackupFolder,
+  startLiveBackupWorker,
+} from "./auto-backup";
 import { renameSync } from "node:fs";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
@@ -58,6 +63,7 @@ import { ensureWorkspace, ensureWorkspaceDirs } from "./workspace";
 import {
   mainChannels,
   type Appearance,
+  type AutoBackupStatus,
   type OpenDialogOptions,
   type SaveDialogOptions,
   type ThemeSource,
@@ -256,6 +262,59 @@ function occupyWorkspace(): () => void {
 }
 let quitting = false;
 let workspacePath = "";
+let autoBackups: AutoBackups | null = null;
+
+/** Takes the workspace for a manual backup, restore, move or wipe. A running automatic backup gives way to it. */
+async function takeWorkspace(): Promise<() => void> {
+  const release = occupyWorkspace();
+  try {
+    await autoBackups?.stop();
+  } catch (error) {
+    release();
+    throw error;
+  }
+  return release;
+}
+
+/** Documents, or the test folder in unpackaged and e2e builds. Falls back to ~/Documents if the OS has none. */
+function documentsFolder(): string | null {
+  if (e2eSeam() && process.env["PYXIS_E2E"] === "1")
+    return process.env["PYXIS_E2E_DOCUMENTS"] || null;
+  try {
+    return app.getPath("documents");
+  } catch {
+    return join(app.getPath("home"), "Documents");
+  }
+}
+
+function setUpAutoBackups(): void {
+  const documents = documentsFolder();
+  autoBackups = new AutoBackups({
+    stateFile: userFile("backups.json"),
+    defaultFolder: () =>
+      join(documents ?? app.getPath("documents"), "Pyxis backups"),
+    workspace: () => workspacePath,
+    userData: app.getPath("userData"),
+    busy: () => workspaceBusy,
+    start: (zip, waitForJobs) =>
+      startLiveBackupWorker(
+        join(import.meta.dirname, "archive-worker.js"),
+        workspacePath,
+        zip,
+        waitForJobs,
+      ),
+    changed: (status: AutoBackupStatus) =>
+      mainWindow?.webContents.send(mainChannels.autoBackupChanged, status),
+    log: (message) => console.warn(message),
+  });
+  // Tests that do not name a Documents folder never back up on their own, so they cannot write into the real one.
+  if (!documents) return;
+  const testing = e2eSeam() && process.env["PYXIS_E2E"] === "1";
+  // The first check waits a minute so it does not compete with startup, then checks every 10 minutes. Tests check
+  // every 2 s: a first check that finds core still starting or a job running is postponed, and a slow runner must not
+  // wait 10 minutes for the next one.
+  autoBackups.start(testing ? 1000 : 60_000, testing ? 2000 : 10 * 60_000);
+}
 
 function broadcastAppearance(): void {
   const value = appearance();
@@ -1031,7 +1090,7 @@ function registerIpc(): void {
   });
   ipcMain.handle(mainChannels.workspaceBackup, async (event) => {
     requireMainSender(event, "workspace-untrusted-sender");
-    const release = occupyWorkspace();
+    const release = await takeWorkspace();
     try {
       const forced = e2eSeam() ? process.env["PYXIS_E2E_SAVE"] : undefined;
       let filePath = forced;
@@ -1061,7 +1120,7 @@ function registerIpc(): void {
   });
   ipcMain.handle(mainChannels.workspaceRestore, async (event) => {
     requireMainSender(event, "workspace-untrusted-sender");
-    const release = occupyWorkspace();
+    const release = await takeWorkspace();
     try {
       const forced = e2eSeam() ? process.env["PYXIS_E2E_ZIP"] : undefined;
       let filePath = forced;
@@ -1111,7 +1170,7 @@ function registerIpc(): void {
   ipcMain.handle(mainChannels.workspaceMove, async (event) => {
     if (event.sender.id !== mainWindow?.webContents.id)
       throw new Error("workspace-untrusted-sender");
-    const release = occupyWorkspace();
+    const release = await takeWorkspace();
     try {
       const forced = e2eSeam() ? process.env["PYXIS_E2E_MOVE"] : undefined;
       const selected = forced
@@ -1171,7 +1230,7 @@ function registerIpc(): void {
   });
   ipcMain.handle(mainChannels.workspaceWipe, async (event) => {
     requireMainSender(event, "workspace-untrusted-sender");
-    const release = occupyWorkspace();
+    const release = await takeWorkspace();
     try {
       await pauseCore();
       let keysCleared = false;
@@ -1199,6 +1258,59 @@ function registerIpc(): void {
     } finally {
       release();
     }
+  });
+}
+
+function registerAutoBackupIpc(): void {
+  const backups = (): AutoBackups => {
+    if (!autoBackups) throw new Error("backup-failed");
+    return autoBackups;
+  };
+  ipcMain.handle(mainChannels.autoBackupStatus, (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
+    return backups().status();
+  });
+  ipcMain.handle(
+    mainChannels.autoBackupSetEnabled,
+    (event, enabled: unknown) => {
+      requireMainSender(event, "workspace-untrusted-sender");
+      if (typeof enabled !== "boolean") throw new Error("invalid-setting");
+      return backups().setEnabled(enabled);
+    },
+  );
+  ipcMain.handle(mainChannels.autoBackupChooseFolder, async (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
+    const forced = e2eSeam() ? process.env["PYXIS_E2E_BACKUP_FOLDER"] : undefined;
+    const selected = forced
+      ? [forced]
+      : (
+          await dialog.showOpenDialog(mainWindow!, {
+            defaultPath: backups().folder(),
+            properties: ["openDirectory", "createDirectory"],
+          })
+        ).filePaths;
+    if (!selected[0]) return null;
+    const folder = checkBackupFolder(selected[0], {
+      workspace: workspacePath,
+      userData: app.getPath("userData"),
+    });
+    return backups().setFolder(folder);
+  });
+  ipcMain.handle(mainChannels.autoBackupOpenFolder, async (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
+    const status = backups().status();
+    if (status.isDefaultFolder) mkdirSync(status.folder, { recursive: true });
+    const failure = await shell.openPath(status.folder);
+    if (failure) throw new Error("backup-folder-missing");
+  });
+  ipcMain.handle(mainChannels.autoBackupRunNow, (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
+    if (workspaceBusy) throw new Error("workspace-busy");
+    return backups().runNow();
+  });
+  ipcMain.handle(mainChannels.autoBackupDismiss, (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
+    return backups().dismissNotice();
   });
 }
 
@@ -1273,6 +1385,8 @@ app.whenReady().then(() => {
   installPermissionHandlers();
   registerProtocols();
   registerIpc();
+  setUpAutoBackups();
+  registerAutoBackupIpc();
   nativeTheme.on("updated", broadcastAppearance);
   startCore();
   createWindow();
@@ -1283,7 +1397,19 @@ app.whenReady().then(() => {
 
 let quitAfterArchive = false;
 
+let quitAfterAutoBackup = false;
+
 app.on("before-quit", (event) => {
+  // An automatic backup is stopped, not waited for: the next launch makes a new one.
+  if (autoBackups?.running && !quitAfterAutoBackup) {
+    event.preventDefault();
+    quitAfterAutoBackup = true;
+    void autoBackups
+      .stop()
+      .catch(() => undefined)
+      .then(() => app.quit());
+    return;
+  }
   if (workspaceBusy) {
     event.preventDefault();
     if (!quitAfterArchive) {

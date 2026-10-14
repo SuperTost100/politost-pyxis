@@ -3,6 +3,7 @@ import { isMenuCommand, type MenuLanguage } from "../shared/menu";
 import {
   mainChannels,
   type Appearance,
+  type AutoBackupStatus,
   type OpenDialogOptions,
   type PyxisBridge,
   type SaveDialogOptions,
@@ -276,6 +277,22 @@ const bridge: PyxisBridge = {
   workspacePath: () => ipcRenderer.invoke(mainChannels.workspacePath),
   moveWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceMove),
   wipeWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceWipe),
+  autoBackups: {
+    status: () => ipcRenderer.invoke(mainChannels.autoBackupStatus),
+    setEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke(mainChannels.autoBackupSetEnabled, enabled),
+    chooseFolder: () => ipcRenderer.invoke(mainChannels.autoBackupChooseFolder),
+    openFolder: () => ipcRenderer.invoke(mainChannels.autoBackupOpenFolder),
+    runNow: () => ipcRenderer.invoke(mainChannels.autoBackupRunNow),
+    dismissNotice: () => ipcRenderer.invoke(mainChannels.autoBackupDismiss),
+    onStatus: (cb: (status: AutoBackupStatus) => void) => {
+      const listener = (_event: unknown, status: AutoBackupStatus) =>
+        cb(status);
+      ipcRenderer.on(mainChannels.autoBackupChanged, listener);
+      return () =>
+        ipcRenderer.removeListener(mainChannels.autoBackupChanged, listener);
+    },
+  },
   fetchPlan: (url: string) => ipcRenderer.invoke(mainChannels.planFetch, url),
   saveArtifact: (input) => ipcRenderer.invoke(mainChannels.artifactSave, input),
   exportPdf: (input) => ipcRenderer.invoke(mainChannels.pdfExport, input),
