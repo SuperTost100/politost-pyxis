@@ -909,10 +909,10 @@ function registerIpc(): void {
     cachePath: userFile("updates.json"),
     ...(fixture ? { fetch: fixture } : {}),
   });
-  ipcMain.handle(mainChannels.updatesCheck, (event) => {
+  ipcMain.handle(mainChannels.updatesCheck, (event, force: unknown) => {
     if (event.sender.id !== mainWindow?.webContents.id)
       throw new Error("updates-untrusted-sender");
-    return checkUpdates();
+    return checkUpdates(force === true);
   });
   ipcMain.handle(mainChannels.menuLanguage, (event, language: unknown) => {
     requireMainSender(event, "menu-untrusted-sender");
@@ -938,16 +938,12 @@ function registerIpc(): void {
       mainWindow?.webContents.send(mainChannels.updatesChanged, view),
     openPath: (path) => shell.openPath(path),
     showItemInFolder: (path) => shell.showItemInFolder(path),
-    // The verified installer runs on its own, without a shell, so it can replace Pyxis's files once Pyxis has closed.
-    launch: (path) =>
-      new Promise((resolve, reject) => {
-        const child = spawn(path, [], { detached: true, stdio: "ignore" });
-        child.once("error", reject);
-        child.once("spawn", () => {
-          child.unref();
-          resolve();
-        });
-      }),
+    // The verified installer starts from the `quit` event, after Pyxis has closed its windows and stopped its work, so
+    // it never finds Pyxis running. It runs on its own, by its full path and without a shell.
+    launchAfterQuit: (path) => {
+      installerAfterQuit = path;
+    },
+    log: (message) => console.warn(message),
     relaunch: (path) =>
       app.relaunch({ execPath: path, args: process.argv.slice(1) }),
     quit: () => app.quit(),
@@ -1397,9 +1393,14 @@ app.whenReady().then(() => {
 
 let quitAfterArchive = false;
 
+/** The verified Windows installer to start once Pyxis has exited (see `updateInstaller`). */
+let installerAfterQuit: string | null = null;
+
 let quitAfterAutoBackup = false;
 
 app.on("before-quit", (event) => {
+  // No check may start a backup from here on. A running one is stopped below.
+  autoBackups?.dispose();
   // An automatic backup is stopped, not waited for: the next launch makes a new one.
   if (autoBackups?.running && !quitAfterAutoBackup) {
     event.preventDefault();
@@ -1421,6 +1422,23 @@ app.on("before-quit", (event) => {
   quitting = true;
   disposePythonRuntime();
   coreChild?.postMessage({ type: "shutdown" });
+});
+
+// `quit` is the last event before the process ends: the quit was not cancelled and the windows are closed.
+app.on("quit", () => {
+  if (!installerAfterQuit) return;
+  const path = installerAfterQuit;
+  installerAfterQuit = null;
+  try {
+    const child = spawn(path, [], { detached: true, stdio: "ignore" });
+    // Pyxis is gone by now, so a start that fails can only be logged.
+    child.once("error", (error) =>
+      console.warn(`pyxis: installer not started (${error.message})`),
+    );
+    child.unref();
+  } catch (error) {
+    console.warn(`pyxis: installer not started (${(error as Error).message})`);
+  }
 });
 
 app.on("window-all-closed", () => {

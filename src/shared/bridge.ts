@@ -119,7 +119,8 @@ export interface PyxisBridge {
   }): Promise<"saved" | "cancelled">;
   printData(): Promise<{ markdown: string } | null>;
   printReady(): Promise<void>;
-  checkUpdates(): Promise<UpdateView>;
+  /** `force` is for a student asking again: it skips the cache, though main still waits a minute between requests. */
+  checkUpdates(force?: boolean): Promise<UpdateView>;
   /** Tells main which language to write the application menu in. Main rebuilds the menu when it changes. */
   setMenuLanguage(language: MenuLanguage): Promise<void>;
   /** Runs when the student picks a menu item or presses its shortcut. Unknown commands never arrive. */

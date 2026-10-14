@@ -40,7 +40,7 @@ Tag and publish only after the owner release loop above.
 
 ## Update channel
 
-`package.json` names the GitHub repository under `repository`. Main reads that packaged metadata to query GitHub's latest stable release. The update check is cached for 24 hours, including manual checks. When a newer release exists, Settings → Updates and the update notice offer Download and install next to the release page. Nothing downloads or installs until the student presses it; [SECURITY.md](../SECURITY.md#network-requests) describes the checks and the hand-over on each system.
+`package.json` names the GitHub repository under `repository`. Main reads that packaged metadata to query GitHub's latest stable release. The update check is cached for 24 hours. A manual check (the Settings button or Help → Check for updates) skips the cache, but main sends at most one such request a minute. When a newer release exists, Settings → Updates and the update notice offer Download and install next to the release page. Nothing downloads or installs until the student presses it; [SECURITY.md](../SECURITY.md#network-requests) describes the checks and the hand-over on each system.
 
 The in-app download reads the release's asset list, so every stable release must keep these assets:
 

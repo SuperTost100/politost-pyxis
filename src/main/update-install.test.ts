@@ -403,8 +403,8 @@ function installer(
       return "";
     },
     showItemInFolder: (path) => calls.push(`show ${path}`),
-    launch: async (path) => {
-      calls.push(`launch ${path}`);
+    launchAfterQuit: (path) => {
+      calls.push(`launch-after-quit ${path}`);
     },
     relaunch: (path) => calls.push(`relaunch ${path}`),
     quit: () => calls.push("quit"),
@@ -480,7 +480,7 @@ it("shows the verified AppImage in its folder when the AppImage's folder is not 
   expect(readFileSync(join(root, "updates", name))).toEqual(Buffer.from(bytes));
 });
 
-it("opens the disk image, shows the .deb, and starts the Windows installer only when Pyxis closes", async () => {
+it("opens the disk image, shows the .deb, and hands the Windows installer over to start after Pyxis quits", async () => {
   for (const [target, name, opened, finished] of [
     [
       { platform: "darwin", arch: "arm64" },
@@ -498,7 +498,7 @@ it("opens the disk image, shows the .deb, and starts the Windows installer only 
       { platform: "win32", arch: "x64" },
       "PoliTost.Pyxis.Setup.0.3.0.exe",
       null,
-      ["launch", "quit"],
+      ["launch-after-quit", "quit"],
     ],
   ] as const) {
     const root = temp();
@@ -595,7 +595,7 @@ it("cancels a running download, deletes the partial file and returns to idle", a
     emit: (view) => views.push(view),
     openPath: async () => "",
     showItemInFolder: () => {},
-    launch: async () => {},
+    launchAfterQuit: () => {},
     relaunch: () => {},
     quit: () => {},
   });
@@ -626,7 +626,7 @@ it("never downloads when the latest release is not newer than this install", asy
     emit: () => {},
     openPath: async () => "",
     showItemInFolder: () => {},
-    launch: async () => {},
+    launchAfterQuit: () => {},
     relaunch: () => {},
     quit: () => {},
   });
@@ -651,4 +651,92 @@ it("uses the fake-release seam only in an unpackaged build", async () => {
   expect(((await release.json()) as { tag_name: string }).tag_name).toBe(
     "v9.0.0",
   );
+});
+
+it("hands the Windows installer over once, however often the button is pressed", async () => {
+  const root = temp();
+  const name = "PoliTost.Pyxis.Setup.0.3.0.exe";
+  const bytes = new Uint8Array(300).fill(9);
+  const { instance, calls } = installer(
+    root,
+    { [name]: bytes, SHA256SUMS: `${sha(bytes)}  ${name}\n` },
+    { platform: "win32", arch: "x64" },
+  );
+  await instance.start();
+  calls.length = 0;
+  const input = { workspaceBusy: false, activeJobs: 0, confirmed: false };
+  // The second click arrives while the first is still checking the file.
+  const results = await Promise.all([
+    instance.finish(input),
+    instance.finish(input),
+  ]);
+  expect(results).toEqual(["done", "done"]);
+  expect(await instance.finish(input)).toBe("done");
+  expect(calls).toEqual([
+    `launch-after-quit ${join(root, "updates", name)}`,
+    "quit",
+  ]);
+});
+
+it("does not quit for a Windows update whose installer file is gone", async () => {
+  const root = temp();
+  const name = "PoliTost.Pyxis.Setup.0.3.0.exe";
+  const bytes = new Uint8Array(300).fill(9);
+  const { instance, calls } = installer(
+    root,
+    { [name]: bytes, SHA256SUMS: `${sha(bytes)}  ${name}\n` },
+    { platform: "win32", arch: "x64" },
+  );
+  await instance.start();
+  calls.length = 0;
+  rmSync(join(root, "updates", name));
+  const input = { workspaceBusy: false, activeJobs: 0, confirmed: false };
+  expect(await instance.finish(input)).toBe("done");
+  expect(instance.state()).toEqual({ state: "failed", error: "handover" });
+  expect(calls).toEqual([]);
+});
+
+it("ends a download as failed when the downloads folder cannot be cleared, with no unhandled rejection", async () => {
+  const root = temp();
+  const name = "PoliTost.Pyxis.Setup.0.3.0.exe";
+  const bytes = new Uint8Array(300).fill(9);
+  const { repo, fetcher } = fakeGithub({
+    [name]: bytes,
+    SHA256SUMS: `${sha(bytes)}  ${name}\n`,
+  });
+  const logs: string[] = [];
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => rejections.push(reason);
+  process.on("unhandledRejection", onRejection);
+  try {
+    const instance = updateInstaller({
+      repository: repo,
+      current: "0.2.3",
+      dir: join(root, "updates"),
+      target: { platform: "win32", arch: "x64" },
+      fetch: fetcher as typeof fetch,
+      emit: () => {},
+      openPath: async () => "",
+      showItemInFolder: () => {},
+      launchAfterQuit: () => {},
+      relaunch: () => {},
+      quit: () => {},
+      log: (message) => logs.push(message),
+      // What Windows does when a scan or an open file holds the folder.
+      removeDir: async () => {
+        throw Object.assign(new Error("resource busy or locked"), {
+          code: "EBUSY",
+        });
+      },
+    });
+    await instance.start();
+    expect(instance.state()).toEqual({ state: "failed", error: "disk" });
+    // Let a rejection nobody awaited reach the process.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(rejections).toEqual([]);
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs.every((message) => message.includes("EBUSY"))).toBe(true);
+  } finally {
+    process.off("unhandledRejection", onRejection);
+  }
 });
