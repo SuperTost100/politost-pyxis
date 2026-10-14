@@ -178,8 +178,9 @@ export function suggestStep(input: {
   const last = steps.at(-1);
   const justRead = last?.activity === "lesson" && topics.find((topic) => topic.id === last.topicId);
   if (justRead && justRead.mastery < target) return exercise(justRead, "consolidate");
-  // Exercises are not graded, so they leave mastery where it was. A quiz measures what they taught; without it the
-  // weakest topic would get exercises again and again.
+  // Exercises are not graded: a "Got it" or "Missed it" is only light evidence (weight 0.5), and many students rate
+  // nothing, so practice moves mastery little or not at all. A quiz measures what they taught; without it the weakest
+  // topic would get exercises again and again.
   const justPracticed =
     last?.activity === "practice" && topics.find((topic) => topic.id === last.topicId);
   if (justPracticed && justPracticed.mastery < target)

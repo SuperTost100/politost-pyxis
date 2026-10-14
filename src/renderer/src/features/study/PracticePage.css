@@ -1,0 +1,37 @@
+/* "Got it" / "Missed it" under an exercise: the quiz pills' look, in one row, never wrapping a label. */
+.px-rate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+}
+.px-rate-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.px-rate .choice {
+  justify-content: center;
+  gap: var(--space-2);
+  width: auto;
+  min-height: var(--control-md);
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+}
+.px-rate .choice:hover {
+  border-color: var(--border-control);
+}
+.px-rate .choice:active {
+  background: var(--surface-raised);
+}
+.px-rate .choice.is-selected {
+  color: var(--primary-text);
+  padding: 7px 15px;
+}
+.px-rate-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+}

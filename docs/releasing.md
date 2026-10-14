@@ -40,7 +40,20 @@ Tag and publish only after the owner release loop above.
 
 ## Update channel
 
-`package.json` names the GitHub repository under `repository`. Main reads that packaged metadata to query GitHub's latest stable release. The update check is cached for 24 hours, including manual checks, and opens the release page for manual installation. It never installs an update automatically.
+`package.json` names the GitHub repository under `repository`. Main reads that packaged metadata to query GitHub's latest stable release. The update check is cached for 24 hours, including manual checks. When a newer release exists, Settings → Updates and the update notice offer Download and install next to the release page. Nothing downloads or installs until the student presses it; [SECURITY.md](../SECURITY.md#network-requests) describes the checks and the hand-over on each system.
+
+The in-app download reads the release's asset list, so every stable release must keep these assets:
+
+| Asset                                | Used by                           |
+| ------------------------------------ | --------------------------------- |
+| `PoliTost.Pyxis-<version>-arm64.dmg` | macOS, Apple Silicon              |
+| `PoliTost.Pyxis-<version>.dmg`       | macOS, Intel                      |
+| `PoliTost.Pyxis.Setup.<version>.exe` | Windows x64                       |
+| `PoliTost.Pyxis-<version>.AppImage`  | Linux x64 running as an AppImage  |
+| `politost-pyxis_<version>_amd64.deb` | Linux x64 installed from the .deb |
+| `SHA256SUMS`                         | every download                    |
+
+GitHub turns the spaces in electron-builder's file names into dots. Upload one `SHA256SUMS` for the whole release, in `sha256sum` format, with a line for each installer under its dotted asset name, as the v0.2.3 release does. The per-target `SHA256SUMS` files from CI use the spaced names; merge them and write the dotted names before uploading. A release with no `SHA256SUMS`, or with no line for a student's installer, makes the in-app download refuse and point to the release page.
 
 Use stable semantic-version tags that compare correctly to the installed `package.json` version. A fork without a repository URL makes no request, and Settings reports that the release channel is unpublished. Don't invent a placeholder owner or repository to hide that state.
 

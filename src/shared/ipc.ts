@@ -518,6 +518,18 @@ export const requests = {
       cardCount: z.number().int().nonnegative(),
     }),
   },
+  "plans.calendar": {
+    input: z.object({
+      planId: z.string().optional(),
+      language: z.enum(["en", "it"]),
+    }),
+    // count is 0 when no exam is upcoming and dated; there is then nothing to save.
+    output: z.object({
+      filename: z.string(),
+      base64: z.string(),
+      count: z.number().int().nonnegative(),
+    }),
+  },
   "study.csv": {
     input: z.object({ planId: z.string(), topicId: z.string().optional() }),
     output: z.object({ filename: z.string(), csv: z.string() }),
@@ -964,6 +976,8 @@ export const requests = {
             }),
           ),
           hints: z.array(z.string()),
+          /** The student's "Got it" or "Missed it" from this visit, if any. */
+          rating: z.enum(["got", "missed"]).nullable(),
         }),
       ),
       job: z
@@ -974,6 +988,15 @@ export const requests = {
         })
         .nullable(),
     }),
+  },
+  "study.rateExercise": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      exerciseId: z.string(),
+      rating: z.enum(["got", "missed"]),
+    }),
+    output: z.object({ rating: z.enum(["got", "missed"]) }),
   },
   "tools.check": {
     input: checkClaimSchema,
@@ -1706,6 +1729,27 @@ export const requests = {
   "chats.delete": {
     input: z.object({ chatId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
+  },
+  "chats.search": {
+    input: z.object({ query: z.string().max(200) }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string().nullable(),
+        updatedAt: z.number(),
+        snippet: z
+          .object({
+            text: z.string(),
+            start: z.number().int().nonnegative(),
+            end: z.number().int().nonnegative(),
+          })
+          .nullable(),
+      }),
+    ),
+  },
+  "chats.export": {
+    input: z.object({ chatId: z.string(), language: z.enum(["en", "it"]) }),
+    output: z.object({ filename: z.string(), markdown: z.string() }),
   },
   "chats.regenerate": {
     input: z.object({

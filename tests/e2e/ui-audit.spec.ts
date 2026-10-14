@@ -88,6 +88,7 @@ const routes = [
   ["export-plan", "/plans/audit-plan"],
   ["export-plan-embed", "/plans/audit-plan"],
   ["practice", "/plans/audit-plan/practice/audit-topic"],
+  ["practice-rated", "/plans/audit-plan/practice/audit-topic"],
   ["lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-rewrite", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-menu", "/plans/audit-plan/lesson/audit-topic"],
@@ -159,10 +160,17 @@ const routes = [
   ["ask-ocr-ready", "/ask"],
   // The chat panel, the composer's subject menu and its sources popover.
   ["ask-panel", "/ask/audit-chat"],
+  ["ask-search", "/ask/audit-chat"],
+  ["ask-search-empty", "/ask/audit-chat"],
   ["ask-subject-menu", "/ask/audit-chat"],
   ["ask-sources-menu", "/ask/audit-chat"],
   // The formula keyboard docked in the composer, with a formula already typed.
   ["ask-formula", "/ask/audit-chat"],
+  // Download and install from Settings: offered, in progress, checked and replaced, and a checksum that does not match.
+  ["updates-available", "/settings/updates"],
+  ["updates-downloading", "/settings/updates"],
+  ["updates-verified", "/settings/updates"],
+  ["updates-failed", "/settings/updates"],
 ] as const;
 
 /** The pinned OCR files the runtime task downloaded once. The audit stages these bytes, it never fetches them. */
@@ -420,6 +428,13 @@ function seed(db: DatabaseSync) {
     INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('audit-ready-plan','Prepared exam','ready','it',1,1);
     INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-ready-topic','audit-ready-plan','Force',0,1);
   `);
+  // One plan with an exam date, so the Exams page audits Add to calendar when it is on.
+  const examDay = new Date(now);
+  examDay.setDate(examDay.getDate() + 40);
+  examDay.setHours(12, 0, 0, 0);
+  db.prepare("UPDATE plans SET exam_at = ? WHERE id = 'audit-ready-plan'").run(
+    examDay.getTime(),
+  );
   db.prepare(
     "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('audit-ready-build','simulation-build',?,'succeeded',1,?,?)",
   ).run(
@@ -585,6 +600,72 @@ async function openExport(page: Page) {
 let auditUserData = "";
 let auditApp: ElectronApplication | undefined;
 let auditPicked = "";
+
+/** A newer fake release served from disk by the e2e seam, installed into a stand-in AppImage. */
+const packageVersion = JSON.parse(
+  readFileSync(join(process.cwd(), "package.json"), "utf8"),
+).version as string;
+const [major = 0, minor = 0] = packageVersion.split(".").map(Number);
+const updateTag = `v${major}.${minor + 1}.0`;
+const updateAsset = `PoliTost.Pyxis-${updateTag.slice(1)}.AppImage`;
+const updateBytes = Buffer.alloc(300 * 1024, 7);
+let updateFolder = "";
+function updateEnv() {
+  updateFolder = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-update-"));
+  mkdirSync(join(updateFolder, "release"));
+  mkdirSync(join(updateFolder, "apps"));
+  writeFileSync(join(updateFolder, "release", updateAsset), updateBytes);
+  writeFileSync(join(updateFolder, "apps", "Pyxis.AppImage"), "installed");
+  const download = (name: string) =>
+    `https://github.com/PoliTost/pyxis-test/releases/download/${updateTag}/${name}`;
+  return {
+    PYXIS_E2E_RELEASE: JSON.stringify({
+      tag_name: updateTag,
+      body: "Nuovi strumenti di studio.",
+      draft: false,
+      prerelease: false,
+      assets: [
+        {
+          name: updateAsset,
+          size: updateBytes.length,
+          browser_download_url: download(updateAsset),
+        },
+        {
+          name: "SHA256SUMS",
+          size: 120,
+          browser_download_url: download("SHA256SUMS"),
+        },
+      ],
+    }),
+    PYXIS_E2E_UPDATE_ASSETS: join(updateFolder, "release"),
+    PYXIS_E2E_UPDATE_HOLD: join(updateFolder, "hold"),
+    PYXIS_E2E_APPIMAGE: join(updateFolder, "apps", "Pyxis.AppImage"),
+  };
+}
+/** The SHA256SUMS line for the fake installer, wrong for the failed state. A held download pauses before its end. */
+function prepareUpdate(name: string) {
+  if (!updateFolder) return;
+  const hash =
+    name === "updates-failed"
+      ? "f".repeat(64)
+      : createHash("sha256").update(updateBytes).digest("hex");
+  writeFileSync(
+    join(updateFolder, "release", "SHA256SUMS"),
+    `${hash}  ${updateAsset}\n`,
+  );
+  const hold = join(updateFolder, "hold");
+  if (name === "updates-downloading") writeFileSync(hold, "");
+  else rmSync(hold, { force: true });
+}
+async function startUpdate(page: Page) {
+  const start = page
+    .locator(".px-updates")
+    .getByRole("button", {
+      name: both("Scarica e installa", "Download and install"),
+    });
+  await expect(start).toBeVisible();
+  await start.click();
+}
 function withDb(work: (db: DatabaseSync) => void) {
   const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"), {
     timeout: 10000,
@@ -608,6 +689,9 @@ function auditScanBlob(): string {
     "pdf",
   );
 }
+
+/** Whether the "practice-rated" state left its self-rating in the audit workspace. */
+let auditRating = false;
 
 /** Cards of a second subject and of an exam with no subject, for the flashcard browser only. Every other state removes them. */
 function prepareCardBrowser(name: string) {
@@ -640,6 +724,28 @@ function prepareCardBrowser(name: string) {
 
 function prepareState(name: string) {
   prepareCardBrowser(name);
+  prepareUpdate(name);
+  // A rating from this visit shows as chosen on the practice page; every other state starts without one.
+  if (name === "practice-rated" || auditRating)
+    withDb((db) => {
+      db.exec(
+        "DELETE FROM learning_events WHERE json_extract(payload_json, '$.evidenceKind') = 'self'",
+      );
+      if (name === "practice-rated")
+        db.prepare(
+          "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('audit-self-rating','answer_given','audit-plan','audit-topic',?,?)",
+        ).run(
+          JSON.stringify({
+            exerciseId: "audit-exercise",
+            rating: "got",
+            score: 1,
+            evidenceKind: "self",
+            questionScores: [{ id: "audit-exercise", score: 1 }],
+          }),
+          Date.now(),
+        );
+    });
+  auditRating = name === "practice-rated";
   if (name.startsWith("library")) {
     // A stored syllabus comparison, keyed the way the core keys it: the source version and each plan's compared texts.
     withDb((db) => {
@@ -1037,6 +1143,80 @@ async function openState(page: Page, name: string) {
   const dialog = page.getByRole("dialog");
   const source = /^Appunti di fisica$/;
   switch (name) {
+    // The download state lives in main and outlasts a reload, so the plain route starts from no download.
+    case "settings-updates":
+      await page.evaluate(() => window.pyxis.cancelUpdate());
+      break;
+    case "updates-available":
+      await page.evaluate(() => window.pyxis.cancelUpdate());
+      await expect(
+        page
+          .locator(".px-updates")
+          .getByText(
+            both(
+              `Pyxis ${updateTag} è disponibile.`,
+              `Pyxis ${updateTag} is available.`,
+            ),
+          ),
+      ).toBeVisible();
+      await expect(
+        page.locator(".px-updates").getByRole("button", {
+          name: both("Scarica e installa", "Download and install"),
+        }),
+      ).toBeVisible();
+      break;
+    case "updates-downloading":
+      await page.evaluate(() => window.pyxis.cancelUpdate());
+      await startUpdate(page);
+      await expect(
+        page.locator(".px-updates").getByRole("progressbar", {
+          name: both(
+            `Scarico Pyxis ${updateTag}`,
+            `Downloading Pyxis ${updateTag}`,
+          ),
+        }),
+      ).toBeVisible();
+      await expect(page.locator(".px-updates").getByText(/85%/)).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: both("Annulla il download", "Cancel download"),
+        }),
+      ).toBeVisible();
+      break;
+    case "updates-verified": {
+      // The held download from the previous state finishes now; a filtered run starts its own.
+      const state = await page.evaluate(() => window.pyxis.updateState());
+      if (state.state !== "downloading" && state.state !== "verified")
+        await startUpdate(page);
+      await expect(
+        page.getByText(
+          both(
+            `Pyxis ${updateTag} è installato. Riavvia Pyxis per usarlo.`,
+            `Pyxis ${updateTag} is installed. Restart Pyxis to use it.`,
+          ),
+        ),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: both("Riavvia Pyxis", "Restart Pyxis"),
+        }),
+      ).toBeVisible();
+      break;
+    }
+    case "updates-failed":
+      await page.evaluate(() => window.pyxis.cancelUpdate());
+      await startUpdate(page);
+      await expect(
+        page.getByText(
+          /non corrisponde al suo checksum|did not match its checksum/,
+        ),
+      ).toBeVisible();
+      await expect(
+        page.locator(".px-updates").getByRole("button", {
+          name: both("Apri la pagina della versione", "Open release page"),
+        }),
+      ).toBeVisible();
+      break;
     case "wizard-1":
     case "wizard-2":
     case "wizard-3":
@@ -1217,6 +1397,26 @@ async function openState(page: Page, name: string) {
         page.getByRole("list", { name: both("Chat", "Chats") }),
       ).toBeVisible();
       break;
+    case "ask-search":
+    case "ask-search-empty": {
+      await page
+        .getByRole("button", { name: both("Apri le chat", "Open chats") })
+        .click();
+      const empty = name === "ask-search-empty";
+      await page
+        .getByRole("textbox", {
+          name: both("Cerca nelle chat", "Search chats"),
+        })
+        .fill(empty ? "zzzz" : "forza");
+      await expect(
+        empty
+          ? page.getByText(/Nessuna chat contiene|No chat matches/)
+          : page.getByRole("list", {
+              name: both("Risultati della ricerca", "Search results"),
+            }),
+      ).toBeVisible();
+      break;
+    }
     case "ask-subject-menu":
       await page.getByRole("button", { name: /^(Materia|Subject):/ }).click();
       await expect(
@@ -1313,6 +1513,17 @@ async function openState(page: Page, name: string) {
           .last(),
       ).toBeVisible();
       break;
+    case "practice-rated": {
+      const got = page.getByRole("button", {
+        name: both("Ce l'ho fatta", "Got it"),
+      });
+      const missed = page.getByRole("button", {
+        name: both("Non ce l'ho fatta", "Missed it"),
+      });
+      await expect(got).toHaveAttribute("aria-pressed", "true");
+      await expect(missed).toHaveAttribute("aria-pressed", "false");
+      break;
+    }
     case "lesson-menu":
       await page
         .getByRole("button", { name: both("Altre azioni", "More actions") })
@@ -1972,6 +2183,16 @@ async function keyboardCheck(page: Page, name: string) {
     await expect(first).toHaveAttribute("aria-pressed", "true");
     await expect(second).toHaveAttribute("aria-pressed", "false");
   }
+  if (name === "practice-rated") {
+    // Changing the rating moves the pressed state and keeps focus on the button that was used.
+    const missed = page.getByRole("button", {
+      name: both("Non ce l'ho fatta", "Missed it"),
+    });
+    await missed.focus();
+    await page.keyboard.press("Space");
+    await expect(missed).toHaveAttribute("aria-pressed", "true");
+    await expect(missed).toBeFocused();
+  }
   if (name === "practice") {
     const reveal = page
       .getByRole("button", { name: /Mostra la soluzione|Show the solution/ })
@@ -2053,6 +2274,7 @@ test("M14 every application route in both languages, themes and supported widths
     PYXIS_USER_DATA: userData,
     PYXIS_E2E: "1",
     PYXIS_E2E_FILE: importFolder,
+    ...updateEnv(),
     PYXIS_E2E_REPLY: "La forza è $F=ma$ [P1].",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       modules: {
@@ -2112,6 +2334,11 @@ test("M14 every application route in both languages, themes and supported widths
       .click({ timeout: 90_000 });
     page.setDefaultTimeout(7000);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    // The fake release keeps its banner closed, so it covers no other state; Settings > Updates still shows it.
+    await page.evaluate(
+      (tag) => localStorage.setItem("pyxis-dismissed-release", tag),
+      updateTag,
+    );
     await page.evaluate(() =>
       sessionStorage.setItem(
         "pyxis-board",
@@ -2313,6 +2540,7 @@ test("M14 every application route in both languages, themes and supported widths
     rmSync(userData, { recursive: true, force: true });
     rmSync(importFolder, { recursive: true, force: true });
     rmSync(booksSite, { recursive: true, force: true });
+    rmSync(updateFolder, { recursive: true, force: true });
   }
   expect(failures, failures.join("\n")).toEqual([]);
 });

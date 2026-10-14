@@ -13,6 +13,9 @@ import { stageWorkspaceMove } from "./workspace-move";
 import { renameSync } from "node:fs";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
+import { updateInstaller } from "./update-install";
+import { updateSeam } from "./update-fixture";
+import { spawn } from "node:child_process";
 import { registerArtifactHandlers } from "./artifacts";
 import { invalidateRuntime } from "./runtime-pack";
 import {
@@ -819,27 +822,88 @@ function registerIpc(): void {
     };
   });
   const metadata = packageMetadata as { repository?: unknown; version: string };
-  const releaseFixture =
-    e2eSeam() && process.env["PYXIS_E2E_RELEASE"]
-      ? JSON.parse(process.env["PYXIS_E2E_RELEASE"]!)
-      : null;
+  // The e2e seam stands in for GitHub, serves installers from a folder and installs into a stand-in AppImage.
+  // Unpackaged builds only, like the installer stand-in.
+  const seam = e2eSeam() ? updateSeam(process.env, app.isPackaged) : null;
+  const fixture = seam?.fetch;
+  const testAppImage = seam?.appImage;
+  const repository = seam
+    ? "PoliTost/pyxis-test"
+    : githubRepository(metadata.repository);
+  const current = app.isPackaged ? app.getVersion() : metadata.version;
   const checkUpdates = releaseChecker({
-    repository: releaseFixture
-      ? "PoliTost/pyxis-test"
-      : githubRepository(metadata.repository),
-    current: app.isPackaged ? app.getVersion() : metadata.version,
+    repository,
+    current,
     cachePath: userFile("updates.json"),
-    ...(releaseFixture
-      ? {
-          fetch: async () =>
-            new Response(JSON.stringify(releaseFixture), { status: 200 }),
-        }
-      : {}),
+    ...(fixture ? { fetch: fixture } : {}),
   });
   ipcMain.handle(mainChannels.updatesCheck, (event) => {
     if (event.sender.id !== mainWindow?.webContents.id)
       throw new Error("updates-untrusted-sender");
     return checkUpdates();
+  });
+  const installer = updateInstaller({
+    repository,
+    current,
+    dir: userFile("updates"),
+    target: testAppImage
+      ? { platform: "linux", arch: "x64", appImage: testAppImage }
+      : {
+          platform: process.platform,
+          arch: process.arch,
+          appImage:
+            process.platform === "linux" ? process.env["APPIMAGE"] : undefined,
+        },
+    ...(fixture ? { fetch: fixture } : {}),
+    emit: (view) =>
+      mainWindow?.webContents.send(mainChannels.updatesChanged, view),
+    openPath: (path) => shell.openPath(path),
+    showItemInFolder: (path) => shell.showItemInFolder(path),
+    // The verified installer runs on its own, without a shell, so it can replace Pyxis's files once Pyxis has closed.
+    launch: (path) =>
+      new Promise((resolve, reject) => {
+        const child = spawn(path, [], { detached: true, stdio: "ignore" });
+        child.once("error", reject);
+        child.once("spawn", () => {
+          child.unref();
+          resolve();
+        });
+      }),
+    relaunch: (path) =>
+      app.relaunch({ execPath: path, args: process.argv.slice(1) }),
+    quit: () => app.quit(),
+  });
+  ipcMain.handle(mainChannels.updatesInstall, (event) => {
+    requireMainSender(event, "updates-untrusted-sender");
+    void installer.start();
+  });
+  ipcMain.handle(mainChannels.updatesCancel, (event) => {
+    requireMainSender(event, "updates-untrusted-sender");
+    installer.cancel();
+  });
+  ipcMain.handle(mainChannels.updatesState, (event) => {
+    requireMainSender(event, "updates-untrusted-sender");
+    return installer.state();
+  });
+  ipcMain.handle(mainChannels.updatesReveal, (event) => {
+    requireMainSender(event, "updates-untrusted-sender");
+    return installer.reveal();
+  });
+  ipcMain.handle(mainChannels.updatesFinish, (event, raw: unknown) => {
+    requireMainSender(event, "updates-untrusted-sender");
+    const input = raw as { activeJobs?: unknown; confirmed?: unknown } | null;
+    if (
+      !input ||
+      !Number.isSafeInteger(input.activeJobs) ||
+      (input.activeJobs as number) < 0 ||
+      typeof input.confirmed !== "boolean"
+    )
+      throw new Error("updates-invalid");
+    return installer.finish({
+      workspaceBusy,
+      activeJobs: input.activeJobs as number,
+      confirmed: input.confirmed,
+    });
   });
   registerArtifactHandlers(() => mainWindow, e2eSeam);
   ipcMain.handle(

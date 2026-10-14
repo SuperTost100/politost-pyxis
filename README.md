@@ -46,9 +46,9 @@ The app is in English and Italian, with dark and light themes.
 
 **Close knowledge gaps.** Two wrong answers on a topic in one quiz open a gap. Pyxis asks the model what misconception the answers show, builds a drill for it, and closes the gap after two clean sessions on different days.
 
-**Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. The Σ button opens a formula keyboard, which also works in quiz, practice and simulation answers. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
+**Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. The chat list searches titles and message text, ignoring case and accents, and each chat exports as Markdown or PDF with its sources. The Σ button opens a formula keyboard, which also works in quiz, practice and simulation answers. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
 
-**Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Back up the whole workspace to one ZIP and restore it on another computer.
+**Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Save your exam dates as a calendar file (`.ics`) with a reminder the day before; importing it again updates the events. Back up the whole workspace to one ZIP and restore it on another computer.
 
 Pyxis reads PDF, Word (`.docx`), PowerPoint (`.pptx`), Markdown, plain text, web pages, photos (JPEG, PNG, WebP, HEIC) and [PoliTost smartbooks](https://github.com/SuperTost100/politost-content) (`.ptsb`), which keep their chapters and exercises. Scanned pages go through local OCR or your model's vision support.
 
@@ -99,7 +99,14 @@ On Windows, `Get-FileHash <file>` prints the hash to compare with `SHA256SUMS`. 
 - **Windows.** Run the installer. If SmartScreen stops it, choose More info → Run anyway.
 - **Linux.** Install the `.deb` with your package manager, or `chmod +x` the AppImage and run it (some distributions need FUSE for that). Saving an API key needs a working keyring such as GNOME Keyring or KWallet. Pyxis refuses to store keys in plain text.
 
-Pyxis checks GitHub for a new release at most once a day and links you to it. It never installs updates by itself.
+Pyxis checks GitHub for a new release at most once a day. When one is out, Settings → Updates and a notice offer **Download and install**. Nothing downloads until you press it. Pyxis then fetches the installer for your system and the release's `SHA256SUMS`, keeps the file only if the checksum matches, and hands it over:
+
+- **macOS.** The DMG opens. Quit Pyxis, drag it to Applications and choose Replace.
+- **Windows.** Pyxis closes and the installer runs.
+- **Linux AppImage.** The new AppImage replaces the old file, and Pyxis restarts when you choose. If Pyxis can't write to that folder, it shows you the new file instead.
+- **Linux `.deb`.** The package opens in its folder for your software installer. Pyxis never runs `sudo` or `dpkg`.
+
+If a download fails or doesn't match, Pyxis deletes it and offers the release page instead.
 
 ### First launch
 
@@ -137,6 +144,7 @@ These actions send data off your computer:
 - **Free PoliTost books.** Opening the list asks books.politost.it for its catalog, and adding a book downloads it from there. While the Sources page is open and holds a smartbook, Pyxis reads the catalog too, to offer a newer version, which Update downloads in place. Each book is checked against the catalog's SHA-256.
 - **Optional downloads.** The search model, the Python runtime and the OCR language files are fetched once, after you agree, and checked against pinned SHA-256 hashes.
 - **Update check.** Pyxis asks GitHub for the latest release tag, at most once a day, or again after 15 minutes if the check failed. It sends no workspace content.
+- **Installing an update.** Only after you press Download and install, Pyxis downloads the installer for your system and `SHA256SUMS` from that GitHub release.
 
 Pyxis has no telemetry and uploads no crash reports. Backups and exported plans can contain your course material, so treat them as private files. API keys are never written to the workspace or to backups. [SECURITY.md](SECURITY.md) lists every network request and where each file lives.
 
