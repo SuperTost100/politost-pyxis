@@ -8,18 +8,20 @@ import {
   PencilLine,
   RefreshCw,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import {
   finalRecap,
   parseSmartText,
+  smartQuestions,
   smartSections,
 } from "@shared/smart-text";
 import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
+import { createAnswerQueue } from "./answerQueue";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -52,6 +54,8 @@ export function LessonPage() {
   const [part, setPart] = useState(0);
   const [note, setNote] = useState("");
   const stop = useRef<(() => void) | null>(null);
+  // Picks on checks the stream has closed; they wait here until the lesson is saved.
+  const [queued] = useState(createAnswerQueue);
   const regenerate = useRef(false);
   const key = ["lesson", planId, topicId, chosen ?? null];
   const lesson = useQuery({
@@ -61,6 +65,7 @@ export function LessonPage() {
     queryFn: async ({ signal }) => {
       setLive("");
       setLivePassages([]);
+      queued.drop();
       const again = regenerate.current;
       regenerate.current = false;
       const handle = window.pyxis.stream(
@@ -149,11 +154,10 @@ export function LessonPage() {
   );
   const busy = writing || rewritePart.isPending;
 
-  async function answer(blockId: string, pick: number) {
-    if (!data?.itemId) return;
+  async function save(itemId: string, blockId: string, pick: number) {
     const result = await invoke("study.lessonAnswer", {
       planId,
-      itemId: data.itemId,
+      itemId,
       blockId,
       pick,
     });
@@ -165,6 +169,28 @@ export function LessonPage() {
     void client.invalidateQueries({ queryKey: ["series", planId] });
     if (result.finished) await refreshPlan();
   }
+
+  // While the lesson is written, a pick has no saved lesson to count against: the reader sees the result at once and
+  // the pick is sent when the lesson is saved. A stop, a failure or the book fallback drops it.
+  async function answer(blockId: string, pick: number) {
+    if (writing) return queued.add(blockId, pick);
+    if (data?.itemId) await save(data.itemId, blockId, pick);
+  }
+  useEffect(() => {
+    if (lesson.isFetching) return;
+    const saved = lesson.data;
+    if (lesson.isError || !saved?.itemId || saved.fallback) {
+      queued.drop();
+      return;
+    }
+    const itemId = saved.itemId;
+    const ids = new Set(smartQuestions(parseSmartText(saved.markdown)).keys());
+    void queued.flush(
+      (blockId) => ids.has(blockId),
+      (blockId, pick) => save(itemId, blockId, pick),
+    );
+    // `save` reads only what the render that finished the stream holds.
+  }, [lesson.data, lesson.isFetching, lesson.isError, queued]);
 
   const levelMenu = (
     <Dropdown
@@ -311,7 +337,7 @@ export function LessonPage() {
         <SmartText
           streaming={writing}
           answers={data?.answers}
-          onAnswer={model && data?.itemId ? answer : undefined}
+          onAnswer={writing || (model && data?.itemId) ? answer : undefined}
           onCitationClick={(number) => {
             const passageId = (writing || cancelled ? livePassages : data?.passageIds)?.[
               number - 1

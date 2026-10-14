@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { animationsSettled } from "./settled";
 
 async function clean(page: Page) {
   expect(
@@ -163,6 +164,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     await page
       .getByRole("button", { name: "Aggiungi fonti", exact: true })
       .click();
+    await animationsSettled(page);
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Scegli i file", exact: true })

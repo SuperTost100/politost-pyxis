@@ -48,8 +48,9 @@ describe("prompt templates", () => {
       expect(loadTemplate(id).version, id).toBe("2");
     }
     expect(loadTemplate("plan.topics").version).toBe("3");
-    // Diagnostic passages now name their topic, so citations can match the question's topic.
-    expect(loadTemplate("plan.diagnostic").version).toBe("4");
+    // Diagnostic passages now name their topic, so citations can match the question's topic. Version 5 asks the
+    // model to vary the correct option's position and not to refer to options by letter.
+    expect(loadTemplate("plan.diagnostic").version).toBe("5");
     // Reference-language grading is unchanged; solve checks now require every real root.
     expect(loadTemplate("quiz.open-grade").version).toBe("1");
     expect(loadTemplate("chat.checks").version).toBe("2");

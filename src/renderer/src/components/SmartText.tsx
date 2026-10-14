@@ -16,7 +16,7 @@ export type SmartAnswer = (questionId: string, pick: number) => Promise<unknown>
 
 type Answers = {
   picks: Record<string, number>;
-  /** Saving the answer is possible: false while the text is still being written. */
+  /** Questions can be answered: `onAnswer` is set. A question in text still being written can be, once its block has closed. */
   live: boolean;
   failed: string | null;
   pick: (questionId: string, pick: number) => void;
@@ -24,7 +24,8 @@ type Answers = {
 
 /**
  * Smart text: lesson prose with its interactive blocks. Answers are saved through `onAnswer`; the first pick of a
- * question stays. While `streaming`, an unfinished block shows a placeholder and nothing can be answered yet.
+ * question stays. While `streaming`, an unfinished block shows a placeholder and cannot be answered; a closed block
+ * can, and `onAnswer` decides when the pick is saved.
  */
 export function SmartText({
   children,
@@ -48,7 +49,7 @@ export function SmartText({
   const [failed, setFailed] = useState<string | null>(null);
   const state: Answers = {
     picks: { ...local, ...answers },
-    live: !streaming && Boolean(onAnswer),
+    live: Boolean(onAnswer),
     failed,
     pick(questionId, pick) {
       if (!onAnswer || questionId in answers || questionId in local) return;

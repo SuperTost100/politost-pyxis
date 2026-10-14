@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { randomInt } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
@@ -26,7 +27,10 @@ import {
 } from "./rebuild";
 import { embedWithModel } from "../sources/retrieve";
 import { queueSyllabusChecks } from "../sources/syllabus";
+import { shuffleChoices } from "../../shared/choices";
 import { stripPassageRefs } from "../../shared/smart-text";
+
+const randomUnit = () => randomInt(2 ** 32) / 2 ** 32;
 
 export type PlanInput = Omit<
   Parameters<typeof createPlan>[1],
@@ -616,15 +620,19 @@ export function registerPlanJobs(
                 "SELECT id FROM topics WHERE plan_id = ? ORDER BY position",
               )
               .all(params.planId) as Array<{ id: string }>;
-            const questions = data.questions.map((q) => ({
-              id: uuidv7(),
-              stem: q.stem,
-              options: q.options,
-              explanation: q.explanation,
-              topicId: topics[q.topicIndex]!.id,
-              sourceIds: q.passageIds,
-              answer: { kind: "mcq", picked: -1, correct: q.correct },
-            }));
+            const questions = data.questions.map((q) => {
+              // The model's options are not kept in its order: it favours some positions for the right one.
+              const shown = shuffleChoices(q.options, q.correct, randomUnit);
+              return {
+                id: uuidv7(),
+                stem: q.stem,
+                options: shown.options,
+                explanation: q.explanation,
+                topicId: topics[q.topicIndex]!.id,
+                sourceIds: q.passageIds,
+                answer: { kind: "mcq", picked: -1, correct: shown.correct },
+              };
+            });
             params.diagnosticId = saveItem(
               db,
               params,
