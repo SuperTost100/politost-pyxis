@@ -401,8 +401,8 @@ export class AutoBackups {
   /** Starts the checks. Until then nothing backs up on its own (tests without a Documents folder never start them). */
   start(firstCheckIn: number, every: number): void {
     this.timers.push(
-      setTimeout(() => void this.check(), firstCheckIn),
-      setInterval(() => void this.check(), every),
+      setTimeout(() => void this.check().then((r) => this.deps.log?.(`pyxis: check ${r}`)), firstCheckIn), // DIAG
+      setInterval(() => void this.check().then((r) => this.deps.log?.(`pyxis: check ${r}`)), every), // DIAG
     );
   }
 

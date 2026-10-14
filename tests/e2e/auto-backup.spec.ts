@@ -22,13 +22,44 @@ import { quitPyxis } from "./app-exit";
 const automatic = /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip$/;
 const HOUR = 60 * 60 * 1000;
 
-function launch(env: Record<string, string | undefined>) {
+/** Main's own log lines, such as "pyxis: automatic backup failed (permission)". */
+const mainLog: string[] = [];
+test.beforeEach(() => {
+  mainLog.length = 0;
+});
+
+async function launch(env: Record<string, string | undefined>) {
   const full = { ...process.env, PYXIS_E2E: "1", ...env };
   delete full.ELECTRON_RUN_AS_NODE;
-  return electron.launch({
+  const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env: full as Record<string, string>,
   });
+  for (const stream of [app.process().stdout, app.process().stderr])
+    stream?.on("data", (chunk) =>
+      mainLog.push(
+        ...String(chunk)
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith("pyxis:")),
+      ),
+    );
+  return app;
+}
+
+/**
+ * After a failed step Pyxis is still open. Prints what the automatic backups were doing, then closes it so the test
+ * folder can be removed and the step's own error is the one reported.
+ */
+async function closeAfterFailure(app: ElectronApplication | undefined) {
+  if (!app) return;
+  const status = await app
+    .windows()[0]
+    ?.evaluate(() => window.pyxis.autoBackups.status())
+    .catch((error: Error) => error.message);
+  console.log(
+    `Automatic backups when the step failed: ${JSON.stringify(status)}\nMain log:\n${mainLog.join("\n") || "(empty)"}`,
+  );
+  await app.close().catch(() => undefined);
 }
 
 function backupsIn(folder: string): string[] {
@@ -196,8 +227,7 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
     await quitPyxis(app);
     app = undefined;
   } finally {
-    // A failed step leaves Pyxis open. Close it so the folder can go and the step's own error is the one reported.
-    await app?.close().catch(() => undefined);
+    await closeAfterFailure(app);
     removeTestFolder(root);
   }
 });
@@ -286,7 +316,7 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
     await quitPyxis(app);
     app = undefined;
   } finally {
-    await app?.close().catch(() => undefined);
+    await closeAfterFailure(app);
     removeTestFolder(root);
   }
 });
@@ -333,7 +363,7 @@ test("quitting during an automatic backup stops it and leaves no Pyxis process b
     // The stopped copy leaves neither a backup nor its temporary folder.
     expect(readdirSync(join(documents, "Pyxis backups"))).toEqual([]);
   } finally {
-    await app?.close().catch(() => undefined);
+    await closeAfterFailure(app);
     removeTestFolder(root);
   }
 });

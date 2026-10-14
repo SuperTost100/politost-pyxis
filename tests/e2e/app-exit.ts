@@ -62,9 +62,10 @@ function running(pid: number): boolean {
   }
 }
 
-/** "1234 renderer", "1234 utility node.mojom.NodeService" (core), or "1234 main". */
+/** "1234 renderer", "1234 utility node.mojom.NodeService" (core), or the start of any other command line. */
 function describe(proc: PyxisProcess): string {
-  const type = /--type=(\S+)/.exec(proc.command)?.[1] ?? "main";
+  const type =
+    /--type=(\S+)/.exec(proc.command)?.[1] ?? proc.command.slice(0, 160);
   const service = /--utility-sub-type=(\S+)/.exec(proc.command)?.[1];
   return [proc.pid, type, service].filter(Boolean).join(" ");
 }
