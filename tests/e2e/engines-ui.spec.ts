@@ -23,6 +23,8 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     // Whatever engines this computer has, their notice is already confirmed, so no dialog covers the screen.
     await page.evaluate(() =>
       window.pyxis.invoke("engines.acknowledge", {
@@ -185,6 +187,8 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     // Skipping setup navigates to Exams on its own; wait for it so it cannot override the next route.
     await page.waitForFunction(() => location.hash.startsWith("#/exams"));
     await page.evaluate(() => {
@@ -289,6 +293,8 @@ esac`,
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     await page.waitForFunction(() => location.hash.startsWith("#/exams"));
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");

@@ -22,6 +22,8 @@ test("MATH-02 MATH-06 Pyodide limits, network isolation and independent SymPy ve
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     let runNumber = 0;
     const run = async (code: string) => {
       const label = `python case ${++runNumber}`;
@@ -147,6 +149,8 @@ test("MATH-02 MATH-06 complete solve sets, own-request queue clock and crashed-r
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     type Result = { state: string; reason?: string };
     const check = (claim: Record<string, unknown>) =>
       page.evaluate((claim) => window.pyxis.invoke("tools.check", claim), claim) as Promise<Result>;

@@ -38,6 +38,8 @@ const questions = (topics: number) => ({
 
 async function skipOnboarding(page: Page) {
   await page.getByRole("button", { name: "Salta" }).click();
+  // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+  await expect(page).toHaveURL(/#\/exams$/);
   await expect(
     page.getByRole("heading", { name: "Esami", exact: true }),
   ).toBeVisible();

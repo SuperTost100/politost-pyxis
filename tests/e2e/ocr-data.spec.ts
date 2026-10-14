@@ -59,7 +59,11 @@ async function start(
   firstRun = false,
 ): Promise<Page> {
   const page = await app.firstWindow();
-  if (firstRun) await page.getByRole("button", { name: "Salta" }).click();
+  if (firstRun) {
+    await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
+  }
   await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
   await page.evaluate((hash) => {
     location.hash = hash;

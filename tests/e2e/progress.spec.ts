@@ -76,6 +76,8 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const source = (await importPickedSource(page, app, file)) as {
       sourceId: string;
     };

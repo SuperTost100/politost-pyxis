@@ -71,6 +71,8 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const invoke = <T>(channel: string, input: object) =>
       page.evaluate(
         ([channel, input]) =>
@@ -205,6 +207,8 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
   try {
     const page: Page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     const { chatId } = (await page.evaluate(() =>
       window.pyxis.invoke("chats.ask", {
         text: "calcola 6 per 7",

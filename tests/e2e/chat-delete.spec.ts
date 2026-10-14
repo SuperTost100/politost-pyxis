@@ -32,6 +32,8 @@ for (const libraryCopy of [false, true]) {
     try {
       const page = await app.firstWindow();
       await page.getByRole("button", { name: "Salta", exact: true }).click();
+      // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
+      await expect(page).toHaveURL(/#\/exams$/);
       const first = await page.evaluate(() =>
         window.pyxis.invoke("chats.ask", {
           text: "Hello",
