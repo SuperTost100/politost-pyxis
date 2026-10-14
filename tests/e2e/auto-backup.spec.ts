@@ -1,5 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import {
+  _electron as electron,
+  type ElectronApplication,
+  expect,
+  test,
+} from "@playwright/test";
 import {
   existsSync,
   mkdirSync,
@@ -12,17 +17,49 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { quitPyxis } from "./app-exit";
 
 const automatic = /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip$/;
 const HOUR = 60 * 60 * 1000;
 
-function launch(env: Record<string, string | undefined>) {
+/** Main's own log lines, such as "pyxis: automatic backup failed (permission)". */
+const mainLog: string[] = [];
+test.beforeEach(() => {
+  mainLog.length = 0;
+});
+
+async function launch(env: Record<string, string | undefined>) {
   const full = { ...process.env, PYXIS_E2E: "1", ...env };
   delete full.ELECTRON_RUN_AS_NODE;
-  return electron.launch({
+  const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env: full as Record<string, string>,
   });
+  for (const stream of [app.process().stdout, app.process().stderr])
+    stream?.on("data", (chunk) =>
+      mainLog.push(
+        ...String(chunk)
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith("pyxis:")),
+      ),
+    );
+  return app;
+}
+
+/**
+ * After a failed step Pyxis is still open. Prints what the automatic backups were doing, then closes it so the test
+ * folder can be removed and the step's own error is the one reported.
+ */
+async function closeAfterFailure(app: ElectronApplication | undefined) {
+  if (!app) return;
+  const status = await app
+    .windows()[0]
+    ?.evaluate(() => window.pyxis.autoBackups.status())
+    .catch((error: Error) => error.message);
+  console.log(
+    `Automatic backups when the step failed: ${JSON.stringify(status)}\nMain log:\n${mainLog.join("\n") || "(empty)"}`,
+  );
+  await app.close().catch(() => undefined);
 }
 
 function backupsIn(folder: string): string[] {
@@ -34,16 +71,16 @@ function backupsIn(folder: string): string[] {
 }
 
 /**
- * Removes a test folder. Windows can hold files for a while after Pyxis quits, so this retries for up to 30 s, then
- * fails naming every file still held, so a process that outlives Pyxis shows up instead of a bare EPERM.
+ * Removes a test folder once Pyxis has quit. Retries for a few seconds, since a virus scanner can still have a new file
+ * open, then fails naming every file still held.
  */
 function removeTestFolder(root: string) {
   try {
     rmSync(root, {
       recursive: true,
       force: true,
-      maxRetries: 60,
-      retryDelay: 500,
+      maxRetries: 20,
+      retryDelay: 250,
     });
   } catch (error) {
     const held: string[] = [];
@@ -74,9 +111,10 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
   mkdirSync(documents);
   const folder = join(documents, "Pyxis backups");
   const env = { PYXIS_USER_DATA: userData, PYXIS_E2E_DOCUMENTS: documents };
+  let app: ElectronApplication | undefined;
   try {
     // First launch: the folder does not exist yet; Pyxis creates it and backs up shortly after starting.
-    let app = await launch(env);
+    app = await launch(env);
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
@@ -100,7 +138,7 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
       "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('auto-plan','Motion','ready',1,1)",
     );
     db.close();
-    await app.close();
+    await quitPyxis(app);
 
     // Second launch the same day: no new backup.
     app = await launch(env);
@@ -112,7 +150,7 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
     // The first check runs a second after core starts; give it time to do nothing.
     await page.waitForTimeout(4000);
     expect(backupsIn(folder)).toEqual([first]);
-    await app.close();
+    await quitPyxis(app);
 
     // A day later, with three older automatic backups and two other files in the folder.
     const stateFile = join(userData, "backups.json");
@@ -184,8 +222,12 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
         ),
       )
       .toBe(false);
-    await app.close();
+    // Quitting right after a restore leaves nothing running: not the core started for the restored workspace, not
+    // the one it replaced.
+    await quitPyxis(app);
+    app = undefined;
   } finally {
+    await closeAfterFailure(app);
     removeTestFolder(root);
   }
 });
@@ -204,8 +246,9 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
   );
   const inside = join(userData, "Backups");
   mkdirSync(inside);
+  let app: ElectronApplication | undefined;
   try {
-    const app = await launch({
+    app = await launch({
       PYXIS_USER_DATA: userData,
       PYXIS_E2E_DOCUMENTS: documents,
       PYXIS_E2E_BACKUP_FOLDER: inside,
@@ -270,8 +313,90 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
     expect(
       JSON.parse(readFileSync(join(userData, "backups.json"), "utf8")).enabled,
     ).toBe(false);
-    await app.close();
+    await quitPyxis(app);
+    app = undefined;
   } finally {
+    await closeAfterFailure(app);
+    removeTestFolder(root);
+  }
+});
+
+test("quitting during an automatic backup stops it and leaves no Pyxis process behind", async () => {
+  test.setTimeout(120_000);
+  const root = mkdtempSync(join(tmpdir(), "pyxis-auto-backup-quit-"));
+  const userData = join(root, "userData");
+  const documents = join(root, "Documents");
+  const stateFile = join(userData, "backups.json");
+  mkdirSync(userData);
+  mkdirSync(documents);
+  const env = { PYXIS_USER_DATA: userData, PYXIS_E2E_DOCUMENTS: documents };
+  let app: ElectronApplication | undefined;
+  try {
+    // The first launch only creates the workspace.
+    writeFileSync(stateFile, JSON.stringify({ enabled: false }));
+    app = await launch(env);
+    let page = await app.firstWindow();
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const workspace = await page.evaluate(() => window.pyxis.workspacePath());
+    await quitPyxis(app);
+
+    // 128 MB of random bytes take a few seconds to compress, long enough to quit in the middle of the copy.
+    const db = new DatabaseSync(join(workspace, "pyxis.db"));
+    db.exec(
+      "CREATE TABLE ballast (data BLOB); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 128) INSERT INTO ballast SELECT randomblob(1048576) FROM n",
+    );
+    db.close();
+    writeFileSync(stateFile, JSON.stringify({ enabled: true }));
+    app = await launch(env);
+    page = await app.firstWindow();
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            async () => (await window.pyxis.autoBackups.status()).running,
+          ),
+        { intervals: [100] },
+      )
+      .toBe(true);
+    await quitPyxis(app);
+    app = undefined;
+    // The stopped copy leaves neither a backup nor its temporary folder.
+    expect(readdirSync(join(documents, "Pyxis backups"))).toEqual([]);
+  } finally {
+    await closeAfterFailure(app);
+    removeTestFolder(root);
+  }
+});
+
+test("a check that finds core still starting waits for it instead of failing", async () => {
+  test.setTimeout(60_000);
+  const root = mkdtempSync(join(tmpdir(), "pyxis-auto-backup-start-"));
+  const userData = join(root, "userData");
+  const documents = join(root, "Documents");
+  mkdirSync(join(userData, "workspace"), { recursive: true });
+  mkdirSync(documents);
+  // Core has created pyxis.db but not its tables yet, and stays there for 4 s, past the first check after 1 s.
+  writeFileSync(join(userData, "workspace", "pyxis.db"), "");
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launch({
+      PYXIS_USER_DATA: userData,
+      PYXIS_E2E_DOCUMENTS: documents,
+      PYXIS_E2E_CORE_DELAY: "4000",
+    });
+    const page = await app.firstWindow();
+    await expect
+      .poll(() => backupsIn(join(documents, "Pyxis backups")), {
+        timeout: 30_000,
+      })
+      .toHaveLength(1);
+    expect(
+      (await page.evaluate(() => window.pyxis.autoBackups.status())).notice,
+    ).toBeNull();
+    await quitPyxis(app);
+    app = undefined;
+  } finally {
+    await closeAfterFailure(app);
     removeTestFolder(root);
   }
 });

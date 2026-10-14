@@ -341,7 +341,7 @@ export type AutoBackupDeps = {
   defaultFolder: () => string;
   workspace: () => string;
   userData: string;
-  /** A manual backup, restore, move or wipe holds the workspace. */
+  /** A manual backup, restore, move or wipe holds the workspace, or core has not opened it yet. */
   busy: () => boolean;
   start: (zip: string, waitForJobs: boolean) => LiveBackupRun;
   changed: (status: AutoBackupStatus) => void;

@@ -155,6 +155,14 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await expect(page).toHaveURL(/#\/exams\/cards$/);
     await pick(app, "exams");
     await expect(page).toHaveURL(/#\/exams$/);
+    // The Exams door remembers where it was left after the page renders; on a slow runner the next picks can come first.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (JSON.parse(sessionStorage.getItem("pyxis.lastDoorPath") ?? "{}") as { exams?: string }).exams,
+        ),
+      )
+      .toBe("/exams");
     await pick(app, "new-chat");
     await expect(page).toHaveURL(/#\/ask$/);
     await pick(app, "about");
