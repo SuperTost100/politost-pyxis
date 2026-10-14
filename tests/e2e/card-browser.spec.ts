@@ -69,6 +69,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,
@@ -108,6 +109,21 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
         .filter({ hasText: "orbitano il nucleo" })
         .locator("strong"),
     ).toHaveText("Elettroni");
+    // Cards fade in; contrast measured mid-fade reads too low on a slow runner.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            document
+              .getAnimations()
+              .filter(
+                (animation) =>
+                  animation.playState === "running" &&
+                  animation.effect?.getTiming().iterations !== Infinity,
+              ).length,
+        ),
+      )
+      .toBe(0);
     expect(
       (
         await new AxeBuilder({ page }).setLegacyMode(true).analyze()
@@ -226,6 +242,8 @@ test("the flashcard browser says when there are no cards", async () => {
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile first; a reload before that lands back on setup.
+    await expect(page).toHaveURL(/#\/exams$/);
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");
       location.hash = "#/exams/cards";
