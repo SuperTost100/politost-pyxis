@@ -323,9 +323,14 @@ export function AskPage() {
   }
   useEffect(() => {
     const root = () => document.scrollingElement ?? document.documentElement;
+    let last = root().scrollTop;
+    // Only scrolling up stops following. Content that grows below, like the chips after a reply, can fire a scroll
+    // event before Pyxis has caught up with it; that is not the student leaving the bottom.
     const onScroll = () => {
       const el = root();
-      following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 96) following.current = true;
+      else if (el.scrollTop < last) following.current = false;
+      last = el.scrollTop;
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
