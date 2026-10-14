@@ -112,7 +112,7 @@ describe("an attached file and its turn are stored together or not at all", () =
           throw new Error("engine-down");
         },
       }),
-    ).rejects.toMatchObject({ detail: "engine-down" });
+    ).rejects.toThrow("engine-down");
     // The user's message and its source are saved, so the student can retry the turn without attaching the file again.
     expect(rows()).toMatchObject({ sources: 1, messages: 1 });
     db.close();

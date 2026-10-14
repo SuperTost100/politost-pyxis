@@ -163,7 +163,7 @@ describe("askTurn", () => {
       messageKey: "engines.errors.not-logged-in",
       detail: "Please run /login",
     });
-    const limited = (await fail(new Error("usage limit reached")).catch((err: unknown) => toIpcError(err))) as ReturnType<typeof toIpcError>;
+    const limited = (await fail(Object.assign(new Error("usage limit reached"), { code: "cli-failed" })).catch((err: unknown) => toIpcError(err))) as ReturnType<typeof toIpcError>;
     expect(limited.messageKey).toBe("engines.errors.quota");
     await expect(fail(new DOMException("stopped", "AbortError"))).rejects.toMatchObject({ name: "AbortError" });
     db.close();
@@ -188,7 +188,7 @@ describe("askTurn", () => {
           throw new Error("offline");
         },
       }),
-    ).rejects.toMatchObject({ code: "cli-failed", detail: "offline" });
+    ).rejects.toThrow("offline");
     expect(readChat(db, first.chatId)).toEqual(before);
     await expect(
       regenerateTurn(db, {

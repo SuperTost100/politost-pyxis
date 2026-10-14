@@ -51,21 +51,45 @@ export function translateEngineError(
   return { code, messageKey: `engines.errors.${code}` };
 }
 
+/** Node error codes of a lost connection, which a CLI or API provider reports as a plain error with a `code`. */
+const networkCodes = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
 /**
- * The error a model call surfaces to the screen: an IpcError carrying the translated `engines.errors.*` key and the raw
- * text as detail. A cancelled call and an error that already is an IpcError pass through unchanged. A refused notice keeps
- * the `engine-disclosure-required` code, which background jobs and photo imports match on.
+ * True for a failure of the engine itself: CLI Funnel's own errors (also the plain errors it builds from a stream, which
+ * carry its `code`) and a lost connection. Anything else, such as a reply that cannot be used or a bug in Pyxis, is not
+ * an engine problem and keeps its own message.
+ */
+function isEngineFailure(err: unknown): boolean {
+  if (err instanceof FunnelError) return true;
+  if (!err || typeof err !== "object" || !("code" in err)) return false;
+  const code = String(err.code);
+  return (
+    funnelCodes.has(code) || code === "cli-failed" || networkCodes.has(code)
+  );
+}
+
+/**
+ * The error a model call surfaces to the screen. A failed engine becomes an IpcError carrying the translated
+ * `engines.errors.*` key and the raw text as detail. A cancelled call, an error that already is an IpcError (such as
+ * `invalid-output`) and an error that is not the engine's pass through unchanged, so each feature keeps its own message
+ * for a reply it cannot use. A refused notice keeps the `engine-disclosure-required` code, which background jobs and
+ * photo imports match on.
  */
 export function engineIpcError(err: unknown, provider?: string): unknown {
   if (err instanceof IpcError || isAbort(err)) return err;
   if (err && typeof err === "object" && "code" in err && err.code === "aborted")
     return err;
   if (err instanceof Error && err.message.startsWith("engine-disclosure")) {
-    return new IpcError(
-      err.message,
-      "engines.errors.disclosure-required",
-    );
+    return new IpcError(err.message, "engines.errors.disclosure-required");
   }
+  if (!isEngineFailure(err)) return err;
   const translated = translateEngineError(err, provider);
   return new IpcError(
     translated.code,

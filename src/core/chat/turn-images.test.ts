@@ -97,7 +97,7 @@ it("records a photo once on a message whose turn is retried, so a retry cannot f
   writeFileSync(file, png);
   const ask = (run: (input: { attachments?: unknown[] }) => Promise<EngineResult>) =>
     askTurn(db, { chatId: "c", text: "cosa vedi?", allowGeneral: true, files: [file], workspace, run });
-  await expect(ask(async () => Promise.reject(new Error("engine down")))).rejects.toMatchObject({ detail: "engine down" });
+  await expect(ask(async () => Promise.reject(new Error("engine down")))).rejects.toThrow("engine down");
   let sent: unknown[] = [];
   await ask(async (input) => {
     sent = input.attachments ?? [];
