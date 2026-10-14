@@ -167,6 +167,11 @@ const routes = [
   ["ask-sources-menu", "/ask/audit-chat"],
   // The formula keyboard docked in the composer, with a formula already typed.
   ["ask-formula", "/ask/audit-chat"],
+  // Download and install from Settings: offered, in progress, checked and replaced, and a checksum that does not match.
+  ["updates-available", "/settings/updates"],
+  ["updates-downloading", "/settings/updates"],
+  ["updates-verified", "/settings/updates"],
+  ["updates-failed", "/settings/updates"],
 ] as const;
 
 /** The pinned OCR files the runtime task downloaded once. The audit stages these bytes, it never fetches them. */
@@ -594,6 +599,72 @@ async function openExport(page: Page) {
 let auditUserData = "";
 let auditApp: ElectronApplication | undefined;
 let auditPicked = "";
+
+/** A newer fake release served from disk by the e2e seam, installed into a stand-in AppImage. */
+const packageVersion = JSON.parse(
+  readFileSync(join(process.cwd(), "package.json"), "utf8"),
+).version as string;
+const [major = 0, minor = 0] = packageVersion.split(".").map(Number);
+const updateTag = `v${major}.${minor + 1}.0`;
+const updateAsset = `PoliTost.Pyxis-${updateTag.slice(1)}.AppImage`;
+const updateBytes = Buffer.alloc(300 * 1024, 7);
+let updateFolder = "";
+function updateEnv() {
+  updateFolder = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-update-"));
+  mkdirSync(join(updateFolder, "release"));
+  mkdirSync(join(updateFolder, "apps"));
+  writeFileSync(join(updateFolder, "release", updateAsset), updateBytes);
+  writeFileSync(join(updateFolder, "apps", "Pyxis.AppImage"), "installed");
+  const download = (name: string) =>
+    `https://github.com/PoliTost/pyxis-test/releases/download/${updateTag}/${name}`;
+  return {
+    PYXIS_E2E_RELEASE: JSON.stringify({
+      tag_name: updateTag,
+      body: "Nuovi strumenti di studio.",
+      draft: false,
+      prerelease: false,
+      assets: [
+        {
+          name: updateAsset,
+          size: updateBytes.length,
+          browser_download_url: download(updateAsset),
+        },
+        {
+          name: "SHA256SUMS",
+          size: 120,
+          browser_download_url: download("SHA256SUMS"),
+        },
+      ],
+    }),
+    PYXIS_E2E_UPDATE_ASSETS: join(updateFolder, "release"),
+    PYXIS_E2E_UPDATE_HOLD: join(updateFolder, "hold"),
+    PYXIS_E2E_APPIMAGE: join(updateFolder, "apps", "Pyxis.AppImage"),
+  };
+}
+/** The SHA256SUMS line for the fake installer, wrong for the failed state. A held download pauses before its end. */
+function prepareUpdate(name: string) {
+  if (!updateFolder) return;
+  const hash =
+    name === "updates-failed"
+      ? "f".repeat(64)
+      : createHash("sha256").update(updateBytes).digest("hex");
+  writeFileSync(
+    join(updateFolder, "release", "SHA256SUMS"),
+    `${hash}  ${updateAsset}\n`,
+  );
+  const hold = join(updateFolder, "hold");
+  if (name === "updates-downloading") writeFileSync(hold, "");
+  else rmSync(hold, { force: true });
+}
+async function startUpdate(page: Page) {
+  const start = page
+    .locator(".px-updates")
+    .getByRole("button", {
+      name: both("Scarica e installa", "Download and install"),
+    });
+  await expect(start).toBeVisible();
+  await start.click();
+}
 function withDb(work: (db: DatabaseSync) => void) {
   const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"), {
     timeout: 10000,
@@ -679,6 +750,7 @@ function prepareBackupState(name: string) {
 function prepareState(name: string) {
   prepareCardBrowser(name);
   prepareBackupState(name);
+  prepareUpdate(name);
   // A rating from this visit shows as chosen on the practice page; every other state starts without one.
   if (name === "practice-rated" || auditRating)
     withDb((db) => {
@@ -1078,6 +1150,80 @@ async function openState(page: Page, name: string) {
   const dialog = page.getByRole("dialog");
   const source = /^Appunti di fisica$/;
   switch (name) {
+    // The download state lives in main and outlasts a reload, so the plain route starts from no download.
+    case "settings-updates":
+      await page.evaluate(() => window.pyxis.cancelUpdate());
+      break;
+    case "updates-available":
+      await page.evaluate(() => window.pyxis.cancelUpdate());
+      await expect(
+        page
+          .locator(".px-updates")
+          .getByText(
+            both(
+              `Pyxis ${updateTag} è disponibile.`,
+              `Pyxis ${updateTag} is available.`,
+            ),
+          ),
+      ).toBeVisible();
+      await expect(
+        page.locator(".px-updates").getByRole("button", {
+          name: both("Scarica e installa", "Download and install"),
+        }),
+      ).toBeVisible();
+      break;
+    case "updates-downloading":
+      await page.evaluate(() => window.pyxis.cancelUpdate());
+      await startUpdate(page);
+      await expect(
+        page.locator(".px-updates").getByRole("progressbar", {
+          name: both(
+            `Scarico Pyxis ${updateTag}`,
+            `Downloading Pyxis ${updateTag}`,
+          ),
+        }),
+      ).toBeVisible();
+      await expect(page.locator(".px-updates").getByText(/85%/)).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: both("Annulla il download", "Cancel download"),
+        }),
+      ).toBeVisible();
+      break;
+    case "updates-verified": {
+      // The held download from the previous state finishes now; a filtered run starts its own.
+      const state = await page.evaluate(() => window.pyxis.updateState());
+      if (state.state !== "downloading" && state.state !== "verified")
+        await startUpdate(page);
+      await expect(
+        page.getByText(
+          both(
+            `Pyxis ${updateTag} è installato. Riavvia Pyxis per usarlo.`,
+            `Pyxis ${updateTag} is installed. Restart Pyxis to use it.`,
+          ),
+        ),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: both("Riavvia Pyxis", "Restart Pyxis"),
+        }),
+      ).toBeVisible();
+      break;
+    }
+    case "updates-failed":
+      await page.evaluate(() => window.pyxis.cancelUpdate());
+      await startUpdate(page);
+      await expect(
+        page.getByText(
+          /non corrisponde al suo checksum|did not match its checksum/,
+        ),
+      ).toBeVisible();
+      await expect(
+        page.locator(".px-updates").getByRole("button", {
+          name: both("Apri la pagina della versione", "Open release page"),
+        }),
+      ).toBeVisible();
+      break;
     case "wizard-1":
     case "wizard-2":
     case "wizard-3":
@@ -2104,6 +2250,7 @@ test("M14 every application route in both languages, themes and supported widths
     PYXIS_USER_DATA: userData,
     PYXIS_E2E: "1",
     PYXIS_E2E_FILE: importFolder,
+    ...updateEnv(),
     PYXIS_E2E_REPLY: "La forza è $F=ma$ [P1].",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       modules: {
@@ -2163,6 +2310,11 @@ test("M14 every application route in both languages, themes and supported widths
       .click({ timeout: 90_000 });
     page.setDefaultTimeout(7000);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    // The fake release keeps its banner closed, so it covers no other state; Settings > Updates still shows it.
+    await page.evaluate(
+      (tag) => localStorage.setItem("pyxis-dismissed-release", tag),
+      updateTag,
+    );
     await page.evaluate(() =>
       sessionStorage.setItem(
         "pyxis-board",
@@ -2363,6 +2515,7 @@ test("M14 every application route in both languages, themes and supported widths
     await app.close();
     rmSync(userData, { recursive: true, force: true });
     rmSync(importFolder, { recursive: true, force: true });
+    rmSync(updateFolder, { recursive: true, force: true });
   }
   expect(failures, failures.join("\n")).toEqual([]);
 });

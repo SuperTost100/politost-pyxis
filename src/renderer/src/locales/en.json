@@ -1832,7 +1832,46 @@
     "download": "Open release page",
     "notes": "Release notes",
     "hint": "Pyxis checks at most once a day. Downloads and installation stay under your control.",
-    "dismiss": "Dismiss notice"
+    "dismiss": "Dismiss notice",
+    "install": {
+      "start": "Download and install",
+      "startHint": "Pyxis downloads the installer for this computer from GitHub and checks it against the release's checksums before using it.",
+      "preparing": "Getting the download ready…",
+      "downloading": "Downloading Pyxis {{version}}",
+      "progress": "{{received}} of {{total}}, {{percent}}%",
+      "cancel": "Cancel download",
+      "retry": "Try again",
+      "quit": "Quit Pyxis",
+      "install": "Close Pyxis and install",
+      "restart": "Restart Pyxis",
+      "openImage": "Open the disk image again",
+      "showFile": "Show the file again",
+      "verified": {
+        "dmg-opened": "Pyxis {{version}} is downloaded and checked, and its disk image is open in Finder. Quit Pyxis, drag PoliTost Pyxis into Applications and choose Replace. Then open Pyxis again.",
+        "exe-ready": "Pyxis {{version}} is downloaded and checked. When you install it, Pyxis closes and the installer runs. Pyxis opens again when it finishes.",
+        "appimage-replaced": "Pyxis {{version}} is installed. Restart Pyxis to use it.",
+        "appimage-folder": "Pyxis {{version}} is downloaded and checked, but Pyxis can't write to the folder its AppImage is in. The new file is open in its folder. Move it over the old AppImage, then open Pyxis again.",
+        "deb-shown": "Pyxis {{version}} is downloaded and checked. The package is open in its folder. Open it with your software installer, then open Pyxis again."
+      },
+      "errors": {
+        "network": "The download stopped because Pyxis lost the connection to GitHub. Try again, or get the installer from the release page.",
+        "not-newer": "GitHub no longer lists a newer stable version. Check for updates again.",
+        "no-asset": "This release has no installer for this computer. The release page lists the files it has.",
+        "no-checksum": "This release has no checksum for the installer, so Pyxis did not download it. Get it from the release page instead.",
+        "too-large": "The installer is larger than the 1 GB Pyxis accepts, so Pyxis did not download it. Get it from the release page instead.",
+        "mismatch": "The downloaded file did not match its checksum, so Pyxis deleted it. Try again, or get the installer from the release page.",
+        "blocked": "The download pointed somewhere other than GitHub's release files, so Pyxis stopped it. Get the installer from the release page instead.",
+        "disk": "Pyxis couldn't save the download. Check that this computer has free space, then try again.",
+        "handover": "Pyxis couldn't open the installer. Get it from the release page instead."
+      },
+      "workspaceBusy": "Pyxis is still running a backup, restore or move. Wait for it to finish, then try again.",
+      "finishFailed": "Pyxis couldn't close for the update. Try again.",
+      "jobsTitle": "Close Pyxis with tasks running?",
+      "jobsBody_one": "{{count}} background task is running. It stops now, and you can resume it from background tasks when Pyxis opens again.",
+      "jobsBody_other": "{{count}} background tasks are running. They stop now, and you can resume them from background tasks when Pyxis opens again.",
+      "jobsConfirm": "Close Pyxis",
+      "jobsWait": "Wait"
+    }
   },
   "about": {
     "version": "Version",
