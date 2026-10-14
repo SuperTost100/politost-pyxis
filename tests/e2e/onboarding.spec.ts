@@ -289,7 +289,10 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
     ).toBeVisible();
     await button(page, "Mostra tutti i motori").click();
     // Every engine Pyxis can install, each with its own Set up action.
-    await expect(button(page, "Configura")).toHaveCount(4);
+    // Each action names its engine for screen readers.
+    await expect(
+      button(page, /^Configura (Claude Code|Codex|Cursor Agent|Antigravity)$/),
+    ).toHaveCount(4);
     await noAxeViolations(page);
     // Nothing is ready, so the one primary action says what happens: carry on and sign in later.
     await button(page, "Lo farò dopo").click();
@@ -303,6 +306,42 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
     await app.close();
     rmSync(userData, { recursive: true, force: true });
     rmSync(out.bin, { recursive: true, force: true });
+  }
+});
+
+test("First setup: cancelling a sign-in before its page opens is not a failure, and signing in again works", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
+  const { bin, env } = fakeBins({ claude: false, codex: null });
+  // The sign-in prints nothing and waits, as a CLI does before it has a page to show.
+  writeFileSync(
+    join(bin, "claude"),
+    `#!/bin/sh\ncase "$1" in --version) echo "2.1.0";; auth) if [ "$2" = login ]; then exec sleep 60; fi; echo '{"loggedIn":false,"authMethod":"claude.ai"}';; esac\n`,
+  );
+  const app = await launch(userData, env);
+  try {
+    const page = await app.firstWindow();
+    await button(page, "Inizia").click();
+    await button(page, "Continua").click();
+    const setup = page.getByRole("region", { name: "Configura Claude Code" });
+    await expect(button(setup, "Accedi con Claude")).toBeVisible({
+      timeout: 30000,
+    });
+    await button(setup, "Accedi con Claude").click();
+    await button(setup, "Annulla").click();
+    await expect(button(setup, "Accedi con Claude")).toBeVisible();
+    await expect(setup.getByText("Accesso non completato.")).toHaveCount(0);
+    // Starting again is not undone by the answer to the cancelled attempt.
+    await button(setup, "Accedi con Claude").click();
+    await expect(button(setup, "Annulla")).toBeVisible();
+    await page.waitForTimeout(500);
+    await expect(button(setup, "Annulla")).toBeVisible();
+    await expect(setup.getByText(/Accesso non completato/)).toHaveCount(0);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
   }
 });
 
