@@ -1,10 +1,10 @@
 import type { ElectronApplication } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 
-type Proc = { pid: number; ppid: number; command: string };
+type PyxisProcess = { pid: number; ppid: number; command: string };
 
 /** Every process on the machine with its parent and command line. */
-export function processTable(): Proc[] {
+function processTable(): PyxisProcess[] {
   if (process.platform === "win32") {
     const out = execFileSync(
       "powershell.exe",
@@ -20,8 +20,12 @@ export function processTable(): Proc[] {
       .split(/\r?\n/)
       .filter(Boolean)
       .map((line) => {
-        const [pid, ppid, ...rest] = line.split("\t");
-        return { pid: Number(pid), ppid: Number(ppid), command: rest.join("\t") };
+        const [pid, ppid, ...command] = line.split("\t");
+        return {
+          pid: Number(pid),
+          ppid: Number(ppid),
+          command: command.join("\t"),
+        };
       });
   }
   const out = execFileSync("ps", ["-A", "-o", "pid=,ppid=,args="], {
@@ -30,15 +34,17 @@ export function processTable(): Proc[] {
   });
   return out
     .split("\n")
-    .filter((line) => line.trim())
-    .map((line) => {
-      const match = /^\s*(\d+)\s+(\d+)\s(.*)$/.exec(line)!;
-      return { pid: Number(match[1]), ppid: Number(match[2]), command: match[3]! };
-    });
+    .map((line) => /^\s*(\d+)\s+(\d+)\s(.*)$/.exec(line))
+    .filter((match) => match !== null)
+    .map((match) => ({
+      pid: Number(match[1]),
+      ppid: Number(match[2]),
+      command: match[3]!,
+    }));
 }
 
-/** Pyxis's main process and every process under it: renderer, GPU, network, core. */
-export async function pyxisProcesses(app: ElectronApplication): Promise<Proc[]> {
+/** Pyxis's main process and every process under it: renderer, GPU, network service, core, crash handler. */
+async function processTree(app: ElectronApplication): Promise<PyxisProcess[]> {
   const main = await app.evaluate(() => process.pid);
   const table = processTable();
   const tree = table.filter((proc) => proc.pid === main);
@@ -47,37 +53,42 @@ export async function pyxisProcesses(app: ElectronApplication): Promise<Proc[]> 
   return tree;
 }
 
-const short = (proc: Proc) =>
-  `${proc.pid} (parent ${proc.ppid}) ${proc.command.slice(0, 240)}`;
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** "1234 renderer", "1234 utility node.mojom.NodeService" (core), or "1234 main". */
+function describe(proc: PyxisProcess): string {
+  const type = /--type=(\S+)/.exec(proc.command)?.[1] ?? "main";
+  const service = /--utility-sub-type=(\S+)/.exec(proc.command)?.[1];
+  return [proc.pid, type, service].filter(Boolean).join(" ");
+}
 
 /**
- * Closes Pyxis and logs, for diagnosis, which of its processes are still alive after app.close() resolved and when each
- * one went away.
+ * Quits Pyxis and waits for every process it started to exit, since any of them can hold files in the workspace or the
+ * profile. Fails naming the processes still running `limit` ms after app.close() returned.
  */
-export async function closeAndTrace(app: ElectronApplication, label: string) {
-  const before = await pyxisProcesses(app);
-  console.log(
-    `[exit-trace] ${label}: ${before.length} processes before close\n  ${before.map(short).join("\n  ")}`,
-  );
-  const started = Date.now();
+export async function quitPyxis(app: ElectronApplication, limit = 10_000) {
+  const tree = await processTree(app);
   await app.close();
-  console.log(`[exit-trace] ${label}: app.close() took ${Date.now() - started} ms`);
-  let alive = before;
-  const closedAt = Date.now();
-  while (alive.length && Date.now() - closedAt < 30_000) {
-    const now = processTable();
-    const still = alive.filter((proc) =>
-      now.some((p) => p.pid === proc.pid && p.command === proc.command),
-    );
-    for (const gone of alive.filter((proc) => !still.includes(proc)))
-      console.log(
-        `[exit-trace] ${label}: +${Date.now() - closedAt} ms gone ${short(gone)}`,
-      );
-    alive = still;
-    if (alive.length) await new Promise((resolve) => setTimeout(resolve, 250));
+  const closed = Date.now();
+  const atClose = tree.filter((proc) => running(proc.pid)).map(describe);
+  let left = tree;
+  for (;;) {
+    left = left.filter((proc) => running(proc.pid));
+    if (!left.length || Date.now() - closed > limit) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  if (alive.length)
-    console.log(
-      `[exit-trace] ${label}: STILL ALIVE 30 s after close:\n  ${alive.map(short).join("\n  ")}`,
+  if (left.length)
+    throw new Error(
+      `Pyxis processes still running ${limit / 1000} s after quitting: ${left.map(describe).join(", ")}`,
     );
+  console.log(
+    `[exit-trace] ${tree.length} processes; running when app.close() returned: ${atClose.join(", ") || "none"}; all gone after ${Date.now() - closed} ms`,
+  );
 }
