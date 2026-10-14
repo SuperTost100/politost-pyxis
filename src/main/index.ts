@@ -304,8 +304,10 @@ function setUpAutoBackups(): void {
   // Tests that do not name a Documents folder never back up on their own, so they cannot write into the real one.
   if (!documents) return;
   const testing = e2eSeam() && process.env["PYXIS_E2E"] === "1";
-  // The first check waits a minute so it does not compete with startup.
-  autoBackups.start(testing ? 1000 : 60_000, 10 * 60_000);
+  // The first check waits a minute so it does not compete with startup, then checks every 10 minutes. Tests check
+  // every 2 s: a first check that finds core still starting or a job running is postponed, and a slow runner must not
+  // wait 10 minutes for the next one.
+  autoBackups.start(testing ? 1000 : 60_000, testing ? 2000 : 10 * 60_000);
 }
 
 function broadcastAppearance(): void {
