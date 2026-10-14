@@ -18,6 +18,12 @@ import {
 import { renameSync } from "node:fs";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
+import { buildMenuTemplate } from "./menu";
+import {
+  isMenuLanguage,
+  type MenuCommand,
+  type MenuLanguage,
+} from "../shared/menu";
 import { updateInstaller } from "./update-install";
 import { updateSeam } from "./update-fixture";
 import { spawn } from "node:child_process";
@@ -356,6 +362,8 @@ function createWindow(): void {
     show: false,
     backgroundColor: theme === "dark" ? "#0d1015" : "#f6f5f1",
     title: "Pyxis",
+    // Windows and Linux show the menu bar only while Alt is held.
+    autoHideMenuBar: true,
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hiddenInset" as const,
@@ -686,22 +694,27 @@ function startCore(strict = false): Promise<void> {
 }
 
 /**
- * Packaged builds replace Electron's default English menu, which offers developer tools and links to electronjs.org.
- * macOS keeps the standard app, edit and window menus (macOS names their items, and Edit carries copy and paste);
- * Windows and Linux get no menu bar. Development builds keep the default menu.
+ * The application menu, in the interface language the renderer last reported (the computer's language until then).
+ * Every build installs it; development builds add reload and developer tools. A menu pick only tells the renderer which
+ * command was chosen, and the renderer decides whether it may run now (see `src/renderer/src/app/menu-guard.ts`).
  */
+let menuLanguage: MenuLanguage | null = null;
+
+function sendMenuCommand(command: MenuCommand): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(mainChannels.menuCommand, command);
+}
+
 function installMenu(): void {
-  if (!app.isPackaged) return;
-  if (process.platform !== "darwin") {
-    Menu.setApplicationMenu(null);
-    return;
-  }
   Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      { role: "appMenu" },
-      { role: "editMenu" },
-      { role: "windowMenu" },
-    ]),
+    Menu.buildFromTemplate(
+      buildMenuTemplate({
+        platform: process.platform,
+        language: menuLanguage ?? systemLanguage(),
+        packaged: app.isPackaged,
+        send: sendMenuCommand,
+      }),
+    ),
   );
 }
 
@@ -900,6 +913,13 @@ function registerIpc(): void {
     if (event.sender.id !== mainWindow?.webContents.id)
       throw new Error("updates-untrusted-sender");
     return checkUpdates();
+  });
+  ipcMain.handle(mainChannels.menuLanguage, (event, language: unknown) => {
+    requireMainSender(event, "menu-untrusted-sender");
+    if (!isMenuLanguage(language)) throw new Error("invalid-language");
+    if (language === (menuLanguage ?? systemLanguage())) return;
+    menuLanguage = language;
+    installMenu();
   });
   const installer = updateInstaller({
     repository,

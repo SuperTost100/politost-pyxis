@@ -17,6 +17,7 @@ import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { FreeBooks } from "../../components/FreeBooks";
 import { PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
+import { useMenuLock } from "../../app/menu-state";
 import { ImportReview } from "./ImportReview";
 import { parsePlanText, type ImportRequest } from "./importPreview";
 import {
@@ -79,6 +80,8 @@ export function WizardFrame() {
   );
   const [style, setStyle] = useState<"read" | "practice" | "decide">("decide");
   const [starting, setStarting] = useState(false);
+  // Answers given so far live only on this page, so the menu leaves it alone until it has some.
+  useMenuLock(wizardStep > 0 || starting || title.trim() !== "" || picked.length > 0);
   const [params, setParams] = useSearchParams();
   const buildPlanId = params.get("build");
   const build = useQuery({

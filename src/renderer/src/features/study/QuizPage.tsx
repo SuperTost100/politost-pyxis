@@ -18,6 +18,7 @@ import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { useReviewSession } from "./ReviewProgress";
+import { useMenuLock } from "../../app/menu-state";
 import { QuizIntro } from "./QuizIntro";
 import { QuizResults } from "./QuizResults";
 import {
@@ -509,6 +510,8 @@ export function QuizPage() {
   const keys = useRef({ primary, pick, question, locked });
   keys.current = { primary, pick, question, locked };
   const answering = Boolean(question) && !finalResult && !gradingStarted;
+  // The menu leaves a quiz alone until it is finished.
+  useMenuLock(answering);
   useEffect(() => {
     if (!answering) return;
     const onKey = (event: KeyboardEvent) => {

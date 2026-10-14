@@ -53,7 +53,7 @@ export function Composer({
   const field = useRef<MathTextEditorHandle>(null);
   const formula = useFormulaKeys(field);
   return (
-    <div className="px-composer">
+    <div className="px-composer" data-keeps-draft>
       <div className="px-composer-top">
         {subjectControl ?? (
           <span className="px-subject">

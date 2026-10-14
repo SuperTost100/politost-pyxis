@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { useMenuLock } from "../../app/menu-state";
 import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
@@ -138,6 +139,8 @@ export function SimulationPage() {
   const locked = Boolean(
     run && (run.submitted || run.grading || seconds === 0),
   );
+  // The menu leaves a running simulation alone.
+  useMenuLock(Boolean(run) && !locked);
   useEffect(() => {
     if (locked) void flushDraft();
   }, [locked]);

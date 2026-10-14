@@ -25,6 +25,7 @@ import {
   type DraftNode,
 } from "./draftTree";
 import { isWizardSeed, seedExamAt, type WizardSeed } from "./wizardSeed";
+import { useMenuLock } from "../../app/menu-state";
 import "./PlanPage.css";
 import "./PlanWizard.css";
 import "./GuidedPlan.css";
@@ -57,6 +58,8 @@ function Guided({ seed }: { seed: WizardSeed }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
+  // The outline built here is not saved until the plan is created.
+  useMenuLock(true);
   const [step, setStep] = useState(0);
   const [picked, setPicked] = useState<string[]>([]);
   const [language, setLanguage] = useState(seed.language);

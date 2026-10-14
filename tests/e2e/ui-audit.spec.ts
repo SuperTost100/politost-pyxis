@@ -167,6 +167,8 @@ const routes = [
   ["ask-sources-menu", "/ask/audit-chat"],
   // The formula keyboard docked in the composer, with a formula already typed.
   ["ask-formula", "/ask/audit-chat"],
+  // Help > Keyboard shortcuts, opened through the application menu.
+  ["shortcuts-dialog", "/exams"],
   // Download and install from Settings: offered, in progress, checked and replaced, and a checksum that does not match.
   ["updates-available", "/settings/updates"],
   ["updates-downloading", "/settings/updates"],
@@ -1395,6 +1397,16 @@ async function openState(page: Page, name: string) {
     case "guided-style":
     case "guided-tree":
       await openGuided(page, name.slice("guided-".length) as "period");
+      break;
+    case "shortcuts-dialog":
+      await auditApp!.evaluate(({ Menu }) => {
+        Menu.getApplicationMenu()?.getMenuItemById("shortcuts")?.click();
+      });
+      await expect(
+        page.getByRole("dialog", {
+          name: both("Scorciatoie da tastiera", "Keyboard shortcuts"),
+        }),
+      ).toBeVisible();
       break;
     case "ask-panel":
       await page
