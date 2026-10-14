@@ -134,6 +134,8 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
         timeout: 30_000,
       })
       .toHaveLength(2);
+    // Old backups are pruned just after the new one is saved; wait for that before reading the list.
+    await expect.poll(() => backupsIn(folder).length).toBe(3);
     const newest = backupsIn(folder).at(-1)!;
     expect(newest > first).toBe(true);
     // Three kept: today's two and the newest of the old ones. The student's own files stay.
