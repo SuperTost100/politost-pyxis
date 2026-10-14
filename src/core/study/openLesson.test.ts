@@ -169,7 +169,7 @@ it("caches lessons per wording and education, bounds the context, regenerates sa
         wording: "simple",
         regenerate: true,
       }),
-    ).rejects.toThrow("offline");
+    ).rejects.toMatchObject({ detail: "offline" });
     fail = false;
     expect(
       (await writeLesson(db, "plan", "topic", run, { wording: "simple" }))
@@ -407,7 +407,7 @@ it("teaches all of a long topic in bounded calls, recaps only in the last part a
     };
     await expect(
       writeLesson(db, "p", "t", failing, { regenerate: true }),
-    ).rejects.toThrow("part failed");
+    ).rejects.toMatchObject({ detail: "part failed" });
     expect((await writeLesson(db, "p", "t", run)).markdown).toBe(
       lesson.markdown,
     );

@@ -47,3 +47,19 @@ export function scopeItems(input: {
   sources.sort((a, b) => a.title.localeCompare(b.title));
   return [...items, ...sources];
 }
+
+/**
+ * Whether a reply may rest on the model's own knowledge. It may when nothing narrows the chat to sources, or when the
+ * student chose "Answer generally" for the question, which a retry of that question must keep.
+ */
+export function allowsGeneral(input: {
+  chosen: boolean;
+  planId: string | null | undefined;
+  sourceCount: number;
+  fileCount?: number;
+}): boolean {
+  return (
+    input.chosen ||
+    (!input.planId && input.sourceCount === 0 && (input.fileCount ?? 0) === 0)
+  );
+}

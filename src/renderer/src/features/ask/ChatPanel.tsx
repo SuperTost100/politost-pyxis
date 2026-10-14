@@ -49,9 +49,15 @@ export function ChatPanel({
     enabled: asked !== "",
     placeholderData: keepPreviousData,
   });
-  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(
+  const [renaming, setRenamingState] = useState<{ id: string; title: string } | null>(
     null,
   );
+  // Enter and the blur it causes both save. Each reads the field here and empties it, so only the first one saves.
+  const draft = useRef<{ id: string; title: string } | null>(null);
+  const setRenaming = (next: { id: string; title: string } | null) => {
+    draft.current = next;
+    setRenamingState(next);
+  };
   const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(
     null,
   );
@@ -69,7 +75,7 @@ export function ChatPanel({
   const nameOf = (title: string | null) => title?.trim() || t("ask.untitled");
 
   async function saveRename() {
-    const current = renaming;
+    const current = draft.current;
     setRenaming(null);
     if (!current || cancelled.current) return;
     const title = current.title.trim();

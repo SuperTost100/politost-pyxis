@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addIds, applySubject, scopeItems } from "./scope";
+import { addIds, allowsGeneral, applySubject, scopeItems } from "./scope";
 
 describe("chat scope", () => {
   it("swaps the previous subject's sources for the new one and keeps hand-picked ones", () => {
@@ -34,5 +34,22 @@ describe("chat scope", () => {
       { kind: "source", id: "s1", title: "Dispense" },
       { kind: "source", id: "doc", title: "foto.png", locked: true },
     ]);
+  });
+});
+
+describe("allowsGeneral", () => {
+  it("is open when nothing narrows the chat to sources", () => {
+    expect(allowsGeneral({ chosen: false, planId: null, sourceCount: 0 })).toBe(true);
+    expect(allowsGeneral({ chosen: false, planId: undefined, sourceCount: 0, fileCount: 0 })).toBe(true);
+  });
+
+  it("stays closed with a plan, sources or an attached file", () => {
+    expect(allowsGeneral({ chosen: false, planId: "p", sourceCount: 0 })).toBe(false);
+    expect(allowsGeneral({ chosen: false, planId: null, sourceCount: 2 })).toBe(false);
+    expect(allowsGeneral({ chosen: false, planId: null, sourceCount: 0, fileCount: 1 })).toBe(false);
+  });
+
+  it("keeps the student's choice to answer generally, as a retry needs", () => {
+    expect(allowsGeneral({ chosen: true, planId: "p", sourceCount: 3, fileCount: 1 })).toBe(true);
   });
 });

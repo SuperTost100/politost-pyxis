@@ -22,6 +22,8 @@ export type AutoProvider = {
   kind: "cli" | "api";
   /** True when the provider accepts an effort level. */
   effort: boolean;
+  /** False when the provider refuses image attachments. Absent means it takes them. */
+  images?: boolean;
   models: AutoModel[];
 };
 export type AutoChoice = { provider: string; model: string; effort?: string };
@@ -68,6 +70,7 @@ function compareVersionsDesc(a: AutoModel, b: AutoModel): number {
 
 function usableModels(provider: AutoProvider, feature: string): AutoModel[] {
   if (feature !== "vision") return provider.models;
+  if (provider.images === false) return [];
   return provider.models.filter(
     (model) => modelCapability(model.id)?.vision === true,
   );

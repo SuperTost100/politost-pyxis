@@ -2,7 +2,7 @@ import { setTimeout as wait } from "node:timers/promises";
 import { availableParallelism } from "node:os";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
-import { isAbort, type JobView } from "../../shared/ipc";
+import { IpcError, isAbort, type JobView } from "../../shared/ipc";
 
 export type JobClass = "model-cli" | "model-api" | "local" | "demo";
 
@@ -214,7 +214,15 @@ export function createRunner(
             finishCancelled(jobId);
             return;
           }
-          const message = err instanceof Error ? err.message : "failed";
+          // An engine failure keeps its code first, so the screen can name it, and the engine's own text after it.
+          const message =
+            err instanceof IpcError &&
+            err.detail &&
+            err.messageKey.startsWith("engines.errors.")
+              ? `${err.code}: ${err.detail}`
+              : err instanceof Error
+                ? err.message
+                : "failed";
           db.prepare(
             `UPDATE job_steps SET state = 'failed', error = ? WHERE id = ?`,
           ).run(message, step.id);

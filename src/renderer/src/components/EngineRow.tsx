@@ -42,6 +42,11 @@ export function EngineRow({
     error: t("components.engine.statusError"),
     idle: t("components.engine.statusIdle"),
   };
+  const action =
+    actionLabel ??
+    (status === "warn"
+      ? t("components.engine.signIn")
+      : t("components.engine.test"));
   return (
     <div className="px-card px-engine">
       <span className="px-engine-ico">
@@ -84,11 +89,9 @@ export function EngineRow({
         variant="secondary"
         disabled={actionDisabled}
         onClick={onAction}
+        aria-label={t("components.engine.actionFor", { action, name })}
       >
-        {actionLabel ??
-          (status === "warn"
-            ? t("components.engine.signIn")
-            : t("components.engine.test"))}
+        {action}
       </Button>
     </div>
   );

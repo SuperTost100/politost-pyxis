@@ -1,3 +1,4 @@
+import { IpcError, isAbort } from "../../shared/ipc";
 import { DISCLOSURE_REQUIRED } from "./disclosure";
 import { FunnelError } from "./funnel";
 
@@ -48,4 +49,28 @@ export function translateEngineError(
   }
   const code = err instanceof FunnelError ? err.code : "cli-failed";
   return { code, messageKey: `engines.errors.${code}` };
+}
+
+/**
+ * The error a model call surfaces to the screen: an IpcError carrying the translated `engines.errors.*` key and the raw
+ * text as detail. A cancelled call and an error that already is an IpcError pass through unchanged. A refused notice keeps
+ * the `engine-disclosure-required` code, which background jobs and photo imports match on.
+ */
+export function engineIpcError(err: unknown, provider?: string): unknown {
+  if (err instanceof IpcError || isAbort(err)) return err;
+  if (err && typeof err === "object" && "code" in err && err.code === "aborted")
+    return err;
+  if (err instanceof Error && err.message.startsWith("engine-disclosure")) {
+    return new IpcError(
+      err.message,
+      "engines.errors.disclosure-required",
+    );
+  }
+  const translated = translateEngineError(err, provider);
+  return new IpcError(
+    translated.code,
+    translated.messageKey,
+    {},
+    err instanceof Error ? err.message : String(err),
+  );
 }

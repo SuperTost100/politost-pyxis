@@ -2,7 +2,11 @@ import type Database from "better-sqlite3";
 import { automaticEffort, studentEffort } from "../../shared/effort";
 import { engineProviders, IpcError } from "../../shared/ipc";
 import { autoFeatures, planAuto, type AutoProvider } from "./auto";
-import { capabilityWarning, type Need } from "./capabilities";
+import {
+  capabilityWarning,
+  providerSeesImages,
+  type Need,
+} from "./capabilities";
 import { translateEngineError } from "./errors";
 import {
   acknowledgeProviders,
@@ -11,7 +15,7 @@ import {
   runTurn,
   type ProviderId,
 } from "./funnel";
-import { effortsOf, rememberModels } from "./efforts";
+import { effortsOf, rememberModels, resolveEffort } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
 import type { StoredSelection } from "./selection";
 
@@ -75,6 +79,9 @@ function textOnly(id: string, access: readonly string[] = []): boolean {
   return kindOf(id) === "api" || access.includes("none");
 }
 
+/** CLIs with no sign-out command: CLI Funnel throws "unsupported" for them, so the student signs out in the program itself. */
+const NO_SIGN_OUT = new Set(["antigravity"]);
+
 function disabled(id: string): boolean {
   const provider = getFunnel().providers[id as ProviderId];
   return !provider || !textOnly(id, provider.capabilities.access);
@@ -91,7 +98,7 @@ type OverviewRow = {
   path: string;
   withinTestedRange: boolean;
   acknowledged: boolean;
-  capabilities: { effort: boolean; fast: boolean };
+  capabilities: { effort: boolean; fast: boolean; signOut: boolean };
 };
 
 async function overviewRows(): Promise<OverviewRow[]> {
@@ -123,6 +130,7 @@ async function overviewRows(): Promise<OverviewRow[]> {
         capabilities: {
           effort: row.capabilities.effort,
           fast: row.capabilities.fast,
+          signOut: !NO_SIGN_OUT.has(row.id),
         },
       };
     }),
@@ -159,6 +167,7 @@ export async function autoConfigureEngines(
         id: row.id,
         kind: row.kind,
         effort: row.capabilities.effort,
+        images: providerSeesImages(row.id),
         models: models.map((model) => ({
           id: model.id,
           efforts: model.efforts,
@@ -332,11 +341,14 @@ export function engineHandlers(
       }
       const started = Date.now();
       try {
+        const model = input.model || (await defaultModel(input.provider));
+        // The screen can hold a level the chosen model does not list; the model gets the nearest one it has.
+        const effort = resolveEffort(input.provider, model, input.effort);
         const result = await runTurn({
           selection: {
             provider: input.provider,
-            model: input.model || (await defaultModel(input.provider)),
-            effort: input.effort,
+            model,
+            effort,
             fast: input.fast,
           },
           prompt: "Reply with the word ok",
@@ -349,7 +361,7 @@ export function engineHandlers(
           JSON.stringify({
             provider: input.provider,
             model: result.model,
-            ...(input.effort ? { effort: input.effort } : {}),
+            ...(effort ? { effort } : {}),
             ...(input.fast !== undefined ? { fast: input.fast } : {}),
             auto: true,
           }),
@@ -499,6 +511,8 @@ export function engineHandlers(
         input.provider.endsWith("-api")
       )
         throw new IpcError("unsupported", "engines.disabled");
+      if (NO_SIGN_OUT.has(input.provider))
+        throw new IpcError("unsupported", "engines.signOutUnsupported");
       loginSessions.get(input.provider)?.cancel();
       loginSessions.delete(input.provider);
       await getFunnel().logout(input.provider);
@@ -534,6 +548,8 @@ export function engineHandlers(
         let step = await iterator.next();
         while (!step.done && step.value.type === "log")
           step = await iterator.next();
+        // A session that ended before its first event, after cancelLogin or a newer login replaced it, was cancelled.
+        const cancelled = loginSessions.get(input.provider) !== session;
         void (async () => {
           try {
             let next = await iterator.next();
@@ -552,12 +568,15 @@ export function engineHandlers(
           }
         })();
         if (step.value?.type === "done") reconfigureSoon();
-        return step.value
-          ? notice(input.provider, step.value)
+        if (step.value) return notice(input.provider, step.value);
+        return cancelled
+          ? { provider: input.provider, type: "cancelled" }
           : { provider: input.provider, type: "error", message: "no-event" };
       } catch {
-        if (loginSessions.get(input.provider) === session)
-          loginSessions.delete(input.provider);
+        // A sign-in the student cancelled, or a newer one replaced, is not a failure.
+        if (loginSessions.get(input.provider) !== session)
+          return { provider: input.provider, type: "cancelled" };
+        loginSessions.delete(input.provider);
         throw new IpcError("cli-failed", "engines.errors.cli-failed");
       }
     },

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { IpcError } from "../../shared/ipc";
 import { generate } from "./generate";
-import type { EngineResult } from "./funnel";
+import { FunnelError, type EngineResult } from "./funnel";
 
 const selection = { provider: "claude" as const, model: "claude-sonnet-4-6" };
 
@@ -14,6 +15,49 @@ function result(patch: Partial<EngineResult>): EngineResult {
     ...patch,
   };
 }
+
+describe("generate engine failures", () => {
+  const failing = (error: unknown) => () =>
+    generate({
+      selection,
+      prompt: "hi",
+      run: async () => {
+        throw error;
+      },
+    });
+
+  it("turns a signed-out engine into its own message with the raw text as detail", async () => {
+    const error = await failing(new FunnelError("Please run /login", "not-logged-in"))().catch(
+      (err: unknown) => err,
+    );
+    expect(error).toBeInstanceOf(IpcError);
+    expect(error).toMatchObject({
+      code: "not-logged-in",
+      messageKey: "engines.errors.not-logged-in",
+      detail: "Please run /login",
+    });
+  });
+
+  it("separates a usage limit and a crashed CLI", async () => {
+    await expect(failing(new Error("429 rate limit"))()).rejects.toMatchObject({
+      messageKey: "engines.errors.quota",
+    });
+    await expect(failing(new FunnelError("exit 1", "cli-failed"))()).rejects.toMatchObject({
+      messageKey: "engines.errors.cli-failed",
+    });
+  });
+
+  it("leaves a cancelled call, an IpcError and a refused notice as they were", async () => {
+    const abort = new DOMException("stopped", "AbortError");
+    await expect(failing(abort)()).rejects.toBe(abort);
+    const own = new IpcError("engine-missing", "engines.errors.engine-missing");
+    await expect(failing(own)()).rejects.toBe(own);
+    await expect(failing(new Error("engine-disclosure-required"))()).rejects.toMatchObject({
+      message: "engine-disclosure-required",
+      messageKey: "engines.errors.disclosure-required",
+    });
+  });
+});
 
 describe("generate", () => {
   it("repairs one bad structured answer", async () => {

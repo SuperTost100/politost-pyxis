@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { chatMarkdown, exportChat, type ChatExport } from "./export";
+import { seedChat } from "./turn";
 
 const base: ChatExport = {
   title: "Seconda legge di Newton",
@@ -99,6 +100,20 @@ describe("chatMarkdown", () => {
     expect(markdown).not.toContain("![");
   });
 
+  it("puts the pinned context of a seeded chat under the title, in both languages", () => {
+    const context = {
+      title: "Primo principio",
+      body: "La variazione di energia interna.\n\n# Nota\nCalore meno lavoro.",
+    };
+    expect(chatMarkdown({ ...base, context })).toContain(
+      "# Seconda legge di Newton\n\n**Context:** Primo principio\n\n> La variazione di energia interna.\n>\n> ### Nota\n> Calore meno lavoro.\n",
+    );
+    expect(chatMarkdown({ ...base, context }, "it")).toContain(
+      "**Contesto:** Primo principio",
+    );
+    expect(chatMarkdown({ ...base, context: null })).not.toContain("Context");
+  });
+
   it("marks a stopped reply", () => {
     const markdown = chatMarkdown({
       ...base,
@@ -192,6 +207,20 @@ describe("exportChat", () => {
         "- Appunti di fisica, 1. Calore\n- Appunti di fisica",
       ].join("\n\n") + "\n",
     );
+  });
+
+  it("exports the context a chat was seeded with", () => {
+    const db = openDatabase(":memory:");
+    const { chatId } = seedChat(db, {
+      kind: "answer",
+      title: "Entropia",
+      body: "Il disordine cresce.",
+    });
+    const { markdown } = exportChat(db, chatId, "it");
+    expect(markdown).toBe(
+      "# Entropia\n\n**Contesto:** Entropia\n\n> Il disordine cresce.\n",
+    );
+    db.close();
   });
 
   it("refuses a chat that does not exist", () => {

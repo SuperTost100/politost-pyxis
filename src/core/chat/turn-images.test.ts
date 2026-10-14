@@ -97,7 +97,7 @@ it("records a photo once on a message whose turn is retried, so a retry cannot f
   writeFileSync(file, png);
   const ask = (run: (input: { attachments?: unknown[] }) => Promise<EngineResult>) =>
     askTurn(db, { chatId: "c", text: "cosa vedi?", allowGeneral: true, files: [file], workspace, run });
-  await expect(ask(async () => Promise.reject(new Error("engine down")))).rejects.toThrow("engine down");
+  await expect(ask(async () => Promise.reject(new Error("engine down")))).rejects.toMatchObject({ detail: "engine down" });
   let sent: unknown[] = [];
   await ask(async (input) => {
     sent = input.attachments ?? [];
@@ -105,5 +105,28 @@ it("records a photo once on a message whose turn is retried, so a retry cannot f
   });
   expect(db.prepare("SELECT COUNT(*) AS n FROM attachments WHERE message_id != 'm'").get()).toEqual({ n: 1 });
   expect(sent).toHaveLength(1);
+  db.close();
+});
+
+it("sends no photo to a provider that refuses images, so the chat reads text instead of failing", async () => {
+  const { workspace, db, attach, good } = chatWithPhotos();
+  attach.run("good", good(), 20);
+  // Cursor Agent lists claude-* ids that match the image catalog, but its CLI takes no attachments.
+  db.prepare("UPDATE feature_engines SET selection_json = ? WHERE feature = 'default'").run(
+    JSON.stringify({ provider: "agent", model: "claude-sonnet-5" }),
+  );
+  let sent: unknown[] | undefined;
+  await askTurn(db, {
+    chatId: "c",
+    text: "cosa vedi?",
+    allowGeneral: true,
+    workspace,
+    run: async (input) => {
+      sent = input.attachments;
+      return reply;
+    },
+  });
+  expect(fitted).not.toHaveBeenCalled();
+  expect(sent).toEqual([]);
   db.close();
 });

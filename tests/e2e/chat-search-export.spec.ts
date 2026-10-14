@@ -51,6 +51,14 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     db.exec(
       "INSERT INTO message_passages(message_id,passage_id,label) VALUES('m2','p1','P1')",
     );
+    // A chat started from a passage keeps that passage as its pinned context.
+    db.prepare("UPDATE chats SET context_json = ? WHERE id = 'c-termo'").run(
+      JSON.stringify({
+        kind: "passage",
+        title: "Primo principio",
+        body: "Il calore si trasmette per conduzione.",
+      }),
+    );
     db.close();
 
     await page.evaluate(() => {
@@ -100,6 +108,8 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     expect(markdown).toBe(
       [
         "# Termodinamica",
+        "**Contesto:** Primo principio",
+        "> Il calore si trasmette per conduzione.",
         "## Studente",
         "Perché il calore passa dal caldo al freddo?",
         "## Pyxis",
@@ -111,6 +121,22 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
 
     await exportWith("Esporta come PDF");
     expect(readFileSync(saved).subarray(0, 5).toString()).toBe("%PDF-");
+
+    // Renaming an older chat leaves it where it was in the list.
+    await page.getByRole("button", { name: "Azioni per Analisi" }).click();
+    await page.getByRole("menuitem", { name: "Rinomina" }).click();
+    const rename = page.getByRole("textbox", { name: "Nome della chat" });
+    await rename.fill("Limiti");
+    await rename.press("Enter");
+    await expect(list.getByRole("button", { name: /^Limiti/ })).toBeVisible();
+    await expect(list.getByRole("button").first()).toHaveText(/Termodinamica/);
+    const check = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    expect(
+      check
+        .prepare("SELECT updated_at FROM chats WHERE id = 'c-analisi'")
+        .get(),
+    ).toEqual({ updated_at: 1 });
+    check.close();
 
     // The labels follow the interface language.
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));

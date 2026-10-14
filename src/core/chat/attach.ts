@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type Database from "better-sqlite3";
 import { hasBlob, putBlob, readBlob, removeBlob } from "../blobs";
-import { capabilityWarning } from "../engine/capabilities";
+import { capabilityWarning, engineSeesImages } from "../engine/capabilities";
 import { kindFor, mimeFor as documentMime, storeExtracted, type ExtractedDocument } from "../sources/documents";
 import { readBoundedSync } from "../sources/bounded-read";
 import { sha256 } from "../sources/quality";
@@ -107,7 +107,8 @@ export async function stageFiles(
   _db: Database.Database,
   workspace: string,
   paths: string[],
-  modelId: string,
+  /** The chat engine. A bare model id leaves the provider out of the check. */
+  engine: string | { provider: string; model: string },
   recognize: (
     bytes: Uint8Array,
     cachePath: string,
@@ -140,7 +141,8 @@ export async function stageFiles(
     blobs.push({ sha, bytes, mime, ext });
     return sha;
   };
-  const seesImages = capabilityWarning(modelId, "vision") == null;
+  const seesImages =
+    typeof engine === "string" ? capabilityWarning(engine, "vision") == null : engineSeesImages(engine);
   for (const filePath of paths) {
     signal?.throwIfAborted();
     const ext = extname(filePath).toLowerCase();

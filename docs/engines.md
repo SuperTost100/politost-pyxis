@@ -28,16 +28,18 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 
 Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.4 model lists:
 
-| Ready CLIs                | Chat and maps                          | Lessons and default                              | Photos             | Plans       | Grading     |
-| ------------------------- | -------------------------------------- | ------------------------------------------------ | ------------------ | ----------- | ----------- |
-| Claude Code + Codex       | Codex luna                             | Claude sonnet                                    | Claude sonnet      | Claude opus | Codex sol   |
-| Claude Code + Antigravity | Gemini Flash                           | Claude sonnet                                    | Claude sonnet      | Claude opus | Gemini Pro  |
-| Claude Code + Cursor      | Cursor Gemini Flash                    | Claude sonnet                                    | Claude sonnet      | Claude opus | Cursor opus |
-| Codex + Antigravity       | Codex luna (chat), Gemini Flash (maps) | Gemini Pro                                       | Antigravity sonnet | Codex sol   | Codex sol   |
-| Cursor + Antigravity      | Gemini Flash                           | Cursor sonnet                                    | Cursor sonnet      | Cursor opus | Gemini Pro  |
-| All four                  | Gemini Flash                           | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet      | Claude opus | Codex sol   |
+| Ready CLIs                | Chat and maps       | Lessons and default                              | Photos             | Plans       | Grading     |
+| ------------------------- | ------------------- | ------------------------------------------------ | ------------------ | ----------- | ----------- |
+| Claude Code + Codex       | Codex luna          | Claude sonnet                                    | Claude sonnet      | Claude opus | Codex sol   |
+| Claude Code + Antigravity | Gemini Flash        | Claude sonnet                                    | Claude sonnet      | Claude opus | Gemini Pro  |
+| Claude Code + Cursor      | Cursor Gemini Flash | Claude sonnet                                    | Claude sonnet      | Claude opus | Cursor opus |
+| Codex + Antigravity       | Gemini Flash        | Gemini Pro (lessons), Codex terra (default)      | Codex terra        | Codex sol   | Codex sol   |
+| Cursor + Antigravity      | Gemini Flash        | Cursor sonnet                                    | OCR (no image CLI) | Cursor opus | Gemini Pro  |
+| All four                  | Gemini Flash        | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet      | Claude opus | Codex sol   |
 
 An automatic row in `feature_engines` carries `"auto": true` in its JSON. A row without it is pinned. `engines.setFeature` pins, and `engines.autoConfigure` with `reset` returns features to automatic. Only automatic rows are rewritten. When no engine is ready they are removed, which brings back `engine-missing`. If every ready engine fails to list models, the current rows stay.
+
+CLI Funnel has no sign-out for Antigravity, so `engines.overview` reports `capabilities.signOut` false for it, the engine screen explains how to sign out in the program itself, and `engines.logout` refuses it with `engines.signOutUnsupported`.
 
 `engines.autoConfigure` (`{ reset?, features? }` returning `{ ready, features }`) recomputes on demand. Core also runs it at startup, after sign-in, sign-out, update and removal, when a key is added or removed, and when `engines.overview` sees a changed engine set (at most every 30 seconds). `selectionFor` drops the `auto` flag, so callers see the same shape as before.
 
@@ -61,7 +63,7 @@ Every task runs at a reasoning effort that fits it, whether Pyxis or the student
 3. Otherwise the nearest level the model lists. `nearestEffort()` looks lower first for `low` and `medium`, and higher first for `high`, then the other way. `none` is never chosen, and neither is a level the scale does not know.
 4. A model that lists no effort runs without one. API providers (`anthropic-api`, `openai-api`) never get an effort, because CLI Funnel does not pass one to them.
 
-`selectionFor` is synchronous, so it reads the model lists that `engines.models` and `engines.autoConfigure` last fetched (`src/core/engine/efforts.ts`). Until a list has been read, a row keeps the effort stored in it, which is none for a pinned row. Core runs `autoConfigure` at startup, so the lists are normally there before the first task.
+`selectionFor` is synchronous, so it reads the model lists that `engines.models` and `engines.autoConfigure` last fetched (`src/core/engine/efforts.ts`). Until a list has been read, a pinned row keeps the effort stored in it, and an automatic row sends only the level Pyxis worked out for the task, never the student's pick. `engines.test` sends the nearest level the model lists once its list is known. Core runs `autoConfigure` at startup, so the lists are normally there before the first task.
 
 The student's pick lives in the same JSON as the engine:
 
@@ -77,9 +79,11 @@ In Settings, Engines, with Advanced options on, each task has an effort picker n
 
 Feature modules own their prompt templates, version constants and Zod output schemas. Lessons include their prompt version in cache identity. Generated content saves provider/model/template/version/grounding provenance. Maps request validated operations rather than evaluating arbitrary patch code; simulation grading saves the actual grading model with checkpoints.
 
+A model call that fails reaches the screen through `generate()`, which turns the failure into an `IpcError` with an `engines.errors.*` message key (signed out, usage limit, not available, invalid choice, CLI error) and the engine's own text as detail. Ask, lessons, quizzes, cards, grading and plans all show that message, and the notice has a Details control. A background job keeps the bare code as its error. A cancelled call and an error that already is an `IpcError` pass through unchanged.
+
 Model capability hints come from `resources/model-capabilities.json`; unknown capabilities show a warning. Hints cannot guarantee runtime access or valid output. Authentication failures map to `engines.errors.refused`; quota, usage or spend limits map to `engines.errors.quota`. Keep error detail free of credentials and source passages.
 
-GPT image hints use a conservative list checked against the [official vision guide](https://developers.openai.com/api/docs/guides/images-vision) on 2026-10-04, including dated snapshots. Text-only, audio and unknown model IDs do not receive photo attachments; they use local OCR. New supported models need an explicit catalog entry. The context-size hints are metadata and are not used to budget requests.
+GPT image hints use a conservative list checked against the [official vision guide](https://developers.openai.com/api/docs/guides/images-vision) on 2026-10-04, including dated snapshots. Text-only, audio and unknown model IDs do not receive photo attachments; they use local OCR. A provider whose CLI Funnel adapter reports `capabilities.images` false (Cursor Agent and Antigravity) gets no photos either, whatever its model ids look like: the automatic choice never gives it the photo task, and a chat on it reads photos as text. New supported models need an explicit catalog entry. The context-size hints are metadata and are not used to budget requests.
 
 To add a feature key:
 

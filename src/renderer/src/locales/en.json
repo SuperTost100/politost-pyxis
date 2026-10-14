@@ -1487,7 +1487,8 @@
       "statusIdle": "Not tested",
       "default": "default",
       "signIn": "Sign in",
-      "test": "Test"
+      "test": "Test",
+      "actionFor": "{{action}} {{name}}"
     },
     "notice": {
       "details": "Details"
@@ -1704,6 +1705,7 @@
     "fast": "Fast mode",
     "useDefault": "Use as default",
     "signOut": "Sign out",
+    "signOutUnsupported": "This engine has no sign-out command. To sign out, open the program and use its account menu.",
     "update": "Update",
     "remove": "Remove",
     "removeKey": "Remove API key",

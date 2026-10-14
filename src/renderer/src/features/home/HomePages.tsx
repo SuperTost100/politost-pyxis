@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Dropdown, Input, Modal, Segmented, Select } from "antd";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Search, Settings2 } from "lucide-react";
@@ -35,6 +35,8 @@ export function ExamsHome() {
     : location.pathname.startsWith("/exams/cards")
       ? "cards"
       : "plans";
+  // The notice belongs to the tab the import ran on; it is gone once the student moves to another.
+  useEffect(() => setFailed(false), [tab]);
   const subjects = [
     ...new Set(
       (plans.data ?? []).map((plan) => plan.subject).filter((name) => name),

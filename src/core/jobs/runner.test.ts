@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { uuidv7 } from "../../shared/ids";
+import { IpcError } from "../../shared/ipc";
 import { openDatabase } from "../db/connection";
 import { createRunner, type JobSpec } from "./runner";
 
@@ -85,6 +86,57 @@ describe("job runner", () => {
     expect(
       database.prepare("SELECT error FROM jobs WHERE id = ?").get(job),
     ).toEqual({ error: "missing-step:removed" });
+  });
+
+  it("records an engine failure as its code, then the engine's own text", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, undefined, true);
+    const signedOut = new IpcError(
+      "not-logged-in",
+      "engines.errors.not-logged-in",
+      {},
+      "Please run /login",
+    );
+    runner.register("signed-out", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "run",
+          label: "run",
+          run: async () => {
+            throw signedOut;
+          },
+        },
+      ],
+    });
+    runner.register("missing", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "run",
+          label: "run",
+          run: async () => {
+            throw new IpcError(
+              "engine-missing",
+              "engines.errors.engine-missing",
+            );
+          },
+        },
+      ],
+    });
+    runner.activate();
+    const first = runner.start("signed-out");
+    const second = runner.start("missing");
+    await until(database, first, ["failed"]);
+    await until(database, second, ["failed"]);
+    const error = (id: string) =>
+      (
+        database.prepare("SELECT error FROM jobs WHERE id = ?").get(id) as {
+          error: string;
+        }
+      ).error;
+    expect(error(first)).toBe("not-logged-in: Please run /login");
+    expect(error(second)).toBe("engine-missing");
   });
 
   it("reacquires the local limit after two passive steps finish together", async () => {

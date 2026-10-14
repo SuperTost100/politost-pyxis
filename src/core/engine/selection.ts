@@ -49,8 +49,12 @@ export function selectionFor(
   const listed = selection.provider.endsWith("-api")
     ? []
     : effortsOf(selection.provider, selection.model);
+  // Until the model's list is read, an automatic row sends only the level Pyxis worked out for the task: the student's
+  // pick may be one this model does not list. A pinned row keeps what it stored.
   const effort = !listed
-    ? (picked ?? inherited)
+    ? auto
+      ? inherited
+      : (picked ?? inherited)
     : picked && listed.includes(picked)
       ? picked
       : automaticEffort(feature, listed);

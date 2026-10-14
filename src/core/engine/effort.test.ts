@@ -128,6 +128,34 @@ describe("effort by task", () => {
     db.close();
   });
 
+  it("sends an automatic row only its own level while the model list is unread", () => {
+    const db = openDatabase(":memory:");
+    const save = (feature: string, value: object) =>
+      db
+        .prepare(
+          "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES (?, ?, 1)",
+        )
+        .run(
+          feature,
+          JSON.stringify({ provider: "claude", model: "m", ...value }),
+        );
+    save("plan", { effort: "high", effortChoice: "max", auto: true });
+    save("grading", { effort: "max" });
+    save("chat", { auto: true, effortChoice: "max" });
+    // Pyxis's level, not the pick the model may not list.
+    expect(selectionFor(db, "plan").effort).toBe("high");
+    // A pinned row keeps what it stored.
+    expect(selectionFor(db, "grading").effort).toBe("max");
+    // An automatic row that borrows no level sends none.
+    expect(selectionFor(db, "chat").effort).toBeUndefined();
+    // Once the list is read the pick applies again.
+    rememberModels("claude", [
+      { id: "m", efforts: levels("low", "high", "max") },
+    ]);
+    expect(selectionFor(db, "plan").effort).toBe("max");
+    db.close();
+  });
+
   it("gives API providers no effort", () => {
     rememberModels("openai-api", [
       { id: "gpt-test", efforts: levels("low", "medium", "high") },
@@ -331,6 +359,35 @@ describe("automatic choice and effort", () => {
       provider("openai-api", [["gpt-6-sol", ["low", "medium", "high"]]]),
     ]);
     expect(plan.plan).toEqual({ provider: "openai-api", model: "gpt-6-sol" });
+  });
+});
+
+describe("engines.test effort", () => {
+  it("sends the nearest level the model lists, or none when it lists none", async () => {
+    const { runTurn } = await import("./funnel");
+    vi.mocked(runTurn).mockResolvedValue({
+      text: "ok",
+      model: "m",
+      provider: "claude",
+      inputTokens: 1,
+    });
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    const sent = async () =>
+      vi.mocked(runTurn).mock.calls.at(-1)![0].selection.effort;
+    rememberModels("claude", [{ id: "m", efforts: levels("low", "medium") }]);
+    await handlers.test({ provider: "claude", model: "m", effort: "max" });
+    expect(await sent()).toBe("medium");
+    await handlers.test({ provider: "claude", model: "m", effort: "low" });
+    expect(await sent()).toBe("low");
+    rememberModels("claude", [{ id: "m", efforts: [] }]);
+    await handlers.test({ provider: "claude", model: "m", effort: "high" });
+    expect(await sent()).toBeUndefined();
+    // A model whose list has not been read gets the level as asked.
+    forgetModels();
+    await handlers.test({ provider: "claude", model: "m", effort: "high" });
+    expect(await sent()).toBe("high");
+    db.close();
   });
 });
 

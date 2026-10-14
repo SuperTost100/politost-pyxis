@@ -111,6 +111,40 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           await drawer
             .getByRole("button", { name: /Close|Chiudi/, exact: true })
             .click();
+          // Each row's action names its engine, so a screen reader can tell the buttons apart.
+          await expect(
+            page.getByRole("button", {
+              name: /^(Install|Test|Sign in|Installa|Prova|Accedi) Antigravity$/,
+            }),
+          ).toHaveCount(1);
+          // Antigravity has no sign-out command: the drawer says how to sign out instead of offering a button that fails.
+          await page
+            .getByRole("button", {
+              name:
+                language === "en"
+                  ? "Details for Antigravity"
+                  : "Dettagli di Antigravity",
+            })
+            .click();
+          const agy = page.getByRole("dialog", {
+            name: "Antigravity",
+            exact: true,
+          });
+          await expect(
+            agy.getByText(
+              language === "en"
+                ? /no sign-out command/
+                : /non ha un comando per uscire/,
+            ),
+          ).toBeVisible();
+          await expect(
+            agy.getByRole("button", {
+              name: language === "en" ? "Sign out" : "Esci dall'account",
+            }),
+          ).toHaveCount(0);
+          await agy
+            .getByRole("button", { name: /Close|Chiudi/, exact: true })
+            .click();
           await page
             .getByRole("button", {
               name: language === "en" ? "Add engine" : "Aggiungi motore",

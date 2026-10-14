@@ -1,3 +1,5 @@
+import { nearestEffort } from "../../shared/effort";
+
 /**
  * The efforts each model lists, as last seen. Model lists are fetched
  * asynchronously (engine screen, automatic choice), while `selectionFor` has
@@ -21,6 +23,22 @@ export function effortsOf(
   model: string,
 ): string[] | undefined {
   return seen.get(provider)?.get(model);
+}
+
+/**
+ * The effort to send with a request the student asked for at `wanted`. Once the model's list has been read, the wanted
+ * level when the model lists it, otherwise the nearest it lists, and none for a model that lists none (and for API
+ * providers, which never get one). Before the list is read the request is left as asked.
+ */
+export function resolveEffort(
+  provider: string,
+  model: string,
+  wanted: string | undefined,
+): string | undefined {
+  if (!wanted) return undefined;
+  if (provider.endsWith("-api")) return undefined;
+  const listed = effortsOf(provider, model);
+  return listed ? nearestEffort(wanted, listed) : wanted;
 }
 
 export function forgetModels(): void {

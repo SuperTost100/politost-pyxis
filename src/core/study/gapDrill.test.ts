@@ -194,7 +194,7 @@ describe("knowledge gap misconceptions and drill", () => {
       if (isExplanation(input.prompt)) return explanationReply;
       throw new Error("stop after the first batch");
     };
-    await expect(buildGapDrill(db, { planId: "plan", topicId: "topic", gapId: "gap" }, run)).rejects.toThrow("stop after");
+    await expect(buildGapDrill(db, { planId: "plan", topicId: "topic", gapId: "gap" }, run)).rejects.toMatchObject({ detail: expect.stringContaining("stop after") });
     const system = prompts[1]!.system ?? "";
     const focus = JSON.parse(system.slice(system.indexOf("Focus data: ") + "Focus data: ".length)) as {
       misconception: string;
@@ -223,7 +223,7 @@ describe("knowledge gap misconceptions and drill", () => {
         focus = input.system ?? "";
         throw new Error("stop");
       };
-      await expect(buildGapDrill(db, { planId: "plan", topicId: "topic", gapId }, run)).rejects.toThrow("stop");
+      await expect(buildGapDrill(db, { planId: "plan", topicId: "topic", gapId }, run)).rejects.toMatchObject({ detail: "stop" });
       return focus;
     };
     expect(await focusFor("gap")).not.toContain("Confuses speed");

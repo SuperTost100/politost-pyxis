@@ -55,7 +55,7 @@ describe("a failed or stopped first turn leaves no chat behind", () => {
     const note = file("appunti.txt", "Il calore si trasmette per conduzione.");
     const turn = (run: typeof down) =>
       askTurn(db, { text: "spiega", allowGeneral: true, files: [note], workspace, run });
-    await expect(turn(down)).rejects.toThrow("engine-down");
+    await expect(turn(down)).rejects.toMatchObject({ detail: "engine-down" });
     expect({ chats: count("chats"), messages: count("messages"), sources: count("sources") }).toEqual({
       chats: 0,
       messages: 0,
@@ -93,7 +93,7 @@ describe("a failed or stopped first turn leaves no chat behind", () => {
     const note = file("appunti.txt", "Il calore si trasmette per conduzione.");
     const turn = (run: typeof down) =>
       askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, files: [note], workspace, run });
-    await expect(turn(down)).rejects.toThrow("engine-down");
+    await expect(turn(down)).rejects.toMatchObject({ detail: "engine-down" });
     await tick();
     // The question and its document stay with the chat, so it can be answered later.
     expect(count("messages")).toBe(3);
@@ -283,9 +283,9 @@ describe("an unanswered question", () => {
     const { db } = setup();
     const first = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
     await tick();
-    await expect(askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, run: down })).rejects.toThrow(
-      "engine-down",
-    );
+    await expect(askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, run: down })).rejects.toMatchObject({
+      detail: "engine-down",
+    });
     await tick();
     const retried = await regenerateTurn(db, { chatId: first.chatId, allowGeneral: true, run: async () => reply });
     expect(retried.message?.body).toBe("Ecco la risposta.");

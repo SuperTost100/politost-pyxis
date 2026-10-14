@@ -22,7 +22,7 @@ import { runSourceWorker } from "./worker-client";
 import { loadVisionImage, type VisionImage } from "./vision-image";
 import { maxSourceBytes } from "../../shared/source-types";
 import { generate, type GenerateInput } from "../engine/generate";
-import { capabilityWarning } from "../engine/capabilities";
+import { engineSeesImages } from "../engine/capabilities";
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import { isAbort, type JobView } from "../../shared/ipc";
 import { fetchSnapshot } from "./link";
@@ -72,9 +72,7 @@ export function visionSelection(
   if (!IMAGE_EXTS.includes(ext)) return undefined;
   try {
     const selection = selectionFor(db, "vision");
-    return capabilityWarning(selection.model, "vision") == null
-      ? selection
-      : undefined;
+    return engineSeesImages(selection) ? selection : undefined;
   } catch {
     return undefined;
   }

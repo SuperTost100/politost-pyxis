@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IpcError } from "../../shared/ipc";
+import { engineIpcError } from "./errors";
 import { runTurn, type EngineResult, type Selection } from "./funnel";
 
 export type GenerateInput = {
@@ -52,7 +53,19 @@ function tryJson(text: string): unknown {
   }
 }
 
+/**
+ * Every model call goes through here, so a failed engine reaches the screen as its own message (signed out, usage limit,
+ * not available) instead of "Something went wrong".
+ */
 export async function generate(input: GenerateInput): Promise<GenerateOutput> {
+  try {
+    return await generateOnce(input);
+  } catch (err) {
+    throw engineIpcError(err, input.selection.provider);
+  }
+}
+
+async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
   const run = input.run ?? runTurn;
   const responseSchema = input.schema
     ? { name: "response", schema: jsonSchema(input.schema) }
