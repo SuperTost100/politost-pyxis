@@ -529,11 +529,11 @@ export const requests = {
     }),
   },
   "plans.calendar": {
+    // One plan's exam. count is 0 when it has no date or the date has passed; there is then nothing to save.
     input: z.object({
-      planId: z.string().optional(),
+      planId: z.string(),
       language: z.enum(["en", "it"]),
     }),
-    // count is 0 when no exam is upcoming and dated; there is then nothing to save.
     output: z.object({
       filename: z.string(),
       base64: z.string(),

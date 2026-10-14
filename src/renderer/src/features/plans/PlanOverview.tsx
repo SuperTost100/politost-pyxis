@@ -269,6 +269,10 @@ export function PlanPage() {
           >
             {t("cards.reviewTitle")}
           </Button>
+          {/* Only an exam with a date today or later has anything to save. */}
+          {savedExamDay !== null && savedExamDay >= dayjs().format("YYYY-MM-DD") ? (
+            <CalendarButton planId={planId} icon />
+          ) : null}
           <IconButton
             icon="settings"
             label={t("planOverview.settings")}

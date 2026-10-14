@@ -61,7 +61,7 @@ No gradients. The only effect is `glow-star`, used on the current path node.
 ## Iconography
 
 - **Lucide** line icons (ISC), 1.75 stroke, `currentColor`. In the app use `lucide-react`; the `Icon` component here mirrors it. The `Icons` asset group holds the core set as SVG files for docs.
-- One icon per concept: Chiedi `message-circle`, Esami `graduation-cap`, smartbook `book-marked`, smart text `book-open`, flashcards `layers`, gaps `target`, concept map `network`, exercise `pencil-line`, quiz `list-checks`, true/false `square-split-horizontal`, review `repeat`, written simulation `file-pen`, locked `lock`, whiteboard `signature`, formula `sigma`, engines `terminal` / `key-round` / `hard-drive` / `cloud`, the tutor is the Pyxis mark (see Logo).
+- One icon per concept: Chiedi `message-circle`, Esami `graduation-cap`, smartbook `book-marked`, smart text `book-open`, flashcards `layers`, gaps `target`, concept map `network`, exercise `pencil-line`, quiz `list-checks`, true/false `square-split-horizontal`, review `repeat`, add to calendar `calendar-plus`, written simulation `file-pen`, locked `lock`, whiteboard `signature`, formula `sigma`, engines `terminal` / `key-round` / `hard-drive` / `cloud`, the tutor is the Pyxis mark (see Logo).
 - No emoji as icons, no filled or duotone icons, no icons from antd's set mixed in.
 
 ## Logo

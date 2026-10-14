@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   BookMarked,
   BookOpen,
+  CalendarPlus,
   ChartLine,
   Check,
   ChevronRight,
@@ -53,6 +54,7 @@ export type IconName =
   | "message-circle"
   | "graduation-cap"
   | "book-open"
+  | "calendar-plus"
   | "layers"
   | "target"
   | "network"
@@ -102,6 +104,7 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   "message-circle": MessageCircle,
   "graduation-cap": GraduationCap,
   "book-open": BookOpen,
+  "calendar-plus": CalendarPlus,
   layers: Layers,
   target: Target,
   network: Network,
