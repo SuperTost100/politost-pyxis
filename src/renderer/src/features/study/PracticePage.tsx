@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Icon } from "../../components/Icon";
 import { MathInput } from "../../components/MathInput";
@@ -170,6 +170,9 @@ export function PracticePage() {
   useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
   const client = useQueryClient();
+  // Opened from a finished step on the path: looking again records nothing, so there is no "Mark as done".
+  const [searchParams] = useSearchParams();
+  const reviewing = searchParams.get("review") === "1";
   const plan = useQuery({
     queryKey: ["plan", planId],
     enabled: Boolean(planId),
@@ -226,7 +229,11 @@ export function PracticePage() {
         </Button>
       }
       primary={
-        // Done comes after the exercises, as at the end of a lesson.
+        reviewing ? (
+          <Button type="primary" shape="round" onClick={() => navigate(`/plans/${planId ?? ""}`)}>
+            {t("lesson.backToPath")}
+          </Button>
+        ) : // Done comes after the exercises, as at the end of a lesson.
         list.length > 0 && plan.data ? (
           <Button
             type="primary"
@@ -239,6 +246,7 @@ export function PracticePage() {
         ) : null
       }
     >
+      {reviewing ? <Notice tone="info">{t("practice.reviewing")}</Notice> : null}
       {finish.isError ? (
         <Notice tone="danger">{t("planOverview.failed")}</Notice>
       ) : null}

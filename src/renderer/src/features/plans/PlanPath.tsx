@@ -99,7 +99,27 @@ export function PlanPath({
       navigate(`/plans/${planId}/progress?drill=${encodeURIComponent(topic)}`);
     else navigate(`/plans/${planId}/${activity}/${topic}`);
   }
-  /** Opens the chooser on one topic, from a done or a planned box. */
+  /**
+   * Opens a finished step to look at again without recording anything: the lesson or introduction to reread, a quiz,
+   * drill, diagnostic or simulation read-only with its answers (Redo starts a new one), exercises without "Mark as done".
+   * A step without its attempt opens the topic's lesson, or the activity's own page.
+   */
+  function reopen(step: Step) {
+    const base = `/plans/${planId}`;
+    const topic = step.topicId;
+    const attempt = step.attemptId ? `?attempt=${encodeURIComponent(step.attemptId)}` : "";
+    if (step.activity === "intro") navigate(`${base}/intro`);
+    else if (step.activity === "diagnostic") navigate(`${base}/diagnostic${attempt}`);
+    else if (step.activity === "simulation")
+      navigate(step.attemptId ? `${base}/exam/${step.attemptId}` : `${base}/simulation`);
+    else if (!topic) return;
+    else if (step.activity === "practice") navigate(`${base}/practice/${topic}?review=1`);
+    else if (step.activity === "cards") navigate(`${base}/cards/${topic}`);
+    else if ((step.activity === "quiz" || step.activity === "gaps") && attempt)
+      navigate(`${base}/quiz/${topic}${attempt}`);
+    else navigate(`${base}/lesson/${topic}`);
+  }
+  /** Opens the chooser on one topic, from a planned box. */
   function choose(topic: string | null) {
     if (topic) setPicked(topic);
     setPicking(false);
@@ -230,7 +250,7 @@ export function PlanPath({
                 label={name(step.activity)}
                 detail={step.topicId ? title(step.topicId) : undefined}
                 meta={result(step)}
-                onClick={() => choose(step.topicId)}
+                onClick={() => reopen(step)}
               />
             </li>
           ))}

@@ -623,7 +623,11 @@ export function registerSimulationJobs(
             recordStep(
               db,
               params.planId,
-              { activity: "simulation", result: stepResult(params.results) },
+              {
+                activity: "simulation",
+                result: stepResult(params.results),
+                attemptId: params.attemptId,
+              },
               now + params.results.length + 1,
             );
             syncGaps(db, params.planId, now);

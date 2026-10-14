@@ -92,6 +92,7 @@ const routes = [
   ["export-plan-embed", "/plans/audit-plan"],
   ["practice", "/plans/audit-plan/practice/audit-topic"],
   ["practice-rated", "/plans/audit-plan/practice/audit-topic"],
+  ["practice-review", "/plans/audit-plan/practice/audit-topic?review=1"],
   ["lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-rewrite", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-menu", "/plans/audit-plan/lesson/audit-topic"],
@@ -101,6 +102,11 @@ const routes = [
   ["quiz-timed", "/plans/audit-plan/quiz/audit-topic"],
   ["diagnostic", "/plans/audit-plan/diagnostic"],
   ["quiz", "/plans/audit-plan/quiz/audit-topic?attempt=audit-quiz-attempt"],
+  // A quiz handed in earlier, reopened from its step on the path: read-only, with Redo.
+  [
+    "quiz-review",
+    "/plans/audit-plan/quiz/audit-topic?attempt=audit-quiz-done-attempt",
+  ],
   ["cards", "/plans/audit-plan/cards/audit-topic"],
   ["simulation-setup", "/plans/audit-plan/simulation"],
   ["simulation-ready", "/plans/audit-ready-plan/simulation"],
@@ -328,6 +334,26 @@ function seed(db: DatabaseSync) {
   db.prepare(
     "INSERT INTO attempts(id,plan_id,item_id,started_at,submitted_at) VALUES(?,'audit-plan',?,?,?)",
   ).run("audit-exam-attempt", "audit-exam", now - 1800000, now - 1000);
+  db.prepare(
+    "INSERT INTO attempts(id,plan_id,item_id,started_at,submitted_at) VALUES(?,'audit-plan',?,?,?)",
+  ).run("audit-quiz-done-attempt", "audit-quiz", now - 900000, now - 600000);
+  db.prepare(
+    "INSERT INTO attempt_answers(id,attempt_id,payload_json,created_at) VALUES('audit-quiz-done','audit-quiz-done-attempt',?,?)",
+  ).run(
+    JSON.stringify({
+      score: 0.7,
+      picks: Object.fromEntries(
+        questions.map((q, i) => [q.id, i < 7 ? "0" : "1"]),
+      ),
+      results: questions.map((q, i) => ({
+        id: q.id,
+        score: i < 7 ? 1 : 0,
+        expected: "$F=ma$",
+        explanation: question.explanation,
+      })),
+    }),
+    now - 600000,
+  );
   db.prepare(
     "INSERT INTO attempt_answers(id,attempt_id,payload_json,created_at) VALUES('audit-grade','audit-exam-attempt',?,?)",
   ).run(JSON.stringify({ score: 0.8, results }), now - 1000);

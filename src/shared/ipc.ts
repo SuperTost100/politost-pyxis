@@ -1223,6 +1223,9 @@ export const requests = {
             topicId: z.string().nullable(),
             at: z.number(),
             result: StepResult.nullable(),
+            // What the step reopens: the lesson or introduction read, or the submitted attempt.
+            itemId: z.string().nullable(),
+            attemptId: z.string().nullable(),
           }),
         ),
         sources: z.array(
@@ -1313,6 +1316,8 @@ export const requests = {
               "ready",
               "consolidate",
               "check",
+              "stay",
+              "review",
               "next",
               "weakest",
             ]),

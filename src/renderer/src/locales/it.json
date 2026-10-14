@@ -870,7 +870,9 @@
     "questions": "Domande",
     "noAnswer": "Nessuna risposta",
     "continue": "Continua",
-    "reviewMistakes": "Ripassa gli errori"
+    "reviewMistakes": "Ripassa gli errori",
+    "redo": "Rifai",
+    "answeredOn": "Le tue risposte del {{date}}"
   },
   "practice": {
     "title": "Esercizi del libro",
@@ -891,7 +893,8 @@
     "got": "Ce l'ho fatta",
     "missed": "Non ce l'ho fatta",
     "rateHint": "Facoltativo. Conta un po' per i tuoi progressi.",
-    "rateFailed": "La valutazione non è stata salvata. Riprova."
+    "rateFailed": "La valutazione non è stata salvata. Riprova.",
+    "reviewing": "Hai già finito questi esercizi. Rivederli non aggiunge un passo al percorso."
   },
   "plans": {
     "export": "Esporta",
@@ -966,7 +969,10 @@
         "consolidate": "Fissa quello che hai appena letto.",
         "check": "Verifica cosa ti hanno insegnato gli esercizi.",
         "next": "Il prossimo argomento in ordine.",
-        "weakest": "È l'argomento in cui sei più debole."
+        "weakest": "È l'argomento in cui sei più debole.",
+        "stay": "Questo argomento non è ancora solido. Restaci ancora un po'.",
+        "review_one": "L'hai studiato l'ultima volta ieri. Vedi cosa ricordi ancora.",
+        "review_other": "L'hai studiato l'ultima volta {{count}} giorni fa. Vedi cosa ricordi ancora."
       }
     }
   },

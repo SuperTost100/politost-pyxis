@@ -5,7 +5,7 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { suggestStep, topicSuggestion, type Stage, type TopicStatus } from "./path";
-import { readSteps } from "./steps";
+import { gradedActivities, readSteps } from "./steps";
 import { countDueCards } from "../study/cards";
 import { gapSeverity, planMastery, syncGaps, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
@@ -397,9 +397,14 @@ export function planGuide(
   const lastStudied = db.prepare(
     `SELECT MAX(created_at) AS at FROM learning_events WHERE plan_id = ? AND topic_id = ?`,
   );
+  // A topic's lesson is recorded once, so its step marks when the stay on that topic began.
+  const readAt = new Map(
+    steps.filter((step) => step.activity === "lesson").map((step) => [step.topicId, step.at]),
+  );
   const topics: TopicStatus[] = planMastery(db, planId, now).map((topic) => {
     const open = gaps.filter((gap) => gap.topic_id === topic.id);
     const last = lastStudied.get(planId, topic.id) as { at: number | null };
+    const since = readAt.get(topic.id);
     return {
       id: topic.id,
       mastery: topic.mastery,
@@ -409,6 +414,7 @@ export function planGuide(
         (gap) => gapSeverity(gap.severity, topic.mastery, meta.target) === "severe",
       ).length,
       daysIdle: last.at == null ? 0 : Math.max(0, -daysUntil(last.at, now)),
+      graded: since == null ? 0 : gradedActivities(db, planId, topic.id, since),
     };
   });
   const read = new Set(

@@ -303,3 +303,213 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test("plan path: a finished lesson, quiz or exercise opens for review, and only Redo adds a step", async () => {
+  test.setTimeout(240000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-path-review-"));
+  const book = join(userData, "fisica.ptsb");
+  writeFileSync(
+    book,
+    zipSync({
+      "smartbook.json": strToU8(
+        JSON.stringify({
+          id: "path-review",
+          title: "Fisica",
+          access: "public",
+          chapters: chapters.slice(0, 2).map((chapter) => ({
+            id: `c${chapter.number}`,
+            number: chapter.number,
+            title: chapter.title,
+            file: `0${chapter.number}.md`,
+          })),
+        }),
+      ),
+      "chapters/01.md": strToU8("## p1 | Forze\nUna forza cambia il moto.\n"),
+      "chapters/02.md": strToU8("## p2 | Energia e lavoro\nIl lavoro è forza per spostamento.\n"),
+      "esercizi.md": strToU8(
+        ':::exercise{id="push" chapter="1"}\nQuanto vale la forza su 2 kg a 3 m/s²?\n:::solution\nF = m a = 6 N.\n:::\n:::',
+      ),
+    }),
+  );
+  const replies = {
+    markdown: { markdown: lesson },
+    questions: {
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        stem: `Che cosa cambia una forza ${i + 1}?`,
+        options: ["Il moto", "Il colore", "La massa", "Il volume"],
+        correct: 0,
+        topicIndex: i % 2,
+        passageIds: [],
+        explanation: "Una forza cambia il moto.",
+      })),
+    },
+    quizQuestions: {
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        kind: "tf",
+        stem: `Una forza cambia il moto. Affermazione {{question:${i}}}.`,
+        correct: true,
+        passageIds: ["{{passage:0}}"],
+        explanation: "Una forza cambia il moto.",
+      })),
+    },
+  };
+  const env = {
+    ...process.env,
+    PYXIS_USER_DATA: userData,
+    PYXIS_E2E: "1",
+    PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const shots = ".shots/plan-path";
+  mkdirSync(shots, { recursive: true });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    const invoke = <T,>(channel: string, input: unknown) =>
+      page.evaluate(
+        ({ channel, input }) => window.pyxis.invoke(channel as never, input as never),
+        { channel, input },
+      ) as Promise<T>;
+    const { sourceId } = (await importPickedSource(page, app, book)) as { sourceId: string };
+    await expect
+      .poll(async () =>
+        (await invoke<Array<{ id: string; status: string }>>("sources.list", {})).find(
+          (row) => row.id === sourceId,
+        )?.status,
+      )
+      .toBe("ready");
+    const { planId } = await invoke<{ planId: string }>("plans.create", {
+      title: "Fisica 1",
+      sourceIds: [sourceId],
+      language: "it",
+    });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>("plans.build", { planId }))?.state, {
+        timeout: 60000,
+      })
+      .toBe("succeeded");
+    type Steps = Array<{ activity: string; topicId: string | null; attemptId: string | null }>;
+    const read = () => invoke<Read & { steps: Steps }>("plans.read", { planId });
+    const topic = (await read()).topics[0]!;
+
+    // A lesson read, a quiz handed in and a set of exercises finished, all on the first topic.
+    await invoke("plans.complete", { planId, activity: "lesson", topicId: topic.id });
+    const quiz = await invoke<{ attemptId: string }>("study.quizStart", {
+      planId,
+      topicId: topic.id,
+      types: ["tf"],
+    });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>("study.quizRead", { attemptId: quiz.attemptId })).state)
+      .toBe("succeeded");
+    const { questions } = await invoke<{ questions: Array<{ id: string }> }>("study.quizRead", {
+      attemptId: quiz.attemptId,
+    });
+    await invoke("study.quizSubmit", {
+      attemptId: quiz.attemptId,
+      picks: Object.fromEntries(questions.map((question, i) => [question.id, i < 6 ? "true" : "false"])),
+    });
+    await expect.poll(async () => (await read()).steps.length).toBe(2);
+    await invoke("plans.complete", { planId, activity: "practice", topicId: topic.id });
+    const before = (await read()).steps;
+    expect(before.map((step) => [step.activity, step.attemptId])).toEqual([
+      ["lesson", null],
+      ["quiz", quiz.attemptId],
+      ["practice", null],
+    ]);
+
+    await page.evaluate((planId) => {
+      location.hash = `/plans/${planId}`;
+    }, planId);
+    const done = page.getByRole("list", { name: "Passi fatti" });
+    await expect(done.getByRole("listitem")).toHaveCount(3);
+    // The path stays on the topic: after exercises, a quiz to check them.
+    await expect(page.locator(".px-path-next").getByRole("heading")).toHaveText(`Quiz su ${topic.title}`);
+
+    // The lesson opens to read again; no chooser opens and nothing is recorded.
+    await done.getByRole("button", { name: new RegExp(`^Testo smart, ${topic.title}`) }).click();
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topic.id}$`));
+    await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
+      timeout: 20000,
+    });
+    expect((await read()).steps).toEqual(before);
+    await page.goBack();
+
+    // The quiz opens read-only on its own attempt, with the score and Redo.
+    await done.getByRole("button", { name: new RegExp(`^Quiz, ${topic.title}, 6/10`) }).click();
+    await expect(page).toHaveURL(new RegExp(`quiz/${topic.id}\\?attempt=${quiz.attemptId}$`));
+    await expect(page.locator(".px-quiz-score")).toHaveText(/^6\s*su 10$/);
+    await expect(page.getByText(/^Le tue risposte del /)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
+    await expect(page.locator(".px-quiz-question")).toHaveCount(0);
+    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    for (const [lang, theme] of [
+      ["it", "light"],
+      ["it", "dark"],
+      ["en", "light"],
+      ["en", "dark"],
+    ] as const) {
+      await page.evaluate(
+        async ({ lang, theme }) => {
+          localStorage.setItem("pyxis.lang", lang);
+          await window.pyxis.setAppearance(theme);
+        },
+        { lang, theme },
+      );
+      await page.reload();
+      await expect(page.getByRole("button", { name: /^(Rifai|Redo)$/ })).toBeVisible();
+      await shoot(page, `${shots}/quiz-review-${lang}-${theme}.png`);
+    }
+    await page.evaluate(async () => {
+      localStorage.setItem("pyxis.lang", "it");
+      await window.pyxis.setAppearance("light");
+    });
+    await page.reload();
+    expect((await read()).steps).toEqual(before);
+
+    // Redo opens a new quiz; only handing it in adds a step, with its own attempt.
+    await page.getByRole("button", { name: "Rifai" }).click();
+    await expect(page).toHaveURL(new RegExp(`quiz/${topic.id}$`));
+    await expect(page.getByRole("button", { name: "Inizia", exact: true })).toBeVisible();
+    expect((await read()).steps).toEqual(before);
+    await page.getByRole("button", { name: "Personalizza" }).click();
+    await page.getByRole("button", { name: "Solo vero o falso", exact: true }).click();
+    await page.getByRole("button", { name: "Inizia", exact: true }).click();
+    const vero = page.getByRole("button", { name: "A. Vero", exact: true });
+    for (let i = 0; i < 10; i++) {
+      await expect(page.getByText(`Domanda ${i + 1} di 10`, { exact: true })).toBeVisible();
+      await vero.click();
+      await page.getByRole("button", { name: "Verifica", exact: true }).click();
+      await page.getByRole("button", { name: i === 9 ? "Vedi risultato" : "Avanti", exact: true }).click();
+    }
+    await expect(page.locator(".px-quiz-score")).toHaveText(/^10\s*su 10$/);
+    // A quiz just handed in is not a review: it continues the path and offers no Redo.
+    await expect(page.getByRole("button", { name: "Continua" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Rifai" })).toHaveCount(0);
+    const after = (await read()).steps;
+    expect(after.slice(0, 3)).toEqual(before);
+    expect(after.slice(3)).toMatchObject([{ activity: "quiz", topicId: topic.id }]);
+    expect(after[3]!.attemptId).not.toBe(quiz.attemptId);
+    await page.getByRole("button", { name: "Continua" }).click();
+
+    // Finished exercises open without "Mark as done"; going back records nothing.
+    await expect(done.getByRole("listitem")).toHaveCount(4);
+    await done.getByRole("button", { name: new RegExp(`^Esercizio assistito, ${topic.title}`) }).click();
+    await expect(page).toHaveURL(new RegExp(`practice/${topic.id}\\?review=1$`));
+    await expect(page.getByText("Hai già finito questi esercizi.", { exact: false })).toBeVisible();
+    await expect(page.getByText("Quanto vale la forza", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
+    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await shoot(page, `${shots}/practice-review-it-light.png`);
+    await page.getByRole("button", { name: "Torna al percorso" }).click();
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
+    expect((await read()).steps).toEqual(after);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});

@@ -58,9 +58,10 @@ export function completeReading(
   planId: string,
   kind: "lesson" | "intro",
   topicId: string | null,
+  itemId?: string,
 ) {
   try {
-    recordStep(db, planId, { activity: kind, topicId });
+    recordStep(db, planId, { activity: kind, topicId, itemId });
   } catch (err) {
     // A lesson on a topic archived since keeps its answers; there is no path step to add.
     if (!(err instanceof Error) || err.message !== "topic-missing") throw err;
@@ -115,7 +116,7 @@ export function answerSmartCheck(
     const finished =
       finishing.includes(input.blockId) &&
       finishing.every((id) => saved[id] !== undefined);
-    if (finished) completeReading(db, item.plan_id, item.kind, item.topic_id);
+    if (finished) completeReading(db, item.plan_id, item.kind, item.topic_id, item.id);
     return { correct, pick, finished };
   })();
 }

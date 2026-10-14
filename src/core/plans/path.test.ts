@@ -15,6 +15,7 @@ const topic = (id: string, mastery = 0, extra: Partial<TopicStatus> = {}): Topic
   dueCards: 0,
   severeGaps: 0,
   daysIdle: 0,
+  graded: 0,
   ...extra,
 });
 const step = (activity: Step["activity"], topicId: string | null = null) => ({ activity, topicId });
@@ -52,7 +53,8 @@ describe("suggestStep", () => {
   });
 
   it("suggests a smart text on the next unread topic in the plan's order", () => {
-    const topics = [topic("a", 0.4), topic("b"), topic("c")];
+    // Both topics read here have had their three graded activities, so the path moves on.
+    const topics = [topic("a", 0.4, { graded: 3 }), topic("b"), topic("c", 0, { graded: 3 })];
     const steps = [
       step("intro"),
       step("diagnostic"),
@@ -75,8 +77,8 @@ describe("suggestStep", () => {
     const steps = [step("lesson", "a")];
     expect(suggestStep({ ...base, topics: [topic("a", 0.2)], steps })?.activity).toBe("practice");
     expect(suggestStep({ ...base, topics: [topic("a", 0.6)], steps })?.activity).toBe("quiz");
-    // Every topic read: the weakest one gets the exercise.
-    const all = [topic("a", 0.7), topic("b", 0.3)];
+    // Every topic read and its stay over: the weakest one gets the exercise.
+    const all = [topic("a", 0.7), topic("b", 0.3, { graded: 3 })];
     expect(
       suggestStep({
         ...base,
@@ -101,18 +103,154 @@ describe("suggestStep", () => {
         steps: [step("lesson", "a"), step("practice", "a")],
       }),
     ).toMatchObject({ activity: "quiz", topicId: "a", reason: "check" });
-    // Once the quiz is taken, the weakest topic is back to exercises.
+    // Once the quiz is taken and b's stay is over, the weakest topic is back to exercises.
+    const over = [topic("a", 0.7), topic("b", 0.3, { graded: 3 })];
     expect(
-      suggestStep({ ...base, topics: all, steps: [...read, step("practice", "b"), step("quiz", "b")] }),
+      suggestStep({ ...base, topics: over, steps: [...read, step("practice", "b"), step("quiz", "b")] }),
     ).toMatchObject({ activity: "practice", topicId: "b", reason: "weakest" });
+    // With every topic read and nowhere else to go, practice on the weakest topic is still checked by a quiz.
+    expect(
+      suggestStep({ ...base, topics: over, steps: [...read, step("quiz", "b"), step("practice", "b")] }),
+    ).toMatchObject({ activity: "quiz", topicId: "b", reason: "check" });
     // A topic already at the target needs no check.
     expect(
       suggestStep({
         ...base,
-        topics: [topic("a", 0.9), topic("b", 0.3)],
+        topics: [topic("a", 0.9), topic("b", 0.3, { graded: 3 })],
         steps: [...read, step("practice", "a")],
       }),
     ).toMatchObject({ activity: "practice", topicId: "b", reason: "weakest" });
+  });
+
+  it("stays on the topic just read, alternating exercises and quizzes, until it holds or has three activities", () => {
+    const topics = (graded: number, mastery = 0.3) => [topic("a", mastery, { graded }), topic("b")];
+    const lesson = [step("lesson", "a")];
+    // Right after the lesson: exercises.
+    expect(suggestStep({ ...base, topics: topics(0), steps: lesson })).toMatchObject({
+      activity: "practice",
+      topicId: "a",
+      reason: "consolidate",
+    });
+    // Exercises are followed by a quiz, whether they were rated (one activity) or not (none).
+    for (const graded of [0, 1])
+      expect(
+        suggestStep({ ...base, topics: topics(graded), steps: [...lesson, step("practice", "a")] }),
+      ).toMatchObject({ activity: "quiz", topicId: "a", reason: "check" });
+    // A quiz is followed by exercises again while the topic stays below 0.6.
+    const twice = [...lesson, step("practice", "a"), step("quiz", "a")];
+    expect(suggestStep({ ...base, topics: topics(2), steps: twice })).toMatchObject({
+      activity: "practice",
+      topicId: "a",
+      reason: "stay",
+    });
+    // Unrated exercises do not count, so the quiz after them still keeps the path here.
+    expect(
+      suggestStep({ ...base, topics: topics(2), steps: [...twice, step("practice", "a")] }),
+    ).toMatchObject({ activity: "quiz", topicId: "a", reason: "check" });
+    // Starting with a quiz instead of exercises still alternates.
+    expect(
+      suggestStep({ ...base, topics: topics(1), steps: [...lesson, step("quiz", "a")] }),
+    ).toMatchObject({ activity: "practice", topicId: "a", reason: "stay" });
+    // At 0.6 the topic holds and the next chapter comes, even after one activity.
+    expect(
+      suggestStep({ ...base, topics: topics(1, 0.6), steps: [...lesson, step("quiz", "a")] }),
+    ).toMatchObject({ activity: "lesson", topicId: "b", reason: "next" });
+    // A target under 0.6 ends the stay at the target.
+    expect(
+      suggestStep({
+        ...base,
+        target: 0.5,
+        topics: topics(1, 0.55),
+        steps: [...lesson, step("quiz", "a")],
+      }),
+    ).toMatchObject({ activity: "lesson", topicId: "b" });
+  });
+
+  it("moves on after three graded activities however they went", () => {
+    const steps = [step("lesson", "a"), step("practice", "a"), step("quiz", "a"), step("practice", "a")];
+    // Three misses leave mastery low; the path still moves to the next chapter rather than checking the exercises.
+    expect(
+      suggestStep({ ...base, topics: [topic("a", 0.1, { graded: 3 }), topic("b")], steps }),
+    ).toMatchObject({ activity: "lesson", topicId: "b", reason: "next" });
+    expect(
+      suggestStep({ ...base, topics: [topic("a", 0.1, { graded: 2 }), topic("b")], steps }),
+    ).toMatchObject({ activity: "quiz", topicId: "a", reason: "check" });
+  });
+
+  it("stays on the latest lesson's topic, not on work done elsewhere since", () => {
+    const topics = [topic("a", 0.2), topic("b", 0.2), topic("c", 0.4, { graded: 1 })];
+    // A lesson read out of the path's order takes the stay; a quiz on another topic does not.
+    expect(
+      suggestStep({
+        ...base,
+        topics,
+        steps: [step("lesson", "a"), step("lesson", "b"), step("quiz", "c")],
+      }),
+    ).toMatchObject({ activity: "practice", topicId: "b", reason: "consolidate" });
+  });
+
+  it("brings back a read topic left alone for seven days before a new chapter", () => {
+    const steps = [step("lesson", "a"), step("lesson", "b")];
+    const topics = (daysIdle: number, mastery = 0.5) => [
+      topic("a", 0.5, { graded: 3, daysIdle: 2 }),
+      topic("b", mastery, { graded: 3, daysIdle }),
+      topic("c"),
+    ];
+    expect(suggestStep({ ...base, topics: topics(8), steps })).toMatchObject({
+      activity: "quiz",
+      topicId: "b",
+      reason: "review",
+      count: 8,
+    });
+    // Six days is not yet idle, and a topic at the target needs no review.
+    expect(suggestStep({ ...base, topics: topics(6), steps })).toMatchObject({
+      activity: "lesson",
+      topicId: "c",
+    });
+    expect(suggestStep({ ...base, topics: topics(9, 0.85), steps })).toMatchObject({
+      activity: "lesson",
+      topicId: "c",
+    });
+    // A topic never read is not reviewed, however long ago the diagnostic touched it.
+    expect(
+      suggestStep({
+        ...base,
+        topics: [topic("a", 0.5, { graded: 3 }), topic("b", 0.2, { daysIdle: 20 })],
+        steps: [step("lesson", "a")],
+      }),
+    ).toMatchObject({ activity: "lesson", topicId: "b", reason: "next" });
+    // The longest idle topic goes first.
+    expect(
+      suggestStep({
+        ...base,
+        topics: [
+          topic("a", 0.3, { graded: 3, daysIdle: 10 }),
+          topic("b", 0.2, { graded: 3, daysIdle: 12 }),
+          topic("c"),
+        ],
+        steps,
+      }),
+    ).toMatchObject({ topicId: "b", reason: "review", count: 12 });
+  });
+
+  it("keeps due cards and severe gaps ahead of the stay and of a review, and the stay ahead of a review", () => {
+    const steps = [step("lesson", "a"), step("lesson", "b")];
+    const idle = topic("a", 0.4, { graded: 3, daysIdle: 9 });
+    expect(
+      suggestStep({ ...base, topics: [idle, topic("b", 0.2), topic("c", 0, { dueCards: 2 })], steps }),
+    ).toMatchObject({ activity: "cards", topicId: "c", reason: "due" });
+    expect(
+      suggestStep({ ...base, topics: [idle, topic("b", 0.2, { severeGaps: 1 }), topic("c")], steps }),
+    ).toMatchObject({ activity: "gaps", topicId: "b", reason: "gaps" });
+    // b was read last and has not had its three activities yet, so it keeps the path before a's review.
+    expect(suggestStep({ ...base, topics: [idle, topic("b", 0.2), topic("c")], steps })).toMatchObject({
+      activity: "practice",
+      topicId: "b",
+      reason: "consolidate",
+    });
+    expect(
+      suggestStep({ ...base, topics: [idle, topic("b", 0.2, { graded: 3 }), topic("c")], steps }),
+    ).toMatchObject({ activity: "quiz", topicId: "a", reason: "review" });
   });
 
   it("puts due cards and severe gaps first", () => {

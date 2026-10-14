@@ -26,6 +26,7 @@ import { currentSelfRatings, rateExercise } from "../study/selfRating";
 import { planHandlers } from "./handlers";
 import { saveProfile } from "../profile/profile";
 import { planOrigin } from "./views";
+import { readSteps, recordStep } from "./steps";
 import {
   importRequest,
   previewPlan,
@@ -1731,4 +1732,49 @@ describe("an imported document keeps its original file's identity (PLAN-13)", ()
       expect(laterVersion(fresh, sourceId, "a".repeat(64))).not.toEqual(before);
     });
   }
+});
+
+describe("progress with path steps that name what was done", () => {
+  it("round-trips the lesson and the quiz attempt a step names onto the imported copies", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = bookPlan(db);
+    const at = Date.now() - 3_600_000;
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,grounding,created_at) VALUES('lesson',?,?,'lesson',?,'sources',?)",
+    ).run(planId, topicId, JSON.stringify({ markdown: "Il vettore." }), at);
+    const itemId = saveQuiz(
+      db,
+      planId,
+      [{ id: "q", topicId, stem: "Quanto?", options: ["1", "2"], grade: { kind: "mcq", picked: -1, correct: 0 } }],
+      at,
+    );
+    db.prepare("UPDATE items SET topic_id = ? WHERE id = ?").run(topicId, itemId);
+    const { attemptId } = startAttempt(db, planId, itemId, at + 1);
+    db.prepare("UPDATE attempts SET submitted_at = ? WHERE id = ?").run(at + 2, attemptId);
+    recordStep(db, planId, { activity: "lesson", topicId }, at + 3);
+    recordStep(db, planId, { activity: "quiz", topicId, attemptId, result: { correct: 1, total: 1 } }, at + 4);
+
+    const file = planFileSchema.parse(JSON.parse(JSON.stringify(exportPlan(db, planId, { progress: true }))));
+    const steps = file.progress!.filter((event) => event.kind === "lesson_completed");
+    expect(steps.map((event) => event.payload)).toMatchObject([
+      { activity: "lesson", itemId: "lesson" },
+      { activity: "quiz", attemptId },
+    ]);
+    expect(file.attempts?.map((row) => row.id)).toEqual([attemptId]);
+
+    const fresh = openDatabase(":memory:");
+    const copy = importPlan(fresh, file, at + 5000);
+    const [read, quizStep] = readSteps(fresh, copy);
+    const copiedLesson = fresh
+      .prepare("SELECT id FROM items WHERE plan_id = ? AND kind = 'lesson'")
+      .get(copy) as { id: string };
+    const copiedAttempt = fresh
+      .prepare("SELECT id FROM attempts WHERE plan_id = ?")
+      .get(copy) as { id: string };
+    expect(read).toMatchObject({ activity: "lesson", itemId: copiedLesson.id, attemptId: null });
+    expect(quizStep).toMatchObject({ activity: "quiz", itemId: null, attemptId: copiedAttempt.id });
+    expect(copiedAttempt.id).not.toBe(attemptId);
+    db.close();
+    fresh.close();
+  });
 });
