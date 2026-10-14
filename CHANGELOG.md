@@ -16,7 +16,7 @@ Each release lists what changed for students, in English and Italian. The GitHub
 #### Exams
 
 - A failed plan import no longer leaves its error showing on the Sources and Flashcards tabs.
-- "Add to calendar" on the Exams page saves a calendar file (.ics) with every upcoming exam that has a date. The same button in "Plan settings" saves only that exam.
+- "Add to calendar" saves a calendar file (.ics) for one exam at a time. Use the calendar button in a plan's header, or the same button in "Plan settings". The Exams page has no button that saves every exam at once.
 - Each exam is an all-day event titled "Exam:" followed by the plan's title, or "Esame:" in Italian. The description names the subject when the plan has one. Each event has a reminder at 9:00 the day before.
 - Pyxis gives each exam the same ID every time, so importing the file again should update your events instead of adding copies.
 - Exams with no date and exams already over are left out. When there is nothing to save, the button is off and tells you why. In "Plan settings" it is also off while you have changed the date and not saved it ("Save the new date first.").
@@ -76,6 +76,7 @@ Each release lists what changed for students, in English and Italian. The GitHub
 - Pyxis now backs up your workspace on its own, at most once a day and only while Pyxis is open. It writes a ZIP to a "Pyxis backups" folder in Documents and keeps the 3 newest copies. You keep studying while it runs. "Restore" accepts these backups like any other.
 - Settings, under Data, has a new "Automatic backups" section. It is on by default. It has the "Back up automatically" switch, "Change folder", "Open folder", the time and size of the last backup, and "Back up now", which saves to the same folder. "Change folder" refuses a folder inside your workspace or Pyxis's own data, because a backup there would be lost with it, and a folder Pyxis can't write to.
 - When an automatic backup fails, a notice appears in the corner with the reason and a "Backup settings" button. The reasons are a folder that isn't there, such as an unplugged drive, no permission, a full disk, too many files, and a workspace over the 2 GB limit of a backup. A notice you dismiss stays away for the session. A workspace that is too large is reported once, not on every launch, and Pyxis tries again each day.
+- "Delete all data" does not delete automatic backups. They stay in the backup folder shown under Data, and the warning says so. Delete them there if you want them gone.
 
 ### Italiano
 
@@ -89,7 +90,7 @@ Each release lists what changed for students, in English and Italian. The GitHub
 #### Esami
 
 - Un'importazione di piani non riuscita non lascia più il suo errore visibile nelle schede Fonti e Flashcard.
-- "Aggiungi al calendario" nella pagina Esami salva un file del calendario (.ics) con tutti gli esami in arrivo che hanno una data. Lo stesso pulsante in "Impostazioni del piano" salva solo quell'esame.
+- "Aggiungi al calendario" salva un file del calendario (.ics) per un esame alla volta. Usa il pulsante del calendario nell'intestazione di un piano, oppure lo stesso pulsante in "Impostazioni del piano". La pagina Esami non ha un pulsante che salvi tutti gli esami insieme.
 - Ogni esame è un evento di un giorno intero con il titolo "Esame:" seguito dal titolo del piano, o "Exam:" se l'interfaccia è in inglese. La descrizione indica la materia, se il piano ne ha una. Ogni evento ha un promemoria alle 9:00 del giorno prima.
 - Pyxis dà a ogni esame sempre lo stesso identificativo, quindi importare di nuovo il file dovrebbe aggiornare gli eventi invece di duplicarli.
 - Gli esami senza data e quelli già passati non compaiono. Se non c'è nulla da salvare, il pulsante è spento e ti dice perché. In "Impostazioni del piano" è spento anche finché hai cambiato la data senza salvarla ("Salva prima la nuova data.").
@@ -149,6 +150,7 @@ Each release lists what changed for students, in English and Italian. The GitHub
 - Pyxis ora fa da solo la copia del tuo spazio di lavoro, al massimo una volta al giorno e solo mentre è aperto. Scrive uno ZIP in una cartella "Pyxis backups" dentro Documenti e tiene le 3 copie più recenti. Puoi continuare a studiare mentre lavora. "Ripristina" accetta queste copie come qualsiasi altra.
 - In Impostazioni, alla voce Dati, c'è una nuova sezione "Copie automatiche". È attiva in modo predefinito. Ha l'interruttore "Copia di sicurezza automatica", "Cambia cartella", "Apri cartella", l'ora e la dimensione dell'ultima copia e "Copia ora", che salva nella stessa cartella. "Cambia cartella" rifiuta una cartella dentro il tuo spazio di lavoro o dentro i dati di Pyxis, perché una copia lì andrebbe persa insieme a loro, e una cartella in cui Pyxis non può scrivere.
 - Quando una copia automatica non riesce, in un angolo compare un avviso con il motivo e un pulsante "Impostazioni copie". I motivi sono: la cartella non c'è, per esempio un disco scollegato, mancano i permessi, il disco è pieno, ci sono troppi file, oppure lo spazio di lavoro supera il limite di 2 GB di una copia. Un avviso che chiudi non torna fino alla prossima sessione. Uno spazio di lavoro troppo grande viene segnalato una sola volta, non a ogni avvio, e Pyxis riprova ogni giorno.
+- "Cancella tutti i dati" non cancella le copie automatiche. Restano nella cartella indicata sotto Dati, e l'avviso lo dice. Cancellale da lì se non le vuoi più.
 
 ## 0.2.3
 

@@ -298,7 +298,8 @@ const bridge: PyxisBridge = {
   exportPdf: (input) => ipcRenderer.invoke(mainChannels.pdfExport, input),
   printData: () => ipcRenderer.invoke(mainChannels.printData),
   printReady: () => ipcRenderer.invoke(mainChannels.printReady),
-  checkUpdates: () => ipcRenderer.invoke(mainChannels.updatesCheck),
+  checkUpdates: (force) =>
+    ipcRenderer.invoke(mainChannels.updatesCheck, force === true),
   setMenuLanguage: (language: MenuLanguage) =>
     ipcRenderer.invoke(mainChannels.menuLanguage, language),
   onMenuCommand: (cb) => {

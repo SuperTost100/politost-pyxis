@@ -48,7 +48,7 @@ The app is in English and Italian, with dark and light themes.
 
 **Ask the tutor.** The chat cites your library and can attach photos and documents. Solver mode works the problem through with you. Socratic mode holds back the answer and asks one question at a time until you get there. The chat list searches titles and message text, ignoring case and accents, and each chat exports as Markdown or PDF with its sources. The Σ button opens a formula keyboard, which also works in quiz, practice and simulation answers. Pyxis also has a whiteboard, a graphing tool and a local Python sandbox with NumPy, SymPy and Matplotlib.
 
-**Keyboard and menus.** Every platform has an application menu in your interface language. On Windows and Linux it stays hidden until you press Alt. It holds New exam (Ctrl/Cmd+N), New chat (Ctrl/Cmd+Shift+N), Settings (Ctrl/Cmd+,), Ask, Exams, Library and Flashcards (Ctrl/Cmd+1 to 4), Back, zoom, and Help. Press Ctrl/Cmd+/ to see every shortcut, including the ones in the chat, flashcards, quizzes and whiteboard. Menu commands wait while you are in setup, answering a quiz, sitting a simulation, in a dialog, or typing text that Pyxis would lose.
+**Keyboard and menus.** Every platform has an application menu in your interface language. On Windows and Linux it stays hidden until you press Alt. It holds New exam (Ctrl/Cmd+N), New chat (Ctrl/Cmd+Shift+N), Settings (Ctrl/Cmd+,), Ask, Exams, Library and Flashcards (Ctrl/Cmd+1 to 4), Back, zoom, and Help. Press Ctrl/Cmd+/ to see every shortcut, including the ones in the chat, flashcards, quizzes and whiteboard. Menu commands are ignored, not queued, while you are in setup, answering a quiz, sitting a simulation, in a dialog, or typing text that Pyxis would lose.
 
 **Share and back up.** Export a plan as a portable file with its lessons, cards and cited excerpts, and include your progress if you want to. Save an exam's date as a calendar file (`.ics`) from its plan, with a reminder the day before; importing it again updates the event. Back up the whole workspace to one ZIP and restore it on another computer. While Pyxis is open it also backs up once a day on its own, into `Pyxis backups` in your Documents folder, and keeps the three newest copies.
 
@@ -101,7 +101,7 @@ On Windows, `Get-FileHash <file>` prints the hash to compare with `SHA256SUMS`. 
 - **Windows.** Run the installer. If SmartScreen stops it, choose More info → Run anyway.
 - **Linux.** Install the `.deb` with your package manager, or `chmod +x` the AppImage and run it (some distributions need FUSE for that). Saving an API key needs a working keyring such as GNOME Keyring or KWallet. Pyxis refuses to store keys in plain text.
 
-Pyxis checks GitHub for a new release at most once a day. When one is out, Settings → Updates and a notice offer **Download and install**. Nothing downloads until you press it. Pyxis then fetches the installer for your system and the release's `SHA256SUMS`, keeps the file only if the checksum matches, and hands it over:
+Pyxis checks GitHub for a new release at most once a day. **Check for updates** in Settings → Updates and in the Help menu asks again at once, but never more than once a minute. When one is out, Settings → Updates and a notice offer **Download and install**. Nothing downloads until you press it. Pyxis then fetches the installer for your system and the release's `SHA256SUMS`, keeps the file only if the checksum matches, and hands it over:
 
 - **macOS.** The DMG opens. Quit Pyxis, drag it to Applications and choose Replace.
 - **Windows.** Pyxis closes and the installer runs.
@@ -145,7 +145,7 @@ These actions send data off your computer:
 - **Installing an engine.** Setup downloads the maker's install script from claude.ai, chatgpt.com, cursor.com or antigravity.google and runs it. Signing in happens in your browser with that maker.
 - **Free PoliTost books.** Opening the list asks books.politost.it for its catalog, and adding a book downloads it from there. While the Sources page is open and holds a smartbook, Pyxis reads the catalog too, to offer a newer version, which Update downloads in place. Each book is checked against the catalog's SHA-256.
 - **Optional downloads.** The search model, the Python runtime and the OCR language files are fetched once, after you agree, and checked against pinned SHA-256 hashes.
-- **Update check.** Pyxis asks GitHub for the latest release tag, at most once a day, or again after 15 minutes if the check failed. It sends no workspace content.
+- **Update check.** Pyxis asks GitHub for the latest release tag, at most once a day, or again after 15 minutes if the check failed. **Check for updates** asks again at once, at most once a minute. It sends no workspace content.
 - **Installing an update.** Only after you press Download and install, Pyxis downloads the installer for your system and `SHA256SUMS` from that GitHub release.
 
 Pyxis has no telemetry and uploads no crash reports. Backups and exported plans can contain your course material, so treat them as private files. API keys are never written to the workspace or to backups. [SECURITY.md](SECURITY.md) lists every network request and where each file lives.

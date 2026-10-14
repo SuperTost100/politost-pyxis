@@ -455,6 +455,11 @@ export function SettingsPage() {
         />
         <div className="px-settings-danger">
           <p className="small ink-muted">{t("settings.wipeHint")}</p>
+          {wipeArmed ? (
+            <p className="small ink-muted" role="alert">
+              {t("settings.wipeConfirmHint")}
+            </p>
+          ) : null}
           <Button
             disabled={moving}
             danger
