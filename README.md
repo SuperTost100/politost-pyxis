@@ -99,7 +99,14 @@ On Windows, `Get-FileHash <file>` prints the hash to compare with `SHA256SUMS`. 
 - **Windows.** Run the installer. If SmartScreen stops it, choose More info → Run anyway.
 - **Linux.** Install the `.deb` with your package manager, or `chmod +x` the AppImage and run it (some distributions need FUSE for that). Saving an API key needs a working keyring such as GNOME Keyring or KWallet. Pyxis refuses to store keys in plain text.
 
-Pyxis checks GitHub for a new release at most once a day and links you to it. It never installs updates by itself.
+Pyxis checks GitHub for a new release at most once a day. When one is out, Settings → Updates and a notice offer **Download and install**. Nothing downloads until you press it. Pyxis then fetches the installer for your system and the release's `SHA256SUMS`, keeps the file only if the checksum matches, and hands it over:
+
+- **macOS.** The DMG opens. Quit Pyxis, drag it to Applications and choose Replace.
+- **Windows.** Pyxis closes and the installer runs.
+- **Linux AppImage.** The new AppImage replaces the old file, and Pyxis restarts when you choose. If Pyxis can't write to that folder, it shows you the new file instead.
+- **Linux `.deb`.** The package opens in its folder for your software installer. Pyxis never runs `sudo` or `dpkg`.
+
+If a download fails or doesn't match, Pyxis deletes it and offers the release page instead.
 
 ### First launch
 
@@ -137,6 +144,7 @@ These actions send data off your computer:
 - **Free PoliTost books.** Opening the list asks books.politost.it for its catalog, and adding a book downloads it from there. Each book is checked against the catalog's SHA-256.
 - **Optional downloads.** The search model, the Python runtime and the OCR language files are fetched once, after you agree, and checked against pinned SHA-256 hashes.
 - **Update check.** Pyxis asks GitHub for the latest release tag, at most once a day, or again after 15 minutes if the check failed. It sends no workspace content.
+- **Installing an update.** Only after you press Download and install, Pyxis downloads the installer for your system and `SHA256SUMS` from that GitHub release.
 
 Pyxis has no telemetry and uploads no crash reports. Backups and exported plans can contain your course material, so treat them as private files. API keys are never written to the workspace or to backups. [SECURITY.md](SECURITY.md) lists every network request and where each file lives.
 

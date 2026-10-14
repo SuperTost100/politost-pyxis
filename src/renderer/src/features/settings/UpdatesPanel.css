@@ -32,3 +32,30 @@
 .px-updates > p {
   margin: 0;
 }
+
+/* Download and install: one column of status, progress and actions, as wide as the panel or banner. */
+.px-update-install {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  align-self: stretch;
+  max-width: 560px;
+}
+.px-update-install > p {
+  margin: 0;
+}
+.px-update-install > .ant-progress,
+.px-update-install > .px-notice {
+  align-self: stretch;
+  margin: 0;
+}
+.px-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.px-update-notice .px-update-install {
+  margin-top: var(--space-3);
+}
