@@ -40,14 +40,42 @@ Nothing on the path is locked. Every activity is open at any time and in any ord
 2. On a plan with no study yet, the introduction (when the plan has one), then the diagnostic.
 3. A simulation, once every topic has reached the target.
 4. A simulation, when the exam is 0 to 3 days away and some study has happened.
-5. Exercises on the topic whose lesson was just read, while that topic is below the target.
-6. A quiz on the topic just practiced, while that topic is below the target. Practice is not graded: a self-rating moves mastery only a little, and many students rate nothing. Without the quiz, rule 8 would suggest practice on the same topic again and again.
-7. The lesson of the next unread topic, in plan order.
-8. Exercises on the weakest topic.
+5. The topic of the latest lesson read, until it reaches `0.6` mastery (or the target, when that is lower) or the student has done three graded activities on it, whichever comes first. Exercises come first, then a quiz, then exercises again. A quiz follows exercises, and exercises follow anything else.
+6. A quiz on the topic just practiced, while that topic is below the target. Practice is not graded: a self-rating moves mastery only a little, and many students rate nothing. Without the quiz, rule 9 would suggest practice on the same topic again and again. The topic whose stay under rule 5 just ended is the exception when rule 7 or 8 has somewhere else to go.
+7. A review quiz on a read topic still below the target that nothing has touched for 7 days or more (`daysIdle`), the longest idle first.
+8. The lesson of the next unread topic, in plan order.
+9. Exercises on the weakest topic.
 
 Exercises means practice for a topic under `0.5` mastery and a quiz from `0.5` up. The suggestion shown on each topic follows the same order for that topic alone: due cards, severe gaps, the lesson while it is unread, then practice or quiz by the same `0.5` line.
 
 The target is the plan's saved target, except that a target of 1 is treated as `0.99` by `reachableTarget`, because a decayed weighted mean never returns to 1 after a miss. The same reachable target decides which topics count as on track in the plan list and on Progress. Finishing an activity records a step on the path whenever it happens.
+
+### Staying on a topic
+
+A quiz of five answers cannot reach a `0.75` target on its own, so a topic used to get three steps (lesson, exercises, quiz) and stay below the target. Rule 5 keeps the path on the topic a little longer. `gradedActivities` in `src/core/plans/steps.ts` counts the graded activities on the topic since its lesson step. A lesson is recorded as read once, so that step marks when the stay began. These count, one each:
+
+- a submitted attempt with answers on the topic: a quiz, a gap drill, or the topic's share of a diagnostic, review or simulation;
+- a run of "Got it" or "Missed it" ratings on its exercises;
+- a run of flashcard ratings on its cards;
+- a run of quick check answers in one of its lessons.
+
+A run ends at a different kind of evidence or at any step on the topic, so two practice sessions each finished with "Mark as done" are two activities. Reading, opening a page and exercises finished without a rating are not graded. Quick checks answered while the lesson is first read come before its step, so they move mastery but do not count toward the three; quick checks answered on a later visit do. A student who keeps missing moves on after the third activity.
+
+Rule 5 follows only the latest lesson. A student who reads another topic's lesson before the stay ends moves the stay to that topic; the earlier one comes back through rule 7 or 9.
+
+### Spaced review
+
+`daysIdle` is the number of calendar days since the latest learning event on the topic, of any kind. Rule 7 suggests a quiz with the reason "review" for a topic whose lesson was read, whose mastery is below the target and whose `daysIdle` is 7 or more. A topic the student never read is left to rule 8, even when the diagnostic touched it long ago. Due cards and severe gaps still come first, and a stay under rule 5 finishes before a review.
+
+### Reopening a finished step
+
+A step records what was done: the lesson or introduction read (`itemId`) and the submitted quiz, gap drill, diagnostic or simulation (`attemptId`), in the `lesson_completed` payload. Plan files carry both, and import maps them to the copied rows. Clicking a finished step opens it again without recording anything:
+
+- a lesson or the introduction opens to read again;
+- a quiz, gap drill or diagnostic opens its attempt read-only, with the answers, the score and a Redo button; a simulation opens its graded attempt the same way;
+- exercises open without "Mark as done".
+
+Only Redo starts a new attempt, and only submitting that attempt adds a step. A step recorded before steps named their attempt opens the latest attempt of the same kind and topic submitted by the step's time; without one, a quiz step opens the topic's lesson.
 
 ## Knowledge gaps
 

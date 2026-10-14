@@ -35,6 +35,7 @@ export function QuizResults({
   onAsk,
   onWrong,
   wrongBusy,
+  eyebrow,
   actions,
 }: {
   diagnostic: boolean;
@@ -47,6 +48,8 @@ export function QuizResults({
   onAsk: (row: QuizAnswer) => void;
   onWrong: (row: QuizAnswer, wrong: boolean) => void;
   wrongBusy?: string;
+  /** Replaces the "Result" label, e.g. with the date of an attempt reopened for review. */
+  eyebrow?: string;
   actions: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
@@ -83,7 +86,7 @@ export function QuizResults({
     <section className="px-quiz-results" aria-labelledby="quiz-score">
       <header className="px-quiz-hero">
         <p className="label px-quiz-eyebrow">
-          {t(diagnostic ? "quiz.diagnosticDone" : "quiz.resultLabel")}
+          {eyebrow ?? t(diagnostic ? "quiz.diagnosticDone" : "quiz.resultLabel")}
         </p>
         <p id="quiz-score" className="px-quiz-score" role="status">
           <span className="stat">{number.format(points)}</span>

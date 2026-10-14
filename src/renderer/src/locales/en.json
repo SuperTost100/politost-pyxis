@@ -873,7 +873,9 @@
     "questions": "Questions",
     "noAnswer": "No answer",
     "continue": "Continue",
-    "reviewMistakes": "Review mistakes"
+    "reviewMistakes": "Review mistakes",
+    "redo": "Redo",
+    "answeredOn": "Your answers from {{date}}"
   },
   "practice": {
     "title": "Book exercises",
@@ -894,7 +896,8 @@
     "got": "Got it",
     "missed": "Missed it",
     "rateHint": "Optional. It counts a little toward your progress.",
-    "rateFailed": "Your rating was not saved. Try again."
+    "rateFailed": "Your rating was not saved. Try again.",
+    "reviewing": "You already finished these exercises. Looking at them again adds no step to your path."
   },
   "plans": {
     "export": "Export",
@@ -969,7 +972,10 @@
         "consolidate": "Lock in what you just read.",
         "check": "Check what the exercises taught you.",
         "next": "The next topic in order.",
-        "weakest": "It's your weakest topic."
+        "weakest": "It's your weakest topic.",
+        "stay": "This topic isn't solid yet. Stay on it a little longer.",
+        "review_one": "You last studied it a day ago. See what you still remember.",
+        "review_other": "You last studied it {{count}} days ago. See what you still remember."
       }
     }
   },

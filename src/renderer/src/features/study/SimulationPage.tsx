@@ -562,6 +562,10 @@ export function SimulationPage() {
             kind="simulation"
             attemptId={run.attemptId}
           />
+          {/* A new simulation from the setup; this one keeps its answers and grade. */}
+          <Button shape="round" onClick={() => navigate(`/plans/${planId}/simulation`)}>
+            {t("quiz.redo")}
+          </Button>
         </div>
       )}
       <Modal

@@ -59,6 +59,10 @@ export type Step = {
   topicId: string | null;
   at: number;
   result: StepResult | null;
+  /** The lesson or introduction that was read; null on other steps and on steps older than this field. */
+  itemId: string | null;
+  /** The submitted quiz, gap drill, diagnostic or simulation, so the step can reopen it for review. */
+  attemptId: string | null;
 };
 
 export type SuggestReason =
@@ -70,6 +74,8 @@ export type SuggestReason =
   | "ready"
   | "consolidate"
   | "check"
+  | "stay"
+  | "review"
   | "next"
   | "weakest";
 
@@ -86,11 +92,19 @@ export type TopicStatus = {
   dueCards: number;
   severeGaps: number;
   daysIdle: number;
+  /** Graded activities on the topic since its lesson was read (see `gradedActivities`); 0 while it is unread. */
+  graded: number;
 };
 
 const middle = 0.5;
 /** Within this many days of the exam a simulation is worth suggesting whatever the mastery. */
 const examSoonDays = 3;
+/** After a lesson the path stays on its topic until the topic reaches this mastery (or the target, if lower)... */
+export const stayMastery = 0.6;
+/** ...or until the student has done this many graded activities on it, so a student who keeps missing moves on. */
+export const stayActivities = 3;
+/** A read topic below the target that nobody touched for this many days gets a review quiz before a new chapter. */
+export const reviewAfterDays = 7;
 
 const weights = {
   due: 3,
@@ -111,8 +125,10 @@ export function topicSuggestion(topic: TopicStatus, read: boolean): Activity {
 /**
  * The suggested next step. Nothing is locked: this only picks what to offer first.
  * Due cards and severe gaps come first; a new plan then starts with the introduction and the diagnostic; a simulation
- * once every topic reaches the target or the exam is close, exercises on a lesson just read, a quiz on exercises just
- * done, the next unread topic in the plan's order, and finally exercises on the weakest topic.
+ * once every topic reaches the target or the exam is close. Then the path stays on the topic of the latest lesson,
+ * alternating exercises and quizzes, until that topic reaches `stayMastery` or has `stayActivities` graded activities.
+ * After that: a quiz on exercises just done, a review quiz on a topic left idle for `reviewAfterDays`, the next unread
+ * topic in the plan's order, and finally exercises on the weakest topic.
  */
 export function suggestStep(input: {
   topics: TopicStatus[];
@@ -175,17 +191,59 @@ export function suggestStep(input: {
     reason,
     count: 0,
   });
-  const last = steps.at(-1);
-  const justRead = last?.activity === "lesson" && topics.find((topic) => topic.id === last.topicId);
-  if (justRead && justRead.mastery < target) return exercise(justRead, "consolidate");
+  // The topic of the latest lesson keeps the path until it holds: one quiz of five answers cannot reach the target,
+  // so three steps per topic left most topics below it. Exercises and quizzes alternate, starting with exercises.
+  const lessonAt = steps.findLastIndex((step) => step.activity === "lesson");
+  const current = lessonAt < 0 ? undefined : topics.find((topic) => topic.id === steps[lessonAt]!.topicId);
+  if (
+    current &&
+    current.mastery < Math.min(stayMastery, target) &&
+    current.graded < stayActivities
+  ) {
+    const since = steps.slice(lessonAt + 1).filter((step) => step.topicId === current.id);
+    const lastWork = since.findLast(
+      (step) => step.activity === "practice" || step.activity === "quiz" || step.activity === "gaps",
+    );
+    if (lastWork?.activity === "practice")
+      return { activity: "quiz", topicId: current.id, reason: "check", count: 0 };
+    return {
+      activity: "practice",
+      topicId: current.id,
+      reason: since.length ? "stay" : "consolidate",
+      count: 0,
+    };
+  }
+  // Spaced review: what was read and then left alone fades, so it comes back before a new chapter. The longest idle
+  // goes first; a topic never touched has nothing to review.
+  const idle = topics
+    .filter(
+      (topic) =>
+        read.has(topic.id) && topic.mastery < target && topic.daysIdle >= reviewAfterDays,
+    )
+    .reduce<TopicStatus | undefined>(
+      (most, topic) =>
+        !most ||
+        topic.daysIdle > most.daysIdle ||
+        (topic.daysIdle === most.daysIdle && topic.mastery < most.mastery)
+          ? topic
+          : most,
+      undefined,
+    );
+  const unread = topics.find((topic) => !read.has(topic.id));
   // Exercises are not graded: a "Got it" or "Missed it" is only light evidence (weight 0.5), and many students rate
   // nothing, so practice moves mastery little or not at all. A quiz measures what they taught; without it the weakest
-  // topic would get exercises again and again.
+  // topic would get exercises again and again. The topic whose stay just ended moves on instead, when there is a
+  // review or a new chapter to move on to.
+  const last = steps.at(-1);
   const justPracticed =
     last?.activity === "practice" && topics.find((topic) => topic.id === last.topicId);
-  if (justPracticed && justPracticed.mastery < target)
+  if (
+    justPracticed &&
+    justPracticed.mastery < target &&
+    !(justPracticed.id === current?.id && (idle || unread))
+  )
     return { activity: "quiz", topicId: justPracticed.id, reason: "check", count: 0 };
-  const unread = topics.find((topic) => !read.has(topic.id));
+  if (idle) return { activity: "quiz", topicId: idle.id, reason: "review", count: idle.daysIdle };
   if (unread) return { activity: "lesson", topicId: unread.id, reason: "next", count: 0 };
   const weak = topics.reduce((low, topic) => (topic.mastery < low.mastery ? topic : low));
   return exercise(weak, "weakest");

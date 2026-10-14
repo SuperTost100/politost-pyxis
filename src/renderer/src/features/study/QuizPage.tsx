@@ -43,7 +43,7 @@ function clock(ms: number): string {
 }
 
 export function QuizPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { message } = App.useApp();
   const { planId, topicId } = useParams();
   useActiveTime(planId, topicId ?? null);
@@ -243,6 +243,9 @@ export function QuizPage() {
     },
   });
   const finalResult = grading.data?.result ?? session.data?.result;
+  // An attempt handed in before this page opened (from a path step or a results link) is shown read-only for review;
+  // only Redo starts a new attempt, and only that one adds a step when it is submitted.
+  const reopened = Boolean(finalResult) && submit.isIdle;
   const gradeState = grading.data?.state ?? "none";
   const gradingStopped = ["failed", "cancelled", "interrupted"].includes(
     gradeState,
@@ -833,6 +836,17 @@ export function QuizPage() {
             markWrong.mutate({ questionId: row.id, wrong })
           }
           wrongBusy={markWrong.isPending ? markWrong.variables?.questionId : undefined}
+          eyebrow={
+            reopened && session.data?.submittedAt
+              ? t("quiz.answeredOn", {
+                  date: new Date(session.data.submittedAt).toLocaleDateString(i18n.language, {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  }),
+                })
+              : undefined
+          }
           actions={
             <>
               <ExportButton
@@ -852,13 +866,29 @@ export function QuizPage() {
                     {t("quiz.reviewMistakes")}
                   </Button>
                 ) : null}
+                {reopened && !review ? (
+                  <Button
+                    shape="round"
+                    size="large"
+                    // A new quiz on the same topic (a drill's topic too), or a new diagnostic; this one stays as it is.
+                    onClick={() =>
+                      navigate(
+                        diagnostic
+                          ? `/plans/${planId ?? ""}/diagnostic`
+                          : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`,
+                      )
+                    }
+                  >
+                    {t("quiz.redo")}
+                  </Button>
+                ) : null}
                 <Button
                   type="primary"
                   shape="round"
                   size="large"
                   onClick={() => navigate(`/plans/${planId ?? ""}`)}
                 >
-                  {t("quiz.continue")}
+                  {t(reopened ? "lesson.backToPath" : "quiz.continue")}
                 </Button>
               </span>
             </>

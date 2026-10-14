@@ -347,7 +347,12 @@ export function finalizeAttempt(
         recordStep(
           db,
           row.plan_id,
-          { activity: drill ? "gaps" : "quiz", topicId: row.topic_id, result: stepResult(scored.results) },
+          {
+            activity: drill ? "gaps" : "quiz",
+            topicId: row.topic_id,
+            result: stepResult(scored.results),
+            attemptId,
+          },
           now + 1,
         );
       }
@@ -362,7 +367,7 @@ export function finalizeAttempt(
         recordStep(
           db,
           row.plan_id,
-          { activity: row.kind, topicId: null, result: stepResult(scored.results) },
+          { activity: row.kind, topicId: null, result: stepResult(scored.results), attemptId },
           now + 1,
         );
       // A retaken diagnostic asks the same questions again; only the first answer to each counts as evidence.
