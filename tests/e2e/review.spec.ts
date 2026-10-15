@@ -126,6 +126,8 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     expect(questions).toBeGreaterThan(0);
 
     // The rating buttons carry a label only: no key, no next review time. Bene is the primary one.
+    // Space does nothing until the first card has loaded, and the progress line can show before it.
+    await expect(page.getByRole("button", { name: /^Gira/ })).toBeVisible();
     await page.keyboard.press("Space");
     const labels = ["Da rivedere", "Difficile", "Bene", "Facile"];
     for (const name of labels)
