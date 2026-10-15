@@ -52,6 +52,9 @@ function useEngineSignIn(provider: InstallableProvider, done: () => void) {
   const [waiting, setWaiting] = useState(false);
   const [detail, setDetail] = useState("");
   const pending = useRef(false);
+  // Counts the attempts. A reply from a sign-in the student cancelled, or replaced by starting again, belongs to an
+  // older number and is dropped, so it cannot reset the new attempt.
+  const attempt = useRef(0);
   const stopWaiting = () => {
     pending.current = false;
     setWaiting(false);
@@ -67,6 +70,12 @@ function useEngineSignIn(provider: InstallableProvider, done: () => void) {
     command?: string[];
   }) {
     if (event.provider !== undefined && event.provider !== provider) return;
+    if (!pending.current) return;
+    if (event.type === "cancelled") {
+      stopWaiting();
+      setStatus(null);
+      return;
+    }
     if (event.type === "open-url" && event.url) {
       // Claude Code and Codex open the page themselves; opening it again gave the student two tabs.
       if (!event.opened) void window.pyxis.openExternal(event.url);
@@ -108,13 +117,17 @@ function useEngineSignIn(provider: InstallableProvider, done: () => void) {
   function start() {
     if (pending.current) return Promise.resolve();
     pending.current = true;
+    const mine = ++attempt.current;
     setWaiting(true);
     setFailed(false);
     setDetail("");
     setStatus(t("engines.waitingSignIn"));
     return invoke("engines.login", { provider }).then(
-      (event) => handle({ ...event, provider }),
+      (event) => {
+        if (attempt.current === mine) handle({ ...event, provider });
+      },
       () => {
+        if (attempt.current !== mine) return;
         stopWaiting();
         setStatus(null);
         setFailed(true);
@@ -123,6 +136,7 @@ function useEngineSignIn(provider: InstallableProvider, done: () => void) {
   }
 
   function cancel() {
+    attempt.current += 1;
     void invoke("engines.cancelLogin", { provider }).catch(() => undefined);
     stopWaiting();
     setStatus(null);

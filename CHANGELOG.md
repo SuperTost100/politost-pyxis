@@ -10,9 +10,12 @@ Each release lists what changed for students, in English and Italian. The GitHub
 
 - Settings, under Profile and interests, has a new "Run setup again" button. It reopens the setup screens with your name, level, year, school, course and crash-report choice already filled in. Your engine choices stay as they are.
 - Running setup again has no Skip. You can cancel on the first screen or go back on the profile screen, and nothing is saved until you reach the end. The last screen says "Setup updated", and "Back to Settings" takes you back to Profile and interests.
+- Cancelling a sign-in before its page opens no longer shows "Sign-in did not finish", and cancelling then starting again keeps the new sign-in going.
+- Antigravity has no sign-out command, so Settings, under AI engines, no longer offers "Sign out" for it and says to sign out in Antigravity itself. "Test" no longer sends a reasoning effort the model does not list. The "Test" and "Sign in" buttons on each engine now name the engine for screen readers.
 
 #### Exams
 
+- A failed plan import no longer leaves its error showing on the Sources and Flashcards tabs.
 - "Add to calendar" saves a calendar file (.ics) for one exam at a time. Use the calendar button in a plan's header, or the same button in "Plan settings". The Exams page has no button that saves every exam at once.
 - Each exam is an all-day event titled "Exam:" followed by the plan's title, or "Esame:" in Italian. The description names the subject when the plan has one. Each event has a reminder at 9:00 the day before.
 - Pyxis gives each exam the same ID every time, so importing the file again should update your events instead of adding copies.
@@ -39,6 +42,11 @@ Each release lists what changed for students, in English and Italian. The GitHub
 - Search skips what you never see: follow-up suggestions, check blocks and [P1] markers. Esc clears the box before it closes the drawer.
 - The menu of each chat has "Export as Markdown" and "Export as PDF". The file has the chat title, then every message in order with who wrote it. Each answer ends with its sources, and a stopped reply is marked as stopped. Photos are numbered, not named, because Pyxis does not keep their file names. Labels follow the interface language.
 - On a slow computer, the follow-up suggestions after a reply could end up below the visible area, and the page stopped following the chat for good. Now the newest content stays in view. Scrolling up to read an earlier message still stops the page from jumping.
+- When the engine fails, Ask says why instead of "Something went wrong": you are signed out, the usage limit is reached, the engine is not available or it returned an error. "Details" shows the engine's own text. Lessons, quizzes, cards, grading and plans give the same messages.
+- Follow-up suggestions keep their first characters. "3D integrals" no longer loses its "3".
+- "Try again" keeps your choice of "Answer from general knowledge". Renaming a chat no longer moves it to the top of the list, and pressing Enter in the rename box saves once.
+- Exporting a chat started from a passage or an answer includes that context under the title.
+- Photos go only to engines that can read them. On Cursor Agent and Antigravity, which cannot, Ask reads a photo as text, and the automatic choice never gives them the image task.
 
 #### Sources
 
@@ -76,9 +84,12 @@ Each release lists what changed for students, in English and Italian. The GitHub
 
 - In Impostazioni, sotto Profilo e interessi, c'è un nuovo pulsante "Rifai la configurazione". Riapre le schermate iniziali con nome, livello, anno, scuola, corso e scelta sulle segnalazioni dei crash già inseriti. Le scelte sui motori restano invariate.
 - Quando rifai la configurazione non c'è Salta. Puoi annullare dalla prima schermata o tornare indietro da quella del profilo, e non viene salvato nulla finché non arrivi in fondo. L'ultima schermata dice "Configurazione aggiornata" e "Torna alle impostazioni" ti riporta a Profilo e interessi.
+- Annullare un accesso prima che si apra la sua pagina non mostra più "Accesso non completato", e se annulli e riprovi il nuovo accesso va avanti.
+- Antigravity non ha un comando per uscire, quindi Impostazioni, alla voce Motori AI, non offre più "Esci dall'account" per lui e dice di uscire da Antigravity stesso. "Testa" non invia più un livello di ragionamento che il modello non elenca. I pulsanti "Testa" e "Accedi" di ogni motore ora ne dicono il nome agli screen reader.
 
 #### Esami
 
+- Un'importazione di piani non riuscita non lascia più il suo errore visibile nelle schede Fonti e Flashcard.
 - "Aggiungi al calendario" salva un file del calendario (.ics) per un esame alla volta. Usa il pulsante del calendario nell'intestazione di un piano, oppure lo stesso pulsante in "Impostazioni del piano". La pagina Esami non ha un pulsante che salvi tutti gli esami insieme.
 - Ogni esame è un evento di un giorno intero con il titolo "Esame:" seguito dal titolo del piano, o "Exam:" se l'interfaccia è in inglese. La descrizione indica la materia, se il piano ne ha una. Ogni evento ha un promemoria alle 9:00 del giorno prima.
 - Pyxis dà a ogni esame sempre lo stesso identificativo, quindi importare di nuovo il file dovrebbe aggiornare gli eventi invece di duplicarli.
@@ -105,6 +116,11 @@ Each release lists what changed for students, in English and Italian. The GitHub
 - La ricerca salta quello che non vedi mai: i suggerimenti di approfondimento, i blocchi di verifica e i segni come [P1]. Esc svuota la casella prima di chiudere l'elenco.
 - Il menu di ogni chat ha "Esporta come Markdown" e "Esporta come PDF". Il file ha il titolo della chat e poi ogni messaggio in ordine, con chi l'ha scritto. Ogni risposta finisce con le sue fonti e una risposta interrotta è segnata come tale. Le foto sono numerate, non hanno il nome, perché Pyxis non conserva i nomi dei file. Le etichette seguono la lingua dell'interfaccia.
 - Su un computer lento, i suggerimenti di approfondimento dopo una risposta potevano finire sotto la parte visibile, e la pagina smetteva di seguire la chat per sempre. Ora il contenuto più recente resta in vista. Se scorri in su per leggere un messaggio precedente, la pagina continua a non saltare.
+- Quando il motore non risponde, Chiedi ne dice il motivo invece di "Qualcosa non ha funzionato": hai chiuso la sessione, hai raggiunto il limite d'uso, il motore non è disponibile o ha restituito un errore. "Dettagli" mostra il testo del motore. Lezioni, quiz, schede, correzioni e piani danno gli stessi messaggi.
+- I suggerimenti di approfondimento conservano i primi caratteri. "3D integrals" non perde più il "3".
+- "Riprova" mantiene la tua scelta di "Rispondi con le conoscenze generali". Rinominare una chat non la sposta più in cima all'elenco, e premere Invio nella casella di ridenominazione salva una volta sola.
+- L'esportazione di una chat nata da un brano o da una risposta include quel contesto sotto il titolo.
+- Le foto vanno solo ai motori che le leggono. Con Cursor Agent e Antigravity, che non possono, Chiedi legge la foto come testo, e la scelta automatica non assegna loro l'attività sulle immagini.
 
 #### Fonti
 

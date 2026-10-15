@@ -949,15 +949,17 @@ export function EnginesPanel() {
             {feedback}
             {engine?.kind === "cli" ? (
               <div className="engines-actions">
-                <Button
-                  disabled={!engine.installed || manage.isPending}
-                  onClick={() =>
-                    drawer &&
-                    manage.mutate({ provider: drawer, action: "logout" })
-                  }
-                >
-                  {t("engines.signOut")}
-                </Button>
+                {engine.capabilities.signOut ? (
+                  <Button
+                    disabled={!engine.installed || manage.isPending}
+                    onClick={() =>
+                      drawer &&
+                      manage.mutate({ provider: drawer, action: "logout" })
+                    }
+                  >
+                    {t("engines.signOut")}
+                  </Button>
+                ) : null}
                 <Button
                   disabled={!engine.installed || manage.isPending}
                   onClick={() =>
@@ -968,6 +970,11 @@ export function EnginesPanel() {
                   {t("engines.update")}
                 </Button>
               </div>
+            ) : null}
+            {engine?.kind === "cli" && !engine.capabilities.signOut ? (
+              <p className="small engines-hint">
+                {t("engines.signOutUnsupported")}
+              </p>
             ) : null}
             <Popconfirm
               title={t("engines.removeConfirm")}

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { IpcError } from "../../shared/ipc";
 import { generate } from "./generate";
-import type { EngineResult } from "./funnel";
+import { FunnelError, type EngineResult } from "./funnel";
 
 const selection = { provider: "claude" as const, model: "claude-sonnet-4-6" };
 
@@ -14,6 +15,82 @@ function result(patch: Partial<EngineResult>): EngineResult {
     ...patch,
   };
 }
+
+describe("generate engine failures", () => {
+  const failing = (error: unknown) => () =>
+    generate({
+      selection,
+      prompt: "hi",
+      run: async () => {
+        throw error;
+      },
+    });
+
+  it("turns a signed-out engine into its own message with the raw text as detail", async () => {
+    const error = await failing(
+      new FunnelError("Please run /login", "not-logged-in"),
+    )().catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(IpcError);
+    expect(error).toMatchObject({
+      code: "not-logged-in",
+      messageKey: "engines.errors.not-logged-in",
+      detail: "Please run /login",
+    });
+  });
+
+  it("separates a usage limit and a crashed CLI", async () => {
+    await expect(
+      failing(
+        Object.assign(new Error("429 rate limit"), { code: "cli-failed" }),
+      )(),
+    ).rejects.toMatchObject({
+      messageKey: "engines.errors.quota",
+    });
+    await expect(
+      failing(new FunnelError("exit 1", "cli-failed"))(),
+    ).rejects.toMatchObject({
+      messageKey: "engines.errors.cli-failed",
+    });
+  });
+
+  it("keeps a reply it cannot use as invalid output, not an engine error", async () => {
+    const unusable = (text: string) =>
+      generate({
+        selection,
+        prompt: "name a colour",
+        schema: z.object({ colour: z.string() }),
+        run: async () => result({ text }),
+      });
+    for (const text of ['{"colour": 3}', "not json at all", ""]) {
+      const error = await unusable(text).catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(IpcError);
+      expect(error).toMatchObject({
+        code: "invalid-output",
+        messageKey: "errors.invalidOutput",
+      });
+    }
+  });
+
+  it("leaves a plain error that carries no engine code alone", async () => {
+    const bug = new SyntaxError("Unexpected token");
+    await expect(failing(bug)()).rejects.toBe(bug);
+    const unrelated = Object.assign(new Error("disk"), { code: "ENOSPC" });
+    await expect(failing(unrelated)()).rejects.toBe(unrelated);
+  });
+
+  it("leaves a cancelled call, an IpcError and a refused notice as they were", async () => {
+    const abort = new DOMException("stopped", "AbortError");
+    await expect(failing(abort)()).rejects.toBe(abort);
+    const own = new IpcError("engine-missing", "engines.errors.engine-missing");
+    await expect(failing(own)()).rejects.toBe(own);
+    await expect(
+      failing(new Error("engine-disclosure-required"))(),
+    ).rejects.toMatchObject({
+      message: "engine-disclosure-required",
+      messageKey: "engines.errors.disclosure-required",
+    });
+  });
+});
 
 describe("generate", () => {
   it("repairs one bad structured answer", async () => {
@@ -59,7 +136,9 @@ describe("generate", () => {
   });
 
   it("keeps the image attachments on every schema-repair retry", async () => {
-    const attachments = [{ type: "image" as const, mediaType: "image/png" as const, data: "aGk=" }];
+    const attachments = [
+      { type: "image" as const, mediaType: "image/png" as const, data: "aGk=" },
+    ];
     const seen: unknown[] = [];
     let calls = 0;
     const output = await generate({

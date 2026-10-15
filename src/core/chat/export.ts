@@ -3,7 +3,7 @@ import {
   mapOutsideCode,
   normalizeMathDelimiters,
 } from "../../shared/math-delimiters";
-import { heldSources, readChat } from "./turn";
+import { chatContext, heldSources, readChat } from "./turn";
 import { visibleText } from "./visible";
 
 export type ChatExportLanguage = "en" | "it";
@@ -13,6 +13,7 @@ const labels = {
     student: "Student",
     pyxis: "Pyxis",
     untitled: "Untitled",
+    context: "Context",
     documents: "Documents in this chat",
     attached: "Attached",
     photo: "photo",
@@ -23,6 +24,7 @@ const labels = {
     student: "Studente",
     pyxis: "Pyxis",
     untitled: "Senza titolo",
+    context: "Contesto",
     documents: "Documenti in questa chat",
     attached: "Allegato",
     photo: "foto",
@@ -33,6 +35,8 @@ const labels = {
 
 export type ChatExport = {
   title: string | null;
+  /** The passage or answer a chat was started from, which the tutor read with every question. */
+  context?: { title: string; body: string } | null;
   /** Titles of the documents the chat holds. */
   documents: string[];
   messages: Array<{
@@ -60,6 +64,13 @@ export function chatMarkdown(
 ): string {
   const words = labels[language];
   const blocks = [`# ${chat.title?.trim() || words.untitled}`];
+  if (chat.context) {
+    blocks.push(`**${words.context}:** ${chat.context.title.trim()}`);
+    const body = demoteHeadings(
+      normalizeMathDelimiters(chat.context.body),
+    ).trim();
+    if (body) blocks.push(body.replace(/^/gm, "> ").replace(/^> $/gm, ">"));
+  }
   if (chat.documents.length > 0)
     blocks.push(`${words.documents}: ${chat.documents.join(", ")}`);
   for (const message of chat.messages) {
@@ -117,6 +128,7 @@ export function exportChat(
   const titleOf = db.prepare(`SELECT title FROM sources WHERE id = ?`);
   const data: ChatExport = {
     title: chat.title,
+    context: chatContext(db, chatId),
     documents: heldSources(db, chatId).map((source) => source.title),
     messages: readChat(db, chatId).map((message) => {
       const seen = new Set<string>();

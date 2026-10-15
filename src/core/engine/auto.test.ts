@@ -174,6 +174,13 @@ describe("automatic engine policy", () => {
     expect(planAuto([textOnlyClaude]).vision?.model).toBe("claude-sonnet-5");
   });
 
+  it("never plans photos on a provider that refuses images, whatever its model ids say", () => {
+    const cursorLike: AutoProvider = { ...claude, id: "agent", images: false };
+    // Only the provider that takes images gets the photo feature.
+    expect(planAuto([cursorLike, claude]).vision?.provider).toBe("claude");
+    expect(planAuto([cursorLike, codex]).vision?.provider).toBe("codex");
+  });
+
   it("omits effort for models that do not list it", () => {
     const plan = planAuto([{ ...claude, effort: false }]);
     expect(plan.plan).toEqual({ provider: "claude", model: "claude-opus-5-5" });
@@ -189,6 +196,7 @@ const agent: AutoProvider = {
   id: "agent",
   kind: "cli",
   effort: false,
+  images: false,
   models: [
     "gpt-5.3-codex",
     "composer-2.5",
@@ -215,6 +223,7 @@ const antigravity: AutoProvider = {
   id: "antigravity",
   kind: "cli",
   effort: false,
+  images: false,
   models: [
     "gemini-3.8-flash",
     "gemini-3.7-flash",
@@ -230,15 +239,15 @@ const combinations: Record<string, string> = {
   agent:
     "agent/claude-sonnet-5-5 agent/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 agent/claude-opus-5-5 agent/gemini-3.8-flash agent/claude-sonnet-5-5",
   antigravity:
-    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/claude-sonnet-4-6",
+    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro",
   "claude+agent":
     "claude/claude-sonnet-5 agent/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5 agent/claude-opus-5-5 agent/gemini-3.8-flash claude/claude-sonnet-5",
   "codex+agent":
-    "agent/claude-sonnet-5-5 codex/gpt-6-luna agent/claude-opus-5-5 agent/claude-sonnet-5-5 codex/gpt-6-sol codex/gpt-6-luna agent/claude-sonnet-5-5",
+    "agent/claude-sonnet-5-5 agent/gemini-3.8-flash codex/gpt-6-sol agent/claude-sonnet-5-5 codex/gpt-6-sol codex/gpt-6-luna codex/gpt-5.6-terra",
   "claude+antigravity":
     "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5 antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash claude/claude-sonnet-5",
   "codex+antigravity":
-    "antigravity/gemini-3.1-pro codex/gpt-6-luna codex/gpt-6-sol antigravity/gemini-3.1-pro codex/gpt-6-sol antigravity/gemini-3.8-flash antigravity/claude-sonnet-4-6",
+    "codex/gpt-5.6-terra antigravity/gemini-3.8-flash codex/gpt-6-sol antigravity/gemini-3.1-pro codex/gpt-6-sol antigravity/gemini-3.8-flash codex/gpt-5.6-terra",
   "agent+antigravity":
     "agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash agent/claude-sonnet-5-5",
   "claude+codex+agent":
@@ -248,7 +257,7 @@ const combinations: Record<string, string> = {
   "claude+agent+antigravity":
     "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash agent/claude-opus-5-5 claude/claude-sonnet-5 agent/claude-opus-5-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5",
   "codex+agent+antigravity":
-    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash codex/gpt-6-sol agent/claude-sonnet-5-5 codex/gpt-6-sol antigravity/gemini-3.8-flash agent/claude-sonnet-5-5",
+    "agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro agent/claude-sonnet-5-5 codex/gpt-6-sol antigravity/gemini-3.8-flash codex/gpt-5.6-terra",
   "claude+codex+agent+antigravity":
     "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 agent/claude-sonnet-5-5 codex/gpt-6-sol antigravity/gemini-3.8-flash claude/claude-sonnet-5",
 };

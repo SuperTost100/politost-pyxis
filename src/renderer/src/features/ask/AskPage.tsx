@@ -24,7 +24,7 @@ import {
 } from "./attachments";
 import { ChatPanel } from "./ChatPanel";
 import { replyPlainText } from "./replyText";
-import { addIds, applySubject, scopeItems, type ScopeItem } from "./scope";
+import { addIds, allowsGeneral, applySubject, scopeItems, type ScopeItem } from "./scope";
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { latestEvery } from "./throttle";
@@ -34,6 +34,14 @@ function errorKey(err: unknown): string {
   return err && typeof err === "object" && "messageKey" in err
     ? String((err as { messageKey: unknown }).messageKey)
     : "errors.internal";
+}
+
+function errorDetail(err: unknown): string {
+  const detail =
+    err && typeof err === "object" && "detail" in err
+      ? (err as { detail: unknown }).detail
+      : "";
+  return typeof detail === "string" ? detail.slice(0, 2000) : "";
 }
 
 function errorParams(err: unknown): Record<string, unknown> {
@@ -79,6 +87,8 @@ export function AskPage() {
   const dropped = useRef<string | null>(null);
   // The question just sent, shown at once: the stored message only arrives with the reply.
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  // Chats whose latest question was sent with "Answer generally". Try again and Regenerate keep that choice.
+  const askedGeneral = useRef(new Set<string>());
   const [regenerating, setRegenerating] = useState(false);
   // The chat a reply is being written for ("" for a new one). Its text shows only there, and the page follows
   // the reply to its new chat only if the student is still on the chat it was sent from.
@@ -119,9 +129,11 @@ export function AskPage() {
   }, []);
   const [error, setError] = useState<string | null>(null);
   const [errorValues, setErrorValues] = useState<Record<string, unknown>>({});
+  const [errorText, setErrorText] = useState("");
   function fail(err: unknown) {
     setError(errorKey(err));
     setErrorValues(errorParams(err));
+    setErrorText(errorDetail(err));
   }
   // Saved photos the last answer did not see, so a shorter context is never silent.
   const [skipped, setSkipped] = useState<
@@ -409,6 +421,16 @@ export function AskPage() {
       if (held.draft && !sessionStorage.getItem(draftKey(from)))
         sessionStorage.setItem(draftKey(from), held.draft);
     };
+    const general = allowsGeneral({
+      chosen: options.allowGeneral === true,
+      planId,
+      sourceCount: ids.length,
+      fileCount: attached.length,
+    });
+    if (startedIn) {
+      if (options.allowGeneral === true) askedGeneral.current.add(startedIn);
+      else askedGeneral.current.delete(startedIn);
+    }
     const handle = window.pyxis.stream(
       "chats.ask",
       {
@@ -419,9 +441,7 @@ export function AskPage() {
         mode,
         subject,
         files: attached.length > 0 ? attached : undefined,
-        allowGeneral:
-          options.allowGeneral === true ||
-          (!planId && ids.length === 0 && attached.length === 0),
+        allowGeneral: general,
       },
       (event) => {
         const data = event as { text?: string };
@@ -508,7 +528,11 @@ export function AskPage() {
         mode,
         subject,
         // Same rule as a first send: the reply's own grounding says nothing about whether sources are selected.
-        allowGeneral: !planId && sendIds.length === 0,
+        allowGeneral: allowsGeneral({
+          chosen: askedGeneral.current.has(chatId),
+          planId,
+          sourceCount: sendIds.length,
+        }),
       },
       (event) => {
         const data = event as { text?: string };
@@ -724,7 +748,9 @@ export function AskPage() {
             }
           />
         ) : error ? (
-          <Notice tone="danger">{t(error, errorValues)}</Notice>
+          <Notice tone="danger" details={errorText || undefined}>
+            {t(error, errorValues)}
+          </Notice>
         ) : null}
         {(["too-large", "unreadable"] as const).map((reason) => {
           const count = skipped.filter((item) => item === reason).length;

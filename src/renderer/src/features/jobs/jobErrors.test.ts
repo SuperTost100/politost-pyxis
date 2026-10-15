@@ -21,6 +21,13 @@ describe("job error text", () => {
     expect(jobErrorKey("replace-no-text")).toBe("sources.replaceNoText");
   });
 
+  it("names an engine that failed or ran out", () => {
+    expect(jobErrorKey("not-logged-in")).toBe("engines.errors.not-logged-in");
+    expect(jobErrorKey("quota")).toBe("engines.errors.quota");
+    expect(jobErrorKey("cli-failed")).toBe("engines.errors.cli-failed");
+    expect(jobErrorKey("not-logged-in: Please run /login")).toBe("engines.errors.not-logged-in");
+  });
+
   it("keeps the messages it already had", () => {
     expect(jobErrorKey("demo-step-failed")).toBe("jobs.demoFailed");
     expect(jobErrorKey("model failed: engine-missing")).toBe("engines.errors.engine-missing");

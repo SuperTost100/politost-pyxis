@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { engineHandlers } from "./handlers";
 import { selectionFor } from "./selection";
@@ -201,6 +201,69 @@ describe("engine status and login recovery", () => {
   });
 });
 
+describe("cancelled sign-in", () => {
+  const real = vi.mocked(getFunnel).getMockImplementation()!;
+  afterEach(() => vi.mocked(getFunnel).mockImplementation(real));
+  /** A session that waits for its first event until it is cancelled, as a CLI does before it prints the sign-in page. */
+  function waiting() {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    return {
+      cancel: vi.fn(() => release()),
+      sendCode: vi.fn(),
+      async *[Symbol.asyncIterator]() {
+        await gate;
+      },
+    };
+  }
+  const funnelWith = (login: () => unknown) =>
+    ({
+      providers: { claude: { capabilities: { access: ["none"] } } },
+      login,
+    }) as unknown as ReturnType<typeof getFunnel>;
+
+  it("reports a cancel before the first event as cancelled, not as a failure", async () => {
+    const db = openDatabase(":memory:");
+    const session = waiting();
+    vi.mocked(getFunnel).mockImplementation(() => funnelWith(() => session));
+    const handlers = engineHandlers(db, () => undefined);
+    const attempt = handlers.login({ provider: "claude" });
+    handlers.cancelLogin({ provider: "claude" });
+    await expect(attempt).resolves.toEqual({
+      provider: "claude",
+      type: "cancelled",
+    });
+    db.close();
+  });
+
+  it("lets a restarted sign-in stand when the cancelled one finishes late", async () => {
+    const db = openDatabase(":memory:");
+    const first = waiting();
+    const second = {
+      cancel: vi.fn(),
+      sendCode: vi.fn(),
+      async *[Symbol.asyncIterator]() {
+        yield { type: "open-url", url: "https://example.com/login" };
+        await new Promise(() => undefined);
+      },
+    };
+    const sessions = [first, second];
+    vi.mocked(getFunnel).mockImplementation(() =>
+      funnelWith(() => sessions.shift()),
+    );
+    const handlers = engineHandlers(db, () => undefined);
+    const stale = handlers.login({ provider: "claude" });
+    handlers.cancelLogin({ provider: "claude" });
+    const fresh = handlers.login({ provider: "claude" });
+    await expect(stale).resolves.toMatchObject({ type: "cancelled" });
+    await expect(fresh).resolves.toMatchObject({ type: "open-url" });
+    // The newer session is still the one a pasted code reaches.
+    handlers.sendCode({ provider: "claude", code: "abc" });
+    expect(second.sendCode).toHaveBeenCalledWith("abc");
+    db.close();
+  });
+});
+
 describe("text-only engines", () => {
   const row = (id: string, access: string[]) => ({
     id,
@@ -222,6 +285,40 @@ describe("text-only engines", () => {
     });
     expect(selectionFor(db, "plan").provider).toBe("antigravity");
     db.close();
+  });
+
+  it("offers no sign-out for Antigravity and explains why instead of failing", async () => {
+    const db = openDatabase(":memory:");
+    const fake = {
+      overview: async () => [
+        row("agent", ["none"]),
+        row("antigravity", ["none"]),
+      ],
+      providers: { antigravity: { capabilities: { access: ["none"] } } },
+    } as unknown as ReturnType<typeof getFunnel>;
+    const real = vi.mocked(getFunnel).getMockImplementation()!;
+    vi.mocked(getFunnel).mockImplementation(() => fake);
+    try {
+      const handlers = engineHandlers(db, () => undefined);
+      expect(
+        (await handlers.overview()).map(({ id, capabilities }) => [
+          id,
+          capabilities.signOut,
+        ]),
+      ).toEqual([
+        ["agent", true],
+        ["antigravity", false],
+      ]);
+      await expect(
+        handlers.logout({ provider: "antigravity" }),
+      ).rejects.toMatchObject({
+        code: "unsupported",
+        messageKey: "engines.signOutUnsupported",
+      });
+    } finally {
+      vi.mocked(getFunnel).mockImplementation(real);
+      db.close();
+    }
   });
 
   it("disables a CLI whose adapter cannot enforce text-only access and hides unsupported providers", async () => {

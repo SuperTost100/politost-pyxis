@@ -6,7 +6,7 @@ import { uuidv7 } from "../../shared/ids";
 import { splitCitationGroups } from "../../shared/smart-text";
 import { isAbort, IpcError } from "../../shared/ipc";
 import { generate } from "../engine/generate";
-import { capabilityWarning } from "../engine/capabilities";
+import { engineSeesImages } from "../engine/capabilities";
 import { selectionFor } from "../engine/selection";
 import type { Embedder, PassageHit } from "../sources/retrieve";
 import { contentWords, retrieveWithModel } from "../sources/retrieve";
@@ -112,7 +112,7 @@ export function splitFollowups(text: string): { body: string; followups: string[
   if (!match?.[1]) return { body: text.trim(), followups: [] };
   const followups = match[1]
     .split("\n")
-    .map((line) => line.replace(/^[-*\d.)\s]+/, "").trim())
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim())
     .filter(Boolean)
     .slice(0, 3);
   return { body: text.replace(match[0], "").trim(), followups };
@@ -500,7 +500,7 @@ async function answer(
         db,
         input.workspace,
         input.files,
-        selectionFor(db, "chat").model,
+        selectionFor(db, "chat"),
         input.recognize,
         input.signal,
       );
@@ -599,7 +599,7 @@ async function answer(
 
   const seesImage =
     Boolean(input.workspace) &&
-    capabilityWarning(selectionFor(db, "chat").model, "vision") == null &&
+    engineSeesImages(selectionFor(db, "chat")) &&
     images.some((image) => image.data);
   const thisTurnFile = notes.length > 0 || seesImage;
   // The passages are the main reference, not a gate: a question they do not cover is still answered from the model's own
@@ -662,7 +662,7 @@ async function answer(
   let result;
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
   const saved =
-    input.workspace && capabilityWarning(selection.model, "vision") == null
+    input.workspace && engineSeesImages(selection)
       ? await savedImages(db, input.workspace, chatId, input.signal)
       : null;
   const skippedImages = saved?.skipped.length ? { skippedImages: saved.skipped } : {};
@@ -916,13 +916,13 @@ export function renameChat(
   db: Database.Database,
   chatId: string,
   title: string,
-  now = Date.now(),
 ) {
   const trimmed = title.trim();
   if (!trimmed) throw new Error("chat-title");
+  // A rename is not activity: the chat keeps its place in the list, which is ordered by the last message.
   const info = db
-    .prepare(`UPDATE chats SET title = ?, updated_at = ? WHERE id = ?`)
-    .run(trimmed, now, chatId);
+    .prepare(`UPDATE chats SET title = ? WHERE id = ?`)
+    .run(trimmed, chatId);
   if (info.changes === 0) throw new Error("chat-missing");
 }
 

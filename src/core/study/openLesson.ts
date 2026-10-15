@@ -368,8 +368,10 @@ export async function writeLesson(
       written.push(markdown);
     }
   } catch (error) {
+    // An engine that failed or is signed out falls back to the book, like any other failed call; the rest end the lesson.
     if (
-      error instanceof IpcError ||
+      (error instanceof IpcError &&
+        !error.messageKey.startsWith("engines.errors.")) ||
       (error instanceof Error &&
         (error.name === "AbortError" ||
           ("code" in error && error.code === "aborted")))

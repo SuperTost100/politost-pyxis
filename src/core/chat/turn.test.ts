@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PNG } from "pngjs";
 import { openDatabase } from "../db/connection";
-import type { EngineResult } from "../engine/funnel";
+import { toIpcError } from "../../shared/ipc";
+import { FunnelError, type EngineResult } from "../engine/funnel";
 import { partialText, templateVersion } from "../engine/prompts";
 import { importSmartbook } from "../sources/smartbook";
 import { strToU8, zipSync } from "fflate";
@@ -22,6 +23,7 @@ import {
   renameChat,
   replyGrounding,
   seedChat,
+  splitFollowups,
 } from "./turn";
 
 describe("replyGrounding", () => {
@@ -42,6 +44,21 @@ describe("replyGrounding", () => {
   it("does not expect a Socratic question to cite, unless nothing was found", () => {
     expect(replyGrounding({ ...turn, question: true })).toBe("sources");
     expect(replyGrounding({ ...turn, question: true, passages: 0 })).toBe("general");
+  });
+});
+
+describe("splitFollowups", () => {
+  const chips = (lines: string) => splitFollowups(`Risposta.\n<followups>\n${lines}\n</followups>`).followups;
+  it("strips list markers but keeps the first characters of the suggestion", () => {
+    expect(chips("- Spiegami meglio\n* E poi?\n• Un esempio?")).toEqual(["Spiegami meglio", "E poi?", "Un esempio?"]);
+    expect(chips("1. Primo\n2) Secondo\n  3. Terzo")).toEqual(["Primo", "Secondo", "Terzo"]);
+  });
+  it("does not eat digits, signs or emphasis that belong to the text", () => {
+    expect(chips("3D integrals\n-3 è negativo?\n**Perché** vale?")).toEqual([
+      "3D integrals",
+      "-3 è negativo?",
+      "**Perché** vale?",
+    ]);
   });
 });
 
@@ -122,6 +139,33 @@ describe("askTurn", () => {
     expect(factual.message?.citations).toEqual([]);
     expect(factual.message?.grounding).toBe("general");
     expect(question.message?.grounding).toBe("sources");
+    db.close();
+  });
+
+  it("fails with the engine's own message, not an internal error", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const fail = (error: unknown) =>
+      askTurn(db, {
+        text: "Explain",
+        allowGeneral: true,
+        run: async () => {
+          throw error;
+        },
+      });
+    const signedOut = await fail(new FunnelError("Please run /login", "not-logged-in")).catch(
+      (err: unknown) => toIpcError(err),
+    );
+    expect(signedOut).toMatchObject({
+      code: "not-logged-in",
+      messageKey: "engines.errors.not-logged-in",
+      detail: "Please run /login",
+    });
+    const limited = (await fail(Object.assign(new Error("usage limit reached"), { code: "cli-failed" })).catch((err: unknown) => toIpcError(err))) as ReturnType<typeof toIpcError>;
+    expect(limited.messageKey).toBe("engines.errors.quota");
+    await expect(fail(new DOMException("stopped", "AbortError"))).rejects.toMatchObject({ name: "AbortError" });
     db.close();
   });
 
@@ -268,8 +312,12 @@ describe("askTurn", () => {
     expect(rateMessage(db, messageId, "down")).toBe("down");
     // The chat is named after its first question until the student renames it.
     expect(listChats(db)[0]?.title).toBe("Che cos'è il vettore?");
+    // An older chat renamed stays below a newer one: a rename is not activity.
+    db.prepare("UPDATE chats SET updated_at = 1 WHERE id = ?").run(result.chatId);
+    db.prepare("INSERT INTO chats (id, title, created_at, updated_at) VALUES ('newer', 'Altra', 5, 5)").run();
     renameChat(db, result.chatId, "Moti");
-    expect(listChats(db)[0]?.title).toBe("Moti");
+    expect(listChats(db).map((chat) => [chat.title, chat.updated_at])).toEqual([["Altra", 5], ["Moti", 1]]);
+    db.prepare("DELETE FROM chats WHERE id = 'newer'").run();
     expect(() => renameChat(db, result.chatId, "  ")).toThrow(/chat-title/);
     deleteChat(db, "", result.chatId);
     expect(listChats(db)).toEqual([]);

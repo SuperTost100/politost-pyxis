@@ -1490,7 +1490,8 @@
       "statusIdle": "Non testato",
       "default": "predefinito",
       "signIn": "Accedi",
-      "test": "Testa"
+      "test": "Testa",
+      "actionFor": "{{action}} {{name}}"
     },
     "notice": {
       "details": "Dettagli"
@@ -1707,6 +1708,7 @@
     "fast": "Modalità veloce",
     "useDefault": "Usa come predefinito",
     "signOut": "Esci dall'account",
+    "signOutUnsupported": "Questo motore non ha un comando per uscire. Per uscire, apri il programma e usa il menu dell'account.",
     "update": "Aggiorna",
     "remove": "Rimuovi",
     "removeKey": "Rimuovi chiave API",

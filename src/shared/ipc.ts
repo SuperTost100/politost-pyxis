@@ -353,7 +353,12 @@ export const requests = {
         withinTestedRange: z.boolean(),
         /** The student has seen what this provider receives. Pyxis sends it nothing until then. */
         acknowledged: z.boolean(),
-        capabilities: z.object({ effort: z.boolean(), fast: z.boolean() }),
+        capabilities: z.object({
+          effort: z.boolean(),
+          fast: z.boolean(),
+          /** False when the CLI has no sign-out command, so Pyxis cannot sign the student out. */
+          signOut: z.boolean(),
+        }),
       }),
     ),
   },

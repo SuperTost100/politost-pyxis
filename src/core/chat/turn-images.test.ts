@@ -107,3 +107,26 @@ it("records a photo once on a message whose turn is retried, so a retry cannot f
   expect(sent).toHaveLength(1);
   db.close();
 });
+
+it("sends no photo to a provider that refuses images, so the chat reads text instead of failing", async () => {
+  const { workspace, db, attach, good } = chatWithPhotos();
+  attach.run("good", good(), 20);
+  // Cursor Agent lists claude-* ids that match the image catalog, but its CLI takes no attachments.
+  db.prepare("UPDATE feature_engines SET selection_json = ? WHERE feature = 'default'").run(
+    JSON.stringify({ provider: "agent", model: "claude-sonnet-5" }),
+  );
+  let sent: unknown[] | undefined;
+  await askTurn(db, {
+    chatId: "c",
+    text: "cosa vedi?",
+    allowGeneral: true,
+    workspace,
+    run: async (input) => {
+      sent = input.attachments;
+      return reply;
+    },
+  });
+  expect(fitted).not.toHaveBeenCalled();
+  expect(sent).toEqual([]);
+  db.close();
+});
