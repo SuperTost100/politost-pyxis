@@ -20,6 +20,7 @@ import {
 } from "../../shared/plan-file";
 import { importSmartbook, smartbookChapters } from "../sources/smartbook";
 import { loadLesson } from "../study/lesson";
+import { readQuiz } from "../study/quizJobs";
 import { topicExercises } from "../study/exercises";
 import { deleteCard, rateCard } from "../study/cards";
 import { currentSelfRatings, rateExercise } from "../study/selfRating";
@@ -1774,6 +1775,9 @@ describe("progress with path steps that name what was done", () => {
     expect(read).toMatchObject({ activity: "lesson", itemId: copiedLesson.id, attemptId: null });
     expect(quizStep).toMatchObject({ activity: "quiz", itemId: null, attemptId: copiedAttempt.id });
     expect(copiedAttempt.id).not.toBe(attemptId);
+    // Answers never travel, so the copied attempt is handed in but has nothing to review; the quiz page and the path
+    // rely on this to say so (and offer Redo) instead of opening a dead quiz.
+    expect(readQuiz(fresh, copiedAttempt.id)).toMatchObject({ submittedAt: at + 2, result: undefined, checked: [] });
     db.close();
     fresh.close();
   });

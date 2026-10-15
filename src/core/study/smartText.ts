@@ -3,6 +3,7 @@ import { appendEvent } from "../events";
 import { recordStep } from "../plans/steps";
 import {
   finalRecap,
+  stripPassageRefs,
   parseSmartText,
   smartQuestions,
   type SmartSegment,
@@ -33,10 +34,10 @@ export function smartAnswers(
     .all(itemId) as Array<{ payload_json: string }>;
   if (!rows.length) return {};
   const item = db
-    .prepare(`SELECT body_json FROM items WHERE id = ?`)
-    .get(itemId) as { body_json: string } | undefined;
+    .prepare(`SELECT kind, body_json FROM items WHERE id = ?`)
+    .get(itemId) as { kind: string; body_json: string } | undefined;
   const questions: ReturnType<typeof smartQuestions> = item
-    ? smartQuestions(parseSmartText(markdownOf(item.body_json)))
+    ? smartQuestions(parseSmartText(markdownOf(item.body_json, item.kind)))
     : new Map();
   const answers: Record<string, number> = {};
   for (const row of rows) {
@@ -53,8 +54,15 @@ export function smartAnswers(
   return answers;
 }
 
-const markdownOf = (bodyJson: string) =>
-  (JSON.parse(bodyJson) as { markdown?: string }).markdown ?? "";
+/**
+ * The text the reader is shown, which the question ids are made from. The page shows an introduction without the
+ * passage references an older one carried (see `plans.intro`), so they are removed here too: core and page then
+ * always hash the same text.
+ */
+const markdownOf = (bodyJson: string, kind: string) => {
+  const markdown = (JSON.parse(bodyJson) as { markdown?: string }).markdown ?? "";
+  return kind === "intro" ? stripPassageRefs(markdown) : markdown;
+};
 
 /**
  * The questions whose answers finish the reading: the closing recap of a lesson. An introduction has only quick
@@ -103,7 +111,7 @@ export function answerSmartCheck(
     | (SmartItem & { body_json: string })
     | undefined;
   if (!item) throw new Error("item-missing");
-  const segments = parseSmartText(markdownOf(item.body_json));
+  const segments = parseSmartText(markdownOf(item.body_json, item.kind));
   const question = smartQuestions(segments).get(input.blockId);
   if (!question || input.pick < 0 || input.pick >= question.options.length)
     throw new Error("question-missing");

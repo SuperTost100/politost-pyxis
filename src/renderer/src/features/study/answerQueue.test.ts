@@ -54,4 +54,24 @@ describe("answer queue", () => {
     expect(send).not.toHaveBeenCalled();
     expect(queue.size).toBe(0);
   });
+
+  it("marks a discarded pick as dropped, not as a failure to save", async () => {
+    const queue = createAnswerQueue();
+    const reason = (promise: Promise<void>) => promise.catch((error: Error & { dropped?: boolean }) => error);
+    const stopped = reason(queue.add("check-a", 0));
+    queue.drop();
+    expect(await stopped).toMatchObject({ dropped: true });
+    const again = queue.add("check-d", 0);
+    const missing = queue.add("check-e", 0);
+    const fails = queue.add("check-f", 0);
+    await queue.flush(
+      (id) => id !== "check-e",
+      async (id) => {
+        if (id === "check-f") throw new Error("offline");
+      },
+    );
+    await again;
+    expect(await reason(missing)).toMatchObject({ dropped: true });
+    expect(await reason(fails)).not.toHaveProperty("dropped");
+  });
 });

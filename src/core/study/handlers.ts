@@ -27,6 +27,7 @@ import {
 } from "./exerciseJobs";
 import {
   requireTopic,
+  readLessonItem,
   rewriteLessonSection,
   writeLesson,
   type Wording,
@@ -134,6 +135,8 @@ export function studyHandlers(
         topicId: string;
         wording?: Wording;
         regenerate?: boolean;
+        /** Read this saved lesson as it was (a finished step); without it, or if it is gone, the topic's lesson opens. */
+        itemId?: string;
       },
       options?: {
         signal?: AbortSignal;
@@ -141,6 +144,11 @@ export function studyHandlers(
         onPassages?: (passageIds: string[]) => void;
       },
     ) {
+      const saved =
+        input.itemId && !input.regenerate
+          ? readLessonItem(db, input.planId, input.topicId, input.itemId)
+          : null;
+      if (saved) return Promise.resolve(withReading(saved));
       return writeLesson(db, input.planId, input.topicId, run ?? runTurn, {
         ...options,
         wording: input.wording,

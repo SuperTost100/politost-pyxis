@@ -481,6 +481,8 @@ export const requests = {
       topicId: z.string(),
       wording: z.enum(["simple", "balanced", "technical"]).optional(),
       regenerate: z.boolean().optional(),
+      /** A saved lesson to read again as it was, from a finished path step. Nothing is generated or written. */
+      itemId: z.string().optional(),
     }),
     output: LessonOutput,
   },

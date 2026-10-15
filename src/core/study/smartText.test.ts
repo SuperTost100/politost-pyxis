@@ -10,8 +10,12 @@ import { rewriteLessonSection, writeLesson } from "./openLesson";
 import { cacheKey, saveLesson } from "./lesson";
 import { answerSmartCheck, smartAnswers, smartSources } from "./smartText";
 import { studyHandlers } from "./handlers";
+import { planHandlers } from "../plans/handlers";
 import { exportMarkdown } from "../share/markdown";
 import { appendEvent } from "../events";
+import { saveProfile } from "../profile/profile";
+import { exportPlan, importPlan } from "../plans/file";
+import { planFileSchema } from "../../shared/plan-file";
 
 const check = (question: string, answer = 0) =>
   [
@@ -248,6 +252,68 @@ describe("smart lessons", () => {
     db.close();
   });
 
+  it("hashes an introduction's checks from the text the page shows, without passage references", async () => {
+    const { db } = setup();
+    const fresh = createPlan(db, { title: "Altro", sourceIds: [] });
+    const body = `Benvenuto [P1].\n\n${check("Ricordi la velocità [P2] ?")}`;
+    db.prepare(
+      "INSERT INTO items (id, plan_id, kind, body_json, created_at) VALUES ('intro-refs', ?, 'intro', ?, 1)",
+    ).run(fresh.planId, JSON.stringify({ markdown: body, passageIds: [] }));
+    const shown = planHandlers(db).intro({ planId: fresh.planId })!;
+    expect(shown.markdown).not.toContain("[P");
+    // The ids the page computes from what it shows are the ones core accepts and reads back.
+    const [question] = [...smartQuestions(parseSmartText(shown.markdown)).values()];
+    expect(
+      answerSmartCheck(db, { planId: fresh.planId, itemId: "intro-refs", blockId: question!.id, pick: 0 }),
+    ).toMatchObject({ pick: 0, finished: true });
+    expect(planHandlers(db).intro({ planId: fresh.planId })!.answers).toEqual({ [question!.id]: 0 });
+    db.close();
+  });
+
+  it("reopens the lesson a step read after the profile wording changed, writing nothing", async () => {
+    const { db, planId, topicId, run } = setup();
+    let calls = 0;
+    const counting: typeof run = async (input) => {
+      calls++;
+      return run!(input);
+    };
+    const handlers = studyHandlers(db, undefined, counting);
+    const read = await handlers.lesson({ planId, topicId });
+    const [first] = [...smartQuestions(parseSmartText(read.markdown)).keys()];
+    answerSmartCheck(db, { planId, itemId: read.itemId!, blockId: first!, pick: 0 });
+    const items = () =>
+      (db.prepare("SELECT COUNT(*) AS n FROM items WHERE kind = 'lesson'").get() as { n: number }).n;
+    expect([calls, items()]).toEqual([1, 1]);
+
+    saveProfile(db, { displayName: "Ada" });
+    db.prepare("UPDATE profile SET wording_level = 'technical'").run();
+    const again = await handlers.lesson({ planId, topicId, itemId: read.itemId });
+    // The same lesson and its saved answers, marked as not the one the settings give now; no model call, no new row.
+    expect(again).toMatchObject({
+      itemId: read.itemId,
+      markdown: read.markdown,
+      wording: "balanced",
+      earlier: true,
+      answers: { [first!]: 0 },
+    });
+    expect([calls, items()]).toEqual([1, 1]);
+
+    // Opening the topic without the item is today's behaviour: a new lesson for the new wording.
+    const current = await handlers.lesson({ planId, topicId });
+    expect(current.itemId).not.toBe(read.itemId);
+    expect([calls, items()]).toEqual([2, 2]);
+    // The lesson the settings give is not marked.
+    expect(await handlers.lesson({ planId, topicId, itemId: current.itemId })).toMatchObject({
+      itemId: current.itemId,
+      wording: "technical",
+    });
+    expect((await handlers.lesson({ planId, topicId, itemId: current.itemId })).earlier).toBeUndefined();
+    // A missing item, or one of another topic, falls back to opening the topic.
+    expect((await handlers.lesson({ planId, topicId, itemId: "gone" })).itemId).toBe(current.itemId);
+    expect([calls, items()]).toEqual([2, 2]);
+    db.close();
+  });
+
   it("rewrites one section and keeps the others and their answers", async () => {
     const { db, planId, topicId, run, reply } = setup();
     const lesson = await writeLesson(db, planId, topicId, run);
@@ -330,5 +396,43 @@ describe("smart lessons", () => {
     expect(exported).not.toContain("pyxis-");
     expect(smartSources(db, lesson.passageIds)[0]?.places).toHaveLength(1);
     db.close();
+  });
+  it("keeps quick checks answered through an export and import, and accepts a file without the item", async () => {
+    const { db, planId, topicId, run } = setup();
+    const lesson = await writeLesson(db, planId, topicId, run);
+    const shown = smartQuestions(parseSmartText(lesson.markdown));
+    const [first, second] = [...shown.keys()];
+    answerSmartCheck(db, { planId, itemId: lesson.itemId!, blockId: first!, pick: 1 });
+    answerSmartCheck(db, { planId, itemId: lesson.itemId!, blockId: second!, pick: 0 });
+    const file = planFileSchema.parse(JSON.parse(JSON.stringify(exportPlan(db, planId, { progress: true }))));
+    const lessonIndex = file.items!.findIndex((item) => item.kind === "lesson");
+    const checks = file.progress!.filter((event) => event.kind === "answer_given");
+    expect(checks.map((event) => event.item)).toEqual([lessonIndex, lessonIndex]);
+
+    const fresh = openDatabase(":memory:");
+    const copy = importPlan(fresh, file, Date.now() + 5000);
+    const copied = fresh.prepare("SELECT id FROM items WHERE plan_id = ? AND kind = 'lesson'").get(copy) as { id: string };
+    expect(copied.id).not.toBe(lesson.itemId);
+    expect(smartAnswers(fresh, copied.id)).toEqual(smartAnswers(db, lesson.itemId!));
+    // Answering again returns the saved pick and writes no second event, so mastery counts it once.
+    expect(answerSmartCheck(fresh, { planId: copy, itemId: copied.id, blockId: first!, pick: shown.get(first!)!.answer }))
+      .toMatchObject({ pick: smartAnswers(db, lesson.itemId!)[first!] });
+    const events = () =>
+      (fresh.prepare("SELECT COUNT(*) AS n FROM learning_events WHERE plan_id = ? AND kind = 'answer_given'").get(copy) as { n: number }).n;
+    expect(events()).toBe(2);
+
+    // A file written before events named their item imports as before, with its checks unanswered.
+    const older = JSON.parse(JSON.stringify(file)) as typeof file;
+    for (const event of older.progress!) delete event.item;
+    const secondCopy = importPlan(fresh, planFileSchema.parse(older), Date.now() + 6000);
+    const bare = fresh.prepare("SELECT id FROM items WHERE plan_id = ? AND kind = 'lesson'").get(secondCopy) as { id: string };
+    expect(smartAnswers(fresh, bare.id)).toEqual({});
+
+    // An event may only point at a lesson or introduction of the file.
+    const dangling = JSON.parse(JSON.stringify(file)) as typeof file;
+    dangling.progress!.find((event) => event.kind === "answer_given")!.item = 999;
+    expect(() => importPlan(fresh, dangling, Date.now() + 7000)).toThrow("plan-file");
+    db.close();
+    fresh.close();
   });
 });

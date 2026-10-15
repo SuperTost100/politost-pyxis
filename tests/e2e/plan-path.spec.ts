@@ -3,6 +3,7 @@ import { _electron as electron, expect, test, type Page } from "@playwright/test
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
 
@@ -392,11 +393,25 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
         timeout: 60000,
       })
       .toBe("succeeded");
-    type Steps = Array<{ activity: string; topicId: string | null; attemptId: string | null }>;
+    type Steps = Array<{
+      activity: string;
+      topicId: string | null;
+      attemptId: string | null;
+      itemId: string | null;
+    }>;
     const read = () => invoke<Read & { steps: Steps }>("plans.read", { planId });
     const topic = (await read()).topics[0]!;
 
     // A lesson read, a quiz handed in and a set of exercises finished, all on the first topic.
+    await page.evaluate(
+      ({ planId, topicId }) => {
+        location.hash = `/plans/${planId}/lesson/${topicId}`;
+      },
+      { planId, topicId: topic.id },
+    );
+    await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
+      timeout: 20000,
+    });
     await invoke("plans.complete", { planId, activity: "lesson", topicId: topic.id });
     const quiz = await invoke<{ attemptId: string }>("study.quizStart", {
       planId,
@@ -430,12 +445,30 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     // The path stays on the topic: after exercises, a quiz to check them.
     await expect(page.locator(".px-path-next").getByRole("heading")).toHaveText(`Quiz su ${topic.title}`);
 
-    // The lesson opens to read again; no chooser opens and nothing is recorded.
+    // The lesson opens as it was read, by its item, even after the profile's wording changed; no chooser opens, no
+    // lesson is written and nothing is recorded.
+    const lessonItem = before[0]!.itemId;
+    expect(lessonItem).toBeTruthy();
+    const lessonRows = () => {
+      const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+      try {
+        return (db.prepare("SELECT COUNT(*) AS n FROM items WHERE kind = 'lesson'").get() as { n: number }).n;
+      } finally {
+        db.close();
+      }
+    };
+    expect(lessonRows()).toBe(1);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.prepare("UPDATE profile SET wording_level = 'technical'").run();
+    db.close();
     await done.getByRole("button", { name: new RegExp(`^Testo smart, ${topic.title}`) }).click();
-    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topic.id}$`));
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topic.id}\\?item=${lessonItem}$`));
     await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
       timeout: 20000,
     });
+    // The lesson was written at the default wording; the profile's new one does not replace it.
+    await expect(page.getByRole("button", { name: "Livello di linguaggio: Bilanciato" })).toBeVisible();
+    expect(lessonRows()).toBe(1);
     expect((await read()).steps).toEqual(before);
     await page.goBack();
 
@@ -508,6 +541,80 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.getByRole("button", { name: "Torna al percorso" }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
     expect((await read()).steps).toEqual(after);
+
+    // A finished cards step opens in review: no cards are generated and no second step is recorded.
+    await invoke("plans.complete", { planId, activity: "cards", topicId: topic.id });
+    const withCards = (await read()).steps;
+    expect(withCards).toHaveLength(after.length + 1);
+    const cardJobs = () => {
+      const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+      try {
+        return (db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE kind LIKE 'card%'").get() as { n: number }).n;
+      } finally {
+        db.close();
+      }
+    };
+    expect(cardJobs()).toBe(0);
+    await page.reload();
+    await expect(done.getByRole("listitem")).toHaveCount(withCards.length);
+    await done.getByRole("button", { name: new RegExp(`^Flashcard, ${topic.title}`) }).click();
+    await expect(page).toHaveURL(new RegExp(`cards/${topic.id}\\?review=1$`));
+    await expect(page.getByText("Hai già fatto queste schede.", { exact: false })).toBeVisible();
+    await expect(page.getByText("Nessuna scheda in scadenza.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
+    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await shoot(page, `${shots}/cards-review-it-light.png`);
+    await page.getByRole("button", { name: "Torna al percorso" }).first().click();
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
+    expect(cardJobs()).toBe(0);
+    expect((await read()).steps).toEqual(withCards);
+
+    // Shared with its progress, the copy's finished quiz has no answers to show: the page says so and offers Redo.
+    const file = await page.evaluate(
+      (planId) => window.pyxis.invoke("plans.export", { planId, progress: true }),
+      planId,
+    );
+    const copy = (await page.evaluate((file) => window.pyxis.invoke("plans.import", file), file)) as {
+      planId: string;
+    };
+    await page.evaluate((planId) => {
+      location.hash = `/plans/${planId}`;
+    }, copy.planId);
+    await done.getByRole("button", { name: new RegExp(`^Quiz, ${topic.title}, 6/10`) }).click();
+    await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/quiz/[^/?]+\\?attempt=`));
+    await expect(page.getByText("Le risposte di questo tentativo non erano incluse nel piano condiviso.")).toBeVisible();
+    await expect(page.locator(".px-quiz-question")).toHaveCount(0);
+    await expect(page.locator(".px-quiz-score")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
+    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    for (const [lang, theme] of [
+      ["it", "light"],
+      ["it", "dark"],
+      ["en", "light"],
+      ["en", "dark"],
+    ] as const) {
+      await page.evaluate(
+        async ({ lang, theme }) => {
+          localStorage.setItem("pyxis.lang", lang);
+          await window.pyxis.setAppearance(theme);
+        },
+        { lang, theme },
+      );
+      await page.reload();
+      await expect(page.getByRole("button", { name: /^(Rifai|Redo)$/ })).toBeVisible();
+      await expect(
+        page.getByText(/^(Le risposte di questo tentativo non erano incluse|The answers of this attempt weren't included)/),
+      ).toBeVisible();
+      await shoot(page, `${shots}/quiz-imported-${lang}-${theme}.png`);
+    }
+    await page.evaluate(async () => {
+      localStorage.setItem("pyxis.lang", "it");
+      await window.pyxis.setAppearance("light");
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Rifai" }).click();
+    await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/quiz/[^/?]+$`));
+    await expect(page.getByRole("button", { name: "Inizia", exact: true })).toBeVisible();
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

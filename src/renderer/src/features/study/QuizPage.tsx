@@ -246,6 +246,13 @@ export function QuizPage() {
   // An attempt handed in before this page opened (from a path step or a results link) is shown read-only for review;
   // only Redo starts a new attempt, and only that one adds a step when it is submitted.
   const reopened = Boolean(finalResult) && submit.isIdle;
+  // A plan file carries which attempts were handed in, not their answers: such an attempt has nothing to review.
+  const noAnswers =
+    session.data?.submittedAt != null &&
+    !finalResult &&
+    submit.isIdle &&
+    grading.isSuccess &&
+    grading.data.state === "none";
   const gradeState = grading.data?.state ?? "none";
   const gradingStopped = ["failed", "cancelled", "interrupted"].includes(
     gradeState,
@@ -512,7 +519,7 @@ export function QuizPage() {
   // Keys: 1–4 pick an option, Enter checks or moves on. Typing in a field and real buttons keep their own keys.
   const keys = useRef({ primary, pick, question, locked });
   keys.current = { primary, pick, question, locked };
-  const answering = Boolean(question) && !finalResult && !gradingStarted;
+  const answering = Boolean(question) && !finalResult && !gradingStarted && !noAnswers;
   // The menu leaves a quiz alone until it is finished.
   useMenuLock(answering);
   useEffect(() => {
@@ -603,7 +610,7 @@ export function QuizPage() {
       title={t("quiz.title")}
       onClose={() => void close()}
       meta={
-        question && !finalResult && !showIntro
+        question && !finalResult && !showIntro && !noAnswers
           ? wholeReview
             ? t("cards.reviewPosition", {
                 current: wholeReview.cardsTotal + index + 1,
@@ -614,7 +621,7 @@ export function QuizPage() {
       }
       progress={
         questions.length
-          ? finalResult
+          ? finalResult || noAnswers
             ? 1
             : wholeReview
               ? (wholeReview.cardsTotal + answered) / wholeReview.total
@@ -821,6 +828,33 @@ export function QuizPage() {
               },
             ]}
           />
+        </section>
+      ) : noAnswers ? (
+        <section className="px-quiz-wait">
+          <Notice tone="info">{t("quiz.answersNotShared")}</Notice>
+          <span className="px-quiz-footer-main">
+            <Button
+              shape="round"
+              size="large"
+              onClick={() =>
+                navigate(
+                  diagnostic
+                    ? `/plans/${planId ?? ""}/diagnostic`
+                    : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`,
+                )
+              }
+            >
+              {t("quiz.redo")}
+            </Button>
+            <Button
+              type="primary"
+              shape="round"
+              size="large"
+              onClick={() => navigate(`/plans/${planId ?? ""}`)}
+            >
+              {t("lesson.backToPath")}
+            </Button>
+          </span>
         </section>
       ) : finalResult ? (
         <QuizResults

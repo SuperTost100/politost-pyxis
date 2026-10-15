@@ -4,7 +4,7 @@ import { Button, Input } from "antd";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { CitationChip } from "../../components/CitationChip";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -24,6 +24,10 @@ export function CardsPage() {
   const { planId, topicId } = useParams();
   // Without a topic this is the Review session: its stored cards, then its questions.
   const reviewing = !topicId;
+  // Opened from a finished step on the path: looking again starts no card generation and records no step, unless the
+  // student rates a card.
+  const [searchParams] = useSearchParams();
+  const looking = Boolean(topicId) && searchParams.get("review") === "1";
   const reviewQueue = useReviewSession(planId, reviewing);
   useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
@@ -104,11 +108,11 @@ export function CardsPage() {
   }
   useEffect(() => {
     const key = `${planId}:${topicId}`;
-    if (!build.isSuccess || build.data !== null || requested.current === key)
+    if (looking || !build.isSuccess || build.data !== null || requested.current === key)
       return;
     requested.current = key;
     void generate();
-  }, [build.isSuccess, build.data, planId, topicId]);
+  }, [looking, build.isSuccess, build.data, planId, topicId]);
   useEffect(() => {
     if (buildState === "succeeded") void refresh();
   }, [buildState]);
@@ -266,6 +270,7 @@ export function CardsPage() {
       }
     >
       <section className="px-cards">
+        {looking && !recorded ? <Notice tone="info">{t("cards.reviewing")}</Notice> : null}
         {ratingError ? (
           <Notice tone="danger">{t("cards.rateFailed")}</Notice>
         ) : null}
@@ -322,12 +327,19 @@ export function CardsPage() {
                 <Button
                   shape="round"
                   onClick={() =>
-                    void finishSession().then(
-                      (ok) => ok && navigate(`/plans/${planId ?? ""}`),
-                    )
+                    // Only rated cards make a step; otherwise a look just goes back.
+                    looking && seen.length === 0
+                      ? navigate(`/plans/${planId ?? ""}`)
+                      : void finishSession().then(
+                          (ok) => ok && navigate(`/plans/${planId ?? ""}`),
+                        )
                   }
                 >
-                  {t(recorded ? "lesson.backToPath" : "lesson.markDone")}
+                  {t(
+                    recorded || (looking && seen.length === 0)
+                      ? "lesson.backToPath"
+                      : "lesson.markDone",
+                  )}
                 </Button>
               ) : null}
             </div>

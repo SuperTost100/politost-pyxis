@@ -184,7 +184,8 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     // An introduction stored before smart text, with a raw passage id, next to a quick check.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     db.prepare("UPDATE items SET body_json = ? WHERE plan_id = ? AND kind = 'intro'").run(
-      JSON.stringify({ markdown: intro, passageIds: [] }),
+      // No ordered passage list, as in an older introduction: the file must still export and import.
+      JSON.stringify({ markdown: intro }),
       planId,
     );
     db.close();
@@ -315,6 +316,29 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.locator(".px-reader-sources summary").click();
     await page.locator(".px-reader-sources").getByRole("button", { name: /cap\. 1/ }).click();
     await expect(page.getByText("La forza cambia lo stato di moto.")).toBeVisible();
+
+    // Shared with its progress: the copy's lesson opens from the path with every check still answered.
+    await page.keyboard.press("Escape");
+    const file = await page.evaluate(
+      (planId) => window.pyxis.invoke("plans.export", { planId, progress: true }),
+      planId,
+    );
+    const copy = await page.evaluate(
+      (file) => window.pyxis.invoke("plans.import", file).catch((error: unknown) => ({ error: JSON.stringify(error) })),
+      file,
+    );
+    expect(copy).not.toHaveProperty("error");
+    await page.evaluate((planId) => {
+      location.hash = `/plans/${planId}`;
+    }, copy.planId);
+    await page
+      .getByRole("list", { name: "Passi fatti" })
+      .getByRole("button", { name: /^Testo smart/ })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/lesson/[^/]+\\?item=`));
+    await expect(quick.getByText("Non proprio.")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole("region", { name: "Ripasso finale" }).getByText("2 su 3 giuste")).toBeVisible();
+    await expect(page.getByText("Lezione completata")).toBeVisible();
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

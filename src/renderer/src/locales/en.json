@@ -472,6 +472,7 @@
     }
   },
   "cards": {
+    "reviewing": "You already did these cards. Looking at them again adds no step to your path unless you rate a card.",
     "rateFailed": "The card could not be rated. Try again.",
     "actionFailed": "That didn't work. Try again.",
     "spaceKey": "Space",
@@ -872,7 +873,8 @@
     "continue": "Continue",
     "reviewMistakes": "Review mistakes",
     "redo": "Redo",
-    "answeredOn": "Your answers from {{date}}"
+    "answeredOn": "Your answers from {{date}}",
+    "answersNotShared": "The answers of this attempt weren't included in the shared plan."
   },
   "practice": {
     "title": "Book exercises",

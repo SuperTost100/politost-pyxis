@@ -71,11 +71,12 @@ Rule 5 follows only the latest lesson. A student who reads another topic's lesso
 
 A step records what was done: the lesson or introduction read (`itemId`) and the submitted quiz, gap drill, diagnostic or simulation (`attemptId`), in the `lesson_completed` payload. Plan files carry both, and import maps them to the copied rows. Clicking a finished step opens it again without recording anything:
 
-- a lesson or the introduction opens to read again;
+- a lesson opens as it was read (by the step's `itemId`), even if the wording, level, language or material changed since; a lesson that is not the one the current settings give cannot have one part rewritten, but can be regenerated. An introduction opens to read again;
 - a quiz, gap drill or diagnostic opens its attempt read-only, with the answers, the score and a Redo button; a simulation opens its graded attempt the same way;
-- exercises open without "Mark as done".
+- exercises open without "Mark as done";
+- cards open without generating more cards, and record a step again only if a card is rated.
 
-Only Redo starts a new attempt, and only submitting that attempt adds a step. A step recorded before steps named their attempt opens the latest attempt of the same kind and topic submitted by the step's time; without one, a quiz step opens the topic's lesson.
+An attempt from an imported plan has no answers (see [plan file](plan-file.md)); it says so and offers Redo. Only Redo starts a new attempt, and only submitting that attempt adds a step. A step recorded before steps named their attempt opens the latest attempt of the same kind and topic submitted by the step's time; without one, a quiz step opens the topic's lesson.
 
 ## Knowledge gaps
 

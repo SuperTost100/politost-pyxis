@@ -95,6 +95,8 @@ test("a quick check can be answered while the lesson is still being written, and
     PYXIS_USER_DATA: userData,
     PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
+    // Each model call waits first, so there is a moment where a lesson is being written and no text has arrived.
+    PYXIS_E2E_PLAN_DELAY: "1500",
   };
   delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
@@ -196,6 +198,10 @@ test("a quick check can be answered while the lesson is still being written, and
     await status.getByRole("button", { name: "Interrompi" }).click();
     await expect(status).toHaveCount(0);
     await expect(quick.getByText("Non proprio.")).toHaveCount(0);
+    // A stop is not a failure to save: the pick just goes back to unanswered, with no error and nothing more to click.
+    await expect(page.getByText("La risposta non è stata salvata.")).toHaveCount(0);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(quick.getByRole("button", { name: /Spinge nel verso/ })).toBeDisabled();
     expect(answerEvents()).toBe(0);
 
     // Second run: answer while it streams, let it finish, and the answer is counted once.
@@ -233,6 +239,17 @@ test("a quick check can be answered while the lesson is still being written, and
         .getByText("Non proprio."),
     ).toBeVisible();
     await expect.poll(answerEvents).toBe(2);
+
+    // Rewriting the lesson: until the new text starts, the old lesson on screen takes no pick, which would be dropped.
+    await page.getByRole("button", { name: "Altre azioni" }).click();
+    await page.getByRole("menuitem", { name: "Riscrivi", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Riscrivi", exact: true }).click();
+    await expect(status).toBeVisible();
+    const recapRegion = page.getByRole("region", { name: "Ripasso finale" });
+    await expect(recapRegion.getByRole("button", { name: /Newton/ })).toBeDisabled();
+    await expect(status).toHaveCount(0, { timeout: 20000 });
+    await expect(recapRegion.getByRole("button", { name: /Newton/ })).toBeEnabled();
+    await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

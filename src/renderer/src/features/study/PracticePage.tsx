@@ -36,12 +36,21 @@ function SelfRating({
     mutationFn: (next: Rating) =>
       invoke("study.rateExercise", { planId, topicId, exerciseId, rating: next }),
     onSuccess: () =>
-      Promise.all(
-        ["series", "plan", "recommend"].map((key) =>
+      Promise.all([
+        ...["series", "plan", "recommend"].map((key) =>
           client.invalidateQueries({ queryKey: [key, planId] }),
         ),
-      ),
+        // The exercise list holds each rating; left stale it would show the old one on the next visit.
+        client.invalidateQueries({ queryKey: ["exercises", planId, topicId] }),
+      ]),
   });
+  // The saved rating can change under the page (a refetch, another visit with cached data): follow it, but not while
+  // a choice is still being saved, or an older refetch would undo it.
+  const [seen, setSeen] = useState(initial);
+  if (initial !== seen && !save.isPending) {
+    setSeen(initial);
+    setRating(initial);
+  }
   const choose = (next: Rating) => {
     if (next === rating) return;
     const before = rating;
