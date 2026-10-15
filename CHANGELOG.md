@@ -2,24 +2,38 @@
 
 Each release lists what changed for students, in English and Italian. The GitHub release page uses the same text.
 
-## 0.3.0
+## 0.3.1
 
 ### English
+
+Pyxis 0.3.1 is the first stable 0.3 release. 0.3.0 was only a development build and never came out as a final release, so this entry covers everything new since 0.2.3, plus the fixes from testing. The first time you open 0.3.1, Pyxis upgrades your workspace, and Pyxis 0.2.3 or older can't open it afterwards. If you may want to go back, make a backup first in Settings, under Data.
 
 #### Setup
 
 - Settings, under Profile and interests, has a new "Run setup again" button. It reopens the setup screens with your name, level, year, school, course and crash-report choice already filled in. Your engine choices stay as they are.
 - Running setup again has no Skip. You can cancel on the first screen or go back on the profile screen, and nothing is saved until you reach the end. The last screen says "Setup updated", and "Back to Settings" takes you back to Profile and interests.
-- Cancelling a sign-in before its page opens no longer shows "Sign-in did not finish", and cancelling then starting again keeps the new sign-in going.
-- Antigravity has no sign-out command, so Settings, under AI engines, no longer offers "Sign out" for it and says to sign out in Antigravity itself. "Test" no longer sends a reasoning effort the model does not list. The "Test" and "Sign in" buttons on each engine now name the engine for screen readers.
+- On macOS and Windows, Settings showed Antigravity as "Sign-in required" even when you were signed in, and signing in again through Pyxis never finished. Pyxis now asks Antigravity itself whether you are signed in.
+- Cancelling a sign-in before its page opens no longer shows "Sign-in did not finish". If you cancel and start again, the new sign-in keeps going.
+
+#### Engines
+
+- Pyxis now sets a reasoning effort for every task, also when you chose the model yourself. Chat and maps use low, lessons, quizzes, cards and photos use medium, and plans and grading use high. A model that doesn't offer a level gets the nearest one it has, and a model with no levels runs as it is.
+- Settings, under AI engines, "Advanced options" has a "Reasoning effort" picker for each task. It starts at "Automatic" with the level Pyxis picked, for example "Automatic · Medium". Your pick stays when you change the model. If the new model doesn't offer it, the row says so and Pyxis uses the automatic level. "Back to automatic choice" clears your picks.
+- When an engine fails, Pyxis says why instead of "Something went wrong". You are signed out, you reached the usage limit, the engine is not available, or it returned an error. "Details" shows the engine's own text. Ask, lessons, quizzes, cards, grading and plans all give these messages.
+- Pyxis never sends photos to Cursor Agent or Antigravity, because they can't read images. Ask reads the text in the photo on your computer instead, and the automatic choice doesn't give them the photo task.
+- Antigravity has no sign-out command, so Settings, under AI engines, no longer offers "Sign out" for it. It tells you to sign out in Antigravity itself.
+- "Test" no longer sends a reasoning effort that the model doesn't list.
+- The "Test" and "Sign in" buttons on each engine now name the engine, so screen readers can tell them apart.
 
 #### Exams
 
+- The plans tab has one toolbar, laid out like the Sources tab. It has a search box, the subject filter, an "Import" menu and "New plan", which is the only filled button. "Import" opens "From a .pyxis file" and "From a link". With no plans yet, you see "New plan" and the same menu.
+- "No plans yet" no longer flashes while your plans load.
 - A failed plan import no longer leaves its error showing on the Sources and Flashcards tabs.
 - "Add to calendar" saves a calendar file (.ics) for one exam at a time. Use the calendar button in a plan's header, or the same button in "Plan settings". The Exams page has no button that saves every exam at once.
 - Each exam is an all-day event titled "Exam:" followed by the plan's title, or "Esame:" in Italian. The description names the subject when the plan has one. Each event has a reminder at 9:00 the day before.
 - Pyxis gives each exam the same ID every time, so importing the file again should update your events instead of adding copies.
-- Exams with no date and exams already over are left out. When there is nothing to save, the button is off and tells you why. In "Plan settings" it is also off while you have changed the date and not saved it ("Save the new date first.").
+- A plan with no date, or with an exam already over, has no calendar button in its header. In "Plan settings" the button is off and tells you why. It is also off while you have changed the date and not saved it ("Save the new date first.").
 
 #### Flashcards
 
@@ -30,23 +44,34 @@ Each release lists what changed for students, in English and Italian. The GitHub
 - Math and cloze cards look as they do in review. A cloze shows its full sentence with the hidden words in bold. Each card says whether it is new, due or when its next review is, and has a Suspended tag when it is on hold.
 - Every card has "Edit", "Suspend" or "Resume", and "Delete". Editing keeps the review schedule.
 - Deleting a card you wrote asks first and is permanent. Deleting a card Pyxis wrote takes it out of your decks and reviews, and you can bring it back under "Removed" with "Restore".
+- Pyxis now writes one fact, definition, formula or idea on each card. A card no longer holds a whole exercise on the front and its worked solution on the back. Cards Pyxis wrote earlier are left as they are.
+- Exercises are no longer turned into flashcards. The exercise cards from 0.2.3 move to "Removed" once, the first time you open 0.3.1. Your reviews stay. Bring any of them back with "Restore". A card you restore stays restored, and cards you wrote or edited are not moved.
+- The rating buttons in review are "Again", "Hard", "Good" and "Easy". They show no key number and no wait time. Keys 1 to 4 still rate, and the review summary uses the same words.
 
 #### Studying
 
 - Under each exercise, "How did it go?" shows two buttons, "Got it" and "Missed it". Rating is optional and counts toward your progress as half a quiz answer. "Mark as done" still works without a rating.
-- You can change your rating. A rating from the last 6 hours is still chosen when you reopen the page. After that the exercise starts unrated, and a new rating counts as new.
+- You can change your rating. A rating from the last 6 hours stays chosen when you leave the page and come back. After that the exercise starts unrated, and a new rating counts as new.
+- The answer options in the diagnostic, in lesson checks and in recap questions are now shuffled, so the right answer doesn't sit in the same spot. Every new quiz mixes its options too, and one attempt keeps its order. Answers you gave earlier stay on the option you chose.
+- You can answer a lesson check while the lesson is still being written. You see the result at once, and the answer counts once the lesson is saved. If you press "Stop" or write the lesson again, answers on the unfinished text are dropped without an error.
+- Checks in the introduction now always count toward your progress.
+- Click a finished step on the path to open what you did, read only. A lesson opens as you read it, even if your settings changed since, and "Rewrite a part" is off for it. A quiz, gap drill or diagnostic opens with your answers, score and date. A simulation opens with its grading. Each has "Redo" to start again, and nothing is recorded until you hand in the new attempt.
+- Exercises open with a note and no "Mark as done", and "Back to the path" takes you back. Flashcards open in review mode. Pyxis writes no new cards, and a step is added only if you rate a card.
+- A quiz, drill, diagnostic or simulation that came with a shared plan has no answers, because plan files don't carry them. It says "The answers of this attempt weren't included in the shared plan." and offers "Redo" and "Back to the path".
+- A shared plan now keeps the lesson and introduction checks you answered. After you import it, those checks show as answered, and answering one again doesn't count twice. Plan files from before still import.
+- After a lesson, the path stays on that topic. It suggests exercises, then a quiz, and so on, until your mastery of the topic reaches 60% (or your mastery target, if that is lower) or you have done three graded activities on it. If you keep missing, the path moves on after the third.
+- When you read a topic, don't touch it for 7 days and your mastery is still below the target, the path suggests a review quiz before the next chapter. Cards due today and serious gaps still come first.
 
 #### Ask
 
 - The Chats drawer has a search box. It looks in chat titles and message text, ignoring case and accents, and every word has to appear in the same text, in any order. A match in a message shows a short snippet under the title with the match in bold.
 - Search skips what you never see: follow-up suggestions, check blocks and [P1] markers. Esc clears the box before it closes the drawer.
 - The menu of each chat has "Export as Markdown" and "Export as PDF". The file has the chat title, then every message in order with who wrote it. Each answer ends with its sources, and a stopped reply is marked as stopped. Photos are numbered, not named, because Pyxis does not keep their file names. Labels follow the interface language.
+- Exporting a chat that started from a passage or an answer now includes that context under the title.
 - On a slow computer, the follow-up suggestions after a reply could end up below the visible area, and the page stopped following the chat for good. Now the newest content stays in view. Scrolling up to read an earlier message still stops the page from jumping.
-- When the engine fails, Ask says why instead of "Something went wrong": you are signed out, the usage limit is reached, the engine is not available or it returned an error. "Details" shows the engine's own text. Lessons, quizzes, cards, grading and plans give the same messages.
 - Follow-up suggestions keep their first characters. "3D integrals" no longer loses its "3".
-- "Try again" keeps your choice of "Answer from general knowledge". Renaming a chat no longer moves it to the top of the list, and pressing Enter in the rename box saves once.
-- Exporting a chat started from a passage or an answer includes that context under the title.
-- Photos go only to engines that can read them. On Cursor Agent and Antigravity, which cannot, Ask reads a photo as text, and the automatic choice never gives them the image task.
+- "Try again" keeps your choice of "Answer from general knowledge".
+- Renaming a chat no longer moves it to the top of the list, and pressing Enter in the rename box saves once.
 
 #### Sources
 
@@ -57,6 +82,7 @@ Each release lists what changed for students, in English and Italian. The GitHub
 
 #### App
 
+- The installers are smaller. On Linux the AppImage goes from 528 MB to 180 MB and the .deb from 372 MB to 141 MB, measured against the 0.3.0 development build. The macOS and Windows installers also drop files Pyxis never uses.
 - Pyxis has a menu on Windows, macOS and Linux, in Italian or English. It follows the interface language and changes when you change it in Settings. On Windows and Linux the menu bar stays hidden until you press Alt. On macOS, Settings is in the app menu.
 - File has "New exam" (Ctrl or Cmd+N), "New chat" (Ctrl or Cmd+Shift+N) and, on Windows and Linux, "Settings" (Ctrl+,). Go has "Ask", "Exams", "Library" and "Flashcards" (Ctrl or Cmd+1 to 4), and "Back" (Alt+Left, or Cmd+[ on macOS). View has "Zoom in", "Zoom out" and "Actual size".
 - Help has "Keyboard shortcuts" (Ctrl or Cmd+/), "Check for updates", "Report a problem" and "About". "Check for updates" opens Settings, under Updates, and runs the check. "Report a problem" opens the GitHub issue form.
@@ -69,31 +95,49 @@ Each release lists what changed for students, in English and Italian. The GitHub
 - Pyxis downloads the installer for your computer from GitHub and checks its size and checksum against the release before it uses it. You see a progress bar and "Cancel download". If the check fails, Pyxis deletes the file, says why, and offers "Try again" and "Open release page".
 - This check catches a damaged download. It does not replace a signature: the checksum comes from the same GitHub release, and the installers are not signed with a developer certificate.
 - On macOS, Pyxis opens the disk image in Finder. You quit Pyxis ("Quit Pyxis"), drag PoliTost Pyxis into Applications, choose Replace and open it again. "Open the disk image again" opens it once more if you closed it.
-- On Windows, "Close Pyxis and install" closes Pyxis and runs the installer.
+- On Windows, "Close Pyxis and install" closes Pyxis first and starts the installer once Pyxis has quit, so the installer never finds Pyxis still running. Pressing the button twice can't start two installers.
 - On Linux with an AppImage, Pyxis replaces the file in place and offers "Restart Pyxis". If it can't write to that folder, it opens the new file's folder and you move it over the old one.
 - On Linux with a .deb package, Pyxis only opens the folder with the downloaded file, and you open it with your software installer. Windows and Linux on Arm have no installer, so Pyxis sends you to the release page.
+- If Windows can't clear the download folder, Pyxis logs it and shows the update as failed. It no longer stays stuck while downloading.
+- "Check for updates" in Settings and in the Help menu now asks GitHub again instead of showing an earlier answer. Pressing it again within a minute shows the last answer.
 - Pyxis waits if a backup, restore or move is running. If background tasks are running, it asks "Close Pyxis with tasks running?" first. The tasks stop, and you can resume them when Pyxis opens again.
 - Pyxis now backs up your workspace on its own, at most once a day and only while Pyxis is open. It writes a ZIP to a "Pyxis backups" folder in Documents and keeps the 3 newest copies. You keep studying while it runs. "Restore" accepts these backups like any other.
 - Settings, under Data, has a new "Automatic backups" section. It is on by default. It has the "Back up automatically" switch, "Change folder", "Open folder", the time and size of the last backup, and "Back up now", which saves to the same folder. "Change folder" refuses a folder inside your workspace or Pyxis's own data, because a backup there would be lost with it, and a folder Pyxis can't write to.
 - When an automatic backup fails, a notice appears in the corner with the reason and a "Backup settings" button. The reasons are a folder that isn't there, such as an unplugged drive, no permission, a full disk, too many files, and a workspace over the 2 GB limit of a backup. A notice you dismiss stays away for the session. A workspace that is too large is reported once, not on every launch, and Pyxis tries again each day.
-- "Delete all data" does not delete automatic backups. They stay in the backup folder shown under Data, and the warning says so. Delete them there if you want them gone.
+- On the first launch, the first automatic backup now waits until Pyxis has finished starting. Before, it could fail and then wait an hour to try again.
+- A backup no longer starts while Pyxis is closing. Setting the clock back can't delete the backup that was just made. If you change the backup folder during a backup, the new folder starts its own first backup right away.
+- "Delete all data" does not delete automatic backups. They stay in the backup folder shown under Data. The hint under the button says so, and so does the line that appears when you press it. Delete them there if you want them gone.
 
 ### Italiano
+
+Pyxis 0.3.1 è la prima versione stabile della serie 0.3. La 0.3.0 era solo una versione di sviluppo e non è mai uscita come versione finale, quindi questa voce raccoglie tutte le novità dalla 0.2.3, più le correzioni emerse dai test. La prima volta che apri la 0.3.1, Pyxis aggiorna il tuo spazio di lavoro, e dopo Pyxis 0.2.3 o precedenti non riescono più ad aprirlo. Se pensi di voler tornare indietro, fai prima una copia di sicurezza da Impostazioni, alla voce Dati.
 
 #### Configurazione
 
 - In Impostazioni, sotto Profilo e interessi, c'è un nuovo pulsante "Rifai la configurazione". Riapre le schermate iniziali con nome, livello, anno, scuola, corso e scelta sulle segnalazioni dei crash già inseriti. Le scelte sui motori restano invariate.
 - Quando rifai la configurazione non c'è Salta. Puoi annullare dalla prima schermata o tornare indietro da quella del profilo, e non viene salvato nulla finché non arrivi in fondo. L'ultima schermata dice "Configurazione aggiornata" e "Torna alle impostazioni" ti riporta a Profilo e interessi.
-- Annullare un accesso prima che si apra la sua pagina non mostra più "Accesso non completato", e se annulli e riprovi il nuovo accesso va avanti.
-- Antigravity non ha un comando per uscire, quindi Impostazioni, alla voce Motori AI, non offre più "Esci dall'account" per lui e dice di uscire da Antigravity stesso. "Testa" non invia più un livello di ragionamento che il modello non elenca. I pulsanti "Testa" e "Accedi" di ogni motore ora ne dicono il nome agli screen reader.
+- Su macOS e Windows, Impostazioni mostrava Antigravity come "Accesso richiesto" anche quando avevi già fatto l'accesso, e rifarlo da Pyxis non finiva mai. Ora Pyxis chiede ad Antigravity stesso se hai fatto l'accesso.
+- Annullare un accesso prima che si apra la sua pagina non mostra più "Accesso non completato". Se annulli e riprovi, il nuovo accesso va avanti.
+
+#### Motori
+
+- Pyxis ora imposta un livello di ragionamento per ogni funzione, anche quando il modello l'hai scelto tu. La chat e le mappe usano il livello basso, lezioni, quiz, schede e foto il medio, piani e correzioni l'alto. Un modello che non offre quel livello riceve il più vicino tra i suoi, e un modello senza livelli resta com'è.
+- In Impostazioni, alla voce Motori AI, "Opzioni avanzate" ha un selettore "Livello di ragionamento" per ogni funzione. Parte da "Automatico" con il livello scelto da Pyxis, per esempio "Automatico · Medio". La tua scelta resta quando cambi modello. Se il nuovo modello non la offre, la riga lo dice e Pyxis usa il livello automatico. "Torna alla scelta automatica" cancella le tue scelte.
+- Quando un motore non risponde, Pyxis ne dice il motivo invece di "Qualcosa non ha funzionato": hai chiuso la sessione, hai raggiunto il limite d'uso, il motore non è disponibile o ha restituito un errore. "Dettagli" mostra il testo del motore. Chiedi, lezioni, quiz, schede, correzioni e piani danno gli stessi messaggi.
+- Pyxis non invia mai foto a Cursor Agent o ad Antigravity, perché non leggono le immagini. Chiedi legge invece il testo della foto sul tuo computer, e la scelta automatica non assegna loro l'attività sulle foto.
+- Antigravity non ha un comando per uscire, quindi Impostazioni, alla voce Motori AI, non offre più "Esci dall'account" per lui. Ti dice di uscire da Antigravity stesso.
+- "Testa" non invia più un livello di ragionamento che il modello non elenca.
+- I pulsanti "Testa" e "Accedi" di ogni motore ora ne dicono il nome, così gli screen reader li distinguono.
 
 #### Esami
 
+- La scheda dei piani ha un'unica barra degli strumenti, come la scheda Fonti. Ha la casella di ricerca, il filtro per materia, il menu "Importa" e "Nuovo piano", l'unico pulsante pieno. "Importa" apre "Da un file .pyxis" e "Da un link". Se non hai ancora piani, vedi "Nuovo piano" e lo stesso menu.
+- "Nessun piano ancora" non lampeggia più mentre i piani si caricano.
 - Un'importazione di piani non riuscita non lascia più il suo errore visibile nelle schede Fonti e Flashcard.
 - "Aggiungi al calendario" salva un file del calendario (.ics) per un esame alla volta. Usa il pulsante del calendario nell'intestazione di un piano, oppure lo stesso pulsante in "Impostazioni del piano". La pagina Esami non ha un pulsante che salvi tutti gli esami insieme.
 - Ogni esame è un evento di un giorno intero con il titolo "Esame:" seguito dal titolo del piano, o "Exam:" se l'interfaccia è in inglese. La descrizione indica la materia, se il piano ne ha una. Ogni evento ha un promemoria alle 9:00 del giorno prima.
 - Pyxis dà a ogni esame sempre lo stesso identificativo, quindi importare di nuovo il file dovrebbe aggiornare gli eventi invece di duplicarli.
-- Gli esami senza data e quelli già passati non compaiono. Se non c'è nulla da salvare, il pulsante è spento e ti dice perché. In "Impostazioni del piano" è spento anche finché hai cambiato la data senza salvarla ("Salva prima la nuova data.").
+- Un piano senza data, o con l'esame già passato, non ha il pulsante del calendario nell'intestazione. In "Impostazioni del piano" il pulsante è spento e ti dice perché. È spento anche finché hai cambiato la data senza salvarla ("Salva prima la nuova data.").
 
 #### Flashcard
 
@@ -104,23 +148,34 @@ Each release lists what changed for students, in English and Italian. The GitHub
 - Le schede con formule e le cloze si vedono come nel ripasso. Una cloze mostra la frase intera con le parole nascoste in grassetto. Ogni scheda dice se è nuova, in scadenza o quando è il prossimo ripasso, e ha l'etichetta Sospesa quando è in pausa.
 - Ogni scheda ha "Modifica", "Sospendi" o "Riprendi", ed "Elimina". Modificare una scheda non cambia il calendario dei ripassi.
 - Eliminare una scheda che hai scritto tu chiede conferma ed è definitivo. Eliminare una scheda preparata da Pyxis la toglie dai tuoi mazzi e dai ripassi, e puoi rimetterla da "Rimosse" con "Ripristina".
+- Pyxis ora scrive un solo fatto, una definizione, una formula o un'idea su ogni scheda. Una scheda non ha più un intero esercizio davanti e la soluzione svolta dietro. Le schede scritte prima da Pyxis restano come sono.
+- Gli esercizi non diventano più flashcard. Le schede di esercizi della 0.2.3 passano in "Rimosse" una sola volta, la prima volta che apri la 0.3.1. I tuoi ripassi restano. Rimettile a posto con "Ripristina". Una scheda ripristinata resta ripristinata, e le schede che hai scritto o modificato tu non vengono spostate.
+- I pulsanti di valutazione nel ripasso sono "Da rivedere", "Difficile", "Bene" e "Facile". Non mostrano il numero del tasto né il tempo di attesa. I tasti da 1 a 4 valutano ancora, e il riepilogo del ripasso usa le stesse parole.
 
 #### Studiare
 
 - Sotto ogni esercizio, "Com'è andata?" mostra due pulsanti, "Ce l'ho fatta" e "Non ce l'ho fatta". Valutare è facoltativo e conta per i tuoi progressi come mezza risposta di un quiz. "Segna come fatto" funziona anche senza valutazione.
-- Puoi cambiare la valutazione. Una valutazione data nelle ultime 6 ore resta scelta quando riapri la pagina. Dopo, l'esercizio riparte senza valutazione e una nuova valutazione conta come nuova.
+- Puoi cambiare la valutazione. Una valutazione data nelle ultime 6 ore resta scelta quando esci dalla pagina e ci torni. Dopo, l'esercizio riparte senza valutazione e una nuova valutazione conta come nuova.
+- Le risposte della diagnosi, delle verifiche nelle lezioni e delle domande di riepilogo ora sono in ordine casuale, quindi la risposta giusta non sta sempre nello stesso posto. Anche ogni nuovo quiz mescola le sue risposte, e un tentativo mantiene il suo ordine. Le risposte che avevi dato prima restano sull'opzione che avevi scelto.
+- Puoi rispondere a una verifica della lezione mentre la lezione è ancora in scrittura. Vedi subito il risultato, e la risposta conta quando la lezione è salvata. Se premi "Interrompi" o riscrivi la lezione, le risposte date sul testo incompleto vengono scartate senza errori.
+- Le verifiche dell'introduzione ora contano sempre per i tuoi progressi.
+- Clicca un passo finito del percorso per aprire quello che hai fatto, in sola lettura. Una lezione si apre come l'hai letta, anche se nel frattempo hai cambiato le impostazioni, e "Riscrivi una parte" è spento. Un quiz, un'esercitazione sulle lacune o una diagnosi si apre con le tue risposte, il punteggio e la data. Una simulazione si apre con la sua correzione. Ognuno ha "Rifai" per ricominciare, e non viene registrato nulla finché non consegni il nuovo tentativo.
+- Gli esercizi si aprono con una nota e senza "Segna come fatto", e "Torna al percorso" ti riporta indietro. Le flashcard si aprono in modalità ripasso. Pyxis non scrive schede nuove, e un passo viene aggiunto solo se valuti una scheda.
+- Un quiz, un'esercitazione, una diagnosi o una simulazione arrivati con un piano condiviso non hanno le risposte, perché i file dei piani non le includono. Compare "Le risposte di questo tentativo non erano incluse nel piano condiviso." con "Rifai" e "Torna al percorso".
+- Un piano condiviso ora conserva le verifiche delle lezioni e dell'introduzione a cui hai risposto. Dopo l'importazione risultano già fatte, e rispondere di nuovo non conta due volte. I file di piano di prima si importano ancora.
+- Dopo una lezione, il percorso resta su quell'argomento. Propone esercizi, poi un quiz, e così via, finché la tua padronanza dell'argomento arriva al 60% (o al tuo obiettivo di padronanza, se più basso) o hai svolto tre attività corrette su di esso. Se continui a sbagliare, il percorso va avanti dopo la terza.
+- Se hai letto un argomento, non lo tocchi per 7 giorni e la padronanza è ancora sotto l'obiettivo, il percorso propone un quiz di ripasso prima del capitolo successivo. Le schede in scadenza oggi e le lacune serie restano prima.
 
 #### Chiedi
 
 - Nell'elenco Chat c'è una casella di ricerca. Cerca nei titoli delle chat e nel testo dei messaggi, senza badare a maiuscole e accenti, e ogni parola deve comparire nello stesso testo, in qualsiasi ordine. Se trova un messaggio, mostra sotto il titolo un breve brano con il testo trovato in grassetto.
 - La ricerca salta quello che non vedi mai: i suggerimenti di approfondimento, i blocchi di verifica e i segni come [P1]. Esc svuota la casella prima di chiudere l'elenco.
 - Il menu di ogni chat ha "Esporta come Markdown" e "Esporta come PDF". Il file ha il titolo della chat e poi ogni messaggio in ordine, con chi l'ha scritto. Ogni risposta finisce con le sue fonti e una risposta interrotta è segnata come tale. Le foto sono numerate, non hanno il nome, perché Pyxis non conserva i nomi dei file. Le etichette seguono la lingua dell'interfaccia.
+- Se esporti una chat nata da un brano o da una risposta, il file ora include quel contesto sotto il titolo.
 - Su un computer lento, i suggerimenti di approfondimento dopo una risposta potevano finire sotto la parte visibile, e la pagina smetteva di seguire la chat per sempre. Ora il contenuto più recente resta in vista. Se scorri in su per leggere un messaggio precedente, la pagina continua a non saltare.
-- Quando il motore non risponde, Chiedi ne dice il motivo invece di "Qualcosa non ha funzionato": hai chiuso la sessione, hai raggiunto il limite d'uso, il motore non è disponibile o ha restituito un errore. "Dettagli" mostra il testo del motore. Lezioni, quiz, schede, correzioni e piani danno gli stessi messaggi.
 - I suggerimenti di approfondimento conservano i primi caratteri. "3D integrals" non perde più il "3".
-- "Riprova" mantiene la tua scelta di "Rispondi con le conoscenze generali". Rinominare una chat non la sposta più in cima all'elenco, e premere Invio nella casella di ridenominazione salva una volta sola.
-- L'esportazione di una chat nata da un brano o da una risposta include quel contesto sotto il titolo.
-- Le foto vanno solo ai motori che le leggono. Con Cursor Agent e Antigravity, che non possono, Chiedi legge la foto come testo, e la scelta automatica non assegna loro l'attività sulle immagini.
+- "Riprova" mantiene la tua scelta di "Rispondi con le conoscenze generali".
+- Rinominare una chat non la sposta più in cima all'elenco, e premere Invio nella casella di ridenominazione salva una volta sola.
 
 #### Fonti
 
@@ -131,6 +186,7 @@ Each release lists what changed for students, in English and Italian. The GitHub
 
 #### App
 
+- I programmi di installazione sono più piccoli. Su Linux l'AppImage passa da 528 MB a 180 MB e il pacchetto .deb da 372 MB a 141 MB, rispetto alla versione di sviluppo 0.3.0. Anche quelli per macOS e Windows lasciano fuori i file che Pyxis non usa mai.
 - Pyxis ha un menu su Windows, macOS e Linux, in italiano o in inglese. Segue la lingua dell'interfaccia e cambia quando la cambi in Impostazioni. Su Windows e Linux la barra dei menu resta nascosta finché non premi Alt. Su macOS, Impostazioni è nel menu dell'app.
 - File ha "Nuovo esame" (Ctrl o Cmd+N), "Nuova chat" (Ctrl o Cmd+Maiusc+N) e, su Windows e Linux, "Impostazioni" (Ctrl+,). Vai ha "Chiedi", "Esami", "Libreria" e "Flashcard" (Ctrl o Cmd+da 1 a 4), e "Indietro" (Alt+Freccia sinistra, o Cmd+[ su macOS). Vista ha "Ingrandisci", "Riduci" e "Dimensioni reali".
 - Aiuto ha "Scorciatoie da tastiera" (Ctrl o Cmd+/), "Cerca aggiornamenti", "Segnala un problema" e "Informazioni". "Cerca aggiornamenti" apre Impostazioni, alla voce Aggiornamenti, e controlla subito. "Segnala un problema" apre il modulo delle segnalazioni su GitHub.
@@ -143,14 +199,18 @@ Each release lists what changed for students, in English and Italian. The GitHub
 - Pyxis scarica da GitHub il programma di installazione per il tuo computer e ne controlla dimensione e checksum con la versione prima di usarlo. Vedi una barra di avanzamento e "Annulla il download". Se il controllo non riesce, Pyxis elimina il file, dice perché e offre "Riprova" e "Apri la pagina della versione".
 - Questo controllo trova un download danneggiato. Non sostituisce una firma: il checksum arriva dalla stessa versione su GitHub, e i programmi di installazione non sono firmati con un certificato di sviluppatore.
 - Su macOS, Pyxis apre l'immagine disco nel Finder. Esci da Pyxis ("Esci da Pyxis"), trascina PoliTost Pyxis in Applicazioni, scegli Sostituisci e riaprilo. "Riapri l’immagine disco" la apre di nuovo se l'hai chiusa.
-- Su Windows, "Chiudi Pyxis e installa" chiude Pyxis e fa partire il programma di installazione.
+- Su Windows, "Chiudi Pyxis e installa" prima chiude Pyxis e fa partire il programma di installazione quando Pyxis è uscito, così non lo trova mai ancora in esecuzione. Premere il pulsante due volte non avvia due installazioni.
 - Su Linux con AppImage, Pyxis sostituisce il file al suo posto e offre "Riavvia Pyxis". Se non può scrivere in quella cartella, apre la cartella del nuovo file e lo sposti tu al posto del vecchio.
 - Su Linux con pacchetto .deb, Pyxis si limita ad aprire la cartella con il file scaricato, e lo apri tu con il programma che installa il software. Windows e Linux su Arm non hanno un programma di installazione, quindi Pyxis ti manda alla pagina della versione.
+- Se Windows non riesce a svuotare la cartella dei download, Pyxis lo registra e mostra l'aggiornamento come non riuscito. Non resta più bloccato nel download.
+- "Controlla aggiornamenti" in Impostazioni e "Cerca aggiornamenti" nel menu Aiuto ora interrogano di nuovo GitHub invece di mostrare una risposta precedente. Se lo premi di nuovo entro un minuto, vedi l'ultima risposta.
 - Pyxis aspetta se è in corso una copia, un ripristino o uno spostamento. Se ci sono attività in background, prima chiede "Chiudere Pyxis con attività in corso?". Le attività si fermano e potrai riprenderle quando riapri Pyxis.
 - Pyxis ora fa da solo la copia del tuo spazio di lavoro, al massimo una volta al giorno e solo mentre è aperto. Scrive uno ZIP in una cartella "Pyxis backups" dentro Documenti e tiene le 3 copie più recenti. Puoi continuare a studiare mentre lavora. "Ripristina" accetta queste copie come qualsiasi altra.
 - In Impostazioni, alla voce Dati, c'è una nuova sezione "Copie automatiche". È attiva in modo predefinito. Ha l'interruttore "Copia di sicurezza automatica", "Cambia cartella", "Apri cartella", l'ora e la dimensione dell'ultima copia e "Copia ora", che salva nella stessa cartella. "Cambia cartella" rifiuta una cartella dentro il tuo spazio di lavoro o dentro i dati di Pyxis, perché una copia lì andrebbe persa insieme a loro, e una cartella in cui Pyxis non può scrivere.
 - Quando una copia automatica non riesce, in un angolo compare un avviso con il motivo e un pulsante "Impostazioni copie". I motivi sono: la cartella non c'è, per esempio un disco scollegato, mancano i permessi, il disco è pieno, ci sono troppi file, oppure lo spazio di lavoro supera il limite di 2 GB di una copia. Un avviso che chiudi non torna fino alla prossima sessione. Uno spazio di lavoro troppo grande viene segnalato una sola volta, non a ogni avvio, e Pyxis riprova ogni giorno.
-- "Cancella tutti i dati" non cancella le copie automatiche. Restano nella cartella indicata sotto Dati, e l'avviso lo dice. Cancellale da lì se non le vuoi più.
+- Al primo avvio, la prima copia automatica ora aspetta che Pyxis abbia finito di avviarsi. Prima poteva non riuscire e poi aspettare un'ora prima di riprovare.
+- Una copia non parte più mentre Pyxis si sta chiudendo. Spostare indietro l'orologio non può cancellare la copia appena fatta. Se cambi cartella durante una copia, la nuova cartella fa subito la sua prima copia.
+- "Cancella tutti i dati" non cancella le copie automatiche. Restano nella cartella indicata sotto Dati. Lo dicono il testo sotto il pulsante e la riga che compare quando lo premi. Cancellale da lì se non le vuoi più.
 
 ## 0.2.3
 
