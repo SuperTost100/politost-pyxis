@@ -276,7 +276,7 @@ const bridge: PyxisBridge = {
   restoreWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceRestore),
   workspacePath: () => ipcRenderer.invoke(mainChannels.workspacePath),
   moveWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceMove),
-  wipeWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceWipe),
+  wipeWorkspace: (options) => ipcRenderer.invoke(mainChannels.workspaceWipe, options),
   autoBackups: {
     status: () => ipcRenderer.invoke(mainChannels.autoBackupStatus),
     setEnabled: (enabled: boolean) =>

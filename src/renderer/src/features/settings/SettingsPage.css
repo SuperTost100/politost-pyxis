@@ -91,6 +91,17 @@
   align-items: flex-start;
   gap: var(--space-4);
 }
+.px-settings-wipe-backups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 100%;
+}
+/* A backup folder path has no spaces to break at. */
+.px-settings-wipe-backups p {
+  overflow-wrap: anywhere;
+  margin: 0;
+}
 @media (max-width: 640px) {
   .px-settings-current {
     max-width: 120px;

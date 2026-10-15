@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { quitPyxis } from "./app-exit";
+import { animationsSettled } from "./settled";
 
 const automatic = /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip$/;
 const HOUR = 60 * 60 * 1000;
@@ -393,6 +394,123 @@ test("a check that finds core still starting waits for it instead of failing", a
     expect(
       (await page.evaluate(() => window.pyxis.autoBackups.status())).notice,
     ).toBeNull();
+    await quitPyxis(app);
+    app = undefined;
+  } finally {
+    await closeAfterFailure(app);
+    removeTestFolder(root);
+  }
+});
+
+test("Delete all data deletes the automatic backups when ticked, keeps them when not, and says when it can't", async () => {
+  test.setTimeout(120_000);
+  const root = mkdtempSync(join(tmpdir(), "pyxis-auto-backup-wipe-"));
+  const userData = join(root, "userData");
+  const documents = join(root, "Documents");
+  mkdirSync(documents);
+  const folder = join(documents, "Pyxis backups");
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launch({
+      PYXIS_USER_DATA: userData,
+      PYXIS_E2E_DOCUMENTS: documents,
+    });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await expect
+      .poll(() => backupsIn(folder), { timeout: 30_000 })
+      .toHaveLength(1);
+    writeFileSync(join(folder, "notes.txt"), "mine");
+    writeFileSync(join(folder, "pyxis-backup.zip"), "a manual backup");
+
+    // Ticked by default: only Pyxis's own backups go.
+    await page.evaluate(() => {
+      location.hash = "/settings/data";
+    });
+    await page
+      .getByRole("button", { name: "Cancella tutti i dati", exact: true })
+      .click();
+    const tick = page.getByRole("checkbox", {
+      name: "Cancella anche le copie automatiche",
+    });
+    await expect(tick).toBeChecked();
+    await expect(
+      page.getByText(`Pyxis cancella solo i suoi file di copia in ${folder}.`, {
+        exact: true,
+      }),
+    ).toBeVisible();
+    const axe = await new AxeBuilder({ page })
+      .setLegacyMode()
+      .include(".px-settings-danger")
+      .analyze();
+    expect(axe.violations).toEqual([]);
+    mkdirSync(".shots", { recursive: true });
+    await page
+      .locator(".px-settings-danger")
+      .screenshot({ path: ".shots/wipe-backups.png" });
+    await tick.uncheck();
+    await expect(
+      page.getByText(/^Le copie automatiche restano nella tua cartella/),
+    ).toBeVisible();
+    await tick.check();
+    await page
+      .getByRole("button", { name: "Cancella per sempre", exact: true })
+      .click();
+    await expect(page.getByRole("button", { name: "Salta" })).toBeVisible();
+    expect(backupsIn(folder)).toEqual([]);
+    expect(readdirSync(folder).sort()).toEqual([
+      "notes.txt",
+      "pyxis-backup.zip",
+    ]);
+
+    // Not ticked: the backups stay.
+    const kept = "pyxis-auto-backup-2020-01-01-090000.zip";
+    writeFileSync(join(folder, kept), "old");
+    expect(
+      await page.evaluate(() => window.pyxis.wipeWorkspace({ backups: false })),
+    ).toBe("wiped");
+    expect(backupsIn(folder)).toEqual([kept]);
+
+    // A chosen folder that isn't there: the data goes, and Pyxis says the backups may still be there.
+    const unplugged = join(root, "USB", "Backups");
+    const stateFile = join(userData, "backups.json");
+    writeFileSync(
+      stateFile,
+      JSON.stringify({
+        ...JSON.parse(readFileSync(stateFile, "utf8")),
+        folder: unplugged,
+      }),
+    );
+    await page.reload();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.evaluate(() => {
+      location.hash = "/settings/data";
+    });
+    await page
+      .getByRole("button", { name: "Cancella tutti i dati", exact: true })
+      .click();
+    await expect(
+      page.getByText(
+        `Pyxis cancella solo i suoi file di copia in ${unplugged}.`,
+      ),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Cancella per sempre", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", {
+      name: "I tuoi dati sono stati cancellati",
+    });
+    await expect(dialog).toContainText(
+      `Pyxis non è riuscito a cancellare le copie automatiche in ${unplugged}.`,
+    );
+    await animationsSettled(page);
+    await dialog.getByRole("button", { name: "OK" }).click();
+    await expect(page.getByRole("button", { name: "Salta" })).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.pyxis.invoke("profile.get", {})))
+      .toBeNull();
     await quitPyxis(app);
     app = undefined;
   } finally {

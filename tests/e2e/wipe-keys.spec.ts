@@ -20,7 +20,7 @@ test("SET-05 deleting all data removes saved engine keys across a restart", asyn
     // A synthetic credential is stored locally; this test makes no provider request.
     await page.evaluate(() => window.pyxis.keys.set("anthropic", "fixture-only-never-a-real-key"));
     expect((await page.evaluate(() => window.pyxis.keys.status())).configured).toContain("anthropic");
-    expect(await page.evaluate(() => window.pyxis.wipeWorkspace())).toBe("wiped");
+    expect(await page.evaluate(() => window.pyxis.wipeWorkspace({ backups: false }))).toBe("wiped");
     expect(JSON.parse(readFileSync(join(userData, "keys.json"), "utf8"))).toEqual({});
     expect((await page.evaluate(() => window.pyxis.keys.status())).configured).toEqual([]);
     await expect.poll(() => page.evaluate(() => window.pyxis.invoke("profile.get", {}))).toBeNull();
