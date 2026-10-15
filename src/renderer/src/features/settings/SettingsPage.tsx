@@ -2,7 +2,7 @@ import { AboutPanel } from "./AboutPanel";
 import { UpdatesPanel } from "./UpdatesPanel";
 import { AutoBackupsSection } from "./AutoBackups";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "antd";
+import { App, Button, Checkbox, Input } from "antd";
 import {
   ArrowLeft,
   ChevronRight,
@@ -61,6 +61,8 @@ export function SettingsPage() {
   const [draftInterests, setDraftInterests] = useState<string | null>(null);
   const [dataNote, setDataNote] = useState<string | null>(null);
   const [wipeArmed, setWipeArmed] = useState(false);
+  const [wipeBackups, setWipeBackups] = useState(true);
+  const { modal } = App.useApp();
   const [restoreArmed, setRestoreArmed] = useState(false);
   const [moving, setMoving] = useState(false);
   const [archiving, setArchiving] = useState<"backup" | "restore" | null>(null);
@@ -68,6 +70,12 @@ export function SettingsPage() {
     queryKey: ["workspace-path"],
     queryFn: () => window.pyxis.workspacePath(),
   });
+  // The same query as the automatic backups section, which keeps it current.
+  const backupStatus = useQuery({
+    queryKey: ["auto-backups"],
+    queryFn: () => window.pyxis.autoBackups.status(),
+  });
+  const backupFolder = backupStatus.data?.folder;
   const usage = useQuery({
     queryKey: ["plan-usage"],
     queryFn: () => invoke("plans.usage", {}),
@@ -456,25 +464,44 @@ export function SettingsPage() {
         <div className="px-settings-danger">
           <p className="small ink-muted">{t("settings.wipeHint")}</p>
           {wipeArmed ? (
-            <p className="small ink-muted" role="alert">
-              {t("settings.wipeConfirmHint")}
-            </p>
+            <div className="px-settings-wipe-backups">
+              <Checkbox checked={wipeBackups} onChange={(event) => setWipeBackups(event.target.checked)}>
+                {t("settings.wipeBackups")}
+              </Checkbox>
+              <p className="small ink-muted" role="alert">
+                {wipeBackups
+                  ? backupFolder
+                    ? t("settings.wipeBackupsFolder", { folder: backupFolder })
+                    : null
+                  : t("settings.wipeConfirmHint")}
+              </p>
+            </div>
           ) : null}
           <Button
             disabled={moving}
             danger
             onClick={() => {
               if (!wipeArmed) {
+                setWipeBackups(true);
                 setWipeArmed(true);
                 return;
               }
               setDataNote(null);
               void window.pyxis
-                .wipeWorkspace()
-                .then(() => {
+                .wipeWorkspace({ backups: wipeBackups })
+                .then((result) => {
                   // The reload keeps sessionStorage, so clear drafts, board data and last paths of the deleted workspace first.
                   sessionStorage.clear();
-                  window.location.reload();
+                  if (result === "wiped") {
+                    window.location.reload();
+                    return;
+                  }
+                  // The reload lands on setup, so say what was left before it.
+                  modal.warning({
+                    title: t("settings.wipeBackupsLeftTitle"),
+                    content: t("settings.wipeBackupsLeft", { folder: backupFolder ?? "" }),
+                    afterClose: () => window.location.reload(),
+                  });
                 })
                 .catch((error: unknown) => {
                   setWipeArmed(false);

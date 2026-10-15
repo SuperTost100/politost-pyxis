@@ -657,4 +657,42 @@ describe("AutoBackups", () => {
     expect(backups.status()).toMatchObject({ last: null, notice: null });
     expect(existsSync(join(t.documents, "Pyxis backups"))).toBe(true);
   });
+  it("deletes its own backups and leftovers on request, and nothing else in the folder", async () => {
+    const t = setup();
+    expect(await t.backups.check()).toBe("saved");
+    const folder = join(t.documents, "Pyxis backups");
+    const leftover = join(folder, ".pyxis-backup-abc123");
+    mkdirSync(leftover);
+    writeFileSync(join(leftover, "pyxis.db"), "copy");
+    writeFileSync(join(folder, "notes.txt"), "mine");
+    writeFileSync(join(folder, "pyxis-auto-backup-old.zip"), "not ours");
+    mkdirSync(join(folder, autoBackupName(new Date(NOON - DAY))));
+    t.statuses.length = 0;
+    t.backups.deleteBackups();
+    expect(readdirSync(folder).sort()).toEqual([
+      "notes.txt",
+      autoBackupName(new Date(NOON - DAY)),
+      "pyxis-auto-backup-old.zip",
+    ]);
+    // The last result named a file that is gone. The day still counts, so no new backup starts right away.
+    expect(t.backups.status()).toMatchObject({
+      last: null,
+      notice: null,
+      lastSuccessAt: NOON,
+    });
+    expect(t.statuses).toHaveLength(1);
+    t.setNow(NOON + HOUR);
+    expect(await t.backups.check()).toBe("not-due");
+  });
+
+  it("has nothing to delete when the default folder was never made", () => {
+    const t = setup();
+    expect(() => t.backups.deleteBackups()).not.toThrow();
+    expect(existsSync(join(t.documents, "Pyxis backups"))).toBe(false);
+  });
+
+  it("says a chosen folder it cannot reach still holds backups", () => {
+    const t = setup({ folder: "/no/such/drive/Backups" });
+    expect(() => t.backups.deleteBackups()).toThrow("backup-folder-missing");
+  });
 });

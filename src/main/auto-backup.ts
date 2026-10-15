@@ -452,6 +452,27 @@ export class AutoBackups {
     return this.status();
   }
 
+  /**
+   * "Delete all data" with the backups ticked: removes every automatic backup and leftover temporary folder, with the
+   * same name checks as retention, so nothing else in the folder is touched. The last result named a file that is gone,
+   * so it is forgotten; the time of the last success stays, so a new backup does not start right away. Throws
+   * backup-folder-missing when a chosen folder can't be reached, because its backups may still be there.
+   */
+  deleteBackups(): void {
+    const state = this.state();
+    const folder = this.folder(state);
+    this.notice = null;
+    this.dismissed = null;
+    this.save({ ...state, last: null, toldTooLarge: false });
+    if (!existsSync(folder)) {
+      if (state.folder === null) return;
+      throw new Error("backup-folder-missing");
+    }
+    pruneAutoBackups(folder, 0);
+    // An infinite now makes every temporary folder count as stale. The caller holds the workspace, so none is in use.
+    removeStaleTemporaries(folder, Number.POSITIVE_INFINITY);
+  }
+
   /** Stops a running backup and waits for it, so a manual backup, restore, move or wipe can take the workspace. */
   async stop(): Promise<void> {
     const run = this.current;

@@ -1229,8 +1229,11 @@ function registerIpc(): void {
     requireMainSender(event, "main-untrusted-sender");
     return workspacePath;
   });
-  ipcMain.handle(mainChannels.workspaceWipe, async (event) => {
+  ipcMain.handle(mainChannels.workspaceWipe, async (event, options: unknown) => {
     requireMainSender(event, "workspace-untrusted-sender");
+    // Deleting backups needs an explicit true; anything else keeps them.
+    const deleteBackups =
+      typeof options === "object" && options !== null && (options as { backups?: unknown }).backups === true;
     const release = await takeWorkspace();
     try {
       await pauseCore();
@@ -1242,7 +1245,18 @@ function registerIpc(): void {
         writeKeyStore(userFile("keys.json"), {});
         keysCleared = true;
         wipeWorkspace(workspacePath);
-        return "wiped" as const;
+        if (!deleteBackups) return "wiped" as const;
+        try {
+          if (!autoBackups) throw new Error("backup-failed");
+          // An e2e run without a test Documents folder must never reach the real one.
+          if (documentsFolder() === null && autoBackups.status().isDefaultFolder) return "wiped" as const;
+          autoBackups.deleteBackups();
+          return "wiped" as const;
+        } catch (error) {
+          // The study data is already gone. The backups failing is reported, not thrown, so the wipe still counts.
+          console.error("pyxis: automatic backups were not deleted", error);
+          return "wiped-backups-left" as const;
+        }
       } catch (err) {
         try {
           recoverInterruptedWipe(workspacePath);

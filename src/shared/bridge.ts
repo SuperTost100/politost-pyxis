@@ -96,7 +96,8 @@ export interface PyxisBridge {
     | { status: "cancelled" }
     | { status: "moved"; path: string; cleanupPending: boolean }
   >;
-  wipeWorkspace(): Promise<"wiped">;
+  /** With backups, also deletes the automatic backups. "wiped-backups-left": the data is gone, the backups could not be. */
+  wipeWorkspace(options: { backups: boolean }): Promise<"wiped" | "wiped-backups-left">;
   autoBackups: {
     status(): Promise<AutoBackupStatus>;
     setEnabled(enabled: boolean): Promise<AutoBackupStatus>;
