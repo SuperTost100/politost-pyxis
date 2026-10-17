@@ -13,6 +13,7 @@ import { pyxisTheme } from "../design-system/theme/pyxis-theme";
 import { i18n, type Locale } from "../locales/i18n";
 import { CoreNotice } from "./CoreNotice";
 import { MenuCommands } from "./MenuCommands";
+import { OpenedPlans } from "./OpenedPlans";
 import { SourceViewer } from "../components/SourceViewer";
 import { JobsSync } from "../features/jobs/queries";
 import { AppStateContext } from "./app-state";
@@ -118,6 +119,7 @@ function StudyApp() {
             </div>
             <CoreNotice />
             <MenuCommands />
+            <OpenedPlans />
             <RouterProvider router={router} />
             <SourceViewer />
           </AntApp>

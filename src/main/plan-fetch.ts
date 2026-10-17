@@ -1,5 +1,5 @@
 import { blockedAddress, fetchPublicResponse } from "../core/sources/link";
-import { httpPlanUrl } from "../shared/plan-file";
+import { directPlanUrl, httpPlanUrl } from "../shared/plan-file";
 
 // One schema-supported embedded 200 MiB source plus base64 and plan content.
 export const MAX_LINKED_PLAN_BYTES = 320 * 1024 * 1024;
@@ -8,7 +8,8 @@ export async function fetchPlanText(
   raw: string,
   request = fetchPublicResponse,
 ): Promise<string> {
-  let current = httpPlanUrl(raw);
+  // A share link from Google Drive, Dropbox or OneDrive is rewritten once; the loop checks it and every redirect.
+  let current = directPlanUrl(httpPlanUrl(raw));
   const signal = AbortSignal.timeout(30_000);
   for (let hop = 0; hop <= 5; hop++) {
     if (blockedAddress(new URL(current).hostname)) throw new Error("plan-url");

@@ -3,6 +3,7 @@ import {
   removePlanSource,
   readPlanItem,
   openPlanQuiz,
+  planImportedFrom,
 } from "./views";
 import { savePlanSettings } from "./settings";
 import {
@@ -33,14 +34,15 @@ import {
 } from "./create";
 import { proposeModules, proposeTree } from "./guided";
 import { withLibraryOriginals } from "./libraryOriginals";
-import { exportPlan, importPlan } from "./file";
+import { exportPlan, importableWithout, importPlan, PlanFileError } from "./file";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { readProfile } from "../profile/profile";
 import { planMastery, planSeries } from "./progress";
 import { planDiskUsage } from "../share/usage";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
-import type { PlanFile } from "../../shared/plan-file";
+import type { PlanFile, PlanFilePart } from "../../shared/plan-file";
+import { IpcError } from "../../shared/ipc";
 
 export function planHandlers(
   db: Database.Database,
@@ -214,14 +216,22 @@ export function planHandlers(
         workspace,
       });
     },
-    import(input: PlanFile & { libraryFor?: Record<string, string> }) {
-      const planId = importPlan(
-        db,
-        withLibraryOriginals(db, workspace, input),
-        Date.now(),
-        workspace,
-      );
+    import(input: PlanFile & { libraryFor?: Record<string, string>; without?: PlanFilePart[] }) {
+      const { without, ...request } = input;
+      const file = withLibraryOriginals(db, workspace, request);
+      let planId: string;
+      try {
+        planId = importPlan(db, file, Date.now(), workspace, { without });
+      } catch (error) {
+        // When only the exercises or the maps are at fault, say which parts the plan can go without.
+        const left = importableWithout(db, file, workspace, error);
+        if (!left || !(error instanceof PlanFileError)) throw error;
+        throw new IpcError("plan-file", error.messageKey, { without: left.join(",") }, error.reason);
+      }
       return recheck(planId, { planId });
+    },
+    importedFile(input: { id: string; createdAt: number }) {
+      return planImportedFrom(db, input);
     },
     mastery(input: { planId: string }) {
       return planMastery(db, input.planId);
