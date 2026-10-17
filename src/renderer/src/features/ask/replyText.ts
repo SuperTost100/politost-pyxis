@@ -1,7 +1,7 @@
 import { stripCheckFences } from "../../../../shared/math-check";
 import {
   mapFigureBlocks,
-  stripPassageRefs,
+  stripPassageRefsOutsideCode,
 } from "../../../../shared/smart-text";
 
 /**
@@ -12,7 +12,7 @@ export function replyPlainText(body: string): string {
   const text = mapFigureBlocks(body, (figure) =>
     figure ? `*${figure.caption}*` : "",
   );
-  return stripPassageRefs(stripCheckFences(text))
+  return stripPassageRefsOutsideCode(stripCheckFences(text))
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

@@ -25,13 +25,14 @@ import { sha256 } from "../sources/quality";
 import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
 import { deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 import { contentLanguage, planLanguage } from "../engine/prompts";
-import { profileContext } from "../profile/context";
+import { oneLine, profileContext } from "../profile/context";
 import { readProfile } from "../profile/profile";
 import {
   type ChatTemplateId,
   chatProvenance,
   chatSystemPrompt,
   chatTemplateId,
+  dataBlock,
 } from "./prompts";
 
 export type ChatContext = {
@@ -308,7 +309,7 @@ function chatPrompt(db: Database.Database, planId: string | null) {
   return {
     language: planId ? planLanguage(db, planId) : contentLanguage(db),
     planLine: plan
-      ? `Plan: ${plan.title}.${plan.subject ? ` Subject: ${plan.subject}.` : ""}`
+      ? `Plan: ${oneLine(plan.title)}.${plan.subject ? ` Subject: ${oneLine(plan.subject)}.` : ""}`
       : "",
   };
 }
@@ -645,19 +646,27 @@ async function answer(
     sectionPath: hit.sectionPath,
     locator: hit.locator,
   }));
-  const passageBlock = citations
-    .map(
-      (cite, index) =>
-        `[P${cite.index}] ${cite.label}\n${found.hits[index]?.text ?? ""}`,
-    )
-    .join("\n\n");
-  const subjectLine = subject ? `Subject: ${subject}.` : "";
+  const passageBlock =
+    citations.length > 0
+      ? dataBlock(
+          "passages",
+          citations
+            .map(
+              (cite, index) =>
+                `[P${cite.index}] ${oneLine(cite.label)}\n${found.hits[index]?.text ?? ""}`,
+            )
+            .join("\n\n"),
+        )
+      : "";
+  const subjectLine = subject ? `Subject: ${oneLine(subject)}.` : "";
   const pinned = chatContext(db, chatId);
   const pinnedBlock = pinned
-    ? `Pinned context: ${pinned.title}\n${pinned.body}\n\n`
+    ? `Pinned context: ${oneLine(pinned.title)}\n${dataBlock("pinned", pinned.body)}\n\n`
     : "";
   const attachedBlock =
-    notes.length > 0 ? `Attached text:\n${notes.join("\n")}\n\n` : "";
+    notes.length > 0
+      ? `Attached text:\n${dataBlock("attached", notes.join("\n"))}\n\n`
+      : "";
   const profile = readProfile(db);
   const mode = input.mode ?? profile?.tutorMode ?? "solver";
   const template = chatTemplateId({ ...input, mode });

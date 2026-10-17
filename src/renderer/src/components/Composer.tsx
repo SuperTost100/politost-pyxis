@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
+import { CHAT_TEXT_MAX } from "@shared/ipc";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
 import { FormulaDock } from "./math/FormulaDock";
@@ -73,6 +74,7 @@ export function Composer({
         placeholder={placeholder ?? t("ask.placeholder")}
         ariaLabel={t("components.composer.messageLabel")}
         value={text}
+        maxLength={CHAT_TEXT_MAX}
         onChange={setText}
         onSubmit={() => {
           if (!streaming) onSend?.();
@@ -81,6 +83,18 @@ export function Composer({
           if (event.key === "Escape" && streaming) onStop?.();
         }}
       />
+      {text.length >= CHAT_TEXT_MAX * 0.8 ? (
+        // The field refuses text past the limit, so a long paste that does not appear is explained here.
+        <p
+          className={text.length >= CHAT_TEXT_MAX ? "px-composer-count is-full" : "px-composer-count"}
+          role="status"
+        >
+          {t(text.length >= CHAT_TEXT_MAX ? "components.composer.full" : "components.composer.count", {
+            used: text.length,
+            max: CHAT_TEXT_MAX,
+          })}
+        </p>
+      ) : null}
       <FormulaDock {...formula.dock} />
       <div className="px-composer-bar">
         <IconButton

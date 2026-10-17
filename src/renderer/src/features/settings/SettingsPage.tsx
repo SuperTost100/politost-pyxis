@@ -26,6 +26,7 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppState } from "../../app/app-state";
+import { PROFILE_LIMITS } from "@shared/ipc";
 import { invoke } from "../../lib/ipc";
 import { i18n, setLanguage, type Locale } from "../../locales/i18n";
 import { EnginesPanel } from "./EnginesPanel";
@@ -250,6 +251,7 @@ export function SettingsPage() {
               </span>
               <Input
                 key={profile.data?.[field] ?? ""}
+                maxLength={PROFILE_LIMITS[field]}
                 placeholder={t(`settings.fieldPlaceholder.${field}`)}
                 defaultValue={profile.data?.[field] ?? ""}
                 onBlur={(event) =>
@@ -274,14 +276,16 @@ export function SettingsPage() {
           className="px-settings-interests"
           aria-label={t("settings.interests")}
           placeholder={t("settings.fieldPlaceholder.interests")}
+          maxLength={PROFILE_LIMITS.interests * (PROFILE_LIMITS.interest + 2)}
           value={draftInterests ?? (profile.data?.interests ?? []).join(", ")}
           onChange={(event) => setDraftInterests(event.target.value)}
           onBlur={() => {
             if (draftInterests == null) return;
             const items = draftInterests
               .split(",")
-              .map((item) => item.trim())
-              .filter(Boolean);
+              .map((item) => item.trim().slice(0, PROFILE_LIMITS.interest))
+              .filter(Boolean)
+              .slice(0, PROFILE_LIMITS.interests);
             void patch({ interests: items });
             setDraftInterests(null);
           }}

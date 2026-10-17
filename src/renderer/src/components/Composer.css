@@ -5,6 +5,8 @@
 .px-composer:has(.px-composer-field:focus-within) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .px-composer-top { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .px-composer-field { width: 100%; min-height: 52px; max-height: 200px; font: 400 calc(17px * var(--text-scale))/calc(26px * var(--text-scale)) var(--font-sans); padding: 0 var(--space-1); }
+.px-composer-count { margin: 0; color: var(--ink-muted); font: 400 calc(13px * var(--text-scale))/calc(18px * var(--text-scale)) var(--font-sans); }
+.px-composer-count.is-full { color: var(--danger); }
 .px-composer-bar { display: flex; align-items: center; gap: var(--space-1); }
 .px-composer-bar .px-spacer { flex: 1; }
 .px-subject, .px-source-chip { display: inline-flex; align-items: center; gap: var(--space-2); height: 28px; max-width: 100%; padding: 0 var(--space-3); border-radius: var(--radius-pill); background: var(--surface-raised); color: var(--ink); font: 500 calc(13px * var(--text-scale))/calc(18px * var(--text-scale)) var(--font-sans); border: 1px solid transparent; }
