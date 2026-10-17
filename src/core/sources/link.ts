@@ -5,7 +5,26 @@ import TurndownService from "turndown";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
-const TIMEOUT_MS = 15_000;
+/** How long a link import waits for the next response or part of the body before it gives up. */
+const IDLE_MS = 15_000;
+
+/**
+ * An abort that fires when nothing arrives for `ms`. `touch` restarts the wait: call it on each response and each part of
+ * a body, so a large file on a slow connection takes as long as it needs and a stalled one still ends, as `books.ts` does.
+ */
+export function idleTimeout(
+  ms: number,
+  reason?: unknown,
+): { signal: AbortSignal; touch: () => void; clear: () => void } {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const touch = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(reason), ms);
+  };
+  touch();
+  return { signal: controller.signal, touch, clear: () => clearTimeout(timer) };
+}
 
 export type PageSnapshot = {
   finalUrl: string;
@@ -164,7 +183,7 @@ export async function fetchPublicResponse(rawUrl: string, init: RequestInit) {
   return fetchPinned(url, addresses[0]!, init);
 }
 
-async function readCapped(response: Response): Promise<Uint8Array> {
+async function readCapped(response: Response, onPart: () => void): Promise<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) {
     const bytes = new Uint8Array(await response.arrayBuffer());
@@ -176,6 +195,7 @@ async function readCapped(response: Response): Promise<Uint8Array> {
   for (;;) {
     const step = await reader.read();
     if (step.done) break;
+    onPart();
     size += step.value.byteLength;
     if (size > MAX_BYTES) {
       await reader.cancel();
@@ -192,7 +212,10 @@ async function readCapped(response: Response): Promise<Uint8Array> {
   return bytes;
 }
 
-/** Fetch a page as data. Scripts in the HTML are never run. */
+/**
+ * Fetch a page as data. Scripts in the HTML are never run. The request gives up as `link-timeout` when no response or
+ * part of the body arrives for `idleMs`, so a slow connection can still bring a large PDF.
+ */
 export async function fetchSnapshot(
   rawUrl: string,
   fetchImpl: typeof fetch = fetch,
@@ -201,17 +224,18 @@ export async function fetchSnapshot(
     return found.map((item) => item.address);
   },
   signal?: AbortSignal,
+  idleMs = IDLE_MS,
 ): Promise<PageSnapshot> {
   let current = parseLinkUrl(rawUrl);
   const pin = fetchImpl === fetch;
   let response: Response | null = null;
   let agent: { close: () => Promise<void> } | null = null;
   const controller = new AbortController();
-  const requestSignal = signal
-    ? AbortSignal.any([controller.signal, signal])
-    : controller.signal;
+  const idle = idleTimeout(idleMs);
+  const requestSignal = AbortSignal.any(
+    signal ? [controller.signal, idle.signal, signal] : [controller.signal, idle.signal],
+  );
   requestSignal.throwIfAborted();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
       const addresses = await publicAddresses(current, resolve);
@@ -236,6 +260,7 @@ export async function fetchSnapshot(
           throw new Error("link-timeout");
         throw new Error("link-failed");
       }
+      idle.touch();
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location");
         await response.body?.cancel();
@@ -252,7 +277,7 @@ export async function fetchSnapshot(
     }
     let bytes: Uint8Array;
     try {
-      bytes = await readCapped(response);
+      bytes = await readCapped(response, idle.touch);
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError")
         throw new Error("link-timeout");
@@ -280,7 +305,7 @@ export async function fetchSnapshot(
     };
   } finally {
     controller.abort();
-    clearTimeout(timer);
+    idle.clear();
     await agent?.close();
   }
 }
