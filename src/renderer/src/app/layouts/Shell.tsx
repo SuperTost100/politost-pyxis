@@ -4,7 +4,7 @@ import { GraduationCap, MessageCircle, Settings } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Outlet, useLocation, useNavigate } from "react-router";
+import { Outlet, useLocation, useNavigate, useNavigation } from "react-router";
 import logoDark from "../../design-system/logo/pyxis-lockup-dark.svg";
 import logoLight from "../../design-system/logo/pyxis-lockup-light.svg";
 import { pyxisProLayoutToken } from "../../design-system/theme/pyxis-theme";
@@ -50,11 +50,14 @@ export function Shell() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  // A page loads on its first visit, and the previous one stays until it has. The column and the highlighted door
+  // follow the page being opened from the start, so they never depend on how long that takes.
+  const target = useNavigation().location ?? location;
   const client = useQueryClient();
   const { appearance } = useAppState();
   const mode = appearance.resolved;
   const [last, setLast] = useState(readLast);
-  const activeDoor = doorForPath(location.pathname);
+  const activeDoor = doorForPath(target.pathname);
   const profile = useQuery({
     queryKey: ["profile"],
     queryFn: () => invoke("profile.get", {}),
@@ -202,7 +205,7 @@ export function Shell() {
       <PageContainer
         header={{ title: false, breadcrumb: {} }}
         className={
-          location.pathname.startsWith("/settings")
+          target.pathname.startsWith("/settings")
             ? "px-shell-container px-shell-wide"
             : "px-shell-container"
         }
