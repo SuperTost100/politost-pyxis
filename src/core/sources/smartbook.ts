@@ -428,6 +428,17 @@ function mapPassages(
   }));
 }
 
+/**
+ * The reading order of one document's passages: by page, slide or chapter, then as stored. OCR stores a scanned page
+ * after the pages that had text, so stored order alone would put page 2 after page 3. Within one page or section the
+ * passages are stored in order; `char_start` restarts in each section, so it is not used to sort.
+ */
+export function readingOrder(alias?: string): string {
+  const column = (name: string) => (alias ? `${alias}.${name}` : name);
+  const at = (key: string) => `json_extract(${column("locator_json")}, '$.${key}')`;
+  return `COALESCE(${at("page")}, ${at("slide")}, ${at("chapter")}), ${column("rowid")}`;
+}
+
 export function sourcePassages(db: Database.Database, sourceId: string) {
   const rows = db
     .prepare(
@@ -439,7 +450,7 @@ export function sourcePassages(db: Database.Database, sourceId: string) {
            ORDER BY version DESC
            LIMIT 1
          )
-       ORDER BY rowid`,
+       ORDER BY ${readingOrder()}`,
     )
     .all(sourceId) as Array<{
     id: string;

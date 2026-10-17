@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
-import { listSources } from "./smartbook";
+import { listSources, sourcePassages } from "./smartbook";
+import { storeExtracted } from "./documents";
 import { applyOcrPage, finishOcr, requestOcr, runOcr } from "./ocr";
 
 function seedNeedsOcr(db: ReturnType<typeof openDatabase>): string {
@@ -86,6 +87,19 @@ describe("ocr queue", () => {
       `INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES (?, 'pdf', 'Broken', 'failed', ?, ?)`,
     ).run(noDocument, now, now);
     expect(() => requestOcr(db, noDocument)).toThrow(/invalid-ocr-state/);
+  });
+
+  it("shows a page read by OCR in its place among the pages that had text", () => {
+    const db = openDatabase(":memory:");
+    const text = (page: number) => ({ text: `Pagina ${page} con abbastanza testo da restare nel documento.`, locator: { page }, section: `p. ${page}` });
+    const { sourceId } = storeExtracted(db, "/unused", {
+      title: "Misto", kind: "pdf", mime: "application/pdf", ext: ".pdf", sha: "a".repeat(64),
+      extracted: { pages: [text(1), { text: "", locator: { page: 2 }, section: "p. 2" }, text(3), { text: "", locator: { page: 4 }, section: "p. 4" }], scanned: true },
+    });
+    requestOcr(db, sourceId);
+    applyOcrPage(db, sourceId, { page: 2, text: "Pagina 2 letta dalla scansione." });
+    expect(finishOcr(db, sourceId)).toBe("ready");
+    expect(sourcePassages(db, sourceId).map((passage) => (passage.locator as { page?: number }).page)).toEqual([1, 2, 3]);
   });
 
   it("runs plain pages end to end", () => {
