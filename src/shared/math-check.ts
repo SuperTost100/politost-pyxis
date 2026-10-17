@@ -60,10 +60,14 @@ export function fencedChecks(body: string): AnchoredCheck[] {
   return anchoredChecks(body, checks);
 }
 
-/** Hide check transport data while keeping ordinary JSON examples visible. */
+/**
+ * Hide check transport data while keeping ordinary JSON examples visible. A `check` block that a stopped reply left
+ * open is hidden to the end of the text; an open `json` block stays, since it may be an ordinary example.
+ */
 export function stripCheckFences(body: string): string {
-  return body.replace(/```(check|json)\s*\n([\s\S]*?)\n```/g, (fence, language: string, content: string) => {
+  return body.replace(/```(check|json)\s*\n([\s\S]*?)(\n```|$)/g, (fence, language: string, content: string, close: string) => {
     if (language === "check") return "";
+    if (!close) return fence;
     try {
       return checkClaimSchema.safeParse(JSON.parse(content)).success ? "" : fence;
     } catch {

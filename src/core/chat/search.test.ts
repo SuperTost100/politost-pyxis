@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { foldText, searchChats } from "./search";
+import { foldText, MAX_HITS, searchChats as search } from "./search";
+
+const searchChats = (...args: Parameters<typeof search>) => search(...args).hits;
 
 function setup() {
   const db = openDatabase(":memory:");
@@ -127,5 +129,25 @@ describe("searchChats", () => {
     chat("a", null, 1);
     message("a", "user", "fotosintesi");
     expect(searchChats(db, "fotosintesi")[0]).toMatchObject({ title: null });
+  });
+});
+
+describe("searchChats limits", () => {
+  it("says when the list was cut at the cap, and not when it fits exactly", () => {
+    const { db, chat, message } = setup();
+    for (let i = 0; i < MAX_HITS; i += 1) {
+      chat(`c${i}`, null, i + 1);
+      message(`c${i}`, "user", "entropia");
+    }
+    const exact = search(db, "entropia");
+    expect(exact.hits).toHaveLength(MAX_HITS);
+    expect(exact.capped).toBe(false);
+    chat("more", null, 0);
+    message("more", "user", "entropia");
+    const cut = search(db, "entropia");
+    expect(cut.hits).toHaveLength(MAX_HITS);
+    expect(cut.hits.some((hit) => hit.id === "more")).toBe(false);
+    expect(cut.capped).toBe(true);
+    expect(search(db, "   ")).toEqual({ hits: [], capped: false });
   });
 });

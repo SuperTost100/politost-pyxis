@@ -170,6 +170,7 @@
     "searchResults": "Search results",
     "searchCount_one": "{{count}} chat found",
     "searchCount_other": "{{count}} chats found",
+    "searchCapped": "Showing the {{count}} most recent matches. Add a word to narrow the search.",
     "searchNone": "No chat matches “{{query}}”.",
     "exportMarkdown": "Export as Markdown",
     "exportPdf": "Export as PDF",
@@ -1376,6 +1377,7 @@
     "retry": "Retry",
     "internal": "Something went wrong",
     "fileAccessDenied": "Choose this file or folder using the file picker before opening it.",
+    "inputTooLong": "That text is too long. Keep it under {{max, number}} characters.",
     "notReady": "Pyxis is still starting",
     "notAvailable": "This action is not available",
     "unknownRequest": "Unknown request",
@@ -1455,7 +1457,9 @@
       "socratic": "Socratic",
       "stop": "Stop",
       "send": "Send",
-      "graph": "Graph"
+      "graph": "Graph",
+      "count": "{{used, number}} of {{max, number}} characters",
+      "full": "Message limit reached: {{max, number}} characters. Shorten it, or send it in parts."
     },
     "chat": {
       "generalTag": "General knowledge, not from your sources",

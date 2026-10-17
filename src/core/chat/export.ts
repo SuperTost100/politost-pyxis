@@ -58,6 +58,26 @@ function demoteHeadings(markdown: string): string {
   );
 }
 
+/**
+ * A fence left open, by a reply cut short or a stray ``` in a message, would turn every later block of the export into
+ * code. The closing line is added at the end of the text, with the fence's own character and length.
+ */
+function closeFences(markdown: string): string {
+  let open: { char: string; width: number } | null = null;
+  for (const line of markdown.split("\n")) {
+    const run = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!run) continue;
+    const char = run[1]![0]!;
+    if (!open) {
+      // A backtick fence's info string cannot hold a backtick: "```x```" is inline code.
+      if (char !== "`" || !run[2]!.includes("`")) open = { char, width: run[1]!.length };
+    } else if (char === open.char && run[1]!.length >= open.width && run[2]!.trim() === "") {
+      open = null;
+    }
+  }
+  return open ? `${markdown}\n${open.char.repeat(open.width)}` : markdown;
+}
+
 export function chatMarkdown(
   chat: ChatExport,
   language: ChatExportLanguage = "en",
@@ -66,16 +86,18 @@ export function chatMarkdown(
   const blocks = [`# ${chat.title?.trim() || words.untitled}`];
   if (chat.context) {
     blocks.push(`**${words.context}:** ${chat.context.title.trim()}`);
-    const body = demoteHeadings(
-      normalizeMathDelimiters(chat.context.body),
-    ).trim();
+    const body = closeFences(
+      demoteHeadings(normalizeMathDelimiters(chat.context.body)).trim(),
+    );
     if (body) blocks.push(body.replace(/^/gm, "> ").replace(/^> $/gm, ">"));
   }
   if (chat.documents.length > 0)
     blocks.push(`${words.documents}: ${chat.documents.join(", ")}`);
   for (const message of chat.messages) {
     blocks.push(`## ${message.role === "user" ? words.student : words.pyxis}`);
-    const text = demoteHeadings(normalizeMathDelimiters(message.text)).trim();
+    const text = closeFences(
+      demoteHeadings(normalizeMathDelimiters(message.text)).trim(),
+    );
     if (text) blocks.push(text);
     if (message.photos > 0)
       blocks.push(
