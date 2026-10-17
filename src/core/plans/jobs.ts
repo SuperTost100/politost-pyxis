@@ -149,17 +149,20 @@ export function diagnosticTopics(tree: BuildTopic[]): number[] {
     (_, i) => eligible[Math.floor((i * (eligible.length - 1)) / (limit - 1))]!,
   );
 }
-function samplePassages(
-  params: Params,
+export function samplePassages(
+  params: Pick<Params, "tree">,
   rows: Passage[],
   indices?: number[],
 ): Passage[] {
   const topics = indices
     ? indices.map((i) => params.tree![i]!)
     : (params.tree ?? []);
+  // A segment the model named under two topics is sampled once, for the first: a repeat would put the same passage
+  // twice in the introduction's citation order.
+  const seen = new Set<string>();
   return acrossTopics(
     topics.map((topic) =>
-      rows.filter((row) => topic.passageIds.includes(row.id)),
+      rows.filter((row) => topic.passageIds.includes(row.id) && !seen.has(row.id) && seen.add(row.id)),
     ),
     40,
   );

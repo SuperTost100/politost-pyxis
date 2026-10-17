@@ -206,3 +206,72 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test("Free up space removes a file nothing uses, keeps a source's file and says how much it freed (#111)", async () => {
+  test.setTimeout(90000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-free-space-"));
+  const sourcePath = join(userData, "lavoro.txt");
+  writeFileSync(sourcePath, "Il lavoro di una forza costante è il prodotto scalare di forza e spostamento.");
+  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({
+    args: [join(process.cwd(), "out/main/index.js")],
+    env,
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    const imported = (await importPickedSource(page, app, sourcePath)) as { sourceId: string };
+    await expect
+      .poll(
+        async () =>
+          (
+            (await page.evaluate(() => window.pyxis.invoke("sources.list", {}))) as Array<{
+              id: string;
+              status: string;
+            }>
+          ).find((s) => s.id === imported.sourceId)?.status,
+      )
+      .toBe("ready");
+    const workspace = await page.evaluate(() => window.pyxis.workspacePath());
+    const db = new DatabaseSync(join(workspace, "pyxis.db"), { timeout: 10000 });
+    const kept = (db.prepare("SELECT blob_sha FROM sources WHERE id=?").get(imported.sourceId) as { blob_sha: string })
+      .blob_sha;
+    db.close();
+    // A file a deleted plan left behind: a blob name that no row names.
+    const orphan = "ab".padEnd(64, "0");
+    mkdirSync(join(workspace, "blobs", "ab"), { recursive: true });
+    const orphanFile = join(workspace, "blobs", "ab", orphan);
+    writeFileSync(orphanFile, Buffer.alloc(2048, 1));
+    writeFileSync(`${orphanFile}.json`, JSON.stringify({ mime: "application/pdf", ext: "pdf" }));
+
+    await page.evaluate(() => {
+      location.hash = "/settings/data";
+    });
+    await expect(page.getByText(/^Elimina i file salvati che nessun piano/)).toBeVisible();
+    const button = page.getByRole("button", { name: "Libera spazio", exact: true });
+    await button.click();
+    await expect(page.getByText(/^Liberati \d/)).toBeVisible();
+    expect(existsSync(orphanFile)).toBe(false);
+    expect(existsSync(`${orphanFile}.json`)).toBe(false);
+    expect(existsSync(join(workspace, "blobs", kept.slice(0, 2), kept))).toBe(true);
+    await button.click();
+    await expect(
+      page.getByText("Niente da liberare. Tutti i file salvati sono ancora in uso.", { exact: true }),
+    ).toBeVisible();
+    mkdirSync(".shots", { recursive: true });
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
+      await button.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `.shots/free-space-${theme}.png` });
+      expect(
+        (await new AxeBuilder({ page }).setLegacyMode().include(".px-settings-subpage").analyze()).violations,
+      ).toEqual([]);
+    }
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});

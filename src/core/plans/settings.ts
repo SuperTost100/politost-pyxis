@@ -1,12 +1,12 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
-import { PLAN_TITLE_MAX } from "../../shared/plan-file";
+import { MAX_EXAM_AT, PLAN_TITLE_MAX } from "../../shared/plan-file";
 
 export const planSettingsSchema = z.object({
   planId: z.string().min(1),
   title: z.string().trim().min(1).max(PLAN_TITLE_MAX),
   target: z.number().finite().min(0.5).max(1),
-  examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable(),
+  examAt: z.number().int().min(0).max(MAX_EXAM_AT).nullable(),
 });
 
 export function savePlanSettings(

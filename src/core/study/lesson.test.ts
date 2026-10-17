@@ -236,8 +236,13 @@ it("keeps P1 citation order even when passage IDs sort differently, including le
         ).text,
     ),
   ).toEqual(["beta", "alpha"]);
+  // An empty order, which older exports wrote, takes the linked passages (#94); a passage the item does not cite
+  // still rejects the file.
+  const empty = structuredClone(file);
+  (empty.items![0]!.body as { passageIds: string[] }).passageIds = [];
+  expect(() => importPlan(fresh, empty)).not.toThrow();
   const invalid = structuredClone(file);
-  (invalid.items![0]!.body as { passageIds: string[] }).passageIds = [];
+  (invalid.items![0]!.body as { passageIds: string[] }).passageIds = ["not-cited"];
   expect(() => importPlan(fresh, invalid)).toThrow();
   fresh.close();
   db.close();

@@ -7,6 +7,7 @@ import {
   foldLine,
   type CalendarExam,
 } from "./calendar";
+import { MAX_EXAM_AT } from "../../shared/plan-file";
 
 const originalTz = process.env["TZ"];
 afterEach(() => {
@@ -25,6 +26,7 @@ function exam(over: Partial<CalendarExam> = {}): CalendarExam {
     title: "Fisica 1",
     subject: null,
     examAt: noon(2026, 11, 20),
+    updatedAt: Date.UTC(2026, 9, 1),
     ...over,
   };
 }
@@ -204,6 +206,32 @@ describe("buildCalendar", () => {
     const uid = (lines: string[]) => lines.find((l) => l.startsWith("UID:"));
     expect(uid(first)).toBe("UID:plan-1@pyxis.politost.it");
     expect(uid(moved)).toBe(uid(first));
+  });
+
+  it("raises SEQUENCE and LAST-MODIFIED when the plan changes, so calendars apply a moved exam (#126)", () => {
+    const edited = Date.UTC(2026, 9, 12, 7, 0, 5);
+    const first = unfold(buildCalendar([exam({ updatedAt: edited })], "en", NOW).ics);
+    expect(first).toContain("LAST-MODIFIED:20261012T070005Z");
+    const moved = unfold(
+      buildCalendar([exam({ examAt: noon(2026, 12, 2), updatedAt: edited + 1000 })], "en", NOW).ics,
+    );
+    const sequence = (lines: string[]) =>
+      Number(lines.find((l) => l.startsWith("SEQUENCE:"))!.slice("SEQUENCE:".length));
+    expect(Number.isInteger(sequence(first))).toBe(true);
+    expect(sequence(first)).toBeGreaterThan(0);
+    expect(sequence(moved)).toBeGreaterThan(sequence(first));
+    // RFC 5545 INTEGER is 32-bit; a plan edited in 2100 writes the largest one.
+    const late = unfold(buildCalendar([exam({ updatedAt: Date.UTC(2100, 0, 1) })], "en", NOW).ics);
+    expect(sequence(late)).toBeLessThan(2 ** 31);
+    const old = unfold(buildCalendar([exam({ updatedAt: 1 })], "en", NOW).ics);
+    expect(old).toContain("SEQUENCE:0");
+  });
+
+  it("leaves out an exam after year 9999 that an older version stored (#126)", () => {
+    expect(buildCalendar([exam({ examAt: Date.UTC(10000, 0, 2) })], "en", NOW).count).toBe(0);
+    const last = buildCalendar([exam({ examAt: MAX_EXAM_AT })], "en", NOW);
+    expect(last.count).toBe(1);
+    expect(unfold(last.ics).find((l) => l.startsWith("DTEND"))).toMatch(/^DTEND;VALUE=DATE:9999123[01]$/);
   });
 
   it("gives each plan its own UID", () => {
