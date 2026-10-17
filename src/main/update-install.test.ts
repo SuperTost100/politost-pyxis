@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { deflateRawSync, gzipSync } from "node:zlib";
 import { afterEach, expect, it, vi } from "vitest";
 import type { UpdateInstallView } from "../shared/updates";
@@ -935,7 +935,10 @@ it("updates a Mac from the zip: whole the first time and kept, then only the cha
   expect(readFileSync(`${kept}.blockmap`)).toEqual(first.map);
   expect(unpacked).toEqual([kept]);
   expect(readFileSync(join(folder, "PoliTost Pyxis.app"))).toEqual(first.bytes);
-  expect(readlinkSync(join(folder, "Applications"))).toBe("/Applications");
+  // Node on Windows stores an absolute link target with the current drive; macOS keeps it as written.
+  expect(readlinkSync(join(folder, "Applications"))).toBe(
+    process.platform === "win32" ? resolve("/Applications") : "/Applications",
+  );
   expect(one.calls).toEqual([`open ${folder}`]);
   await one.instance.reveal();
   expect(one.calls).toEqual([`open ${folder}`, `open ${folder}`]);
