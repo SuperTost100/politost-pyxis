@@ -131,6 +131,38 @@ describe("embedding download", () => {
     db.close();
   });
 
+  it("turning local search on again while the cancelled download is still stopping starts a new one", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "pyxis-embed-consent-"));
+    dirs.push(workspace);
+    const db = openDatabase(":memory:");
+    const runner = createRunner(db, () => {});
+    const handlers = sourceHandlers(db, workspace, runner);
+    // The connection takes a moment to notice the cancel, so the job still says running right after it.
+    const fetchSpy = vi.fn((async (_url: string, init?: RequestInit) =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(stream) {
+            stream.enqueue(new Uint8Array(1));
+            init?.signal?.addEventListener("abort", () => setTimeout(() => stream.error(init.signal?.reason), 100));
+          },
+        }),
+      )) as typeof fetch);
+    vi.stubGlobal("fetch", fetchSpy);
+    const first = (await handlers.embed({ consent: true })).jobId!;
+    await expect.poll(() => fetchSpy.mock.calls.length).toBe(1);
+    await handlers.embed({ consent: false });
+    const job = (id: string) => db.prepare("SELECT state FROM jobs WHERE id = ?").get(id);
+    expect(job(first)).toEqual({ state: "running" });
+    const second = (await handlers.embed({ consent: true })).jobId!;
+    expect(second).not.toBe(first);
+    await expect.poll(() => job(first)).toEqual({ state: "cancelled" });
+    await expect.poll(() => fetchSpy.mock.calls.length).toBe(2);
+    expect(job(second)).toEqual({ state: "running" });
+    runner.cancel(second);
+    await expect.poll(() => job(second)).toEqual({ state: "cancelled" });
+    db.close();
+  });
+
   it("writes the file when the hash matches and indexes passages", async () => {
     const body = "model-bytes";
     const dir = mkdtempSync(join(tmpdir(), "pyxis-embed-"));
