@@ -175,6 +175,18 @@ function textSections(
   return { pages, scanned: false };
 }
 
+/**
+ * The original file of a document being stored: its bytes, or the hash it is already stored under. A job passes the
+ * hash, so a large file is not read back into core and hashed again.
+ */
+type Original = { bytes: Uint8Array; sha?: undefined } | { sha: string; bytes?: undefined };
+
+function storeOriginal(workspace: string, original: Original, mime: string, ext: string): string {
+  return original.sha !== undefined
+    ? original.sha
+    : putBlob(workspace, original.bytes, mime, ext.replace(/^\./, ""));
+}
+
 export type StoredSource = {
   sourceId: string;
   title: string;
@@ -192,21 +204,15 @@ export function storeExtracted(
     kind: string;
     mime: string;
     ext: string;
-    bytes: Uint8Array;
     extracted: ExtractedDocument;
     originUrl?: string;
     fetchedAt?: number;
-  },
+  } & Original,
 ): StoredSource {
   const now = Date.now();
   const sourceId = input.sourceId ?? uuidv7(now);
   const documentId = uuidv7(now + 1);
-  const sha = putBlob(
-    workspace,
-    input.bytes,
-    input.mime,
-    input.ext.replace(/^\./, ""),
-  );
+  const sha = storeOriginal(workspace, input, input.mime, input.ext);
   const status = input.extracted.scanned ? "needs-ocr" : "ready";
   const kept = keptPages(input.extracted);
   db.transaction(() => {
@@ -355,9 +361,8 @@ export function addDocumentVersion(
     title: string;
     mime: string;
     ext: string;
-    bytes: Uint8Array;
     extracted: ExtractedDocument;
-  },
+  } & Original,
 ): StoredSource {
   const existing = db
     .prepare(`SELECT id FROM sources WHERE id = ? AND status != 'removed'`)
@@ -365,12 +370,7 @@ export function addDocumentVersion(
   if (!existing) throw new Error("source-missing");
   const kept = keptPages(input.extracted);
   if (kept.length === 0) throw new Error("replace-no-text");
-  const sha = putBlob(
-    workspace,
-    input.bytes,
-    input.mime,
-    input.ext.replace(/^\./, ""),
-  );
+  const sha = storeOriginal(workspace, input, input.mime, input.ext);
   const status = input.extracted.scanned ? "needs-ocr" : "ready";
   const kind = kindFor(input.ext);
   appendVersion(db, sourceId, sha, kind, kept, input.extracted.extractor, (now) => {
