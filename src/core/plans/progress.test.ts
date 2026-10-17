@@ -3,7 +3,7 @@ import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
 import { listPlans, planGuide, readPlan } from "./create";
 import { recordStep } from "./steps";
-import { planMastery, planSeries, syncGaps } from "./progress";
+import { planMastery, planMasteryBreakdown, planSeries, syncGaps } from "./progress";
 import { assignAnswers, insertGap } from "../study/gapRows";
 import { flagTarget } from "../study/flags";
 import { newCard, review, retrievability } from "../study/schedule";
@@ -703,6 +703,54 @@ describe("specified mastery evidence", () => {
     for (let i = 0; i < 20; i++)
       db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES(?,'p','a','Q','A',?)").run(`new${i}`, at);
     expect(planMastery(db, "p", at + 1000)[0]!.mastery).toBe(before);
+    db.close();
+  });
+  it("breaks mastery into the evidence behind it, and the parts add up to the shown number", () => {
+    const db = fixture();
+    const DAY = 86_400_000;
+    const now = new Date(2026, 0, 20, 12).getTime();
+    const event = (id: string, payload: object, at: number) =>
+      db
+        .prepare(
+          "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES(?,'answer_given','p','a',?,?)",
+        )
+        .run(id, JSON.stringify(payload), at);
+    event("q-old", { questionScores: [{ id: "q1", score: 1 }, { id: "q2", score: 0 }] }, now - 28 * DAY);
+    event("q-new", { questionScores: [{ id: "q3", score: 1 }] }, now - DAY);
+    event("sim", { evidenceKind: "simulation", scores: [1, 0.5] }, now - 2 * DAY);
+    event("chk", { evidenceKind: "check", score: 1, blockId: "b" }, now - 3 * DAY);
+    event("self", { evidenceKind: "self", exerciseId: "x", score: 0, questionScores: [{ id: "x", score: 0 }] }, now - 4 * DAY);
+    const at = now - 5 * DAY;
+    for (const id of ["c1", "c2"]) {
+      db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES(?,'p','a','Q','A',?)").run(id, at);
+      db.prepare(
+        "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,?,'good',?,?)",
+      ).run(`r-${id}`, id, JSON.stringify(review(newCard(at), "good", at)), at);
+    }
+    const shown = planMastery(db, "p", now)[0]!;
+    const row = planMasteryBreakdown(db, "p", now)[0]!;
+    expect(row.mastery).toBe(shown.mastery);
+    expect(shown.mastery).toBeGreaterThan(0);
+    expect(row.parts.quiz.count).toBe(3);
+    expect(row.parts.quiz.mean).toBeCloseTo(2 / 3);
+    expect(row.parts.simulation.count).toBe(2);
+    expect(row.parts.check.count).toBe(1);
+    expect(row.parts.self.count).toBe(1);
+    expect(row.parts.card.count).toBe(2);
+    expect(row.parts.card.mean).toBeCloseTo(
+      retrievability(review(newCard(at), "good", at), now),
+    );
+    expect(row.decay).toBeLessThan(0);
+    const parts = Object.values(row.parts);
+    const points = parts.reduce((sum, part) => sum + part.points, 0);
+    const weight = parts.reduce((sum, part) => sum + part.weight, 0);
+    expect(points / (row.priorWeight + weight)).toBeCloseTo(shown.mastery, 12);
+    // A topic without evidence reads zero everywhere, and so does a date before any evidence.
+    expect(planMasteryBreakdown(db, "p", now - 30 * DAY)[0]).toMatchObject({
+      mastery: 0,
+      decay: 0,
+      priorWeight: 3,
+    });
     db.close();
   });
 });

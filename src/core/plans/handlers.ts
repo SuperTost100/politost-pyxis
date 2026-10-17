@@ -36,7 +36,7 @@ import { withLibraryOriginals } from "./libraryOriginals";
 import { exportPlan, importPlan } from "./file";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { readProfile } from "../profile/profile";
-import { planMastery, planSeries } from "./progress";
+import { planMastery, planMasteryBreakdown, planSeries } from "./progress";
 import { freeUpSpace, planDiskUsage } from "../share/usage";
 import {
   chatListedSources,
@@ -273,6 +273,9 @@ export function planHandlers(
     },
     mastery(input: { planId: string }) {
       return planMastery(db, input.planId);
+    },
+    masteryBreakdown(input: { planId: string }) {
+      return planMasteryBreakdown(db, input.planId);
     },
     series(input: { planId: string }) {
       return planSeries(db, input.planId);
