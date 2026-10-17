@@ -180,9 +180,14 @@ describe("smart lessons", () => {
   it("counts each quick check of a topic's lesson once, however often it is rewritten", async () => {
     const { db, planId, topicId, run, reply } = setup();
     const mastery = () => planMastery(db, planId).find((t) => t.id === topicId)!.mastery;
-    const answerAll = (itemId: string, markdown: string) => {
-      for (const question of smartQuestions(parseSmartText(markdown)).values())
-        answerSmartCheck(db, { planId, itemId, blockId: question.id, pick: question.answer });
+    const answerAll = (itemId: string, markdown: string, from = 0, to = Infinity, right = true) => {
+      for (const question of [...smartQuestions(parseSmartText(markdown)).values()].slice(from, to))
+        answerSmartCheck(db, {
+          planId,
+          itemId,
+          blockId: question.id,
+          pick: right ? question.answer : (question.answer + 1) % question.options.length,
+        });
     };
     const lesson = await writeLesson(db, planId, topicId, run);
     answerAll(lesson.itemId!, lesson.markdown);
@@ -197,12 +202,16 @@ describe("smart lessons", () => {
     answerAll(again.itemId!, again.markdown);
     expect(mastery()).toBeCloseTo(0.4);
 
-    // Another wording is another lesson on the same topic: its answers take the places of the earlier ones.
+    // Another wording is another lesson on the same topic: once answered, it replaces the earlier lesson's checks whole,
+    // so the two answers given so far are all that count, not two plus the older lesson's last two.
     reply(smartLesson.replaceAll("?", " in breve?").replace("Ripasso 1", "Ripasso primo"));
     const simple = await writeLesson(db, planId, topicId, run, { wording: "simple" });
     expect(simple.itemId).not.toBe(lesson.itemId);
-    answerAll(simple.itemId!, simple.markdown);
-    expect(mastery()).toBeCloseTo(0.4);
+    answerAll(simple.itemId!, simple.markdown, 0, 2, false);
+    expect(mastery()).toBe(0);
+    answerAll(simple.itemId!, simple.markdown, 2);
+    // Two right of four: 1 / (3 + 2).
+    expect(mastery()).toBeCloseTo(0.2);
     db.close();
   });
 

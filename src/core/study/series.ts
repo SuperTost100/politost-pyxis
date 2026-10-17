@@ -16,10 +16,10 @@ export type SeriesEvent = {
   attemptId?: string;
   answers?: Array<{ id?: string; score: number }>;
   /**
-   * A quick check's place among its lesson's questions in the lesson's current text, or null when a rewrite removed the
-   * question. Unset when the lesson is unknown.
+   * The lesson a quick check was answered in, the question, and whether the question is still in the lesson's current
+   * text. Unset when the lesson is unknown.
    */
-  checkPlace?: number | null;
+  lessonCheck?: { itemId: string; blockId: string; current: boolean };
   kind: "quiz" | "card" | "lesson" | "active";
   seconds?: number;
 };
@@ -109,18 +109,30 @@ function meanMastery(studied: SeriesEvent[], until: number): number {
 }
 
 /**
- * Quick checks count once per place in a topic's lesson: the latest answer at each place stands, so rewriting the lesson
- * or reading it in another wording cannot add evidence, and a check a rewrite removed counts no more.
+ * Quick checks count from one lesson per topic: the one, in any wording, answered most recently. Its answers count once
+ * per question, and only for questions still in its current text, so rewriting the lesson or reading it in another
+ * wording cannot add evidence.
  */
 function currentChecks(events: SeriesEvent[]): Set<SeriesEvent> {
   const latest = new Map<string, SeriesEvent>();
   for (const event of events) {
-    if (event.evidenceKind !== "check" || event.checkPlace == null) continue;
-    const key = `${event.topicId}\u0000${event.checkPlace}`;
-    const previous = latest.get(key);
-    if (!previous || previous.at <= event.at) latest.set(key, event);
+    if (event.evidenceKind !== "check" || !event.lessonCheck) continue;
+    const previous = latest.get(event.topicId);
+    if (!previous || previous.at <= event.at) latest.set(event.topicId, event);
   }
-  return new Set(latest.values());
+  const kept = new Set<SeriesEvent>();
+  const seen = new Set<string>();
+  for (const event of [...events].sort((a, b) => a.at - b.at)) {
+    const check = event.lessonCheck;
+    if (event.evidenceKind !== "check" || !check?.current) continue;
+    if (latest.get(event.topicId)?.lessonCheck?.itemId !== check.itemId) continue;
+    // The first answer to a question stays, as the lesson shows it.
+    const key = `${check.itemId}\u0000${check.blockId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.add(event);
+  }
+  return kept;
 }
 
 /** Legacy attempts retain their individual scores; missing answer kinds use quiz weight. */
@@ -130,7 +142,7 @@ export function seriesEvidence(events: SeriesEvent[]): MasteryEvent[] {
     if (event.kind !== "quiz") return [];
     if (
       event.evidenceKind === "check" &&
-      event.checkPlace !== undefined &&
+      event.lessonCheck &&
       !checks.has(event)
     )
       return [];

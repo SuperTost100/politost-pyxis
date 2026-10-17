@@ -159,6 +159,7 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   }>;
   const blocked = flaggedIds(db, "exercise");
   const places = questionPlaces(db, planId);
+  const attemptSources = attemptQuestionSources(db, planId);
   const questionKinds = new Map<string, string>();
   const itemBodies = db
     .prepare(
@@ -211,7 +212,7 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   });
   return rows.flatMap((row): SeriesEvent[] => {
     if (row.kind === "gap_opened" || row.kind === "gap_closed") return [];
-    const payload = scorePayload(row.payload_json, blocked);
+    const payload = scorePayload(row.payload_json, blocked, attemptSources);
     if (!payload) return [];
     if (row.kind === "active_time") {
       return [
@@ -258,8 +259,11 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
         attemptId: payload.attemptId,
         ...(payload.evidenceKind === "check" && row.item_id && places.has(row.item_id)
           ? {
-              checkPlace:
-                places.get(row.item_id)!.get(payload.blockId ?? "") ?? null,
+              lessonCheck: {
+                itemId: row.item_id,
+                blockId: payload.blockId ?? "",
+                current: places.get(row.item_id)!.has(payload.blockId ?? ""),
+              },
             }
           : {}),
         answers: payload.questionScores?.map(({ id, score }) => ({ id, score })),
@@ -570,13 +574,49 @@ type ScorePayload = {
   }>;
 };
 
-function scorePayload(raw: string, blocked: Set<string>): ScorePayload | null {
+/**
+ * The source exercises of each question of the plan's graded attempts, by attempt and question id. Question scores
+ * recorded before they named their sources (mixed reviews, diagnostics and simulations) find them here, so a later
+ * "wrong question" flag still removes them.
+ */
+function attemptQuestionSources(db: Database.Database, planId: string) {
+  const rows = db
+    .prepare(
+      `SELECT a.id, i.body_json FROM attempts a JOIN items i ON i.id = a.item_id
+       WHERE a.plan_id = ? AND i.kind IN ('quiz', 'diagnostic', 'review', 'simulation')`,
+    )
+    .all(planId) as Array<{ id: string; body_json: string }>;
+  const sources = new Map<string, string[]>();
+  for (const row of rows) {
+    const body = JSON.parse(row.body_json) as {
+      questions?: Array<{ id: string; sourceId?: string; sourceIds?: string[] }>;
+    };
+    for (const question of body.questions ?? []) {
+      const ids = [question.sourceId, ...(question.sourceIds ?? [])].filter(
+        (id): id is string => !!id,
+      );
+      if (ids.length) sources.set(`${row.id}\u0000${question.id}`, ids);
+    }
+  }
+  return sources;
+}
+
+function scorePayload(
+  raw: string,
+  blocked: Set<string>,
+  attemptSources: ReadonlyMap<string, string[]> = new Map(),
+): ScorePayload | null {
   const payload = JSON.parse(raw) as ScorePayload;
   if (!payload.questionScores) return payload;
+  const sourcesOf = (row: { id?: string; sourceIds?: string[] }) =>
+    row.sourceIds ??
+    (payload.attemptId && row.id
+      ? (attemptSources.get(`${payload.attemptId}\u0000${row.id}`) ?? [])
+      : []);
   const rows = payload.questionScores.filter(
     (row) =>
       (!row.id || !blocked.has(row.id)) &&
-      !(row.sourceIds ?? []).some((id) => blocked.has(id)),
+      !sourcesOf(row).some((id) => blocked.has(id)),
   );
   if (!rows.length) return null;
   return {

@@ -622,6 +622,41 @@ describe("specified mastery evidence", () => {
     expect(planMastery(db, "p", at + 86_400_000)[0]!.mastery).toBe(0);
     db.close();
   });
+  it("removes flagged exercises from evidence recorded before scores named their source", () => {
+    const db = fixture();
+    // A review recorded by an older version: its question scores carry the question id only.
+    db.prepare(
+      "INSERT INTO items(id,plan_id,kind,body_json,grounding,created_at) VALUES('review','p','review',?,'sources',1)",
+    ).run(
+      JSON.stringify({
+        questions: [
+          { id: "EX-mcq-0", topicId: "a", sourceId: "ex-a", answer: { kind: "mcq" } },
+          { id: "EX-mcq-1", topicId: "a", sourceId: "ex-b", answer: { kind: "mcq" } },
+        ],
+      }),
+    );
+    db.prepare(
+      "INSERT INTO attempts(id,plan_id,item_id,started_at,submitted_at) VALUES('att','p','review',1,1000)",
+    ).run();
+    db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('e','answer_given','p','a',?,1000)",
+    ).run(
+      JSON.stringify({
+        score: 0.5,
+        scores: [1, 0],
+        evidenceKind: "quiz",
+        attemptId: "att",
+        questionScores: [
+          { id: "EX-mcq-0", kind: "mcq", score: 1 },
+          { id: "EX-mcq-1", kind: "mcq", score: 0 },
+        ],
+      }),
+    );
+    expect(planMastery(db, "p", 1000)[0]!.mastery).toBeCloseTo(1 / 5);
+    flagTarget(db, "exercise", "ex-b", "wrong-question");
+    expect(planMastery(db, "p", 1000)[0]!.mastery).toBeCloseTo(1 / 4);
+    db.close();
+  });
   it("leaves cards that were never reviewed out of mastery", () => {
     const db = fixture();
     const at = new Date(2026, 0, 1, 12).getTime();
