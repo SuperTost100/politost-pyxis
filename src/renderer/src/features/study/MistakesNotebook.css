@@ -1,0 +1,116 @@
+.px-notebook {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.px-notebook-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 320px);
+}
+.px-notebook-summary {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-notebook-exam {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-notebook-exam + .px-notebook-exam {
+  margin-top: var(--space-4);
+}
+.px-notebook-exam > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.px-notebook-exam h2 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.px-notebook-exam > header .small {
+  color: var(--ink-muted);
+}
+.px-notebook-topic {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) 0 var(--space-2);
+}
+.px-notebook-topic :is(h2, h3) {
+  margin: 0;
+  min-width: 0;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.px-notebook-topic .ant-btn,
+.px-notebook-actions .ant-btn {
+  white-space: nowrap;
+}
+.px-notebook-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-notebook-entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.px-notebook-stem .px-markdown > :first-child {
+  margin-top: 0;
+}
+.px-notebook-stem .px-markdown > :last-child {
+  margin-bottom: 0;
+}
+.px-notebook-why summary {
+  width: fit-content;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.px-notebook-why summary:hover {
+  color: var(--ink);
+}
+.px-notebook-why[open] summary {
+  margin-bottom: var(--space-2);
+}
+.px-notebook-why .px-markdown > :last-child {
+  margin-bottom: 0;
+}
+.px-notebook-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.px-notebook-origin {
+  color: var(--ink-muted);
+}
+.px-notebook-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+.px-notebook-pages {
+  margin-top: var(--space-4);
+}

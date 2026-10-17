@@ -32,6 +32,12 @@ The student can change a rating. Every choice is stored, but mastery counts one 
 
 One "Got it" on a fresh topic gives `0.5 / 3.5 ≈ 0.143`, against `0.25` for one perfect quiz answer. Changing it to "Missed it" within the window gives `0`, not the average of the two.
 
+## Mistakes notebook
+
+`src/core/study/notebook.ts` lists every question whose latest answer was wrong, under 1 point, for each plan. It reads the submitted attempts of quizzes, gap drills, reviews, the diagnostic, simulations and redos, plus the quick check answers stored as `answer_given` events, so it needs no table of its own. A book exercise is one question wherever it is asked, keyed by its exercise id. Any other question is keyed by its wording: its form, its stem and its options in any order. So a quiz that asks the same question again, a redo and a quick check asked as a quiz question all update one entry, and marking one copy wrong hides them all. A later right answer takes the question out, and a later miss brings it back. A question left blank changes nothing. A question marked wrong, a quick check a rewrite removed, and a question on an archived topic stay out.
+
+Redo asks up to ten of them again as one quiz item with no topic (`redo: true` in its body). Handing it in records the answers like any whole-plan quiz: one `answer_given` event per topic with `evidenceKind: "quiz"`, so each answer weighs 1, or 1.5 when open, and the quiz adds no step to the path. A quick check comes back as a multiple-choice quiz question and a simulation question as an open answer graded against its reference, so both count as quiz answers when redone. A redo can open a gap like any other graded attempt.
+
 ## Path rules
 
 Nothing on the path is locked. Every activity is open at any time and in any order; the path only suggests what to do first. `suggestStep` in `src/core/plans/path.ts` picks the first of these that applies:

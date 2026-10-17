@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { App, Button, Input, InputNumber, Select } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Icon } from "../../components/Icon";
@@ -42,15 +42,21 @@ function clock(ms: number): string {
     : `${Math.floor(total / 60)}:${pad(total % 60)}`;
 }
 
-export function QuizPage() {
+/** `redo`: notebook questions asked again; the attempt comes in the URL and closing goes back to the notebook. */
+export function QuizPage({ redo = false }: { redo?: boolean }) {
   const { t, i18n } = useTranslation();
   const { message } = App.useApp();
   const { planId, topicId } = useParams();
   useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
-  const diagnostic = !topicId;
+  const diagnostic = !topicId && !redo;
   const [searchParams, setSearchParams] = useSearchParams();
   const savedAttempt = searchParams.get("attempt");
+  const back = !redo
+    ? `/plans/${planId ?? ""}`
+    : searchParams.get("from") === "exams"
+      ? "/exams/mistakes"
+      : `/plans/${planId ?? ""}/mistakes`;
   const restoredAttempt = useRef<string | null>(null);
   const [hydratedAttempt, setHydratedAttempt] = useState<string | null>(null);
   const draftToSave = useRef<{
@@ -334,7 +340,7 @@ export function QuizPage() {
   // Answers, checks and the current question are saved, so closing never loses work.
   async function close() {
     await flushDraft();
-    navigate(`/plans/${planId ?? ""}`);
+    navigate(back);
   }
   const result = question ? checked[question.id] : undefined;
   const locked =
@@ -605,9 +611,11 @@ export function QuizPage() {
   const wrongMarked = question
     ? (wrongMarks[question.id] ?? false)
     : false;
+  // A redo exists only as an attempt the notebook started; without one there is nothing to show.
+  if (redo && !savedAttempt) return <Navigate to={back} replace />;
   return (
     <FocusLayout
-      title={t("quiz.title")}
+      title={t(redo ? "mistakes.redoTitle" : "quiz.title")}
       onClose={() => void close()}
       meta={
         question && !finalResult && !showIntro && !noAnswers
@@ -833,26 +841,28 @@ export function QuizPage() {
         <section className="px-quiz-wait">
           <Notice tone="info">{t("quiz.answersNotShared")}</Notice>
           <span className="px-quiz-footer-main">
-            <Button
-              shape="round"
-              size="large"
-              onClick={() =>
-                navigate(
-                  diagnostic
-                    ? `/plans/${planId ?? ""}/diagnostic`
-                    : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`,
-                )
-              }
-            >
-              {t("quiz.redo")}
-            </Button>
+            {redo ? null : (
+              <Button
+                shape="round"
+                size="large"
+                onClick={() =>
+                  navigate(
+                    diagnostic
+                      ? `/plans/${planId ?? ""}/diagnostic`
+                      : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`,
+                  )
+                }
+              >
+                {t("quiz.redo")}
+              </Button>
+            )}
             <Button
               type="primary"
               shape="round"
               size="large"
-              onClick={() => navigate(`/plans/${planId ?? ""}`)}
+              onClick={() => navigate(back)}
             >
-              {t("lesson.backToPath")}
+              {t(redo ? "mistakes.back" : "lesson.backToPath")}
             </Button>
           </span>
         </section>
@@ -891,6 +901,7 @@ export function QuizPage() {
               />
               <span className="px-quiz-footer-main">
                 {!review &&
+                !redo &&
                 finalResult.results.some((row) => !row.flagged && row.score < 1) ? (
                   <Button
                     shape="round"
@@ -900,7 +911,7 @@ export function QuizPage() {
                     {t("quiz.reviewMistakes")}
                   </Button>
                 ) : null}
-                {reopened && !review ? (
+                {reopened && !review && !redo ? (
                   <Button
                     shape="round"
                     size="large"
@@ -920,9 +931,15 @@ export function QuizPage() {
                   type="primary"
                   shape="round"
                   size="large"
-                  onClick={() => navigate(`/plans/${planId ?? ""}`)}
+                  onClick={() => navigate(back)}
                 >
-                  {t(reopened ? "lesson.backToPath" : "quiz.continue")}
+                  {t(
+                    redo
+                      ? "mistakes.back"
+                      : reopened
+                        ? "lesson.backToPath"
+                        : "quiz.continue",
+                  )}
                 </Button>
               </span>
             </>
