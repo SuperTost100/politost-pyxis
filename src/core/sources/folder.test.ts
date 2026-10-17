@@ -33,6 +33,17 @@ describe("folder import", () => {
     expect(listed.cappedFiles).toBe(true);
   });
 
+  it("stops after a number of entries, however few of them it could import, and says so", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-folder-entries-"));
+    writeFileSync(join(root, "notes.txt"), "");
+    // A dependency folder holds thousands of files, none of them importable.
+    mkdirSync(join(root, "node_modules"));
+    for (let index = 0; index < 60; index += 1) writeFileSync(join(root, "node_modules", `m${index}.js`), "");
+    expect(listImportable(root, 100)).toMatchObject({ cappedEntries: false, files: [join(root, "notes.txt")] });
+    expect(listImportable(root, 30)).toMatchObject({ cappedEntries: true, cappedFiles: false });
+    expect(listImportable(root, 62)).toMatchObject({ cappedEntries: false });
+  });
+
   it("says when folders nested past the depth cap were not read", () => {
     const root = mkdtempSync(join(tmpdir(), "pyxis-folder-depth-"));
     let dir = root;

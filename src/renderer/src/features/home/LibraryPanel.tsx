@@ -29,6 +29,7 @@ import { jobErrorKey } from "../jobs/jobErrors";
 import {
   MAX_DROPPED_FILES,
   MAX_FOLDER_DEPTH,
+  MAX_FOLDER_ENTRIES,
   REPLACE_EXTENSIONS,
   SOURCE_EXTENSIONS,
 } from "@shared/source-types";
@@ -132,10 +133,11 @@ export function LibraryPanel({
     name: string;
   } | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
-  // A folder scan stops at a file count and a depth. The student is told when it did.
+  // A folder scan stops at a file count, a depth and an entry count. The student is told when it did.
   const [folderCut, setFolderCut] = useState<{
     files: boolean;
     depth: boolean;
+    entries: boolean;
     unreadable: boolean;
     limit: number;
   } | null>(null);
@@ -342,10 +344,11 @@ export function LibraryPanel({
       if (!folder) return;
       const scan = await invoke("sources.scanFolder", { path: folder });
       setFolderCut(
-        scan.cappedFiles || scan.cappedDepth || scan.unreadable
+        scan.cappedFiles || scan.cappedDepth || scan.cappedEntries || scan.unreadable
           ? {
               files: scan.cappedFiles,
               depth: scan.cappedDepth,
+              entries: scan.cappedEntries,
               unreadable: scan.unreadable,
               limit: scan.limit,
             }
@@ -907,6 +910,11 @@ export function LibraryPanel({
           {folderCut?.files ? (
             <Notice tone="warning">
               {t("sources.folderCappedFiles", { count: folderCut.limit })}
+            </Notice>
+          ) : null}
+          {folderCut?.entries ? (
+            <Notice tone="warning">
+              {t("sources.folderCappedEntries", { count: MAX_FOLDER_ENTRIES })}
             </Notice>
           ) : null}
           {folderCut?.depth ? (

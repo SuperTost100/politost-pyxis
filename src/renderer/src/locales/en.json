@@ -420,6 +420,7 @@
     "sentAsIs": "The engine saw the photo as stored: {{width}} × {{height}} px, {{size}}.",
     "sentAsIsSize": "The engine saw the photo as stored: {{size}}.",
     "folderCappedFiles": "This folder holds more than {{count}} importable files. Only the first {{count}} are listed. Choose a subfolder to see the rest.",
+    "folderCappedEntries": "This folder holds too many files and subfolders to read in full. Reading stopped after {{count}} of them, so some files may be missing from the list. Choose a smaller folder.",
     "folderCappedDepth": "Folders nested more than {{depth}} levels deep were not read. Choose a deeper folder to import from it.",
     "folderUnreadable": "Some subfolders could not be opened, so their files are not listed. Check their permissions, or choose them directly.",
     "offSyllabusListed_one": "{{count}} section may be off syllabus",
