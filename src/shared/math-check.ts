@@ -9,11 +9,17 @@ export const checkClaimSchema = z.object({
     .max(8)
     .optional(),
 });
+/** A student's answer, typed or a whole worked solution, and the reference it is graded against. */
+export const gradeCheckSchema = z.object({
+  answer: z.string().trim().min(1).max(8000),
+  reference: z.string().trim().min(1).max(4000),
+});
 export const anchoredCheckSchema = checkClaimSchema.extend({
   step: z.string().trim().min(1).max(1000),
 });
 export type MathCheck = z.infer<typeof checkClaimSchema>;
 export type AnchoredCheck = z.infer<typeof anchoredCheckSchema>;
+export type GradeCheck = z.infer<typeof gradeCheckSchema>;
 
 export function anchoredChecks(
   body: string,

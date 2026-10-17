@@ -3,6 +3,7 @@ import { interestsLine } from "../profile/context";
 import { uuidv7 } from "../../shared/ids";
 import { syncGaps } from "../plans/progress";
 import { enqueueGapInsights } from "./gapInsight";
+import { checkMath } from "./mathGrade";
 import { z } from "zod";
 import { generate, type GenerateInput } from "../engine/generate";
 import {
@@ -531,6 +532,11 @@ export function registerSimulationJobs(
             const question = params.questions[params.next]!;
             const expected = question.answer.accepted[0]?.[0] ?? "";
             const answer = (params.picks[question.id] ?? "").trim();
+            // SymPy's verdict on the final answer and the first wrong step, when it could read them; the model still grades.
+            const mathCheck = answer
+              ? await checkMath(answer, expected, ctx.signal)
+              : undefined;
+            ctx.signal.throwIfAborted();
             const result = answer
               ? await generate({
                   run,
@@ -544,6 +550,7 @@ export function registerSimulationJobs(
                     question: question.stem,
                     reference: expected,
                     answer: params.picks[question.id] ?? "",
+                    ...(mathCheck ? { mathCheck } : {}),
                   }),
                 })
               : undefined;

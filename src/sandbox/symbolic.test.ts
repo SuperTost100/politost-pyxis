@@ -9,6 +9,12 @@ const pack = join(process.cwd(), ".tmp/pyodide");
 const available = existsSync(join(pack, "pyodide.js"));
 type Check = { state: string; reason?: string };
 let check: (claim: Record<string, unknown>) => Check;
+type Report = {
+  final: { state: string; reason?: string; numbers?: [number, number] };
+  steps: number;
+  firstWrong?: { index: number; previous: string; step: string };
+};
+let grade: (answer: string, reference: string) => Report;
 
 describe.skipIf(!available)("sandbox symbolic checks", () => {
   beforeAll(async () => {
@@ -33,6 +39,10 @@ describe.skipIf(!available)("sandbox symbolic checks", () => {
     check = (claim) => {
       python.globals.set("_claim", JSON.stringify(claim));
       return JSON.parse(python.runPython("check_claim(_claim)")) as Check;
+    };
+    grade = (answer, reference) => {
+      python.globals.set("_claim", JSON.stringify({ answer, reference }));
+      return JSON.parse(python.runPython("check_grade(_claim)")) as Report;
     };
   }, 90000);
   const solve = (expr: string, claimed: string) =>
@@ -113,5 +123,100 @@ describe.skipIf(!available)("sandbox symbolic checks", () => {
         vars: ["x"],
       }).state,
     ).toBe("verified");
+  });
+
+  // Grading: the student's final answer against the reference, then each step of the work against the one before.
+  const final = (answer: string, reference: string) =>
+    grade(answer, reference).final.state;
+
+  it("matches equivalent final expressions in student notation", () => {
+    expect(final("1/2", "0.5")).toBe("verified");
+    expect(final("2x+2", "2(x+1)")).toBe("verified");
+    expect(final("\\frac{\\sqrt{2}}{2}", "1/sqrt(2)")).toBe("verified");
+    expect(final("x/(x+1)", "1 - 1/(x+1)")).toBe("verified");
+    expect(final("sen(x)", "\\sin x")).toBe("verified");
+    expect(final("e^x", "exp(x)")).toBe("verified");
+    expect(final("2x cos(x²)", "La derivata è 2x\\cos(x^2)")).toBe("verified");
+    expect(final("2x+3", "2(x+1)")).toBe("failed");
+  });
+  it("leaves numeric tolerance to core by returning both values", () => {
+    expect(grade("0,333", "1/3").final).toEqual({
+      state: "failed",
+      reason: "expression",
+      numbers: [0.333, 1 / 3],
+    });
+    expect(grade("1860", "1848").final.numbers).toEqual([1860, 1848]);
+    expect(grade("x = 1,41", "x = sqrt(2)").final.numbers).toEqual([
+      1.41,
+      Math.SQRT2,
+    ]);
+  });
+  it("compares equations and solution sets written in different ways", () => {
+    expect(final("x = 3", "3")).toBe("verified");
+    expect(final("x = 2 oppure x = -2", "x = ±2")).toBe("verified");
+    expect(final("x_1 = 2, x_2 = -2", "{-2, 2}")).toBe("verified");
+    expect(final("x(x+1) = 0\nx = 0 or x = -1", "x = 0, x = -1")).toBe(
+      "verified",
+    );
+    expect(final("y = 2x + 1", "2x - y + 1 = 0")).toBe("verified");
+    expect(final("E = m c^2", "E = mc^2")).toBe("verified");
+    expect(final("x = 2", "x = ±2")).toBe("failed");
+    expect(final("y = 2x + 3", "y = 2x + 1")).toBe("failed");
+  });
+  it("compares intervals and inequalities", () => {
+    expect(final("1 < x ≤ 3", "(1, 3]")).toBe("verified");
+    expect(final("x ∈ [1; 3)", "[1, 3)")).toBe("verified");
+    expect(final("]1, 3[", "(1,3)")).toBe("verified");
+    expect(final("x ≥ 2", "[2, +∞)")).toBe("verified");
+    expect(final("x < -1 or x > 1", "(-∞, -1) ∪ (1, +∞)")).toBe("verified");
+    expect(final("x > 2", "x >= 2")).toBe("failed");
+  });
+  it("stays unchecked on prose, units, rounding and domain questions", () => {
+    expect(final("The answer is that energy is conserved", "Energy is conserved")).toBe("none");
+    expect(final("x = 2 (accettabile)", "x = 2")).toBe("none");
+    expect(final("5 m/s", "5")).toBe("none");
+    expect(final("x = ±1.41", "x = ±sqrt(2)")).toBe("none");
+    expect(final("log(x*y)", "log(x)+log(y)")).toBe("none");
+    expect(final("Verifica: 2·2 + 3 = 7", "x = 2")).toBe("none");
+    expect(final("__import__('os')", "1")).toBe("none");
+  });
+  it("names the first step that does not follow from the one before", () => {
+    expect(grade("2x + 3 = 7\n2x = 10\nx = 5", "x = 2")).toMatchObject({
+      steps: 3,
+      firstWrong: { index: 2, previous: "2x + 3 = 7", step: "2x = 10" },
+    });
+    expect(grade("x^2 = 4\nx = 2", "x = ±2").firstWrong).toMatchObject({
+      index: 2,
+    });
+    expect(grade("-2x > 4\nx > -2", "x < -2").firstWrong).toMatchObject({
+      step: "x > -2",
+    });
+    expect(
+      grade("f(x) = (x+1)^2\n= x^2 + 2x + 1\n= x^2 + 1", "x^2+2x+1").firstWrong,
+    ).toMatchObject({ index: 3, step: "= x^2 + 1" });
+    // A chain that disagrees with itself on one line.
+    expect(grade("f(2) = 3·4 + 1 = 12", "13").firstWrong).toMatchObject({
+      index: 1,
+    });
+  });
+  it("does not blame correct work", () => {
+    const clean = (answer: string, reference: string) =>
+      grade(answer, reference).firstWrong;
+    expect(clean("2x + 3 = 7\n2x = 4\nx = 2", "x = 2")).toBeUndefined();
+    // Squaring adds x = 1; dropping it is not a lost solution.
+    expect(
+      clean("√x = x - 2\nx = (x-2)^2\nx^2 - 5x + 4 = 0\nx = 1 o x = 4\nx = 4", "x = 4"),
+    ).toBeUndefined();
+    // A function and its derivative on separate lines, a substitution, and a system.
+    expect(clean("x^3 + 2x\n3x^2 + 2", "3x^2+2")).toBeUndefined();
+    expect(clean("v = s/t = 100/20 = 5 m/s", "5 m/s")).toBeUndefined();
+    expect(clean("x = y = 0", "0")).toBeUndefined();
+    expect(clean("2x + y = 5\nx - y = 1\n3x = 6\nx = 2\ny = 1", "y = 1")).toBeUndefined();
+    expect(
+      clean("Applico la regola della catena.\nf'(x) = 2x·cos(x²)\nf'(x) = 2x cos(x^2)", "2x cos(x^2)"),
+    ).toBeUndefined();
+    expect(
+      clean("\\[ x^{2} - 4 = 0 \\Rightarrow x = \\pm 2 \\]", "x=\\pm2"),
+    ).toBeUndefined();
   });
 });

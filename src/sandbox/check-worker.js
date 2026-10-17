@@ -11,8 +11,10 @@ self.onmessage = async (event) => {
       postMessage({ type: "ready" });
     } catch (error) { postMessage({ type: "load-error", error: String(error) }); }
   } else if (data.type === "run") {
-    python.globals.set("_pyxis_claim", JSON.stringify(data.payload));
-    try { postMessage({ type: "done", id: data.id, result: JSON.parse(python.runPython("check_claim(_pyxis_claim)")) }); }
+    // A grading request carries the student's answer and the reference; every other request is one chat claim.
+    const grade = data.payload && typeof data.payload === "object" && "grade" in data.payload;
+    python.globals.set("_pyxis_claim", JSON.stringify(grade ? data.payload.grade : data.payload));
+    try { postMessage({ type: "done", id: data.id, result: JSON.parse(python.runPython(grade ? "check_grade(_pyxis_claim)" : "check_claim(_pyxis_claim)")) }); }
     catch { postMessage({ type: "done", id: data.id, result: { state: "none", reason: "check-error" } }); }
     finally { python.globals.delete("_pyxis_claim"); }
   }

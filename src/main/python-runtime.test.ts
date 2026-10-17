@@ -200,4 +200,33 @@ describe("python runtime queue", () => {
     fake.held[1]!.settle({ stdout: "2" });
     await expect(second).resolves.toEqual({ stdout: "2" });
   });
+
+  it("sends grading checks through the check lane, after the chat check ahead of them", async () => {
+    const chat = handleRuntimeRequest("check", claim);
+    const grade = handleRuntimeRequest("grade", {
+      answer: "2x + 2",
+      reference: "2(x+1)",
+    });
+    await tick();
+    expect(fake.held).toHaveLength(1);
+    fake.held[0]!.settle({ state: "verified" });
+    await chat;
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    expect(fake.held[1]!.script).toBe(
+      'window.pyxisRuntime.grade({"answer":"2x + 2","reference":"2(x+1)"})',
+    );
+    const report = { final: { state: "verified" }, steps: 1 };
+    fake.held[1]!.settle(report);
+    await expect(grade).resolves.toEqual(report);
+  });
+
+  it("refuses a malformed grading request without opening the sandbox", async () => {
+    await expect(
+      handleRuntimeRequest("grade", { answer: "", reference: "1" }),
+    ).resolves.toEqual({ state: "none", reason: "runtime-unavailable" });
+    await expect(
+      handleRuntimeRequest("grade", { answer: "x".repeat(8001), reference: "1" }),
+    ).resolves.toEqual({ state: "none", reason: "runtime-unavailable" });
+    expect(fake.windows).toHaveLength(0);
+  });
 });

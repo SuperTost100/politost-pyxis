@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
 import { promptProvenance } from "../engine/prompts";
@@ -17,6 +17,7 @@ import {
 } from "./quizGrading";
 import { saveQuizDraft } from "./quizJobs";
 import { readSteps } from "../plans/steps";
+import { receiveRuntimeReply, setRuntimeSender } from "../math/runtime-client";
 
 type Db = ReturnType<typeof openDatabase>;
 const open = (id: string, reference = "ten"): QuizQuestion => ({
@@ -618,6 +619,124 @@ describe("diagnostic retakes", () => {
     expect(
       readSteps(db, "plan").filter((step) => step.activity === "diagnostic"),
     ).toHaveLength(2);
+    db.close();
+  });
+});
+
+describe("SymPy in quiz grading", () => {
+  type RuntimeRequest = {
+    id: string;
+    operation: string;
+    payload: { answer: string; reference: string };
+  };
+  // A recorded sandbox: the report for each answer, or no runtime at all for answers it does not know.
+  function sandbox(reports: Record<string, unknown>) {
+    const asked: string[] = [];
+    setRuntimeSender((message) => {
+      const request = message as RuntimeRequest;
+      asked.push(request.payload.answer);
+      const result = reports[request.payload.answer];
+      receiveRuntimeReply(
+        result
+          ? { id: request.id, result }
+          : { id: request.id, error: "runtime-missing" },
+      );
+    });
+    return asked;
+  }
+  afterEach(() => sandbox({}));
+  const completion = (id: string, accepted: string): QuizQuestion => ({
+    id,
+    stem: `Fill ${id}`,
+    grade: { kind: "completion", answers: [], accepted: [[accepted]] },
+  });
+
+  it("gives the grader the first wrong step and the final verdict", async () => {
+    const work = "2x + 3 = 7\n2x = 10\nx = 5";
+    sandbox({
+      [work]: {
+        final: { state: "failed", numbers: [5, 2] },
+        steps: 3,
+        firstWrong: { index: 2, previous: "2x + 3 = 7", step: "2x = 10" },
+      },
+    });
+    const { db, attemptId } = fixture([open("a", "x = 2")], "quiz");
+    const prompts: Array<Record<string, unknown>> = [];
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async (input) => {
+      prompts.push(JSON.parse(input.prompt) as Record<string, unknown>);
+      return reply(0.3);
+    });
+    submitQuiz(db, runner, attemptId, { a: work });
+    const done = await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(prompts[0]).toMatchObject({
+      reference: "x = 2",
+      answer: work,
+      mathCheck: {
+        finalAnswer: "different",
+        firstWrongStep: { number: 2, previous: "2x + 3 = 7", text: "2x = 10" },
+      },
+    });
+    // The model's grade stands; SymPy informs it.
+    expect(done.result!.results[0]!.score).toBe(0.3);
+    expect(checkedAnswer(db, attemptId, "a")!.prompt).toEqual({
+      template: "quiz.open-grade",
+      version: "2",
+    });
+    db.close();
+  });
+
+  it("grades as before, with no mathCheck, when the runtime is missing", async () => {
+    const asked = sandbox({});
+    const { db, attemptId } = fixture([open("a", "x = 2")], "quiz");
+    const prompts: string[] = [];
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async (input) => {
+      prompts.push(input.prompt);
+      return reply(1);
+    });
+    submitQuiz(db, runner, attemptId, { a: "x = 2" });
+    await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(asked).toEqual(["x = 2"]);
+    expect(JSON.parse(prompts[0]!)).not.toHaveProperty("mathCheck");
+    db.close();
+  });
+
+  it("credits a completion answer that is the same mathematics, and saves the credit with the job", async () => {
+    const asked = sandbox({
+      "1/2": { final: { state: "verified" }, steps: 1 },
+      "x^2": { final: { state: "failed" }, steps: 1 },
+    });
+    const { db, attemptId } = fixture(
+      [completion("half", "0.5"), completion("square", "2x"), completion("same", "4")],
+      "quiz",
+    );
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async () => reply(1));
+    const { jobId } = submitQuiz(db, runner, attemptId, {
+      half: "1/2",
+      square: "x^2",
+      same: "4",
+    });
+    const done = await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(done.result!.results.map((row) => row.score)).toEqual([1, 0, 1]);
+    // "4" matched as typed, so only the other two were sent.
+    expect(asked).toEqual(["1/2", "x^2"]);
+    const params = db
+      .prepare("SELECT params_json FROM jobs WHERE id = ?")
+      .get(jobId) as { params_json: string };
+    expect(JSON.parse(params.params_json).credits).toEqual({ half: 1 });
+    db.close();
+  });
+
+  it("credits a completion answer checked right away in a configured quiz", async () => {
+    sandbox({ "x ≥ 2": { final: { state: "verified" }, steps: 1 } });
+    const { db, attemptId } = fixture(
+      [{ ...completion("cfg", "[2, +∞)") }],
+      "quiz",
+    );
+    const checked = await gradeQuizQuestion(db, attemptId, "cfg", "x ≥ 2");
+    expect(checked).toMatchObject({ score: 1, pick: "x ≥ 2" });
     db.close();
   });
 });
