@@ -190,10 +190,10 @@ export async function autoConfigureEngines(
   // A failed model listing is not proof that the engine went away. Keep the
   // current choices rather than blanking them.
   const unreadable = failed > 0 && listed.length === 0;
+  const plan = planAuto(listed);
   const doubtful =
     !unreadable && listed.length === 0 && hadEngines.get(db) === true;
   if (!unreadable) hadEngines.set(db, listed.length > 0);
-  const plan = planAuto(listed);
   const now = Date.now();
   const apply = db.transaction(() => {
     // A reset that cannot read any model list would leave every feature without an engine.
