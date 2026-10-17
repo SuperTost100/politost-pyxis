@@ -93,7 +93,15 @@ export class ReusableWorker<Req, Res> {
       this.spawning = true;
       void this.gone.then(() => {
         this.spawning = false;
-        if (this.queue.length > 0) this.worker ??= this.start();
+        if (this.queue.length > 0 && !this.worker) {
+          try {
+            this.worker = this.start();
+          } catch (error) {
+            // No thread could be started (out of memory or threads): everything waiting fails, and the next call tries again.
+            for (const call of this.queue.splice(0)) call.reject(error);
+            return;
+          }
+        }
         this.next();
       });
       return;

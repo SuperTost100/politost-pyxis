@@ -129,6 +129,27 @@ describe("a worker kept alive between calls", () => {
     expect(spawned()).toBe(2);
   });
 
+  it("fails the waiting calls when no thread can be started, and the next call tries again", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyxis-reusable-"));
+    dirs.push(dir);
+    const file = join(dir, "worker.cjs");
+    writeFileSync(file, SCRIPT);
+    let attempts = 0;
+    const pool = new ReusableWorker<unknown, { request: unknown }>(() => {
+      attempts += 1;
+      if (attempts === 1) throw Object.assign(new Error("spawn EAGAIN"), { code: "EAGAIN" });
+      const thread = new Worker(file);
+      threads.push(thread);
+      return thread;
+    });
+    const [first, second] = await Promise.allSettled([pool.run("a"), pool.run("b")]);
+    expect(first).toMatchObject({ status: "rejected", reason: { message: "spawn EAGAIN" } });
+    expect(second).toMatchObject({ status: "rejected", reason: { message: "spawn EAGAIN" } });
+    expect(pool.busy).toBe(false);
+    await expect(pool.run("c")).resolves.toMatchObject({ request: "c" });
+    expect(attempts).toBe(2);
+  });
+
   it("releases the model after the idle time and keeps the thread", async () => {
     const { pool, spawned } = setup(40);
     const first = await pool.run("a");
