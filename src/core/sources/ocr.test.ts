@@ -68,6 +68,26 @@ describe("ocr queue", () => {
     expect(listSources(db).find((s) => s.id === badId)?.status).toBe("failed");
   });
 
+  it("lets a scan whose OCR found no text be read again, and nothing else that failed", async () => {
+    const db = openDatabase(":memory:");
+    const emptyId = seedNeedsOcr(db);
+    requestOcr(db, emptyId);
+    expect(finishOcr(db, emptyId)).toBe("failed");
+    requestOcr(db, emptyId);
+    expect(listSources(db).find((s) => s.id === emptyId)?.status).toBe("ocr-queued");
+    expect(finishOcr(db, emptyId)).toBe("failed");
+    // The renderer's page-by-page scan starts the run with its first page.
+    const { ocrPngPage } = await import("./intake");
+    expect(await ocrPngPage(db, emptyId, 1, new Uint8Array(), async () => "testo letto", true)).toBe("ready");
+    // A failed import that never stored a document has nothing for OCR to write into.
+    const now = Date.now();
+    const noDocument = uuidv7(now);
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES (?, 'pdf', 'Broken', 'failed', ?, ?)`,
+    ).run(noDocument, now, now);
+    expect(() => requestOcr(db, noDocument)).toThrow(/invalid-ocr-state/);
+  });
+
   it("runs plain pages end to end", () => {
     const db = openDatabase(":memory:");
     const sourceId = seedNeedsOcr(db);

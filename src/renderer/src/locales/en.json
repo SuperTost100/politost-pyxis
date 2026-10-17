@@ -298,6 +298,8 @@
     "ocrCancel": "Cancel the scan",
     "ocrCancelling": "Stopping. Pages already read are kept.",
     "ocrInterrupted": "The scan was interrupted before it finished. Read the scan again. Pages already read are kept.",
+    "scanEmpty": "Reading the scanned pages of {{title}} found no text.",
+    "ocrNotScan": "Only a scan that has no text yet can be read with OCR.",
     "scannedNoFile": "{{title}} has no text, and Pyxis no longer has the file to read.",
     "fileMissing": "Pyxis no longer has the file for this scan, so it cannot read it. Use Replace file to add it again.",
     "ocrReading": "Reading the page.",

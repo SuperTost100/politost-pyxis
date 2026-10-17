@@ -59,6 +59,26 @@ type ImportResult = {
   skipped: number;
 };
 
+/**
+ * A scanned PDF whose OCR found no text is marked failed with no sections. It can be read again, so it keeps the scan
+ * notice. A failed import names its error, and has nothing to read.
+ */
+function scanFoundNothing(source: {
+  status: string;
+  kind: string;
+  sections: number;
+  blobSha: string | null;
+  error?: string;
+}): boolean {
+  return (
+    source.status === "failed" &&
+    source.kind === "pdf" &&
+    source.sections === 0 &&
+    !!source.blobSha &&
+    !source.error
+  );
+}
+
 export function LibraryPanel({
   importOnly = false,
   onClose,
@@ -1171,6 +1191,7 @@ export function LibraryPanel({
         .filter(
           (source) =>
             source.status === "needs-ocr" ||
+            scanFoundNothing(source) ||
             (source.status === "ocr-queued" && ocrFor?.id === source.id),
         )
         .map((source) => (
@@ -1187,7 +1208,10 @@ export function LibraryPanel({
               </>
             ) : (
               <>
-                {t("sources.scanned", { title: source.title })}{" "}
+                {t(
+                  scanFoundNothing(source) ? "sources.scanEmpty" : "sources.scanned",
+                  { title: source.title },
+                )}{" "}
                 {ocrFor?.id === source.id ? (
                   <>
                     {t(

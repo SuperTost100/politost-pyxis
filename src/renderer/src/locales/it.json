@@ -298,6 +298,8 @@
     "ocrCancel": "Annulla la lettura",
     "ocrCancelling": "Interruzione in corso. Le pagine già lette restano.",
     "ocrInterrupted": "La lettura è stata interrotta prima della fine. Leggi di nuovo la scansione. Le pagine già lette restano.",
+    "scanEmpty": "La lettura delle pagine scansionate di {{title}} non ha trovato testo.",
+    "ocrNotScan": "Con l'OCR si possono leggere solo le scansioni ancora senza testo.",
     "scannedNoFile": "{{title}} non ha testo e Pyxis non ha più il file da leggere.",
     "fileMissing": "Pyxis non ha più il file di questa scansione e non può leggerla. Usa Sostituisci il file per aggiungerlo di nuovo.",
     "ocrReading": "Sto leggendo la pagina.",
