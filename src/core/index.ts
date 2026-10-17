@@ -2,7 +2,8 @@ import type { FileGrant } from "./ipc/file-grants";
 import { receiveRuntimeReply, setRuntimeSender } from "./math/runtime-client";
 import { recordedPlanRun } from "./engine/recorded-plan";
 import { join } from "node:path";
-import { openDatabase } from "./db/connection";
+import type Database from "better-sqlite3";
+import { closeDatabase, openDatabase } from "./db/connection";
 import { getFunnel, setApiKeys, setScratch } from "./engine/funnel";
 import { addInstallDirsToPath } from "./engine/install";
 import {
@@ -28,6 +29,7 @@ import { setSourceWorkerDirectory } from "./sources/worker-client";
 import { markStoppedImport } from "./sources/jobs";
 import { folderTransport } from "./sources/books";
 import { retireExerciseCards } from "./study/exerciseCards";
+import { onEvidenceChanged } from "./plans/evidenceCache";
 
 setSourceWorkerDirectory(import.meta.dirname);
 addInstallDirsToPath();
@@ -71,6 +73,7 @@ if (!parent) {
   let booted = false;
   let jobRunner: ReturnType<typeof createRunner> | undefined;
   let developmentSeam = false;
+  let database: Database.Database | undefined;
 
   function failBootstrap(err: unknown): void {
     console.error(
@@ -93,7 +96,19 @@ if (!parent) {
   ): void {
     setRuntimeSender((message) => port.postMessage(message));
     const db = openDatabase(join(workspacePath, "pyxis.db"));
+    database = db;
     retireExerciseCards(db);
+    // Study writes change mastery. The broadcast goes out with the first write of a turn, before the reply to the
+    // request that wrote, so the renderer marks its plan data out of date before it acts on the reply.
+    let evidenceSent = false;
+    onEvidenceChanged(db, () => {
+      if (evidenceSent) return;
+      evidenceSent = true;
+      broadcast("plans.evidence", {});
+      setImmediate(() => {
+        evidenceSent = false;
+      });
+    });
     setScratch(join(workspacePath, "scratch"));
     // Explicit recorded fixtures may use a deterministic selection in their
     // private test workspace. Normal launches require a confirmed engine.
@@ -255,7 +270,18 @@ if (!parent) {
         jobRunner?.activate();
       })();
     }
-    if (data?.type === "shutdown") process.exit(0);
+    if (data?.type === "shutdown") {
+      // Fold the WAL into pyxis.db and close it first, so the workspace main copies or leaves behind is complete.
+      try {
+        if (database) closeDatabase(database);
+      } catch (err) {
+        console.error(
+          "pyxis-core: close failed",
+          err instanceof Error ? err.message : "unknown",
+        );
+      }
+      process.exit(0);
+    }
     const rendererPort = event.ports[0];
     if (rendererPort) attachRendererPort(rendererPort);
   });

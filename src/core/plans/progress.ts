@@ -13,6 +13,7 @@ import { retrievability, type ScheduleState } from "../study/schedule";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { masteryFor, type MasteryEvent } from "../study/mastery";
+import { cachedEvidence } from "./evidenceCache";
 import {
   activeMinutes,
   chartPoints,
@@ -35,8 +36,8 @@ export function planMastery(
       `SELECT id, title FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position`,
     )
     .all(planId) as Array<{ id: string; title: string }>;
-  const events = masteryEvidence(db, planId, now);
-  const scores = masteryFor(events, now);
+  const evidence = masteryEvidence(planEvidence(db, planId), now);
+  const scores = masteryFor(evidence, now);
   return topics.map((topic) => ({
     id: topic.id,
     title: topic.title,
@@ -44,35 +45,70 @@ export function planMastery(
   }));
 }
 
-function masteryEvidence(
-  db: Database.Database,
-  planId: string,
-  now: number,
-): MasteryEvent[] {
-  const events = seriesEvidence(
-    readSeries(db, planId).filter((event) => event.at <= now),
-  );
-  const cards = db
-    .prepare(
-      `
-    SELECT c.id, c.topic_id,
-      (SELECT cr.state_json FROM card_reviews cr WHERE cr.card_id=c.id AND cr.reviewed_at<=?
-       ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS state_json
-    FROM cards c WHERE c.plan_id=? AND c.topic_id IS NOT NULL AND c.created_at<=?
-      AND c.suspended=0 AND c.removed=0
-  `,
-    )
-    .all(now, planId, now) as Array<{
+/** A plan's events and card reviews, for any date. Read once and cached until a write changes them. */
+type PlanEvidence = {
+  series: SeriesEvent[];
+  answers: MasteryEvent[];
+  /** Active cards with a topic and at least one review, each with its reviews oldest first. */
+  cards: Array<{
     id: string;
-    topic_id: string;
-    state_json: string | null;
+    topicId: string;
+    createdAt: number;
+    /** `state` is parsed from `json` the first time it is needed. */
+    reviews: Array<{ at: number; json: string; state?: ScheduleState }>;
   }>;
-  for (const card of cards) {
+};
+
+function planEvidence(db: Database.Database, planId: string): PlanEvidence {
+  return cachedEvidence(db, planId, () => {
+    const rows = db
+      .prepare(
+        `SELECT c.id, c.topic_id, c.created_at, cr.state_json, cr.reviewed_at
+         FROM cards c JOIN card_reviews cr ON cr.card_id = c.id
+         WHERE c.plan_id = ? AND c.topic_id IS NOT NULL AND c.suspended = 0 AND c.removed = 0
+         ORDER BY c.id, cr.reviewed_at, cr.rowid`,
+      )
+      .all(planId) as Array<{
+      id: string;
+      topic_id: string;
+      created_at: number;
+      state_json: string;
+      reviewed_at: number;
+    }>;
+    const cards: PlanEvidence["cards"] = [];
+    for (const row of rows) {
+      let card = cards.at(-1);
+      if (card?.id !== row.id) {
+        card = {
+          id: row.id,
+          topicId: row.topic_id,
+          createdAt: row.created_at,
+          reviews: [],
+        };
+        cards.push(card);
+      }
+      card.reviews.push({ at: row.reviewed_at, json: row.state_json });
+    }
+    const series = readSeries(db, planId);
+    return { series, answers: seriesEvidence(series), cards };
+  });
+}
+
+/** The evidence as it stood at `now`: answers until then and each card's latest review by then. */
+function masteryEvidence(evidence: PlanEvidence, now: number): MasteryEvent[] {
+  const events = evidence.answers.filter((event) => event.at <= now);
+  for (const card of evidence.cards) {
+    if (card.createdAt > now) continue;
+    let latest: PlanEvidence["cards"][number]["reviews"][number] | undefined;
+    for (const review of card.reviews) {
+      if (review.at > now) break;
+      latest = review;
+    }
     // A card never reviewed says nothing about recall yet; counting it as 0 would make new cards lower mastery.
-    if (!card.state_json) continue;
-    const state = JSON.parse(card.state_json) as ScheduleState;
+    if (!latest) continue;
+    const state = (latest.state ??= JSON.parse(latest.json) as ScheduleState);
     events.push({
-      topicId: card.topic_id,
+      topicId: card.topicId,
       kind: "card",
       cardId: card.id,
       score: retrievability(state, now),
@@ -244,7 +280,7 @@ export function syncGaps(
 ) {
   db.transaction(() => {
     backfillGapEvents(db, planId);
-    const events = readSeries(db, planId);
+    const events = planEvidence(db, planId).series;
     const rows = db
       .prepare(
         `SELECT id, topic_id AS topicId, opened_at AS openedAt, closed_at AS closedAt, origin FROM gaps WHERE plan_id = ?`,
@@ -326,7 +362,8 @@ export function planSeries(
 ) {
   syncGaps(db, planId, now);
   const topics = planMastery(db, planId, now);
-  const events = withoutReplacedRatings(readSeries(db, planId));
+  const evidence = planEvidence(db, planId);
+  const events = withoutReplacedRatings(evidence.series);
   const studied = events.filter(
     (event): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } =>
       event.kind !== "active",
@@ -349,20 +386,17 @@ export function planSeries(
   );
   const preparation = weightedPlanMastery(topics, passageCounts);
   const historicalAverage = (at: number) => {
-    const scores = masteryFor(masteryEvidence(db, planId, at), at);
+    const scores = masteryFor(masteryEvidence(evidence, at), at);
     return weightedPlanMastery(
       topics.map((topic) => ({ id: topic.id, mastery: scores[topic.id] ?? 0 })),
       passageCounts,
     );
   };
-  const chart = chartPoints(events, now).map((point) => {
-    const end = new Date(point.day);
+  const chart = chartPoints(events, now, 14, (day) => {
+    const end = new Date(day);
     end.setDate(end.getDate() + 1);
     end.setHours(0, 0, 0, 0);
-    return {
-      ...point,
-      mastery: historicalAverage(Math.min(now, end.getTime() - 1)),
-    };
+    return historicalAverage(Math.min(now, end.getTime() - 1));
   });
   const completed = db
     .prepare(

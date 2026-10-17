@@ -68,27 +68,39 @@ function isStudied(
   return event.kind !== "active";
 }
 
-export function chartPoints(events: SeriesEvent[], now: number, days = 14) {
+export function chartPoints(
+  events: SeriesEvent[],
+  now: number,
+  days = 14,
+  /** The mastery of a day; by default the mean topic mastery these events give at the day's end. */
+  masteryOn?: (day: number) => number,
+) {
   const end = dayStart(now);
   const points = [];
+  const studied = events.filter(isStudied);
   for (let i = days - 1; i >= 0; i--) {
     const day = addDays(end, -i);
     const until = addDays(day, 1);
-    const studied = events.filter(isStudied);
     const counted = studied.filter(
       (event) => event.at >= day && event.at < until,
     ).length;
-    const masteryEvents = seriesEvidence(
-      studied.filter((event) => event.at < until),
-    );
-    const scores = Object.values(masteryFor(masteryEvents, until - 1));
-    const mastery =
-      scores.length === 0
-        ? 0
-        : scores.reduce((sum, score) => sum + score, 0) / scores.length;
-    points.push({ day, count: counted, mastery });
+    points.push({
+      day,
+      count: counted,
+      mastery: masteryOn ? masteryOn(day) : meanMastery(studied, until),
+    });
   }
   return points;
+}
+
+function meanMastery(studied: SeriesEvent[], until: number): number {
+  const masteryEvents = seriesEvidence(
+    studied.filter((event) => event.at < until),
+  );
+  const scores = Object.values(masteryFor(masteryEvents, until - 1));
+  return scores.length === 0
+    ? 0
+    : scores.reduce((sum, score) => sum + score, 0) / scores.length;
 }
 
 /** Legacy attempts retain their individual scores; missing answer kinds use quiz weight. */

@@ -15,6 +15,7 @@ export function JobsSync() {
     const offJob = onBroadcast("job.updated", () => {
       void client.invalidateQueries({ queryKey: ["plans"] });
       void client.invalidateQueries({ queryKey: ["plan"] });
+      void client.invalidateQueries({ queryKey: ["series"], refetchType: "none" });
       void client.invalidateQueries({ queryKey: ["plan-build"] });
       void client.invalidateQueries({ queryKey: ["sources"] });
       void client.invalidateQueries({ queryKey: ["source-chapters"] });
@@ -23,11 +24,17 @@ export function JobsSync() {
       void client.invalidateQueries({ queryKey: ["ocr-data"] });
       void client.invalidateQueries({ queryKey: ["jobs"] });
     });
+    // A study write changed mastery: the next visit to an exam list, plan or Progress tab reads it again.
+    const offEvidence = onBroadcast("plans.evidence", () => {
+      for (const key of ["plans", "plan", "series"])
+        void client.invalidateQueries({ queryKey: [key], refetchType: "none" });
+    });
     const offPort = window.pyxis.onPort(() => {
       void client.invalidateQueries({ queryKey: ["jobs"] });
     });
     return () => {
       offJob();
+      offEvidence();
       offPort();
     };
   }, [client]);

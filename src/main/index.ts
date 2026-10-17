@@ -761,13 +761,17 @@ function pauseCore(): Promise<void> {
             holdCore = false;
             reject(new Error("core-busy"));
           }, 3000);
+          // Core checkpoints and closes the database before it exits, so the files copied next are complete.
+          // One that does not exit in time is killed.
+          const kill = setTimeout(() => child.kill(), 1500);
           child.once("exit", () => {
+            clearTimeout(kill);
             if (settled) return;
             settled = true;
             clearTimeout(timer);
             resolve();
           });
-          child.kill();
+          child.postMessage({ type: "shutdown" });
         });
   return Promise.allSettled([stopped, invalidateRuntime(workspacePath)]).then(
     (results) => {

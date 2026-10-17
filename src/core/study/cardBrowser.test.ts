@@ -180,6 +180,26 @@ describe("card browser", () => {
     expect(fronts(db, { query: "forza chimica" })).toEqual([]);
   });
 
+  it("searches the current text after an edit and finds a card added since the last search", () => {
+    const db = library();
+    expect(fronts(db, { query: "protoni" })).toEqual(["Numero atomico?"]);
+    saveCard(db, {
+      planId: "p-chem",
+      topicId: "t-atoms",
+      cardId: idOf(db, "Numero atomico?"),
+      front: "Numero atomico?",
+      back: "Quanti nucleoni carichi.",
+    });
+    saveCard(db, {
+      planId: "p-chem",
+      topicId: "t-atoms",
+      front: "Isotopi?",
+      back: "Stessi protoni, neutroni diversi.",
+    });
+    expect(fronts(db, { query: "protoni" })).toEqual(["Isotopi?"]);
+    expect(fronts(db, { query: "nucleoni" })).toEqual(["Numero atomico?"]);
+  });
+
   it("searches a cloze by its text, not by its markup", () => {
     const db = library();
     expect(fronts(db, { query: "elettroni orbitano" })).toHaveLength(1);

@@ -25,11 +25,11 @@ The application menu is built in `src/main/menu.ts` for every platform and build
 
 Core owns `pyxis.db`, blob storage and domain handlers. `src/shared/ipc.ts` defines request, response and event shapes. Core parses inputs with Zod before dispatching. Errors use `{ code, messageKey, params, detail }`. `src/shared/bridge.ts` describes privileged main/preload operations separately.
 
-Main transfers a fresh message port between core and renderer. React Query handles renderer request state and invalidation. Streams have cancellation; job updates arrive as events. If core exits, main restarts it and transfers a new port. In-flight requests reject with `core-restarted` so the renderer can show the failure and reconnect.
+Main transfers a fresh message port between core and renderer. React Query handles renderer request state and invalidation. The exam list, plan and Progress queries stay fresh for 30 s; a job update or the `plans.evidence` broadcast marks them stale sooner. Streams have cancellation; job updates arrive as events. If core exits, main restarts it and transfers a new port. In-flight requests reject with `core-restarted` so the renderer can show the failure and reconnect.
 
 ## Storage and jobs
 
-SQLite uses WAL, foreign keys and numbered transactional migrations. Passages have an FTS index and optional local embeddings in sqlite-vec. Source bytes live in content-addressed blobs. Extraction creates immutable document versions; citations retain passage IDs and locator metadata. See [data model](data-model.md).
+SQLite uses WAL with `synchronous = NORMAL`, foreign keys and numbered transactional migrations. Main stops core by message, and core checkpoints the WAL and closes the database before it exits. Passages have an FTS index and optional local embeddings in sqlite-vec. Source bytes live in content-addressed blobs. Extraction creates immutable document versions; citations retain passage IDs and locator metadata. See [data model](data-model.md).
 
 `src/core/jobs/runner.ts` stores jobs and named steps in SQLite. A successful step stores its output before the next step. Retry preserves completed steps; cancellation aborts the active work. Startup changes unfinished running work to interrupted so it can resume. Source imports, plan creation, generation and simulation grading register feature-specific step handlers. Some short operations are direct IPC requests.
 

@@ -85,6 +85,53 @@ CREATE INDEX gap_answers_attempt ON gap_answers (attempt_id, question_id);`,
     sql: `ALTER TABLE sources ADD COLUMN catalog_id TEXT;
 ALTER TABLE sources ADD COLUMN catalog_version TEXT;`,
   },
+  // Indexes for the hot lookups (latest card review, events by topic or item) and for every foreign-key child column
+  // that had none, so a delete or cascade finds its rows without scanning the child table.
+  {
+    version: 17,
+    sql: `CREATE INDEX card_reviews_card ON card_reviews(card_id, reviewed_at);
+CREATE INDEX learning_events_topic ON learning_events(topic_id, kind);
+CREATE INDEX learning_events_item ON learning_events(item_id, kind);
+CREATE INDEX passages_document ON passages(document_id);
+CREATE INDEX attempt_answers_attempt ON attempt_answers(attempt_id);
+CREATE INDEX cards_plan ON cards(plan_id, topic_id);
+CREATE INDEX items_plan ON items(plan_id, kind);
+CREATE INDEX topics_plan ON topics(plan_id, position);
+CREATE INDEX jobs_kind ON jobs(kind);
+CREATE INDEX sources_subject ON sources(subject_id);
+CREATE INDEX exercises_smartbook ON exercises(smartbook_id);
+CREATE INDEX exercises_passage ON exercises(passage_id);
+CREATE INDEX plans_subject ON plans(subject_id);
+CREATE INDEX plan_sources_source ON plan_sources(source_id);
+CREATE INDEX topics_parent ON topics(parent_id);
+CREATE INDEX topic_passages_passage ON topic_passages(passage_id);
+CREATE INDEX path_nodes_plan ON path_nodes(plan_id);
+CREATE INDEX path_nodes_topic ON path_nodes(topic_id);
+CREATE INDEX items_topic ON items(topic_id);
+CREATE INDEX item_passages_passage ON item_passages(passage_id);
+CREATE INDEX cards_topic ON cards(topic_id);
+CREATE INDEX cards_passage ON cards(passage_id);
+CREATE INDEX attempts_plan ON attempts(plan_id);
+CREATE INDEX attempts_item ON attempts(item_id);
+CREATE INDEX gaps_plan ON gaps(plan_id);
+CREATE INDEX gaps_topic ON gaps(topic_id);
+CREATE INDEX gaps_merged_into ON gaps(merged_into);
+CREATE INDEX gap_items_item ON gap_items(item_id);
+CREATE INDEX maps_plan ON maps(plan_id);
+CREATE INDEX maps_topic ON maps(topic_id);
+CREATE INDEX message_passages_passage ON message_passages(passage_id);
+CREATE INDEX attachments_message ON attachments(message_id);`,
+  },
+  // The card browser searches a folded copy of each card's text. Core fills it for rows where it is NULL: new cards,
+  // cards whose front or back changed (the trigger clears it) and every card the first time after this migration.
+  {
+    version: 18,
+    sql: `ALTER TABLE cards ADD COLUMN search_text TEXT;
+CREATE INDEX cards_search_pending ON cards(id) WHERE search_text IS NULL;
+CREATE TRIGGER cards_search_stale AFTER UPDATE OF front, back ON cards BEGIN
+  UPDATE cards SET search_text = NULL WHERE id = new.id;
+END;`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {
