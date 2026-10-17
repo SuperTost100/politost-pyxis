@@ -20,6 +20,16 @@ Each quiz answer contributes one observation with weight 1, or 1.5 for open answ
 | Self-rating of an exercise     | 0.5    |
 | Reviewed card (retrievability) | 0.5    |
 
+## "I don't know" and Skip in quizzes
+
+A student can answer "I don't know" (key `0`) to any question of a quiz, diagnostic or review. The page checks an empty pick; core scores an empty pick 0 for every question type, shows the correct answer, and stores it like any checked answer. It becomes a normal wrong answer: the same `answer_given` evidence with score 0, counted for gaps, and it replaces the 0 a blank would also get at submit. Simulations have no per-question check, so they have no such button.
+
+Skip (key `S`) moves a question behind the others. It comes back once; the second time it can only be answered or marked "I don't know". The skipped ids and their order are saved in the answer draft, so closing and reopening keeps the order. Skipping changes only the order shown: grading, the timer deadline and the stored question order do not change. Skip waits until every question of the quiz exists.
+
+## What a topic's number is made of
+
+`plans.masteryBreakdown` returns, for each topic, the parts of the formula above: for quiz answers (open ones included), simulation answers, quick checks, self-ratings and cards, the count, the summed weight after decay, the summed weighted score and the plain average score (for cards, the average recall). `masteryDetail` in `src/core/study/mastery.ts` computes them in the same pass as the number, and `masteryFor` returns its `mastery`, so `sum(points) / (3 + sum(weight))` equals the mastery shown. `decay` is the mastery minus what the same evidence would give with no decay. Progress shows these under each topic row.
+
 ## Self-rating of exercises
 
 After a practice exercise the student can choose "Got it" (score 1) or "Missed it" (score 0). It is optional: "Mark as done" works without any rating, and an unrated exercise adds nothing. Each rating is an `answer_given` event with `evidenceKind: "self"`, the exercise id and a `questionScores` entry for that exercise, so flagging the exercise removes the rating like any other evidence from it. Three rules follow from its being light evidence:

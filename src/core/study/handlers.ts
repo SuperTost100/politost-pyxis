@@ -230,6 +230,7 @@ export function studyHandlers(
       planId?: string;
       picks: Record<string, string>;
       index: number;
+      skipped?: string[];
     }) {
       return saveQuizDraft(
         db,
@@ -237,6 +238,8 @@ export function studyHandlers(
         input.picks,
         input.index,
         input.planId,
+        undefined,
+        input.skipped,
       );
     },
     quizRead(input: { attemptId: string; planId?: string }) {
