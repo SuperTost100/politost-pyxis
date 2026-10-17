@@ -39,6 +39,7 @@ import { ExportButton } from "../share/ExportButton";
 import { PlanProgress } from "./PlanProgress";
 import { RebuildDialog } from "./RebuildDialog";
 import { PlanPath } from "./PlanPath";
+import { MistakesNotebook } from "../study/MistakesNotebook";
 import "./PlanPage.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -97,7 +98,7 @@ export function PlanPage() {
   // The date field as edited, so the calendar button never exports an older saved date.
   const [draftExamAt, setDraftExamAt] = useState<dayjs.Dayjs | null>(null);
   const [modal, modalContext] = Modal.useModal();
-  const tab = ["progress", "topics", "sources"].includes(view ?? "")
+  const tab = ["progress", "topics", "sources", "mistakes"].includes(view ?? "")
     ? view!
     : "path";
   const progress = series.data;
@@ -317,6 +318,7 @@ export function PlanPage() {
           { value: "topics", label: t("plans.tabTopics") },
           { value: "sources", label: t("plans.tabSources") },
           { value: "progress", label: t("progress.title") },
+          { value: "mistakes", label: t("mistakes.title") },
         ]}
       />
       {error && !settingsOpen && !createOpen && (
@@ -633,6 +635,7 @@ export function PlanPage() {
           simulations={simulations.data ?? []}
         />
       )}
+      {tab === "mistakes" && <MistakesNotebook planId={planId} />}
       <Modal
         open={settingsOpen}
         title={t("planOverview.settings")}

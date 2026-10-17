@@ -54,6 +54,7 @@ const replayable = new Set([
   "study.gapDrillRead",
   "study.suspended",
   "study.browse",
+  "study.mistakes",
   "plans.usage",
   "plans.read",
   "plans.export",

@@ -421,6 +421,12 @@ async function dispatchValidated(
       return study?.suspend(requests["study.suspend"].input.parse(input));
     case "study.browse":
       return study?.browse(requests["study.browse"].input.parse(input));
+    case "study.mistakes":
+      return study?.mistakes(requests["study.mistakes"].input.parse(input));
+    case "study.mistakesRedo":
+      return study?.mistakesRedo(
+        requests["study.mistakesRedo"].input.parse(input),
+      );
     case "study.restore":
       return study?.restore(requests["study.restore"].input.parse(input));
     case "study.suspended":

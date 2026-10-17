@@ -11,6 +11,7 @@ import {
   suspendedCards,
 } from "./cards";
 import { browseCards } from "./cardBrowser";
+import { mistakesNotebook, startRedo } from "./notebook";
 import {
   enqueueTopicCards,
   generateTopicCards,
@@ -368,6 +369,12 @@ export function studyHandlers(
     },
     browse(input: Parameters<typeof browseCards>[1]) {
       return browseCards(db, input, Date.now());
+    },
+    mistakes(input: { planId?: string }) {
+      return mistakesNotebook(db, input);
+    },
+    mistakesRedo(input: { planId: string; keys: string[] }) {
+      return startRedo(db, input);
     },
     restore(input: { cardId: string }) {
       restoreCard(db, input.cardId);
