@@ -7,19 +7,12 @@
   gap: var(--space-4);
   padding-bottom: var(--space-8);
 }
-.px-onboarding .ant-steps-item-title {
-  font-size: 12px;
-}
 .px-onboarding h1,
 .px-onboarding p {
   margin: 0;
 }
 .px-onboarding h1:focus-visible {
   outline: none;
-}
-.px-onboarding-count {
-  color: var(--ink-muted);
-  margin-top: calc(var(--space-2) * -1);
 }
 .px-onboarding .body {
   margin-bottom: var(--space-2);
@@ -51,9 +44,6 @@
 .px-onboarding-note {
   color: var(--ink-muted);
 }
-.px-onboarding-inline {
-  display: flex;
-}
 .px-onboarding-actions {
   display: flex;
   align-items: center;
@@ -65,9 +55,25 @@
 .px-onboarding-actions .ant-btn-text {
   border-color: var(--border-control);
 }
-.px-onboarding-actions.is-end {
-  justify-content: flex-end;
+.px-onboarding-actions.is-ready {
+  align-items: flex-end;
+}
+@media (max-width: 640px) {
+  /* Three choices do not fit a row: the main one first, each as wide as the column. */
+  .px-onboarding-actions.is-ready,
+  .px-onboarding-actions.is-ready .px-onboarding-primary {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .px-onboarding-actions.is-ready .ant-btn {
+    width: 100%;
+  }
+}
+.px-onboarding-primary {
+  display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
 }
 .px-onboarding-points {
   margin: 0;

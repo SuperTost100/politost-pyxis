@@ -27,6 +27,7 @@ import { QuizOption } from "../../components/QuizOption";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StatTile } from "../../components/StatTile";
 import { StepLines } from "../../components/StepLines";
+import { Stepper } from "../../components/Stepper";
 import { Tag } from "../../components/Tag";
 import { TextField } from "../../components/TextField";
 
@@ -472,6 +473,19 @@ export function ComponentGallery() {
           steps={[
             { id: "f", label: t("components.steps.topics"), state: "failed" },
           ]}
+        />
+      </Section>
+
+      <Section
+        eyebrow={t("gallery.sections.layout")}
+        title="Stepper"
+        layout="col"
+      >
+        <Stepper
+          current={1}
+          steps={(["profile", "engines", "photos", "privacy"] as const).map(
+            (id) => t(`onboarding.steps.${id}`),
+          )}
         />
       </Section>
 

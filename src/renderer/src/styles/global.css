@@ -104,6 +104,11 @@ html[data-platform="darwin"] {
 .ant-pro-top-nav-header-main {
   padding-inline: var(--shell-gutter-start) var(--shell-gutter-end) !important;
 }
+/* Below 768px ProLayout adds a menu button that opens nothing here; setup has no menu to open. */
+.px-in-setup .ant-pro-global-header-collapsed-button {
+  display: none;
+}
+
 .px-doors-wrap {
   position: absolute;
   inset: 0;

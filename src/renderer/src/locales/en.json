@@ -15,6 +15,10 @@
     "back": "Back",
     "exams": "Exams"
   },
+  "stepper": {
+    "label": "Progress",
+    "position": "Step {{current}} of {{total}}"
+  },
   "shortcuts": {
     "title": "Keyboard shortcuts",
     "lead": "The general shortcuts are also in the menus.",
@@ -99,7 +103,6 @@
     },
     "saveFailed": "Your profile could not be saved. Try again.",
     "later": "I'll do it later",
-    "stepCount": "Step {{current}} of {{total}}",
     "steps": {
       "profile": "About you",
       "engines": "AI engines",
@@ -134,7 +137,6 @@
     "photos": {
       "title": "Photos and scans",
       "body": "Pyxis can read the text in a photo or a scan directly on this computer.",
-      "later": "Later",
       "keepGoing": "The download keeps going if you move on."
     },
     "privacy": {
@@ -154,8 +156,8 @@
     },
     "ready": {
       "title": "You're ready",
-      "body": "Create an exam and add your material. I build the study plan from it.",
-      "create": "Create your first exam",
+      "body": "Pick the subject, the exam date and your material. I build the study plan from them.",
+      "create": "Create your first plan",
       "book": "Start from a free PoliTost book"
     }
   },

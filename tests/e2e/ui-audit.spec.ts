@@ -1137,7 +1137,7 @@ async function openWizard(page: Page, step: number) {
   await page
     .getByRole("textbox", { name: /Titolo|Title/, exact: true })
     .fill("Fisica audit");
-  const current = (index: number) => page.locator(".ant-steps-item").nth(index);
+  const current = (index: number) => page.locator(".px-stepper-item").nth(index);
   for (let at = 1; at < step; at++) {
     if (at === 4 && step > 4) {
       // The seeded source is in the library, so it comes in through the library picker.
@@ -1164,7 +1164,7 @@ async function openWizard(page: Page, step: number) {
       .getByRole("button", { name: /Continua|Continue/, exact: true })
       .click();
     // One click per transition: wait for the next step before the next click.
-    await expect(current(at)).toHaveClass(/ant-steps-item-process/);
+    await expect(current(at)).toHaveAttribute("aria-current", "step");
   }
 }
 
@@ -1306,8 +1306,9 @@ async function openState(page: Page, name: string) {
     case "wizard-5":
     case "wizard-6": {
       const step = Number(name.split("-")[1]);
-      await expect(page.locator(".ant-steps-item").nth(step - 1)).toHaveClass(
-        /ant-steps-item-process/,
+      await expect(page.locator(".px-stepper-item").nth(step - 1)).toHaveAttribute(
+        "aria-current",
+        "step",
       );
       const guide = page.getByRole("button", {
         name: both("Non ho materiale", "I have no material"),
