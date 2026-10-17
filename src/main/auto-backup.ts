@@ -11,7 +11,8 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { basename, isAbsolute, join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { AutoBackupFailure, AutoBackupStatus } from "../shared/bridge";
 import { inside } from "./workspace-move";
@@ -23,9 +24,13 @@ export const DAY = 24 * HOUR;
 export const KEEP = 3;
 /** A backup that keeps finding jobs runs anyway after this long, so a job stuck in the queue cannot stop backups. */
 export const JOB_WAIT_LIMIT = 3 * HOUR;
-/** Only files with exactly this name are automatic backups. Retention never touches anything else. */
+/**
+ * Only files with exactly this name are automatic backups. Retention never touches anything else. The last part is the
+ * ID of the computer that wrote it (see `AutoBackupState.backupId`); Pyxis 0.3.1 and earlier wrote names without one.
+ */
 export const AUTO_BACKUP_NAME =
-  /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip$/;
+  /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}(?:-([0-9a-f]{8}))?\.zip$/;
+const BACKUP_ID = /^[0-9a-f]{8}$/;
 /** The temporary folder backupWorkspace makes beside the archive (mkdtemp adds six characters). */
 const TEMPORARY_NAME = /^\.pyxis-backup-[A-Za-z0-9]{6}$/;
 const FAILURES: readonly AutoBackupFailure[] = [
@@ -47,6 +52,11 @@ export type AutoBackupState = {
   last: AutoBackupStatus["last"];
   /** The too-large notice was shown once; it stays quiet until a backup succeeds again. */
   toldTooLarge: boolean;
+  /**
+   * Eight hex digits in the name of every automatic backup this computer writes, made on its first one. Retention only
+   * deletes files with this ID, so two computers sharing a synced folder never delete each other's backups.
+   */
+  backupId: string | null;
 };
 
 export const initialState: AutoBackupState = {
@@ -56,6 +66,7 @@ export const initialState: AutoBackupState = {
   lastAttemptAt: null,
   last: null,
   toldTooLarge: false,
+  backupId: null,
 };
 
 const time = (value: unknown): number | null =>
@@ -99,6 +110,10 @@ export function readAutoBackupState(file: string): AutoBackupState {
               }
             : null,
     toldTooLarge: raw.toldTooLarge === true,
+    backupId:
+      typeof raw.backupId === "string" && BACKUP_ID.test(raw.backupId)
+        ? raw.backupId
+        : null,
   };
 }
 
@@ -128,36 +143,67 @@ export function backupDue(state: AutoBackupState, now: number): boolean {
   return true;
 }
 
-/** `pyxis-auto-backup-2026-10-13-210512.zip`, in local time so the student can read it. */
-export function autoBackupName(at: Date): string {
+/** `pyxis-auto-backup-2026-10-13-210512-1a2b3c4d.zip`, in local time so the student can read it. */
+export function autoBackupName(at: Date, backupId: string): string {
   const two = (n: number) => String(n).padStart(2, "0");
-  return `pyxis-auto-backup-${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}-${two(at.getHours())}${two(at.getMinutes())}${two(at.getSeconds())}.zip`;
+  return `pyxis-auto-backup-${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}-${two(at.getHours())}${two(at.getMinutes())}${two(at.getSeconds())}-${backupId}.zip`;
 }
 
 /**
- * Deletes automatic backups beyond the newest `keep`. Only regular files whose whole name matches the automatic
- * pattern count; folders, links and every other file in the folder are left alone. `written` names the backup just
- * made: it is always kept and counts as one of the `keep`, even when a clock set back gives it an older name than the
- * rest.
+ * The automatic backups in the folder written by one of `owners`, newest first. Only regular files whose whole name
+ * matches the automatic pattern count; folders, links and every other file are left out. The owner of a name without
+ * an ID is null.
+ */
+function automaticBackups(
+  folder: string,
+  owners: ReadonlyArray<string | null>,
+): string[] {
+  return (
+    readdirSync(folder)
+      .filter((name) => {
+        const match = AUTO_BACKUP_NAME.exec(name);
+        return match !== null && owners.includes(match[1] ?? null);
+      })
+      .filter((name) => {
+        const info = lstatSync(join(folder, name));
+        return info.isFile() && !info.isSymbolicLink();
+      })
+      // With one owner, the name holds the date and time, so it sorts by age.
+      .sort()
+      .reverse()
+  );
+}
+
+/**
+ * Deletes this computer's automatic backups beyond the newest `keep`. Backups with another ID, and those without one,
+ * are never pruned: nothing proves this computer wrote them. `written` names the backup just made: it is always kept and
+ * counts as one of the `keep`, even when a clock set back gives it an older name than the rest.
  */
 export function pruneAutoBackups(
   folder: string,
+  backupId: string,
   keep = KEEP,
   written?: string,
 ): string[] {
-  const all = readdirSync(folder)
-    .filter((name) => AUTO_BACKUP_NAME.test(name))
-    .filter((name) => {
-      const info = lstatSync(join(folder, name));
-      return info.isFile() && !info.isSymbolicLink();
-    })
-    // The name holds the date and time, so it sorts by age.
-    .sort()
-    .reverse();
+  const all = automaticBackups(folder, [backupId]);
   const kept = written !== undefined && all.includes(written);
   const removed = all
     .filter((name) => name !== written)
     .slice(kept ? Math.max(keep - 1, 0) : keep);
+  for (const name of removed) rmSync(join(folder, name), { force: true });
+  return removed;
+}
+
+/**
+ * "Delete all data": deletes this computer's automatic backups and those from Pyxis 0.3.1 and earlier, whose names have
+ * no ID. The student asked for their backups to go, and an old one can't be told apart from another computer's. Backups
+ * with another computer's ID stay.
+ */
+export function deleteAutoBackups(
+  folder: string,
+  backupId: string | null,
+): string[] {
+  const removed = automaticBackups(folder, [backupId, null]);
   for (const name of removed) rmSync(join(folder, name), { force: true });
   return removed;
 }
@@ -225,6 +271,34 @@ export function checkBackupFolder(
   return real;
 }
 
+/**
+ * Checks the file a manual backup is saved as. Inside the workspace it could replace `pyxis.db` with the archive (a GTK
+ * save dialog doesn't add `.zip`), and a copy kept inside the workspace or the app's data is lost with it, so both are
+ * refused, as for the automatic folder.
+ */
+export function checkBackupDestination(
+  file: string,
+  places: { workspace: string; userData: string },
+): void {
+  if (!isAbsolute(file)) throw new Error("backup-folder-missing");
+  let real = file;
+  try {
+    real = join(realpathSync.native(dirname(file)), basename(file));
+  } catch {
+    // A folder that does not exist is compared by its path; the backup then fails to write there.
+  }
+  for (const place of [places.workspace, places.userData]) {
+    let protectedPath = place;
+    try {
+      protectedPath = realpathSync.native(place);
+    } catch {
+      // A place that does not exist yet is compared by the path it will have.
+    }
+    if (inside(protectedPath, real) || inside(place, file))
+      throw new Error("backup-destination-inside-data");
+  }
+}
+
 /** Turns a worker or file-system error into the reason the student sees. */
 export function failureReason(
   message: string,
@@ -242,8 +316,12 @@ export function failureReason(
   return "failed";
 }
 
-/** These end an attempt without counting as a failure: the next check simply tries again. */
+/**
+ * These end an attempt without counting as a failure: the next check simply tries again. `backup-empty`: the workspace
+ * has no study data yet.
+ */
 const POSTPONED = new Set([
+  "backup-empty",
   "backup-jobs-active",
   "backup-changed",
   "backup-cancelled",
@@ -274,10 +352,18 @@ export function startLiveBackupWorker(
   workspace: string,
   zip: string,
   waitForJobs: boolean,
+  requireData: boolean,
 ): LiveBackupRun {
   const stop = new SharedArrayBuffer(4);
   const worker = new Worker(script, {
-    workerData: { op: "live-backup", workspace, zip, stop, waitForJobs },
+    workerData: {
+      op: "live-backup",
+      workspace,
+      zip,
+      stop,
+      waitForJobs,
+      requireData,
+    },
   });
   let temporary: string | undefined;
   let exited = false;
@@ -343,7 +429,12 @@ export type AutoBackupDeps = {
   userData: string;
   /** A manual backup, restore, move or wipe holds the workspace, or core has not opened it yet. */
   busy: () => boolean;
-  start: (zip: string, waitForJobs: boolean) => LiveBackupRun;
+  /** requireData: skip a workspace with no study data (automatic backups only). */
+  start: (
+    zip: string,
+    waitForJobs: boolean,
+    requireData: boolean,
+  ) => LiveBackupRun;
   changed: (status: AutoBackupStatus) => void;
   now?: () => number;
   log?: (message: string) => void;
@@ -453,8 +544,9 @@ export class AutoBackups {
   }
 
   /**
-   * "Delete all data" with the backups ticked: removes every automatic backup and leftover temporary folder, with the
-   * same name checks as retention, so nothing else in the folder is touched. The last result named a file that is gone,
+   * "Delete all data" with the backups ticked: removes this computer's automatic backups and those without an ID (see
+   * deleteAutoBackups), and leftover temporary folders, with the same name checks as retention, so nothing else in the
+   * folder is touched. The last result named a file that is gone,
    * so it is forgotten; the time of the last success stays, so a new backup does not start right away. Throws
    * backup-folder-missing when a chosen folder can't be reached, because its backups may still be there.
    */
@@ -468,7 +560,7 @@ export class AutoBackups {
       if (state.folder === null) return;
       throw new Error("backup-folder-missing");
     }
-    pruneAutoBackups(folder, 0);
+    deleteAutoBackups(folder, state.backupId);
     // An infinite now makes every temporary folder count as stale. The caller holds the workspace, so none is in use.
     removeStaleTemporaries(folder, Number.POSITIVE_INFINITY);
   }
@@ -495,7 +587,10 @@ export class AutoBackups {
     return this.run(waitForJobs, true);
   }
 
-  /** "Back up now": the same folder and file names, without waiting for jobs or for the day to pass. */
+  /**
+   * "Back up now": the same folder and file names, without waiting for jobs or for the day to pass. It backs up an empty
+   * workspace too, since the student asked for it.
+   */
   async runNow(): Promise<AutoBackupStatus> {
     if (this.current || this.deps.busy()) throw new Error("workspace-busy");
     const result = await this.run(false, false);
@@ -511,6 +606,7 @@ export class AutoBackups {
     const startState = this.state();
     let folder = this.folder(startState);
     let run: LiveBackupRun | null = null;
+    let backupId = "";
     // The student can choose another folder while the copy runs. The result then belongs to the old folder: recording
     // it would tell the new folder it has a backup when it has none.
     const folderChanged = () => this.state().folder !== startState.folder;
@@ -522,14 +618,15 @@ export class AutoBackups {
         workspace: this.deps.workspace(),
         userData: this.deps.userData,
       });
+      backupId = this.backupId();
       let at = started;
-      let zip = join(folder, autoBackupName(new Date(at)));
+      let zip = join(folder, autoBackupName(new Date(at), backupId));
       // Two backups in the same second must not replace each other.
       while (existsSync(zip)) {
         at += 1000;
-        zip = join(folder, autoBackupName(new Date(at)));
+        zip = join(folder, autoBackupName(new Date(at), backupId));
       }
-      run = this.deps.start(zip, waitForJobs);
+      run = this.deps.start(zip, waitForJobs, automatic);
       this.current = run;
       this.deps.changed(this.status());
       await run.done;
@@ -546,7 +643,7 @@ export class AutoBackups {
           toldTooLarge: false,
         });
       }
-      this.tidy(folder, basename(zip));
+      this.tidy(folder, backupId, basename(zip));
       return "saved";
     } catch (error) {
       const message = error instanceof Error ? error.message : "backup-failed";
@@ -597,9 +694,18 @@ export class AutoBackups {
     }
   }
 
-  private tidy(folder: string, written: string): void {
+  /** This computer's ID for backup names. The first backup makes it and saves it before any file carries it. */
+  private backupId(): string {
+    const state = this.state();
+    if (state.backupId) return state.backupId;
+    const backupId = randomBytes(4).toString("hex");
+    writeAutoBackupState(this.deps.stateFile, { ...state, backupId });
+    return backupId;
+  }
+
+  private tidy(folder: string, backupId: string, written: string): void {
     try {
-      pruneAutoBackups(folder, KEEP, written);
+      pruneAutoBackups(folder, backupId, KEEP, written);
       removeStaleTemporaries(folder, this.now());
     } catch (error) {
       // The new backup is safe; an old one that could not be removed is tried again after the next backup.

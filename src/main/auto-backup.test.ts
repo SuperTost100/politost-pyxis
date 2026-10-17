@@ -22,7 +22,9 @@ import {
   JOB_WAIT_LIMIT,
   autoBackupName,
   backupDue,
+  checkBackupDestination,
   checkBackupFolder,
+  deleteAutoBackups,
   failureReason,
   initialState,
   pruneAutoBackups,
@@ -101,6 +103,7 @@ describe("saved settings", () => {
         folder: "relative/path",
         lastSuccessAt: -1,
         last: { at: 5, ok: false, reason: "made-up" },
+        backupId: "../../x",
       }),
     );
     expect(readAutoBackupState(file)).toEqual(initialState);
@@ -117,6 +120,7 @@ describe("saved settings", () => {
         size: 3,
       },
       toldTooLarge: true,
+      backupId: "0a1b2c3d",
     };
     writeAutoBackupState(file, saved);
     expect(readAutoBackupState(file)).toEqual(saved);
@@ -124,17 +128,32 @@ describe("saved settings", () => {
   });
 });
 
+const ID = "0a1b2c3d";
+const OTHER = "ffee0011";
+/** A name Pyxis 0.3.1 and earlier wrote, without an ID. */
+const legacyName = (at: Date) => autoBackupName(at, ID).replace(`-${ID}`, "");
+
 describe("retention", () => {
-  it("names backups by local date and time so they sort by age", () => {
-    const name = autoBackupName(new Date(2026, 0, 2, 3, 4, 5));
-    expect(name).toBe("pyxis-auto-backup-2026-01-02-030405.zip");
-    expect(AUTO_BACKUP_NAME.test(name)).toBe(true);
+  it("names backups by local date and time, then the computer's ID, so one computer's sort by age", () => {
+    const name = autoBackupName(new Date(2026, 0, 2, 3, 4, 5), ID);
+    expect(name).toBe("pyxis-auto-backup-2026-01-02-030405-0a1b2c3d.zip");
+    expect(AUTO_BACKUP_NAME.exec(name)?.[1]).toBe(ID);
+    // Names from 0.3.1 and earlier are still automatic backups, with no owner.
+    const legacy = "pyxis-auto-backup-2026-01-02-030405.zip";
+    expect(legacyName(new Date(2026, 0, 2, 3, 4, 5))).toBe(legacy);
+    expect(AUTO_BACKUP_NAME.exec(legacy)?.[1]).toBeUndefined();
+    for (const name of [
+      "pyxis-auto-backup-2026-01-02-030405-0A1B2C3D.zip",
+      "pyxis-auto-backup-2026-01-02-030405-0a1b2c.zip",
+      "pyxis-auto-backup-2026-01-02-030405-.zip",
+    ])
+      expect(AUTO_BACKUP_NAME.test(name)).toBe(false);
   });
 
   it("keeps the newest three automatic backups and touches nothing else", () => {
     const folder = tempRoot();
     const automatic = [1, 2, 3, 4, 5].map((day) =>
-      autoBackupName(new Date(2026, 9, day, 9, 0, 0)),
+      autoBackupName(new Date(2026, 9, day, 9, 0, 0), ID),
     );
     for (const name of automatic) writeFileSync(join(folder, name), "zip");
     const others = [
@@ -147,15 +166,15 @@ describe("retention", () => {
     ];
     for (const name of others) writeFileSync(join(folder, name), "keep");
     // A folder and a link with a backup's name are not files Pyxis wrote.
-    mkdirSync(join(folder, autoBackupName(new Date(2020, 0, 1, 0, 0, 0))));
+    mkdirSync(join(folder, autoBackupName(new Date(2020, 0, 1, 0, 0, 0), ID)));
     const outside = join(tempRoot(), "outside.zip");
     writeFileSync(outside, "outside");
     symlinkSync(
       outside,
-      join(folder, autoBackupName(new Date(2020, 0, 2, 0, 0, 0))),
+      join(folder, autoBackupName(new Date(2020, 0, 2, 0, 0, 0), ID)),
     );
 
-    expect(pruneAutoBackups(folder).sort()).toEqual(automatic.slice(0, 2));
+    expect(pruneAutoBackups(folder, ID).sort()).toEqual(automatic.slice(0, 2));
     const left = readdirSync(folder);
     for (const name of [...automatic.slice(2), ...others])
       expect(left).toContain(name);
@@ -166,17 +185,56 @@ describe("retention", () => {
   it("never prunes the backup just written, even when the clock went back", () => {
     const folder = tempRoot();
     const older = [1, 2, 3].map((day) =>
-      autoBackupName(new Date(2026, 9, day, 9, 0, 0)),
+      autoBackupName(new Date(2026, 9, day, 9, 0, 0), ID),
     );
     // The clock was set back a year, so the new backup sorts before every old one.
-    const written = autoBackupName(new Date(2025, 9, 1, 9, 0, 0));
+    const written = autoBackupName(new Date(2025, 9, 1, 9, 0, 0), ID);
     for (const name of [...older, written])
       writeFileSync(join(folder, name), "zip");
 
     // Without the name the oldest-looking file is pruned: that is the bug this guards.
-    expect(pruneAutoBackups(folder, 3, written)).toEqual([older[0]]);
+    expect(pruneAutoBackups(folder, ID, 3, written)).toEqual([older[0]]);
     expect(readdirSync(folder).sort()).toEqual([written, older[1], older[2]]);
-    expect(pruneAutoBackups(folder, 3, written)).toEqual([]);
+    expect(pruneAutoBackups(folder, ID, 3, written)).toEqual([]);
+  });
+
+  it("prunes only this computer's backups, never another computer's or those without an ID", () => {
+    const folder = tempRoot();
+    const day = (n: number) => new Date(2026, 9, n, 9, 0, 0);
+    const mine = [10, 11, 12, 13].map((n) => autoBackupName(day(n), ID));
+    // Older and newer than this computer's: a laptop that shares the synced folder, and 0.3.1's files.
+    const theirs = [1, 2, 3, 4, 20].map((n) => autoBackupName(day(n), OTHER));
+    const legacy = [5, 6, 7, 8].map((n) => legacyName(day(n)));
+    for (const name of [...mine, ...theirs, ...legacy])
+      writeFileSync(join(folder, name), "zip");
+
+    expect(pruneAutoBackups(folder, ID, 3, mine[3])).toEqual([mine[0]]);
+    expect(readdirSync(folder).sort()).toEqual(
+      [...mine.slice(1), ...theirs, ...legacy].sort(),
+    );
+    // The other laptop prunes its own the same way, and leaves these alone.
+    expect(pruneAutoBackups(folder, OTHER, 3, theirs[4])).toEqual([
+      theirs[1],
+      theirs[0],
+    ]);
+    for (const name of [...mine.slice(1), ...legacy])
+      expect(existsSync(join(folder, name))).toBe(true);
+  });
+
+  it("deletes this computer's backups and those without an ID on request, and keeps another computer's", () => {
+    const folder = tempRoot();
+    const at = new Date(2026, 9, 1, 9, 0, 0);
+    const mine = autoBackupName(at, ID);
+    const theirs = autoBackupName(at, OTHER);
+    const legacy = legacyName(at);
+    for (const name of [mine, theirs, legacy, "notes.txt"])
+      writeFileSync(join(folder, name), "zip");
+    expect(deleteAutoBackups(folder, ID).sort()).toEqual([legacy, mine].sort());
+    expect(readdirSync(folder).sort()).toEqual(["notes.txt", theirs]);
+    // Before its first backup a computer has no ID: only the old names go.
+    writeFileSync(join(folder, legacy), "zip");
+    expect(deleteAutoBackups(folder, null)).toEqual([legacy]);
+    expect(readdirSync(folder).sort()).toEqual(["notes.txt", theirs]);
   });
 
   it("removes only stale temporary folders a backup left behind", () => {
@@ -277,6 +335,58 @@ describe("checkBackupFolder", () => {
   });
 });
 
+describe("checkBackupDestination", () => {
+  it("refuses to save a manual backup inside the workspace or the app data", () => {
+    const root = tempRoot();
+    const userData = join(root, "userData");
+    const workspace = join(root, "Moved", "Pyxis workspace");
+    mkdirSync(join(userData, "workspace"), { recursive: true });
+    mkdirSync(join(workspace, "blobs"), { recursive: true });
+    writeFileSync(join(workspace, "pyxis.db"), "live database");
+    const places = { workspace, userData };
+    for (const file of [
+      // The save dialog on Linux keeps the name as typed, without .zip.
+      join(workspace, "pyxis.db"),
+      join(workspace, "blobs", "backup.zip"),
+      workspace,
+      join(userData, "pyxis-backup.zip"),
+      join(userData, "workspace", "pyxis-backup.zip"),
+    ])
+      expect(() => checkBackupDestination(file, places)).toThrow(
+        "backup-destination-inside-data",
+      );
+    // A link to the workspace is judged by where it leads.
+    symlinkSync(workspace, join(root, "link"));
+    expect(() =>
+      checkBackupDestination(join(root, "link", "pyxis.db"), places),
+    ).toThrow("backup-destination-inside-data");
+    expect(readFileSync(join(workspace, "pyxis.db"), "utf8")).toBe(
+      "live database",
+    );
+  });
+
+  it("accepts a file next to the workspace, or in a folder that does not exist yet", () => {
+    const root = tempRoot();
+    const places = {
+      workspace: join(root, "Moved", "Pyxis workspace"),
+      userData: join(root, "userData"),
+    };
+    mkdirSync(places.workspace, { recursive: true });
+    expect(() =>
+      checkBackupDestination(join(root, "Moved", "pyxis-backup.zip"), places),
+    ).not.toThrow();
+    expect(() =>
+      checkBackupDestination(join(root, "Pyxis workspace.zip"), places),
+    ).not.toThrow();
+    expect(() =>
+      checkBackupDestination(join(root, "gone", "pyxis-backup.zip"), places),
+    ).not.toThrow();
+    expect(() => checkBackupDestination("pyxis-backup.zip", places)).toThrow(
+      "backup-folder-missing",
+    );
+  });
+});
+
 describe("failureReason", () => {
   it("maps worker and file-system errors to what the student is told", () => {
     expect(failureReason("backup-too-large:3000000000")).toBe("too-large");
@@ -312,7 +422,11 @@ describe("AutoBackups", () => {
     let now = NOON;
     let busy = false;
     const outcomes = [...(options.outcomes ?? [])];
-    const runs: Array<{ zip: string; waitForJobs: boolean }> = [];
+    const runs: Array<{
+      zip: string;
+      waitForJobs: boolean;
+      requireData: boolean;
+    }> = [];
     const statuses: unknown[] = [];
     const deps: AutoBackupDeps = {
       stateFile,
@@ -322,8 +436,8 @@ describe("AutoBackups", () => {
       busy: () => busy,
       now: () => now,
       changed: (status) => statuses.push(status),
-      start: (zip, waitForJobs): LiveBackupRun => {
-        runs.push({ zip, waitForJobs });
+      start: (zip, waitForJobs, requireData): LiveBackupRun => {
+        runs.push({ zip, waitForJobs, requireData });
         const outcome = outcomes.shift() ?? "ok";
         if (outcome === "ok") writeFileSync(zip, "backup bytes");
         return {
@@ -347,6 +461,8 @@ describe("AutoBackups", () => {
       setBusy: (value: boolean) => {
         busy = value;
       },
+      /** The ID the first backup saved; names in the folder carry it. */
+      id: () => readAutoBackupState(stateFile).backupId!,
     };
   }
 
@@ -354,8 +470,12 @@ describe("AutoBackups", () => {
     const t = setup();
     expect(await t.backups.check()).toBe("saved");
     const folder = join(t.documents, "Pyxis backups");
-    expect(readdirSync(folder)).toEqual([autoBackupName(new Date(NOON))]);
+    expect(t.id()).toMatch(/^[0-9a-f]{8}$/);
+    expect(readdirSync(folder)).toEqual([
+      autoBackupName(new Date(NOON), t.id()),
+    ]);
     expect(t.runs[0]!.waitForJobs).toBe(true);
+    expect(t.runs[0]!.requireData).toBe(true);
     const status = t.backups.status();
     expect(status).toMatchObject({
       enabled: true,
@@ -370,8 +490,51 @@ describe("AutoBackups", () => {
     t.setNow(NOON + 6 * HOUR);
     expect(await t.make().check()).toBe("not-due");
     t.setNow(NOON + DAY);
+    const id = t.id();
     expect(await t.make().check()).toBe("saved");
     expect(t.runs).toHaveLength(2);
+    // The ID is made once and kept across launches.
+    expect(t.id()).toBe(id);
+    expect(readdirSync(folder)).toContain(
+      autoBackupName(new Date(NOON + DAY), id),
+    );
+  });
+
+  it("waits without a notice while the workspace has no study data", async () => {
+    const t = setup({ outcomes: [new BackupError("backup-empty")] });
+    expect(await t.backups.check()).toBe("postponed");
+    expect(t.backups.status()).toMatchObject({
+      last: null,
+      notice: null,
+      lastSuccessAt: null,
+    });
+    expect(readdirSync(join(t.documents, "Pyxis backups"))).toEqual([]);
+    // The next check backs up once there is something to keep.
+    expect(await t.backups.check()).toBe("saved");
+  });
+
+  it("does not prune a backup from 0.3.1 or another computer in the same folder", async () => {
+    const t = setup();
+    const folder = join(t.documents, "Pyxis backups");
+    mkdirSync(folder);
+    const legacy = [1, 2, 3].map((day) =>
+      legacyName(new Date(2026, 9, day, 9, 0, 0)),
+    );
+    const theirs = [4, 5, 6].map((day) =>
+      autoBackupName(new Date(2026, 9, day, 9, 0, 0), OTHER),
+    );
+    for (const name of [...legacy, ...theirs])
+      writeFileSync(join(folder, name), "zip");
+    for (let day = 0; day < 4; day += 1) {
+      t.setNow(NOON + day * DAY);
+      expect(await t.backups.check()).toBe("saved");
+    }
+    const mine = [1, 2, 3].map((day) =>
+      autoBackupName(new Date(NOON + day * DAY), t.id()),
+    );
+    expect(readdirSync(folder).sort()).toEqual(
+      [...legacy, ...theirs, ...mine].sort(),
+    );
   });
 
   it("keeps three automatic backups in its folder after each success", async () => {
@@ -382,7 +545,9 @@ describe("AutoBackups", () => {
     }
     const folder = join(t.documents, "Pyxis backups");
     expect(readdirSync(folder).sort()).toEqual(
-      [2, 3, 4].map((day) => autoBackupName(new Date(NOON + day * DAY))),
+      [2, 3, 4].map((day) =>
+        autoBackupName(new Date(NOON + day * DAY), t.id()),
+      ),
     );
   });
 
@@ -507,6 +672,8 @@ describe("AutoBackups", () => {
     });
     const status = await t.backups.runNow();
     expect(t.runs[0]!.waitForJobs).toBe(false);
+    // Asked for, it backs up an empty workspace too.
+    expect(t.runs[0]!.requireData).toBe(false);
     expect(status.last).toMatchObject({ ok: true });
     // The automatic check then counts it as today's backup.
     expect(await t.backups.check()).toBe("not-due");
@@ -523,23 +690,24 @@ describe("AutoBackups", () => {
     const t = setup();
     await t.backups.runNow();
     await t.backups.runNow();
-    expect(t.runs.map((run) => run.zip.slice(-10))).toEqual([
-      "120000.zip",
-      "120001.zip",
+    expect(t.runs.map((run) => run.zip.slice(-19))).toEqual([
+      `120000-${t.id()}.zip`,
+      `120001-${t.id()}.zip`,
     ]);
   });
 
   it("keeps the backup it just wrote when the clock went back", async () => {
     const t = setup();
+    writeAutoBackupState(t.stateFile, { ...initialState, backupId: ID });
     const folder = join(t.documents, "Pyxis backups");
     mkdirSync(folder);
     const older = [1, 2, 3].map((day) =>
-      autoBackupName(new Date(2026, 9, day, 9, 0, 0)),
+      autoBackupName(new Date(2026, 9, day, 9, 0, 0), ID),
     );
     for (const name of older) writeFileSync(join(folder, name), "zip");
     t.setNow(new Date(2025, 9, 1, 9, 0, 0).getTime());
-    expect(await t.backups.check()).toBe("saved");
-    const written = autoBackupName(new Date(2025, 9, 1, 9, 0, 0));
+    expect(await t.make().check()).toBe("saved");
+    const written = autoBackupName(new Date(2025, 9, 1, 9, 0, 0), ID);
     expect(readdirSync(folder).sort()).toEqual([written, older[1], older[2]]);
   });
 
@@ -666,14 +834,21 @@ describe("AutoBackups", () => {
     writeFileSync(join(leftover, "pyxis.db"), "copy");
     writeFileSync(join(folder, "notes.txt"), "mine");
     writeFileSync(join(folder, "pyxis-auto-backup-old.zip"), "not ours");
-    mkdirSync(join(folder, autoBackupName(new Date(NOON - DAY))));
+    mkdirSync(join(folder, autoBackupName(new Date(NOON - DAY), t.id())));
+    const theirs = autoBackupName(new Date(NOON - DAY), OTHER);
+    const legacy = legacyName(new Date(NOON - 2 * DAY));
+    writeFileSync(join(folder, theirs), "another computer's");
+    writeFileSync(join(folder, legacy), "from 0.3.1");
     t.statuses.length = 0;
     t.backups.deleteBackups();
-    expect(readdirSync(folder).sort()).toEqual([
-      "notes.txt",
-      autoBackupName(new Date(NOON - DAY)),
-      "pyxis-auto-backup-old.zip",
-    ]);
+    expect(readdirSync(folder).sort()).toEqual(
+      [
+        "notes.txt",
+        autoBackupName(new Date(NOON - DAY), t.id()),
+        "pyxis-auto-backup-old.zip",
+        theirs,
+      ].sort(),
+    );
     // The last result named a file that is gone. The day still counts, so no new backup starts right away.
     expect(t.backups.status()).toMatchObject({
       last: null,

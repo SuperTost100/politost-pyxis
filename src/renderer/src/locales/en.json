@@ -1263,7 +1263,7 @@
     "wipeConfirm": "Delete forever",
     "wipeHint": "Deletes plans, sources, chats, and engine keys on this computer. Keys are removed first, so you will need to add them again. You choose whether the automatic backups go too.",
     "wipeBackups": "Also delete automatic backups",
-    "wipeBackupsFolder": "Pyxis deletes only its own backup files in {{folder}}.",
+    "wipeBackupsFolder": "Pyxis deletes the automatic backups this computer made in {{folder}}, and those from older versions of Pyxis. Backups from another computer and your other files stay.",
     "wipeBackupsLeftTitle": "Your data is deleted",
     "wipeBackupsLeft": "Pyxis could not delete the automatic backups in {{folder}}. Delete them there yourself if you want them gone.",
     "wipeConfirmHint": "Automatic backups stay in your backup folder after this. Delete them there yourself if you want them gone.",
@@ -1273,6 +1273,7 @@
     "backupFailed": "The backup did not finish.",
     "backupTooLarge": "I can back up at most {{limit}} GB, and this workspace holds {{size}} GB. Remove sources you no longer need, then try again.",
     "backupTooManyFiles": "This workspace has more files than one backup can hold. Remove sources you no longer need, then try again.",
+    "backupInsideData": "Save the backup outside Pyxis's own data. A backup there would be lost with it, or could replace your data.",
     "autoBackup": {
       "title": "Automatic backups",
       "switch": "Back up automatically",
@@ -1288,6 +1289,7 @@
       "failed": "The backup of {{at}} did not finish.",
       "lastGood": "The last complete backup is from {{at}}.",
       "fix": "Backup settings",
+      "dismissFailed": "Pyxis could not hide this notice. Try again.",
       "notice": "The automatic backup did not finish. {{reason}}",
       "reason": {
         "folder-missing": "The backup folder is not available. Connect the drive it is on, or choose another folder.",
@@ -1309,6 +1311,7 @@
       }
     },
     "restoreFailed": "That file is not a valid backup.",
+    "restoreRolledBack": "The restore could not finish, so Pyxis went back to the data you had before it. Nothing from the backup was kept.",
     "about": "About",
     "move": "Move workspace",
     "moveHint": "Choose a folder. Pyxis creates a subfolder and verifies the data before switching.",
@@ -1344,6 +1347,7 @@
     "retry": "Retry",
     "resume": "Resume",
     "dismiss": "Dismiss",
+    "actionFailed": "Pyxis could not change this task. Try again.",
     "demoFailed": "Step two failed.",
     "demo": {
       "one": "Preparing step one",

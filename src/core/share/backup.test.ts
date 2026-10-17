@@ -21,11 +21,13 @@ import {
   restoreWorkspace,
   recoverInterruptedRestore,
   commitWorkspaceRestore,
+  hasStudyData,
 } from "./backup";
 
 const removal = vi.hoisted(() => ({
   before: undefined as undefined | ((path: string) => void),
   beforeOpen: undefined as undefined | ((path: string) => void),
+  beforeRename: undefined as undefined | ((from: string, to: string) => void),
   failJournalWrite: false,
   largeInodes: false,
   extraFileBytes: 0,
@@ -64,6 +66,10 @@ vi.mock("node:fs", async (original) => {
       }
       return fs.writeFileSync(...args);
     },
+    renameSync: (from: string, to: string) => {
+      removal.beforeRename?.(String(from), String(to));
+      return fs.renameSync(from, to);
+    },
     rmSync: (
       path: Parameters<typeof fs.rmSync>[0],
       options: Parameters<typeof fs.rmSync>[1],
@@ -76,6 +82,7 @@ vi.mock("node:fs", async (original) => {
 afterEach(() => {
   removal.before = undefined;
   removal.beforeOpen = undefined;
+  removal.beforeRename = undefined;
   removal.failJournalWrite = false;
   removal.largeInodes = false;
   removal.extraFileBytes = 0;
@@ -514,6 +521,72 @@ describe("restore validation and interruption recovery", { timeout: 30_000 }, ()
     }
   });
 
+  it("leaves an uncommitted restore when the commit can't write its journal, and recovery then rolls it back", () => {
+    const f = fixture();
+    try {
+      backupWorkspace(f.source, f.archive);
+      restoreWorkspace(f.archive, f.live, { deferCommit: true });
+      // A full disk while two copies of the workspace exist.
+      removal.failJournalWrite = true;
+      expect(() => commitWorkspaceRestore(f.live)).toThrow(
+        "journal-write-interrupted",
+      );
+      expect(
+        JSON.parse(readFileSync(`${f.live}.restore-journal.json`, "utf8"))
+          .phase,
+      ).toBe("promoted");
+      expect(recoverInterruptedRestore(f.live)).toBe("rolled-back");
+      expect(title(f.live)).toBe("Original");
+      expect(existsSync(`${f.live}.old`)).toBe(false);
+      expect(existsSync(`${f.live}.restore`)).toBe(false);
+      expect(recoverInterruptedRestore(f.live)).toBe("none");
+    } finally {
+      rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("can commit again after Windows refused the journal rename once", () => {
+    const f = fixture();
+    try {
+      backupWorkspace(f.source, f.archive);
+      restoreWorkspace(f.archive, f.live, { deferCommit: true });
+      let refusals = 1;
+      removal.beforeRename = (from) => {
+        if (!from.endsWith(".restore-journal.json.tmp") || refusals === 0)
+          return;
+        refusals -= 1;
+        throw Object.assign(new Error("EPERM: operation not permitted"), {
+          code: "EPERM",
+        });
+      };
+      expect(() => commitWorkspaceRestore(f.live)).toThrow("EPERM");
+      expect(title(f.live)).toBe("Backup");
+      expect(title(`${f.live}.old`)).toBe("Original");
+      expect(commitWorkspaceRestore(f.live)).toBe(true);
+      expect(title(f.live)).toBe("Backup");
+      expect(existsSync(`${f.live}.old`)).toBe(false);
+      expect(existsSync(`${f.live}.restore-journal.json`)).toBe(false);
+    } finally {
+      rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the restored copy when the commit was recorded before it failed", () => {
+    const f = fixture();
+    try {
+      backupWorkspace(f.source, f.archive);
+      restoreWorkspace(f.archive, f.live, { deferCommit: true });
+      const journal = `${f.live}.restore-journal.json`;
+      const record = JSON.parse(readFileSync(journal, "utf8"));
+      writeFileSync(journal, JSON.stringify({ ...record, phase: "committed" }));
+      expect(recoverInterruptedRestore(f.live)).toBe("kept");
+      expect(title(f.live)).toBe("Backup");
+      expect(existsSync(`${f.live}.old`)).toBe(false);
+    } finally {
+      rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
   it("rolls back promotion even if a crash prevented writing the promoted phase", () => {
     const f = fixture();
     try {
@@ -858,6 +931,38 @@ describe("restore validation and interruption recovery", { timeout: 30_000 }, ()
       expect(readFileSync(join(orphan, "keep"), "utf8")).toBe("saved");
     } finally {
       rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("hasStudyData", () => {
+  it("is false for a new workspace and true once it has a source, plan, chat or whiteboard", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-study-data-"));
+    try {
+      const db = openDatabase(join(root, "pyxis.db"));
+      db.prepare(
+        "INSERT INTO profile (id, display_name, created_at, updated_at) VALUES ('me', 'Ada', 1, 1)",
+      ).run();
+      db.prepare(
+        "INSERT INTO subjects (id, name, created_at) VALUES ('s', 'Fisica', 1)",
+      ).run();
+      expect(hasStudyData(root)).toBe(false);
+      for (const insert of [
+        "INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 'Chat', 1, 1)",
+        "INSERT INTO whiteboards (id, title, created_at, updated_at) VALUES ('w', 'Board', 1, 1)",
+        "INSERT INTO plans (id, title, created_at, updated_at) VALUES ('p', 'Plan', 1, 1)",
+        "INSERT INTO sources (id, kind, title, created_at, updated_at) VALUES ('x', 'file', 'Notes', 1, 1)",
+      ]) {
+        db.prepare(insert).run();
+        expect(hasStudyData(root)).toBe(true);
+        db.prepare(
+          `DELETE FROM ${/INTO (\w+)/.exec(insert)![1]}`,
+        ).run();
+        expect(hasStudyData(root)).toBe(false);
+      }
+      db.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
