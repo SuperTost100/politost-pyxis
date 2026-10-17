@@ -6,7 +6,7 @@ import { setPlanEducation, snapshotPlanEducation } from "../plans/education";
 import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
 import { partialText, templateVersion } from "../engine/prompts";
-import { openLesson, rewriteLessonSection, writeLesson } from "./openLesson";
+import { openLesson, readLesson, rewriteLessonSection, writeLesson } from "./openLesson";
 import { exportMarkdown } from "../share/markdown";
 
 function pack(files: Record<string, string>): Uint8Array {
@@ -473,6 +473,65 @@ it("streams every earlier part as a prefix and keeps it when stopped mid-part", 
     expect(
       db.prepare("SELECT id FROM items WHERE kind='lesson'").all(),
     ).toEqual([]);
+  } finally {
+    db.close();
+  }
+});
+
+it("opens the newest imported lesson when none matches the reader's profile, and writing again makes one for the profile", async () => {
+  const db = openDatabase(":memory:");
+  try {
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "selected-model" }));
+    saveProfile(db, { educationLevel: "university", school: "Politecnico", course: "Analisi I" });
+    db.exec(`
+      INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('plan','Analisi','ready',1,1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('topic','plan','Limiti',0,1);
+      INSERT INTO sources (id,title,kind,status,created_at,updated_at) VALUES ('source','Notes','txt','ready',1,1);
+      INSERT INTO source_documents (id,source_id,version,tree_json,created_at) VALUES ('doc','source',1,'{}',1);
+      INSERT INTO passages (id,source_id,document_id,text,created_at) VALUES ('p0','source','doc','Limiti text',1);
+      INSERT INTO topic_passages (topic_id,passage_id) VALUES ('topic','p0');
+    `);
+    // As import writes them: the author's profile in the key, a provider, no prompt provenance.
+    const imported = (id: string, markdown: string, variant: string[], at: number) =>
+      db
+        .prepare(
+          "INSERT INTO items (id,plan_id,topic_id,kind,body_json,engine_provider,model_id,grounding,created_at) VALUES (?,'plan','topic','lesson',?,'claude','m','sources',?)",
+        )
+        .run(
+          id,
+          JSON.stringify({
+            markdown,
+            passageIds: ["p0"],
+            cacheKey: JSON.stringify({
+              kind: "lesson",
+              scopeId: "topic",
+              promptVersion: [templateVersion("lesson.write"), ...variant].join("|"),
+              passageIds: ["p0"],
+            }),
+          }),
+          at,
+        );
+    imported("old", "Old lesson.", ["complete-2", "simple", "university", "Unibo", "Analisi 1", "it"], 10);
+    imported("new", "New lesson.", ["complete-2", "technical", "university", "Unibo", "Analisi 1", "it"], 20);
+    const never: Parameters<typeof writeLesson>[3] = async () => {
+      throw new Error("the model must not run");
+    };
+    const shown = await writeLesson(db, "plan", "topic", never);
+    expect(shown).toMatchObject({ markdown: "New lesson.", itemId: "new", earlier: true });
+    expect(readLesson(db, "plan", "topic")).toMatchObject({ markdown: "New lesson.", itemId: "new" });
+
+    const run: Parameters<typeof writeLesson>[3] = async () => ({
+      text: "Mine [P1].",
+      provider: "claude",
+      model: "m",
+      inputTokens: 1,
+    });
+    const mine = await writeLesson(db, "plan", "topic", run, { regenerate: true });
+    expect(mine.markdown).toBe("Mine [P1].");
+    expect(mine.earlier).toBeUndefined();
+    expect((await writeLesson(db, "plan", "topic", never)).markdown).toBe("Mine [P1].");
   } finally {
     db.close();
   }
