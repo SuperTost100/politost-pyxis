@@ -35,6 +35,7 @@ import {
   type InstallableProvider,
 } from "@shared/installers";
 import { invoke, onBroadcast } from "../../lib/ipc";
+import { disclosureText } from "./disclosure";
 import "./EnginesPanel.css";
 
 const featureNames = [
@@ -570,7 +571,11 @@ export function EnginesPanel() {
   return (
     <section className="engines-panel">
       <Notice tone="info">
-        {t("engines.disclosure")}{" "}
+        {disclosureText({
+          t,
+          language: i18n.language,
+          features: features.data,
+        })}{" "}
         <a
           href="#engine-terms"
           onClick={(event) => {

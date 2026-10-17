@@ -230,9 +230,16 @@ test("LOCAL-02 a capable computer gets the suggestion, links to Ollama, download
         timeout: 15_000,
       });
       await shoot(page, `ready-${theme}`, ".px-local");
+      await shoot(page, `disclosure-${theme}`, ".engines-panel > .px-notice");
     }
     // The summary names the local model once it has tasks.
     await expect(page.locator(".engines-summary")).toContainText("Ollama");
+    // With only the local model, the disclosure says nothing leaves the computer.
+    await expect(
+      page.getByText(
+        "Every task uses the model on this computer, so nothing leaves it.",
+      ),
+    ).toBeVisible();
     await openEngines(page, "it", "light");
     await expect(
       page.getByText("Gemma 3 12B gira su questo computer"),
