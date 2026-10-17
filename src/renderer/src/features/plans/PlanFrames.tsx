@@ -21,7 +21,7 @@ import { PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
 import { useMenuLock } from "../../app/menu-state";
 import { ImportReview } from "./ImportReview";
 import { readPlanText, type ImportRequest } from "./importPreview";
-import { onPlanTextOffered, takePlanText } from "./openedPlan";
+import { takePlanText } from "./openedPlan";
 import {
   examChosen,
   examFromChoice,
@@ -633,17 +633,15 @@ export function SharedPlanPage() {
     setNote("file" in read ? null : t(`shared.reason.${read.reason}`));
   }
 
-  // A file opened from the system or dropped on the window arrives here, before or after this page is up.
+  // A file opened from the system or dropped on the window waits in the store. It is taken when this page mounts, and
+  // again whenever the page is entered again (a new location key), so a page that is on its way out never claims it.
+  const location = useLocation();
   const openWaiting = useRef((text: string) => openText(text));
   openWaiting.current = openText;
   useEffect(() => {
-    const take = () => {
-      const text = takePlanText();
-      if (text !== null) openWaiting.current(text);
-    };
-    take();
-    return onPlanTextOffered(take);
-  }, []);
+    const text = takePlanText();
+    if (text !== null) openWaiting.current(text);
+  }, [location.key]);
 
   async function importReviewed(request: ImportRequest) {
     const result = await invoke("plans.import", request);
