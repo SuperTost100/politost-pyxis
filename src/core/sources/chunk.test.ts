@@ -30,3 +30,19 @@ it("SRC-20 splits text between distant dollar signs", () => {
   for (const chunk of chunks) expect(chunk.text.length).toBeLessThanOrEqual(200);
   expect(chunkText("Area $A = \\pi r^2$ grows fast.", 12).some((chunk) => chunk.text.includes("$A = \\pi r^2$"))).toBe(true);
 });
+
+it("splits a code listing far above the chunk target at line breaks, so no passage is too long to embed", () => {
+  const lines = Array.from({ length: 400 }, (_, i) => `    result_${i} = compute(values[${i}], scale=${i % 7})  # step ${i}`);
+  const code = `\x60\x60\x60python\n${lines.join("\n")}\n\x60\x60\x60`;
+  const text = `Listing of the solver.\n\n${code}\n\nAfter the listing.`;
+  const chunks = chunkText(text);
+  expect(code.length).toBeGreaterThan(20_000);
+  for (const chunk of chunks) {
+    expect(chunk.text.length).toBeLessThanOrEqual(1400);
+    expect(chunk.text).toBe(text.slice(chunk.start, chunk.end));
+    // Every passage starts and ends at a line break, so no line of code is cut in two.
+    expect(["\n", undefined]).toContain(text[chunk.end]);
+    expect(["\n", " ", undefined]).toContain(text[chunk.start - 1]);
+  }
+  for (const line of lines) expect(chunks.some((chunk) => chunk.text.includes(line.trim()))).toBe(true);
+});
