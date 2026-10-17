@@ -18,13 +18,9 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
+import { appUnderTest } from "./app-under-test";
 import { animationsSettled } from "./settled";
 
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
 const HEIC = join(process.cwd(), "tests/fixtures/synthetic-note.heic");
 const totalBytes = Object.values(OCR_DATA_FILES).reduce(
   (sum, file) => sum + file.size,
@@ -46,7 +42,7 @@ async function launch(
     ...extra,
   };
   delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await electron.launch(appUnderTest(env));
   // Keep core failure and port diagnostics in the recorded run log.
   app.process().stderr?.on("data", (chunk) => {
     console.error(String(chunk));

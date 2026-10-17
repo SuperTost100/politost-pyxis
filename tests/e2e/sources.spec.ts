@@ -6,6 +6,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/documents";
+import { appUnderTest } from "./app-under-test";
 import { animationsSettled } from "./settled";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
@@ -40,10 +41,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     PYXIS_E2E_FILE: file,
   };
   delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await electron.launch(appUnderTest(env));
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -179,14 +177,7 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
   delete env.ELECTRON_RUN_AS_NODE;
   // CI repeats this check on the packaged app, whose workers load the packaged node_modules.
-  const packaged = process.env.PYXIS_DIST_APP;
-  const launch = () =>
-    electron.launch(
-      packaged
-        ? { executablePath: packaged, args: ["--use-mock-keychain"], env }
-        : { args: [join(process.cwd(), "out/main/index.js")], env },
-    );
-  let app = await launch();
+  let app = await electron.launch(appUnderTest(env));
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -229,7 +220,7 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
     )) as Array<{ sourceId: string }>;
     expect(hits.some((hit) => hit.sourceId === source.sourceId)).toBe(true);
     await app.close();
-    app = await launch();
+    app = await electron.launch(appUnderTest(env));
     page = await app.firstWindow();
     const restored = (await page.evaluate(
       (query) => window.pyxis.invoke("sources.search", { query }),

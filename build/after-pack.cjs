@@ -32,6 +32,9 @@ function keepOnly(directory, keep) {
 // load can be deleted here, before the app is signed and compressed. A missing file the app needs fails the build.
 //   onnxruntime-node: bin/napi-v3/<platform>/<arch> only, without the CUDA, TensorRT and DirectML providers. The
 //     embedder asks for device "cpu"; on Windows onnxruntime.dll delay-loads DirectML.dll, so nothing resolves it.
+//     On Linux the binding needs libonnxruntime.so.1 (its SONAME, found through RUNPATH $ORIGIN). The versioned
+//     libonnxruntime.so.1.x.y next to it is the CUDA build that the package's install script downloads, and nothing
+//     loads it.
 //   better-sqlite3: prebuilds/<platform>-<arch>.node only.
 function pruneUnpacked(unpackedModules, platform, arch) {
   const onnx = join(unpackedModules, "onnxruntime-node/bin/napi-v3");
@@ -39,17 +42,38 @@ function pruneUnpacked(unpackedModules, platform, arch) {
   keepOnly(join(onnx, platform), arch);
   const target = join(onnx, platform, arch);
   for (const name of readdirSync(target)) {
-    if (/providers_(?:cuda|tensorrt|shared)|^DirectML\./i.test(name))
+    if (
+      /providers_(?:cuda|tensorrt|shared)|^DirectML\.|^libonnxruntime\.so\.\d+\.\d+\.\d+$/i.test(
+        name,
+      )
+    )
       rmSync(join(target, name), { force: true });
   }
   if (!existsSync(join(target, "onnxruntime_binding.node")))
     throw new Error(`onnxruntime binding missing for ${platform}-${arch}`);
+  if (platform === "linux" && !existsSync(join(target, "libonnxruntime.so.1")))
+    throw new Error(`libonnxruntime.so.1 missing for ${platform}-${arch}`);
 
   const sqlite = join(unpackedModules, "better-sqlite3");
   const prebuild = `${platform}-${arch}.node`;
   keepOnly(join(sqlite, "prebuilds"), prebuild);
   if (!existsSync(join(sqlite, "prebuilds", prebuild)))
     throw new Error(`better-sqlite3 prebuild missing for ${platform}-${arch}`);
+}
+
+// SwiftShader is Chromium's software fallback for WebGL. Pyxis draws no WebGL and every Mac has Metal, so the Mac
+// bundle leaves out the library and the ICD file that points to it. Linux and Windows keep it for VMs and CI. A missing
+// file means Electron moved it, and the build fails so the rule gets updated.
+function dropSwiftShader(app) {
+  const libraries = join(
+    app,
+    "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries",
+  );
+  for (const name of ["libvk_swiftshader.dylib", "vk_swiftshader_icd.json"]) {
+    const file = join(libraries, name);
+    if (!existsSync(file)) throw new Error(`SwiftShader file missing: ${file}`);
+    rmSync(file);
+  }
 }
 
 // Finder metadata on macOS can make codesign reject the packaged bundle.
@@ -69,6 +93,7 @@ module.exports = async function afterPack(context) {
   if (context.electronPlatformName !== "darwin") return;
   const name = `${context.packager.appInfo.productFilename}.app`;
   const app = join(context.appOutDir, name);
+  dropSwiftShader(app);
   const temporary = mkdtempSync(join(tmpdir(), "pyxis-sign-"));
   const clean = join(temporary, name);
   try {
@@ -103,3 +128,4 @@ module.exports = async function afterPack(context) {
 
 module.exports.pruneUnpacked = pruneUnpacked;
 module.exports.FUSES = FUSES;
+module.exports.dropSwiftShader = dropSwiftShader;

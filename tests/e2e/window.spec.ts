@@ -549,3 +549,31 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+// The Mac bundle leaves out SwiftShader (build/after-pack.cjs). The packaged app must report the same GPU features as
+// Electron's own build, which still has it.
+test("the packaged app reports the same GPU features as Electron's build", async () => {
+  const packaged = process.env.PYXIS_DIST_APP;
+  test.skip(!packaged, "Set PYXIS_DIST_APP to the packaged executable.");
+  async function features(executablePath?: string) {
+    const userData = mkdtempSync(join(tmpdir(), "pyxis-gpu-"));
+    const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
+    delete env.ELECTRON_RUN_AS_NODE;
+    const app = await electron.launch(
+      executablePath
+        ? { executablePath, args: ["--use-mock-keychain"], env }
+        : { args: [join(process.cwd(), "out/main/index.js")], env },
+    );
+    try {
+      const page = await app.firstWindow();
+      await page.waitForLoadState("load");
+      return await app.evaluate(({ app }) => app.getGPUFeatureStatus());
+    } finally {
+      await app.close();
+      rmSync(userData, { recursive: true, force: true });
+    }
+  }
+  const electronBuild = await features();
+  const packagedBuild = await features(packaged);
+  expect(packagedBuild).toEqual(electronBuild);
+});

@@ -18,27 +18,37 @@ files:
   # better-sqlite3 loads a prebuilt binary (the target's is kept in build/after-pack.cjs); its sources are only for node-gyp.
   - "!**/node_modules/better-sqlite3/{deps,src,binding.gyp}"
   # Embeddings run on onnxruntime-node (device "cpu"). transformers' node entry imports only onnxruntime-node and
-  # onnxruntime-common, so the browser runtime and the browser bundles are never loaded.
+  # onnxruntime-common, so the browser runtime, its own dependencies and the browser bundles are never loaded. The
+  # embed worker is ESM, so the CommonJS entry and the sources go too.
   - "!**/node_modules/onnxruntime-web/**"
-  - "!**/node_modules/@huggingface/transformers/dist/!(transformers.node.mjs|transformers.node.cjs)"
+  - "!**/node_modules/{protobufjs,flatbuffers,guid-typescript,long,platform}/**"
+  - "!**/node_modules/@huggingface/transformers/dist/!(transformers.node.mjs)"
+  - "!**/node_modules/@huggingface/transformers/src/**"
   # HEIC decoding imports libheif-js/wasm-bundle.js, which requires only libheif-wasm/libheif-bundle.js.
   - "!**/node_modules/libheif-js/libheif/**"
   - "!**/node_modules/libheif-js/libheif-wasm/{libheif.js,libheif.wasm,libheif-bundle.mjs}"
   # zod's TypeScript sources are for its "@zod/source" export condition, which nothing here sets.
   - "!**/node_modules/zod/src/**"
-  # Main reads PDFs through the modern build. The legacy build loads @napi-rs/canvas, which main does not use.
+  # Main reads PDFs through the modern build. The legacy build loads @napi-rs/canvas, which main does not use. Main reads
+  # text only and passes neither cMapUrl nor standardFontDataUrl, so the font, cmap, viewer and minified files go too.
   - "!**/node_modules/pdfjs-dist/legacy/**"
   - "!**/node_modules/@napi-rs/canvas{,-*}/**"
+  - "!**/node_modules/pdfjs-dist/{cmaps,standard_fonts,image_decoders,web}/**"
+  - "!**/node_modules/pdfjs-dist/build/{*.min.mjs,pdf.sandbox*}"
+  # Node's tesseract.js loads tesseract-core*.js, which reads its .wasm file. The .wasm.js files are browser builds with
+  # the wasm inlined. tesseract.js 7.0.0 (pinned exactly) never loads the -lstm cores either: its getCore compares a
+  # boolean with OEM numbers. Only the browser gunzip imports zlibjs. scripts/after-pack.test.mjs checks all three.
+  - "!**/node_modules/tesseract.js-core/*.wasm.js"
+  - "!**/node_modules/tesseract.js-core/*-lstm.{js,wasm}"
+  - "!**/node_modules/zlibjs/**"
+  # Build leftovers.
+  - "!**/node_modules/@mixmark-io/domino/.yarn/**"
+  - "!**/node_modules/css-what/src/**"
 asar: true
 # Pyxis is English and Italian. Chromium falls back to en-US; macOS matches "en-us" to en.lproj and drops en_GB.
 electronLanguages:
   - en-US
   - it
-extraResources:
-  - from: node_modules/electron/dist/LICENSE
-    to: electron-licenses/LICENSE
-  - from: node_modules/electron/dist/LICENSES.chromium.html
-    to: electron-licenses/LICENSES.chromium.html
 asarUnpack:
   - "**/node_modules/better-sqlite3/**"
   - "**/node_modules/sqlite-vec/**"
@@ -57,12 +67,30 @@ mac:
     - zip
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Linux and Windows packages already hold Electron's LICENSE.electron.txt and LICENSES.chromium.html next to the
+  # executable. The Mac bundle has neither, so it gets a copy.
+  extraResources:
+    - from: node_modules/electron/dist/LICENSE
+      to: electron-licenses/LICENSE
+    - from: node_modules/electron/dist/LICENSES.chromium.html
+      to: electron-licenses/LICENSES.chromium.html
 win:
   target:
     - nsis
+# Pyxis installs updates from the full installer, so the archive inside it can be solid LZMA instead of the per-file
+# blocks electron-updater's differential download needs. No .exe.blockmap is built.
+nsis:
+  differentialPackage: false
 linux:
   maintainer: "SuperTost100 <81415735+SuperTost100@users.noreply.github.com>"
   target:
     - AppImage
     - deb
   category: Education
+# The AppImage stays on mksquashfs' default gzip. xz with 1 MiB blocks made it 31 MiB smaller but took the first
+# window from about 1.6 s to 5.3 s on every start, because the AppImage runtime unpacks the squashfs on each launch.
+# fpm compresses the deb payload with xz -3 (a 4 MiB dictionary) unless told otherwise.
+deb:
+  fpm:
+    - --deb-compression-level
+    - "9"
