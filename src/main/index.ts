@@ -58,6 +58,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
+import { rendererCsp } from "./csp";
 import { recoverInterruptedWipe, wipeWorkspace } from "../core/share/wipe";
 import { ensureWorkspace, ensureWorkspaceDirs } from "./workspace";
 import {
@@ -178,10 +179,9 @@ function allowedExternal(url: string): boolean {
 }
 
 function installCsp(): void {
-  const devOrigin = process.env["ELECTRON_RENDERER_URL"] ?? "";
-  const csp = isDev
-    ? `default-src 'self' ${devOrigin}; script-src 'self' ${devOrigin}; style-src 'self' 'unsafe-inline' ${devOrigin}; img-src 'self' data: blob: pyxis-blob: ${devOrigin}; font-src 'self' data: ${devOrigin}; connect-src 'self' pyxis-blob: ${devOrigin} ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-src 'none'`
-    : `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: pyxis-blob:; font-src 'self' data:; connect-src 'self' pyxis-blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-src 'none'`;
+  const csp = rendererCsp(
+    isDev ? process.env["ELECTRON_RENDERER_URL"] : undefined,
+  );
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({

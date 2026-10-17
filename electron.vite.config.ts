@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import type { Plugin } from "vite";
+import { rendererCsp } from "./src/main/csp";
 
 const root = import.meta.dirname;
 const parser = resolve(
@@ -29,6 +30,25 @@ function copySandboxPage(): Plugin {
         });
       }
     },
+  };
+}
+
+// The built page carries the production CSP itself. The dev server page relies on main's header, which also
+// allows the Vite origin and HMR.
+function cspMeta(): Plugin {
+  return {
+    name: "csp-meta",
+    apply: "build",
+    transformIndexHtml: () => [
+      {
+        tag: "meta",
+        attrs: {
+          "http-equiv": "Content-Security-Policy",
+          content: rendererCsp(),
+        },
+        injectTo: "head-prepend",
+      },
+    ],
   };
 }
 
@@ -66,7 +86,7 @@ export default defineConfig({
         "@shared": resolve(root, "src/shared"),
       },
     },
-    plugins: [react(), copySandboxPage()],
+    plugins: [react(), copySandboxPage(), cspMeta()],
     // electron-vite leaves the renderer unminified; minifying it shrinks what the window parses at startup.
     build: { minify: "esbuild" },
   },

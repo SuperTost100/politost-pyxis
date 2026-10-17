@@ -34,6 +34,7 @@
     "mammoth": "^1.11.0",
     "pdfjs-dist": "^4.10.38",
     "pngjs": "^7.0.0",
+    "sharp": "file:vendor/sharp-stub",
     "sqlite-vec": "^0.1.9",
     "tesseract.js": "^7.0.0",
     "ts-fsrs": "^5.4.2",
@@ -88,7 +89,7 @@
   },
   "overrides": {
     "katex": "$katex",
-    "sharp": "0.35.5"
+    "sharp": "$sharp"
   },
   "bundledByVite": [
     "@ant-design/pro-components",

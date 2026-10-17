@@ -2,6 +2,21 @@ const { execFileSync } = require("node:child_process");
 const { existsSync, mkdtempSync, readdirSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
+// Comes with electron-builder.
+const { FuseV1Options, FuseVersion } = require("@electron/fuses");
+
+// Another process can't run the app's binary as Node, give it NODE_OPTIONS or --inspect, or make it load a modified
+// app.asar (checked on macOS and Windows) or an app folder next to it. Nothing in the app runs itself as Node:
+// core is a utilityProcess and the other workers are worker threads. These are flipped here, before the macOS signature below; electron-builder's electronFuses option flips them
+// after this hook, which would break that signature.
+const FUSES = {
+  version: FuseVersion.V1,
+  [FuseV1Options.RunAsNode]: false,
+  [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+  [FuseV1Options.EnableNodeCliInspectArguments]: false,
+  [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+  [FuseV1Options.OnlyLoadAppFromAsar]: true,
+};
 
 // electron-builder's Arch enum: 1 is x64 and 3 is arm64. Other values (universal, ia32) are not built and keep every binary.
 const ARCHES = { 1: "x64", 3: "arm64" };
@@ -50,6 +65,7 @@ module.exports = async function afterPack(context) {
       context.electronPlatformName,
       arch,
     );
+  await context.packager.addElectronFuses(context, FUSES);
   if (context.electronPlatformName !== "darwin") return;
   const name = `${context.packager.appInfo.productFilename}.app`;
   const app = join(context.appOutDir, name);
@@ -86,3 +102,4 @@ module.exports = async function afterPack(context) {
 };
 
 module.exports.pruneUnpacked = pruneUnpacked;
+module.exports.FUSES = FUSES;

@@ -233,7 +233,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      # The packaged check below runs real e5 indexing, so it needs the pinned model.
       - uses: ./.github/actions/prepare
+        with:
+          fixtures: "true"
       - name: Package without publishing
         run: npm run dist -- ${{ matrix.builder }} --publish never
       - name: Check the packaged application
@@ -258,12 +261,18 @@ jobs:
           EOF
               sudo apparmor_parser -r /etc/apparmor.d/pyxis-ci-packaged
             fi
-            xvfb-run -a npx playwright test tests/e2e/window.spec.ts --workers=1
+          elif [ "$RUNNER_OS" = macOS ]; then
+            codesign --verify --deep --strict "$(dirname "$(dirname "$(dirname "$PYXIS_DIST_APP")")")"
+          fi
+          # The installers are already built. This checks the fuses they carry, then turns --inspect back on in this
+          # unpacked copy only, because Playwright attaches through it.
+          node scripts/packaged-fuses.mjs "$PYXIS_DIST_APP" --allow-inspect
+          # The release loop, the window CSP, and e5 indexing, which loads transformers from the packaged node_modules.
+          set -- tests/e2e/window.spec.ts tests/e2e/sources.spec.ts --grep "release loop|window CSP|SRC-21" --workers=1
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a npx playwright test "$@"
           else
-            if [ "$RUNNER_OS" = macOS ]; then
-              codesign --verify --deep --strict "$(dirname "$(dirname "$(dirname "$PYXIS_DIST_APP")")")"
-            fi
-            npx playwright test tests/e2e/window.spec.ts --workers=1
+            npx playwright test "$@"
           fi
       - name: Collect installers and SHA-256 checksums
         run: |
@@ -305,7 +314,8 @@ jobs:
   attest:
     name: Attest packaged artifacts
     needs: package
-    if: github.event_name != 'pull_request' && !inputs.windows_trace
+    # Only builds from main get provenance. docs/releasing.md verifies it with --source-ref refs/heads/main.
+    if: github.ref == 'refs/heads/main' && !inputs.windows_trace
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

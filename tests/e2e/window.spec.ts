@@ -23,6 +23,76 @@ async function clean(page: Page) {
   ).toEqual([]);
 }
 
+// The window loads index.html from file://. CI also runs this against the packaged app.
+test("window CSP: no string eval and no remote images in the main window", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-csp-"));
+  const image = "https://tracker.example.com/pixel.png";
+  const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const packaged = process.env.PYXIS_DIST_APP;
+  const app = await electron.launch(
+    packaged
+      ? { executablePath: packaged, args: ["--use-mock-keychain"], env }
+      : { args: [join(process.cwd(), "out/main/index.js")], env },
+  );
+  try {
+    const page = await app.firstWindow();
+    await expect(
+      page.getByRole("heading", { name: "Ciao, sono Pyxis", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    expect(page.url()).toMatch(/^file:/);
+    // The route answers like the remote server would; a request the CSP blocks never reaches it.
+    let requests = 0;
+    await page.route(image, (route) => {
+      requests++;
+      return route.fulfill({
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+          "base64",
+        ),
+      });
+    });
+    // Soft checks, so one run reports each missing protection. DevTools lets code it evaluates call eval past the
+    // CSP, so the eval runs in a later task of the page's own.
+    expect
+      .soft(
+        await page.evaluate(
+          () =>
+            new Promise<string>((resolve) =>
+              setTimeout(() => {
+                try {
+                  resolve(String(eval("1")));
+                } catch (error) {
+                  resolve((error as Error).name);
+                }
+              }),
+            ),
+        ),
+      )
+      .toBe("EvalError");
+    expect
+      .soft(
+        await page.evaluate(
+          (src) =>
+            new Promise<string>((resolve) => {
+              const img = document.createElement("img");
+              img.onload = () => resolve("loaded");
+              img.onerror = () => resolve("blocked");
+              img.src = src;
+              document.body.append(img);
+            }),
+          image,
+        ),
+      )
+      .toBe("blocked");
+    expect.soft(requests).toBe(0);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
+
 // This same loop runs against an unpackaged build or the locally installed app.
 // Live mode uses the signed-in engine for plan, lesson and quiz generation.
 test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restore", async () => {
