@@ -285,6 +285,22 @@ async function dispatchValidated(
       const parsed = requests["engines.cancelLogin"].input.parse(input);
       return engines?.cancelLogin({ provider: parsed.provider as ProviderId });
     }
+    case "engines.local":
+      requests["engines.local"].input.parse(input);
+      return engines?.local();
+    case "engines.localPull":
+      requests["engines.localPull"].input.parse(input);
+      return engines?.localPull();
+    case "engines.localCancel":
+      requests["engines.localCancel"].input.parse(input);
+      return engines?.localCancel();
+    case "engines.localCheck":
+      requests["engines.localCheck"].input.parse(input);
+      return engines?.localCheck();
+    case "engines.localEnable":
+      return engines?.localEnable(
+        requests["engines.localEnable"].input.parse(input),
+      );
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({
@@ -730,6 +746,7 @@ export function bindEngines(
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
     onInstallLog: (event) => broadcast("engine.install", event),
+    onLocal: (event) => broadcast("engine.local", event),
     installerFixture,
   });
 }

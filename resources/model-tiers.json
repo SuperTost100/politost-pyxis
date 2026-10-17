@@ -55,7 +55,8 @@
       "agent",
       "claude",
       "openai-api",
-      "anthropic-api"
+      "anthropic-api",
+      "ollama"
     ],
     "mid": [
       "claude",
@@ -63,7 +64,8 @@
       "antigravity",
       "codex",
       "anthropic-api",
-      "openai-api"
+      "openai-api",
+      "ollama"
     ],
     "strong": [
       "claude",
@@ -71,7 +73,8 @@
       "agent",
       "antigravity",
       "anthropic-api",
-      "openai-api"
+      "openai-api",
+      "ollama"
     ]
   },
   "family": {
@@ -80,7 +83,8 @@
     "codex": "gpt",
     "openai-api": "gpt",
     "agent": "cursor",
-    "antigravity": "antigravity"
+    "antigravity": "antigravity",
+    "ollama": "local"
   },
   "patterns": {
     "claude": {
@@ -114,6 +118,48 @@
       "fast": ["^gemini-\\d+(?:[.-]\\d+)*-flash$"],
       "mid": ["^gemini-\\d+(?:[.-]\\d+)*-pro$", "^claude-sonnet-"],
       "strong": ["^gemini-\\d+(?:[.-]\\d+)*-pro$", "^claude-opus-"]
+    },
+    "local": {
+      "fast": [],
+      "mid": [],
+      "strong": []
     }
+  },
+  "local": {
+    "provider": "ollama",
+    "installUrl": "https://ollama.com/download",
+    "minRamGb": 8,
+    "diskMarginGb": 2,
+    "minTokensPerSecond": 10,
+    "strictFeatures": ["plan", "grading"],
+    "tiers": [
+      {
+        "id": "large",
+        "model": "gemma3:27b",
+        "name": "Gemma 3 27B",
+        "downloadBytes": 17000000000,
+        "contextWindow": 16384,
+        "minVramGb": 20,
+        "minUnifiedGb": 32
+      },
+      {
+        "id": "medium",
+        "model": "gemma3:12b",
+        "name": "Gemma 3 12B",
+        "downloadBytes": 8100000000,
+        "contextWindow": 16384,
+        "minVramGb": 12,
+        "minUnifiedGb": 16
+      },
+      {
+        "id": "small",
+        "model": "gemma3:4b",
+        "name": "Gemma 3 4B",
+        "downloadBytes": 3300000000,
+        "contextWindow": 16384,
+        "minVramGb": 6,
+        "minUnifiedGb": 8
+      }
+    ]
   }
 }
