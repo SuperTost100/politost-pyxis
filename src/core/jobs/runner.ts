@@ -19,6 +19,8 @@ export type StepSpec = {
   name: string;
   label: string;
   run: (ctx: StepContext) => Promise<unknown>;
+  /** New jobs leave the step out; a job saved before an update still runs it. */
+  retired?: boolean;
 };
 
 export type JobSpec = {
@@ -91,12 +93,26 @@ export function createRunner(
     `SELECT id, job_id, name, position, label, state, output_json, error
      FROM job_steps WHERE job_id = ? ORDER BY position`,
   );
+  // A view is built at every step start and end. Params and step outputs can hold whole topic trees, and the view
+  // shows neither, so it reads params only for a title and never reads outputs.
+  const jobViewStmt = db.prepare(
+    `SELECT id, kind, state, progress, step_label, error FROM jobs WHERE id = ?`,
+  );
+  const paramsStmt = db.prepare(`SELECT params_json FROM jobs WHERE id = ?`);
+  const stepViewsStmt = db.prepare(
+    `SELECT name, label, state FROM job_steps WHERE job_id = ? ORDER BY position`,
+  );
 
   function viewOf(jobId: string): JobView | null {
-    const job = jobStmt.get(jobId) as JobRow | undefined;
+    const job = jobViewStmt.get(jobId) as
+      | Omit<JobRow, "params_json">
+      | undefined;
     if (!job) return null;
-    const steps = stepsStmt.all(jobId) as StepRow[];
-    const title = specs.get(job.kind)?.title?.(JSON.parse(job.params_json));
+    const steps = stepViewsStmt.all(jobId) as JobView["steps"];
+    const titleOf = specs.get(job.kind)?.title;
+    const title = titleOf?.(
+      JSON.parse((paramsStmt.get(jobId) as { params_json: string }).params_json),
+    );
     return {
       id: job.id,
       kind: job.kind,
@@ -105,11 +121,7 @@ export function createRunner(
       progress: job.progress,
       stepLabel: job.step_label,
       error: job.error,
-      steps: steps.map((step) => ({
-        name: step.name,
-        label: step.label,
-        state: step.state,
-      })),
+      steps,
     };
   }
 
@@ -297,9 +309,11 @@ export function createRunner(
           `INSERT INTO job_steps (id, job_id, name, position, label, state)
            VALUES (?, ?, ?, ?, ?, 'pending')`,
         );
-        spec.steps.forEach((step, index) => {
-          stepInsert.run(uuidv7(), jobId, step.name, index, step.label);
-        });
+        spec.steps
+          .filter((step) => !step.retired)
+          .forEach((step, index) => {
+            stepInsert.run(uuidv7(), jobId, step.name, index, step.label);
+          });
       });
       insert();
       queueMicrotask(() => {

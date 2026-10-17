@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { mainChannels } from "../shared/bridge";
 import { MAX_ARTIFACT_BASE64 } from "../shared/plan-file";
+import { APP_PAGE } from "./app-protocol";
 
 const fileName = z
   .string()
@@ -112,10 +113,7 @@ export function registerArtifactHandlers(
         ? printWindow.loadURL(
             `${process.env["ELECTRON_RENDERER_URL"]!.split("#")[0]}#/print`,
           )
-        : printWindow.loadFile(
-            join(import.meta.dirname, "../renderer/index.html"),
-            { hash: "/print" },
-          );
+        : printWindow.loadURL(`${APP_PAGE}#/print`);
       await Promise.all([loaded, ready]);
       if (timer) clearTimeout(timer);
       const bytes = await printWindow.webContents.printToPDF({

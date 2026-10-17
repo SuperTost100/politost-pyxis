@@ -9,6 +9,7 @@ import { strToU8, zipSync } from "fflate";
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -23,7 +24,7 @@ async function clean(page: Page) {
   ).toEqual([]);
 }
 
-// The window loads index.html from file://. CI also runs this against the packaged app.
+// The window loads index.html from pyxis-app://app. CI also runs this against the packaged app.
 test("window CSP: no string eval and no remote images in the main window", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-csp-"));
   const image = "https://tracker.example.com/pixel.png";
@@ -40,7 +41,7 @@ test("window CSP: no string eval and no remote images in the main window", async
     await expect(
       page.getByRole("heading", { name: "Ciao, sono Pyxis", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
-    expect(page.url()).toMatch(/^file:/);
+    expect(page.url()).toMatch(/^pyxis-app:\/\/app\/index\.html#/);
     // The route answers like the remote server would; a request the CSP blocks never reaches it.
     let requests = 0;
     await page.route(image, (route) => {
@@ -89,6 +90,58 @@ test("window CSP: no string eval and no remote images in the main window", async
     expect.soft(requests).toBe(0);
   } finally {
     await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+// Up to 0.3.1 the window loaded from file://, where the language a student picked is stored. The update keeps it.
+test("an update from the file:// window keeps the chosen language", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-language-"));
+  const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const launch = () =>
+    electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const assets = join(process.cwd(), "out/renderer/assets");
+  const stylesheet = join(
+    assets,
+    readdirSync(assets).find((name) => name.endsWith(".css"))!,
+  );
+  try {
+    const first = await launch();
+    const page = await first.firstWindow();
+    await expect(
+      page.getByRole("heading", { name: "Ciao, sono Pyxis", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    // What 0.3.1 left behind: the choice in file:// storage, saved window bounds and no carried language yet.
+    await first.evaluate(async ({ BrowserWindow }, stylesheet) => {
+      const old = new BrowserWindow({ show: false });
+      await old.loadFile(stylesheet);
+      await old.webContents.executeJavaScript(
+        'localStorage.setItem("pyxis.lang", "en")',
+      );
+      old.destroy();
+    }, stylesheet);
+    await first.close();
+    expect(JSON.parse(readFileSync(join(userData, "language.json"), "utf8"))).toEqual({ language: null });
+    rmSync(join(userData, "language.json"));
+    writeFileSync(join(userData, "window.json"), JSON.stringify({ width: 1280, height: 832 }));
+
+    const updated = await launch();
+    try {
+      // The language is read from a hidden page that opens before the window.
+      await expect
+        .poll(() => updated.windows().some((w) => w.url().startsWith("pyxis-app:")), { timeout: 30_000 })
+        .toBe(true);
+      const window = updated.windows().find((w) => w.url().startsWith("pyxis-app:"))!;
+      await expect(
+        window.getByRole("heading", { name: "Hi, I'm Pyxis", exact: true }),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect.poll(() => updated.windows().length).toBe(1);
+    } finally {
+      await updated.close();
+    }
+    expect(JSON.parse(readFileSync(join(userData, "language.json"), "utf8"))).toEqual({ language: "en" });
+  } finally {
     rmSync(userData, { recursive: true, force: true });
   }
 });

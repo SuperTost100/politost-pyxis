@@ -1227,6 +1227,7 @@
     "practice": "Esercitarsi",
     "decide": "Decidi tu",
     "stepIntro": "Scrivo l’introduzione",
+    "stepIntroDiagnostic": "Scrivo l’introduzione e il test iniziale",
     "stepDiagnostic": "Preparazione del test iniziale",
     "stepReady": "Piano pronto",
     "sourceNotReady": "Una fonte richiede attenzione. Completa l’importazione o l’OCR, poi riprova a costruire il piano.",

@@ -19,7 +19,7 @@ async function launch(extra: Record<string, string> = {}) {
       violations.push(message.text());
   });
   page.on("request", (request) => {
-    if (!/^(file|data|blob|devtools|chrome-extension):/.test(request.url()))
+    if (!/^(pyxis-app|data|blob|devtools|chrome-extension):/.test(request.url()))
       violations.push(`request ${request.url()}`);
   });
   await page.getByRole("button", { name: "Salta" }).click();

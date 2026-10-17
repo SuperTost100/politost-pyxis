@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import type Database from "better-sqlite3";
 import { strFromU8, zipSync } from "fflate";
-import mammoth from "mammoth";
 import { chunkText } from "./chunk";
 import { uuidv7 } from "../../shared/ids";
 import { putBlob } from "../blobs";
@@ -101,6 +100,7 @@ export async function extractDocx(
   const parts: Record<string, Uint8Array> = {};
   for (const name of zip.names)
     if (/\.(xml|rels)$/i.test(name)) parts[name] = zip.read(name)!;
+  const { default: mammoth } = await import("mammoth");
   const result = await mammoth.convertToHtml(
     { buffer: Buffer.from(zipSync(parts, { level: 0 })) },
     { convertImage: mammoth.images.imgElement(async () => ({ src: "" })) },

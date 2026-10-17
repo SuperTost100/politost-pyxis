@@ -93,8 +93,8 @@ const publicHost = async () => ["93.184.216.34"];
 afterEach(() => vi.restoreAllMocks());
 
 describe("link import", () => {
-  it("drops scripts and keeps the article", () => {
-    const page = articleFromHtml(article, "https://example.com/c");
+  it("drops scripts and keeps the article", async () => {
+    const page = await articleFromHtml(article, "https://example.com/c");
     expect(page.title).toBe("Cinematica");
     expect(page.markdown).toContain("velocità");
     expect(page.markdown).not.toContain("SECRET_TOKEN");

@@ -57,10 +57,11 @@ import {
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
 import { rendererCsp } from "./csp";
+import { APP_PAGE, APP_SCHEME, appPrivileges, registerAppProtocol } from "./app-protocol";
+import { carryLanguage } from "./carried-language";
 import {
   recoverInterruptedWipe,
   wipePending,
@@ -101,6 +102,11 @@ function systemLanguage(): "it" | "en" {
   }
   return "en";
 }
+let carriedLanguage: "it" | "en" | null = null;
+/** The language a profile without its own choice starts in: the one carried from the file:// origin, else the system's. */
+function startLanguage(): "it" | "en" {
+  return carriedLanguage ?? systemLanguage();
+}
 const userDataOverride = process.env["PYXIS_USER_DATA"];
 if (userDataOverride) app.setPath("userData", userDataOverride);
 // One Pyxis per profile folder. A second copy would open the same database, mark the first one's running jobs as
@@ -114,6 +120,7 @@ if (e2eSeam() && process.env.PYXIS_E2E === "1" && process.env.PYXIS_CRASH_DIR) {
 }
 
 protocol.registerSchemesAsPrivileged([
+  { scheme: APP_SCHEME, privileges: appPrivileges },
   {
     scheme: "pyxis-blob",
     privileges: {
@@ -213,15 +220,13 @@ function installNavigationGuards(): void {
     contents.on("will-navigate", (event, url) => {
       const devOrigin = process.env["ELECTRON_RENDERER_URL"];
       if (devOrigin && url.startsWith(devOrigin)) return;
-      if (url.split("#")[0] === rendererPage) return;
+      if (url.split("#")[0] === APP_PAGE) return;
       event.preventDefault();
     });
   });
 }
 
-const rendererPage = pathToFileURL(
-  join(import.meta.dirname, "../renderer/index.html"),
-).href;
+const rendererRoot = join(import.meta.dirname, "../renderer");
 
 // A study app needs no camera, microphone, location, notifications or devices, so pages never get them.
 // Everything else (clipboard, fullscreen…) keeps Electron's default.
@@ -438,12 +443,9 @@ function createWindow(): void {
     if (hash) url.hash = hash;
     void mainWindow.loadURL(url.toString());
   } else {
-    void mainWindow.loadFile(
-      join(import.meta.dirname, "../renderer/index.html"),
-      {
-        hash: hash?.replace(/^#/, ""),
-      },
-    );
+    const url = new URL(APP_PAGE);
+    if (hash) url.hash = hash;
+    void mainWindow.loadURL(url.toString());
   }
 }
 
@@ -733,7 +735,7 @@ function installMenu(): void {
     Menu.buildFromTemplate(
       buildMenuTemplate({
         platform: process.platform,
-        language: menuLanguage ?? systemLanguage(),
+        language: menuLanguage ?? startLanguage(),
         packaged: app.isPackaged,
         send: sendMenuCommand,
       }),
@@ -974,7 +976,7 @@ function registerIpc(): void {
   ipcMain.handle(mainChannels.menuLanguage, (event, language: unknown) => {
     requireMainSender(event, "menu-untrusted-sender");
     if (!isMenuLanguage(language)) throw new Error("invalid-language");
-    if (language === (menuLanguage ?? systemLanguage())) return;
+    if (language === (menuLanguage ?? startLanguage())) return;
     menuLanguage = language;
     installMenu();
   });
@@ -1103,7 +1105,7 @@ function registerIpc(): void {
     event.returnValue = !app.isPackaged;
   });
   ipcMain.on("app:system-language", (event) => {
-    event.returnValue = systemLanguage();
+    event.returnValue = startLanguage();
   });
   ipcMain.handle("dev:killCore", (event) => {
     if (app.isPackaged) return;
@@ -1404,6 +1406,20 @@ function registerAutoBackupIpc(): void {
 function registerProtocols(): void {
   registerBlobProtocol(() => workspacePath);
   registerRuntimeProtocol(session.defaultSession, () => workspacePath);
+  if (!isDev) registerAppProtocol(rendererRoot);
+}
+
+function openFirstWindow(): Promise<void> | void {
+  if (isDev) return createWindow();
+  return carryLanguage(
+    userFile("language.json"),
+    app.getPath("userData"),
+    rendererRoot,
+    (language) => {
+      carriedLanguage = language;
+      createWindow();
+    },
+  );
 }
 
 app.on("second-instance", () => {
@@ -1477,7 +1493,7 @@ app.whenReady().then(() => {
   registerAutoBackupIpc();
   nativeTheme.on("updated", broadcastAppearance);
   startCore();
-  createWindow();
+  void openFirstWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

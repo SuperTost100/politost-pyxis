@@ -3,12 +3,14 @@ import { Drawer, Skeleton } from "antd";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../lib/ipc";
-import { MarkdownView } from "./MarkdownView";
 import { Notice } from "./Notice";
 import { SelectionMenu } from "./SelectionMenu";
 import "./SourceViewer.css";
 
 const PdfSourcePage = lazy(() => import("./PdfSourcePage"));
+// The viewer is mounted with the window, but Markdown and math load only when it first opens.
+let markdown: typeof import("./MarkdownView") | undefined;
+const loadMarkdown = async () => (markdown ??= await import("./MarkdownView"));
 
 type SourceLocation = { passageId?: string; sourceId?: string; chapter?: number; paragraph?: string };
 const eventName = "pyxis:source-viewer";
@@ -24,7 +26,8 @@ export function SourceViewer() {
   useEffect(() => {
     const open = (event: Event) => {
       trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setLocation((event as CustomEvent<SourceLocation>).detail);
+      const detail = (event as CustomEvent<SourceLocation>).detail;
+      void loadMarkdown().finally(() => setLocation(detail));
     };
     window.addEventListener(eventName, open);
     return () => window.removeEventListener(eventName, open);
@@ -58,7 +61,7 @@ export function SourceViewer() {
           <Suspense fallback={<Skeleton active />}><PdfSourcePage sha={source.data.blobSha} initialPage={current?.locator.page ?? 1} excerpt={source.data.excerpt ?? current?.text ?? ""} /></Suspense>
           : rows.map((row) => <section key={row.id} className={row.current ? "source-viewer-paragraph is-current" : "source-viewer-paragraph"}
           aria-label={row.locator.paragraph}>
-          <MarkdownView>{row.text}</MarkdownView>
+          {markdown ? <markdown.MarkdownView>{row.text}</markdown.MarkdownView> : null}
         </section>)}
       </div>
       </SelectionMenu>
