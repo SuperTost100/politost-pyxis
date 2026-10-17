@@ -91,6 +91,7 @@ The settings row `local-model` stores the model, whether the student has it on (
 - A local model never builds plans or grades unless it passed the structured-output check: `planAuto()` leaves `plan` and `grading` without it, and `engines.setFeature` refuses to pin it there (`engines.local.noStructured`).
 - In Advanced, a task can be pinned to the local model once it is on.
 - Ollama keeps a chat's conversation as history in core, like the API providers.
+- The line at the top of Settings, Engines says what leaves the computer (`disclosureText()` in `src/renderer/src/features/settings/disclosure.ts`). With only the local model it says nothing leaves; with a mix it names the tasks that stay on the computer and those that go to a vendor. The launch notice lists only cloud engines the student has not confirmed, so Ollama never appears in it: the download consent covers it.
 
 The unit tests run every hardware parser on captured command output and the check and download against a fake Ollama server (`src/core/engine/fake-ollama.ts`). No test talks to a real Ollama or the network.
 

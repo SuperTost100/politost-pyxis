@@ -1751,6 +1751,9 @@
     "title": "Engines",
     "terms": "A test sends one short sentence to the provider you pick.",
     "disclosure": "The text, the retrieved passages and the attachments leave this computer and go to that engine's vendor.",
+    "disclosureLocal": "Every task uses the model on this computer, so nothing leaves it.",
+    "disclosureMixed_one": "{{local}} runs on this computer, so nothing leaves it for that. For {{cloud}}, the text, the retrieved passages and the attachments go to that engine's vendor.",
+    "disclosureMixed_other": "{{local}} run on this computer, so nothing leaves it for them. For {{cloud}}, the text, the retrieved passages and the attachments go to that engine's vendor.",
     "acknowledge": "I understand",
     "notice": {
       "title": "What leaves this computer",

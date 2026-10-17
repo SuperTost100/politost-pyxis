@@ -1751,6 +1751,9 @@
     "title": "Motori",
     "terms": "Una prova invia una frase corta al fornitore scelto.",
     "disclosure": "Il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore del motore.",
+    "disclosureLocal": "Tutte le attività usano il modello su questo computer, quindi non esce nulla.",
+    "disclosureMixed_one": "{{local}} gira su questo computer, quindi per questa non esce nulla. Per {{cloud}}, il testo, i brani recuperati e gli allegati arrivano al fornitore del motore.",
+    "disclosureMixed_other": "{{local}} girano su questo computer, quindi per queste non esce nulla. Per {{cloud}}, il testo, i brani recuperati e gli allegati arrivano al fornitore del motore.",
     "acknowledge": "Ho capito",
     "notice": {
       "title": "Cosa esce da questo computer",
