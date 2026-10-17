@@ -46,7 +46,7 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
     const rows = today.getByRole("listitem");
     await expect(rows).toHaveCount(4);
     await expect(rows.nth(0)).toContainText("Flashcards to review");
-    await expect(rows.nth(0)).toContainText("2 cards due · from 2 exams");
+    await expect(rows.nth(0)).toContainText("2 flashcards due · from 2 exams");
     await expect(rows.nth(0)).toContainText("Suggested");
     // The closest exam first, the plan without a date last; each opens its path's next step.
     await expect(rows.nth(1)).toContainText("Fisica 1");
@@ -64,7 +64,7 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
       // Easy moves a new card out of today's learning steps, so the session ends.
       await page.getByRole("button", { name: "Easy", exact: true }).click();
     }
-    await expect(page.getByText("No cards are due.")).toBeVisible();
+    await expect(page.getByText("No flashcards are due.")).toBeVisible();
     // Each plan's path gets a cards step on the topic it rated.
     await expect
       .poll(() =>
