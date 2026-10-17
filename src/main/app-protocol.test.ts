@@ -1,4 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -36,14 +43,23 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("pyxis-app protocol", () => {
   it("serves the page and its assets from the renderer folder", () => {
-    expect(appFile(root, APP_PAGE)).toBe(join(root, "index.html"));
-    expect(appFile(root, `${APP_PAGE}#/exams`)).toBe(join(root, "index.html"));
+    // The answer is the real path: on macOS the temporary folder itself is behind a symlink.
+    const real = (...parts: string[]) => realpathSync(join(root, ...parts));
+    expect(appFile(root, APP_PAGE)).toBe(real("index.html"));
+    expect(appFile(root, `${APP_PAGE}#/exams`)).toBe(real("index.html"));
     expect(appFile(root, "pyxis-app://app/assets/index-abc.js")).toBe(
-      join(root, "assets", "index-abc.js"),
+      real("assets", "index-abc.js"),
     );
     expect(appFile(root, "pyxis-app://app/assets/inside.html")).toBe(
-      join(root, "index.html"),
+      real("index.html"),
     );
+  });
+
+  it("serves files under a root reached through a symlink", () => {
+    const linked = join(dir, "linked-renderer");
+    symlinkSync(root, linked, "dir");
+    expect(appFile(linked, APP_PAGE)).toBe(realpathSync(join(root, "index.html")));
+    expect(appFile(linked, "pyxis-app://app/assets/link.txt")).toBeNull();
   });
 
   it("refuses paths that leave the folder, plain or encoded", () => {
