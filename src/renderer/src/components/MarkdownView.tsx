@@ -21,6 +21,8 @@ import { normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
 import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
 import { PythonBlock, RunnablePython } from "./PythonBlock";
+import { Figure } from "./Figure";
+import { figureKey, parseFigure } from "@shared/smart-text";
 import "./MarkdownView.css";
 
 export type { CitationResolver };
@@ -32,9 +34,15 @@ export function MarkdownView({
   onCitationClick,
   runnable,
   checks,
+  figures,
+  drawing = false,
 }: {
   children: string;
   checks?: AnchoredCheck[];
+  /** Images of the answer's ```pyxis-figure blocks, by `figureKey`. A block without one shows nothing. */
+  figures?: Record<string, string>;
+  /** The answer is still being written, so a figure without an image is still to be drawn. */
+  drawing?: boolean;
   variant?: "reading" | "body";
   citationResolver?: CitationResolver;
   onCitationClick?: (passageId: number) => void;
@@ -121,6 +129,17 @@ export function MarkdownView({
             }
             if (lang === "python" && canRun)
               return <PythonBlock code={codeText} />;
+            // Figure code is for the sandbox, never shown: the image, a placeholder while it is drawn, or nothing.
+            if (lang === "pyxis-figure") {
+              const figure = parseFigure(codeText);
+              return (
+                <Figure
+                  caption={figure?.caption ?? ""}
+                  image={figure ? figures?.[figureKey(figure.code)] : undefined}
+                  drawing={drawing}
+                />
+              );
+            }
             return (
               <div className="px-code-block">
                 <pre className="px-code-pre" tabIndex={0} {...rest}>

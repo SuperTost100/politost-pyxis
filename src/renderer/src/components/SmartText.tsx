@@ -3,10 +3,12 @@ import { ChevronDown, Lightbulb } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  figureKey,
   parseSmartText,
   type CheckQuestion,
   type SmartBlock,
 } from "@shared/smart-text";
+import { Figure } from "./Figure";
 import { InlineMarkdown } from "./InlineMarkdown";
 import { MarkdownView } from "./MarkdownView";
 import { QuizOption } from "./QuizOption";
@@ -34,12 +36,15 @@ export function SmartText({
   onAnswer,
   streaming = false,
   onCitationClick,
+  figures = {},
 }: {
   children: string;
   answers?: Record<string, number>;
   onAnswer?: SmartAnswer;
   streaming?: boolean;
   onCitationClick?: (passageId: number) => void;
+  /** Images of the figure blocks, by `figureKey`. While `streaming`, a figure without one is still being drawn. */
+  figures?: Record<string, string>;
 }) {
   const { t } = useTranslation();
   const segments = useMemo(
@@ -73,12 +78,21 @@ export function SmartText({
           >
             {segment.text}
           </MarkdownView>
+        ) : segment.type === "pending" && segment.kind === "figure" ? (
+          <Figure key={index} caption="" drawing />
         ) : segment.type === "pending" ? (
           <div key={index} className="px-sb is-pending" role="status">
             <span className="label">{t("smart.preparing")}</span>
             <span className="px-sb-skeleton" />
             <span className="px-sb-skeleton is-short" />
           </div>
+        ) : segment.block.kind === "figure" ? (
+          <Figure
+            key={segment.block.id}
+            caption={segment.block.caption}
+            image={figures[figureKey(segment.block.code)]}
+            drawing={streaming}
+          />
         ) : (
           <Block key={segment.block.id} block={segment.block} answers={state} />
         ),
@@ -103,6 +117,9 @@ function Block({ block, answers }: { block: SmartBlock; answers: Answers }) {
       return <TryIt block={block} />;
     case "reveal":
       return <Reveal block={block} />;
+    // Drawn by SmartText itself, with the lesson's images.
+    case "figure":
+      return null;
     case "example":
       return (
         <section className="px-sb is-example" aria-label={t("smart.example")}>

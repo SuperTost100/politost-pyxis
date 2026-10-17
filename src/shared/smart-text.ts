@@ -3,7 +3,7 @@ import { seededRandom, shuffleChoices } from "./choices";
 
 /**
  * Smart text: lesson Markdown with interactive blocks written inline by the model as fenced code blocks
- * (```pyxis-check, ```pyxis-try, ```pyxis-reveal, ```pyxis-example, ```pyxis-recap) whose body is JSON.
+ * (```pyxis-check, ```pyxis-try, ```pyxis-reveal, ```pyxis-example, ```pyxis-recap, ```pyxis-figure) whose body is JSON.
  * Core and renderer parse the same way, so a block's id, its correct answer and its place are identical on both sides.
  * A block that cannot be repaired is dropped; raw block JSON never reaches the reader.
  */
@@ -14,6 +14,7 @@ export const smartBlockKinds = [
   "reveal",
   "example",
   "recap",
+  "figure",
 ] as const;
 export type SmartBlockKind = (typeof smartBlockKinds)[number];
 
@@ -50,6 +51,31 @@ const exampleSchema = z.object({
   body: field(8000),
 });
 
+/**
+ * A figure is matplotlib code that core runs once in the Pyodide sandbox, never anywhere else, and the caption shown
+ * under the image. Images are stored next to the text that asked for them, by `figureKey(code)`; a figure whose code
+ * failed is removed from the text before it is saved.
+ */
+export const FIGURE_CODE_MAX = 4000;
+/** Figures drawn for one lesson or answer; later figure blocks are left out. */
+export const FIGURE_MAX = 4;
+/** Longest stored image, as a PNG data URL. Fits a plan file's 1,000,000-character string limit. */
+export const FIGURE_IMAGE_MAX = 700_000;
+const figureSchema = z.object({
+  caption: field(300),
+  code: field(FIGURE_CODE_MAX),
+});
+export type FigureData = z.infer<typeof figureSchema>;
+const figureImageSchema = z
+  .string()
+  .max(FIGURE_IMAGE_MAX)
+  .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/);
+const FIGURE_KEY = /^figure-[0-9a-z]{1,16}$/;
+/** The stored images of one lesson or answer, as a plan file must carry them. */
+export const figureImagesSchema = z
+  .record(z.string().regex(FIGURE_KEY), figureImageSchema)
+  .refine((images) => Object.keys(images).length <= FIGURE_MAX * 4, "Too many figures");
+
 export type CheckData = z.infer<typeof checkSchema>;
 /**
  * `options` and `answer` are in the order shown, which parsing derives from the model's order and the question's id.
@@ -61,6 +87,7 @@ export type SmartBlock =
   | ({ kind: "try"; id: string } & z.infer<typeof trySchema>)
   | ({ kind: "reveal"; id: string } & z.infer<typeof revealSchema>)
   | ({ kind: "example"; id: string } & z.infer<typeof exampleSchema>)
+  | ({ kind: "figure"; id: string } & FigureData)
   | { kind: "recap"; id: string; questions: CheckQuestion[] };
 
 type BlockData = SmartBlock extends infer B
@@ -233,6 +260,73 @@ function repairCheck(raw: unknown): CheckData | null {
   return parsed.success ? parsed.data : null;
 }
 
+function repairFigure(raw: unknown): FigureData | null {
+  const value = record(raw);
+  if (!value) return null;
+  const parsed = figureSchema.safeParse({
+    caption: asText(pick(value, "caption", "title", "alt")),
+    code: asText(pick(value, "code", "python", "source")),
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+/** The figure in a ```pyxis-figure body, or null when it is not one. */
+export function parseFigure(body: string): FigureData | null {
+  return repairFigure(parseLooseJson(body));
+}
+
+/** Where a figure's image is stored: the same code always maps to the same key, whatever its caption. */
+export function figureKey(code: string): string {
+  return `figure-${hash(code.trim())}`;
+}
+
+/** Stored images that are well-formed PNG data URLs under known keys; anything else is dropped, not shown. */
+export function figureImages(value: unknown): Record<string, string> {
+  const images: Record<string, string> = {};
+  const entries = record(value) ? Object.entries(value as Loose) : [];
+  for (const [key, image] of entries) {
+    if (Object.keys(images).length === FIGURE_MAX * 4) break;
+    if (FIGURE_KEY.test(key) && figureImageSchema.safeParse(image).success)
+      images[key] = image as string;
+  }
+  return images;
+}
+
+/**
+ * Rewrites every closed ```pyxis-figure block outside other code: `replace` gets the parsed figure (null when the block
+ * is not valid) and returns the text to put in its place, or null to keep the block as it is.
+ */
+export function mapFigureBlocks(
+  markdown: string,
+  replace: (figure: FigureData | null) => string | null,
+): string {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const open = OPEN.exec(lines[i]!);
+    if (!open) {
+      out.push(lines[i]!);
+      continue;
+    }
+    const fence = open[1]!;
+    let close = i + 1;
+    while (close < lines.length) {
+      const line = lines[close]!.trim();
+      if (/^[`~]+$/.test(line) && line[0] === fence[0] && line.length >= fence.length) break;
+      close++;
+    }
+    const block = lines.slice(i, Math.min(close, lines.length - 1) + 1);
+    const next = close < lines.length && open[2]!.toLowerCase() === "pyxis-figure"
+      ? replace(parseFigure(lines.slice(i + 1, close).join("\n")))
+      : null;
+    out.push(...(next == null ? block : next ? next.split("\n") : []));
+    i = close;
+    // A removed block between two paragraphs leaves one blank line, not two.
+    if (next === "" && out.at(-1)?.trim() === "" && lines[i + 1]?.trim() === "") i++;
+  }
+  return out.join("\n");
+}
+
 function repairBlock(
   kind: SmartBlockKind,
   body: string,
@@ -268,6 +362,10 @@ function repairBlock(
       answer: asText(pick(value, "answer", "result")),
     });
     return parsed.success ? { kind, ...parsed.data } : null;
+  }
+  if (kind === "figure") {
+    const data = repairFigure(raw);
+    return data ? { kind, ...data } : null;
   }
   if (kind === "reveal") {
     if (!value) return null;
@@ -470,6 +568,7 @@ export type SmartLabels = {
   answer: string;
   example: string;
   recap: string;
+  figure: string;
 };
 
 export const smartLabels: Record<"it" | "en", SmartLabels> = {
@@ -481,6 +580,7 @@ export const smartLabels: Record<"it" | "en", SmartLabels> = {
     answer: "Risposta",
     example: "Esempio svolto",
     recap: "Ripasso finale",
+    figure: "Figura",
   },
   en: {
     check: "Quick check",
@@ -490,6 +590,7 @@ export const smartLabels: Record<"it" | "en", SmartLabels> = {
     answer: "Answer",
     example: "Worked example",
     recap: "Recap",
+    figure: "Figure",
   },
 };
 
@@ -528,6 +629,9 @@ export function smartTextToMarkdown(
           return `**${block.front}**\n\n${block.back}`;
         case "example":
           return `**${block.title ? `${labels.example}: ${block.title}` : labels.example}**\n\n${block.body}`;
+        // Exports carry the caption; the image stays in the app.
+        case "figure":
+          return `*${labels.figure}: ${block.caption}*`;
         case "recap":
           return [
             `### ${labels.recap}`,

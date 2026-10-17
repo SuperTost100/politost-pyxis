@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { cardReviewSchema } from "./card-schedule";
 import { conceptGraphSchema } from "./concept-map";
+import { figureImagesSchema } from "./smart-text";
 const id = z.string().min(1).max(160);
 const index = z.number().int().nonnegative();
 const text = z.string().max(1000000);
@@ -75,6 +76,8 @@ const proseBody = z.object({
   markdown: text,
   cacheKey: text.optional(),
   passageIds: z.array(id).max(10000).optional(),
+  /** A lesson's figure images travel with it, as PNG data URLs by figure key. */
+  figures: figureImagesSchema.optional(),
 });
 const questionsBody = z.object({ questions: z.array(question).max(10000) });
 const simulationBody = questionsBody.extend({

@@ -1,0 +1,46 @@
+/* Figures are drawn by matplotlib on white, so the image keeps a white ground in both themes. */
+.px-figure {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  margin: var(--space-6) 0;
+}
+
+.px-figure img {
+  display: block;
+  box-sizing: border-box;
+  max-width: 100%;
+  height: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+.px-figure figcaption {
+  max-width: 60ch;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.px-figure.is-drawing {
+  justify-items: stretch;
+}
+
+.px-figure-skeleton {
+  height: 240px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .px-figure-skeleton {
+    animation: px-figure-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes px-figure-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}

@@ -25,6 +25,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 16             | `sources.catalog_id` and `sources.catalog_version`, the free book a smartbook is        |
 | 17             | Indexes for hot lookups and for every foreign-key child column                          |
 | 18             | `cards.search_text`, the folded text the card browser searches                          |
+| 19             | `messages.figures_json`, the images of the figures an answer drew                       |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -34,7 +35,9 @@ Migration 17 indexes the latest review of a card (`card_reviews(card_id, reviewe
 
 Migration 18 adds `cards.search_text`: the card's front (a cloze as its text) and back, lower case, without accents or emphasis marks. The card browser fills it for every card where it is NULL before it searches, and the trigger `cards_search_stale` sets it back to NULL when the front or back changes. A new card and every card after the migration start at NULL.
 
-Current version is 18. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 19 stores the figures of an Ask answer. A model can ask for a figure as a fenced `pyxis-figure` block with a caption and matplotlib code. Core runs the code once in the Pyodide sandbox and keeps the PNG as a data URL in `messages.figures_json`, keyed by a hash of the code. The block stays in `body`; a block whose code failed is removed before the message is saved. A lesson keeps its figures the same way, in `figures` inside the item's `body_json`, so they are cached with the lesson and its rewrites.
+
+Current version is 19. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table            | A row is                                                                                |
 | ---------------- | --------------------------------------------------------------------------------------- |

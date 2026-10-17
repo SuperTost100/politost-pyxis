@@ -2057,7 +2057,8 @@
     "answer": "Result",
     "show": "Show",
     "hide": "Hide",
-    "preparing": "Preparing an exercise…"
+    "preparing": "Preparing an exercise…",
+    "drawing": "Drawing the figure…"
   },
   "setup": {
     "title": "Set up {{name}}",

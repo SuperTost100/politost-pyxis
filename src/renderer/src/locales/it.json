@@ -2057,7 +2057,8 @@
     "answer": "Risultato",
     "show": "Mostra",
     "hide": "Nascondi",
-    "preparing": "Sto preparando un esercizio…"
+    "preparing": "Sto preparando un esercizio…",
+    "drawing": "Disegno la figura…"
   },
   "setup": {
     "title": "Configura {{name}}",
