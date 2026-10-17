@@ -12,6 +12,7 @@ import {
 
 export type { ProviderId, Selection };
 export { FunnelError };
+import { clearSignOut } from "./bench";
 import { shellPathReady } from "./shell-path";
 export { loadShellPath, shellPathReady } from "./shell-path";
 
@@ -94,7 +95,11 @@ export function setApiKeys(next: Keys): void {
   keys = { anthropic: next.anthropic, openai: next.openai };
   if (changed.length === 0) return;
   api = undefined;
-  for (const id of changed) funnel?.refresh(id);
+  for (const id of changed) {
+    funnel?.refresh(id);
+    // A new key may work where the old one was refused.
+    clearSignOut(id);
+  }
 }
 
 export function getFunnel(): Funnel {

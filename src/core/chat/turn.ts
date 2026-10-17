@@ -667,6 +667,8 @@ async function answer(
   // A regenerated reply replaces one the engine's conversation already holds, so the conversation starts over.
   if (replacing) endConversation(chatId);
   const selection = selectionFor(db, "chat");
+  // The engine answering, which differs from the selection when an automatic one was out and another took over.
+  let answering: { provider: string; model: string } = selection;
   let streamed = "";
   let result;
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
@@ -693,6 +695,7 @@ async function answer(
       run: input.run,
       conversation: { key: chatId, followUp },
       cache: true,
+      onEngine: (engine) => (answering = engine),
       onDelta: (text) => {
         requireTutorAvailable(db);
         streamed = text;
@@ -707,8 +710,8 @@ async function answer(
     ) {
       return {
         ...finishReply(db, chatId, streamed, {
-          provider: selection.provider,
-          model: selection.model,
+          provider: answering.provider,
+          model: answering.model,
           selected,
           attached: thisTurnFile,
           mode,

@@ -82,6 +82,7 @@ When the engine Pyxis chose for a task hits a usage limit or is signed out (a re
 - Only automatic selections switch. `selectionFor` marks the selections it returns from an automatic row, so a task the student pinned keeps its engine and shows the error.
 - A background job that saved its selection when it was queued keeps that engine.
 - The retry happens once. If the second engine fails too, its error is shown.
+- Later automatic calls skip the failed engine and go straight to the replacement, without a notice. A usage limit keeps it out until the reset time CLI Funnel reports (`resetAt`, else `retryAfterMs`), or 30 minutes when it reports neither. A sign-out keeps it out until a scan finds it signed in again or its API key changes. This lives in core's memory only (`src/core/engine/bench.ts`), so a restart tries every engine again.
 - A stopped turn never switches, and a turn with a picture switches only to an engine that can see it.
 - CLI Funnel already retries an API request twice on 429 and 5xx before any output. A limit is recognised from the `limit` CLI Funnel attaches to the error, and otherwise from the same classification that maps errors to `engines.errors.quota`, `not-logged-in` and `refused`.
 

@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { IpcError } from "../../shared/ipc";
 import { openDatabase } from "../db/connection";
 import type { AutoProvider } from "./auto";
+import { clearBench, clearSignOut, DEFAULT_LIMIT_MS } from "./bench";
 import { generate, setFallbackListener } from "./generate";
 import { FunnelError, type EngineResult } from "./funnel";
 import { rememberReady, selectionFor } from "./selection";
@@ -208,6 +209,81 @@ describe("switching engines on a usage limit or sign-out", () => {
   afterEach(() => {
     rememberReady([]);
     setFallbackListener(undefined);
+    clearBench();
+    vi.useRealTimers();
+  });
+
+  /** Runs one automatic chat call and returns the engines it tried. */
+  async function ask(db: ReturnType<typeof openDatabase>, failWith: unknown) {
+    const asked: string[] = [];
+    await generate({
+      selection: selectionFor(db, "chat"),
+      prompt: "hi",
+      run: async (input) => {
+        asked.push(input.selection.provider);
+        if (input.selection.provider === "claude") throw failWith;
+        return result({ text: "ciao", provider: "codex" });
+      },
+    });
+    return asked;
+  }
+
+  it("skips a limited engine until its limit resets", async () => {
+    vi.useFakeTimers();
+    const db = automaticChat();
+    const resetAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    const until = Object.assign(new Error("limit"), {
+      code: "cli-failed",
+      limit: { kind: "quota", resetAt, detail: "weekly limit" },
+    });
+    expect(await ask(db, until)).toEqual(["claude", "codex"]);
+    vi.setSystemTime(Date.now() + 59 * 60_000);
+    expect(await ask(db, until)).toEqual(["codex"]);
+    vi.setSystemTime(Date.now() + 2 * 60_000);
+    expect(await ask(db, until)).toEqual(["claude", "codex"]);
+    db.close();
+  });
+
+  it("skips a limited engine for 30 minutes when the limit names no reset time", async () => {
+    vi.useFakeTimers();
+    const db = automaticChat();
+    expect(await ask(db, limited)).toEqual(["claude", "codex"]);
+    vi.setSystemTime(Date.now() + DEFAULT_LIMIT_MS - 1000);
+    expect(await ask(db, limited)).toEqual(["codex"]);
+    vi.setSystemTime(Date.now() + 2000);
+    expect(await ask(db, limited)).toEqual(["claude", "codex"]);
+    db.close();
+  });
+
+  it("skips a signed-out engine until a scan finds it signed in again", async () => {
+    vi.useFakeTimers();
+    const db = automaticChat();
+    const out = new FunnelError("Please run /login", "not-logged-in");
+    expect(await ask(db, out)).toEqual(["claude", "codex"]);
+    vi.setSystemTime(Date.now() + 24 * 60 * 60_000);
+    expect(await ask(db, out)).toEqual(["codex"]);
+    clearSignOut("claude");
+    expect(await ask(db, out)).toEqual(["claude", "codex"]);
+    db.close();
+  });
+
+  it("does not skip a limited engine the student pinned", async () => {
+    const db = automaticChat();
+    await ask(db, limited);
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(
+      JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }),
+    );
+    let tried = "";
+    await generate({
+      selection: selectionFor(db, "chat"),
+      prompt: "hi",
+      run: async (input) => {
+        tried = input.selection.provider;
+        return result({ text: "ok" });
+      },
+    });
+    expect(tried).toBe("claude");
+    db.close();
   });
 
   it("answers once on the next ready engine and says which one", async () => {

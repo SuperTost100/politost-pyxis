@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { IpcError, isAbort } from "../../shared/ipc";
 import { engineSeesImages } from "./capabilities";
+import { benchEngine, isBenched } from "./bench";
 import { engineIpcError, fallbackReason } from "./errors";
 import {
   endConversation,
@@ -29,6 +30,8 @@ export type GenerateInput = {
   conversation?: TurnInput["conversation"];
   /** Use the provider's prompt cache for the system prompt and the conversation so far. */
   cache?: boolean;
+  /** Called with the engine that answers instead when the selected one is out, before it starts. */
+  onEngine?: (selection: Omit<Selection, "cwd" | "access">) => void;
   run?: typeof runTurn;
 };
 
@@ -91,6 +94,11 @@ function tryJson(text: string): unknown {
  * not available) instead of "Something went wrong".
  */
 export async function generate(input: GenerateInput): Promise<GenerateOutput> {
+  // An automatic engine still out after a usage limit or a sign-out is skipped until it is back.
+  const instead = isBenched(input.selection.provider)
+    ? usableFallback(input)
+    : undefined;
+  if (instead) return answerOn(input, instead);
   try {
     return await generateOnce(input);
   } catch (err) {
@@ -98,23 +106,44 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
       !input.signal?.aborted && !isAbort(err)
         ? fallbackReason(err, input.selection.provider)
         : undefined;
-    const next = reason ? fallbackSelection(input.selection) : undefined;
-    // A turn that carries a picture only moves to an engine that can see it.
-    const sees = !input.attachments?.length || (next && engineSeesImages(next));
-    if (!reason || !next || !sees) throw engineIpcError(err, input.selection.provider);
-    // An engine Pyxis chose that hit its usage limit or was signed out: the next ready engine answers once instead.
+    const next = reason ? usableFallback(input) : undefined;
+    if (!reason || !next) throw engineIpcError(err, input.selection.provider);
+    // An engine Pyxis chose that hit its usage limit or was signed out: the next ready engine answers once instead,
+    // and later automatic calls skip it until its limit resets or it is signed in again.
+    benchEngine(
+      input.selection.provider,
+      reason,
+      err && typeof err === "object" && "limit" in err
+        ? (err.limit as { resetAt?: string; retryAfterMs?: number })
+        : undefined,
+    );
     const fallback = {
       from: providerName(input.selection.provider),
       to: providerName(next.provider),
       reason,
     };
-    try {
-      const output = await generateOnce({ ...input, selection: next });
-      onFallback?.(fallback);
-      return { ...output, fallback };
-    } catch (second) {
-      throw engineIpcError(second, next.provider);
-    }
+    const output = await answerOn(input, next);
+    onFallback?.(fallback);
+    return { ...output, fallback };
+  }
+}
+
+/** The engine an automatic selection moves to. A turn that carries a picture only moves to an engine that can see it. */
+function usableFallback(input: GenerateInput) {
+  const next = fallbackSelection(input.selection);
+  if (!next) return undefined;
+  return !input.attachments?.length || engineSeesImages(next) ? next : undefined;
+}
+
+async function answerOn(
+  input: GenerateInput,
+  selection: GenerateInput["selection"],
+): Promise<GenerateOutput> {
+  input.onEngine?.(selection);
+  try {
+    return await generateOnce({ ...input, selection });
+  } catch (err) {
+    throw engineIpcError(err, selection.provider);
   }
 }
 

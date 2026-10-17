@@ -2,6 +2,7 @@ import { IpcError } from "../../shared/ipc";
 import type Database from "better-sqlite3";
 import { automaticEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
+import { isBenched } from "./bench";
 import { effortsOf } from "./efforts";
 import type { ProviderId } from "./funnel";
 
@@ -82,7 +83,10 @@ export function fallbackSelection(
   const feature = automatic.get(selection);
   if (!feature) return undefined;
   const choice = planAuto(
-    ready.filter((provider) => provider.id !== selection.provider),
+    ready.filter(
+      (provider) =>
+        provider.id !== selection.provider && !isBenched(provider.id),
+    ),
   )[feature as AutoFeature];
   return choice
     ? { ...choice, provider: choice.provider as ProviderId }

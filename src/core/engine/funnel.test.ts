@@ -317,6 +317,16 @@ describe("API keys", () => {
       openai: "o1",
     });
   });
+
+  it("lets an API provider skipped after a refused key back in when its key changes", async () => {
+    const { benchEngine, isBenched } = await import("./bench");
+    setApiKeys({ anthropic: "a1", openai: "o1" });
+    benchEngine("openai-api", "signed-out");
+    benchEngine("anthropic-api", "signed-out");
+    setApiKeys({ anthropic: "a1", openai: "o2" });
+    expect(isBenched("openai-api")).toBe(false);
+    expect(isBenched("anthropic-api")).toBe(true);
+  });
 });
 
 describe("schema repairs", () => {

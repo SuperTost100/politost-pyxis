@@ -17,6 +17,7 @@ import {
   shellPathReady,
   type ProviderId,
 } from "./funnel";
+import { clearSignOut } from "./bench";
 import { effortsOf, rememberModels, resolveEffort } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
 import { rememberReady, type StoredSelection } from "./selection";
@@ -114,6 +115,13 @@ function overviewRows(): Promise<OverviewRow[]> {
 }
 
 async function scanProviders(): Promise<OverviewRow[]> {
+  const rows = await readProviders();
+  // An engine skipped after a sign-out is back once a scan finds it signed in.
+  for (const row of rows) if (isReady(row)) clearSignOut(row.id);
+  return rows;
+}
+
+async function readProviders(): Promise<OverviewRow[]> {
   // Detection looks for the CLIs on the login shell's PATH, which core reads in the background at launch.
   await shellPathReady();
   // CLI Funnel also lists providers Pyxis does not offer yet, such as Ollama.

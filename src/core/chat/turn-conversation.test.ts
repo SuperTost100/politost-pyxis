@@ -3,7 +3,9 @@ import { strToU8, zipSync } from "fflate";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { importSmartbook } from "../sources/smartbook";
-import { askTurn, regenerateTurn } from "./turn";
+import { clearBench } from "../engine/bench";
+import { rememberReady } from "../engine/selection";
+import { askTurn, readChat, regenerateTurn } from "./turn";
 
 const ended = vi.hoisted(() => [] as string[]);
 vi.mock("../engine/funnel", async (original) => {
@@ -123,5 +125,49 @@ describe("a chat turn's prompt", () => {
     });
     expect(ended).toContain(first.chatId);
     db.close();
+  });
+});
+
+describe("a stopped reply after the engine switched", () => {
+  it("records the engine that answered", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5", auto: true }));
+    rememberReady([
+      { id: "claude", kind: "cli", effort: true, models: [{ id: "claude-sonnet-5", efforts: [] }] },
+      { id: "codex", kind: "cli", effort: true, models: [{ id: "gpt-5.6-terra", efforts: [] }] },
+    ]);
+    const controller = new AbortController();
+    try {
+      const result = await askTurn(db, {
+        text: "domanda",
+        allowGeneral: true,
+        signal: controller.signal,
+        run: async (input) => {
+          if (input.selection.provider === "claude")
+            throw Object.assign(new Error("usage limit"), {
+              code: "cli-failed",
+              limit: { kind: "rate", detail: "usage limit" },
+            });
+          input.onDelta?.("Una risposta a metà");
+          controller.abort();
+          throw new DOMException("stopped", "AbortError");
+        },
+      });
+      expect(result.message).toMatchObject({
+        stopped: true,
+        provider: "codex",
+        modelId: "gpt-5.6-terra",
+      });
+      expect(readChat(db, result.chatId).at(-1)).toMatchObject({
+        provider: "codex",
+        modelId: "gpt-5.6-terra",
+      });
+    } finally {
+      rememberReady([]);
+      clearBench();
+      db.close();
+    }
   });
 });
