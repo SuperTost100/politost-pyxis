@@ -4,7 +4,12 @@ import { recordedPlanRun } from "./engine/recorded-plan";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { closeDatabase, openDatabase } from "./db/connection";
-import { getFunnel, setApiKeys, setScratch } from "./engine/funnel";
+import {
+  closeFunnel,
+  loadShellPath,
+  setApiKeys,
+  setScratch,
+} from "./engine/funnel";
 import { addInstallDirsToPath } from "./engine/install";
 import {
   attachRendererPort,
@@ -33,6 +38,8 @@ import { onEvidenceChanged } from "./plans/evidenceCache";
 
 setSourceWorkerDirectory(import.meta.dirname);
 addInstallDirsToPath();
+// The login shell can take seconds to start, so its PATH is read in the background. Only provider detection waits.
+void loadShellPath();
 
 type CorePort = {
   on(event: "message", listener: (event: { data: unknown }) => void): void;
@@ -201,16 +208,7 @@ if (!parent) {
     );
     runner.register("demo", demoJob);
     bindRunner(runner, dev);
-    void getFunnel()
-      .overview()
-      .catch((err: unknown) => {
-        console.error(
-          "pyxis-core: overview failed",
-          err instanceof Error ? err.message : "unknown",
-        );
-      });
-    // Fixture workspaces keep their seeded engine; real ones pick engines from what is ready now.
-    if (!recordedFixture) refreshAutoEngines();
+    // Nothing here looks for engines: main sends the keys right after this, and the one provider scan runs then.
     console.log("pyxis-core ready");
     // Healthy-ready handshake: main waits for this before sending keys/ports.
     port.postMessage({ type: "core-ready" });
@@ -271,6 +269,8 @@ if (!parent) {
       })();
     }
     if (data?.type === "shutdown") {
+      // Chats' live CLI processes stop with the app.
+      closeFunnel();
       // Fold the WAL into pyxis.db and close it first, so the workspace main copies or leaves behind is complete.
       try {
         if (database) closeDatabase(database);

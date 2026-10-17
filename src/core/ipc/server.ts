@@ -4,6 +4,7 @@ import { basename, extname, join } from "node:path";
 import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
+import { setFallbackListener } from "../engine/generate";
 import {
   IpcError,
   requests,
@@ -284,6 +285,22 @@ async function dispatchValidated(
       const parsed = requests["engines.cancelLogin"].input.parse(input);
       return engines?.cancelLogin({ provider: parsed.provider as ProviderId });
     }
+    case "engines.local":
+      requests["engines.local"].input.parse(input);
+      return engines?.local();
+    case "engines.localPull":
+      requests["engines.localPull"].input.parse(input);
+      return engines?.localPull();
+    case "engines.localCancel":
+      requests["engines.localCancel"].input.parse(input);
+      return engines?.localCancel();
+    case "engines.localCheck":
+      requests["engines.localCheck"].input.parse(input);
+      return engines?.localCheck();
+    case "engines.localEnable":
+      return engines?.localEnable(
+        requests["engines.localEnable"].input.parse(input),
+      );
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({
@@ -588,6 +605,8 @@ async function dispatchValidated(
       return chats?.read(requests["chats.read"].input.parse(input));
     case "chats.seed":
       return chats?.seed(requests["chats.seed"].input.parse(input));
+    case "chats.leave":
+      return chats?.leave(requests["chats.leave"].input.parse(input));
     case "chats.clearContext":
       return chats?.clearContext(
         requests["chats.clearContext"].input.parse(input),
@@ -722,10 +741,12 @@ export function bindEngines(
   installerFixture?: string,
 ): void {
   configureDisclosure(db);
+  setFallbackListener((event) => broadcast("engine.fallback", event));
   engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
     onInstallLog: (event) => broadcast("engine.install", event),
+    onLocal: (event) => broadcast("engine.local", event),
     installerFixture,
   });
 }

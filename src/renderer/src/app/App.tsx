@@ -12,6 +12,7 @@ import type { Appearance, ThemeSource } from "@shared/bridge";
 import { pyxisTheme } from "../design-system/theme/pyxis-theme";
 import { i18n, type Locale } from "../locales/i18n";
 import { CoreNotice } from "./CoreNotice";
+import { EngineFallbackNotice } from "./EngineFallbackNotice";
 import { MenuCommands } from "./MenuCommands";
 import { SourceViewer } from "../components/SourceViewer";
 import { JobsSync } from "../features/jobs/queries";
@@ -117,6 +118,7 @@ function StudyApp() {
               <UpdateNotice />
             </div>
             <CoreNotice />
+            <EngineFallbackNotice />
             <MenuCommands />
             <RouterProvider router={router} />
             <SourceViewer />

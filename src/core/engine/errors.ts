@@ -51,6 +51,24 @@ export function translateEngineError(
   return { code, messageKey: `engines.errors.${code}` };
 }
 
+/**
+ * Why another engine could answer instead: the engine hit a usage limit (CLI Funnel attaches the `limit` it reported to
+ * the error) or its sign-in or key was refused. Any other failure is not one a second engine would get round.
+ */
+export function fallbackReason(
+  err: unknown,
+  provider: string,
+): "limit" | "signed-out" | undefined {
+  if (!isEngineFailure(err) && !(err instanceof Error && "limit" in err))
+    return undefined;
+  if (err && typeof err === "object" && "limit" in err && err.limit)
+    return "limit";
+  const { code } = translateEngineError(err, provider);
+  if (code === "quota") return "limit";
+  if (code === "not-logged-in" || code === "refused") return "signed-out";
+  return undefined;
+}
+
 /** Node error codes of a lost connection, which a CLI or API provider reports as a plain error with a `code`. */
 const networkCodes = new Set([
   "ECONNREFUSED",

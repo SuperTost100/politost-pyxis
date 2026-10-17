@@ -12,7 +12,7 @@ const result = await generate({
 });
 ```
 
-The result carries text, provider, model and input-token usage. Structured requests convert the Zod schema to JSON Schema, disallow unknown object properties and parse the response again with Zod. Invalid output triggers at most two repair turns. Final failure becomes `invalid-output`. `onDelta` streams text; `signal` cancels a turn. Supported image attachments have explicit media types and data.
+The result carries text, provider, model and token usage: input and output tokens, plus the input tokens the provider read from or wrote to its prompt cache (`cacheReadTokens`, `cacheWriteTokens`). Structured requests convert the Zod schema to JSON Schema, disallow unknown object properties and parse the response again with Zod. Invalid output triggers at most two repair turns. Claude Code, Codex and the API providers keep the first turn's conversation, so a repair sends them only the validation error and the invalid answer. Cursor Agent and Antigravity keep none and get the whole prompt again. Final failure becomes `invalid-output`. `onDelta` streams text; `signal` cancels a turn. Supported image attachments have explicit media types and data.
 
 `selectionFor(db, feature)` reads `feature_engines`. An unset feature uses `default`. With no `default` row it throws `engine-missing`. It also works out the reasoning effort, see below. The engine screen discovers available models and tests the selected one.
 
@@ -23,7 +23,7 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 - Each feature needs a tier: `chat` and `map` fast, `lesson`, `vision` and `default` mid, `grading` and `plan` strong. Vision only considers models that read images (`capabilities.ts`). A feature key missing from the file counts as mid.
 - Model patterns are regular expressions per tier, cheapest sufficient first. Claude: haiku fast, sonnet mid, opus then fable strong. Codex and OpenAI: luna, mini and nano fast, terra mid, sol then astra strong. Antigravity: Gemini Flash fast, Gemini Pro mid and strong (Claude sonnet and opus as fallbacks). Cursor Agent: Gemini Flash, luna, Composer, then mini/nano fast; Claude sonnet, terra, then Gemini Pro mid; Claude opus then sol strong. Cursor's `-thinking` variants and Fable (listed there without zero data retention) never match. Within a pattern the highest version the provider lists wins. A tier with no match steps to the neighbouring tier, and the last resort is the first model the provider lists.
 - Effort follows the tier, see [Reasoning effort](#reasoning-effort).
-- A provider is ready when it is installed, signed in and not disabled. API providers count only with a stored key that the provider accepts. CLIs win: API providers are used only when no CLI is ready, because they bill per token.
+- A provider is ready when it is installed, signed in and not disabled. API providers count only with a stored key that the provider accepts. CLIs win. A local model the student turned on comes next, and API providers are used only when neither is ready, because they bill per token.
 - With two or more ready providers each tier has a preference order (fast: Antigravity, Codex, Cursor, Claude Code; mid: Claude Code, Cursor, Antigravity, Codex; strong: Claude Code, Codex, Cursor, Antigravity). Features then move from the busiest provider to the idlest while that narrows the gap. A feature's load is its weight times its tier cost, so frequent chat on a cheap model and rare plans on a strong model each weigh what they cost. Every ready CLI gets at least one feature.
 
 Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.4 model lists:
@@ -43,7 +43,57 @@ CLI Funnel has no sign-out for Antigravity, so `engines.overview` reports `capab
 
 `engines.autoConfigure` (`{ reset?, features? }` returning `{ ready, features }`) recomputes on demand. Core also runs it at startup, after sign-in, sign-out, update and removal, when a key is added or removed, and when `engines.overview` sees a changed engine set (at most every 30 seconds). `selectionFor` drops the `auto` flag, so callers see the same shape as before.
 
-Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`. Providers are `claude`, `codex`, Cursor `agent`, `antigravity`, `anthropic-api` and `openai-api`. A CLI provider is disabled unless its CLI Funnel adapter lists `none` in `capabilities.access`. CLI Funnel 0.4 runs Cursor Agent in ask mode from its own workspace, whose `.cursor/cli.json` denies shell, file reads and writes, web fetches and MCP tools. It runs Antigravity with a pre-tool hook that denies every tool. Cursor's grep and glob tools still run, but only inside that empty workspace. Other CLI Funnel providers, such as `gemini-api` and `ollama`, are not offered. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
+Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`. Providers are `claude`, `codex`, Cursor `agent`, `antigravity`, `anthropic-api` and `openai-api`. A CLI provider is disabled unless its CLI Funnel adapter lists `none` in `capabilities.access`. CLI Funnel 0.4 runs Cursor Agent in ask mode from its own workspace, whose `.cursor/cli.json` denies shell, file reads and writes, web fetches and MCP tools. It runs Antigravity with a pre-tool hook that denies every tool. Cursor's grep and glob tools still run, but only inside that empty workspace. Ollama is offered only as the local model, see [Local models](#local-models). Other CLI Funnel providers, such as `gemini-api`, are not offered. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
+
+## Local models
+
+A student without a subscription can run a model on their own computer through [Ollama](https://ollama.com). Pyxis does not bundle Ollama; it links to its installer. It offers a local model only after a hardware check says the computer runs one well enough for Pyxis's tasks at a usable speed.
+
+### Hardware check
+
+`src/core/engine/hardware.ts` reads RAM, GPUs with their memory, and free disk space. It needs no administrator rights and gives every command a time limit. The GPU query runs once per launch, the first time Settings or setup asks (`engines.local`), never at startup. Free space is read again each time.
+
+| System  | GPU and memory                                                                                                                                               |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| All     | `nvidia-smi --query-gpu=name,memory.total` when the NVIDIA driver is there (not on macOS). RAM from `os.totalmem()`                                          |
+| macOS   | `sysctl -n machdep.cpu.brand_string`. Apple Silicon shares the whole RAM with the GPU. Intel Macs fall back to `system_profiler SPDisplaysDataType -json`    |
+| Windows | PowerShell, `Get-CimInstance Win32_VideoController` plus the driver's `HardwareInformation.qwMemorySize` in the registry, because `AdapterRAM` stops at 4 GB |
+| Linux   | `/sys/class/drm/cardN/device`: the PCI vendor, and `mem_info_vram_total` from the amdgpu driver                                                              |
+
+Free space is measured where Ollama keeps models: `OLLAMA_MODELS`, else `~/.ollama/models`, or the nearest folder above it that exists.
+
+### Model per hardware class
+
+`adviseLocal()` in `src/core/engine/local.ts` picks the largest model from the `local` section of `resources/model-tiers.json` that fits. A model runs on an NVIDIA or AMD card's own memory, or on Apple Silicon's unified memory. Intel graphics, any GPU in an Intel Mac and computers without a GPU get no suggestion, because the model would run on the processor and be too slow. Memory counts as a size when it reports at least 90% of it, since the system reserves some.
+
+| Model        | Download | NVIDIA or AMD card | Apple Silicon memory |
+| ------------ | -------- | ------------------ | -------------------- |
+| `gemma3:27b` | 17 GB    | 20 GB              | 32 GB                |
+| `gemma3:12b` | 8.1 GB   | 12 GB              | 16 GB                |
+| `gemma3:4b`  | 3.3 GB   | 6 GB               | 8 GB                 |
+
+The computer also needs 8 GB of RAM, and the disk needs the download plus 2 GB. With too little free space a smaller model that fits is suggested; when none fits, Settings says how much space the suggested one needs. A model Ollama already has needs no space. Gemma 3 was chosen because it has no thinking phase that slows each answer, reads images and writes Italian well. Every turn on Ollama sets the context to the table's `contextWindow` (16,384 tokens) through `num_ctx`, because Ollama's default of a few thousand tokens silently cuts the start of a long lesson prompt. Ollama keeps the model loaded for 10 minutes after a turn, as long as a chat's conversation.
+
+When the check finds no fitting model, setup shows nothing, and Settings, Engines has a closed section that says why: no usable GPU, too little graphics memory, too little RAM, too little disk space, or a GPU that could not be read.
+
+### Download and check
+
+1. The suggestion card says which model, its size and that it runs on this computer. With Ollama missing (no server answers at `OLLAMA_HOST` or `127.0.0.1:11434`) it links to the installer and offers Check again.
+2. Download asks Ollama to pull the model (`engines.localPull`, which also records the student's acknowledgement for Ollama). Progress arrives as the `engine.local` broadcast: Ollama's per-layer bytes summed against at least the size in the table. Cancel (`engines.localCancel`) stops it; Ollama keeps the finished part and resumes it next time.
+3. Pyxis then checks the model (`checkLocalModel()`, prompt version `LOCAL_CHECK_VERSION`). One written answer is timed from its first token, so loading the model does not count, and must reach 10 tokens per second. One quiz question must match its schema on the first try, without the repair turns `generate()` allows. The first answer may take 3 minutes to start, the structured one 2.
+4. When both pass, the local model is on. Otherwise it stays off and Settings shows the speed or the failed format. Run the check again (`engines.localCheck`) repeats it, for example after closing other programs.
+
+The settings row `local-model` stores the model, whether the student has it on (`engines.localEnable`) and the last check. Turning it off, or a failed check, removes every task choice that uses Ollama.
+
+### Gating
+
+- The automatic choice takes the checked model only, while it is on, its check passed with the current `LOCAL_CHECK_VERSION` and Ollama lists it. Other models in the student's Ollama are never chosen. Without a ready CLI the local model takes every task, photos included.
+- A local model never builds plans or grades unless it passed the structured-output check: `planAuto()` leaves `plan` and `grading` without it, and `engines.setFeature` refuses to pin it there (`engines.local.noStructured`).
+- In Advanced, a task can be pinned to the local model once it is on.
+- Ollama keeps a chat's conversation as history in core, like the API providers.
+- The line at the top of Settings, Engines says what leaves the computer (`disclosureText()` in `src/renderer/src/features/settings/disclosure.ts`). With only the local model it says nothing leaves; with a mix it names the tasks that stay on the computer and those that go to a vendor. The launch notice lists only cloud engines the student has not confirmed, so Ollama never appears in it: the download consent covers it.
+
+The unit tests run every hardware parser on captured command output and the check and download against a fake Ollama server (`src/core/engine/fake-ollama.ts`). No test talks to a real Ollama or the network.
 
 ## Reasoning effort
 
@@ -61,7 +111,7 @@ Every task runs at a reasoning effort that fits it, whether Pyxis or the student
 1. If the student picked a level for the task and the model lists it, that level wins.
 2. Otherwise the task's level, when the model lists it.
 3. Otherwise the nearest level the model lists. `nearestEffort()` looks lower first for `low` and `medium`, and higher first for `high`, then the other way. `none` is never chosen, and neither is a level the scale does not know.
-4. A model that lists no effort runs without one. API providers (`anthropic-api`, `openai-api`) never get an effort, because CLI Funnel does not pass one to them.
+4. A model that lists no effort runs without one. API providers (`anthropic-api`, `openai-api`) follow the same rules: CLI Funnel lists the levels each API model takes and sends the chosen one to the vendor.
 
 `selectionFor` is synchronous, so it reads the model lists that `engines.models` and `engines.autoConfigure` last fetched (`src/core/engine/efforts.ts`). Until a list has been read, a pinned row keeps the effort stored in it, and an automatic row sends only the level Pyxis worked out for the task, never the student's pick. `engines.test` sends the nearest level the model lists once its list is known. Core runs `autoConfigure` at startup, so the lists are normally there before the first task.
 
@@ -74,6 +124,48 @@ The student's pick lives in the same JSON as the engine:
 - Handing one task back to Pyxis keeps its pick. Resetting every task drops them.
 
 In Settings, Engines, with Advanced options on, each task has an effort picker next to its model. "Automatic" is the default and shows the level it resolves to.
+
+## Switching engines on a usage limit
+
+When the engine Pyxis chose for a task hits a usage limit or is signed out (a refused key counts for API providers), `generate()` asks once more on another engine. The replacement is what `planAuto()` would choose for the same task without the failed engine, among the engines the last automatic choice could use. Core then broadcasts `engine.fallback` and the window shows one line saying which engine answered.
+
+- Only automatic selections switch. `selectionFor` marks the selections it returns from an automatic row, so a task the student pinned keeps its engine and shows the error.
+- A background job that saved its selection when it was queued keeps that engine.
+- The retry happens once. If the second engine fails too, its error is shown.
+- Later automatic calls skip the failed engine and go straight to the replacement, without a notice. A usage limit keeps it out until the reset time CLI Funnel reports (`resetAt`, else `retryAfterMs`), or 30 minutes when it reports neither. A sign-out keeps it out until a scan finds it signed in again or its API key changes. This lives in core's memory only (`src/core/engine/bench.ts`), so a restart tries every engine again.
+- A stopped turn never switches, and a turn with a picture switches only to an engine that can see it.
+- CLI Funnel already retries an API request twice on 429 and 5xx before any output. A limit is recognised from the `limit` CLI Funnel attaches to the error, and otherwise from the same classification that maps errors to `engines.errors.quota`, `not-logged-in` and `refused`.
+
+## Chat conversations and prompt caching
+
+Each chat keeps one conversation with its engine while the student stays in it. The first question sends the whole context: the system prompt (tutor template, profile, plan line, subject), then the pinned context and the earlier turns, then this question's passages and the question. The parts that stay the same come first so a provider's prompt cache keeps the start of the prompt. Later questions send only the new question and its passages, numbered from P1 again.
+
+| Engine                    | How the conversation is kept                                           |
+| ------------------------- | ---------------------------------------------------------------------- |
+| Claude Code, Codex        | A live CLI process (`createFunnel({ sessions: { keepAlive: true } })`) |
+| Anthropic and OpenAI API  | The conversation history in core's memory, sent with `sessionId`       |
+| Cursor Agent, Antigravity | None. Every question starts a new process and gets the whole context   |
+
+Chat turns ask for prompt caching (`cache: true`) on providers that take it, today the Anthropic API. It marks the system prompt and the newest turn, so the next question reads everything before it from the cache. OpenAI caches long prompts with the same start on its own.
+
+The conversation ends, and a live process with it, when:
+
+- the student leaves the chat (`chats.leave`), deletes it or clears its pinned context;
+- no question came for 10 minutes;
+- the chat's engine, effort or system prompt changed, or the student changed any engine choice;
+- a turn was stopped or failed, or a reply is regenerated;
+- a second question ran beside a turn still in progress, so the conversation would miss that exchange;
+- an API key changed (core also drops every stored API history then);
+- the conversation carried more than 150,000 characters;
+- the app quits.
+
+The next question then starts a new conversation with the whole context. Runs outside a chat, such as lessons and plans, close their CLI process as soon as they end.
+
+## Startup and provider detection
+
+Core posts `core-ready` before it looks for any engine. The student's login-shell PATH, where nvm or Homebrew put the CLIs, is read in the background with `$SHELL -ilc` once per launch (`src/core/engine/shell-path.ts`), and CLI Funnel's own blocking lookup is turned off with `CLI_FUNNEL_NO_SHELL_PATH=1`. Detection waits for that PATH; nothing else does.
+
+Main sends the stored API keys right after `core-ready`, and that starts the one provider scan of the launch. Callers that ask for `engines.overview` while a scan runs share it. New keys replace only the API providers, so the funnel keeps the CLI detection and model lists it cached (CLI Funnel caches them for a minute).
 
 ## Templates and schemas
 

@@ -21,6 +21,17 @@ export const engineProviders = [
 ] as const;
 export type EngineProvider = (typeof engineProviders)[number];
 
+/** The short check of a local model after its download: speed and one structured answer. */
+const localCheckSchema = z.object({
+  version: z.number(),
+  model: z.string(),
+  tokensPerSecond: z.number(),
+  structured: z.boolean(),
+  passed: z.boolean(),
+  at: z.number(),
+  failure: z.enum(["slow", "structured", "error"]).optional(),
+});
+
 export const JobState = z.enum([
   "queued",
   "running",
@@ -481,6 +492,76 @@ export const requests = {
   "engines.sendCode": {
     input: z.object({ provider: z.string(), code: z.string() }),
     output: z.object({}),
+  },
+  /**
+   * Running a model on this computer through Ollama. `reason` is null when the hardware check suggests `model`; else it
+   * says why not (`disk` with the model it would need space for). The GPU query runs once per launch.
+   */
+  "engines.local": {
+    input: z.object({}),
+    output: z.object({
+      hardware: z.object({
+        ramBytes: z.number(),
+        freeDiskBytes: z.number().nullable(),
+        gpu: z
+          .object({
+            vendor: z.enum(["apple", "nvidia", "amd", "intel", "other"]),
+            name: z.string(),
+            vramBytes: z.number().nullable(),
+            unified: z.boolean(),
+          })
+          .nullable(),
+      }),
+      reason: z.enum(["no-gpu", "vram", "ram", "disk", "unknown"]).nullable(),
+      model: z
+        .object({ id: z.string(), name: z.string(), downloadBytes: z.number() })
+        .nullable(),
+      ollama: z.object({ running: z.boolean(), version: z.string() }),
+      downloaded: z.boolean(),
+      /** A download or check in progress. */
+      task: z
+        .object({
+          phase: z.enum(["pull", "check"]),
+          completed: z.number(),
+          total: z.number(),
+        })
+        .nullable(),
+      /** How the last download or check ended when it did not finish, until the next one starts. */
+      last: z
+        .object({
+          outcome: z.enum(["failed", "cancelled"]),
+          detail: z.string(),
+        })
+        .nullable(),
+      check: localCheckSchema.nullable(),
+      /** The local model takes tasks: the student has it on and its check passed. */
+      enabled: z.boolean(),
+      installUrl: z.string(),
+      minTokensPerSecond: z.number(),
+      minimum: z.object({
+        ramGb: z.number(),
+        vramGb: z.number(),
+        unifiedGb: z.number(),
+        diskMarginGb: z.number(),
+      }),
+    }),
+  },
+  /** The student agreed: download the suggested model, then check it. Progress arrives as `engine.local`. */
+  "engines.localPull": {
+    input: z.object({ consent: z.literal(true) }),
+    output: localCheckSchema,
+  },
+  "engines.localCancel": {
+    input: z.object({}),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "engines.localCheck": {
+    input: z.object({}),
+    output: localCheckSchema,
+  },
+  "engines.localEnable": {
+    input: z.object({ enabled: z.boolean() }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "study.lesson": {
     input: z.object({
@@ -1872,6 +1953,11 @@ export const requests = {
     input: z.object({ chatId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
   },
+  // The chat left the screen, so core can stop the engine conversation it kept for it.
+  "chats.leave": {
+    input: z.object({ chatId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "chats.ask": {
     input: z.object({
       chatId: z.string().optional(),
@@ -2183,6 +2269,19 @@ export const broadcasts = {
   "plans.evidence": z.object({}),
   // Background recomputation of automatic engine choices finished.
   "engine.auto": z.object({}),
+  // The automatic engine hit a usage limit or was signed out, and another engine answered.
+  "engine.fallback": z.object({
+    from: z.string(),
+    to: z.string(),
+    reason: z.enum(["limit", "signed-out"]),
+  }),
+  // Download and check progress of the local model.
+  "engine.local": z.object({
+    phase: z.enum(["pull", "check", "done", "failed", "cancelled"]),
+    status: z.string().optional(),
+    completed: z.number().optional(),
+    total: z.number().optional(),
+  }),
   // A chunk of installer output while `engines.install` runs.
   "engine.install": z.object({ provider: z.string(), text: z.string() }),
   "engine.login": z.object({
