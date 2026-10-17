@@ -81,7 +81,11 @@ export function ExportButton({
           base64: textBase64(JSON.stringify(file, null, 2)),
         });
       } else if (format === "anki") {
-        const file = await invoke("study.anki", { planId, topicId });
+        const file = await invoke("study.anki", {
+          planId,
+          topicId,
+          history: progress,
+        });
         result = await window.pyxis.saveArtifact({
           filename: file.filename,
           base64: file.base64,
@@ -195,6 +199,15 @@ export function ExportButton({
                 <Notice tone="warning">{t("plans.embedWarning")}</Notice>
               ) : null}
             </div>
+          ) : null}
+          {format === "anki" ? (
+            <Checkbox
+              disabled={busy}
+              checked={progress}
+              onChange={(event) => setProgress(event.target.checked)}
+            >
+              {t("cardExport.history")}
+            </Checkbox>
           ) : null}
           {kind === "quiz" || kind === "simulation" ? (
             <Checkbox

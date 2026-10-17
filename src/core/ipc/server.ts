@@ -132,7 +132,9 @@ async function dispatch(
   if (
     name === "sources.import" ||
     name === "sources.replace" ||
-    name === "sources.preview"
+    name === "sources.preview" ||
+    name === "study.ankiPreview" ||
+    name === "study.ankiImport"
   )
     parsed = requests[name].input.parse(input);
   if (name === "chats.ask" || name === "chats.regenerate")
@@ -310,6 +312,14 @@ async function dispatchValidated(
       return study?.markdown(requests["study.markdown"].input.parse(input));
     case "study.anki":
       return study?.anki(requests["study.anki"].input.parse(input));
+    case "study.ankiPreview":
+      return study?.ankiPreview(
+        requests["study.ankiPreview"].input.parse(input),
+      );
+    case "study.ankiImport":
+      return study?.ankiImport(
+        requests["study.ankiImport"].input.parse(input),
+      );
     case "study.csv":
       return study?.csv(requests["study.csv"].input.parse(input));
     case "study.diagnosticStart":

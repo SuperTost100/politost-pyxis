@@ -1,0 +1,44 @@
+.px-anki-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+}
+.px-anki-body p {
+  margin: 0;
+}
+.px-anki-body > .small {
+  color: var(--ink-muted);
+}
+.px-anki-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.px-anki-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-anki-preview {
+  font-weight: 600;
+}
+.px-anki-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.px-anki-history .small {
+  margin-inline-start: var(--space-6);
+  color: var(--ink-muted);
+}
+.px-anki-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.px-anki-modal .ant-modal-footer .ant-btn {
+  white-space: nowrap;
+}
