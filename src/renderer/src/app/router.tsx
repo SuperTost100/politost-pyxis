@@ -54,6 +54,7 @@ export const router = createHashRouter([
       { path: "exams/library", element: <ExamsHome /> },
       { path: "exams/cards", element: <ExamsHome /> },
       { path: "exams/get", element: <SharedPlanPage /> },
+      { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },
       { path: "plans/:planId", element: <PlanPage /> },
       { path: "plans/:planId/:view", element: <PlanPage /> },
       { path: "settings", lazy: settings },

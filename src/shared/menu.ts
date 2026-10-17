@@ -1,14 +1,15 @@
 export type MenuLanguage = "it" | "en";
 
 /**
- * Pages with a number key in the Go menu, in menu order. A new page is one entry here, a label in both languages in
+ * Pages with a number key in the Go menu, in menu order: the three header sections first, then the Exams tabs. A new page is one entry here, a label in both languages in
  * `src/main/menu.ts` (the build fails without it) and, if it has a page, a route in the renderer.
  */
 export const goPages = [
   { command: "ask", accelerator: "CmdOrCtrl+1", path: "/ask" },
   { command: "exams", accelerator: "CmdOrCtrl+2", path: "/exams" },
-  { command: "library", accelerator: "CmdOrCtrl+3", path: "/exams/library" },
-  { command: "flashcards", accelerator: "CmdOrCtrl+4", path: "/exams/cards" },
+  { command: "maps", accelerator: "CmdOrCtrl+3", path: "/maps" },
+  { command: "library", accelerator: "CmdOrCtrl+4", path: "/exams/library" },
+  { command: "flashcards", accelerator: "CmdOrCtrl+5", path: "/exams/cards" },
 ] as const;
 
 /** Menu commands that open a fixed page. */

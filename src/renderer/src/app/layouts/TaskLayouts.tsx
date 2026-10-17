@@ -79,6 +79,8 @@ export function FocusLayout(props: {
 
 export function CanvasLayout(props: {
   title: string;
+  /** A line under the title, such as what the page belongs to. */
+  meta?: ReactNode;
   children: ReactNode;
   closeTo?: string;
 }) {
@@ -94,7 +96,14 @@ export function CanvasLayout(props: {
           icon={<X size={18} strokeWidth={1.75} />}
           onClick={() => navigate(props.closeTo ?? "/ask")}
         />
-        <h1 className="title-3 focus-title">{props.title}</h1>
+        {props.meta ? (
+          <div>
+            <h1 className="title-3 focus-title">{props.title}</h1>
+            <div className="meta focus-meta">{props.meta}</div>
+          </div>
+        ) : (
+          <h1 className="title-3 focus-title">{props.title}</h1>
+        )}
         <span />
       </header>
       <main className="canvas-stage">{props.children}</main>

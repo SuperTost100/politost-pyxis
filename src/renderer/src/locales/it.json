@@ -7,7 +7,8 @@
   "doors": {
     "ask": "Chiedi",
     "label": "Sezioni",
-    "exams": "Esami"
+    "exams": "Esami",
+    "maps": "Mappe"
   },
   "nav": {
     "settings": "Impostazioni",
@@ -50,7 +51,8 @@
       "undo": "Annulla l'ultimo tratto",
       "redo": "Ripeti",
       "pen": "Penna",
-      "eraser": "Gomma"
+      "eraser": "Gomma",
+      "goMaps": "Vai alle Mappe"
     },
     "keys": {
       "enter": "Invio",
@@ -622,7 +624,43 @@
     "svg": "Esporta SVG",
     "expand_one": "Mostra {{count}} nodo nascosto",
     "expand_other": "Mostra {{count}} nodi nascosti",
-    "collapse": "Nascondi il ramo"
+    "collapse": "Nascondi il ramo",
+    "export": "Esporta",
+    "exportMarkdown": "Schema (Markdown)",
+    "exportSvg": "Mappa intera (SVG)",
+    "exportPdf": "Mappa e schema (PDF)",
+    "exporting": "Esporto…",
+    "openExam": "Apri l’esame {{title}}"
+  },
+  "maps": {
+    "title": "Mappe",
+    "search": "Cerca nelle mappe",
+    "searchPlaceholder": "Cerca titoli, concetti, esami e argomenti",
+    "new": "Nuova mappa",
+    "count_one": "{{count}} mappa",
+    "count_other": "{{count}} mappe",
+    "noMatch": "Nessuna mappa corrisponde.",
+    "noSubject": "Nessuna materia",
+    "concepts_one": "{{count}} concetto",
+    "concepts_other": "{{count}} concetti",
+    "open": "Apri",
+    "openLabel": "Apri la mappa {{title}}",
+    "general": "conoscenza generale",
+    "emptyTitle": "Ancora nessuna mappa",
+    "emptyBody": "Una mappa mostra un argomento di un esame come concetti e collegamenti. Scegli un argomento e Pyxis crea le mappe dalle tue fonti.",
+    "emptyNoExams": "Le mappe nascono dagli argomenti di un esame. Crea prima un esame, poi torna qui per mapparne gli argomenti.",
+    "loadFailed": "Non riesco a caricare le mappe.",
+    "retry": "Riprova",
+    "newBody": "Scegli un esame e uno dei suoi argomenti. La pagina della mappa crea le mappe dalle fonti dell’argomento, o apre quelle che ha già.",
+    "exam": "Esame",
+    "topic": "Argomento",
+    "pickExam": "Scegli un esame",
+    "pickTopic": "Scegli un argomento",
+    "topicMaps_one": "{{topic}} · {{count}} mappa",
+    "topicMaps_other": "{{topic}} · {{count}} mappe",
+    "noTopics": "Questo esame non ha ancora argomenti.",
+    "continue": "Continua",
+    "cancel": "Annulla"
   },
   "lesson": {
     "title": "Lezione",
