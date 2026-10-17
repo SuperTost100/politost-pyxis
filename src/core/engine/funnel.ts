@@ -5,6 +5,7 @@ import {
   createFunnel,
   FunnelError,
   type Funnel,
+  type HistoryStore,
   type Provider,
   type ProviderId,
   type Selection,
@@ -42,6 +43,18 @@ export const CONVERSATION_IDLE_MS = 10 * 60_000;
 const CONVERSATION_CHARS = 150_000;
 
 let keys: Keys = {};
+/** Conversations of the API providers. Pyxis keeps its own store so a key change can drop the previous account's. */
+const histories = new Map<string, unknown[]>();
+const MAX_HISTORIES = 200;
+const history: HistoryStore = {
+  get: (id) => histories.get(id),
+  set: (id, messages) => {
+    histories.delete(id);
+    histories.set(id, messages);
+    if (histories.size > MAX_HISTORIES)
+      histories.delete(histories.keys().next().value!);
+  },
+};
 let api: Record<string, Provider> | undefined;
 let funnel: Funnel | null = null;
 let scratch = "";
@@ -95,6 +108,10 @@ export function setApiKeys(next: Keys): void {
   keys = { anthropic: next.anthropic, openai: next.openai };
   if (changed.length === 0) return;
   api = undefined;
+  // A conversation held for the previous key must not continue under the new one.
+  for (const [key, talk] of conversations)
+    if (talk.provider.endsWith("-api")) endConversation(key);
+  histories.clear();
   for (const id of changed) {
     funnel?.refresh(id);
     // A new key may work where the old one was refused.
@@ -108,6 +125,7 @@ export function getFunnel(): Funnel {
       providers: Object.fromEntries(apiIds.map((id) => [id, apiProvider(id)])),
       // Claude Code and Codex keep a chat's process between questions. Other runs close theirs when they end.
       sessions: { keepAlive: true, idleMs: CONVERSATION_IDLE_MS },
+      history,
     });
   return funnel;
 }
@@ -184,7 +202,11 @@ function conversationFor(
     system ?? null,
   ]);
   const talk = conversations.get(key);
-  if (talk?.busy) return undefined;
+  if (talk?.busy) {
+    // This turn runs beside the session, which then misses its exchange: the conversation ends after the running turn.
+    talk.leaving = true;
+    return undefined;
+  }
   if (
     talk &&
     talk.fingerprint === fingerprint &&
@@ -276,7 +298,10 @@ async function turn(input: TurnInput): Promise<EngineResult> {
       input.onDelta?.(text);
     }
     const result = await stream.result;
-    finished = result.finishReason !== "cancelled";
+    // Live Codex ends a stopped turn with a cancelled result instead of an error. It is an abort either way.
+    if (result.finishReason === "cancelled")
+      throw new DOMException("Engine turn cancelled", "AbortError");
+    finished = true;
     if (talk && finished) {
       talk.sessionId = result.sessionId ?? sessionId ?? talk.sessionId;
       talk.chars += prompt.length + (result.text || text).length;

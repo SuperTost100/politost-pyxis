@@ -104,6 +104,8 @@ The conversation ends, and a live process with it, when:
 - no question came for 10 minutes;
 - the chat's engine, effort or system prompt changed, or the student changed any engine choice;
 - a turn was stopped or failed, or a reply is regenerated;
+- a second question ran beside a turn still in progress, so the conversation would miss that exchange;
+- an API key changed (core also drops every stored API history then);
 - the conversation carried more than 150,000 characters;
 - the app quits.
 

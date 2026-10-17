@@ -21,6 +21,8 @@ const closeSession = vi.fn();
 const close = vi.fn();
 const refresh = vi.fn();
 const createFunnel = vi.fn();
+/** The options of the funnel funnel.ts made, kept outside the mock's call log. */
+const created: { options?: unknown } = {};
 const apiBuilds = vi.fn();
 
 // A stand-in for CLI Funnel: it streams what `run` returns, with a session event first, like the real providers.
@@ -76,6 +78,7 @@ vi.mock("cli-funnel", async (original) => ({
   ...(await original<typeof import("cli-funnel")>()),
   createFunnel: (options: { providers?: Record<string, unknown> }) => {
     createFunnel(options);
+    created.options = options;
     return fakeFunnel(options);
   },
   createApiProviders: (keys: Record<string, string | undefined>) => {
@@ -259,7 +262,7 @@ describe("chat conversations", () => {
 
   it("ends after a stopped or failed turn", async () => {
     run.mockResolvedValueOnce({ text: "part", finishReason: "cancelled" });
-    await runTurn(chat("first"));
+    await runTurn(chat("first")).catch(() => undefined);
     expect(closeSession).toHaveBeenCalledWith("s-1", "claude");
     run.mockResolvedValueOnce({ text: "answer" });
     await runTurn(chat("second"));
@@ -291,6 +294,43 @@ describe("chat conversations", () => {
     expect(closeSession).toHaveBeenCalledWith("s-2", "claude");
   });
 
+  it("reports a cancelled result as an abort, like a thrown cancellation", async () => {
+    // Live Codex ends a stopped turn with a cancelled result instead of an error.
+    run.mockResolvedValueOnce({ text: "part", finishReason: "cancelled" });
+    const error = await runTurn(chat("first")).catch((err: unknown) => err);
+    expect(isAbort(error)).toBe(true);
+    run.mockResolvedValueOnce({ text: "", finishReason: "cancelled" });
+    const oneShot = await runTurn({
+      selection: { provider: "codex", model: "m" },
+      prompt: "hi",
+    }).catch((err: unknown) => err);
+    expect(isAbort(oneShot)).toBe(true);
+  });
+
+  it("starts over after a turn ran beside the chat's session, so the next question sees that exchange", async () => {
+    run.mockResolvedValueOnce({ text: "answer" });
+    await runTurn(chat("first"));
+    let release!: () => void;
+    run.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ text: "slow answer" });
+        }),
+    );
+    const slow = runTurn(chat("second"));
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
+    // A second question while the first still runs goes outside the session.
+    run.mockResolvedValueOnce({ text: "beside" });
+    await runTurn(chat("overlap"));
+    release();
+    await slow;
+    run.mockResolvedValueOnce({ text: "answer" });
+    await runTurn(chat("next"));
+    const next = run.mock.calls[3]![0];
+    expect(next.sessionId).toBeUndefined();
+    expect(next.prompt).toBe("whole context, then next");
+  });
+
   it("stops every live process when the app quits", () => {
     getFunnel();
     closeFunnel();
@@ -316,6 +356,30 @@ describe("API keys", () => {
       anthropic: "a1",
       openai: "o1",
     });
+  });
+
+  it("starts API conversations over when a key changes, so no history reaches the new account", async () => {
+    setApiKeys({ anthropic: "a1" });
+    run.mockResolvedValue({ text: "answer" });
+    const turn = (followUp: string) =>
+      runTurn({
+        selection: { provider: "anthropic-api", model: "m" },
+        prompt: `whole context, then ${followUp}`,
+        system: "tutor",
+        conversation: { key: "chat-api", followUp },
+      });
+    await turn("first");
+    setApiKeys({ anthropic: "a2" });
+    await turn("second");
+    const second = run.mock.calls.at(-1)![0];
+    expect(second.sessionId).toBeUndefined();
+    expect(second.prompt).toBe("whole context, then second");
+    const options = created.options as {
+      history: { get(id: string): unknown; set(id: string, value: unknown[]): void };
+    };
+    options.history.set("anthropic-api:old", ["earlier"]);
+    setApiKeys({ anthropic: "a3" });
+    expect(options.history.get("anthropic-api:old")).toBeUndefined();
   });
 
   it("lets an API provider skipped after a refused key back in when its key changes", async () => {
