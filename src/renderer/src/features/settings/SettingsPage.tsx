@@ -434,14 +434,15 @@ export function SettingsPage() {
                   }
                 })
                 .catch((error: unknown) => {
-                  const rolledBack =
-                    error instanceof Error &&
-                    error.message.includes("restore-rolled-back");
+                  const message = error instanceof Error ? error.message : "";
+                  const rolledBack = message.includes("restore-rolled-back");
                   setDataNote(
                     t(
                       rolledBack
                         ? "settings.restoreRolledBack"
-                        : "settings.restoreFailed",
+                        : message.includes("restore-recovery-required")
+                          ? "settings.restoreRecoveryRequired"
+                          : "settings.restoreFailed",
                     ),
                   );
                   // Core ran on the restored copy for a moment; what the pages read from it is gone again.

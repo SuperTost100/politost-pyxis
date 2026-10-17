@@ -16,7 +16,7 @@ import {
   checkBackupFolder,
   startLiveBackupWorker,
 } from "./auto-backup";
-import { commitRestore } from "./restore-commit";
+import { commitRestore, RestoreRecoveryRequired } from "./restore-commit";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
@@ -259,7 +259,14 @@ let workspaceBusy = false;
 let archiveSettled = Promise.resolve();
 let releaseArchive = () => {};
 
+/**
+ * A restore could be neither committed nor rolled back, so the live folder may be a copy the next launch deletes. Core
+ * stays stopped and nothing takes the workspace until Pyxis restarts and its startup recovery decides.
+ */
+let restoreRecoveryRequired = false;
+
 function occupyWorkspace(): () => void {
+  if (restoreRecoveryRequired) throw new Error("restore-recovery-required");
   if (workspaceBusy) throw new Error("workspace-busy");
   workspaceBusy = true;
   archiveSettled = new Promise((resolve) => {
@@ -838,6 +845,24 @@ function runArchive(
   });
 }
 
+/**
+ * Enters the restore-recovery state. holdCore stops restarts and Retry; a core that ignored pauseCore is ended outright,
+ * which also closes the renderer's port to it, so no more edits reach the uncommitted copy.
+ */
+function holdForRestoreRecovery(): void {
+  restoreRecoveryRequired = true;
+  holdCore = true;
+  const child = coreChild;
+  if (child?.pid && !exitedCores.has(child)) {
+    try {
+      process.kill(child.pid, "SIGKILL");
+    } catch (error) {
+      console.error("pyxis: core could not be ended", (error as Error).message);
+    }
+  }
+  mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
+}
+
 function resumeCore(): Promise<void> {
   const ready = startCore();
   holdCore = false;
@@ -1176,15 +1201,18 @@ function registerIpc(): void {
         await startCore(true);
         holdCore = false;
       } catch (error) {
-        await pauseCore();
+        // Core comes back only on a workspace recovery has made safe. Otherwise it stays stopped and says so: a core
+        // on an uncommitted copy would collect edits the next launch deletes.
         try {
+          await pauseCore();
           await runArchive("recover");
-        } finally {
-          // Even if recovery fails, core must come back or say it can't: a held core leaves every screen waiting.
-          await resumeCore().catch(() =>
-            mainWindow?.webContents.send(mainChannels.coreUnavailable, true),
-          );
+        } catch (recoveryError) {
+          holdForRestoreRecovery();
+          throw new RestoreRecoveryRequired(recoveryError);
         }
+        await resumeCore().catch(() =>
+          mainWindow?.webContents.send(mainChannels.coreUnavailable, true),
+        );
         throw error;
       }
       // The old copy is held until core has validated and opened the restored
@@ -1197,6 +1225,9 @@ function registerIpc(): void {
           resumeCore().catch(() => {
             mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
           }),
+      }).catch((error: unknown) => {
+        if (error instanceof RestoreRecoveryRequired) holdForRestoreRecovery();
+        throw error;
       });
       if (!cleanupComplete) {
         console.warn(

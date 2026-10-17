@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { RestoreOutcome } from "../core/share/backup";
-import { commitRestore, type RestoreCommitSteps } from "./restore-commit";
+import {
+  commitRestore,
+  RestoreRecoveryRequired,
+  type RestoreCommitSteps,
+} from "./restore-commit";
 
 /** Records the order of the steps; each commit attempt takes the next outcome. */
 function steps(
@@ -54,7 +58,8 @@ describe("commitRestore", () => {
   });
 
   it("stops core and goes back to the old workspace when the commit keeps failing", async () => {
-    const t = steps([busy(), busy(), new Error("ENOSPC: no space left")]);
+    const full = () => new Error("ENOSPC: no space left");
+    const t = steps([busy(), busy(), full(), full()]);
     await expect(commitRestore(t.run)).rejects.toThrow("restore-rolled-back");
     // Core must not keep serving a copy the next launch would roll back.
     expect(t.log).toEqual([
@@ -64,35 +69,48 @@ describe("commitRestore", () => {
       "wait",
       "commit",
       "stop",
+      "commit",
       "recover",
       "start",
     ]);
   });
 
-  it("keeps the restored workspace when recovery finds the commit had been recorded", async () => {
-    const t = steps([busy(), busy(), busy()], "kept");
+  it("commits once core has stopped and let go of its files", async () => {
+    const t = steps([busy(), busy(), busy(), true]);
     expect(await commitRestore(t.run)).toEqual({ cleanupComplete: true });
-    expect(t.log.slice(-3)).toEqual(["stop", "recover", "start"]);
+    expect(t.log.slice(-3)).toEqual(["stop", "commit", "start"]);
   });
 
-  it("still starts core when the rollback fails, and reports the rollback error", async () => {
+  it("keeps the restored workspace when recovery finds the commit had been recorded", async () => {
+    const t = steps([busy(), busy(), busy(), busy()], "kept");
+    expect(await commitRestore(t.run)).toEqual({ cleanupComplete: true });
+    expect(t.log.slice(-3)).toEqual(["commit", "recover", "start"]);
+  });
+
+  it("keeps core stopped when the rollback fails too", async () => {
+    // Windows refuses the rollback's first rename, so the uncommitted restored copy is still the live folder.
     const t = steps(
-      [busy(), busy(), busy()],
-      new Error("backup-restore-recovery-required"),
+      [busy(), busy(), busy(), busy()],
+      Object.assign(new Error("EPERM: operation not permitted, rename"), {
+        code: "EPERM",
+      }),
     );
-    await expect(commitRestore(t.run)).rejects.toThrow(
-      "backup-restore-recovery-required",
-    );
-    expect(t.log.at(-1)).toBe("start");
+    const error = await commitRestore(t.run).catch((e: Error) => e);
+    expect(error).toBeInstanceOf(RestoreRecoveryRequired);
+    expect((error as Error).message).toBe("restore-recovery-required");
+    expect(t.log).not.toContain("start");
+    expect(t.log.at(-1)).toBe("recover");
   });
 
-  it("does not start a second core when the running one could not be stopped", async () => {
+  it("does not commit, roll back or start core when the running one could not be stopped", async () => {
     const t = steps([busy(), busy(), busy()]);
     t.run.stopCore = async () => {
       t.log.push("stop");
       throw new Error("core-busy");
     };
-    await expect(commitRestore(t.run)).rejects.toThrow("core-busy");
+    await expect(commitRestore(t.run)).rejects.toBeInstanceOf(
+      RestoreRecoveryRequired,
+    );
     expect(t.log.slice(-1)).toEqual(["stop"]);
   });
 });

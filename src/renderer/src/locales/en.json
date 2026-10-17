@@ -1312,6 +1312,7 @@
     },
     "restoreFailed": "That file is not a valid backup.",
     "restoreRolledBack": "The restore could not finish, so Pyxis went back to the data you had before it. Nothing from the backup was kept.",
+    "restoreRecoveryRequired": "Pyxis could neither finish the restore nor undo it, so it stopped to keep your data safe. Quit Pyxis and open it again to get back the data you had before the restore.",
     "about": "About",
     "move": "Move workspace",
     "moveHint": "Choose a folder. Pyxis creates a subfolder and verifies the data before switching.",

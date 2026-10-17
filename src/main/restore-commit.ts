@@ -15,8 +15,9 @@ const ATTEMPTS = 3;
 /**
  * The last step of a restore, once core runs on the restored copy. Until the commit is recorded the next launch rolls
  * that copy back and deletes it, so core must not keep running on it. A commit that fails (a full disk, a journal file a
- * virus scanner holds on Windows) is tried again, then core stops and the old workspace comes back at once. Throws
- * `restore-rolled-back` when the student has the data from before the restore again.
+ * virus scanner holds on Windows) is tried again, then core stops, the commit gets one more try, and otherwise the old
+ * workspace comes back at once. Throws `restore-rolled-back` when the student has the data from before the restore
+ * again. Throws RestoreRecoveryRequired, with core not started, when core would not stop or the rollback failed too.
  */
 export async function commitRestore(
   steps: RestoreCommitSteps,
@@ -33,15 +34,37 @@ export async function commitRestore(
       if (attempt < ATTEMPTS) await wait(500 * attempt);
     }
   }
-  // A core that did not stop is still using the restored copy; starting another one on the same folder would be worse.
-  await steps.stopCore();
+  try {
+    await steps.stopCore();
+  } catch (error) {
+    // A core that did not stop is still using the restored copy; starting another one on the same folder would be worse.
+    throw new RestoreRecoveryRequired(error);
+  }
   let outcome: RestoreOutcome;
   try {
-    outcome = await steps.recover();
-  } finally {
+    // A stopped core has let go of its files, which is often what a Windows rename was waiting for.
+    const cleanupComplete = await steps.commit();
     await steps.startCore();
+    return { cleanupComplete };
+  } catch (error) {
+    failure = error;
   }
+  try {
+    outcome = await steps.recover();
+  } catch (error) {
+    // Neither kept nor rolled back: the live folder may still be the uncommitted copy. Core stays stopped, since the
+    // next launch's recovery would delete whatever the student did in it.
+    throw new RestoreRecoveryRequired(error);
+  }
+  await steps.startCore();
   // The journal rename landed but a later step failed, so recovery finished the commit instead.
   if (outcome !== "rolled-back") return { cleanupComplete: true };
   throw new Error("restore-rolled-back", { cause: failure });
+}
+
+/** The restore could be neither committed nor rolled back. Core must stay stopped until Pyxis restarts. */
+export class RestoreRecoveryRequired extends Error {
+  constructor(cause: unknown) {
+    super("restore-recovery-required", { cause });
+  }
 }

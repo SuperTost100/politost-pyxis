@@ -1312,6 +1312,7 @@
     },
     "restoreFailed": "Il file non è una copia valida.",
     "restoreRolledBack": "Il ripristino non è riuscito a finire, quindi Pyxis è tornato ai dati che avevi prima. Della copia non è stato tenuto nulla.",
+    "restoreRecoveryRequired": "Pyxis non è riuscito né a finire né ad annullare il ripristino, quindi si è fermato per non mettere a rischio i tuoi dati. Esci da Pyxis e riaprilo per riavere i dati che avevi prima del ripristino.",
     "about": "Informazioni",
     "move": "Sposta lo spazio di lavoro",
     "moveHint": "Scegli una cartella. Pyxis crea una sottocartella e verifica i dati prima di spostarli.",
