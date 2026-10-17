@@ -26,7 +26,7 @@ import {
 } from "../shared/menu";
 import { updateInstaller } from "./update-install";
 import { updateSeam } from "./update-fixture";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { registerArtifactHandlers } from "./artifacts";
 import { invalidateRuntime } from "./runtime-pack";
 import {
@@ -83,8 +83,12 @@ function e2eSeam(): boolean {
  */
 function systemLanguage(): "it" | "en" {
   const testing = e2eSeam() && process.env["PYXIS_E2E"] === "1";
-  const forced = testing ? process.env["PYXIS_E2E_SYSTEM_LANGUAGES"] : undefined;
-  const preferred = forced?.split(",") ?? (testing ? ["it"] : app.getPreferredSystemLanguages());
+  const forced = testing
+    ? process.env["PYXIS_E2E_SYSTEM_LANGUAGES"]
+    : undefined;
+  const preferred =
+    forced?.split(",") ??
+    (testing ? ["it"] : app.getPreferredSystemLanguages());
   for (const tag of preferred) {
     const primary = tag.trim().toLowerCase().split(/[-_]/)[0];
     if (primary === "it" || primary === "en") return primary;
@@ -943,6 +947,23 @@ function registerIpc(): void {
             process.platform === "linux" ? process.env["APPIMAGE"] : undefined,
         },
     ...(fixture ? { fetch: fixture } : {}),
+    // A Mac keeps the zip it installed, outside the downloads folder, so the next update fetches only changed blocks.
+    // ditto unpacks it the way Finder does, keeping the bundle's symlinks and signature.
+    ...(process.platform === "darwin" && !testAppImage
+      ? {
+          mac: {
+            keepDir: userFile("update-base"),
+            extractZip: (zip: string, folder: string) =>
+              new Promise<void>((resolve, reject) =>
+                execFile(
+                  "/usr/bin/ditto",
+                  ["-x", "-k", zip, folder],
+                  (error) => (error ? reject(error) : resolve()),
+                ),
+              ),
+          },
+        }
+      : {}),
     emit: (view) =>
       mainWindow?.webContents.send(mainChannels.updatesChanged, view),
     openPath: (path) => shell.openPath(path),
@@ -1233,51 +1254,62 @@ function registerIpc(): void {
     requireMainSender(event, "main-untrusted-sender");
     return workspacePath;
   });
-  ipcMain.handle(mainChannels.workspaceWipe, async (event, options: unknown) => {
-    requireMainSender(event, "workspace-untrusted-sender");
-    // Deleting backups needs an explicit true; anything else keeps them.
-    const deleteBackups =
-      typeof options === "object" && options !== null && (options as { backups?: unknown }).backups === true;
-    const release = await takeWorkspace();
-    try {
-      await pauseCore();
-      let keysCleared = false;
+  ipcMain.handle(
+    mainChannels.workspaceWipe,
+    async (event, options: unknown) => {
+      requireMainSender(event, "workspace-untrusted-sender");
+      // Deleting backups needs an explicit true; anything else keeps them.
+      const deleteBackups =
+        typeof options === "object" &&
+        options !== null &&
+        (options as { backups?: unknown }).backups === true;
+      const release = await takeWorkspace();
       try {
-        // SET-05: clear credentials before deleting study data, so an interrupted wipe cannot leave usable keys.
-        // A later workspace deletion failure still leaves keys cleared, in keeping with the user's delete-all request.
-        await keysChain;
-        writeKeyStore(userFile("keys.json"), {});
-        keysCleared = true;
-        wipeWorkspace(workspacePath);
-        if (!deleteBackups) return "wiped" as const;
+        await pauseCore();
+        let keysCleared = false;
         try {
-          if (!autoBackups) throw new Error("backup-failed");
-          // An e2e run without a test Documents folder must never reach the real one.
-          if (documentsFolder() === null && autoBackups.status().isDefaultFolder) return "wiped" as const;
-          autoBackups.deleteBackups();
-          return "wiped" as const;
-        } catch (error) {
-          // The study data is already gone. The backups failing is reported, not thrown, so the wipe still counts.
-          console.error("pyxis: automatic backups were not deleted", error);
-          return "wiped-backups-left" as const;
+          // SET-05: clear credentials before deleting study data, so an interrupted wipe cannot leave usable keys.
+          // A later workspace deletion failure still leaves keys cleared, in keeping with the user's delete-all request.
+          await keysChain;
+          writeKeyStore(userFile("keys.json"), {});
+          keysCleared = true;
+          wipeWorkspace(workspacePath);
+          if (!deleteBackups) return "wiped" as const;
+          try {
+            if (!autoBackups) throw new Error("backup-failed");
+            // An e2e run without a test Documents folder must never reach the real one.
+            if (
+              documentsFolder() === null &&
+              autoBackups.status().isDefaultFolder
+            )
+              return "wiped" as const;
+            autoBackups.deleteBackups();
+            return "wiped" as const;
+          } catch (error) {
+            // The study data is already gone. The backups failing is reported, not thrown, so the wipe still counts.
+            console.error("pyxis: automatic backups were not deleted", error);
+            return "wiped-backups-left" as const;
+          }
+        } catch (err) {
+          try {
+            recoverInterruptedWipe(workspacePath);
+          } catch {
+            // The copy is still in .wipe. Core stays stopped until a later launch can finish.
+          }
+          throw keysCleared
+            ? new Error("wipe-after-keys", { cause: err })
+            : err;
+        } finally {
+          if (!existsSync(join(workspacePath, ".wipe"))) {
+            ensureWorkspaceDirs(workspacePath);
+            await resumeCore();
+          }
         }
-      } catch (err) {
-        try {
-          recoverInterruptedWipe(workspacePath);
-        } catch {
-          // The copy is still in .wipe. Core stays stopped until a later launch can finish.
-        }
-        throw keysCleared ? new Error("wipe-after-keys", { cause: err }) : err;
       } finally {
-        if (!existsSync(join(workspacePath, ".wipe"))) {
-          ensureWorkspaceDirs(workspacePath);
-          await resumeCore();
-        }
+        release();
       }
-    } finally {
-      release();
-    }
-  });
+    },
+  );
 }
 
 function registerAutoBackupIpc(): void {
@@ -1299,7 +1331,9 @@ function registerAutoBackupIpc(): void {
   );
   ipcMain.handle(mainChannels.autoBackupChooseFolder, async (event) => {
     requireMainSender(event, "workspace-untrusted-sender");
-    const forced = e2eSeam() ? process.env["PYXIS_E2E_BACKUP_FOLDER"] : undefined;
+    const forced = e2eSeam()
+      ? process.env["PYXIS_E2E_BACKUP_FOLDER"]
+      : undefined;
     const selected = forced
       ? [forced]
       : (
