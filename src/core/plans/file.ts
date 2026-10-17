@@ -999,6 +999,22 @@ function importPortablePlan(
       body: portableQuestionIds(item.id, item.body),
     })),
   };
+  // Older exports could carry another plan's generated exercises, written for a topic the file does not have. One that
+  // the file names elsewhere stays, tied to this plan instead of the topic; the others are left out.
+  const topicKeys = new Set(file.topics.flatMap((t) => (t.id ? [t.id] : [])));
+  const strayed = (e: NonNullable<PlanFile["exercises"]>[number]) => {
+    const locator = e.locator as { kind?: unknown; topicId?: unknown } | null;
+    return (
+      e.sourceId == null &&
+      locator?.kind === "generated" &&
+      typeof locator.topicId === "string" &&
+      !topicKeys.has(locator.topicId)
+    );
+  };
+  if (file.exercises?.some(strayed)) {
+    const elsewhere = JSON.stringify([file.items, file.progress, file.maps, file.cards]);
+    file = { ...file, exercises: file.exercises.filter((e) => !strayed(e) || elsewhere.includes(e.id)) };
+  }
   const ids = new Map<string, string>();
   let sequence = 0;
   const allocate = (old: string | undefined) => {
@@ -1219,6 +1235,18 @@ function importPortablePlan(
       e.sourceId == null &&
       locator.kind !== "generated" &&
       typeof locator.chapter === "number";
+    if (strayed(e)) {
+      // Another plan's exercise the file still names: tied to this plan, so deleting it removes the exercise, and
+      // citing only the passages the file carries.
+      const { topicId: _other, passageIds: named, ...rest } = locator;
+      const known = Array.isArray(named) ? named.filter((id) => typeof id === "string" && passageKeys.has(id)) : [];
+      return {
+        ...e,
+        sourceId: null,
+        passageId: e.passageId != null && passageKeys.has(e.passageId) ? ref(e.passageId) : null,
+        locator: { ...(remap({ ...rest, passageIds: known }) as object), planId },
+      };
+    }
     return {
       ...e,
       sourceId: checkedRef(e.sourceId, sourceKeys),

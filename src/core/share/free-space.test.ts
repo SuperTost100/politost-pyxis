@@ -8,6 +8,7 @@ import { createPlan } from "../plans/create";
 import { exportPlan, importPlan } from "../plans/file";
 import { planHandlers } from "../plans/handlers";
 import { freeUpSpace } from "./usage";
+import { deleteLoosePassages } from "../chat/delete";
 
 type Db = ReturnType<typeof openDatabase>;
 
@@ -108,6 +109,19 @@ describe("deleting an imported plan (#111)", () => {
   });
 });
 
+describe("quotes without a source (#111)", () => {
+  it("deletes one nothing cites, and keeps one a generated exercise's locator names", () => {
+    const { db } = workspace();
+    for (const id of ["loose", "named", "first"])
+      db.prepare("INSERT INTO passages(id,source_id,version,text,created_at) VALUES(?,NULL,1,'Citazione.',1)").run(id);
+    db.prepare(
+      "INSERT INTO exercises(id,smartbook_id,passage_id,prompt,answer,locator_json,created_at) VALUES('gen',NULL,'first','Quanto?','2',?,1)",
+    ).run(JSON.stringify({ kind: "generated", topicId: "t", passageIds: ["first", "named"] }));
+    deleteLoosePassages(db, ["loose", "named"]);
+    expect(db.prepare("SELECT id FROM passages ORDER BY id").pluck().all()).toEqual(["first", "named"]);
+  });
+});
+
 describe("free up space (#111)", () => {
   it("removes files nothing names and says how much it freed", () => {
     const { dir, db } = workspace();
@@ -182,6 +196,41 @@ describe("free up space (#111)", () => {
     expect(hasBlob(dir, cited)).toBe(true);
     expect(hasBlob(dir, listed)).toBe(true);
     expect(db.prepare("SELECT COUNT(*) FROM passages WHERE source_id IN ('hidden','removed')").pluck().get()).toBe(0);
+  });
+
+  it("keeps a source whose passages only JSON names: an exercise's locator or a lesson's citation order", () => {
+    const { dir, db } = workspace();
+    for (const id of ["first", "second", "ordered", "unused"]) source(db, id, blob(dir, id), { library: 0 });
+    const plan = createPlan(db, { title: "Resta", sourceIds: [] });
+    const topic = db.prepare("SELECT id FROM topics WHERE plan_id=?").pluck().get(plan.planId) as string | undefined;
+    // A generated exercise keeps only its first passage in the passage_id column.
+    db.prepare(
+      "INSERT INTO exercises(id,smartbook_id,passage_id,prompt,answer,locator_json,created_at) VALUES('gen',NULL,'first-p','Quanto?','2',?,1)",
+    ).run(JSON.stringify({ kind: "generated", topicId: topic ?? "t", passageIds: ["first-p", "second-p"] }));
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES('lesson',?,NULL,'lesson',?,1)",
+    ).run(plan.planId, JSON.stringify({ markdown: "Vedi [P1].", passageIds: ["ordered-p"] }));
+    freeUpSpace(db, dir);
+    expect(db.prepare("SELECT id FROM sources ORDER BY id").pluck().all()).toEqual(["first", "ordered", "second"]);
+    expect(db.prepare("SELECT COUNT(*) FROM passages").pluck().get()).toBe(3);
+  });
+
+  it("keeps an imported smartbook while a surviving item names one of its exercises", () => {
+    const { dir, db } = workspace();
+    for (const id of ["named", "free"]) {
+      source(db, id, blob(dir, id), { library: 0 });
+      db.prepare("INSERT INTO smartbooks(id,source_id,meta_json,created_at) VALUES(?,?,'{}',1)").run(`${id}-book`, id);
+      db.prepare(
+        "INSERT INTO exercises(id,smartbook_id,prompt,answer,locator_json,created_at) VALUES(?,?,'Quanto?','2','{\"chapter\":1}',1)",
+      ).run(`${id}-ex`, `${id}-book`);
+    }
+    const plan = createPlan(db, { title: "Esercizi", sourceIds: [] });
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES('lesson',?,NULL,'lesson',?,1)",
+    ).run(plan.planId, JSON.stringify({ markdown: ':::exercise{id="named-ex"}\nQuanto?\n:::' }));
+    freeUpSpace(db, dir);
+    expect(db.prepare("SELECT id FROM sources").pluck().all()).toEqual(["named"]);
+    expect(db.prepare("SELECT id FROM exercises").pluck().all()).toEqual(["named-ex"]);
   });
 
   it("works on a workspace with no files yet", () => {
