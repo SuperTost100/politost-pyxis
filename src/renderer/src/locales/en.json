@@ -1029,6 +1029,8 @@
     "thisWeek": "This week",
     "mostActive": "Most active day",
     "noActivity": "No study time yet",
+    "noWeekActivity": "No activity yet this week",
+    "weekLessons": "Lessons this week",
     "weekdays": {
       "0": "Sunday",
       "1": "Monday",
