@@ -13,7 +13,7 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
-import { invoke } from "../../lib/ipc";
+import { invoke, onBroadcast } from "../../lib/ipc";
 import {
   draftKey,
   fileName,
@@ -28,6 +28,7 @@ import { addIds, allowsGeneral, applySubject, scopeItems, type ScopeItem } from 
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { latestEvery } from "./throttle";
+import { formatTokens } from "../../lib/tokens";
 import "./AskPage.css";
 
 function errorKey(err: unknown): string {
@@ -53,7 +54,7 @@ function errorParams(err: unknown): Record<string, unknown> {
 }
 
 export function AskPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { chatId } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -176,6 +177,15 @@ export function AskPage() {
     loadedFor.current = undefined;
   }, [chatId]);
 
+  // A reply's math check runs after the reply is saved. When it ends, the chat is read again for its badges.
+  useEffect(
+    () =>
+      onBroadcast("chats.checks", (event) => {
+        void client.invalidateQueries({ queryKey: ["chat", event.chatId] });
+      }),
+    [client],
+  );
+
   // Core keeps the engine's conversation, and a live CLI process, for the chat on screen. Leaving it lets that stop.
   useEffect(() => {
     if (!chatId) return;
@@ -253,6 +263,14 @@ export function AskPage() {
   }
 
   const messages = thread.data?.messages ?? [];
+  const usage = chatId ? thread.data?.usage : null;
+  const usageDetail = usage
+    ? t("ask.usageDetail", {
+        input: formatTokens(usage.inputTokens, i18n.language),
+        output: formatTokens(usage.outputTokens, i18n.language),
+        cached: formatTokens(usage.cacheReadTokens, i18n.language),
+      })
+    : "";
   const held = thread.data?.held ?? [];
   // Regenerate and the suggestions belong to the answer that ends the chat. A question left without one gets Try again.
   const lastRow = messages.at(-1);
@@ -516,7 +534,8 @@ export function AskPage() {
     window.setTimeout(() => setAnnouncement(t("ask.replied")), 50);
   }
 
-  function regenerate() {
+  /** Answers the last question again. `strong` uses the strongest model; `resume` continues a reply that was cut short. */
+  function regenerate(options: { engine?: "strong"; resume?: boolean } = {}) {
     if (!chatId) return;
     setBusy(true);
     setStreamIn(chatId);
@@ -531,6 +550,7 @@ export function AskPage() {
       "chats.regenerate",
       {
         chatId,
+        ...options,
         sourceIds: sendIds,
         planId,
         mode,
@@ -624,6 +644,17 @@ export function AskPage() {
             {t("ask.new")}
           </Button>
         </div>
+        {usageDetail && usage ? (
+          <span className="ask-usage" title={usageDetail}>
+            <span aria-hidden>
+              {t("ask.usage", {
+                count: usage.inputTokens + usage.outputTokens,
+                tokens: formatTokens(usage.inputTokens + usage.outputTokens, i18n.language, true),
+              })}
+            </span>
+            <span className="visually-hidden">{usageDetail}</span>
+          </span>
+        ) : null}
       </div>
       <ChatPanel
         open={panelOpen}
@@ -664,12 +695,24 @@ export function AskPage() {
                 }
                 general={row.grounding === "general"}
                 stopped={row.stopped}
+                failure={row.error ? t(row.error) : undefined}
+                onContinue={
+                  row.id === lastTutor?.id && chatId && row.error
+                    ? () => regenerate({ resume: true })
+                    : undefined
+                }
+                checking={row.checking}
                 text={replyPlainText(row.body)}
                 reaction={row.reaction}
                 regenerateDisabled={busy}
                 onRegenerate={
                   row.id === lastTutor?.id && chatId
-                    ? regenerate
+                    ? () => regenerate()
+                    : undefined
+                }
+                onAnswerStronger={
+                  row.id === lastTutor?.id && chatId
+                    ? () => regenerate({ engine: "strong" })
                     : undefined
                 }
                 suggestions={
@@ -715,7 +758,7 @@ export function AskPage() {
                 shape="round"
                 size="small"
                 icon={<RefreshCw size={14} aria-hidden />}
-                onClick={regenerate}
+                onClick={() => regenerate()}
                 disabled={busy}
               >
                 {t("ask.retry")}

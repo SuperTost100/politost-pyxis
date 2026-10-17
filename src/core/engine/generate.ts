@@ -13,6 +13,7 @@ import {
   type TurnInput,
 } from "./funnel";
 import { fallbackSelection } from "./selection";
+import { reportUsage, withUsageScope, type UsageScope } from "./usage";
 
 export type GenerateInput = {
   prompt: string;
@@ -30,6 +31,8 @@ export type GenerateInput = {
   conversation?: TurnInput["conversation"];
   /** Use the provider's prompt cache for the system prompt and the conversation so far. */
   cache?: boolean;
+  /** What the call's tokens are counted for, on top of the scope it runs in (a job step sets its job). */
+  usage?: UsageScope;
   /** Called with the engine that answers instead when the selected one is out, before it starts. */
   onEngine?: (selection: Omit<Selection, "cwd" | "access">) => void;
   run?: typeof runTurn;
@@ -94,6 +97,10 @@ function tryJson(text: string): unknown {
  * not available) instead of "Something went wrong".
  */
 export async function generate(input: GenerateInput): Promise<GenerateOutput> {
+  if (input.usage) {
+    const { usage, ...rest } = input;
+    return withUsageScope(usage, () => generate(rest));
+  }
   // An automatic engine still out after a usage limit or a sign-out is skipped until it is back.
   const instead = isBenched(input.selection.provider)
     ? usableFallback(input)
@@ -148,7 +155,13 @@ async function answerOn(
 }
 
 async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
-  const run = input.run ?? runTurn;
+  const turn = input.run ?? runTurn;
+  // Every call that returns is counted, schema repairs included, for the token usage per chat, job and week.
+  const run: typeof runTurn = async (call) => {
+    const result = await turn(call);
+    reportUsage(result);
+    return result;
+  };
   const responseSchema = input.schema
     ? { name: "response", schema: jsonSchema(input.schema) }
     : undefined;

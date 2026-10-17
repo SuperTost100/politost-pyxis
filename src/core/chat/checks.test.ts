@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { askTurn, readChat } from "./turn";
+import { askTurn, readChat, settleChecks } from "./turn";
 import { solverChecks, splitChecks } from "./checks";
 import type { GenerateInput } from "../engine/generate";
 import { systemPrompt } from "../engine/prompts";
@@ -52,8 +52,11 @@ describe("Solver check metadata", () => {
       run,
     });
     expect(result.message?.body).toBe(step);
-    expect(result.message?.checks).toEqual([claim]);
+    // The reply returns before its check: the claims arrive in the stored message once the check ends.
+    expect(result.message?.checking).toBe(true);
+    await settleChecks();
     expect(readChat(db, result.chatId).at(-1)?.checks).toEqual([claim]);
+    expect(readChat(db, result.chatId).at(-1)?.checking).toBe(false);
     expect(readChat(db, result.chatId).at(-1)?.body).toBe(step);
     expect(selections).toHaveLength(2);
     expect(selections[0]).toBe(selections[1]);

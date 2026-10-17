@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { endConversation } from "../engine/funnel";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
+import { chatUsage } from "../engine/usage";
 import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat } from "./turn";
 
 /** Recorded reply for tests. With a delay it waits, then streams the words, so the thinking and streaming states can be seen. */
@@ -24,7 +25,15 @@ function recordedReply(text: string, delayMs: number) {
         await pause(delayMs / 2 / Math.ceil(words.length / step));
       }
     }
-    return { text, model: "fixture", provider: "fixture", inputTokens: 0 };
+    // Rough counts, so the token figures have something to show in end-to-end runs.
+    return {
+      text,
+      model: "fixture",
+      provider: "fixture",
+      inputTokens: 1200,
+      outputTokens: Math.ceil(text.length / 4),
+      cacheReadTokens: 800,
+    };
   };
 }
 
@@ -44,6 +53,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
         subject: chatSubject(db, input.chatId),
         context: chatContext(db, input.chatId),
         held: heldSources(db, input.chatId),
+        usage: chatUsage(db, input.chatId),
         messages: readChat(db, input.chatId),
       };
     },
@@ -88,6 +98,8 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
     },
     regenerate(input: {
       chatId: string;
+      engine?: "chat" | "strong";
+      resume?: boolean;
       sourceIds?: string[];
       planId?: string | null;
       mode?: "solver" | "socratic";

@@ -243,7 +243,10 @@
     "subjectDragCancelled": "Reordering cancelled.",
     "retry": "Try again",
     "attachFilter": "Photos and documents",
-    "replied": "Pyxis replied."
+    "replied": "Pyxis replied.",
+    "usage_one": "{{tokens}} token",
+    "usage_other": "{{tokens}} tokens",
+    "usageDetail": "This chat used {{input}} tokens sent, {{cached}} of them from the cache, and {{output}} received."
   },
   "exams": {
     "view": "Show",
@@ -1467,7 +1470,12 @@
       "you": "You",
       "pyxis": "Pyxis",
       "copied": "Copied",
-      "copyFailed": "Couldn't copy. Try again."
+      "copyFailed": "Couldn't copy. Try again.",
+      "cutOff": "Cut off",
+      "continue": "Continue",
+      "checking": "Checking the math…",
+      "more": "More actions",
+      "answerStronger": "Answer again with the strongest model"
     },
     "quiz": {
       "correct": "Correct",
@@ -1745,6 +1753,17 @@
     "terminalInstructions": "Run this command in your terminal to finish sign-in.",
     "termsLink": "Provider terms",
     "termsDetail": "Your provider's terms, usage limits and privacy policy apply to every call. Pyxis does not include an AI subscription.",
+    "usage": {
+      "title": "This week",
+      "hint": "Tokens Pyxis sent to each engine and received since Monday, for chats, lessons, plans and grading. Engines on a subscription count them against your plan's limits. API keys are billed for them.",
+      "empty": "No AI use counted since Monday.",
+      "engine": "Engine",
+      "sent": "Sent",
+      "received": "Received",
+      "cached": "From the cache",
+      "cachedValue": "{{count}} ({{percent}}%)",
+      "cacheSaving": "The prompt cache served {{percent}}% of the tokens sent this week. API keys bill those at a lower rate."
+    },
     "chooseEngine": "Choose an engine and model",
     "cancel": "Cancel",
     "keyRemoved": "API key removed. Choose another default engine if needed.",
@@ -1797,7 +1816,8 @@
       "refused": "The key was refused. Check it.",
       "quota": "Usage limit reached. Try again later or pick another engine.",
       "engine-missing": "Choose and test an engine in Settings before continuing.",
-      "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines."
+      "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines.",
+      "stream-truncated": "The engine stopped before the answer was finished."
     },
     "feature": {
       "default": "Default engine",

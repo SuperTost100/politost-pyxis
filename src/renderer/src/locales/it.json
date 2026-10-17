@@ -243,7 +243,10 @@
     "subjectDragCancelled": "Riordino annullato.",
     "retry": "Riprova",
     "attachFilter": "Foto e documenti",
-    "replied": "Pyxis ha risposto."
+    "replied": "Pyxis ha risposto.",
+    "usage_one": "{{tokens}} token",
+    "usage_other": "{{tokens}} token",
+    "usageDetail": "Questa chat ha usato {{input}} token inviati, di cui {{cached}} dalla cache, e {{output}} ricevuti."
   },
   "exams": {
     "view": "Mostra",
@@ -1467,7 +1470,12 @@
       "you": "Tu",
       "pyxis": "Pyxis",
       "copied": "Copiato",
-      "copyFailed": "Non sono riuscito a copiare. Riprova."
+      "copyFailed": "Non sono riuscito a copiare. Riprova.",
+      "cutOff": "Interrotta",
+      "continue": "Continua",
+      "checking": "Controllo i calcoli…",
+      "more": "Altre azioni",
+      "answerStronger": "Rispondi di nuovo con il modello più potente"
     },
     "quiz": {
       "correct": "Corretta",
@@ -1745,6 +1753,17 @@
     "terminalInstructions": "Esegui questo comando nel terminale per completare l'accesso.",
     "termsLink": "Condizioni del fornitore",
     "termsDetail": "Le condizioni, i limiti d'uso e l'informativa sulla privacy del fornitore si applicano a ogni chiamata. Pyxis non include un abbonamento AI.",
+    "usage": {
+      "title": "Questa settimana",
+      "hint": "I token che Pyxis ha inviato a ogni motore e ricevuto da lunedì, per chat, lezioni, piani e correzioni. I motori in abbonamento li contano nei limiti del tuo piano. Le chiavi API li fanno pagare.",
+      "empty": "Nessun uso dell'AI da lunedì.",
+      "engine": "Motore",
+      "sent": "Inviati",
+      "received": "Ricevuti",
+      "cached": "Dalla cache",
+      "cachedValue": "{{count}} ({{percent}}%)",
+      "cacheSaving": "Questa settimana la cache dei prompt ha servito il {{percent}}% dei token inviati. Le chiavi API li fanno pagare meno."
+    },
     "chooseEngine": "Scegli un motore e un modello",
     "cancel": "Annulla",
     "keyRemoved": "Chiave API rimossa. Scegli un altro motore predefinito se necessario.",
@@ -1797,7 +1816,8 @@
       "refused": "La chiave è stata rifiutata. Controllala.",
       "quota": "Limite di utilizzo raggiunto. Riprova più tardi o scegli un altro motore.",
       "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
-      "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI."
+      "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI.",
+      "stream-truncated": "Il motore si è fermato prima di finire la risposta."
     },
     "feature": {
       "default": "Motore predefinito",

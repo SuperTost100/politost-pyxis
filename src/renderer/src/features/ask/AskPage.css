@@ -25,6 +25,14 @@
   margin-inline-start: calc(-1 * var(--ask-bar-shift, 0px));
 }
 
+/* The chat's token count, quiet at the far end of the bar. */
+.ask-usage {
+  margin-inline-start: auto;
+  color: var(--ink-subtle);
+  font: 400 calc(12px * var(--text-scale)) / calc(16px * var(--text-scale)) var(--font-mono);
+  white-space: nowrap;
+}
+
 .ask-greeting {
   flex: 1;
   display: flex;

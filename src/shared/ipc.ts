@@ -268,6 +268,14 @@ const engineSelection = z.object({
   /** The reasoning effort the student picked for a task Pyxis chose the model for. */
   effortChoice: z.string().optional(),
 });
+/** Tokens counted over some model calls. `inputTokens` includes the ones read from and written to the prompt cache. */
+const usageTotals = z.object({
+  calls: z.number().int(),
+  inputTokens: z.number().int(),
+  outputTokens: z.number().int(),
+  cacheReadTokens: z.number().int(),
+  cacheWriteTokens: z.number().int(),
+});
 
 const SmartAnswers = z.record(z.string(), z.number().int());
 const PathActivity = z.enum([
@@ -421,6 +429,17 @@ export const requests = {
   "engines.features": {
     input: z.object({}),
     output: z.record(z.string(), engineSelection),
+  },
+  // Tokens each engine used since a moment (the renderer sends the start of the student's week).
+  "engines.usage": {
+    input: z.object({ since: z.number().int().nonnegative() }),
+    output: z.array(
+      z.object({
+        provider: z.string(),
+        name: z.string(),
+        ...usageTotals.shape,
+      }),
+    ),
   },
   "engines.autoConfigure": {
     input: z.object({
@@ -1776,6 +1795,10 @@ export const requests = {
   "chats.regenerate": {
     input: z.object({
       chatId: z.string(),
+      /** `strong` answers with the plan task's engine at high effort. */
+      engine: z.enum(["chat", "strong"]).optional(),
+      /** Continue the last reply, which was cut short, instead of replacing it. */
+      resume: z.boolean().optional(),
       sourceIds: z.array(z.string()).optional(),
       planId: z.string().nullable().optional(),
       mode: z.enum(["solver", "socratic"]).optional(),
@@ -1822,6 +1845,8 @@ export const requests = {
         })
         .nullable(),
       held: z.array(z.object({ id: z.string(), title: z.string() })),
+      /** Tokens the chat used so far, null before the first counted call. */
+      usage: usageTotals.nullable(),
       messages: z.array(
         z.object({
           id: z.string(),
@@ -1834,6 +1859,10 @@ export const requests = {
           followups: z.array(z.string()),
           reaction: z.enum(["up", "down"]).nullable(),
           stopped: z.boolean(),
+          /** Message key of the engine failure that cut the reply short. */
+          error: z.string().nullable(),
+          /** The math check is still running; `chats.checks` says when it ends. */
+          checking: z.boolean(),
           citations: z.array(
             z.object({
               label: z.string(),
@@ -2182,6 +2211,8 @@ export const broadcasts = {
   "plans.evidence": z.object({}),
   // Background recomputation of automatic engine choices finished.
   "engine.auto": z.object({}),
+  // A saved reply's math check ended: its badges, if any, are in the message now.
+  "chats.checks": z.object({ chatId: z.string(), messageId: z.string() }),
   // The automatic engine hit a usage limit or was signed out, and another engine answered.
   "engine.fallback": z.object({
     from: z.string(),

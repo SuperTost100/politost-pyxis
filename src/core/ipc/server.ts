@@ -5,6 +5,7 @@ import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
 import { setFallbackListener } from "../engine/generate";
+import { setUsageRecorder, storeUsage } from "../engine/usage";
 import {
   IpcError,
   requests,
@@ -13,6 +14,7 @@ import {
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
+import { setChecksListener } from "../chat/turn";
 import { registerRuntimeJob, toolHandlers } from "../math/handlers";
 import { mapHandlers } from "../maps/handlers";
 import { planHandlers } from "../plans/handlers";
@@ -249,6 +251,8 @@ async function dispatchValidated(
     case "engines.features":
       requests["engines.features"].input.parse(input);
       return engines?.features();
+    case "engines.usage":
+      return engines?.usage(requests["engines.usage"].input.parse(input));
     case "engines.autoConfigure":
       return engines?.autoConfigure(
         requests["engines.autoConfigure"].input.parse(input),
@@ -726,6 +730,14 @@ export function bindEngines(
 ): void {
   configureDisclosure(db);
   setFallbackListener((event) => broadcast("engine.fallback", event));
+  setUsageRecorder((usage, where) => {
+    // Counting is bookkeeping: a write that fails must not fail the answer it counts.
+    try {
+      storeUsage(db, usage, where);
+    } catch (err) {
+      console.error("pyxis: token usage not stored", err);
+    }
+  });
   engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
@@ -776,6 +788,7 @@ export function bindChat(
   replyDelayMs = 0,
 ): void {
   chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs);
+  setChecksListener((event) => broadcast("chats.checks", event));
 }
 
 export function bindSources(

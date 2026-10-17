@@ -23,6 +23,13 @@ export function splitChecks(text: string): {
   }
 }
 
+const MATH = /\$|\\[\[(]|\b(?:sin|cos|tan|exp|log)\s*\(|[A-Za-z]\s*\^|[=∫]/;
+
+/** True when `solverChecks` would ask a model: an answer with math and no check blocks of its own, not too long. */
+export function needsSolverChecks(body: string): boolean {
+  return !fencedChecks(body).length && body.length <= 24000 && MATH.test(body);
+}
+
 export async function solverChecks(
   body: string,
   input: Pick<GenerateInput, "selection" | "run" | "signal">,
@@ -30,10 +37,7 @@ export async function solverChecks(
   const existing = fencedChecks(body);
   if (existing.length || input.signal?.aborted || body.length > 24000)
     return existing;
-  if (
-    !/\$|\\[\[(]|\b(?:sin|cos|tan|exp|log)\s*\(|[A-Za-z]\s*\^|[=∫]/.test(body)
-  )
-    return [];
+  if (!MATH.test(body)) return [];
   const schema = z
     .object({ checks: z.array(anchoredCheckSchema).max(12) })
     .superRefine((value, ctx) => {
