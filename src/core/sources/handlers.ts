@@ -606,7 +606,13 @@ export function sourceHandlers(
     },
     async embed(input: { consent: boolean }) {
       setEmbeddingConsent(db, input.consent);
-      if (!input.consent) return { state: "off" as const };
+      if (!input.consent) {
+        // Turning local search off stops the model download, as withdrawing OCR consent does. Indexing checks the
+        // answer before each batch.
+        const running = activeJob("embedding-download");
+        if (running) runner?.cancel(running);
+        return { state: "off" as const };
+      }
       if (!runner) throw new IpcError("not-ready", "errors.notReady");
       // A second click joins the download already running instead of starting another.
       const jobId = activeJob("embedding-download") ?? runner.start("embedding-download");

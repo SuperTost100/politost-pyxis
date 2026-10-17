@@ -376,6 +376,7 @@
     "embedDownload": "Download the model (120 MB)",
     "embedReady": "Local search model is ready.",
     "embedHash": "The search model file did not match its checksum.",
+    "embedOffline": "Pyxis could not download the search model. Check your connection, then try again.",
     "embedOff": "Local search stays on word matching until you download the model.",
     "jobs": {
       "extract": "Read source",

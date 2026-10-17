@@ -9,7 +9,7 @@ import {
   extractPlain,
   storeExtracted,
 } from "./documents";
-import { indexModelVectors } from "./embed";
+import { indexModelVectors, setEmbeddingConsent } from "./embed";
 import { sourceHandlers } from "./handlers";
 import { enqueueReextract, enqueueSourceFile } from "./jobs";
 
@@ -120,6 +120,7 @@ describe("a stopped source-index job does not hold a source", () => {
 describe("a late index job never writes vectors for a superseded version", () => {
   it("drops a batch whose passages stopped being the latest while it was embedding, and indexes the new version", async () => {
     const c = setup();
+    setEmbeddingConsent(c.db, true);
     const oldIds = (
       c.db
         .prepare(`SELECT rowid AS n FROM passages WHERE source_id = ?`)
