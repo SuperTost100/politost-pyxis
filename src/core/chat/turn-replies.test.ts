@@ -1,5 +1,8 @@
+import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { retrieveWithModel } from "../sources/retrieve";
+import { importSmartbook } from "../sources/smartbook";
 import { forgetModels, rememberModels } from "../engine/efforts";
 import type { GenerateInput } from "../engine/generate";
 import type { EngineResult } from "../engine/funnel";
@@ -260,6 +263,67 @@ describe("partial replies", () => {
       }),
     ).rejects.toMatchObject({ messageKey: "engines.errors.stream-truncated" });
     expect(readChat(db, first.chatId)).toEqual(before);
+  });
+
+  it("continues from the passages and numbering the cut reply was written with, even if retrieval now differs", async () => {
+    const db = chatDb();
+    const book = importSmartbook(
+      db,
+      zipSync({
+        "smartbook.json": strToU8(
+          JSON.stringify({
+            id: "analisi",
+            title: "Analisi",
+            access: "public",
+            chapters: [{ id: "c1", number: 1, title: "Continuità", file: "01.md" }],
+          }),
+        ),
+        "chapters/01.md": strToU8(
+          "## p1 | Weierstrass\nIl teorema di Weierstrass vale per funzioni continue.\n\n## p2 | Intervalli\nUn intervallo chiuso e limitato contiene i suoi estremi.\n",
+        ),
+      }),
+    );
+    const question = "teorema di Weierstrass intervallo chiuso";
+    const prompts: string[] = [];
+    const cut = await askTurn(db, {
+      text: question,
+      sourceIds: [book.sourceId],
+      embed: null,
+      run: async (input) => {
+        prompts.push(input.prompt);
+        input.onDelta?.("Vale su un intervallo chiuso [P2]");
+        throw truncated();
+      },
+    });
+    const before = await retrieveWithModel(db, question, { sourceIds: [book.sourceId], embed: null, limit: 12 });
+    const document = db.prepare("SELECT id FROM source_documents WHERE source_id = ?").get(book.sourceId) as { id: string };
+    // A passage added since then matches the question best, so a fresh retrieval numbers the passages differently.
+    db.prepare(
+      "INSERT INTO passages (id, source_id, document_id, text, section_path, created_at) VALUES ('late', ?, ?, ?, 'Nuovo', 2)",
+    ).run(book.sourceId, document.id, "Teorema di Weierstrass: intervallo chiuso, intervallo chiuso, teorema di Weierstrass.");
+    const after = await retrieveWithModel(db, question, { sourceIds: [book.sourceId], embed: null, limit: 12 });
+    expect(after.hits.map((hit) => hit.id)).not.toEqual(before.hits.map((hit) => hit.id));
+
+    const passages = (text: string) => text.match(/^\[P\d+\] [^\n]*\n[^\n]*/gm);
+    const continued = await regenerateTurn(db, {
+      chatId: cut.chatId,
+      sourceIds: [book.sourceId],
+      resume: true,
+      embed: null,
+      run: async (input) => {
+        prompts.push(input.prompt);
+        return reply(" e limitato [P1].");
+      },
+    });
+    expect(passages(prompts[1]!)).toEqual(passages(prompts[0]!));
+    expect(prompts[1]).not.toContain("Nuovo");
+    const byLabel = (rows: Array<{ index: number; passageId: string }>) =>
+      Object.fromEntries(rows.map((cite) => [cite.index, cite.passageId]));
+    const original = before.hits.map((hit, index) => ({ index: index + 1, passageId: hit.id }));
+    expect(byLabel(continued.message!.citations)).toEqual({
+      1: original[0]!.passageId,
+      2: original[1]!.passageId,
+    });
   });
 
   it("only continues a reply that was cut short", async () => {

@@ -31,7 +31,9 @@ function undoAfter16(db: Database.Database) {
 
 /** Removes what migration 20 adds. */
 function undoUsage(db: Database.Database) {
-  db.exec("DROP TABLE engine_usage; ALTER TABLE messages DROP COLUMN error;");
+  db.exec(
+    "DROP TABLE engine_usage; ALTER TABLE messages DROP COLUMN error; ALTER TABLE messages DROP COLUMN passages_json;",
+  );
 }
 
 afterEach(() => {
@@ -190,8 +192,8 @@ describe("migrate", () => {
     opened.push(again);
     expect(again.pragma("user_version", { simple: true })).toBe(20);
     expect(
-      again.prepare("SELECT error FROM messages WHERE id = 'old'").get(),
-    ).toEqual({ error: null });
+      again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
+    ).toEqual({ error: null, passages_json: null });
     expect(
       again.prepare("SELECT COUNT(*) AS n FROM engine_usage").get(),
     ).toEqual({ n: 0 });
