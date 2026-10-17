@@ -33,4 +33,6 @@ The generator lists every installed production package, including the few that `
 
 `sharp` is replaced by `vendor/sharp-stub`, a function that throws, written for Pyxis and under its MIT license. transformers imports `sharp` only for image pipelines, so no Sharp or libvips binary ships and the notices carry no Sharp records.
 
+`src/main/update-diff.ts` adapts the block-map plan and the embedded-blockmap reader of electron-updater 6.8.9 (MIT, Copyright (c) 2015 Loopline Systems), from electron-builder commit `bed3a9c421a8a05c49f36a2af5d7ae3598cb1b95`. No electron-updater package ships, so `resources/third-party-notices.json` carries its MIT text as an explicit record.
+
 HEIC decoding uses the separate `libheif-js@1.23.2` WASM library under LGPL-3.0. Its original package license, the pinned libheif and libde265 license/copyright texts, and source build scripts are retained in the bundled notices. The dependency stays separate in the application archive and can be replaced by rebuilding the open-source app. The upstream build uses libheif commit `ac1cb05c39008f01525c991ff8b88f84ddf70fd2` and libde265 1.0.15; the retained scripts provide their source download locations and Emscripten build flags.

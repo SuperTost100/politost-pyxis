@@ -1927,9 +1927,11 @@
       "install": "Chiudi Pyxis e installa",
       "restart": "Riavvia Pyxis",
       "openImage": "Riapri l’immagine disco",
+      "openFolder": "Mostra di nuovo la nuova app",
       "showFile": "Mostra di nuovo il file",
       "verified": {
         "dmg-opened": "Pyxis {{version}} è scaricato e controllato, e la sua immagine disco è aperta nel Finder. Esci da Pyxis, trascina PoliTost Pyxis in Applicazioni e scegli Sostituisci. Poi riapri Pyxis.",
+        "app-opened": "Pyxis {{version}} è scaricato e controllato, e una finestra del Finder mostra la nuova app. Esci da Pyxis, trascina PoliTost Pyxis in Applicazioni e scegli Sostituisci. Poi riapri Pyxis.",
         "exe-ready": "Pyxis {{version}} è scaricato e controllato. Quando lo installi, Pyxis si chiude e parte il programma di installazione. Al termine Pyxis si riapre.",
         "appimage-replaced": "Pyxis {{version}} è installato. Riavvia Pyxis per usarlo.",
         "appimage-folder": "Pyxis {{version}} è scaricato e controllato, ma Pyxis non può scrivere nella cartella della sua AppImage. Il nuovo file è aperto nella sua cartella. Spostalo al posto della vecchia AppImage, poi riapri Pyxis.",
