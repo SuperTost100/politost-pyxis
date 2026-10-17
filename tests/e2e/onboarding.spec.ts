@@ -354,10 +354,15 @@ test("First setup: cancelling a sign-in before its page opens is not a failure, 
     });
     await button(setup, "Accedi con Claude").click();
     await button(setup, "Annulla").click();
-    await expect(button(setup, "Accedi con Claude")).toBeVisible();
+    // Idle again means Cancel is gone. The button's name is matched loosely: antd keeps its spinner icon, and so the
+    // name "loading Accedi con Claude", until the icon's exit transition ends, which a hidden window on a slow macOS
+    // runner can delay for seconds.
+    await expect(button(setup, "Annulla")).toHaveCount(0);
+    const signIn = button(setup, /Accedi con Claude$/);
+    await expect(signIn).toBeVisible();
     await expect(setup.getByText("Accesso non completato.")).toHaveCount(0);
     // Starting again is not undone by the answer to the cancelled attempt.
-    await button(setup, "Accedi con Claude").click();
+    await signIn.click();
     await expect(button(setup, "Annulla")).toBeVisible();
     await page.waitForTimeout(500);
     await expect(button(setup, "Annulla")).toBeVisible();
