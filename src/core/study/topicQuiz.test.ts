@@ -6,7 +6,7 @@ import { recordStep } from "../plans/steps";
 import { importSmartbook } from "../sources/smartbook";
 import { studyHandlers } from "./handlers";
 import { readQuiz } from "./quizJobs";
-import { submitAttempt } from "./topicQuiz";
+import { startTopicQuiz, submitAttempt } from "./topicQuiz";
 import { flagTarget } from "./flags";
 
 function pack(files: Record<string, string>): Uint8Array {
@@ -159,6 +159,30 @@ describe("diagnostic", () => {
     expect(stems).toContain("OTHER");
     expect(stems.filter((stem) => stem === "OTHER")).toHaveLength(1);
     expect(started.questions).toHaveLength(10);
+  });
+
+  it("reads an exercise-based diagnostic and topic quiz as built, with no build job", () => {
+    const db = openDatabase(":memory:");
+    const book = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Fisica",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore.\n",
+        "esercizi.md": ':::exercise{id="e1" chapter="1"}\nQuanto vale?\n:::solution\n10 N\n:::\n:::\n',
+      }),
+    );
+    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [book.sourceId] });
+    recordStep(db, plan.planId, { activity: "intro" });
+    const diagnostic = studyHandlers(db).diagnosticStart({ planId: plan.planId });
+    expect(readQuiz(db, diagnostic.attemptId).state).toBe("succeeded");
+    const topic = db.prepare("SELECT id FROM topics WHERE plan_id = ?").get(plan.planId) as { id: string };
+    const quiz = startTopicQuiz(db, plan.planId, topic.id);
+    expect(readQuiz(db, quiz.attemptId).state).toBe("succeeded");
   });
 
   it("resumes the open diagnostic with its draft and freezes it after submit", () => {
