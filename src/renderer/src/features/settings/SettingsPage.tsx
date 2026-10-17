@@ -433,7 +433,7 @@ export function SettingsPage() {
         <p className="small section-hint" role="status">
           {freeNote ?? t("settings.freeSpaceHint")}
         </p>
-        <div className="gallery-row">
+        <div className="px-settings-actions">
           <Button
             disabled={moving || (archiving !== null && archiving !== "backup")}
             loading={archiving === "backup"}
