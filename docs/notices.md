@@ -27,7 +27,9 @@ The bundled inventory includes the exact Pyodide 314.0.7 MPL-2.0 text, CPython 3
 
 KaTeX’s package MIT text is supplemented with the separate KaTeX-fonts copyright notice. The E5 ONNX conversion card is pinned to the exact model revision; its referenced base model card is independently pinned and declares MIT. The cards are preserved instead of inventing a missing model copyright/license file.
 
-Electron’s own distribution includes `LICENSE` and the 19 MiB `LICENSES.chromium.html`. The package configuration copies both files from the installed Electron distribution into `electron-licenses/` in the app resources directory. They stay outside the renderer JSON. The local macOS installer inventory checks their bytes against the installed Electron files; other targets retain the same packaging rule and need their own CI inventory check.
+Electron’s own distribution includes `LICENSE` and the 19 MiB `LICENSES.chromium.html`. On Linux and Windows electron-builder puts both next to the executable, as `LICENSE.electron.txt` and `LICENSES.chromium.html`. The Mac app bundle has neither, so the macOS package configuration copies both files from the installed Electron distribution into `electron-licenses/` in the app resources directory. They stay outside the renderer JSON. The local macOS installer inventory checks their bytes against the installed Electron files.
+
+The generator lists every installed production package, including the few that `electron-builder.yml` leaves out of the installer because no process loads them (onnxruntime-web and the packages only it uses, among them `guid-typescript`, and zlibjs). [Installer size](releasing.md#installer-size) lists those rules.
 
 `sharp` is replaced by `vendor/sharp-stub`, a function that throws, written for Pyxis and under its MIT license. transformers imports `sharp` only for image pipelines, so no Sharp or libvips binary ships and the notices carry no Sharp records.
 

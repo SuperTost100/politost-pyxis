@@ -22,8 +22,12 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libfuse2 apparmor
+    # onnxruntime-node's install script downloads a CUDA build on Linux x64. Embeddings run on the CPU, and the
+    # packaging step would delete it again.
     - shell: bash
       run: npm ci
+      env:
+        ONNXRUNTIME_NODE_INSTALL_CUDA: skip
     - name: Allow the Electron test binary to use its namespace sandbox
       if: runner.os == 'Linux'
       shell: bash
