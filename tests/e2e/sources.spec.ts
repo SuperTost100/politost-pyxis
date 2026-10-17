@@ -178,10 +178,15 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
   cpSync(resolve(model!), modelDir, { recursive: true });
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
   delete env.ELECTRON_RUN_AS_NODE;
-  let app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  // CI repeats this check on the packaged app, whose workers load the packaged node_modules.
+  const packaged = process.env.PYXIS_DIST_APP;
+  const launch = () =>
+    electron.launch(
+      packaged
+        ? { executablePath: packaged, args: ["--use-mock-keychain"], env }
+        : { args: [join(process.cwd(), "out/main/index.js")], env },
+    );
+  let app = await launch();
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -224,10 +229,7 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
     )) as Array<{ sourceId: string }>;
     expect(hits.some((hit) => hit.sourceId === source.sourceId)).toBe(true);
     await app.close();
-    app = await electron.launch({
-      args: [join(process.cwd(), "out/main/index.js")],
-      env,
-    });
+    app = await launch();
     page = await app.firstWindow();
     const restored = (await page.evaluate(
       (query) => window.pyxis.invoke("sources.search", { query }),

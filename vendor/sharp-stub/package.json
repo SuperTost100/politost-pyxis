@@ -1,0 +1,7 @@
+{
+  "name": "sharp",
+  "version": "0.0.0-pyxis-stub",
+  "description": "Stands in for sharp, which @huggingface/transformers imports only for image pipelines. Pyxis embeds text only.",
+  "license": "MIT",
+  "main": "index.cjs"
+}
