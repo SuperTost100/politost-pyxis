@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./PlanPage.css";
 import { Button, Input, Modal, Steps, DatePicker, Slider } from "antd";
 import dayjs from "dayjs";
-import dateIt from "antd/es/date-picker/locale/it_IT";
+import dateItBase from "antd/es/date-picker/locale/it_IT";
 import dateEn from "antd/es/date-picker/locale/en_GB";
 import { WizardSources } from "./WizardSources";
 import "./PlanWizard.css";
@@ -27,6 +27,12 @@ import {
   type ExamChoice,
   type WizardSeed,
 } from "./wizardSeed";
+
+// antd's Italian placeholder is "Selezionare la data", in the formal infinitive. The app speaks to the student as "tu".
+const dateIt = {
+  ...dateItBase,
+  lang: { ...dateItBase.lang, placeholder: "Scegli la data" },
+};
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();

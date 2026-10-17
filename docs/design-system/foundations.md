@@ -29,7 +29,7 @@ Dark is the primary theme; light is fully designed, on a warm paper ground. Set 
 - `mastery` mint for progress fills, done nodes and correct answers; `mastery-text` on `mastery-soft` for the words.
 - `danger` for wrong answers, severe gaps and destructive actions, always with an icon or word.
 - Hairlines use `border` (decorative). Anything a user operates (inputs, secondary buttons, chips, quiz options) is outlined in `border-control`, which holds 3:1.
-- Focus: a 2px solid `focus-ring` outline, 2px offset, on every focusable element. Gold on dark, cobalt on light; both 3:1+ on every surface.
+- Focus: a 2px solid `focus-ring` outline, 2px offset, on every focusable element. Gold on dark, cobalt on light; both 3:1+ on every surface. A text field or a Select that a click also focuses (the Ask composer, antd Select and DatePicker) draws the ring only when focus came from the keyboard, and shows a border change for a click (`lib/focusSource.ts` sets `data-focus-source` on the root).
 - Behind modals, the whiteboard and the plan wizard: `scrim`.
 
 No gradients. The only effect is `glow-star`, used on the current path node.
@@ -48,7 +48,7 @@ No gradients. The only effect is `glow-star`, used on the current path node.
 ## Spacing, radius, size
 
 - 4px base: `space-1` … `space-16`. Cards pad `space-6` (compact `space-4`); sections are `space-8` apart; path nodes `space-16` apart.
-- Content lives in one centred column of `content-width` (768px). Header on top: back or wordmark left, doors (SegmentedTabs) centre, settings right.
+- Content lives in one centred column of `content-width` (768px). Settings is the one wider page: from a 960px window it takes a 960px column with a sidebar of sections; below that it is a list of pages with a back button. Header on top: back or wordmark left, doors (SegmentedTabs) centre, settings right.
 - Radii: `radius-pill` for every action and tab; `radius-md` for tiles, options and nodes; `radius-lg` for cards and bubbles; `radius-xl` for large panels (composer, plan header, dock).
 - Heights: `control-sm` 32, `control-md` 40 (default), `control-lg` 48 (bottom call to action).
 
@@ -61,7 +61,7 @@ No gradients. The only effect is `glow-star`, used on the current path node.
 ## Iconography
 
 - **Lucide** line icons (ISC), 1.75 stroke, `currentColor`. In the app use `lucide-react`; the `Icon` component here mirrors it. The `Icons` asset group holds the core set as SVG files for docs.
-- One icon per concept: Chiedi `message-circle`, Esami `graduation-cap`, smartbook `book-marked`, smart text `book-open`, flashcards `layers`, gaps `target`, concept map `network`, exercise `pencil-line`, quiz `list-checks`, true/false `square-split-horizontal`, review `repeat`, add to calendar `calendar-plus`, written simulation `file-pen`, locked `lock`, whiteboard `signature`, formula `sigma`, engines `terminal` / `key-round` / `hard-drive` / `cloud`, the tutor is the Pyxis mark (see Logo).
+- One icon per concept: Chiedi `message-circle`, Esami `graduation-cap`, smartbook `book-marked`, smart text `book-open`, flashcards `layers`, gaps `target`, concept map `network`, exercise `pencil-line`, quiz `list-checks`, true/false `square-split-horizontal`, review `repeat`, add to calendar `calendar-plus`, written simulation `file-pen`, locked `lock`, whiteboard `signature`, formula `sigma`, engines `terminal` / `key-round` / `hard-drive` / `cloud`, tutor settings `brain`; the tutor itself is the Pyxis mark (see Logo).
 - No emoji as icons, no filled or duotone icons, no icons from antd's set mixed in.
 
 ## Logo
@@ -77,6 +77,6 @@ The mark is **star trails**: three long-exposure trails circling the pole star, 
 ## Building with this system
 
 - UI is **Ant Design Pro** on antd v6: `@ant-design/pro-components` v3 in the Electron + Vite app, themed by `theme/pyxis-theme.ts` (`pyxisTheme` for antd, `pyxisProLayoutToken` for ProLayout). No Umi, no Pro admin template. See [Ant Design mapping](ant-design-pro.md).
-- The shell is ProLayout in `top` mode with a fixed 768px content column (`theme/AppShell.tsx`): lockup left, Chiedi / Esami doors centred, settings right. No sidebar.
+- The shell is ProLayout in `top` mode with a fixed 768px content column (`theme/AppShell.tsx`): lockup left, Chiedi / Esami doors centred, settings right. No sidebar, except the section list on the Settings page from 960px.
 - Pyxis-specific pieces (Logo, PathNode, MasteryBar, LessonTile, Composer, ChatMessage, QuizOption, Flashcard, GapItem, EngineRow, CitationChip) are custom; the previews and `reference/bundle.css` are their reference.
 - Accessibility (NFR-09): every control reachable by keyboard, every icon-only button labelled, status never by colour alone, and all text pairs in this system at 4.5:1 or better in both themes.

@@ -89,7 +89,7 @@ export function AutoBackupsSection({
       <p className="small px-autobackup-path">
         {t("settings.autoBackup.folder", { path: status.folder })}
       </p>
-      <div className="gallery-row">
+      <div className="px-settings-actions">
         <Button
           loading={status.running}
           disabled={status.running}

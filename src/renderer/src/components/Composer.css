@@ -1,8 +1,8 @@
 /* Composer */
 .px-composer { width: 100%; max-width: var(--content-width); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: var(--space-4); box-shadow: var(--shadow-card); display: flex; flex-direction: column; gap: var(--space-3); }
 .px-composer:focus-within { border-color: var(--border-control); }
-/* The field has no outline of its own, so the card carries the design system's focus ring, also while a formula is open. */
-.px-composer:has(.px-composer-field:focus-within) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* The field has no outline of its own, so the card carries the design system's focus ring, also while a formula is open. A click gets the border change above and no ring. */
+html[data-focus-source="keyboard"] .px-composer:has(.px-composer-field:focus-within) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .px-composer-top { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .px-composer-field { width: 100%; min-height: 52px; max-height: 200px; font: 400 calc(17px * var(--text-scale))/calc(26px * var(--text-scale)) var(--font-sans); padding: 0 var(--space-1); }
 .px-composer-bar { display: flex; align-items: center; gap: var(--space-1); }

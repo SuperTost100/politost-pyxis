@@ -120,7 +120,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     await page.locator(".ant-segmented-item-label", { hasText: /^5$/ }).click();
     await page.getByRole("button", { name: "Inizia il ripasso" }).click();
     await expect(page).toHaveURL(/\/review\/cards/);
-    await expect(progress).toHaveText(/^0 di (\d+) fatti · 5 schede, (\d+) domande$/);
+    await expect(progress).toHaveText(/^0 di (\d+) fatti · 5 flashcard, (\d+) domande$/);
     const total = Number(/di (\d+) fatti/.exec((await progress.textContent()) ?? "")?.[1]);
     const questions = total - 5;
     expect(questions).toBeGreaterThan(0);
@@ -152,7 +152,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
       back: "Retro",
     });
     await page.reload();
-    await expect(progress).toHaveText(new RegExp(`^2 di ${total} fatti · 5 schede`));
+    await expect(progress).toHaveText(new RegExp(`^2 di ${total} fatti · 5 flashcard`));
     for (let done = 2; done < 5; done += 1) {
       seen.push((await front.innerText()).trim());
       await rate("1");
