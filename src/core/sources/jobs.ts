@@ -42,6 +42,11 @@ type ImportParams = {
   replace?: boolean;
   /** For a replacement, the status the source had before it. A replacement that stops goes back to it. */
   previousStatus?: string;
+  /**
+   * The status the source has once this version is read, saved with its passages. From then on the text is in use,
+   * so a job that stops while indexing leaves the source in this status instead of hiding it.
+   */
+  doneStatus?: "ready" | "needs-ocr" | "failed";
   /** Read the stored original again as a new version. The file, name and type stay, and old passages are kept. */
   reextract?: boolean;
   version: number;
@@ -243,7 +248,7 @@ export function registerSourceJobs(
                 });
               else throw new Error("extraction-failed");
             }
-            ctx.setParams(input);
+            ctx.setParams({ ...input, doneStatus: doneStatus(input, value) });
           })();
           return { sourceId: input.sourceId };
         },
@@ -262,34 +267,30 @@ export function registerSourceJobs(
             await compareToPlans(db, modelDir, input.sourceId, ctx.signal);
           }
           ctx.signal.throwIfAborted();
-          const extracted = JSON.parse(
-            await readFile(
-              readBlob(workspace, input.extractedSha!).file,
-              "utf8",
-            ),
-          ) as Extraction;
-          const emptyImage =
-            IMAGE_EXTS.includes(input.ext) &&
-            !db
-              .prepare(
-                "SELECT 1 FROM passages WHERE source_id = ? AND version = ? LIMIT 1",
-              )
-              .get(input.sourceId, input.version);
+          // A job whose passages were stored before 0.3.2 has no saved status, so it is worked out here.
+          const status =
+            input.doneStatus ??
+            doneStatus(
+              input,
+              JSON.parse(await readFile(readBlob(workspace, input.extractedSha!).file, "utf8")) as Extraction,
+            );
           db.prepare(
             `UPDATE sources SET status = ? WHERE id = ? AND status != 'removed'`,
-          ).run(
-            emptyImage
-              ? "failed"
-              : extracted.document?.scanned
-                ? "needs-ocr"
-                : "ready",
-            input.sourceId,
-          );
+          ).run(status, input.sourceId);
           return { sourceId: input.sourceId };
         },
       },
     ],
   };
+  /** A photo with no text read fails; a scan waits for OCR; anything else is ready. Its passages are already stored. */
+  function doneStatus(input: ImportParams, extracted: Extraction): NonNullable<ImportParams["doneStatus"]> {
+    const emptyImage =
+      IMAGE_EXTS.includes(input.ext) &&
+      !db
+        .prepare("SELECT 1 FROM passages WHERE source_id = ? AND version = ? LIMIT 1")
+        .get(input.sourceId, input.version);
+    return emptyImage ? "failed" : extracted.document?.scanned ? "needs-ocr" : "ready";
+  }
   runner.register("source-import", base);
   runner.register("source-import-vision", {
     ...base,
@@ -434,6 +435,8 @@ const IMPORT_KINDS = ["source-import", "source-import-vision"];
  * back to the status it had before (a replacement queued before 0.2.3 has none saved; its source had text, so `ready`).
  */
 function stoppedStatus(params: Partial<ImportParams>, state: string): string | null {
+  // The passages are stored and in use; only their vectors are missing, and Retry or Resume adds them.
+  if (params.doneStatus) return params.doneStatus;
   if (params.reextract) return null;
   if (params.replace) return params.previousStatus ?? "ready";
   return state;
