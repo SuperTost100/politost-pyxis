@@ -21,6 +21,7 @@ import { imageMime, isHeicBytes, isHeicExt, MAX_HEIC_BYTES } from "./heic";
 import { runSourceWorker } from "./worker-client";
 import { loadVisionImage, type VisionImage } from "./vision-image";
 import { maxSourceBytes } from "../../shared/source-types";
+import { PDF_PASSWORD_ERRORS } from "../../shared/source-errors";
 import { generate, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
 import { selectionFor, type StoredSelection } from "../engine/selection";
@@ -59,6 +60,11 @@ type ImportParams = {
   vision?: StoredSelection;
   /** A free PoliTost book: the catalog book and version these bytes are. An update records it once it is published. */
   catalog?: { id: string; version: string };
+  /**
+   * A link fetched again (Check for a new version). `sha` and `ext` are the new snapshot and `url` the address it came
+   * from. The source row takes them, with this time, only when the new version is published.
+   */
+  refresh?: { fetchedAt: number };
 };
 export type Extraction = {
   book?: ParsedSmartbook;
@@ -103,6 +109,38 @@ export async function assertLocalOcrReady(db: Database.Database, workspace: stri
 
 const VISION_MAX_CHARS = 60_000;
 
+/**
+ * Passwords for locked PDFs, held in this process only, by the import they open (`sourceId:version`). The job's
+ * stored input never has one. The extract step takes it out as it reads, so a retry or a resume after a restart
+ * finds none and the import asks again.
+ */
+const pdfPasswords = new Map<string, string>();
+const passwordKey = (params: { sourceId: string; version: number }) => `${params.sourceId}:${params.version}`;
+
+/**
+ * Runs again a source import that stopped on a locked PDF, with `password` for that one read. Only a failed import
+ * whose error asks for a password is accepted (`pdf-password-unavailable` otherwise), so the password never reaches any
+ * other job. It is not stored: not in the job, the database or a log.
+ */
+export function unlockPdfImport(
+  db: Database.Database,
+  runner: Runner,
+  jobId: string,
+  password: string,
+): { jobId: string } {
+  const job = db
+    .prepare(
+      `SELECT params_json FROM jobs WHERE id = ? AND kind = 'source-import' AND state = 'failed'
+       AND error IN (${PDF_PASSWORD_ERRORS.map(() => "?").join(", ")})`,
+    )
+    .get(jobId, ...PDF_PASSWORD_ERRORS) as { params_json: string } | undefined;
+  if (!job || !password) throw new Error("pdf-password-unavailable");
+  const params = JSON.parse(job.params_json) as ImportParams;
+  pdfPasswords.set(passwordKey(params), password);
+  runner.retry(jobId);
+  return { jobId };
+}
+
 type Deps = {
   run?: GenerateInput["run"];
   /** The image as the vision model gets it, fitted to provider limits. */
@@ -118,7 +156,7 @@ export function registerSourceJobs(
   workspace: string,
   runner: Runner,
   extract = (
-    input: { path: string; ext: string; tess: string },
+    input: { path: string; ext: string; tess: string; password?: string },
     signal: AbortSignal,
   ) => runSourceWorker<Extraction>("extract-worker", input, signal),
   deps: Deps = {},
@@ -169,11 +207,15 @@ export function registerSourceJobs(
               ctx.setParams(input);
             })();
           }
+          // A password is used for one read, whatever its outcome. A wrong one asks again.
+          const password = pdfPasswords.get(passwordKey(input));
+          pdfPasswords.delete(passwordKey(input));
           const value = await extract(
             {
               path: readBlob(workspace, input.sha).file,
               ext: input.ext,
               tess: join(workspace, "runtimes", "tesseract"),
+              ...(password ? { password } : {}),
             },
             ctx.signal,
           );
@@ -225,7 +267,19 @@ export function registerSourceJobs(
               else if (value.book)
                 storeSmartbook(db, value.book, Date.now(), input.sourceId);
               else if (value.document && input.reextract)
-                addExtractionVersion(db, input.sourceId, value.document);
+                addExtractionVersion(
+                  db,
+                  input.sourceId,
+                  value.document,
+                  input.refresh && input.url
+                    ? {
+                        sha: input.sha,
+                        ext: input.ext,
+                        url: input.url,
+                        fetchedAt: input.refresh.fetchedAt,
+                      }
+                    : undefined,
+                );
               else if (value.document && input.replace)
                 addDocumentVersion(db, workspace, input.sourceId, {
                   title: input.title,
@@ -573,6 +627,67 @@ export function enqueueReextract(
     version,
     reextract: true,
     ...(vision ? { vision } : {}),
+  } satisfies ImportParams);
+  return { started: true, inUse, jobId };
+}
+
+/**
+ * Check for a new version of a source imported from a link: the address is fetched again, and a page that changed is
+ * read as the next version of the same source through the import job, as a re-extract is. Items that cite the old
+ * text keep it, marked stale, and its citations open the copy saved then, as after a book update. A source that plans
+ * use asks first (`started: false`, `inUse`), and nothing is fetched until it is confirmed. A page whose bytes have not
+ * changed starts nothing (`unchanged`). Errors: `source-missing`, `refresh-unavailable` (no link), `source-busy`, and
+ * the fetch's `link-*`.
+ */
+export async function enqueueRefresh(
+  db: Database.Database,
+  workspace: string,
+  runner: Runner,
+  sourceId: string,
+  confirmed: boolean,
+  signal?: AbortSignal,
+  fetchPage: (url: string, signal?: AbortSignal) => ReturnType<typeof fetchSnapshot> = (url, abort) =>
+    fetchSnapshot(url, undefined, undefined, abort),
+): Promise<{ started: boolean; inUse: number; unchanged?: true; jobId?: string }> {
+  const source = db
+    .prepare(
+      `SELECT title, blob_sha AS sha, origin_url AS url FROM sources WHERE id = ? AND status != 'removed'`,
+    )
+    .get(sourceId) as { title: string; sha: string | null; url: string | null } | undefined;
+  if (!source) throw new Error("source-missing");
+  if (!source.url) throw new Error("refresh-unavailable");
+  if (hasUnfinishedJob(db, sourceId)) throw new Error("source-busy");
+  const inUse = plansUsing(db, sourceId);
+  if (inUse > 0 && !confirmed) return { started: false, inUse };
+  const page = await fetchPage(source.url, signal);
+  signal?.throwIfAborted();
+  const ext = page.pdf ? ".pdf" : ".md";
+  const sha = putBlob(
+    workspace,
+    page.pdf ?? new TextEncoder().encode(page.markdown),
+    mimeFor(ext),
+    ext.slice(1),
+  );
+  if (sha === source.sha) return { started: false, inUse, unchanged: true };
+  // The fetch took a while. Another job may have started on the source meanwhile.
+  if (hasUnfinishedJob(db, sourceId)) throw new Error("source-busy");
+  const version = (
+    db
+      .prepare(
+        `SELECT COALESCE(MAX(version), 0) + 1 AS n FROM source_documents WHERE source_id = ?`,
+      )
+      .get(sourceId) as { n: number }
+  ).n;
+  const jobId = runner.start("source-import", {
+    sourceId,
+    sha,
+    ext,
+    title: source.title,
+    url: page.finalUrl,
+    fetched: true,
+    version,
+    reextract: true,
+    refresh: { fetchedAt: Date.now() },
   } satisfies ImportParams);
   return { started: true, inUse, jobId };
 }

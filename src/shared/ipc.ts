@@ -1759,6 +1759,11 @@ export const requests = {
         syllabusOff: z.number().int().positive().optional(),
         /** The error code a failed import stopped with, while its job is still listed. */
         error: z.string().optional(),
+        /** The job that stopped with `error`, so the row can answer it (a locked PDF's password). */
+        errorJobId: z.string().optional(),
+        /** The address a source imported from a link came from, and when its saved copy was fetched. */
+        originUrl: z.string().nullable(),
+        fetchedAt: z.number().nullable(),
       }),
     ),
   },
@@ -2151,6 +2156,22 @@ export const requests = {
       inUse: z.number(),
       jobId: z.string().optional(),
     }),
+  },
+  /** Fetches a link source again. A changed page is read as its next version; a source that plans use asks first. */
+  "sources.refresh": {
+    input: z.object({ sourceId: z.string(), confirmed: z.boolean() }),
+    output: z.object({
+      started: z.boolean(),
+      inUse: z.number(),
+      /** The page is the copy already saved. Nothing started. */
+      unchanged: z.literal(true).optional(),
+      jobId: z.string().optional(),
+    }),
+  },
+  /** Runs again an import that stopped on a locked PDF, with the password for that read only. It is never stored. */
+  "sources.unlockPdf": {
+    input: z.object({ jobId: z.string(), password: z.string().min(1).max(1024) }),
+    output: z.object({ jobId: z.string() }),
   },
   "sources.remove": {
     input: z.object({ sourceId: z.string(), confirmed: z.boolean() }),
