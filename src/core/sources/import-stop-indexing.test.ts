@@ -11,20 +11,24 @@ import { enqueueSourceFile, markStoppedImport, registerSourceJobs } from "./jobs
 import { existingSourceFor } from "./quality";
 import { retrieve } from "./retrieve";
 
-// The embedding never finishes until it is cancelled, so the import stops during its vectors step.
+// While `hang` is set, the embedding never finishes until it is cancelled, so the import stops during its vectors step.
+let hang = true;
 vi.mock("./worker-client", () => ({
-  runSourceWorker: (_name: string, _input: unknown, signal?: AbortSignal) =>
-    new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError")))),
+  runSourceWorker: (_name: string, input: { texts: string[] }, signal?: AbortSignal) =>
+    hang
+      ? new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError"))))
+      : Promise.resolve(input.texts.map(() => Array.from({ length: 384 }, (_, i) => (i === 0 ? 1 : 0)))),
 }));
 
 const dirs: string[] = [];
 afterEach(() => {
+  hang = true;
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 const TEXT = "Il teorema di Bernoulli lega pressione e velocità in un fluido ideale.";
 
-async function importUntilIndexing() {
+async function importUntilIndexing(scanned = false) {
   const workspace = mkdtempSync(join(tmpdir(), "pyxis-import-indexing-"));
   dirs.push(workspace);
   // The local search model is agreed to and on disk, so the import's vectors step embeds.
@@ -36,7 +40,7 @@ async function importUntilIndexing() {
   const db = openDatabase(":memory:");
   setEmbeddingConsent(db, true);
   const runner = createRunner(db, (job) => markStoppedImport(db, job));
-  registerSourceJobs(db, workspace, runner, async () => ({ document: extractPlain(TEXT, false) }));
+  registerSourceJobs(db, workspace, runner, async () => ({ document: { ...extractPlain(TEXT, false), scanned } }));
   const path = join(workspace, "bernoulli.txt");
   writeFileSync(path, TEXT);
   const result = await enqueueSourceFile(db, workspace, runner, path);
@@ -70,6 +74,21 @@ describe("an import stopped after its passages were stored", () => {
     // The first process still holds the job; stop it before the database closes.
     runner.cancel(jobId);
     await expect.poll(state(db, jobId)).toBe("cancelled");
+    db.close();
+  });
+
+  it.each(["ready", "ocr-queued"])("a retried scan import leaves the status OCR gave it meanwhile (%s)", async (afterOcr) => {
+    const { db, runner, sourceId, jobId } = await importUntilIndexing(true);
+    runner.cancel(jobId);
+    await expect.poll(state(db, jobId)).toBe("cancelled");
+    expect(status(db, sourceId)).toBe("needs-ocr");
+    // The student reads the scan with OCR, then retries the stopped import, which adds the vectors.
+    db.prepare("UPDATE sources SET status = ? WHERE id = ?").run(afterOcr, sourceId);
+    hang = false;
+    runner.retry(jobId);
+    await expect.poll(state(db, jobId)).toBe("succeeded");
+    expect(status(db, sourceId)).toBe(afterOcr);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM passages_vec").get()).not.toEqual({ n: 0 });
     db.close();
   });
 });
