@@ -206,6 +206,9 @@ export function saveQuizDraft(
     Object.keys(picks).some((id) => !ids.has(id))
   )
     throw new Error("question-missing");
+  // A timed quiz takes answers only once its clock can run, so none are given while the rest is still being written.
+  if (body.config?.timerMinutes && !body.complete && Object.keys(picks).length)
+    throw new Error("quiz-building");
   const existing = db
     .prepare(
       "SELECT id, payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object' LIMIT 1",

@@ -90,7 +90,7 @@ export function quizAttempt(db: Database.Database, attemptId: string) {
     ...row,
     body: JSON.parse(row.body_json) as {
       complete?: boolean;
-      config?: { feedback: boolean };
+      config?: { feedback: boolean; timerMinutes?: number };
       questions: StoredQuestion[];
     },
   };
@@ -267,17 +267,20 @@ export async function gradeConfiguredAttempt(
 /**
  * Closes the attempt and records mastery evidence. `graded` holds model or
  * configured grades; every other answer is scored locally by submitAttempt.
+ * `submittedAt` is when the answers were frozen: the attempt, its evidence and
+ * its path step carry that time, however long grading took.
  */
 export function finalizeAttempt(
   db: Database.Database,
   attemptId: string,
   picks: Record<string, string>,
   graded?: Map<string, CheckedAnswer>,
+  submittedAt = Date.now(),
 ) {
   return db.transaction(() => {
     const frozen = { ...picks };
     if (graded) for (const [id, checked] of graded) frozen[id] ??= checked.pick;
-    const scored = submitAttempt(db, attemptId, frozen, Date.now(), graded);
+    const scored = submitAttempt(db, attemptId, frozen, submittedAt, graded);
     const row = db
       .prepare(
         `SELECT a.plan_id, i.topic_id, i.kind, i.body_json FROM attempts a
@@ -292,7 +295,6 @@ export function finalizeAttempt(
         }
       | undefined;
     if (!row) return scored;
-    const now = Date.now();
     const stored = JSON.parse(row.body_json) as {
       questions?: Array<{
         id: string;
@@ -308,7 +310,7 @@ export function finalizeAttempt(
         `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
          VALUES (?, 'answer_given', ?, ?, ?, ?)`,
       ).run(
-        uuidv7(now),
+        uuidv7(submittedAt),
         row.plan_id,
         row.topic_id,
         JSON.stringify({
@@ -333,9 +335,9 @@ export function finalizeAttempt(
                 })
               : undefined,
         }),
-        now,
+        submittedAt,
       );
-      syncGaps(db, row.plan_id, now);
+      syncGaps(db, row.plan_id);
       // A topic quiz, or a gap drill on one, is a step on that topic's path. A topic archived meanwhile gets none.
       const live = db
         .prepare("SELECT 1 FROM topics WHERE id = ? AND plan_id = ? AND archived_at IS NULL")
@@ -353,7 +355,7 @@ export function finalizeAttempt(
             result: stepResult(scored.results),
             attemptId,
           },
-          now + 1,
+          submittedAt + 1,
         );
       }
     } else if (
@@ -368,7 +370,7 @@ export function finalizeAttempt(
           db,
           row.plan_id,
           { activity: row.kind, topicId: null, result: stepResult(scored.results), attemptId },
-          now + 1,
+          submittedAt + 1,
         );
       // A retaken diagnostic asks the same questions again; only the first answer to each counts as evidence.
       const seen = row.kind === "diagnostic" ? askedBefore(db, row.plan_id, attemptId) : new Set<string>();
@@ -386,11 +388,11 @@ export function finalizeAttempt(
             : question,
         ),
         fresh.map(({ result }) => result),
-        now,
+        submittedAt,
         row.kind === "simulation" ? "simulation" : "quiz",
         attemptId,
       );
-      syncGaps(db, row.plan_id, now);
+      syncGaps(db, row.plan_id);
     }
     return scored;
   })();
@@ -423,6 +425,8 @@ type GradeParams = {
   /** Open questions that still need a model call, in order. */
   pending: string[];
   next: number;
+  /** When the answers were frozen: the submit, or time-up for a late timed quiz. Older jobs have none. */
+  submittedAt?: number;
 };
 type CheckParams = {
   attemptId: string;
@@ -564,7 +568,7 @@ function finishGrading(db: Database.Database, params: GradeParams) {
       if (configured || question.answer.kind === "open")
         graded.set(question.id, local);
     }
-    finalizeAttempt(db, params.attemptId, params.picks, graded);
+    finalizeAttempt(db, params.attemptId, params.picks, graded, params.submittedAt);
   })();
 }
 
@@ -617,12 +621,14 @@ export function submitQuiz(
     if (needsModel(question, pick) && checked?.pick !== pick)
       pending.push(question.id);
   }
+  const deadlineAt = quizDraft(db, attemptId)?.deadlineAt;
   const params: GradeParams = {
     attemptId,
     picks,
     selection: pending.length ? selectionFor(db, "grading") : undefined,
     pending,
     next: 0,
+    submittedAt: deadlineAt != null ? Math.min(now, deadlineAt) : now,
   };
   return { jobId: runner.start("quiz-grade", params) };
 }
@@ -639,6 +645,9 @@ export async function checkQuestion(
 ): Promise<CheckedAnswer> {
   const attempt = quizAttempt(db, attemptId);
   if (quizExpired(db, attemptId, now)) throw new Error("attempt-closed");
+  // As for the draft: a timed quiz still being written has no clock yet, so it checks nothing.
+  if (attempt.body.config?.timerMinutes && attempt.body.complete === false)
+    throw new Error("quiz-building");
   const question = attempt.body.questions.find((row) => row.id === questionId);
   const stored = checkedAnswer(db, attemptId, questionId);
   if (

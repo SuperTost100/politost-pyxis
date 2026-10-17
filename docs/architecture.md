@@ -66,7 +66,7 @@ A chat keeps the fitted copy and the original as two attachment rows. The origin
 
 ### Lessons, quizzes and concurrency
 
-Long-topic lessons cover every passage in consecutive calls with at most 24,000 characters of source text per call. Citation numbers stay stable across parts. The combined lesson is cached only after all parts pass validation, so a failed rewrite preserves the previous lesson. Prepared model-written simulations retain questions without starting an attempt; an explicit Start starts the clock. Quiz deadlines are enforced in core against the saved answer draft.
+Long-topic lessons cover every passage in consecutive calls with at most 24,000 characters of source text per call. Citation numbers stay stable across parts. The combined lesson is cached only after all parts pass validation, so a failed rewrite preserves the previous lesson. Prepared model-written simulations retain questions without starting an attempt; an explicit Start starts the clock. Quiz deadlines are enforced in core against the saved answer draft. A timed quiz takes no answers or checks until every question is written, and its clock starts at the first save after that. A graded attempt, its evidence and its path step carry the time its answers froze, at submit or at time-up, not the time grading finished.
 
 Default limits are two CLI model jobs, four API model jobs, one demo job and `max(1, availableParallelism - 1)` local jobs.
 

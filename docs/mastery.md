@@ -65,7 +65,7 @@ Rule 5 follows only the latest lesson. A student who reads another topic's lesso
 
 ### Spaced review
 
-`daysIdle` is the number of calendar days since the latest learning event on the topic, of any kind. Rule 7 suggests a quiz with the reason "review" for a topic whose lesson was read, whose mastery is below the target and whose `daysIdle` is 7 or more. A topic the student never read is left to rule 8, even when the diagnostic touched it long ago. Due cards and severe gaps still come first, and a stay under rule 5 finishes before a review.
+`daysIdle` is the number of calendar days since the latest learning event on the topic, of any kind except the `gap_opened` and `gap_closed` rows the app writes itself when it syncs, flags or merges gaps. Rule 7 suggests a quiz with the reason "review" for a topic whose lesson was read, whose mastery is below the target and whose `daysIdle` is 7 or more. A topic the student never read is left to rule 8, even when the diagnostic touched it long ago. Due cards and severe gaps still come first, and a stay under rule 5 finishes before a review.
 
 ### Reopening a finished step
 

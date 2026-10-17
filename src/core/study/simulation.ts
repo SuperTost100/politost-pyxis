@@ -614,12 +614,13 @@ export function registerSimulationJobs(
             db.prepare(
               "UPDATE attempts SET submitted_at=? WHERE id=? AND submitted_at IS NULL",
             ).run(params.frozenAt, params.attemptId);
+            // Evidence and the step count from when the answers froze, as the attempt does, not from when grading ended.
             recordTopicScores(
               db,
               params.planId,
               params.questions,
               params.results,
-              now,
+              params.frozenAt,
               "simulation",
               params.attemptId,
             );
@@ -631,7 +632,7 @@ export function registerSimulationJobs(
                 result: stepResult(params.results),
                 attemptId: params.attemptId,
               },
-              now + params.results.length + 1,
+              params.frozenAt + params.results.length + 1,
             );
             syncGaps(db, params.planId, now);
           })();

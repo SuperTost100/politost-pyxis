@@ -171,6 +171,10 @@ describe("gradedActivities", () => {
     expect(next(start + 32)).toMatchObject({ activity: "lesson", topicId: "b", reason: "next" });
     // A week later the topic, still below the target, comes back for a review before the next chapter.
     expect(next(start + 9 * day)).toMatchObject({ activity: "quiz", topicId: "a", reason: "review" });
+    // Gap rows the app writes itself, on a flag or a merge, are not study: the topic stays idle.
+    for (const kind of ["gap_opened", "gap_closed"] as const)
+      appendEvent(db, { kind, planId: "plan", topicId: "a", payload: { gapId: "g" }, at: start + 8 * day });
+    expect(next(start + 9 * day)).toMatchObject({ activity: "quiz", topicId: "a", reason: "review" });
     db.close();
   });
 });

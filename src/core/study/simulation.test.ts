@@ -243,6 +243,18 @@ describe("M11 model-graded simulations", () => {
       [first!.id]: "dieci metri al secondo",
       [second!.id]: "dieci newton",
     });
+    // Evidence and the step count from time-up, when the answers froze, not from when grading finished.
+    expect(
+      db
+        .prepare(
+          "SELECT kind, created_at FROM learning_events WHERE kind IN ('answer_given', 'lesson_completed') ORDER BY created_at",
+        )
+        .all(),
+    ).toEqual([
+      { kind: "answer_given", created_at: deadline },
+      { kind: "answer_given", created_at: deadline + 1 },
+      { kind: "lesson_completed", created_at: deadline + 3 },
+    ]);
     db.close();
   });
   it("freezes the saved answers once the grace after time-up is over", async () => {

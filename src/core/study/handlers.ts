@@ -303,10 +303,11 @@ export function studyHandlers(
       if (runner && modelGraded)
         return submitQuiz(db, runner, input.attemptId, input.picks);
       // ponytail: without a runner (unit tests) grade inline; the app always has one.
-      const picks = timedPicks(db, input.attemptId, input.picks);
+      const submittedAt = Date.now();
+      const picks = timedPicks(db, input.attemptId, input.picks, submittedAt);
       const finalize = (
         graded?: Awaited<ReturnType<typeof gradeConfiguredAttempt>>,
-      ) => finalizeAttempt(db, input.attemptId, picks, graded);
+      ) => finalizeAttempt(db, input.attemptId, picks, graded, submittedAt);
       if (gate?.kind === "quiz" && JSON.parse(gate.body_json).config)
         return gradeConfiguredAttempt(db, input.attemptId, picks, run).then(
           finalize,
