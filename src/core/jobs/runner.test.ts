@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { uuidv7 } from "../../shared/ids";
-import { IpcError } from "../../shared/ipc";
+import { IpcError, type JobView } from "../../shared/ipc";
 import { openDatabase } from "../db/connection";
 import { createRunner, type JobSpec } from "./runner";
 
@@ -86,6 +86,58 @@ describe("job runner", () => {
     expect(
       database.prepare("SELECT error FROM jobs WHERE id = ?").get(job),
     ).toEqual({ error: "missing-step:removed" });
+  });
+
+  it("publishes the title and step states, never step outputs", async () => {
+    const database = db();
+    const views: JobView[] = [];
+    const runner = createRunner(database, (view) => views.push(view), undefined, true);
+    runner.register("titled", {
+      jobClass: "local",
+      title: (params) => (params as { name: string }).name,
+      steps: [{ name: "tree", label: "tree", run: async () => ({ topics: ["long"] }) }],
+    });
+    const job = runner.start("titled", { name: "Fisica" });
+    runner.activate();
+    await until(database, job, ["succeeded"]);
+    expect(views.at(-1)).toEqual({
+      id: job,
+      kind: "titled",
+      title: "Fisica",
+      state: "succeeded",
+      progress: 1,
+      stepLabel: null,
+      error: null,
+      steps: [{ name: "tree", label: "tree", state: "succeeded" }],
+    });
+  });
+
+  it("leaves a retired step out of new jobs and still runs it for a saved one", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, undefined, true);
+    const ran: string[] = [];
+    const step = (name: string, retired?: boolean) => ({
+      name,
+      label: name,
+      retired,
+      run: async () => ran.push(name),
+    });
+    runner.register("steps", { jobClass: "local", steps: [step("first"), step("old", true), step("last")] });
+    const fresh = runner.start("steps");
+    const saved = runner.start("steps");
+    database
+      .prepare("INSERT INTO job_steps (id, job_id, name, position, label, state) VALUES (?, ?, 'old', 5, 'old', 'pending')")
+      .run(uuidv7(), saved);
+    const names = (job: string) =>
+      (database.prepare("SELECT name FROM job_steps WHERE job_id = ? ORDER BY position").all(job) as Array<{
+        name: string;
+      }>).map((row) => row.name);
+    expect(names(fresh)).toEqual(["first", "last"]);
+    runner.activate();
+    await until(database, fresh, ["succeeded"]);
+    await until(database, saved, ["succeeded"]);
+    expect(names(saved)).toEqual(["first", "last", "old"]);
+    expect(ran.filter((name) => name === "old")).toEqual(["old"]);
   });
 
   it("records an engine failure as its code, then the engine's own text", async () => {

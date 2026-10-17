@@ -308,6 +308,10 @@ html[data-platform="darwin"] .canvas-bar {
   -webkit-app-region: no-drag;
 }
 
+.focus-header-right {
+  justify-self: end;
+}
+
 .focus-title {
   margin: 0;
 }

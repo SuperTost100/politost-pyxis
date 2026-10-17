@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { MasteryBar } from "../../components/MasteryBar";
 import { invoke } from "../../lib/ipc";
+import "./ReviewProgress.css";
 
 /** The mixed review's session, read from the core so every screen shows the same queue and progress. */
 export function useReviewSession(planId: string | undefined, enabled = true) {

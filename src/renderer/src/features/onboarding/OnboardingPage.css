@@ -21,8 +21,8 @@
   color: var(--ink-muted);
   margin-top: calc(var(--space-2) * -1);
 }
+/* The margin is in global.css, which used to load after this file and set it. */
 .px-onboarding .body {
-  margin-bottom: var(--space-2);
   color: var(--ink-muted);
 }
 .px-onboarding .px-form-grid,

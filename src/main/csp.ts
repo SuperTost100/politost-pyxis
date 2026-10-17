@@ -1,7 +1,8 @@
 /**
- * The main window's Content Security Policy. Main sends it as a response header, and the built index.html also
- * carries it as a meta tag, so the page keeps it whichever scheme or session serves the file. The development
- * variant adds the Vite server's origin and its HMR WebSocket.
+ * The main window's Content Security Policy. Main sends it as a response header (the pyxis-app protocol with every
+ * file of the built page, the session hook with the dev server's), and the built index.html also carries it as a
+ * meta tag, so the page keeps it whichever scheme or session serves the file. `'self'` is pyxis-app://app for the
+ * built page. The development variant adds the Vite server's origin and its HMR WebSocket.
  */
 export function rendererCsp(devOrigin?: string): string {
   const dev = devOrigin ? ` ${devOrigin}` : "";
