@@ -62,6 +62,8 @@ export function SettingsPage() {
   const [dataNote, setDataNote] = useState<string | null>(null);
   const [wipeArmed, setWipeArmed] = useState(false);
   const [wipeBackups, setWipeBackups] = useState(true);
+  // From the confirming click until main answers: a second click would start another wipe.
+  const [wiping, setWiping] = useState(false);
   const { modal } = App.useApp();
   const [restoreArmed, setRestoreArmed] = useState(false);
   const [moving, setMoving] = useState(false);
@@ -431,8 +433,20 @@ export function SettingsPage() {
                     window.location.reload();
                   }
                 })
-                .catch(() => {
-                  setDataNote(t("settings.restoreFailed"));
+                .catch((error: unknown) => {
+                  const message = error instanceof Error ? error.message : "";
+                  const rolledBack = message.includes("restore-rolled-back");
+                  setDataNote(
+                    t(
+                      rolledBack
+                        ? "settings.restoreRolledBack"
+                        : message.includes("restore-recovery-required")
+                          ? "settings.restoreRecoveryRequired"
+                          : "settings.restoreFailed",
+                    ),
+                  );
+                  // Core ran on the restored copy for a moment; what the pages read from it is gone again.
+                  if (rolledBack) void client.invalidateQueries();
                 })
                 .finally(() => setArchiving(null));
             }}
@@ -465,7 +479,11 @@ export function SettingsPage() {
           <p className="small ink-muted">{t("settings.wipeHint")}</p>
           {wipeArmed ? (
             <div className="px-settings-wipe-backups">
-              <Checkbox checked={wipeBackups} onChange={(event) => setWipeBackups(event.target.checked)}>
+              <Checkbox
+                checked={wipeBackups}
+                disabled={wiping}
+                onChange={(event) => setWipeBackups(event.target.checked)}
+              >
                 {t("settings.wipeBackups")}
               </Checkbox>
               <p className="small ink-muted" role="alert">
@@ -478,15 +496,18 @@ export function SettingsPage() {
             </div>
           ) : null}
           <Button
-            disabled={moving}
+            disabled={moving || wiping}
+            loading={wiping}
             danger
             onClick={() => {
+              if (wiping) return;
               if (!wipeArmed) {
                 setWipeBackups(true);
                 setWipeArmed(true);
                 return;
               }
               setDataNote(null);
+              setWiping(true);
               void window.pyxis
                 .wipeWorkspace({ backups: wipeBackups })
                 .then((result) => {
@@ -504,6 +525,7 @@ export function SettingsPage() {
                   });
                 })
                 .catch((error: unknown) => {
+                  setWiping(false);
                   setWipeArmed(false);
                   // Main tags the failure that came after the engine keys were cleared. Any other failure left them in place.
                   setDataNote(
@@ -520,7 +542,11 @@ export function SettingsPage() {
             {wipeArmed ? t("settings.wipeConfirm") : t("settings.wipe")}
           </Button>
           {wipeArmed ? (
-            <Button type="text" onClick={() => setWipeArmed(false)}>
+            <Button
+              type="text"
+              disabled={wiping}
+              onClick={() => setWipeArmed(false)}
+            >
               {t("wizard.cancel")}
             </Button>
           ) : null}
@@ -646,6 +672,8 @@ function backupError(
   const message = error instanceof Error ? error.message : "";
   if (message.includes("backup-too-many-files"))
     return t("settings.backupTooManyFiles");
+  if (message.includes("backup-destination-inside-data"))
+    return t("settings.backupInsideData");
   const size = /backup-too-large:(\d+)/.exec(message)?.[1];
   if (!size) return t("settings.backupFailed");
   const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });

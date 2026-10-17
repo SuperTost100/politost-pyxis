@@ -206,3 +206,47 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test("a manual backup saved over the live database is refused and the data stays", async () => {
+  test.setTimeout(60000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-backup-inside-"));
+  const database = join(userData, "workspace", "pyxis.db");
+  const env = {
+    ...process.env,
+    PYXIS_USER_DATA: userData,
+    PYXIS_E2E: "1",
+    // A Linux save dialog keeps the name as typed, so "pyxis.db" in the workspace reaches main unchanged.
+    PYXIS_E2E_SAVE: database,
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({
+    args: [join(process.cwd(), "out/main/index.js")],
+    env,
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.evaluate(() => {
+      location.hash = "/settings/data";
+    });
+    await page
+      .getByRole("button", { name: "Copia di sicurezza", exact: true })
+      .click();
+    await expect(
+      page.getByText(
+        "Salva la copia fuori dai dati di Pyxis. Lì andrebbe persa insieme a loro, o potrebbe sostituire i tuoi dati.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    expect(readFileSync(database).subarray(0, 15).toString()).toBe(
+      "SQLite format 3",
+    );
+    expect(
+      await page.evaluate(() => window.pyxis.invoke("profile.get", {})),
+    ).not.toBeNull();
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});

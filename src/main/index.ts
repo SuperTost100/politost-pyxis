@@ -12,10 +12,12 @@ import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
 import {
   AutoBackups,
+  checkBackupDestination,
   checkBackupFolder,
   startLiveBackupWorker,
 } from "./auto-backup";
-import { renameSync } from "node:fs";
+import { commitRestore, RestoreRecoveryRequired } from "./restore-commit";
+import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
 import { buildMenuTemplate } from "./menu";
@@ -59,8 +61,16 @@ import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
 import { rendererCsp } from "./csp";
-import { recoverInterruptedWipe, wipeWorkspace } from "../core/share/wipe";
-import { ensureWorkspace, ensureWorkspaceDirs } from "./workspace";
+import {
+  recoverInterruptedWipe,
+  wipePending,
+  wipeWorkspace,
+} from "../core/share/wipe";
+import {
+  ensureWorkspace,
+  ensureWorkspaceDirs,
+  saveWorkspacePath,
+} from "./workspace";
 import {
   mainChannels,
   type Appearance,
@@ -249,7 +259,14 @@ let workspaceBusy = false;
 let archiveSettled = Promise.resolve();
 let releaseArchive = () => {};
 
+/**
+ * A restore could be neither committed nor rolled back, so the live folder may be a copy the next launch deletes. Core
+ * stays stopped and nothing takes the workspace until Pyxis restarts and its startup recovery decides.
+ */
+let restoreRecoveryRequired = false;
+
 function occupyWorkspace(): () => void {
+  if (restoreRecoveryRequired) throw new Error("restore-recovery-required");
   if (workspaceBusy) throw new Error("workspace-busy");
   workspaceBusy = true;
   archiveSettled = new Promise((resolve) => {
@@ -301,12 +318,13 @@ function setUpAutoBackups(): void {
       !coreChild ||
       keysReadyFor !== coreChild ||
       exitedCores.has(coreChild),
-    start: (zip, waitForJobs) =>
+    start: (zip, waitForJobs, requireData) =>
       startLiveBackupWorker(
         join(import.meta.dirname, "archive-worker.js"),
         workspacePath,
         zip,
         waitForJobs,
+        requireData,
       ),
     changed: (status: AutoBackupStatus) =>
       mainWindow?.webContents.send(mainChannels.autoBackupChanged, status),
@@ -781,17 +799,20 @@ function pauseCore(): Promise<void> {
   );
 }
 
+/** cleanupComplete: a commit deleted the old copy. outcome: what a recovery left live. */
+type ArchiveResult = { cleanupComplete: boolean; outcome?: RestoreOutcome };
+
 function runArchive(
   op: "backup" | "restore" | "commit" | "recover",
   zip?: string,
-): Promise<boolean> {
+): Promise<ArchiveResult> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const finish = (err?: Error, cleanupComplete = true) => {
+    const finish = (err?: Error, result?: ArchiveResult) => {
       if (settled) return;
       settled = true;
       if (err) reject(err);
-      else resolve(cleanupComplete);
+      else resolve(result ?? { cleanupComplete: true });
     };
     const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
       workerData: { op, workspace: workspacePath, zip },
@@ -802,8 +823,13 @@ function runArchive(
         ok?: boolean;
         message?: string;
         cleanupComplete?: boolean;
+        outcome?: RestoreOutcome;
       }) => {
-        if (message.ok) finish(undefined, message.cleanupComplete);
+        if (message.ok)
+          finish(undefined, {
+            cleanupComplete: message.cleanupComplete ?? true,
+            outcome: message.outcome,
+          });
         else finish(new Error(message.message || "backup-failed"));
       },
     );
@@ -817,6 +843,24 @@ function runArchive(
         );
     });
   });
+}
+
+/**
+ * Enters the restore-recovery state. holdCore stops restarts and Retry; a core that ignored pauseCore is ended outright,
+ * which also closes the renderer's port to it, so no more edits reach the uncommitted copy.
+ */
+function holdForRestoreRecovery(): void {
+  restoreRecoveryRequired = true;
+  holdCore = true;
+  const child = coreChild;
+  if (child?.pid && !exitedCores.has(child)) {
+    try {
+      process.kill(child.pid, "SIGKILL");
+    } catch (error) {
+      console.error("pyxis: core could not be ended", (error as Error).message);
+    }
+  }
+  mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
 }
 
 function resumeCore(): Promise<void> {
@@ -837,6 +881,10 @@ function registerIpc(): void {
   ipcMain.handle(mainChannels.coreRetry, async (event) => {
     if (event.sender.id !== mainWindow?.webContents.id)
       throw new Error("core-untrusted-sender");
+    // A backup, restore, move or wipe stopped core on purpose and starts it again itself. A core started now could
+    // open the workspace mid-swap, and the operation's own start would then leave two cores on one database. A wipe
+    // that could not put the data back keeps core stopped too.
+    if (workspaceBusy || holdCore) return;
     if (coreChild && !exitedCores.has(coreChild)) return;
     coreRestartFailures = 0;
     await startCore();
@@ -1112,6 +1160,10 @@ function registerIpc(): void {
         if (result.canceled || !result.filePath) return "cancelled";
         filePath = result.filePath;
       }
+      checkBackupDestination(filePath, {
+        workspace: workspacePath,
+        userData: app.getPath("userData"),
+      });
       await pauseCore();
       try {
         await runArchive("backup", filePath);
@@ -1149,20 +1201,35 @@ function registerIpc(): void {
         await startCore(true);
         holdCore = false;
       } catch (error) {
-        await pauseCore();
+        // Core comes back only on a workspace recovery has made safe. Otherwise it stays stopped and says so: a core
+        // on an uncommitted copy would collect edits the next launch deletes.
         try {
+          await pauseCore();
           await runArchive("recover");
-        } finally {
-          // Even if recovery fails, core must come back or say it can't: a held core leaves every screen waiting.
-          await resumeCore().catch(() =>
-            mainWindow?.webContents.send(mainChannels.coreUnavailable, true),
-          );
+        } catch (recoveryError) {
+          holdForRestoreRecovery();
+          throw new RestoreRecoveryRequired(recoveryError);
         }
+        await resumeCore().catch(() =>
+          mainWindow?.webContents.send(mainChannels.coreUnavailable, true),
+        );
         throw error;
       }
       // The old copy is held until core has validated and opened the restored
       // workspace. Cleanup must not roll back a working new copy.
-      if (!(await runArchive("commit"))) {
+      const { cleanupComplete } = await commitRestore({
+        commit: async () => (await runArchive("commit")).cleanupComplete,
+        stopCore: pauseCore,
+        recover: async () => (await runArchive("recover")).outcome ?? "none",
+        startCore: () =>
+          resumeCore().catch(() => {
+            mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
+          }),
+      }).catch((error: unknown) => {
+        if (error instanceof RestoreRecoveryRequired) holdForRestoreRecovery();
+        throw error;
+      });
+      if (!cleanupComplete) {
         console.warn(
           "pyxis: restore succeeded; old workspace cleanup remains pending",
         );
@@ -1188,14 +1255,6 @@ function registerIpc(): void {
       if (!selected[0]) return { status: "cancelled" };
       const target = join(selected[0], "Pyxis workspace");
       const original = workspacePath;
-      function savePath(path: string): void {
-        const temporary = userFile("config.json.tmp");
-        writeFileSync(
-          temporary,
-          JSON.stringify({ workspacePath: path }, null, 2),
-        );
-        renameSync(temporary, userFile("config.json"));
-      }
       try {
         await pauseCore();
       } catch (error) {
@@ -1206,14 +1265,14 @@ function registerIpc(): void {
       let move: Awaited<ReturnType<typeof stageWorkspaceMove>> | undefined;
       try {
         move = await stageWorkspaceMove(original, target);
-        savePath(move.path);
+        saveWorkspacePath(move.path);
         workspacePath = move.path;
         await startCore(true);
         holdCore = false;
       } catch (error) {
         await pauseCore();
         const recovery = move ? await move.recoveryPath() : original;
-        savePath(recovery);
+        saveWorkspacePath(recovery);
         workspacePath = recovery;
         if (move && recovery !== move.path) {
           // Refusal to delete a replaced destination must not select it.
@@ -1243,12 +1302,17 @@ function registerIpc(): void {
       await pauseCore();
       let keysCleared = false;
       try {
+        // A .wipe an earlier wipe left (a file in it was held) blocks a new one. Say so before the keys go.
+        recoverInterruptedWipe(workspacePath);
+        if (existsSync(join(workspacePath, ".wipe")))
+          throw new Error("wipe-folder-held");
         // SET-05: clear credentials before deleting study data, so an interrupted wipe cannot leave usable keys.
         // A later workspace deletion failure still leaves keys cleared, in keeping with the user's delete-all request.
         await keysChain;
         writeKeyStore(userFile("keys.json"), {});
         keysCleared = true;
-        wipeWorkspace(workspacePath);
+        if (!wipeWorkspace(workspacePath))
+          console.warn("pyxis: .wipe stays until the next start");
         if (!deleteBackups) return "wiped" as const;
         try {
           if (!autoBackups) throw new Error("backup-failed");
@@ -1269,9 +1333,13 @@ function registerIpc(): void {
         }
         throw keysCleared ? new Error("wipe-after-keys", { cause: err }) : err;
       } finally {
-        if (!existsSync(join(workspacePath, ".wipe"))) {
+        // Without INCOMPLETE nothing in .wipe has to come back: the wipe finished or was undone, whatever folder stayed.
+        if (!wipePending(workspacePath)) {
           ensureWorkspaceDirs(workspacePath);
           await resumeCore();
+        } else {
+          // Say so instead of leaving every screen waiting for a core that stays stopped.
+          mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
         }
       }
     } finally {
@@ -1392,7 +1460,8 @@ app.whenReady().then(() => {
     app.exit(1);
     return;
   }
-  if (existsSync(join(workspacePath, ".wipe"))) {
+  // A .wipe without INCOMPLETE is a finished wipe whose folder could not be deleted yet; only saved data stops here.
+  if (wipePending(workspacePath)) {
     console.error("pyxis: saved data is still in .wipe");
     app.exit(1);
     return;

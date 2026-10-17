@@ -665,6 +665,27 @@ function openLiveDatabase(file: string): Database.Database {
   }
 }
 
+/**
+ * Whether the workspace holds anything the student made or imported: a source, a plan, a chat or a whiteboard. An
+ * empty workspace is not backed up automatically. On a new computer set up to restore, that copy would be the newest
+ * file in a synced folder and look like the one to pick.
+ */
+export function hasStudyData(workspace: string): boolean {
+  const db = openLiveDatabase(join(workspace, "pyxis.db"));
+  try {
+    return (
+      db
+        .prepare(
+          `SELECT 1 FROM sources UNION ALL SELECT 1 FROM plans UNION ALL SELECT 1 FROM chats
+           UNION ALL SELECT 1 FROM whiteboards LIMIT 1`,
+        )
+        .get() !== undefined
+    );
+  } finally {
+    db.close();
+  }
+}
+
 /** Whether a job is queued or running. An automatic backup waits for them so it does not compete for the disk. */
 export function hasActiveJobs(workspace: string): boolean {
   const db = openLiveDatabase(join(workspace, "pyxis.db"));
@@ -805,7 +826,7 @@ function matches(path: string, expected: DirectoryIdentity): boolean {
   return info.dev === expected.dev && info.ino === expected.ino;
 }
 
-function syncDirectory(path: string): void {
+export function syncDirectory(path: string): void {
   // Windows does not support opening a directory for fsync. Journal files still sync.
   if (process.platform === "win32") return;
   const fd = openSync(path, "r");
@@ -924,12 +945,15 @@ function clearJournal(workspace: string): void {
   syncDirectory(dirname(workspace));
 }
 
+/** What recovery left live: no restore was in flight, the restored copy (its commit was recorded), or the original. */
+export type RestoreOutcome = "none" | "kept" | "rolled-back";
+
 /** Call while core is stopped, before creating a missing workspace directory. */
-export function recoverInterruptedRestore(workspace: string): void {
+export function recoverInterruptedRestore(workspace: string): RestoreOutcome {
   const record = readJournal(workspace);
   if (!record) {
     removeOrphanJournalTemp(workspace);
-    return;
+    return "none";
   }
   const staging = `${workspace}.restore`;
   const old = `${workspace}.old`;
@@ -946,7 +970,7 @@ export function recoverInterruptedRestore(workspace: string): void {
       removeTree(old);
     }
     clearJournal(workspace);
-    return;
+    return "kept";
   }
   const liveIsStaged = matches(workspace, record.staged);
   const stageExists = existsSync(staging);
@@ -974,6 +998,7 @@ export function recoverInterruptedRestore(workspace: string): void {
   }
   if (existsSync(staging)) removeTree(staging);
   clearJournal(workspace);
+  return "rolled-back";
 }
 
 /** Call after new core readiness. False means cleanup is pending, never rollback. */
