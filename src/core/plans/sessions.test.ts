@@ -139,7 +139,7 @@ describe("exam sessions", () => {
   });
 });
 
-describe("migration 19", () => {
+describe("migration 20", () => {
   const opened: Array<{ close: () => void }> = [];
   afterEach(() => {
     for (const db of opened) db.close();
@@ -150,14 +150,14 @@ describe("migration 19", () => {
     const file = join(mkdtempSync(join(tmpdir(), "pyxis-sessions-")), "pyxis.db");
     const db = openDatabase(file);
     db.exec("DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at;");
-    db.pragma("user_version = 18");
+    db.pragma("user_version = 19");
     db.prepare("INSERT INTO plans(id,title,status,exam_at,created_at,updated_at) VALUES('dated','A','ready',?,1,1)").run(noon(2026, 11, 20));
     db.prepare("INSERT INTO plans(id,title,status,created_at,updated_at) VALUES('undated','B','ready',1,1)").run();
     db.prepare("INSERT INTO plans(id,title,status,exam_at,created_at,updated_at) VALUES('far','C','ready',8640000000000000,1,1)").run();
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(19);
+    expect(again.pragma("user_version", { simple: true })).toBe(20);
     expect(readSessions(again, "dated")).toEqual([
       { id: "dated", date: noon(2026, 11, 20), time: null, place: null, label: null },
     ]);

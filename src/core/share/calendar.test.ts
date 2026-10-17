@@ -414,7 +414,7 @@ describe("exportCalendar", () => {
     db.prepare(
       "INSERT INTO subjects (id, name, position, created_at) VALUES ('s1', 'Fisica', 0, 1)",
     ).run();
-    // A plan's only session has the plan's id, as migration 19 gives an exam date the plan had before.
+    // A plan's only session has the plan's id, as migration 20 gives an exam date the plan had before.
     const add = (
       id: string,
       title: string,

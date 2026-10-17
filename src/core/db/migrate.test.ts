@@ -146,7 +146,9 @@ describe("migrate", () => {
     const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
     const db = openDatabase(file);
     db.pragma("user_version = 18");
-    db.exec("ALTER TABLE messages DROP COLUMN figures_json;");
+    db.exec(
+      "ALTER TABLE messages DROP COLUMN figures_json; DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at;",
+    );
     db.prepare(
       `INSERT INTO chats (id, title, created_at, updated_at) VALUES ('chat', 'Fisica', 1, 1)`,
     ).run();
