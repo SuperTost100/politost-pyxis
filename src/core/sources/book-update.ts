@@ -53,7 +53,7 @@ export function linkCatalogBooks(
  * The library source a catalog book already is, and whether a newer version can replace it in place. The exact
  * package counts first. Otherwise the newest usable library source linked to the book: `available` when it is ready
  * and older than the catalog, `running` while an update (or its first import) is being read. A linked source that is no
- * longer a smartbook (Replace before 0.3.2 turned books into PDFs and kept the link) is not the book.
+ * longer a smartbook is not the book: before 0.3.2, replacing a book with a document kept its catalog link.
  */
 export function bookState(
   db: Database.Database,

@@ -45,7 +45,6 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "reextract-unavailable": "sources.reextractUnavailable",
   "reextract-no-text": "sources.reextractNoText",
   "replace-no-text": "sources.replaceNoText",
-  "replace-smartbook": "sources.replaceSmartbook",
   "title-empty": "sources.titleEmpty",
   "books-offline": "sources.books.offline",
   "books-catalog": "sources.books.catalog",

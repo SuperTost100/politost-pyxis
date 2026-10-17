@@ -709,12 +709,7 @@ export function LibraryPanel({
             items: [
               { key: "details", label: t("sources.details") },
               { key: "rename", label: t("sources.rename") },
-              {
-                key: "replace",
-                label: t("sources.replace"),
-                // A free book gets new versions from the books list, not from a file.
-                disabled: source.kind === "smartbook",
-              },
+              { key: "replace", label: t("sources.replace") },
               {
                 key: "reextract",
                 label: t("sources.reextract"),
@@ -1447,7 +1442,6 @@ export function LibraryPanel({
             </Button>
             <Button
               shape="round"
-              disabled={detailSource?.kind === "smartbook"}
               onClick={() => void replace(sourceId).catch(fail)}
             >
               {t("sources.replace")}

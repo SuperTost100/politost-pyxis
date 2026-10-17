@@ -413,7 +413,6 @@
     "reextractUnavailable": "This source has no stored file to read again.",
     "reextractNoText": "Reading the file again found no text, so the earlier reading was kept.",
     "replaceNoText": "I found no text in the new file, so I kept the current version. To read a scan, add it as a new source.",
-    "replaceSmartbook": "A free PoliTost book can't be replaced with another file. Add the file as a new source; the book gets new versions from Free PoliTost books.",
     "smartbookBroken": "I can't open this smartbook because parts of the package are missing. Download it again, then add it.",
     "archiveTooLarge": "This file unpacks to more than I can safely open. Save a smaller copy or split it, then add it again.",
     "archiveUnreadable": "I can't open this file. It is damaged or saved in a format I don't support. Save it again, then add it.",

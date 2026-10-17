@@ -413,7 +413,6 @@
     "reextractUnavailable": "Di questa fonte non c'è un file salvato da rileggere.",
     "reextractNoText": "Rileggendo il file non è uscito testo, quindi è rimasta la lettura precedente.",
     "replaceNoText": "Nel nuovo file non ho trovato testo, quindi ho tenuto la versione attuale. Per leggere una scansione, aggiungila come nuova fonte.",
-    "replaceSmartbook": "Un libro PoliTost gratuito non si può sostituire con un altro file. Aggiungi il file come nuova fonte; le nuove versioni del libro arrivano da Libri PoliTost gratuiti.",
     "smartbookBroken": "Non riesco ad aprire questo smartbook perché mancano parti del pacchetto. Scaricalo di nuovo, poi aggiungilo.",
     "archiveTooLarge": "Una volta estratto, questo file è più grande di quanto posso aprire in sicurezza. Salvane una copia più piccola o dividilo, poi aggiungilo di nuovo.",
     "archiveUnreadable": "Non riesco ad aprire questo file. È danneggiato o salvato in un formato che non supporto. Salvalo di nuovo, poi aggiungilo.",
