@@ -56,8 +56,11 @@ export function SmartText({
       if (!onAnswer || questionId in answers || questionId in local) return;
       setFailed(null);
       setLocal((current) => ({ ...current, [questionId]: pick }));
-      onAnswer(questionId, pick).catch((error: unknown) => {
-        setLocal(({ [questionId]: _dropped, ...rest }) => rest);
+      // A local pick only bridges the save: once saved, `answers` holds it. Kept longer, it would mark the same
+      // question answered in the next lesson shown here, whose own answer would then never be saved.
+      const settle = () => setLocal(({ [questionId]: _settled, ...rest }) => rest);
+      onAnswer(questionId, pick).then(settle, (error: unknown) => {
+        settle();
         if (!(error as { dropped?: unknown } | null)?.dropped) setFailed(questionId);
       });
     },

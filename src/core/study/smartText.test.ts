@@ -177,6 +177,35 @@ describe("smart lessons", () => {
     db.close();
   });
 
+  it("counts each quick check of a topic's lesson once, however often it is rewritten", async () => {
+    const { db, planId, topicId, run, reply } = setup();
+    const mastery = () => planMastery(db, planId).find((t) => t.id === topicId)!.mastery;
+    const answerAll = (itemId: string, markdown: string) => {
+      for (const question of smartQuestions(parseSmartText(markdown)).values())
+        answerSmartCheck(db, { planId, itemId, blockId: question.id, pick: question.answer });
+    };
+    const lesson = await writeLesson(db, planId, topicId, run);
+    answerAll(lesson.itemId!, lesson.markdown);
+    // Four right answers of weight 0.5: 2 / (3 + 2).
+    expect(mastery()).toBeCloseTo(0.4);
+
+    // "Write it again" gives the same item new checks: the old answers leave with their checks, the new ones replace them.
+    reply(smartLesson.replaceAll("?", " ancora?").replace("Ripasso 1", "Ripasso uno"));
+    const again = await writeLesson(db, planId, topicId, run, { regenerate: true });
+    expect(again.itemId).toBe(lesson.itemId);
+    expect(mastery()).toBe(0);
+    answerAll(again.itemId!, again.markdown);
+    expect(mastery()).toBeCloseTo(0.4);
+
+    // Another wording is another lesson on the same topic: its answers take the places of the earlier ones.
+    reply(smartLesson.replaceAll("?", " in breve?").replace("Ripasso 1", "Ripasso primo"));
+    const simple = await writeLesson(db, planId, topicId, run, { wording: "simple" });
+    expect(simple.itemId).not.toBe(lesson.itemId);
+    answerAll(simple.itemId!, simple.markdown);
+    expect(mastery()).toBeCloseTo(0.4);
+    db.close();
+  });
+
   it("grades the option the reader sees, whatever order the model wrote", async () => {
     const { db, planId, topicId, run, reply } = setup();
     // The model always puts the right option first.

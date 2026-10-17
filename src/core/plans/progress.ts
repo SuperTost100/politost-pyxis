@@ -10,6 +10,7 @@ import {
   scoresForGap,
 } from "../study/gapRows";
 import { retrievability, type ScheduleState } from "../study/schedule";
+import { questionPlaces } from "../study/smartText";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { masteryFor, type MasteryEvent } from "../study/mastery";
@@ -146,16 +147,18 @@ export function weightedPlanMastery(
 function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   const rows = db
     .prepare(
-      `SELECT topic_id, kind, payload_json, created_at FROM learning_events
+      `SELECT topic_id, item_id, kind, payload_json, created_at FROM learning_events
        WHERE plan_id = ?`,
     )
     .all(planId) as Array<{
     topic_id: string | null;
+    item_id: string | null;
     kind: string;
     payload_json: string;
     created_at: number;
   }>;
   const blocked = flaggedIds(db, "exercise");
+  const places = questionPlaces(db, planId);
   const questionKinds = new Map<string, string>();
   const itemBodies = db
     .prepare(
@@ -253,6 +256,12 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
               ? 1
               : 0.5,
         attemptId: payload.attemptId,
+        ...(payload.evidenceKind === "check" && row.item_id && places.has(row.item_id)
+          ? {
+              checkPlace:
+                places.get(row.item_id)!.get(payload.blockId ?? "") ?? null,
+            }
+          : {}),
         answers: payload.questionScores?.map(({ id, score }) => ({ id, score })),
         evidenceKind:
           payload.evidenceKind ?? (legacySimulation ? "simulation" : undefined),
@@ -551,6 +560,8 @@ type ScorePayload = {
   scores?: number[];
   seconds?: number;
   evidenceKind?: "quiz" | "simulation" | "check" | "self";
+  /** The question a lesson's quick check answered. */
+  blockId?: string;
   questionScores?: Array<{
     id?: string;
     sourceIds?: string[];

@@ -15,6 +15,11 @@ export type SeriesEvent = {
   /** The attempt this event came from and its answers by question id, when recorded; links wrong answers to gaps. */
   attemptId?: string;
   answers?: Array<{ id?: string; score: number }>;
+  /**
+   * A quick check's place among its lesson's questions in the lesson's current text, or null when a rewrite removed the
+   * question. Unset when the lesson is unknown.
+   */
+  checkPlace?: number | null;
   kind: "quiz" | "card" | "lesson" | "active";
   seconds?: number;
 };
@@ -103,10 +108,32 @@ function meanMastery(studied: SeriesEvent[], until: number): number {
     : scores.reduce((sum, score) => sum + score, 0) / scores.length;
 }
 
+/**
+ * Quick checks count once per place in a topic's lesson: the latest answer at each place stands, so rewriting the lesson
+ * or reading it in another wording cannot add evidence, and a check a rewrite removed counts no more.
+ */
+function currentChecks(events: SeriesEvent[]): Set<SeriesEvent> {
+  const latest = new Map<string, SeriesEvent>();
+  for (const event of events) {
+    if (event.evidenceKind !== "check" || event.checkPlace == null) continue;
+    const key = `${event.topicId}\u0000${event.checkPlace}`;
+    const previous = latest.get(key);
+    if (!previous || previous.at <= event.at) latest.set(key, event);
+  }
+  return new Set(latest.values());
+}
+
 /** Legacy attempts retain their individual scores; missing answer kinds use quiz weight. */
 export function seriesEvidence(events: SeriesEvent[]): MasteryEvent[] {
+  const checks = currentChecks(events);
   return events.flatMap((event) => {
     if (event.kind !== "quiz") return [];
+    if (
+      event.evidenceKind === "check" &&
+      event.checkPlace !== undefined &&
+      !checks.has(event)
+    )
+      return [];
     return (event.scores ?? [event.score]).map((score, index) => ({
       topicId: event.topicId,
       kind: event.evidenceKind ?? "quiz",
