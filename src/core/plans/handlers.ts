@@ -37,6 +37,7 @@ import { exportPlan, importPlan } from "./file";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { readProfile } from "../profile/profile";
 import { planMastery, planSeries } from "./progress";
+import { dueEverywhere, savePlannerHours, sessionPlan, todayPlan } from "./planner";
 import { planDiskUsage } from "../share/usage";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
@@ -234,6 +235,18 @@ export function planHandlers(
     },
     recommend(input: { planId: string }) {
       return planGuide(db, input.planId);
+    },
+    today() {
+      return todayPlan(db);
+    },
+    planner() {
+      return sessionPlan(db);
+    },
+    plannerHours(input: { week?: string; hours: number | null }) {
+      return savePlannerHours(db, input);
+    },
+    dueEverywhere() {
+      return dueEverywhere(db);
     },
     complete(input: {
       planId: string;

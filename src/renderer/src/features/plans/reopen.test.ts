@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reopenPath } from "./reopen";
+import { reopenPath, stepPath } from "./reopen";
 
 const step = (activity: string, extra: Record<string, string | null> = {}) => ({
   activity,
@@ -34,5 +34,17 @@ describe("reopening a finished step", () => {
   it("has nowhere to go for a topic step without a topic", () => {
     expect(reopenPath("p", { activity: "lesson", topicId: null })).toBeNull();
     expect(reopenPath("p", { activity: "intro", topicId: null })).toBe("/plans/p/intro");
+  });
+});
+
+describe("opening a step to do", () => {
+  it("opens plan-wide steps, topic steps and gap drills", () => {
+    expect(stepPath("p", "intro", null)).toBe("/plans/p/intro");
+    expect(stepPath("p", "diagnostic", null)).toBe("/plans/p/diagnostic");
+    expect(stepPath("p", "simulation", null)).toBe("/plans/p/simulation");
+    expect(stepPath("p", "lesson", "t1")).toBe("/plans/p/lesson/t1");
+    expect(stepPath("p", "cards", "t1")).toBe("/plans/p/cards/t1");
+    expect(stepPath("p", "gaps", "t 1")).toBe("/plans/p/progress?drill=t%201");
+    expect(stepPath("p", "quiz", null)).toBeNull();
   });
 });

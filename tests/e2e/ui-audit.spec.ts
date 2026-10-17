@@ -40,6 +40,9 @@ const routes = [
   ["cards-browser-none", "/exams/cards"],
   ["cards-browser-edit", "/exams/cards"],
   ["cards-browser-delete", "/exams/cards"],
+  // Oggi's flashcards from every plan, and the session planner (the fixture's one plan has no exam date).
+  ["cards-due", "/cards/due"],
+  ["planner", "/exams/planner"],
   ["library-vision", "/exams/library"],
   ["shared", "/exams/get"],
   ["import-review", "/exams/get"],
