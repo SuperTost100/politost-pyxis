@@ -22,6 +22,7 @@ import {
   recoverInterruptedRestore,
   commitWorkspaceRestore,
   hasStudyData,
+  verifyBackupArchive,
 } from "./backup";
 
 const removal = vi.hoisted(() => ({
@@ -961,6 +962,81 @@ describe("hasStudyData", () => {
         expect(hasStudyData(root)).toBe(false);
       }
       db.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("verifyBackupArchive", { timeout: 30_000 }, () => {
+  function backedUp(root: string): string {
+    const source = join(root, "source");
+    mkdirSync(source);
+    const db = openDatabase(join(source, "pyxis.db"));
+    db.prepare(
+      "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('p1','Fisica','ready',1,1)",
+    ).run();
+    db.close();
+    const archive = join(root, "backup.zip");
+    backupWorkspace(source, archive);
+    return archive;
+  }
+
+  it("accepts a backup just written, and leaves nothing in the temporary folder", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-ok-"));
+    try {
+      const before = readdirSync(tmpdir()).filter((name) =>
+        name.startsWith("pyxis-verify-"),
+      );
+      expect(verifyBackupArchive(backedUp(root))).toBe(true);
+      expect(
+        readdirSync(tmpdir()).filter((name) => name.startsWith("pyxis-verify-")),
+      ).toEqual(before);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a missing file, a file that is not a zip and a truncated archive", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-bad-"));
+    try {
+      const archive = backedUp(root);
+      expect(verifyBackupArchive(join(root, "absent.zip"))).toBe(false);
+      writeFileSync(join(root, "text.zip"), "not a zip");
+      expect(verifyBackupArchive(join(root, "text.zip"))).toBe(false);
+      const bytes = readFileSync(archive);
+      writeFileSync(join(root, "cut.zip"), bytes.subarray(0, bytes.length - 40));
+      expect(verifyBackupArchive(join(root, "cut.zip"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an archive whose database fails integrity_check although the zip is well formed", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-db-"));
+    try {
+      const files = unzipSync(readFileSync(backedUp(root)));
+      const damaged = Uint8Array.from(files["pyxis.db"]!);
+      // Whole pages after the header: the CRC of the new zip matches, the database does not.
+      damaged.fill(0xa5, 4096, Math.min(damaged.length, 4096 * 3));
+      writeFileSync(
+        join(root, "damaged.zip"),
+        zipSync({ ...files, "pyxis.db": damaged }),
+      );
+      expect(verifyBackupArchive(join(root, "damaged.zip"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a flipped byte inside the compressed database", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-flip-"));
+    try {
+      const archive = backedUp(root);
+      const bytes = Uint8Array.from(readFileSync(archive));
+      bytes[Math.floor(bytes.length / 3)] = ~bytes[Math.floor(bytes.length / 3)]!;
+      writeFileSync(join(root, "flipped.zip"), bytes);
+      expect(verifyBackupArchive(join(root, "flipped.zip"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

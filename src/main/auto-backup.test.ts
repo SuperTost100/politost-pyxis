@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AUTO_BACKUP_NAME,
@@ -22,6 +22,7 @@ import {
   JOB_WAIT_LIMIT,
   autoBackupName,
   backupDue,
+  backupTime,
   checkBackupDestination,
   checkBackupFolder,
   deleteAutoBackups,
@@ -29,6 +30,7 @@ import {
   initialState,
   pruneAutoBackups,
   readAutoBackupState,
+  retainedBackups,
   removeStaleTemporaries,
   writeAutoBackupState,
   type AutoBackupDeps,
@@ -174,11 +176,13 @@ describe("retention", () => {
       join(folder, autoBackupName(new Date(2020, 0, 2, 0, 0, 0), ID)),
     );
 
-    expect(pruneAutoBackups(folder, ID).sort()).toEqual(automatic.slice(0, 2));
+    // The newest three, and the first of them to leave that window stays as the weekly one: 1 October is a Thursday,
+    // and 2 October is in the same week, so only that one goes.
+    expect(pruneAutoBackups(folder, ID)).toEqual([automatic[1]]);
     const left = readdirSync(folder);
-    for (const name of [...automatic.slice(2), ...others])
+    for (const name of [automatic[0]!, ...automatic.slice(2), ...others])
       expect(left).toContain(name);
-    expect(left).toHaveLength(3 + others.length + 2);
+    expect(left).toHaveLength(4 + others.length + 2);
     expect(readFileSync(outside, "utf8")).toBe("outside");
   });
 
@@ -192,9 +196,10 @@ describe("retention", () => {
     for (const name of [...older, written])
       writeFileSync(join(folder, name), "zip");
 
-    // Without the name the oldest-looking file is pruned: that is the bug this guards.
-    expect(pruneAutoBackups(folder, ID, 3, written)).toEqual([older[0]]);
-    expect(readdirSync(folder).sort()).toEqual([written, older[1], older[2]]);
+    // The new file counts as one of the three newest, so one of the others leaves that window: as the oldest one
+    // there it becomes the weekly backup. Without the name the oldest-looking file, the one just written, would go.
+    expect(pruneAutoBackups(folder, ID, 3, written)).toEqual([]);
+    expect(readdirSync(folder).sort()).toEqual([written, ...older].sort());
     expect(pruneAutoBackups(folder, ID, 3, written)).toEqual([]);
   });
 
@@ -208,17 +213,119 @@ describe("retention", () => {
     for (const name of [...mine, ...theirs, ...legacy])
       writeFileSync(join(folder, name), "zip");
 
-    expect(pruneAutoBackups(folder, ID, 3, mine[3])).toEqual([mine[0]]);
-    expect(readdirSync(folder).sort()).toEqual(
-      [...mine.slice(1), ...theirs, ...legacy].sort(),
-    );
-    // The other laptop prunes its own the same way, and leaves these alone.
-    expect(pruneAutoBackups(folder, OTHER, 3, theirs[4])).toEqual([
-      theirs[1],
-      theirs[0],
+    // 10 to 13 October fall in one week: the newest three stay, the first one is the weekly backup, nothing goes.
+    expect(pruneAutoBackups(folder, ID, 3, mine[3])).toEqual([]);
+    const moreMine = [14, 15, 16].map((n) => autoBackupName(day(n), ID));
+    for (const name of moreMine) writeFileSync(join(folder, name), "zip");
+    // Now 12 October (Monday) starts a new week, so it replaces 10 October as the weekly backup and 10 October
+    // becomes the monthly one; 11 and 13 October go.
+    expect(pruneAutoBackups(folder, ID, 3, moreMine[2])).toEqual([
+      mine[3],
+      mine[1],
     ]);
-    for (const name of [...mine.slice(1), ...legacy])
+    expect(readdirSync(folder).sort()).toEqual(
+      [mine[0]!, mine[2]!, ...moreMine, ...theirs, ...legacy].sort(),
+    );
+    // The other laptop prunes its own the same way, and leaves these alone: 1 to 4 October and the later 20 October.
+    expect(pruneAutoBackups(folder, OTHER, 3, theirs[4])).toEqual([theirs[1]]);
+    for (const name of [mine[0]!, mine[2]!, ...moreMine, ...legacy])
       expect(existsSync(join(folder, name))).toBe(true);
+  });
+
+  describe("weekly and monthly backups", () => {
+    const names = (days: number[], start = new Date(2026, 8, 1, 9, 0, 0)) =>
+      days.map((n) =>
+        autoBackupName(
+          new Date(
+            start.getFullYear(),
+            start.getMonth(),
+            start.getDate() + n,
+            9,
+          ),
+          ID,
+        ),
+      );
+    const kept = (list: string[], daily = 3) =>
+      [...retainedBackups(list, daily)].sort();
+
+    it("keeps everything while there are no more than the daily three", () => {
+      const list = names([0, 1, 2]);
+      expect(kept(list)).toEqual(list);
+      expect(kept([])).toEqual([]);
+    });
+
+    it("keeps the newest three, one weekly and one monthly after months of daily backups", () => {
+      // 1 September (a Tuesday) to 30 November 2026, one a day: day 90 is Monday 30 November.
+      const list = names(Array.from({ length: 91 }, (_, n) => n));
+      // Weekly: Monday 23 November, the first backup of the last week that has left the daily three.
+      // Monthly: Monday 2 November, the first weekly backup from a later month than the one before.
+      expect(kept(list)).toEqual(names([62, 83, 88, 89, 90]));
+    });
+
+    it("starts a week on Monday", () => {
+      // Sunday 6 September leaves the daily two first and becomes the weekly backup. Monday 7 is a later week, so it
+      // replaces it, and Sunday moves on to be the monthly one. Tuesday 8 shares Monday's week and is dropped.
+      const list = [6, 7, 8, 9, 10].map((day) =>
+        autoBackupName(new Date(2026, 8, day, 9), ID),
+      );
+      expect(kept(list, 2)).toEqual([list[0], list[1], list[3], list[4]]);
+    });
+
+    it("moves the monthly backup on only when the month changes", () => {
+      // One backup a week, daily window of one.
+      const list = [
+        [8, 14],
+        [8, 21],
+        [8, 28],
+        [9, 5],
+        [9, 12],
+        [9, 19],
+      ].map(([month, day]) =>
+        autoBackupName(new Date(2026, month!, day, 9), ID),
+      );
+      // 14 September stays as the monthly backup until 5 October, the first weekly backup from October, replaces it.
+      expect(kept(list.slice(0, 5), 1)).toEqual([list[0], list[3], list[4]]);
+      expect(kept(list, 1)).toEqual([list[3], list[4], list[5]]);
+    });
+
+    it("never keeps more than three plus two, whatever the gaps between backups", () => {
+      const list = names([
+        0, 1, 2, 9, 10, 11, 12, 40, 41, 75, 76, 77, 78, 79, 80, 120, 121,
+      ]);
+      const result = kept(list);
+      expect(result.length).toBeLessThanOrEqual(5);
+      expect(result.slice(-3)).toEqual(list.slice(-3));
+    });
+
+    it("gives the same result when replayed over what it kept, so nothing is lost between backups", () => {
+      let folder: string[] = [];
+      for (let day = 0; day < 120; day += 1) {
+        folder = [...folder, names([day])[0]!];
+        folder = folder.filter((name) => retainedBackups(folder).has(name));
+        expect(folder.length).toBeLessThanOrEqual(5);
+        // The newest three are always there, and a second pass changes nothing.
+        expect(folder.slice(-3)).toEqual(
+          names([day - 2, day - 1, day].filter((n) => n >= 0)),
+        );
+        expect(kept(folder)).toEqual(folder);
+      }
+    });
+
+    it("keeps a weekly backup 3 to 9 days old and a monthly one 10 to 45 days old once there is history", () => {
+      let folder: string[] = [];
+      for (let day = 0; day < 200; day += 1) {
+        folder = [...folder, names([day])[0]!];
+        folder = folder.filter((name) => retainedBackups(folder).has(name));
+        if (day < 70) continue;
+        const [monthly, weekly] = folder;
+        const age = (name: string) =>
+          Math.round((backupTime(folder.at(-1)!) - backupTime(name)) / DAY);
+        expect(age(weekly!)).toBeGreaterThanOrEqual(3);
+        expect(age(weekly!)).toBeLessThanOrEqual(9);
+        expect(age(monthly!)).toBeGreaterThanOrEqual(10);
+        expect(age(monthly!)).toBeLessThanOrEqual(45);
+      }
+    });
   });
 
   it("deletes this computer's backups and those without an ID on request, and keeps another computer's", () => {
@@ -421,6 +528,9 @@ describe("AutoBackups", () => {
       });
     let now = NOON;
     let busy = false;
+    /** File names the stand-in verifier reports as broken. */
+    const verifyFails = new Set<string>();
+    const verifyCalls: string[][] = [];
     const outcomes = [...(options.outcomes ?? [])];
     const runs: Array<{
       zip: string;
@@ -436,6 +546,10 @@ describe("AutoBackups", () => {
       busy: () => busy,
       now: () => now,
       changed: (status) => statuses.push(status),
+      verify: async (zips) => {
+        verifyCalls.push(zips.map((zip) => basename(zip)));
+        return zips.map((zip) => !verifyFails.has(basename(zip)));
+      },
       start: (zip, waitForJobs, requireData): LiveBackupRun => {
         runs.push({ zip, waitForJobs, requireData });
         const outcome = outcomes.shift() ?? "ok";
@@ -453,6 +567,8 @@ describe("AutoBackups", () => {
       stateFile,
       runs,
       statuses,
+      verifyFails,
+      verifyCalls,
       make,
       backups: make(),
       setNow: (value: number) => {
@@ -529,7 +645,7 @@ describe("AutoBackups", () => {
       t.setNow(NOON + day * DAY);
       expect(await t.backups.check()).toBe("saved");
     }
-    const mine = [1, 2, 3].map((day) =>
+    const mine = [0, 1, 2, 3].map((day) =>
       autoBackupName(new Date(NOON + day * DAY), t.id()),
     );
     expect(readdirSync(folder).sort()).toEqual(
@@ -537,18 +653,189 @@ describe("AutoBackups", () => {
     );
   });
 
-  it("keeps three automatic backups in its folder after each success", async () => {
+  it("keeps the newest three and a weekly backup in its folder after each success", async () => {
     const t = setup();
     for (let day = 0; day < 5; day += 1) {
       t.setNow(NOON + day * DAY);
       expect(await t.backups.check()).toBe("saved");
     }
     const folder = join(t.documents, "Pyxis backups");
+    // Tuesday to Saturday of one week: the first backup stays as the weekly one, the second is dropped.
     expect(readdirSync(folder).sort()).toEqual(
-      [2, 3, 4].map((day) =>
+      [0, 2, 3, 4].map((day) =>
         autoBackupName(new Date(NOON + day * DAY), t.id()),
       ),
     );
+  });
+
+  it("records a backup as verified, and a failed check as a failure that prunes nothing", async () => {
+    const t = setup({ outcomes: ["ok", new BackupError("backup-unverified")] });
+    const folder = join(t.documents, "Pyxis backups");
+    mkdirSync(folder);
+    writeAutoBackupState(t.stateFile, { ...initialState, backupId: ID });
+    // Six old backups: a successful backup would prune some of them.
+    const old = [1, 2, 3, 4, 5, 6].map((day) =>
+      autoBackupName(new Date(2026, 8, day * 4, 9, 0, 0), ID),
+    );
+    for (const name of old) writeFileSync(join(folder, name), "zip");
+
+    expect(await t.backups.check()).toBe("saved");
+    expect(t.backups.status().last).toMatchObject({ ok: true, verified: true });
+    expect(readAutoBackupState(t.stateFile).last).toMatchObject({
+      ok: true,
+      verified: true,
+    });
+    const after = readdirSync(folder).sort();
+    // Daily: 20 and 24 September and the new one. Weekly: 16 September. Monthly: 4 September.
+    expect(after).toEqual(
+      [
+        old[0],
+        old[3],
+        old[4],
+        old[5],
+        autoBackupName(new Date(NOON), ID),
+      ].sort(),
+    );
+
+    t.setNow(NOON + DAY);
+    expect(await t.backups.check()).toBe("failed");
+    // The broken archive never reached the folder's kept files: nothing was pruned for it.
+    expect(readdirSync(folder).sort()).toEqual(after);
+    expect(t.backups.status()).toMatchObject({
+      notice: "unverified",
+      last: { ok: false, reason: "unverified" },
+      // The last good backup is still the one from before.
+      lastSuccessAt: NOON,
+    });
+  });
+
+  it("reads a status saved before backups were checked as not verified", () => {
+    const t = setup();
+    writeFileSync(
+      t.stateFile,
+      JSON.stringify({
+        last: { at: NOON, ok: true, size: 5 },
+        lastSuccessAt: NOON,
+      }),
+    );
+    expect(t.backups.status().last).toEqual({
+      at: NOON,
+      ok: true,
+      size: 5,
+      verified: false,
+    });
+  });
+
+  describe("the list of backups to restore", () => {
+    function folderWith(t: ReturnType<typeof setup>) {
+      const folder = join(t.documents, "Pyxis backups");
+      mkdirSync(folder);
+      writeAutoBackupState(t.stateFile, { ...initialState, backupId: ID });
+      const at = (day: number) => new Date(2026, 9, day, 9, 30, 0);
+      const files = {
+        mine: [1, 2, 3].map((day) => autoBackupName(at(day), ID)),
+        theirs: autoBackupName(at(4), OTHER),
+        legacy: legacyName(at(5)),
+      };
+      for (const name of [...files.mine, files.theirs, files.legacy])
+        writeFileSync(join(folder, name), "x".repeat(10));
+      writeFileSync(join(folder, "notes.txt"), "keep");
+      writeFileSync(join(folder, "pyxis-backup.zip"), "keep");
+      return { folder, files, at };
+    }
+
+    it("shows the backups of every computer that pass their check, newest first, with date and size", async () => {
+      const t = setup();
+      const { files, at } = folderWith(t);
+      t.verifyFails.add(files.mine[1]!);
+      expect(await t.backups.list()).toEqual([
+        { name: files.legacy, at: at(5).getTime(), size: 10 },
+        { name: files.theirs, at: at(4).getTime(), size: 10 },
+        { name: files.mine[2], at: at(3).getTime(), size: 10 },
+        { name: files.mine[0], at: at(1).getTime(), size: 10 },
+      ]);
+      // A backup that does not verify is left out of the list, not deleted.
+      expect(
+        existsSync(join(t.documents, "Pyxis backups", files.mine[1]!)),
+      ).toBe(true);
+    });
+
+    it("checks each file once, and again when it changes", async () => {
+      const t = setup();
+      const { folder, files } = folderWith(t);
+      await t.backups.list();
+      expect(t.verifyCalls).toHaveLength(1);
+      expect(t.verifyCalls[0]).toHaveLength(5);
+      await t.backups.list();
+      expect(t.verifyCalls).toHaveLength(1);
+      writeFileSync(join(folder, files.mine[0]!), "now a different size");
+      await t.backups.list();
+      expect(t.verifyCalls.at(-1)).toEqual([files.mine[0]]);
+    });
+
+    it("does not check the backup it just wrote again", async () => {
+      const t = setup();
+      expect(await t.backups.check()).toBe("saved");
+      const [file] = await t.backups.list();
+      expect(file).toMatchObject({
+        name: autoBackupName(new Date(NOON), t.id()),
+        size: 12,
+      });
+      expect(t.verifyCalls).toEqual([]);
+    });
+
+    it("answers with one check when asked twice at once", async () => {
+      const t = setup();
+      folderWith(t);
+      const [a, b] = await Promise.all([t.backups.list(), t.backups.list()]);
+      expect(a).toEqual(b);
+      expect(t.verifyCalls).toHaveLength(1);
+    });
+
+    it("is empty when the folder is not there, and leaves out what could not be checked", async () => {
+      const t = setup();
+      expect(await t.backups.list()).toEqual([]);
+      folderWith(t);
+      const failing = new AutoBackups({
+        stateFile: t.stateFile,
+        defaultFolder: () => join(t.documents, "Pyxis backups"),
+        workspace: () => join(t.root, "userData", "workspace"),
+        userData: join(t.root, "userData"),
+        busy: () => false,
+        changed: () => undefined,
+        verify: async () => {
+          throw new Error("worker-failed");
+        },
+        start: () => ({ done: Promise.resolve(), stop: async () => undefined }),
+      });
+      expect(await failing.list()).toEqual([]);
+    });
+
+    it("turns a listed name into a path in the backup folder and nothing else", () => {
+      const t = setup();
+      const { folder, files } = folderWith(t);
+      expect(t.backups.resolve(files.mine[0]!)).toBe(
+        join(folder, files.mine[0]!),
+      );
+      expect(t.backups.resolve(files.legacy)).toBe(join(folder, files.legacy));
+      const outside = join(t.root, "outside.zip");
+      writeFileSync(outside, "zip");
+      const link = autoBackupName(new Date(2026, 9, 9, 9, 0, 0), ID);
+      symlinkSync(outside, join(folder, link));
+      const directory = autoBackupName(new Date(2026, 9, 8, 9, 0, 0), ID);
+      mkdirSync(join(folder, directory));
+      for (const name of [
+        "../outside.zip",
+        join(t.root, "outside.zip"),
+        "notes.txt",
+        "pyxis-backup.zip",
+        `${files.mine[0]}/..`,
+        autoBackupName(new Date(2026, 9, 7, 9, 0, 0), ID),
+        link,
+        directory,
+      ])
+        expect(() => t.backups.resolve(name)).toThrow("backup-missing");
+    });
   });
 
   it("does nothing while off", async () => {
@@ -708,7 +995,8 @@ describe("AutoBackups", () => {
     t.setNow(new Date(2025, 9, 1, 9, 0, 0).getTime());
     expect(await t.make().check()).toBe("saved");
     const written = autoBackupName(new Date(2025, 9, 1, 9, 0, 0), ID);
-    expect(readdirSync(folder).sort()).toEqual([written, older[1], older[2]]);
+    // The written backup is one of the newest three; the other two and the weekly one stay with it.
+    expect(readdirSync(folder).sort()).toEqual([written, ...older].sort());
   });
 
   it("stops its timers on dispose and no longer checks", async () => {
@@ -739,6 +1027,7 @@ describe("AutoBackups", () => {
       busy: () => false,
       now: () => NOON,
       changed: () => undefined,
+      verify: async (zips) => zips.map(() => true),
       start: (zip) => ({
         done: new Promise<void>((resolve) => {
           finish = () => {
@@ -777,6 +1066,7 @@ describe("AutoBackups", () => {
       busy: () => false,
       now: () => NOON,
       changed: () => undefined,
+      verify: async (zips) => zips.map(() => true),
       start: () => ({
         done: new Promise<void>((_, reject) => {
           fail = () => reject(new BackupError("backup-failed", "ENOSPC"));
@@ -809,6 +1099,7 @@ describe("AutoBackups", () => {
       busy: () => false,
       now: () => NOON,
       changed: () => undefined,
+      verify: async (zips) => zips.map(() => true),
       start: () => ({
         done: new Promise<void>((_, reject) => {
           release = () => reject(new BackupError("backup-cancelled"));

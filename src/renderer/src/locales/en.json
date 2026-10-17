@@ -1391,7 +1391,7 @@
     "autoBackup": {
       "title": "Automatic backups",
       "switch": "Back up automatically",
-      "on": "Once a day while Pyxis is open. Pyxis keeps its 3 newest copies in this folder and deletes older ones it made.",
+      "on": "Once a day while Pyxis is open. Pyxis keeps the 3 newest copies, one from about a week ago and one from about a month ago, and deletes the other copies it made.",
       "off": "Off. Pyxis makes no copies on its own. Back up now still saves one here.",
       "folder": "Folder: {{path}}",
       "change": "Change folder",
@@ -1400,10 +1400,21 @@
       "running": "Backing up. You can keep studying.",
       "never": "No automatic backup yet.",
       "saved": "Last backup: {{at}}, {{size}}.",
+      "savedVerified": "Last backup: {{at}}, {{size}}, verified.",
       "failed": "The backup of {{at}} did not finish.",
       "lastGood": "The last complete backup is from {{at}}.",
       "fix": "Backup settings",
       "dismissFailed": "Pyxis could not hide this notice. Try again.",
+      "list": {
+        "title": "Restore an automatic backup",
+        "hint": "Pyxis checks each copy before it lists it.",
+        "loading": "Checking the copies in the backup folder.",
+        "empty": "No automatic copy to restore yet. The first one appears after the next backup.",
+        "failed": "Pyxis could not read the backup folder.",
+        "retry": "Try again",
+        "restore": "Restore",
+        "restoreOne": "Restore the copy of {{at}}"
+      },
       "notice": "The automatic backup did not finish. {{reason}}",
       "reason": {
         "folder-missing": "The backup folder is not available. Connect the drive it is on, or choose another folder.",
@@ -1412,6 +1423,7 @@
         "disk-full": "The disk is full. Free some space, or choose a folder on another disk.",
         "too-large": "I can back up at most {{limit}} GB, and this workspace holds {{size}} GB. Remove sources you no longer need, or turn automatic backups off.",
         "too-many-files": "This workspace has more files than one backup can hold. Remove sources you no longer need, or turn automatic backups off.",
+        "unverified": "The new copy did not pass its check, so Pyxis deleted it and kept your earlier copies. Try Back up now. If it fails again, choose another folder.",
         "failed": "Try Back up now. If it fails again, choose another folder."
       },
       "short": {
@@ -1421,8 +1433,19 @@
         "disk-full": "The disk with the backup folder is full.",
         "too-large": "This workspace is larger than one backup can hold.",
         "too-many-files": "This workspace has more files than one backup can hold.",
+        "unverified": "The new copy did not pass its check.",
         "failed": "Pyxis could not write the copy."
       }
+    },
+    "reminders": {
+      "title": "Study reminders",
+      "switch": "Remind me to review",
+      "off": "Off. Pyxis sends no notifications.",
+      "on": "Once a day Pyxis shows a notification with the flashcards due and, when an exam is near, how many days are left. It appears only while Pyxis is open, and clicking it opens that exam.",
+      "time": "Time",
+      "quiet": "A day with no flashcards due sends nothing.",
+      "unsupported": "This computer does not show notifications from Pyxis. Allow them in the system settings.",
+      "valueOff": "Off"
     },
     "restoreFailed": "That file is not a valid backup.",
     "restoreRolledBack": "The restore could not finish, so Pyxis went back to the data you had before it. Nothing from the backup was kept.",

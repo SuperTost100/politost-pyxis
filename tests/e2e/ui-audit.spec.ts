@@ -52,6 +52,7 @@ const routes = [
     "engines",
     "tutor",
     "reading",
+    "reminders",
     "appearance",
     "language",
     "data",
@@ -769,7 +770,7 @@ function prepareBackupState(name: string) {
     folder: null,
     lastSuccessAt: at,
     lastAttemptAt: at,
-    last: { at, ok: true, size: 48_213_504 },
+    last: { at, ok: true, size: 48_213_504, verified: true },
     toldTooLarge: false,
   };
   const states: Record<string, unknown> = {

@@ -18,6 +18,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
@@ -1020,6 +1021,38 @@ export function commitWorkspaceRestore(workspace: string): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Whether the archive can be restored as far as its database goes: the zip index is well formed, `pyxis.db` inflates
+ * with a matching CRC, and the database passes the checks a restore runs on its staging copy (`integrity_check`, foreign
+ * keys, schema version, the tables Pyxis needs). Blobs are not unpacked, so a damaged blob is only found by a restore.
+ * Needs room for the database in the temporary folder.
+ */
+export function verifyBackupArchive(zipPath: string): boolean {
+  let fd: number;
+  try {
+    fd = openSync(zipPath, "r");
+  } catch {
+    return false;
+  }
+  let staging: string | undefined;
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile()) return false;
+    const entry = readArchiveIndex(fd, info.size).find(
+      (item) => item.name === "pyxis.db",
+    );
+    if (!entry) return false;
+    staging = mkdtempSync(join(tmpdir(), "pyxis-verify-"));
+    extractEntry(fd, entry, staging, { total: 0 });
+    return isPyxisBackup(join(staging, "pyxis.db"));
+  } catch {
+    return false;
+  } finally {
+    closeSync(fd);
+    if (staging) removeTree(staging);
   }
 }
 

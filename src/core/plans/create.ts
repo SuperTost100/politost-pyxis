@@ -318,7 +318,7 @@ export function readPlan(db: Database.Database, planId: string) {
   };
 }
 
-function daysUntil(examAt: number, now: number): number {
+export function daysUntil(examAt: number, now: number): number {
   const exam = new Date(examAt);
   exam.setHours(0, 0, 0, 0);
   const today = new Date(now);
