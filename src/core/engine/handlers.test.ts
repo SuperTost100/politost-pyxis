@@ -173,6 +173,45 @@ describe("engine status and login recovery", () => {
     expect(rows[0]).toMatchObject({ id: "anthropic-api", loggedIn: false });
     db.close();
   });
+  it("shares one provider scan between callers that ask while it runs", async () => {
+    const db = openDatabase(":memory:");
+    let scans = 0;
+    let finish!: () => void;
+    const fake = {
+      overview: async () => {
+        scans += 1;
+        await new Promise<void>((resolve) => (finish = resolve));
+        return [
+          {
+            id: "claude",
+            displayName: "Claude Code",
+            installation: { installed: true },
+            auth: { loggedIn: true },
+            capabilities: { effort: true, fast: false, access: ["none"] },
+          },
+        ];
+      },
+    } as unknown as ReturnType<typeof getFunnel>;
+    const real = vi.mocked(getFunnel).getMockImplementation()!;
+    vi.mocked(getFunnel).mockImplementation(() => fake);
+    try {
+      const handlers = engineHandlers(db, () => undefined);
+      const launch = handlers.overview();
+      const screen = handlers.overview();
+      await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+      finish();
+      expect(await launch).toEqual(await screen);
+      expect(scans).toBe(1);
+      // A later call scans again.
+      const later = handlers.overview();
+      await vi.waitFor(() => expect(scans).toBe(2));
+      finish();
+      await later;
+    } finally {
+      vi.mocked(getFunnel).mockImplementation(real);
+      db.close();
+    }
+  });
   it("reports a failed background login without an unhandled rejection or stale code session", async () => {
     const db = openDatabase(":memory:");
     const emit = vi.fn();

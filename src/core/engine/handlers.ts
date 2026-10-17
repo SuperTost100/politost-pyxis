@@ -10,14 +10,17 @@ import {
 import { translateEngineError } from "./errors";
 import {
   acknowledgeProviders,
+  endConversations,
   getFunnel,
   isProviderAcknowledged,
   runTurn,
+  shellPathReady,
   type ProviderId,
 } from "./funnel";
+import { clearSignOut } from "./bench";
 import { effortsOf, rememberModels, resolveEffort } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
-import type { StoredSelection } from "./selection";
+import { rememberReady, type StoredSelection } from "./selection";
 
 const features = [
   "default",
@@ -101,7 +104,26 @@ type OverviewRow = {
   capabilities: { effort: boolean; fast: boolean; signOut: boolean };
 };
 
-async function overviewRows(): Promise<OverviewRow[]> {
+let scanning: Promise<OverviewRow[]> | null = null;
+
+/** One provider scan at a time: the launch check, the automatic choice and the engine screen share a scan in progress. */
+function overviewRows(): Promise<OverviewRow[]> {
+  scanning ??= scanProviders().finally(() => {
+    scanning = null;
+  });
+  return scanning;
+}
+
+async function scanProviders(): Promise<OverviewRow[]> {
+  const rows = await readProviders();
+  // An engine skipped after a sign-out is back once a scan finds it signed in.
+  for (const row of rows) if (isReady(row)) clearSignOut(row.id);
+  return rows;
+}
+
+async function readProviders(): Promise<OverviewRow[]> {
+  // Detection looks for the CLIs on the login shell's PATH, which core reads in the background at launch.
+  await shellPathReady();
   // CLI Funnel also lists providers Pyxis does not offer yet, such as Ollama.
   const rows = (await getFunnel().overview()).filter((row) =>
     providers.has(row.id),
@@ -180,6 +202,8 @@ export async function autoConfigureEngines(
   // A failed model listing is not proof that the engine went away. Keep the
   // current choices rather than blanking them.
   const unreadable = failed > 0 && listed.length === 0;
+  // A task whose engine hits a usage limit switches to the next one from this list.
+  if (!unreadable) rememberReady(listed);
   const plan = planAuto(listed);
   const now = Date.now();
   const apply = db.transaction(() => {
@@ -320,6 +344,7 @@ export function engineHandlers(
       return run;
     },
     async models(input: { provider: ProviderId }) {
+      await shellPathReady();
       const list = await getFunnel().models(input.provider);
       rememberModels(input.provider, list);
       return list.map((model) => ({
@@ -431,6 +456,8 @@ export function engineHandlers(
         }),
         now,
       );
+      // A chat that talked to the old engine starts over with the new one.
+      endConversations();
       return { warning };
     },
     /** Sets, or with no `effort` clears, the student's reasoning effort for one task. */
@@ -449,11 +476,7 @@ export function engineHandlers(
         ...rest
       } = JSON.parse(row.selection_json) as StoredSelection;
       const listed = effortsOf(rest.provider, rest.model);
-      if (
-        input.effort &&
-        (rest.provider.endsWith("-api") ||
-          (listed && !listed.includes(input.effort)))
-      )
+      if (input.effort && listed && !listed.includes(input.effort))
         throw new IpcError(
           "invalid-selection",
           "engines.errors.invalid-selection",
@@ -475,6 +498,7 @@ export function engineHandlers(
         Date.now(),
         input.feature,
       );
+      endConversations();
       return { ok: true as const };
     },
     clearFeature(input: {
@@ -483,6 +507,7 @@ export function engineHandlers(
       db.prepare(`DELETE FROM feature_engines WHERE feature = ?`).run(
         input.feature,
       );
+      endConversations();
       reconfigureSoon();
       return { ok: true as const };
     },
@@ -501,6 +526,7 @@ export function engineHandlers(
       db.prepare(
         "DELETE FROM feature_engines WHERE json_extract(selection_json, '$.provider') = ?",
       ).run(input.provider);
+      endConversations();
       reconfigureSoon();
       return { ok: true as const };
     },
@@ -515,6 +541,8 @@ export function engineHandlers(
         throw new IpcError("unsupported", "engines.signOutUnsupported");
       loginSessions.get(input.provider)?.cancel();
       loginSessions.delete(input.provider);
+      endConversations();
+      await shellPathReady();
       await getFunnel().logout(input.provider);
       if (options.auto) await reconfigure();
       return { ok: true as const };
@@ -526,6 +554,7 @@ export function engineHandlers(
         input.provider.endsWith("-api")
       )
         throw new IpcError("unsupported", "engines.disabled");
+      await shellPathReady();
       const result = await getFunnel().update(input.provider);
       if (result.changed && options.auto) await reconfigure();
       return {
