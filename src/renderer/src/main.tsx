@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import "./locales/i18n";
+import "./lib/focusSource";
 import "./design-system/tokens/tokens.css";
 import "./styles/global.css";
 

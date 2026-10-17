@@ -194,7 +194,7 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText("Nuovo esame")).toBeVisible();
-    await expect(dialog.getByText("Gira la scheda")).toBeVisible();
+    await expect(dialog.getByText("Gira la flashcard")).toBeVisible();
     await expect(dialog.getByText("Annulla l'ultimo tratto")).toBeVisible();
     await expect(
       dialog.getByText("Controlla una risposta scritta"),

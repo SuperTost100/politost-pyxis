@@ -748,7 +748,7 @@ function prepareCardBrowser(name: string) {
       INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,suspended,grounding,created_at) VALUES
         ('audit-card-z','audit-chem-plan','audit-atoms','Che cos’è il numero atomico?','Il numero di protoni nel nucleo, $Z$.','z1',0,'sources',1),
         ('audit-card-bohr','audit-chem-plan','audit-atoms','Perché l’atomo di Bohr non spiega gli spettri di tutti gli elementi, compresi quelli con molti elettroni e interazioni tra loro?','Perché trascura la repulsione tra elettroni.','z2',1,'sources',2),
-        ('audit-card-loose','audit-loose-plan','audit-loose-topic','Una scheda senza materia','Resta nel gruppo finale.','z3',0,'sources',1);
+        ('audit-card-loose','audit-loose-plan','audit-loose-topic','Una flashcard senza materia','Resta nel gruppo finale.','z3',0,'sources',1);
       INSERT INTO cards(id,plan_id,topic_id,front,back,grounding,created_at) VALUES
         ('audit-card-cloze','audit-chem-plan','audit-atoms','Gli {{c1::elettroni}} occupano i {{c2::livelli}} di energia.','Modello a gusci.','sources',3);`);
     db.prepare(
@@ -2160,18 +2160,18 @@ async function openState(page: Page, name: string) {
     case "cards-browser-empty":
       await expect(
         page.getByRole("heading", {
-          name: both("Ancora nessuna scheda", "No flashcards yet"),
+          name: both("Ancora nessuna flashcard", "No flashcards yet"),
         }),
       ).toBeVisible();
       break;
     case "cards-browser-none":
       await page
         .getByRole("textbox", {
-          name: both("Cerca nelle schede", "Search cards"),
+          name: both("Cerca nelle flashcard", "Search flashcards"),
         })
         .fill("zzzz");
       await expect(
-        page.getByText(both("Nessuna scheda corrisponde.", "No card matches.")),
+        page.getByText(both("Nessuna flashcard corrisponde.", "No flashcard matches.")),
       ).toBeVisible();
       break;
     case "cards-browser-edit":
@@ -2206,6 +2206,48 @@ async function openState(page: Page, name: string) {
         await expect(dialog.last().getByText(/copyright/i)).toBeVisible();
       }
       break;
+  }
+}
+
+/**
+ * The 2px focus ring on antd's Select and DatePicker (the theme turns off their glow) and on the Ask composer
+ * shows when focus arrived by keyboard and stays off for a click. A key press before a programmatic focus()
+ * stands in for Tab: the ring follows the input that led to the focus, not the call that moved it.
+ */
+async function focusRingChecks(page: Page, name: string) {
+  const cases: { field: string; frame: string }[] = [];
+  if (name === "exams")
+    cases.push({ field: "#plan-subject-filter", frame: ".ant-select-focused" });
+  if (name === "ask-new")
+    cases.push({ field: ".px-composer-field", frame: ".px-composer" });
+  if (name.startsWith("wizard-") && (await page.locator("#plan-date").isVisible()))
+    cases.push({ field: "#plan-date", frame: ".ant-picker-focused" });
+  const outline = (frame: string) =>
+    page
+      .locator(frame)
+      .first()
+      .evaluate((el) => {
+        const style = getComputedStyle(el);
+        return `${style.outlineStyle} ${style.outlineWidth}`;
+      });
+  const release = async () => {
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  };
+  for (const { field, frame } of cases) {
+    await release();
+    await page.keyboard.press("Shift");
+    await page.locator(field).focus();
+    expect(await outline(frame), `${name}: keyboard focus on ${field} shows the ring`).toBe(
+      "solid 2px",
+    );
+    await release();
+    await page.locator(field).click({ force: true });
+    expect(
+      await outline(frame),
+      `${name}: a click on ${field} leaves the ring off`,
+    ).toMatch(/^none/);
+    await release();
   }
 }
 
@@ -2303,6 +2345,8 @@ async function keyboardCheck(page: Page, name: string) {
     ).toBe(true);
     await expect(code).toHaveCSS("outline-style", "solid");
   }
+  if (name === "exams" || name === "ask-new" || name.startsWith("wizard-"))
+    await focusRingChecks(page, name);
   if (name === "quiz") {
     const first = page.locator("button[aria-keyshortcuts='1']");
     const second = page.locator("button[aria-keyshortcuts='2']");

@@ -193,7 +193,11 @@ export function Shell() {
       <LaunchEngineNotice ready={profile.isSuccess && Boolean(profile.data)} />
       <PageContainer
         header={{ title: false, breadcrumb: {} }}
-        className="px-shell-container"
+        className={
+          location.pathname.startsWith("/settings")
+            ? "px-shell-container px-shell-wide"
+            : "px-shell-container"
+        }
       >
         <div className="shell-page">
           {activeSimulation.data ? (
