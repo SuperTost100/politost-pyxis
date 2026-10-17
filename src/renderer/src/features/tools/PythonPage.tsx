@@ -1,12 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button, Input } from "antd";
-import { useState } from "react";
+import { Button, Input, Popconfirm } from "antd";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
-import { useMenuLock } from "../../app/menu-state";
+import { IconButton } from "../../components/IconButton";
 import { pythonMaxChars } from "../../components/pythonRun";
 import { invoke } from "../../lib/ipc";
 import { useJobs } from "../jobs/queries";
+import {
+  addSnippet,
+  readCode,
+  readSnippets,
+  writeCode,
+  writeSnippets,
+  type Snippet,
+} from "./pythonCode";
 import "./PythonPage.css";
 
 const INITIAL_CODE = "print(1 + 1)";
@@ -18,9 +26,15 @@ export function PythonPage() {
       minimumFractionDigits: 1,
       maximumFractionDigits: 1,
     }).format(bytes / 1e6);
-  const [code, setCode] = useState(INITIAL_CODE);
-  // Code the student changed is not saved anywhere, so the menu leaves the page alone until it is back to the example.
-  useMenuLock(code !== INITIAL_CODE);
+  // The code is saved as it is typed, so the menu and the router may leave the page at any time.
+  // Code somewhat over the run limit still comes back, so the student can trim it.
+  const [code, setCode] = useState(() =>
+    readCode(localStorage, INITIAL_CODE, pythonMaxChars * 2),
+  );
+  const [snippets, setSnippets] = useState<Snippet[]>(() =>
+    readSnippets(localStorage, pythonMaxChars),
+  );
+  useEffect(() => writeCode(localStorage, code), [code]);
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
   const [images, setImages] = useState<string[]>([]);
@@ -40,6 +54,21 @@ export function PythonPage() {
   });
   const ready = runtime.data?.phase === "ready";
   const tooLong = code.length > pythonMaxChars;
+  const canRun = ready && !tooLong && !busy;
+  // Opening a snippet replaces the editor, so ask first when that would lose code that is not saved anywhere else.
+  const unsaved =
+    code.trim() !== "" &&
+    code !== INITIAL_CODE &&
+    !snippets.some((item) => item.code === code);
+  function keepSnippets(next: Snippet[]) {
+    setSnippets(next);
+    writeSnippets(localStorage, next);
+  }
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    if (canRun) void run();
+  }
   const megabytes = mb(runtime.data?.totalBytes ?? 0);
   async function download() {
     setStarting(true);
@@ -84,7 +113,7 @@ export function PythonPage() {
   }
   return (
     <FocusLayout title={t("python.title")}>
-      <section className="px-python">
+      <section className="px-python" onKeyDown={onKeyDown}>
         {!ready && runtime.data ? (
           <div className="px-python-consent" role="group">
             <p className="body-strong">{t("python.consentTitle")}</p>
@@ -135,13 +164,16 @@ export function PythonPage() {
           </div>
         ) : null}
         <p className="small">{t("python.sessionFiles")}</p>
-        <Input.TextArea
-          aria-label={t("python.code")}
-          value={code}
-          rows={10}
-          onChange={(event) => setCode(event.target.value)}
-          spellCheck={false}
-        />
+        <div data-keeps-draft>
+          <Input.TextArea
+            aria-label={t("python.code")}
+            aria-keyshortcuts="Control+Enter Meta+Enter"
+            value={code}
+            rows={10}
+            onChange={(event) => setCode(event.target.value)}
+            spellCheck={false}
+          />
+        </div>
         <div className="px-python-actions">
           <Button
             type="primary"
@@ -151,6 +183,13 @@ export function PythonPage() {
             onClick={() => void run()}
           >
             {t("python.run")}
+          </Button>
+          <Button
+            shape="round"
+            disabled={!code.trim() || tooLong}
+            onClick={() => keepSnippets(addSnippet(snippets, code))}
+          >
+            {t("python.saveSnippet")}
           </Button>
           {busy ? (
             <span className="meta" role="status">
@@ -167,6 +206,48 @@ export function PythonPage() {
           <p className="small" role="status">
             {notice}
           </p>
+        ) : null}
+        {snippets.length ? (
+          <section
+            className="px-python-snippets"
+            aria-labelledby="px-python-snippets"
+          >
+            <h2 id="px-python-snippets" className="label">
+              {t("python.snippets")}
+            </h2>
+            <ul>
+              {snippets.map((snippet, index) => (
+                <li key={snippet.code}>
+                  <Popconfirm
+                    disabled={!unsaved}
+                    title={t("python.replaceTitle")}
+                    description={t("python.replaceBody")}
+                    okText={t("python.replace")}
+                    cancelText={t("python.keep")}
+                    onConfirm={() => setCode(snippet.code)}
+                  >
+                    <button
+                      type="button"
+                      className="px-python-snippet"
+                      aria-label={t("python.openSnippet", { name: snippet.name })}
+                      onClick={unsaved ? undefined : () => setCode(snippet.code)}
+                    >
+                      {snippet.name}
+                    </button>
+                  </Popconfirm>
+                  <IconButton
+                    icon="x"
+                    size="sm"
+                    variant="ghost"
+                    label={t("python.deleteSnippet", { name: snippet.name })}
+                    onClick={() =>
+                      keepSnippets(snippets.filter((_, at) => at !== index))
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
         ) : null}
         {stdout ? (
           <section aria-label={t("python.output")}>

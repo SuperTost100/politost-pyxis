@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { analyzeGraph, graphExpression } from "./graph-analysis";
+import { analyzeGraph, graphExpression, graphIntersections } from "./graph-analysis";
 import { evalExpr } from "./plot";
 it("normalizes plain and nested LaTeX scalar input without accepting executable syntax", () => {
   expect(graphExpression("\\frac{\\sin(x)}{x}")).toBe("((sin(x))/(x))");
@@ -71,4 +71,32 @@ it("reads ln, the Italian sen, π and a decimal comma", () => {
   expect(() => graphExpression("lnx2")).toThrow();
   expect(() => graphExpression("send(x)")).toThrow();
   expect(() => graphExpression("asen(x)")).toThrow();
+});
+it("finds where two curves cross or touch, and nothing at a pole or on a shared curve", () => {
+  const at = (source: string) => analyzeGraph(source, [-4, 4], 0).at;
+  const crossings = graphIntersections(at("x^2"), at("x+2"), [-4, 4]);
+  expect(crossings.map((p) => p.x)).toEqual([
+    expect.closeTo(-1, 9),
+    expect.closeTo(2, 9),
+  ]);
+  expect(crossings[1]!.y).toBeCloseTo(4, 9);
+  // Touching without crossing.
+  const touch = graphIntersections(at("(x-1)^2"), at("0"), [-4, 4]);
+  expect(touch).toHaveLength(1);
+  expect(touch[0]!.x).toBeCloseTo(1, 6);
+  // 1/x jumps across 0 at x = 0 but never meets it.
+  expect(graphIntersections(at("1/x"), at("0"), [-4, 4])).toEqual([]);
+  expect(graphIntersections(at("sin(x)"), at("sin(x)"), [-4, 4])).toEqual([]);
+  expect(graphIntersections(at("x^2+1"), at("0"), [-4, 4])).toEqual([]);
+  // tan(x) = x has a root in each branch; the poles between them are not meetings.
+  const tan = graphIntersections(at("tan(x)"), at("x"), [-5, 5]);
+  expect(tan.map((p) => p.x)).toEqual([
+    expect.closeTo(-4.4934, 3),
+    expect.closeTo(0, 6),
+    expect.closeTo(4.4934, 3),
+  ]);
+  // A removable hole still meets: sin(x)/x is 1 at 0.
+  expect(graphIntersections(at("sin(x)/x"), at("1"), [-1, 1]).map((p) => p.x)).toEqual([
+    expect.closeTo(0, 3),
+  ]);
 });

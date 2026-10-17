@@ -59,6 +59,10 @@ function groups(mac: boolean): Group[] {
         { id: "eraser", keys: ["E"] },
       ],
     },
+    {
+      id: "python",
+      rows: [{ id: "runCode", keys: ["mod", "enter"] }],
+    },
   ];
 }
 

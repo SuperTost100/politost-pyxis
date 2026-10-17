@@ -24,7 +24,8 @@
       "ask": "Chiedi",
       "cards": "Schede",
       "quiz": "Quiz e simulazioni",
-      "whiteboard": "Lavagna"
+      "whiteboard": "Lavagna",
+      "python": "Python"
     },
     "rows": {
       "newExam": "Nuovo esame",
@@ -50,7 +51,8 @@
       "undo": "Annulla l'ultimo tratto",
       "redo": "Ripeti",
       "pen": "Penna",
-      "eraser": "Gomma"
+      "eraser": "Gomma",
+      "runCode": "Esegui il codice"
     },
     "keys": {
       "enter": "Invio",
@@ -1837,7 +1839,6 @@
     "integral": "Integrale da 0.05 a 8: {{value}}",
     "legend": "Verde è f, cobalto è f', il tratteggio è f''.",
     "invalid": "Non riesco a leggere questa formula.",
-    "function": "Funzione",
     "preview": "Anteprima della formula",
     "xMin": "Da x",
     "xMax": "A x",
@@ -1848,9 +1849,7 @@
     "rangeError": "Scegli un intervallo finito con il valore più piccolo per primo.",
     "plotHelp": "Trascina per spostare il grafico. Scorri o usa + e − per lo zoom. Le frecce spostano l’intervallo; Home lo ripristina.",
     "reset": "Ripristina zoom",
-    "copy": "Copia funzione",
-    "copied": "Funzione copiata.",
-    "copyFailed": "Non è stato possibile copiare la funzione.",
+    "copyFailed": "Non è stato possibile copiare.",
     "download": "Scarica PNG",
     "saved": "Grafico salvato.",
     "exportFailed": "Non è stato possibile esportare il grafico. Riprova.",
@@ -1859,7 +1858,18 @@
     "lower": "Limite inferiore",
     "integralUnavailable": "L’integrale non è definito in questo limite inferiore o attraverso una discontinuità della funzione.",
     "runtimeNeeded": "Scarica Python nello strumento Python per mostrare le espressioni simboliche.",
-    "preparePython": "Apri Python"
+    "preparePython": "Apri Python",
+    "functions": "Funzioni",
+    "curveLabel": "Funzione {{name}}",
+    "addCurve": "Aggiungi una funzione",
+    "removeCurve": "Rimuovi {{name}}",
+    "intersections": "Intersezioni",
+    "noIntersections": "Le curve non si incontrano in questo intervallo.",
+    "pair": "{{a}} e {{b}}",
+    "copy_one": "Copia funzione",
+    "copy_other": "Copia funzioni",
+    "copied_one": "Funzione copiata.",
+    "copied_other": "Funzioni copiate."
   },
   "python": {
     "title": "Python",
@@ -1883,7 +1893,15 @@
     "truncated": "Risultato fermato a 200 KB.",
     "reset": "Ripristina il codice",
     "tooLong": "Il codice Python è limitato a {{count}} caratteri.",
-    "setup": "Configura Python"
+    "setup": "Configura Python",
+    "saveSnippet": "Salva frammento",
+    "snippets": "Frammenti salvati",
+    "openSnippet": "Apri {{name}}",
+    "deleteSnippet": "Elimina il frammento {{name}}",
+    "replaceTitle": "Sostituire il codice nell’editor?",
+    "replaceBody": "Il codice che hai ora non è salvato come frammento.",
+    "replace": "Sostituisci",
+    "keep": "Tieni il mio codice"
   },
   "tools": {
     "save": "Salva",

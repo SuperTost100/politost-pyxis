@@ -311,21 +311,19 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
       page.getByRole("textbox", { name: "Messaggio" }),
     ).toContainText("bozza della domanda");
 
-    // Code typed into the Python tool is not saved. With focus moved off the editor, only the page's lock holds the menu.
+    // The Python tool saves its code as it is typed, so the menu may leave it, even from the editor, and the code is
+    // there on return.
     await page.evaluate(() => {
       location.hash = "/tools/python";
     });
     const editor = page.getByRole("textbox", { name: /codice|code/i });
     await editor.fill("print('quasi finito')");
-    await editor.blur();
     await pick(app, "exams");
-    await pick(app, "settings");
-    await settle(page);
-    await expect(page).toHaveURL(/#\/tools\/python$/);
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.evaluate(() => {
+      location.hash = "/tools/python";
+    });
     await expect(editor).toHaveValue("print('quasi finito')");
-    // Back at the starting example, there is nothing to lose.
-    await editor.fill("print(1 + 1)");
-    await editor.blur();
     await pick(app, "exams");
     await expect(page).toHaveURL(/#\/exams$/);
 
