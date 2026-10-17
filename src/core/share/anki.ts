@@ -81,10 +81,30 @@ function model(id: number, cloze: boolean, deckId: number, mod: number) {
   };
 }
 
+type Stored = { dueAt: number; intervalDays: number; fsrs?: { state: number; stability: number; difficulty: number; scheduled_days: number; reps: number; lapses: number } };
+
+// FSRS states (ts-fsrs): 0 New, 1 Learning, 2 Review, 3 Relearning. Anki card types use the same numbers.
+function ankiState(state: Stored, suspended: boolean, crt: number) {
+  const fsrs = state.fsrs;
+  const kind = fsrs ? fsrs.state : state.intervalDays > 0 ? 2 : 1;
+  const days = Math.max(1, Math.round(fsrs?.scheduled_days ?? state.intervalDays));
+  return {
+    type: kind,
+    queue: suspended ? -1 : kind === 2 ? 2 : 1,
+    // A review is due on a day counted from the collection's creation day; a learning card at a time in seconds.
+    due: kind === 2 ? Math.floor((state.dueAt / 1000 - crt) / 86400) : Math.floor(state.dueAt / 1000),
+    ivl: kind === 2 || kind === 3 ? days : 0,
+    left: kind === 2 ? 0 : 1001,
+    reps: fsrs?.reps ?? 0,
+    lapses: fsrs?.lapses ?? 0,
+    data: fsrs && fsrs.stability > 0 ? JSON.stringify({ s: fsrs.stability, d: fsrs.difficulty }) : "",
+  };
+}
+
 export function exportAnki(
   db: Database.Database,
   planId: string,
-  options: { topicId?: string; now?: number } = {},
+  options: { topicId?: string; now?: number; history?: boolean } = {},
 ): { bytes: Uint8Array; filename: string; noteCount: number; cardCount: number } {
   const plan = db.prepare("SELECT title FROM plans WHERE id = ?").get(planId) as { title: string } | undefined;
   if (!plan) throw new Error("plan-missing");
@@ -97,6 +117,15 @@ export function exportAnki(
   const labels = planExportLabels(db, planId);
   const now = options.now ?? Date.now();
   const mod = Math.floor(now / 1000);
+  const reviewsOf = db.prepare("SELECT rating, state_json, reviewed_at FROM card_reviews WHERE card_id = ? ORDER BY reviewed_at, id");
+  const history = new Map<string, Array<{ rating: string; state: Stored; at: number }>>();
+  if (options.history)
+    for (const row of rows)
+      history.set(row.id, (reviewsOf.all(row.id) as Array<{ rating: string; state_json: string; reviewed_at: number }>)
+        .map((review) => ({ rating: review.rating, state: JSON.parse(review.state_json) as Stored, at: review.reviewed_at })));
+  // Day counts start on the UTC day of the first review, so no due day is negative.
+  const first = Math.min(now, ...[...history.values()].map((list) => list[0]?.at ?? now));
+  const crt = options.history ? Math.floor(first / 86400000) * 86400 : mod;
   const deckId = stableId(`deck:${planId}`);
   const deck = (id: number, name: string) => ({ id, name, mod, usn: -1, desc: "", dyn: 0,
     collapsed: false, browserCollapsed: false, conf: 1, extendNew: 0, extendRev: 0,
@@ -111,12 +140,14 @@ export function exportAnki(
       rev: { bury: false, ease4: 1.3, ivlFct: 1, maxIvl: 36500, perDay: 200 },
       lapse: { delays: [10], leechAction: 0, leechFails: 8, minInt: 1, mult: 0 } };
     collection.prepare("INSERT INTO col VALUES (1, ?, ?, ?, 11, 0, 0, 0, ?, ?, ?, ?, '{}')")
-      .run(mod, now, now, JSON.stringify({ nextPos: 1, curDeck: deckId, activeDecks: [deckId] }),
+      .run(crt, now, now, JSON.stringify({ nextPos: 1, curDeck: deckId, activeDecks: [deckId] }),
         JSON.stringify({ [BASIC]: model(BASIC, false, deckId, mod), [CLOZE]: model(CLOZE, true, deckId, mod) }),
         JSON.stringify({ 1: deck(1, "Default"), [deckId]: deck(deckId, `Pyxis ${plan.title.replaceAll("::", " ").trim() || "Cards"}`) }),
         JSON.stringify({ 1: dconf }));
     const note = collection.prepare("INSERT INTO notes VALUES (?, ?, ?, ?, -1, ' pyxis ', ?, ?, ?, 0, '')");
-    const card = collection.prepare("INSERT INTO cards VALUES (?, ?, ?, ?, ?, -1, 0, ?, ?, 0, 2500, 0, 0, 0, 0, 0, 0, '')");
+    const card = collection.prepare("INSERT INTO cards VALUES (?, ?, ?, ?, ?, -1, ?, ?, ?, ?, 2500, ?, ?, ?, 0, 0, 0, ?)");
+    const revlog = collection.prepare("INSERT INTO revlog VALUES (?, ?, -1, ?, ?, ?, 2500, 0, ?)");
+    const usedLog = new Set<number>();
     const used = new Set<number>();
     const allocate = (key: string) => {
       let id = stableId(key);
@@ -135,10 +166,31 @@ export function exportAnki(
         const sort = sortField(front);
         const checksum = createHash("sha1").update(sort).digest().readUInt32BE(0);
         note.run(nid, guid, ords.length ? CLOZE : BASIC, mod, `${front}\x1f${back}`, sort, checksum);
-        for (const ord of ords.length ? ords : [0]) {
+        const reviews = history.get(row.id) ?? [];
+        const latest = reviews.at(-1);
+        (ords.length ? ords : [0]).forEach((ord, index) => {
           cardCount++;
-          card.run(allocate(`card:${row.id}:${ord}`), nid, deckId, ord, mod, row.suspended ? -1 : 0, cardCount);
-        }
+          const cid = allocate(`card:${row.id}:${ord}`);
+          // A cloze card holds all its deletions in Pyxis, so its one history goes to the first Anki card.
+          const kept = index === 0 ? latest : undefined;
+          const s = kept ? ankiState(kept.state, Boolean(row.suspended), crt)
+            : { type: 0, queue: row.suspended ? -1 : 0, due: cardCount, ivl: 0, left: 0, reps: 0, lapses: 0, data: "" };
+          card.run(cid, nid, deckId, ord, mod, s.type, s.queue, s.due, s.ivl, s.reps, s.lapses, s.left, s.data);
+          if (index !== 0) return;
+          reviews.forEach((item, at) => {
+            const before = reviews[at - 1]?.state.fsrs;
+            const review = item.state.fsrs;
+            const learning = (state?: { state: number }) => !state || state.state !== 2;
+            let id = item.at;
+            while (usedLog.has(id)) id++;
+            usedLog.add(id);
+            // Interval after the review: days for a review card, negative seconds for a learning step.
+            const after = learning(review) ? -Math.max(1, Math.round((item.state.dueAt - item.at) / 1000)) : Math.max(1, Math.round(review?.scheduled_days ?? 1));
+            const was = learning(before) ? (before ? -Math.max(1, Math.round((reviews[at - 1]!.state.dueAt - reviews[at - 1]!.at) / 1000)) : 0) : Math.max(1, Math.round(before?.scheduled_days ?? 1));
+            const kind = before?.state === 2 ? 1 : before?.state === 3 ? 2 : 0;
+            revlog.run(id, cid, ["again", "hard", "good", "easy"].indexOf(item.rating) + 1, after, was, kind);
+          });
+        });
       });
       collection.prepare("UPDATE col SET conf = ?").run(JSON.stringify({
         nextPos: cardCount + 1, curDeck: deckId, activeDecks: [deckId],

@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Button, Input, Modal, Pagination, Select, Skeleton } from "antd";
-import { Search } from "lucide-react";
+import { Download, Search, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -16,6 +16,7 @@ import { Tag } from "../../components/Tag";
 import { clozeAnswer, isCloze } from "../../../../core/study/cloze";
 import { invoke } from "../../lib/ipc";
 import { i18n } from "../../locales/i18n";
+import { AnkiModal } from "./AnkiModal";
 import "./CardBrowser.css";
 
 const PAGE_SIZE = 25;
@@ -64,6 +65,7 @@ export function CardBrowser() {
   const [saveFailed, setSaveFailed] = useState(false);
   const [actionFailed, setActionFailed] = useState(false);
   const [done, setDone] = useState("");
+  const [anki, setAnki] = useState<"import" | "export" | null>(null);
   const summary = useRef<HTMLParagraphElement>(null);
 
   // The search waits for a pause in typing, then goes back to the first page.
@@ -114,6 +116,36 @@ export function CardBrowser() {
         "review-session",
       ].map((key) => client.invalidateQueries({ queryKey: [key] })),
     );
+
+  /** Import and export sit with the list, and with the empty state when the student has exams but no cards yet. */
+  const ankiActions = (
+    <>
+      <Button
+        shape="round"
+        icon={<Upload size={16} aria-hidden />}
+        onClick={() => setAnki("import")}
+      >
+        {t("cardImport.open")}
+      </Button>
+      <Button
+        shape="round"
+        icon={<Download size={16} aria-hidden />}
+        onClick={() => setAnki("export")}
+      >
+        {t("cardExport.open")}
+      </Button>
+    </>
+  );
+  const ankiModal = (
+    <AnkiModal
+      mode={anki ?? "import"}
+      open={anki !== null}
+      onClose={() => setAnki(null)}
+      initialPlanId={planId || undefined}
+      initialTopicId={topicId || undefined}
+      onImported={() => void refresh()}
+    />
+  );
 
   /** Runs a change on one card, then reloads the list and says what happened. */
   async function change(request: Promise<unknown>, message: string) {
@@ -234,7 +266,9 @@ export function CardBrowser() {
 
   if (data && data.total === 0 && !filtered && data.plans.length === 0)
     return (
-      <EmptyState
+      <>
+        {ankiModal}
+        <EmptyState
         title={t("cardBrowser.emptyTitle")}
         body={t("cardBrowser.emptyBody")}
         action={
@@ -246,7 +280,17 @@ export function CardBrowser() {
             {t("exams.newPlan")}
           </Button>
         }
+        secondary={
+          <Button
+            shape="round"
+            icon={<Upload size={16} aria-hidden />}
+            onClick={() => setAnki("import")}
+          >
+            {t("cardImport.open")}
+          </Button>
+        }
       />
+      </>
     );
 
   // The page arrives in order, so a heading opens wherever the subject, or the exam and topic, changes.
@@ -386,6 +430,7 @@ export function CardBrowser() {
   return (
     <div className="px-cardbrowser">
       {modalContext}
+      {ankiModal}
       <div className="px-cardbrowser-toolbar">
         <div className="px-form-field px-cardbrowser-search">
           <label className="label" htmlFor="card-search">
@@ -462,17 +507,20 @@ export function CardBrowser() {
                 )
               : "\u00a0")}
         </p>
-        {filtered ? (
-          <Button
-            type="text"
-            shape="round"
-            size="small"
-            className="linkish"
-            onClick={reset}
-          >
-            {t("cardBrowser.clear")}
-          </Button>
-        ) : null}
+        <div className="px-cardbrowser-tools">
+          {filtered ? (
+            <Button
+              type="text"
+              shape="round"
+              size="small"
+              className="linkish"
+              onClick={reset}
+            >
+              {t("cardBrowser.clear")}
+            </Button>
+          ) : null}
+          {ankiActions}
+        </div>
       </div>
       {actionFailed ? (
         <Notice tone="danger">{t("cards.actionFailed")}</Notice>
