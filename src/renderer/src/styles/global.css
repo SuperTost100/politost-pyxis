@@ -169,6 +169,13 @@ html[data-platform="darwin"] {
   margin-inline: auto;
 }
 
+/* Settings is the one page with a sidebar, so it takes a wider column from 960px, where the sidebar appears. */
+@media (min-width: 960px) {
+  .px-shell-container.px-shell-wide {
+    max-width: 960px;
+  }
+}
+
 .ant-modal .ant-modal-header {
   margin-bottom: var(--space-4);
 }
@@ -180,6 +187,14 @@ html[data-platform="darwin"] {
 
 /* antd marks the keyboard-focused item itself (never after a mouse click); draw it with the system ring. */
 .ant-segmented .ant-segmented-item-focused {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The theme turns off antd's focus glow on Select and DatePicker, which left a 1px border change as the only sign of
+   keyboard focus. The ring shows when focus came from the keyboard (lib/focusSource.ts); a click keeps the border change. */
+html[data-focus-source="keyboard"] .ant-select-focused:has(:focus-visible),
+html[data-focus-source="keyboard"] .ant-picker-focused:has(:focus-visible) {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }

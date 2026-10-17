@@ -7,7 +7,7 @@ import {
   ArrowLeft,
   ChevronRight,
   UserRound,
-  BookOpen,
+  Brain,
   Cpu,
   Palette,
   Languages,
@@ -22,7 +22,7 @@ import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import "./SettingsPage.css";
-import { useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppState } from "../../app/app-state";
@@ -40,6 +40,20 @@ const levels = [
   "other",
 ] as const;
 
+/** From this window width the sections sit in a sidebar; below it each one is a page of its own. */
+const TWO_PANE = "(min-width: 960px)";
+
+function useTwoPane(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      const query = window.matchMedia(TWO_PANE);
+      query.addEventListener("change", notify);
+      return () => query.removeEventListener("change", notify);
+    },
+    () => window.matchMedia(TWO_PANE).matches,
+  );
+}
+
 export function SettingsPage() {
   const { t } = useTranslation();
   const { appearance, setTheme } = useAppState();
@@ -51,6 +65,7 @@ export function SettingsPage() {
     params.get("section") ??
     (params.get("setup") === "1" ? "engines" : null);
   const navigate = useNavigate();
+  const twoPane = useTwoPane();
   const client = useQueryClient();
   const profile = useQuery({
     queryKey: ["profile"],
@@ -151,7 +166,7 @@ export function SettingsPage() {
         { key: "engines", icon: Cpu, value: "" },
         {
           key: "tutor",
-          icon: BookOpen,
+          icon: Brain,
           value: t(
             profile.data?.tutorMode === "socratic"
               ? "settings.socratic"
@@ -388,7 +403,7 @@ export function SettingsPage() {
             </li>
           ))}
         </ul>
-        <div className="gallery-row">
+        <div className="px-settings-actions">
           <Button
             disabled={moving || (archiving !== null && archiving !== "backup")}
             loading={archiving === "backup"}
@@ -601,9 +616,32 @@ export function SettingsPage() {
     ),
   };
   const active = section && panels[section] ? section : null;
+  // The sidebar always has a section open. Profile comes first in the list.
+  const shown = twoPane ? (active ?? "profile") : active;
+  // Switching sections drops a half-confirmed restore or wipe, like leaving the page does.
+  function open(key: string) {
+    navigate(`/settings/${key}`);
+    setWipeArmed(false);
+    setRestoreArmed(false);
+  }
+  const subpage = shown ? (
+    <section className="px-settings-subpage">
+      {twoPane ? (
+        <h2 className="title-2">
+          {labels[shown]}
+        </h2>
+      ) : null}
+      {panels[shown]}
+      {params.get("setup") === "1" ? (
+        <Button type="primary" shape="round" onClick={() => navigate("/exams")}>
+          {t("onboarding.done")}
+        </Button>
+      ) : null}
+    </section>
+  ) : null;
   return (
     <div className="px-settings">
-      {active ? (
+      {!twoPane && active ? (
         <Button
           type="text"
           icon={<ArrowLeft size={18} />}
@@ -618,24 +656,36 @@ export function SettingsPage() {
         </Button>
       ) : null}
       <h1 className="title-1">
-        {active ? labels[active] : t("settings.title")}
+        {!twoPane && active ? labels[active] : t("settings.title")}
       </h1>
       {saveError ? (
         <Notice tone="danger">{t("settings.saveFailed")}</Notice>
       ) : null}
-      {active ? (
-        <section className="px-settings-subpage">
-          {panels[active]}
-          {params.get("setup") === "1" ? (
-            <Button
-              type="primary"
-              shape="round"
-              onClick={() => navigate("/exams")}
-            >
-              {t("onboarding.done")}
-            </Button>
-          ) : null}
-        </section>
+      {twoPane ? (
+        <div className="px-settings-panes">
+          <nav className="px-settings-nav" aria-label={t("settings.title")}>
+            {groups.map((group) => (
+              <div className="px-settings-nav-group" key={group.name}>
+                <h2 className="label">{group.name}</h2>
+                {group.rows.map((row) => (
+                  <button
+                    type="button"
+                    className="px-settings-nav-item"
+                    key={row.key}
+                    aria-current={shown === row.key ? "page" : undefined}
+                    onClick={() => open(row.key)}
+                  >
+                    <row.icon size={18} aria-hidden="true" />
+                    <span>{labels[row.key]}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
+          {subpage}
+        </div>
+      ) : subpage ? (
+        subpage
       ) : (
         <div className="px-settings-groups">
           {groups.map((group) => (

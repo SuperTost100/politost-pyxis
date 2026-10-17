@@ -38,8 +38,9 @@ test("doors navigate from settings and every shell page uses the full column", a
     await doors.getByText("Esami", { exact: true }).click();
     await expect(page).toHaveURL(/#\/exams$/);
 
-    // Settings, its subpages, Exams and Ask share one column width, and the logo stays put.
+    // Exams and Ask share one column width, Settings and its subpages share a wider one for the sidebar, and the logo stays put.
     const widths: number[] = [];
+    const settingsWidths: number[] = [];
     const logoX: number[] = [];
     for (const hash of [
       "#/exams",
@@ -53,13 +54,17 @@ test("doors navigate from settings and every shell page uses the full column", a
       }, hash);
       const container = page.locator(".px-shell-container");
       await expect(container).toBeVisible();
-      widths.push(Math.round((await container.boundingBox())!.width));
+      (hash.startsWith("#/settings") ? settingsWidths : widths).push(
+        Math.round((await container.boundingBox())!.width),
+      );
       logoX.push(
         Math.round((await page.getByRole("img", { name: "Pyxis" }).boundingBox())!.x),
       );
     }
     expect(new Set(widths).size).toBe(1);
     expect(widths[0]).toBe(768);
+    expect(new Set(settingsWidths).size).toBe(1);
+    expect(settingsWidths[0]).toBe(960);
     expect(new Set(logoX).size).toBe(1);
 
     // The header spans the window: logo at the left edge, actions at the right, doors centred on the window.

@@ -559,8 +559,8 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(done.getByRole("listitem")).toHaveCount(withCards.length);
     await done.getByRole("button", { name: new RegExp(`^Flashcard, ${topic.title}`) }).click();
     await expect(page).toHaveURL(new RegExp(`cards/${topic.id}\\?review=1$`));
-    await expect(page.getByText("Hai già fatto queste schede.", { exact: false })).toBeVisible();
-    await expect(page.getByText("Nessuna scheda in scadenza.")).toBeVisible();
+    await expect(page.getByText("Hai già fatto queste flashcard.", { exact: false })).toBeVisible();
+    await expect(page.getByText("Nessuna flashcard in scadenza.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
     expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
     await shoot(page, `${shots}/cards-review-it-light.png`);

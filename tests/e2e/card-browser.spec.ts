@@ -85,7 +85,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
       .locator(".ant-segmented-item-label", { hasText: "Flashcards" })
       .click();
     await expect(page).toHaveURL(/#\/exams\/cards$/);
-    await expect(page.getByRole("status")).toHaveText("6 cards");
+    await expect(page.getByRole("status")).toHaveText("6 flashcards");
 
     // Subjects in their saved order, the exam with no subject last, the exam and topic as sub-headings.
     await expect(page.getByRole("heading", { level: 2 })).toHaveText([
@@ -131,32 +131,32 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     ).toEqual([]);
 
     // An accent-less search finds the accented card, in any case.
-    const search = page.getByRole("textbox", { name: "Search cards" });
+    const search = page.getByRole("textbox", { name: "Search flashcards" });
     await search.fill("PERCHE");
-    await expect(page.getByRole("status")).toHaveText("1 card");
+    await expect(page.getByRole("status")).toHaveText("1 flashcard");
     await expect(page.getByRole("listitem")).toHaveCount(1);
     await expect(page.getByText("Perché un corpo accelera?")).toBeVisible();
     await search.fill("zzz");
-    await expect(page.getByText("No card matches.")).toBeVisible();
+    await expect(page.getByText("No flashcard matches.")).toBeVisible();
     await page.getByRole("button", { name: "Clear filters" }).click();
-    await expect(page.getByRole("status")).toHaveText("6 cards");
+    await expect(page.getByRole("status")).toHaveText("6 flashcards");
 
     // Exam, then topic.
     await expect(page.getByRole("combobox", { name: "Topic" })).toBeDisabled();
     await choose(page, "Exam", "Chimica generale");
-    await expect(page.getByRole("status")).toHaveText("2 cards");
+    await expect(page.getByRole("status")).toHaveText("2 flashcards");
     await expect(page.getByRole("heading", { level: 2 })).toHaveText([
       "Chimica",
     ]);
     await choose(page, "Topic", "Atomi");
-    await expect(page.getByRole("status")).toHaveText("2 cards");
+    await expect(page.getByRole("status")).toHaveText("2 flashcards");
     await page.getByRole("button", { name: "Clear filters" }).click();
 
     // Editing keeps the review schedule.
     const before = reviewRows(db);
     expect(before).toHaveLength(1);
     await page.getByRole("button", { name: /^Edit: Numero atomico\?/ }).click();
-    const dialog = page.getByRole("dialog", { name: "Edit card" });
+    const dialog = page.getByRole("dialog", { name: "Edit flashcard" });
     await dialog
       .getByRole("textbox", { name: "Front" })
       .fill("Numero atomico (Z)?");
@@ -186,17 +186,17 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
       .getByRole("button", { name: /^Resume: Velocità media\?/ })
       .click();
     await expect(page.getByRole("listitem")).toHaveCount(0);
-    await choose(page, "Show", "All cards");
+    await choose(page, "Show", "All flashcards");
 
     // A seeded card is removed, then restored.
     await page
       .getByRole("button", { name: /^Delete: Unità della forza\?/ })
       .click();
-    const confirm = page.getByRole("dialog", { name: "Delete this card?" });
+    const confirm = page.getByRole("dialog", { name: "Delete this flashcard?" });
     await expect(confirm).toContainText("You can bring it back under Removed");
     await confirm.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(page.getByRole("status")).toHaveText(
-      "Card removed. You can restore it under Removed.",
+      "Flashcard removed. You can restore it under Removed.",
     );
     await expect(page.getByText("Unità della forza?")).toHaveCount(0);
     await choose(page, "Show", "Removed");
@@ -210,18 +210,18 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await removed
       .getByRole("button", { name: /^Restore: Unità della forza\?/ })
       .click();
-    await expect(page.getByRole("status")).toHaveText("Card restored.");
-    await choose(page, "Show", "All cards");
+    await expect(page.getByRole("status")).toHaveText("Flashcard restored.");
+    await choose(page, "Show", "All flashcards");
     await expect(page.getByText("Unità della forza?")).toBeVisible();
 
     // A hand-made card says its delete is permanent.
     await page
       .getByRole("button", { name: /^Delete: Elettroni orbitano/ })
       .click();
-    const permanent = page.getByRole("dialog", { name: "Delete this card?" });
+    const permanent = page.getByRole("dialog", { name: "Delete this flashcard?" });
     await expect(permanent).toContainText("deleting it is permanent");
     await permanent.getByRole("button", { name: "Delete forever" }).click();
-    await expect(page.getByText("Card deleted.")).toBeVisible();
+    await expect(page.getByText("Flashcard deleted.")).toBeVisible();
     await choose(page, "Show", "Removed");
     await expect(page.getByRole("listitem")).toHaveCount(0);
     expect(
