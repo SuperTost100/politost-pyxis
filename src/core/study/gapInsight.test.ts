@@ -7,7 +7,8 @@ import { planSeries, syncGaps } from "../plans/progress";
 import { registerQuizGradingJobs, submitQuiz } from "./quizGrading";
 import { saveQuiz, startAttempt } from "./attempt";
 import { insertGap } from "./gapRows";
-import { enqueueGapInsights, gapEvidence, gapMisses, registerGapInsightJobs } from "./gapInsight";
+import { flagTarget } from "./flags";
+import { attemptGroups, enqueueGapInsights, gapEvidence, gapMisses, registerGapInsightJobs } from "./gapInsight";
 
 const NOW = Date.UTC(2026, 5, 1, 12);
 
@@ -208,6 +209,22 @@ describe("gap insight (PRO-02, 4.7)", () => {
       "Does speed include direction?",
       "Which quantity has a direction?",
     ]);
+  });
+
+  it("leaves questions flagged as wrong out of the evidence and the analysis", () => {
+    const db = fixture();
+    const id = gapRow(db).id;
+    flagTarget(db, "exercise", "q1", "wrong-question");
+    expect(gapEvidence(db, id).map((wrong) => wrong.question)).toEqual(["Does speed include direction?"]);
+    expect(attemptGroups(db, "att")).toEqual([
+      expect.objectContaining({ topicId: "topic", qualifies: false, wrongs: [expect.objectContaining({ id: "q3" })] }),
+    ]);
+    // The attempt's own rescore marks the result, which counts even without a live flag.
+    const saved = db.prepare("SELECT payload_json FROM attempt_answers WHERE id = 'ans-att'").get() as { payload_json: string };
+    const payload = JSON.parse(saved.payload_json) as { results: Array<{ id: string; flagged?: boolean }> };
+    payload.results = payload.results.map((result) => (result.id === "q3" ? { ...result, flagged: true } : result));
+    db.prepare("UPDATE attempt_answers SET payload_json = ? WHERE id = 'ans-att'").run(JSON.stringify(payload));
+    expect(gapEvidence(db, id)).toEqual([]);
   });
 
   it("keeps bounded but meaningful evidence for the model apart from the short UI form", () => {
