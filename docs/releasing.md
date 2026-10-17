@@ -50,16 +50,28 @@ Tag and publish only after the owner release loop above.
 
 The in-app download reads the release's asset list, so every stable release must keep these assets:
 
-| Asset                                | Used by                           |
-| ------------------------------------ | --------------------------------- |
-| `PoliTost.Pyxis-<version>-arm64.dmg` | macOS, Apple Silicon              |
-| `PoliTost.Pyxis-<version>.dmg`       | macOS, Intel                      |
-| `PoliTost.Pyxis.Setup.<version>.exe` | Windows x64                       |
-| `PoliTost.Pyxis-<version>.AppImage`  | Linux x64 running as an AppImage  |
-| `politost-pyxis_<version>_amd64.deb` | Linux x64 installed from the .deb |
-| `SHA256SUMS`                         | every download                    |
+| Asset                                                        | Used by                                           |
+| ------------------------------------------------------------ | ------------------------------------------------- |
+| `PoliTost.Pyxis-<version>-arm64-mac.zip` and its `.blockmap` | macOS, Apple Silicon                              |
+| `PoliTost.Pyxis-<version>-mac.zip` and its `.blockmap`       | macOS, Intel                                      |
+| `PoliTost.Pyxis-<version>-arm64.dmg`                         | macOS, Apple Silicon, when the release has no zip |
+| `PoliTost.Pyxis-<version>.dmg`                               | macOS, Intel, when the release has no zip         |
+| `PoliTost.Pyxis.Setup.<version>.exe`                         | Windows x64                                       |
+| `PoliTost.Pyxis-<version>.AppImage`                          | Linux x64 running as an AppImage                  |
+| `politost-pyxis_<version>_amd64.deb`                         | Linux x64 installed from the .deb                 |
+| `SHA256SUMS`                                                 | every download                                    |
 
 GitHub turns the spaces in electron-builder's file names into dots. Upload one `SHA256SUMS` for the whole release, in `sha256sum` format, with a line for each installer under its dotted asset name. Use the file from CI's `release-checksums` artifact. `scripts/release-sums.mjs` writes it from the per-target files, and fails if a listed file's hash differs, if an uploaded file has no line, or if one of the installers above is missing. A release with no `SHA256SUMS`, or with no line for a student's installer, makes the in-app download refuse and point to the release page.
+
+### Differential updates
+
+An AppImage and a Mac zip update by downloading only the blocks that changed. `src/main/update-diff.ts` compares the blockmap electron-builder writes for the old file with the new one's, copies the blocks the old file has, and fetches each run of changed blocks with one HTTP Range request. GitHub's release-asset host honors a single `bytes=a-b` range after the redirect and answers 501 to a suffix range (`bytes=-4`) or several ranges in one request, so Pyxis sends one explicit range per request. The rebuilt file must match `SHA256SUMS`; anything else falls back to the whole file.
+
+- AppImage: the old file is the running `$APPIMAGE`. electron-builder appends the blockmap (raw deflate) and its length (4 bytes, big-endian) to the AppImage, so Pyxis reads the new one with two Range requests to the end of the new file. This needs `appImage` builds with electron-builder's embedded blockmap, which it writes by default.
+- Mac: Pyxis downloads the zip, not the disk image, and keeps the last verified zip and its blockmap in `userData/update-base`, one per architecture. On its first update a Mac has no kept zip yet, so it downloads the whole zip. A Mac release therefore needs its zips and their `.blockmap` files, and a `SHA256SUMS` line for each zip; without a zip line, Pyxis falls back to the disk image.
+- Windows and the .deb always download the whole installer. Windows moves to a solid NSIS archive (#184), where one changed file changes most blocks.
+
+Measured with the real release blockmaps, from 0.3.0 to 0.3.1: the AppImage fetches 38.2 of 171.4 MiB (22%) in 10 requests, the Apple Silicon zip 30.4 of 158.7 MiB (19%) in 27, and the Intel zip 30.6 of 166.0 MiB (18%) in 28, plus the zip's blockmap (about 0.2 MiB).
 
 Use stable semantic-version tags that compare correctly to the installed `package.json` version. A fork without a repository URL makes no request, and Settings reports that the release channel is unpublished. Don't invent a placeholder owner or repository to hide that state.
 

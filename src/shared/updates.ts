@@ -9,6 +9,8 @@ export type UpdateView = {
 export type UpdateHandover =
   /** macOS: the disk image is open; the student drags Pyxis to Applications. */
   | "dmg-opened"
+  /** macOS: a Finder window shows the new app next to a link to Applications; the student drags it across. */
+  | "app-opened"
   /** Windows: the installer is ready to start once Pyxis closes. */
   | "exe-ready"
   /** Linux AppImage: the new file replaced the running one; a restart uses it. */
