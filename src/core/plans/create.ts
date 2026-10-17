@@ -9,6 +9,8 @@ import { gradedActivities, readSteps } from "./steps";
 import { countDueCards } from "../study/cards";
 import { gapSeverity, planMastery, syncGaps, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
+import type { ExamSessionInput } from "../../shared/exam-sessions";
+import { hasSessions, readSessions, saveSessions, sessionsFromInput, syncExamDates } from "./sessions";
 
 export type BuildTopic = {
   title: string;
@@ -51,6 +53,8 @@ export function createPlan(
     title: string;
     sourceIds: string[];
     examAt?: number | null;
+    /** The exam sessions; replaces examAt when present. */
+    sessions?: ExamSessionInput[];
     target?: number;
     language?: string;
     style?: "read" | "practice" | "decide";
@@ -107,6 +111,8 @@ export function createPlan(
       now,
       now,
     );
+    // A build job saved the sessions when it queued the plan; a plan made directly saves them here.
+    if (!hasSessions(db, planId)) saveSessions(db, planId, sessionsFromInput(input), now);
     // ASK-09: the plan keeps the level the profile had when it was made; a build job already stored it.
     planEducation(db, planId, now);
     const tree = input.tree ?? draftTree(input);
@@ -262,10 +268,11 @@ export function deletePlan(db: Database.Database, planId: string): void {
   if (info.changes === 0) throw new Error("plan-missing");
 }
 
-export function readPlan(db: Database.Database, planId: string) {
+export function readPlan(db: Database.Database, planId: string, now = Date.now()) {
+  syncExamDates(db, now, planId);
   const plan = db
     .prepare(
-      `SELECT p.id, p.title, p.status, p.target, p.exam_at AS examAt, p.content_language AS contentLanguage, s.name AS subject FROM plans p LEFT JOIN subjects s ON s.id=p.subject_id WHERE p.id = ?`,
+      `SELECT p.id, p.title, p.status, p.target, p.exam_at AS examAt, p.archived_at AS archivedAt, p.content_language AS contentLanguage, s.name AS subject FROM plans p LEFT JOIN subjects s ON s.id=p.subject_id WHERE p.id = ?`,
     )
     .get(planId) as
     | {
@@ -274,6 +281,7 @@ export function readPlan(db: Database.Database, planId: string) {
         status: string;
         target: number;
         examAt: number | null;
+        archivedAt: number | null;
         contentLanguage: string | null;
         subject: string | null;
       }
@@ -297,6 +305,7 @@ export function readPlan(db: Database.Database, planId: string) {
   }));
   return {
     ...plan,
+    sessions: readSessions(db, planId),
     ...planOrigin(db, planId),
     topics: topicViews,
     steps: readSteps(db, planId),
@@ -325,9 +334,10 @@ function daysUntil(examAt: number, now: number): number {
 }
 
 export function listPlans(db: Database.Database, now = Date.now()) {
+  syncExamDates(db, now);
   const rows = db
     .prepare(
-      `SELECT p.id, p.title, p.status, p.exam_at, p.target, s.name AS subject,
+      `SELECT p.id, p.title, p.status, p.exam_at, p.target, p.archived_at IS NOT NULL AS archived, s.name AS subject,
        EXISTS(SELECT 1 FROM settings x WHERE x.key = 'plan-import:' || p.id) AS imported
        FROM plans p
        LEFT JOIN subjects s ON s.id = p.subject_id
@@ -340,6 +350,7 @@ export function listPlans(db: Database.Database, now = Date.now()) {
     status: string;
     exam_at: number | null;
     target: number;
+    archived: number;
     imported: number;
     subject: string | null;
   }>;
@@ -359,6 +370,7 @@ export function listPlans(db: Database.Database, now = Date.now()) {
       id: row.id,
       title: row.title,
       status: row.status,
+      archived: Boolean(row.archived),
       subject: row.subject,
       daysToExam: row.exam_at == null ? null : daysUntil(row.exam_at, now),
       mastery,
@@ -382,10 +394,12 @@ export function planGuide(
   planId: string,
   now = Date.now(),
 ) {
+  syncExamDates(db, now, planId);
   const meta = db
-    .prepare(`SELECT exam_at, target, status FROM plans WHERE id = ?`)
+    .prepare(`SELECT exam_at, target, status, archived_at FROM plans WHERE id = ?`)
     .get(planId) as
-    { exam_at: number | null; target: number; status: string } | undefined;
+    | { exam_at: number | null; target: number; status: string; archived_at: number | null }
+    | undefined;
   if (!meta || meta.status === "building") return null;
   syncGaps(db, planId, now);
   const steps = readSteps(db, planId);
@@ -424,7 +438,8 @@ export function planGuide(
     db.prepare("SELECT 1 FROM items WHERE plan_id = ? AND kind = 'intro'").get(planId),
   );
   return {
-    next: suggestStep({
+    // An archived plan recommends nothing; restoring it brings the suggestions back.
+    next: meta.archived_at != null ? null : suggestStep({
       topics,
       steps,
       hasIntro,

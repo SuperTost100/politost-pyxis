@@ -1,4 +1,6 @@
 import { examInstant } from "../../../../shared/plan-file";
+import type { ExamSessionInput } from "../../../../shared/exam-sessions";
+import { sessionsFromDrafts, type SessionDraft } from "./examSessions";
 
 /** A quick exam choice in days, "none" for no date yet, or "" when the student picked a day or nothing yet. */
 export type ExamChoice = "" | "none" | "1" | "2" | "3" | "10";
@@ -8,7 +10,8 @@ export type WizardSeed = {
   title: string;
   subject: string;
   examChoice: ExamChoice;
-  date: string;
+  /** The exam sessions as edited, with a blank row when none has a date. */
+  sessions: SessionDraft[];
   target: number;
   language: "it" | "en";
 };
@@ -20,15 +23,15 @@ export function isWizardSeed(value: unknown): value is WizardSeed {
     typeof seed.title === "string" &&
     typeof seed.subject === "string" &&
     ["", "none", "1", "2", "3", "10"].includes(seed.examChoice ?? "-") &&
-    typeof seed.date === "string" &&
+    Array.isArray(seed.sessions) &&
     typeof seed.target === "number" &&
     (seed.language === "it" || seed.language === "en")
   );
 }
 
 /** Whether the exam step has an answer: a day, a quick choice, or "no date yet". */
-export function examChosen(examChoice: ExamChoice, date: string): boolean {
-  return Boolean(date || examChoice);
+export function examChosen(examChoice: ExamChoice, sessions: SessionDraft[]): boolean {
+  return Boolean(examChoice || sessions.some((session) => session.date));
 }
 
 /** Noon on the chosen day, so a shared plan keeps its day in another time zone. Null for no date. */
@@ -41,6 +44,6 @@ export function examFromChoice(examChoice: ExamChoice, date: string, now = new D
   return Number.isFinite(at) ? at : null;
 }
 
-export function seedExamAt(seed: WizardSeed): number | null {
-  return examFromChoice(seed.examChoice, seed.date);
+export function seedSessions(seed: WizardSeed): ExamSessionInput[] {
+  return sessionsFromDrafts(seed.sessions);
 }

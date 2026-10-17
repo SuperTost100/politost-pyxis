@@ -504,6 +504,8 @@ async function dispatchValidated(
     case "plans.usage":
       requests["plans.usage"].input.parse(input);
       return plans?.usage() ?? [];
+    case "plans.archive":
+      return plans?.archive(requests["plans.archive"].input.parse(input));
     case "plans.delete":
       return plans?.delete(requests["plans.delete"].input.parse(input));
     case "plans.export":

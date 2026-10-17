@@ -132,6 +132,25 @@ CREATE TRIGGER cards_search_stale AFTER UPDATE OF front, back ON cards BEGIN
   UPDATE cards SET search_text = NULL WHERE id = new.id;
 END;`,
   },
+  // A plan holds several exam sessions (a written and an oral part). plans.exam_at stays as the derived next exam date,
+  // so countdowns, scheduling and the path keep reading one column. A plan's existing exam_at becomes its first session,
+  // with the plan's id as the session id so the calendar event keeps its UID. A date after year 9999, which an older version accepted, is cut to the latest a session can hold. archived_at sets a finished exam aside.
+  {
+    version: 19,
+    sql: `CREATE TABLE plan_sessions (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  date INTEGER NOT NULL,
+  time TEXT CHECK (time IS NULL OR time GLOB '[0-2][0-9]:[0-5][0-9]'),
+  place TEXT,
+  label TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX plan_sessions_plan ON plan_sessions(plan_id, date);
+INSERT INTO plan_sessions (id, plan_id, date, created_at)
+  SELECT id, id, MIN(exam_at, 253402163999999), COALESCE(updated_at, created_at) FROM plans WHERE exam_at IS NOT NULL;
+ALTER TABLE plans ADD COLUMN archived_at INTEGER;`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

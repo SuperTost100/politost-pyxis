@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
+import { examSessionsSchema } from "./exam-sessions";
 import { MAX_IMAGE_BASE64 } from "./source-types";
 import { installableProviders } from "./installers";
 
@@ -1141,6 +1142,8 @@ export const requests = {
         id: z.string(),
         title: z.string(),
         status: z.string(),
+        /** Set aside after the exam: out of review queues, counts and recommendations. */
+        archived: z.boolean(),
         subject: z.string().nullable(),
         daysToExam: z.number().nullable(),
         mastery: z.number(),
@@ -1188,7 +1191,18 @@ export const requests = {
         title: z.string(),
         status: z.string(),
         target: z.number(),
+        /** The next exam date, derived from the sessions. */
         examAt: z.number().nullable(),
+        archivedAt: z.number().nullable(),
+        sessions: z.array(
+          z.object({
+            id: z.string(),
+            date: z.number(),
+            time: z.string().nullable(),
+            place: z.string().nullable(),
+            label: z.string().nullable(),
+          }),
+        ),
         contentLanguage: z.string().nullable(),
         subject: z.string().nullable(),
         imported: z.boolean(),
@@ -1275,8 +1289,12 @@ export const requests = {
       planId: z.string().min(1),
       title: z.string().trim().min(1).max(PLAN_TITLE_MAX),
       target: z.number().finite().min(0.5).max(1),
-      examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable(),
+      sessions: examSessionsSchema,
     }),
+    output: z.object({ ok: z.boolean() }),
+  },
+  "plans.archive": {
+    input: z.object({ planId: z.string().min(1), archived: z.boolean() }),
     output: z.object({ ok: z.boolean() }),
   },
   "plans.delete": {
@@ -1469,6 +1487,8 @@ export const requests = {
       subject: z.string().optional(),
       sourceIds: z.array(z.string()),
       examAt: z.number().nullable().optional(),
+      /** The exam sessions; replaces examAt when present. */
+      sessions: examSessionsSchema.optional(),
       target: z.number().min(0.5).max(1).optional(),
       language: z.enum(["it", "en"]).optional(),
       style: z.enum(["read", "practice", "decide"]).optional(),

@@ -73,9 +73,10 @@ export function seedCards(
   return ids;
 }
 
-/** Active, due cards of a plan; parameters: planId, topicId twice, ids JSON twice, now twice. */
+/** Active, due cards of a plan; parameters: planId, topicId twice, ids JSON twice, now twice. An archived plan has none. */
 const DUE_FROM = `FROM cards c
        WHERE c.plan_id = ?
+         AND NOT EXISTS (SELECT 1 FROM plans ap WHERE ap.id = c.plan_id AND ap.archived_at IS NOT NULL)
          AND c.suspended = 0
          AND c.removed = 0
          AND (c.topic_id IS NULL OR c.topic_id NOT IN (SELECT id FROM topics WHERE archived_at IS NOT NULL))
