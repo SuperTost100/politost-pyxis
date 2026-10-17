@@ -79,6 +79,9 @@ function textOnly(id: string, access: readonly string[] = []): boolean {
   return kindOf(id) === "api" || access.includes("none");
 }
 
+/** How long Test waits for the one-word answer. A CLI that starts cold can take half a minute. */
+const TEST_DEADLINE_MS = 90_000;
+
 /** CLIs with no sign-out command: CLI Funnel throws "unsupported" for them, so the student signs out in the program itself. */
 const NO_SIGN_OUT = new Set(["antigravity"]);
 
@@ -145,6 +148,13 @@ function isReady(row: OverviewRow): boolean {
 type StoredRow = { feature: string; selection_json: string };
 
 /**
+ * Whether the last scan of a database found an engine to choose from. A sign-in probe that times out reads as
+ * "signed out", so one scan that finds nothing after a good one is not trusted: the choices stay until a second
+ * scan agrees. Signing out in Pyxis clears the flag, since that is certain.
+ */
+const hadEngines = new WeakMap<Database.Database, boolean>();
+
+/**
  * Recomputes the automatic feature choices from the engines that are ready
  * now and acknowledged. An engine whose notice has not been read is never
  * chosen, so a task never reaches it. Features pinned by the student are left
@@ -180,11 +190,14 @@ export async function autoConfigureEngines(
   // A failed model listing is not proof that the engine went away. Keep the
   // current choices rather than blanking them.
   const unreadable = failed > 0 && listed.length === 0;
+  const doubtful =
+    !unreadable && listed.length === 0 && hadEngines.get(db) === true;
+  if (!unreadable) hadEngines.set(db, listed.length > 0);
   const plan = planAuto(listed);
   const now = Date.now();
   const apply = db.transaction(() => {
     // A reset that cannot read any model list would leave every feature without an engine.
-    if (unreadable) return;
+    if (unreadable || doubtful) return;
     const before = new Map(
       (
         db
@@ -330,16 +343,22 @@ export function engineHandlers(
         fast: model.fast,
       }));
     },
-    async test(input: {
-      provider: ProviderId;
-      model?: string;
-      effort?: string;
-      fast?: boolean;
-    }) {
+    async test(
+      input: {
+        provider: ProviderId;
+        model?: string;
+        effort?: string;
+        fast?: boolean;
+      },
+      signal?: AbortSignal,
+    ) {
       if (disabled(input.provider)) {
         throw new IpcError("unsupported", "engines.disabled");
       }
       const started = Date.now();
+      // The student's cancel and the deadline both stop the turn; only the deadline reads as a timeout.
+      const deadline = new AbortController();
+      const timer = setTimeout(() => deadline.abort(), TEST_DEADLINE_MS);
       try {
         const model = input.model || (await defaultModel(input.provider));
         // The screen can hold a level the chosen model does not list; the model gets the nearest one it has.
@@ -352,6 +371,9 @@ export function engineHandlers(
             fast: input.fast,
           },
           prompt: "Reply with the word ok",
+          signal: signal
+            ? AbortSignal.any([signal, deadline.signal])
+            : deadline.signal,
         });
         // The first successful confirmation becomes the default. INSERT OR
         // IGNORE preserves a choice made while this asynchronous test ran.
@@ -374,6 +396,9 @@ export function engineHandlers(
           inputTokens: result.inputTokens,
         };
       } catch (err) {
+        if (signal?.aborted) throw err;
+        if (deadline.signal.aborted)
+          throw new IpcError("timeout", "engines.errors.timeout");
         const translated = translateEngineError(err, input.provider);
         throw new IpcError(
           translated.code,
@@ -381,6 +406,8 @@ export function engineHandlers(
           {},
           err instanceof Error ? err.message : "",
         );
+      } finally {
+        clearTimeout(timer);
       }
     },
     setFeature(input: {
@@ -516,6 +543,7 @@ export function engineHandlers(
       loginSessions.get(input.provider)?.cancel();
       loginSessions.delete(input.provider);
       await getFunnel().logout(input.provider);
+      hadEngines.delete(db);
       if (options.auto) await reconfigure();
       return { ok: true as const };
     },

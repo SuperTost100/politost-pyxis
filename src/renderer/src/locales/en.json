@@ -1800,6 +1800,7 @@
       "aborted": "Cancelled.",
       "refused": "The key was refused. Check it.",
       "quota": "Usage limit reached. Try again later or pick another engine.",
+      "timeout": "The engine did not answer in time. Try again, or pick another engine.",
       "engine-missing": "Choose and test an engine in Settings before continuing.",
       "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines."
     },
