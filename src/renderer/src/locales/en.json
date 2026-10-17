@@ -1176,6 +1176,43 @@
     "open": "Open",
     "bad": "This is not a plan.",
     "importFailed": "The plan could not be imported. Choose a valid .pyxis plan file and try again.",
+    "reason": {
+      "not-a-plan": "This file is not a Pyxis plan.",
+      "unknown-version": "This plan was saved by a newer version of Pyxis. Update Pyxis, then open it again.",
+      "oversized-source": "An original file inside the plan is larger than Pyxis can import.",
+      "invalid-file": "The file is damaged or incomplete, so Pyxis cannot read it.",
+      "missing-topic": "A lesson, flashcard or path step points to a topic that is not in the file.",
+      "missing-passage": "A quoted passage that the plan cites is missing from the file.",
+      "missing-source": "A passage names a source that is not in the file.",
+      "missing-document": "A passage points to a document version that is not in the file.",
+      "bad-reference": "Something in the plan refers to content that the file does not contain.",
+      "duplicate-id": "Two items in the file share the same ID.",
+      "passage-text": "A quoted passage changed after the plan was saved, so its checksum no longer matches.",
+      "source-mismatch": "An original file does not match the one the plan was built from.",
+      "source-data": "An original file inside the plan is damaged or has the wrong size.",
+      "document-mismatch": "A passage does not match the version of its document.",
+      "bad-body": "A lesson or quiz in the file is damaged.",
+      "bad-exercise": "Some exercises in the file are damaged.",
+      "bad-map": "Some concept maps in the file are damaged.",
+      "bad-progress": "The progress saved in the file is inconsistent.",
+      "library-mismatch": "The copy in your library is not the file the plan expects. Choose another option for that source.",
+      "no-workspace": "Pyxis has nowhere to keep the original files right now. Restart Pyxis and try again."
+    },
+    "fail": {
+      "failed": "The plan could not be imported. {{reason}}",
+      "offer": "The problem is only {{where}}. The rest of the plan can still be imported.",
+      "in": {
+        "exercises": "in the exercises",
+        "maps": "in the concept maps",
+        "both": "in the exercises and the concept maps"
+      },
+      "rest": "Import the rest"
+    },
+    "openFailed": {
+      "not-a-plan-file": "That file is not a Pyxis plan.",
+      "too-big": "That plan file is larger than 320 MB.",
+      "unreadable": "Pyxis could not read that file."
+    },
     "review": {
       "title": "Import a plan",
       "created": "Created {{date}}",
@@ -1209,6 +1246,8 @@
       "verified": "File matches.",
       "mismatch": "That file is not the one the plan expects. Choose another or keep the excerpts.",
       "import": "Import",
+      "importCopy": "Import a copy anyway",
+      "duplicate": "Already imported on {{date}}. Importing it again adds a second copy.",
       "cancel": "Cancel",
       "skip": "Skip source",
       "skipHelp": "Skipping a source leaves it out of the source list. Quoted passages used by lessons, cards and questions remain readable."

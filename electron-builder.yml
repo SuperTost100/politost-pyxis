@@ -54,6 +54,13 @@ asarUnpack:
   - "**/node_modules/sqlite-vec/**"
   - "**/node_modules/sqlite-vec-*/**"
   - "**/node_modules/onnxruntime-node/**"
+# A double-click on a plan file opens Pyxis with it (src/main/plan-open.ts). The type is the one the app writes.
+fileAssociations:
+  - ext: pyxis
+    name: Pyxis plan
+    description: Pyxis plan
+    mimeType: application/vnd.politost.pyxis+json
+    role: Viewer
 mac:
   # Signed in build/after-pack.cjs. electron-builder's own codesign rejects
   # Finder metadata that macOS 27 leaves on the unpacked app.

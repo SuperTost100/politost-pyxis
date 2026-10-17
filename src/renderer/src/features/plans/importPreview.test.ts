@@ -4,10 +4,12 @@ import { passagesAround } from "../../../../core/sources/smartbook";
 import { describe, expect, it } from "vitest";
 import {
   defaultChoices,
+  importFailure,
   importRequest,
   locatedData,
   parsePlanText,
   previewPlan,
+  readPlanText,
 } from "./importPreview";
 
 const HELLO_SHA =
@@ -131,4 +133,46 @@ it("skips an original source while preserving readable cited quotes and their re
   ]);
   expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   db.close();
+});
+
+describe("why a file cannot be opened or imported", () => {
+  it("tells a file that is not a plan from a plan that cannot be read", () => {
+    expect(readPlanText("{")).toEqual({ reason: "not-a-plan" });
+    expect(readPlanText("[]")).toEqual({ reason: "not-a-plan" });
+    expect(readPlanText('{"title":"Fisica"}')).toEqual({ reason: "not-a-plan" });
+    expect(readPlanText('{"version":3,"title":"Fisica","topics":[],"nodes":[],"cards":[]}')).toEqual({
+      reason: "unknown-version",
+    });
+    expect(readPlanText('{"version":2,"title":7,"topics":[],"nodes":[],"cards":[]}')).toEqual({
+      reason: "invalid-file",
+    });
+    const big = { title: "Libro", sha: null, bytes: 999 * 1024 * 1024 };
+    expect(
+      readPlanText(JSON.stringify({ version: 2, title: "F", topics: [], nodes: [], cards: [], sources: [big] })),
+    ).toEqual({ reason: "oversized-source" });
+    expect(readPlanText(JSON.stringify({ version: 2, title: "F", topics: [], nodes: [], cards: [] }))).toMatchObject({
+      file: { title: "F" },
+    });
+  });
+
+  it("reads the refusal the core sends, with the parts the plan can go without", () => {
+    const refusal = (detail: string, without?: string) => ({
+      code: "plan-file",
+      messageKey: `shared.reason.${detail}`,
+      params: without === undefined ? {} : { without },
+      detail,
+    });
+    expect(importFailure(refusal("missing-topic"))).toEqual({ reason: "missing-topic", without: [] });
+    expect(importFailure(refusal("bad-map", "maps"))).toEqual({ reason: "bad-map", without: ["maps"] });
+    expect(importFailure(refusal("bad-exercise", "maps,exercises"))).toEqual({
+      reason: "bad-exercise",
+      without: ["exercises", "maps"],
+    });
+    // Anything else, or a reason this app has no sentence for, is a plain failure.
+    expect(importFailure(refusal("made-up"))).toBeNull();
+    expect(importFailure({ code: "internal", detail: "plan-file" })).toBeNull();
+    expect(importFailure(new Error("boom"))).toBeNull();
+    expect(importFailure(null)).toBeNull();
+    expect(importFailure(refusal("bad-map", "everything"))).toEqual({ reason: "bad-map", without: [] });
+  });
 });

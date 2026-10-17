@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { readFileSync, statSync } from "node:fs";
 import type { PlanFile } from "../../shared/plan-file";
 import { readBlob } from "../blobs";
+import { PlanFileError } from "./file";
 
 /**
  * SHR-05 "found in library": embeds the stored original of a library source in place of a missing one.
@@ -15,7 +16,7 @@ export function withLibraryOriginals(
 ): PlanFile {
   const { libraryFor, ...file } = input;
   if (!libraryFor || !Object.keys(libraryFor).length) return file;
-  if (!workspace) throw new Error("plan-file");
+  if (!workspace) throw new PlanFileError("no-workspace");
   const sources = file.sources?.map((source, index) => {
     const libraryId = libraryFor[String(index)];
     if (!libraryId || source.data !== undefined) return source;
@@ -23,11 +24,11 @@ export function withLibraryOriginals(
       .prepare("SELECT blob_sha FROM sources WHERE id = ?")
       .get(libraryId) as { blob_sha: string | null } | undefined;
     if (!source.sha || row?.blob_sha !== source.sha)
-      throw new Error("plan-file");
+      throw new PlanFileError("library-mismatch");
     const path = readBlob(workspace, source.sha).file;
     const size = statSync(path).size;
     if (size > 200 * 1024 * 1024 || (source.bytes != null && size !== source.bytes))
-      throw new Error("plan-file");
+      throw new PlanFileError("library-mismatch");
     return { ...source, data: readFileSync(path).toString("base64") };
   });
   return { ...file, ...(sources ? { sources } : {}) };
