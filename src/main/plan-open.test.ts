@@ -6,15 +6,16 @@ import { MAX_OPENED_PLAN_BYTES } from "../shared/bridge";
 import { isPlanFileName, planFileFromArgv, readOpenedPlan } from "./plan-open";
 
 describe("planFileFromArgv", () => {
+  // Paths resolve the way the platform does: a POSIX path gets a drive letter on Windows.
   it("finds the file a double-click passes, on first launch and on a second instance", () => {
     expect(planFileFromArgv(["C:\\Users\\Anna\\Fisica 1.pyxis"], "/work")).toBe(
       resolve("/work", "C:\\Users\\Anna\\Fisica 1.pyxis"),
     );
     expect(planFileFromArgv(["/opt/Pyxis/pyxis", "--no-sandbox", "/home/anna/Fisica.pyxis"], "/work")).toBe(
-      "/home/anna/Fisica.pyxis",
+      resolve("/home/anna/Fisica.pyxis"),
     );
     expect(planFileFromArgv(["/usr/bin/pyxis", "piani/Analisi.PYXIS"], "/home/anna")).toBe(
-      "/home/anna/piani/Analisi.PYXIS",
+      resolve("/home/anna", "piani/Analisi.PYXIS"),
     );
   });
 
@@ -24,7 +25,7 @@ describe("planFileFromArgv", () => {
   });
 
   it("takes the first plan file when several are given", () => {
-    expect(planFileFromArgv(["a.pyxis", "b.pyxis"], "/w")).toBe("/w/a.pyxis");
+    expect(planFileFromArgv(["a.pyxis", "b.pyxis"], "/w")).toBe(resolve("/w", "a.pyxis"));
   });
 });
 
