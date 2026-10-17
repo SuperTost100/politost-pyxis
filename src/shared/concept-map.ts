@@ -72,3 +72,17 @@ export const mapSummarySchema = z.object({
 export type ConceptGraph = z.infer<typeof conceptGraphSchema>;
 export type MapOp = z.infer<typeof mapOpSchema>;
 export type MapSummary = z.infer<typeof mapSummarySchema>;
+/** A map in the Maps section, with the exam, topic and subject it belongs to. */
+export const mapEntrySchema = z.object({
+  id,
+  title: z.string(),
+  planId: z.string(),
+  planTitle: z.string(),
+  topicId: z.string(),
+  topicTitle: z.string(),
+  subjectId: z.string().nullable(),
+  subjectName: z.string().nullable(),
+  nodeCount: z.number().int().nonnegative(),
+  grounding: z.enum(["sources", "general"]),
+});
+export type MapEntry = z.infer<typeof mapEntrySchema>;
