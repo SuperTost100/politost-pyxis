@@ -8,6 +8,7 @@ import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
 import { CardBrowser } from "./CardBrowser";
 import { LibraryPanel } from "./LibraryPanel";
+import { MistakesNotebook } from "../study/MistakesNotebook";
 import { PlanCard } from "../../components/PlanCard";
 import { Notice } from "../../components/Notice";
 import type { PlanFile } from "@shared/plan-file";
@@ -34,7 +35,9 @@ export function ExamsHome() {
     ? "sources"
     : location.pathname.startsWith("/exams/cards")
       ? "cards"
-      : "plans";
+      : location.pathname.startsWith("/exams/mistakes")
+        ? "mistakes"
+        : "plans";
   // The notice belongs to the tab the import ran on; it is gone once the student moves to another.
   useEffect(() => setFailed(false), [tab]);
   const subjects = [
@@ -77,13 +80,16 @@ export function ExamsHome() {
                 ? "/exams/library"
                 : value === "cards"
                   ? "/exams/cards"
-                  : "/exams",
+                  : value === "mistakes"
+                    ? "/exams/mistakes"
+                    : "/exams",
             )
           }
           options={[
             { value: "plans", label: t("exams.plans") },
             { value: "sources", label: t("exams.sources") },
             { value: "cards", label: t("exams.cards") },
+            { value: "mistakes", label: t("mistakes.title") },
           ]}
         />
         {tab === "plans" ? (
@@ -108,6 +114,8 @@ export function ExamsHome() {
         <LibraryPanel />
       ) : tab === "cards" ? (
         <CardBrowser />
+      ) : tab === "mistakes" ? (
+        <MistakesNotebook />
       ) : plans.isPending ? null : (plans.data?.length ?? 0) > 0 ? (
         <div>
           <div className="px-exams-toolbar">

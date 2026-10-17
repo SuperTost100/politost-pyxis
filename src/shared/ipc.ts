@@ -945,6 +945,54 @@ export const requests = {
     input: z.object({ cardId: z.string() }),
     output: z.object({ ok: z.boolean() }),
   },
+  // The mistakes notebook: every question whose latest answer was wrong, in every exam or in one.
+  "study.mistakes": {
+    input: z.object({ planId: z.string().optional() }),
+    output: z.object({
+      plans: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          subject: z.string().nullable(),
+          count: z.number().int(),
+        }),
+      ),
+      entries: z.array(
+        z.object({
+          key: z.string(),
+          planId: z.string(),
+          planTitle: z.string(),
+          subject: z.string().nullable(),
+          topicId: z.string().nullable(),
+          topicTitle: z.string().nullable(),
+          origin: z.enum(["redo", "quiz", "diagnostic", "review", "simulation", "check"]),
+          at: z.number(),
+          stem: z.string(),
+          kind: z.enum(["mcq", "tf", "completion", "matching", "open"]),
+          options: z.array(z.string()).optional(),
+          left: z.array(z.string()).optional(),
+          right: z.array(z.string()).optional(),
+          pick: z.string(),
+          score: z.number(),
+          expected: z.string(),
+          explanation: z.string(),
+          citations: z.array(citationSchema),
+          passageId: z.string().nullable(),
+          chapter: z
+            .object({ sourceId: z.string(), chapter: z.number() })
+            .nullable(),
+        }),
+      ),
+    }),
+  },
+  // Asks the chosen notebook questions again as one quiz (at most ten); open it with study.quizRead.
+  "study.mistakesRedo": {
+    input: z.object({
+      planId: z.string(),
+      keys: z.array(z.string()).min(1).max(100),
+    }),
+    output: z.object({ attemptId: z.string() }),
+  },
   "study.suspended": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.array(z.object({ id: z.string(), front: z.string() })),

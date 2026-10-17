@@ -82,7 +82,7 @@ export function questionPlaces(
  * passage references an older one carried (see `plans.intro`), so they are removed here too: core and page then
  * always hash the same text.
  */
-const markdownOf = (bodyJson: string, kind: string) => {
+export const markdownOf = (bodyJson: string, kind: string) => {
   const markdown = (JSON.parse(bodyJson) as { markdown?: string }).markdown ?? "";
   return kind === "intro" ? stripPassageRefs(markdown) : markdown;
 };

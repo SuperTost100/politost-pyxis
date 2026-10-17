@@ -580,6 +580,35 @@
     "restored": "Flashcard restored.",
     "pages": "Pages"
   },
+  "mistakes": {
+    "title": "Mistakes notebook",
+    "emptyTitle": "No mistakes to go over",
+    "emptyBody": "Questions you miss in quizzes, simulations, the diagnostic test and lesson quick checks collect here. Each one leaves once you answer it right.",
+    "loadFailed": "The notebook could not be loaded.",
+    "retry": "Try again",
+    "count_one": "{{count}} question to redo",
+    "count_other": "{{count}} questions to redo",
+    "noTopic": "No topic",
+    "yourAnswerScore": "Your answer · {{percent}}%",
+    "rightAnswer": "Correct answer",
+    "why": "Explanation",
+    "missedIn": "{{origin}} · {{date}}",
+    "origin": {
+      "redo": "Redo",
+      "quiz": "Quiz",
+      "diagnostic": "Diagnostic test",
+      "review": "Review",
+      "simulation": "Simulation",
+      "check": "Quick check"
+    },
+    "source": "Source",
+    "redo": "Redo",
+    "redoTopic_one": "Redo {{count}} question",
+    "redoTopic_other": "Redo {{count}} questions",
+    "redoFailed": "The questions could not be opened again. Try once more.",
+    "redoTitle": "Redo mistakes",
+    "back": "Back to the notebook"
+  },
   "map": {
     "title": "Map",
     "tree": "Tree",

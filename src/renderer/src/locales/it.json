@@ -580,6 +580,35 @@
     "restored": "Flashcard ripristinata.",
     "pages": "Pagine"
   },
+  "mistakes": {
+    "title": "Quaderno degli errori",
+    "emptyTitle": "Nessun errore da rivedere",
+    "emptyBody": "Qui si raccolgono le domande che sbagli nei quiz, nelle simulazioni, nella diagnosi e nelle verifiche rapide delle lezioni. Ognuna esce quando rispondi giusto.",
+    "loadFailed": "Non sono riuscito a caricare il quaderno.",
+    "retry": "Riprova",
+    "count_one": "{{count}} domanda da rifare",
+    "count_other": "{{count}} domande da rifare",
+    "noTopic": "Nessun argomento",
+    "yourAnswerScore": "La tua risposta · {{percent}}%",
+    "rightAnswer": "Risposta corretta",
+    "why": "Spiegazione",
+    "missedIn": "{{origin}} · {{date}}",
+    "origin": {
+      "redo": "Rifatta",
+      "quiz": "Quiz",
+      "diagnostic": "Diagnosi",
+      "review": "Ripasso",
+      "simulation": "Simulazione",
+      "check": "Verifica rapida"
+    },
+    "source": "Fonte",
+    "redo": "Rifai",
+    "redoTopic_one": "Rifai {{count}} domanda",
+    "redoTopic_other": "Rifai {{count}} domande",
+    "redoFailed": "Non sono riuscito a riaprire le domande. Riprova.",
+    "redoTitle": "Rifai gli errori",
+    "back": "Torna al quaderno"
+  },
   "map": {
     "title": "Mappa",
     "tree": "Albero",

@@ -40,6 +40,9 @@ const routes = [
   ["cards-browser-none", "/exams/cards"],
   ["cards-browser-edit", "/exams/cards"],
   ["cards-browser-delete", "/exams/cards"],
+  // The mistakes notebook across exams and on one plan.
+  ["mistakes", "/exams/mistakes"],
+  ["plan-mistakes", "/plans/audit-plan/mistakes"],
   ["library-vision", "/exams/library"],
   ["shared", "/exams/get"],
   ["import-review", "/exams/get"],
