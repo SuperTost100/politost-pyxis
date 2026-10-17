@@ -11,6 +11,7 @@ import {
   extractPlain,
   extractPptx,
   importDocumentFile,
+  lockedPdf,
   manyPagePdf,
   onePagePdf,
   storeExtracted,
@@ -85,6 +86,77 @@ describe("document extract", () => {
       }),
     );
     expect(real.pages[0]?.text).toBe("lavoro");
+  });
+
+  it("adds each slide's speaker notes to its passage, found through the slide's relationships", () => {
+    const notesType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
+    const shape = (placeholder: string, text: string) =>
+      `<p:sp><p:nvSpPr><p:nvPr><p:ph type="${placeholder}" idx="1"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp>`;
+    const extracted = extractPptx(
+      zipSync({
+        "ppt/presentation.xml": strToU8(
+          `<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId2"/><p:sldId id="257" r:id="rId3"/><p:sldId id="258" r:id="rId4"/></p:sldIdLst></p:presentation>`,
+        ),
+        "ppt/_rels/presentation.xml.rels": strToU8(
+          `<Relationships><Relationship Id="rId2" Target="slides/slide1.xml"/><Relationship Id="rId3" Target="slides/slide2.xml"/><Relationship Id="rId4" Target="/ppt/slides/slide3.xml"/></Relationships>`,
+        ),
+        "ppt/slides/slide1.xml": strToU8(`<p:sld><a:t>Primo principio</a:t></p:sld>`),
+        // The notes part is named by a relative target, next to a layout relationship that is not notes.
+        "ppt/slides/_rels/slide1.xml.rels": strToU8(
+          `<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${notesType}" Target="../notesSlides/notesSlide7.xml"/></Relationships>`,
+        ),
+        "ppt/slideLayouts/slideLayout1.xml": strToU8(`<p:sldLayout><a:t>Titolo del layout</a:t></p:sldLayout>`),
+        // The slide picture, the page number, header, footer and date are not the speaker's notes.
+        "ppt/notesSlides/notesSlide7.xml": strToU8(
+          `<p:notes><p:cSld><p:spTree>${shape("sldImg", "")}${shape("body", "Il calore Q &amp; il lavoro L")}${shape("body", "cambiano l&apos;energia interna.")}${shape("sldNum", "1")}${shape("ftr", "Fisica tecnica")}${shape("dt", "15/10")}${shape("hdr", "Lezione 3")}</p:spTree></p:cSld></p:notes>`,
+        ),
+        // A slide without notes reads as before.
+        "ppt/slides/slide2.xml": strToU8(`<p:sld><a:t>Secondo principio</a:t></p:sld>`),
+        // A slide with only notes still gets a passage, and an absolute target resolves from the archive root.
+        "ppt/slides/slide3.xml": strToU8(`<p:sld></p:sld>`),
+        "ppt/slides/_rels/slide3.xml.rels": strToU8(
+          `<Relationships><Relationship Id="rId1" Target="/ppt/notesSlides/notesSlide1.xml" Type="${notesType}"/></Relationships>`,
+        ),
+        "ppt/notesSlides/notesSlide1.xml": strToU8(`<p:notes>${shape("body", "Spiegare il ciclo di Carnot.")}</p:notes>`),
+      }),
+    );
+    expect(extracted.pages).toEqual([
+      {
+        text: "Primo principio\n\nSpeaker notes: Il calore Q & il lavoro L cambiano l'energia interna.",
+        locator: { slide: 1 },
+        section: "slide 1",
+      },
+      { text: "Secondo principio", locator: { slide: 2 }, section: "slide 2" },
+      { text: "Speaker notes: Spiegare il ciclo di Carnot.", locator: { slide: 3 }, section: "slide 3" },
+    ]);
+  });
+
+  it("reads hostile notes parts in linear time", () => {
+    const started = performance.now();
+    const extracted = extractPptx(
+      zipSync({
+        "ppt/presentation.xml": strToU8(`<p:presentation><p:sldIdLst><p:sldId r:id="rId1"/></p:sldIdLst></p:presentation>`),
+        "ppt/_rels/presentation.xml.rels": strToU8(`<Relationships><Relationship Id="rId1" Target="slides/slide1.xml"/></Relationships>`),
+        "ppt/slides/slide1.xml": strToU8(`<p:sld><a:t>forza</a:t></p:sld>`),
+        "ppt/slides/_rels/slide1.xml.rels": strToU8(
+          `${"<Relationship ".repeat(60_000)}<Relationship Type="x/notesSlide" Target="../notesSlides/notesSlide1.xml"/>`,
+        ),
+        "ppt/notesSlides/notesSlide1.xml": strToU8(`${"<p:sp ".repeat(60_000)}<a:t>nota</a:t></p:sp>`),
+      }),
+    );
+    expect(extracted.pages[0]?.text).toBe("forza\n\nSpeaker notes: nota");
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+
+  it("names a PDF locked with a password, and reads it with the right one", async () => {
+    // pdf.js takes over the bytes it is given, so each read gets its own copy.
+    const locked = () => lockedPdf("energia interna e calore", "polito2026");
+    // The bytes are really encrypted: the text is not in the file as written.
+    expect(Buffer.from(locked()).toString("latin1")).not.toContain("energia");
+    await expect(extractPdf(locked())).rejects.toThrow("pdf-password-required");
+    await expect(extractPdf(locked(), "sbagliata")).rejects.toThrow("pdf-password-wrong");
+    const extracted = await extractPdf(locked(), "polito2026");
+    expect(extracted.pages[0]?.text).toBe("energia interna e calore");
   });
 
   it("splits markdown on headings", () => {

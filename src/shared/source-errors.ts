@@ -41,6 +41,10 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "ocr-not-active": "sources.ocrInterrupted",
   "ocr-stale": "sources.ocrInterrupted",
   "source-busy": "sources.busy",
+  "pdf-password-required": "sources.pdfPassword.required",
+  "pdf-password-wrong": "sources.pdfPassword.wrong",
+  "pdf-password-unavailable": "sources.pdfPassword.unavailable",
+  "refresh-unavailable": "sources.refreshUnavailable",
   "reextract-unavailable": "sources.reextractUnavailable",
   "reextract-no-text": "sources.reextractNoText",
   "replace-no-text": "sources.replaceNoText",
@@ -65,3 +69,10 @@ export function sourceErrorKey(code: string): string | null {
 export const SOURCE_ERROR_MESSAGE_KEYS = [
   ...new Set([...Object.values(SOURCE_ERROR_KEYS), "engines.errors.disclosure-required"]),
 ];
+
+/** The codes an import of a locked PDF stops with. The student answers them with the password. */
+export const PDF_PASSWORD_ERRORS = ["pdf-password-required", "pdf-password-wrong"];
+
+export function isPdfPasswordError(code: string | null | undefined): boolean {
+  return code != null && PDF_PASSWORD_ERRORS.includes(code);
+}

@@ -17,6 +17,7 @@ import {
 import type { Runner } from "../jobs/runner";
 import {
   enqueueReextract,
+  enqueueRefresh,
   hasUnfinishedJob,
   enqueueSourceFile,
   enqueueSourceData,
@@ -24,6 +25,7 @@ import {
   markInterruptedImports,
   registerSourceJobs,
   sourceTitle,
+  unlockPdfImport,
 } from "./jobs";
 import { retrieveWithModel, setRetrievalModel } from "./retrieve";
 import { PASTE_MIN } from "./paste";
@@ -105,7 +107,6 @@ export function sourceHandlers(
     return (await embedTexts(modelDir, [text], signal))[0] ?? null;
   });
   if (runner) {
-    markInterruptedImports(db);
     registerSourceJobs(db, workspace, runner);
     runner.register("source-index", {
       jobClass: "local",
@@ -166,6 +167,19 @@ export function sourceHandlers(
         },
       ],
     });
+  }
+  if (runner) {
+    // Imports, indexing and downloads cut off by a quit or a crash cost no engine use, so they carry on by themselves.
+    // A photo waiting on its vision engine keeps waiting for the student. Only what is left still needs a Resume, and
+    // its source says it was interrupted.
+    runner.resumeLocal([
+      "source-import",
+      "source-import-vision",
+      "source-index",
+      "ocr-data-download",
+      "embedding-download",
+    ]);
+    markInterruptedImports(db);
   }
   const activeJob = (kind: string) =>
     runner?.list().find((job) => job.kind === kind && ["queued", "running"].includes(job.state))?.id;
@@ -319,7 +333,7 @@ export function sourceHandlers(
     },
     list() {
       const failure = db.prepare(
-        `SELECT error FROM jobs WHERE kind IN ('source-import', 'source-import-vision') AND state = 'failed'
+        `SELECT id, error FROM jobs WHERE kind IN ('source-import', 'source-import-vision') AND state = 'failed'
          AND error IS NOT NULL AND json_extract(params_json, '$.sourceId') = ?
          ORDER BY created_at DESC LIMIT 1`,
       );
@@ -337,15 +351,15 @@ export function sourceHandlers(
           ? (storedSyllabus(db, source.id) ?? []).reduce((sum, check) => sum + check.off, 0)
           : 0;
         // A failed import keeps its reason on the job until the student dismisses it, so the row can say why.
-        const error =
+        const failed =
           source.status === "failed"
-            ? (failure.get(source.id) as { error: string } | undefined)?.error
+            ? (failure.get(source.id) as { id: string; error: string } | undefined)
             : undefined;
         return {
           ...source,
           bytes,
           ...(off > 0 ? { syllabusOff: off } : {}),
-          ...(error ? { error } : {}),
+          ...(failed ? { error: failed.error, errorJobId: failed.id } : {}),
         };
       });
     },
@@ -501,6 +515,28 @@ export function sourceHandlers(
         const ext = row ? extForMime(row.mime) : undefined;
         if (ext) await assertLocalOcrReady(db, workspace, ext);
         return enqueueReextract(db, workspace, runner, input.sourceId, input.confirmed);
+      } catch (err) {
+        sourceError(err);
+      }
+    },
+    /**
+     * Fetches a link source's address again and reads a changed page as its next version. A source plans use needs
+     * `confirmed`. `unchanged` when the page is the copy already saved.
+     */
+    async refresh(input: { sourceId: string; confirmed: boolean }, signal?: AbortSignal) {
+      try {
+        if (!runner) throw new Error("refresh-unavailable");
+        return await enqueueRefresh(db, workspace, runner, input.sourceId, input.confirmed, signal);
+      } catch (err) {
+        if (signal?.aborted || isAbort(err)) throw err;
+        sourceError(err);
+      }
+    },
+    /** Runs again an import that stopped on a locked PDF, with the password for that one read. Nothing keeps it. */
+    unlockPdf(input: { jobId: string; password: string }) {
+      try {
+        if (!runner) throw new Error("pdf-password-unavailable");
+        return unlockPdfImport(db, runner, input.jobId, input.password);
       } catch (err) {
         sourceError(err);
       }
