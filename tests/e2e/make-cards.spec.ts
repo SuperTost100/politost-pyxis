@@ -207,6 +207,12 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
       await shot(page, "6-dialog-review-dark");
       await page.setViewportSize({ width: 480, height: 800 });
       await shot(page, "7-dialog-review-narrow-dark");
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await dialog.getByRole("button", { name: "Cancel" }).click();
+      await page.evaluate(() => window.getSelection()?.removeAllRanges());
+      await page.locator(".ant-drawer").getByRole("button", { name: "Close" }).click();
+      await page.waitForTimeout(600);
+      await shot(page, "8-reply-action-dark");
     }
   } finally {
     await app.close();
