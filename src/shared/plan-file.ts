@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { cardReviewSchema } from "./card-schedule";
 import { conceptGraphSchema } from "./concept-map";
+import { examSessionSchema, MAX_EXAM_SESSIONS } from "./exam-sessions";
 const id = z.string().min(1).max(160);
 const index = z.number().int().nonnegative();
 const text = z.string().max(1000000);
@@ -244,7 +245,13 @@ export const planFileSchema = z.object({
     )
     .max(1000)
     .optional(),
+  /** The next exam date: the earliest session that is still ahead, or the latest one. Older apps read only this. */
   examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable().optional(),
+  /**
+   * The exam sessions (a written and an oral part), each with a day, an optional start time and a place. When a file has
+   * them they win over `examAt`; a file without them gets one session from `examAt`.
+   */
+  sessions: z.array(examSessionSchema.omit({ id: true })).max(MAX_EXAM_SESSIONS).optional(),
   target: z.number().min(0.5).max(1).optional(),
   language: z.enum(["it", "en"]).nullable().optional(),
   style: z.enum(["read", "practice", "decide"]).optional(),

@@ -1,5 +1,7 @@
 import { planEducation, snapshotPlanEducation } from "./education";
 import { markPlanImported } from "./views";
+import { readSessions, saveSessions, syncExamDates } from "./sessions";
+import { SESSION_DATE_MAX } from "../../shared/exam-sessions";
 import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
@@ -45,6 +47,17 @@ function dropUnknownRefs(value: unknown, known: Set<string>): unknown {
   );
 }
 
+/**
+ * The sessions a file describes: its list, or a single all-day session from the `examAt` an older app wrote.
+ * A date past the last four-digit year cannot be written to a calendar, so it counts as no date.
+ */
+function fileSessions(file: Pick<PlanFile, "examAt" | "sessions">) {
+  if (file.sessions) return file.sessions;
+  return file.examAt != null && file.examAt <= SESSION_DATE_MAX
+    ? [{ date: file.examAt }]
+    : [];
+}
+
 function clampTarget(value: number): number {
   if (!Number.isFinite(value)) return 0.75;
   return Math.min(1, Math.max(0.5, value));
@@ -61,6 +74,7 @@ export function exportPlan(
     author?: string;
   },
 ): PlanFile {
+  syncExamDates(db, Date.now(), planId);
   const plan = db
     .prepare(
       `SELECT title, exam_at, target, content_language, style FROM plans WHERE id = ?`,
@@ -75,6 +89,7 @@ export function exportPlan(
       }
     | undefined;
   if (!plan) throw new Error("plan-missing");
+  const sessions = readSessions(db, planId);
   const topics = db
     .prepare(
       `SELECT id, title, position, tree_json, grounding, archived_at FROM topics WHERE plan_id = ? ORDER BY position`,
@@ -187,7 +202,18 @@ export function exportPlan(
           }
         : {}),
     })),
+    // exam_at is the next exam date, so an older app that reads only it still gets a sensible date.
     examAt: plan.exam_at,
+    ...(sessions.length
+      ? {
+          sessions: sessions.map((session) => ({
+            date: session.date,
+            ...(session.time ? { time: session.time } : {}),
+            ...(session.place ? { place: session.place } : {}),
+            ...(session.label ? { label: session.label } : {}),
+          })),
+        }
+      : {}),
     target: clampTarget(plan.target),
     language:
       plan.content_language === "it" || plan.content_language === "en"
@@ -560,12 +586,13 @@ export function importPlan(
       planId,
       parsed.title.slice(0, PLAN_TITLE_MAX),
       parsed.language ?? null,
-      parsed.examAt ?? null,
+      null,
       parsed.target ?? 0.75,
       parsed.style ?? "decide",
       now,
       now,
     );
+    saveSessions(db, planId, fileSessions(parsed), now);
     markPlanImported(db, planId, now, {
       ...(parsed.author ? { author: parsed.author } : {}),
       ...(parsed.createdAt != null ? { exportedAt: parsed.createdAt } : {}),
@@ -1318,12 +1345,13 @@ function importPortablePlan(
         ? "draft"
         : "ready",
       file.language ?? null,
-      file.examAt ?? null,
+      null,
       file.target ?? 0.75,
       file.style ?? "decide",
       now,
       now,
     );
+    saveSessions(db, planId, fileSessions(file), now);
     markPlanImported(db, planId, now, {
       ...(file.author ? { author: file.author } : {}),
       ...(file.createdAt != null ? { exportedAt: file.createdAt } : {}),

@@ -272,7 +272,12 @@
     "continuePlan": "Continua {{title}}",
     "imported": "Importato",
     "aligned_one": "{{ready}} su {{count}} argomento in linea",
-    "aligned_other": "{{ready}} su {{count}} argomenti in linea"
+    "aligned_other": "{{ready}} su {{count}} argomenti in linea",
+    "status": "Stato",
+    "statusActive": "Attivi",
+    "statusArchived": "Archiviati",
+    "noArchived": "Nessun esame archiviato.",
+    "allArchived": "Tutti gli esami sono archiviati. Scegli Archiviati nel filtro per vederli."
   },
   "sources": {
     "dropSkipped": "Alcuni elementi sono stati saltati. Trascina singoli file dei tipi indicati.",
@@ -673,6 +678,20 @@
     "introMissing": "Questo corso non ha ancora un'introduzione.",
     "introFailed": "Non è stato possibile aprire l'introduzione."
   },
+  "sessions": {
+    "heading": "Prova {{n}}",
+    "remove": "Rimuovi la prova {{n}}",
+    "removeShort": "Rimuovi",
+    "date": "Data",
+    "time": "Ora (facoltativa)",
+    "name": "Nome (facoltativo)",
+    "namePlaceholder": "Scritto, orale",
+    "place": "Luogo (facoltativo)",
+    "placePlaceholder": "Aula o edificio",
+    "add": "Aggiungi un'altra prova",
+    "list": "Prove d'esame",
+    "over": "passata"
+  },
   "calendar": {
     "add": "Aggiungi al calendario",
     "saved": "File del calendario salvato. Aprilo per aggiungere la data dell'esame.",
@@ -680,7 +699,7 @@
     "nothing": "Questo esame non ha una data futura.",
     "oneNoDate": "Questo esame non ha ancora una data. Imposta una data per aggiungerlo a un calendario.",
     "onePast": "La data di questo esame è passata.",
-    "saveFirst": "Salva prima la nuova data."
+    "saveFirst": "Salva prima le nuove prove."
   },
   "export": {
     "markdown": "Markdown",
@@ -1142,6 +1161,8 @@
     "examSummary": "Esame il {{date}}",
     "noDate": "Nessuna data per ora",
     "noDateSummary": "Nessuna data d'esame per ora. Puoi aggiungerla dopo nelle impostazioni del piano.",
+    "examSummaryMany_one": "{{count}} prove, la prima il {{date}}",
+    "examSummaryMany_other": "{{count}} prove, la prima il {{date}}",
     "examRequired": "Scegli una di queste opzioni per continuare.",
     "sourcesInPlan_one": "{{count}} fonte nel piano",
     "sourcesInPlan_other": "{{count}} fonti nel piano",
@@ -2031,7 +2052,12 @@
     "rebuildNoneArchived": "Nessun argomento viene archiviato.",
     "educationLevel": "Livello di studi",
     "educationHelp": "Il tutor risponde alle chat su questo piano a questo livello. È stato copiato dal tuo profilo quando hai creato il piano.",
-    "educationFailed": "Non è stato possibile salvare il livello. Riprova."
+    "educationFailed": "Non è stato possibile salvare il livello. Riprova.",
+    "archive": "Archivia l'esame",
+    "archiveHelp": "Metti da parte un esame finito. Esce dalle code di ripasso, dai conteggi e dai consigli. Lezioni e progressi restano e puoi ripristinarlo quando vuoi.",
+    "restore": "Ripristina l'esame",
+    "restoreHelp": "Riporta questo esame nelle code di ripasso e nei consigli.",
+    "archivedNotice": "Questo esame è archiviato. Resta fuori dalle code di ripasso e dai consigli."
   },
   "smart": {
     "check": "Verifica rapida",

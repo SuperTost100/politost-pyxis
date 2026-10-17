@@ -4,7 +4,7 @@ import {
   readPlanItem,
   openPlanQuiz,
 } from "./views";
-import { savePlanSettings } from "./settings";
+import { savePlanSettings, setPlanArchived } from "./settings";
 import {
   applyStoredRebuild,
   enqueuePlan,
@@ -151,6 +151,9 @@ export function planHandlers(
     },
     settings(input: Parameters<typeof savePlanSettings>[1]) {
       return recheck(input.planId, savePlanSettings(db, input));
+    },
+    archive(input: { planId: string; archived: boolean }) {
+      return setPlanArchived(db, input.planId, input.archived);
     },
     attachSources(input: { planId: string; sourceIds: string[] }) {
       return recheck(input.planId, attachPlanSources(db, input.planId, input.sourceIds));
