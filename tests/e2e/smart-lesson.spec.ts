@@ -299,15 +299,16 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     expect(await done("lesson", learn.topicId)).toBe(true);
 
     // Another wording is another lesson: the same recap there starts unanswered, and its answer is saved for it.
+    // The topic's own answers: the introduction's check answered above has no topic.
     const checkAnswers = () => {
       const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
       try {
         return (
           db
             .prepare(
-              "SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'answer_given' AND json_extract(payload_json, '$.evidenceKind') = 'check'",
+              "SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'answer_given' AND json_extract(payload_json, '$.evidenceKind') = 'check' AND topic_id = ?",
             )
-            .get() as { n: number }
+            .get(learn.topicId) as { n: number }
         ).n;
       } finally {
         db.close();
