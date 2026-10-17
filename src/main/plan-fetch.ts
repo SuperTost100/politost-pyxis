@@ -1,7 +1,7 @@
 import { blockedAddress, fetchPublicResponse } from "../core/sources/link";
 import { httpPlanUrl } from "../shared/plan-file";
 
-// One schema-supported embedded 200 MiB source plus base64 and plan content.
+// Room for one embedded 200 MiB original as base64 plus the plan. A file this app saves is smaller (MAX_PLAN_FILE_BYTES).
 export const MAX_LINKED_PLAN_BYTES = 320 * 1024 * 1024;
 
 export async function fetchPlanText(

@@ -69,6 +69,7 @@ export function ExportButton({
     setError(false);
     try {
       let result: "saved" | "cancelled";
+      let leftOut: string[] = [];
       if (kind === "plan") {
         const file = await invoke("plans.export", {
           planId,
@@ -76,6 +77,11 @@ export function ExportButton({
           embed,
           author,
         });
+        // An original on this computer that came back without its bytes did not fit in a file the app can save.
+        if (embed)
+          leftOut = (file.sources ?? [])
+            .filter((source) => source.data === undefined && source.bytes > 0)
+            .map((source) => source.title);
         result = await window.pyxis.saveArtifact({
           filename: `${file.title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ").trim() || "plan"}.pyxis`,
           base64: textBase64(JSON.stringify(file, null, 2)),
@@ -114,7 +120,12 @@ export function ExportButton({
       }
       if (result === "saved") {
         setOpen(false);
-        void message.success(t("export.saved"));
+        if (leftOut.length)
+          void message.warning(
+            t("export.sourcesLeftOut", { count: leftOut.length, titles: leftOut.join(", ") }),
+            8,
+          );
+        else void message.success(t("export.saved"));
       }
     } catch {
       setError(true);

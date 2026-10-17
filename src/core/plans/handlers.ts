@@ -37,10 +37,23 @@ import { exportPlan, importPlan } from "./file";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { readProfile } from "../profile/profile";
 import { planMastery, planSeries } from "./progress";
-import { planDiskUsage } from "../share/usage";
+import { freeUpSpace, planDiskUsage } from "../share/usage";
+import {
+  chatListedSources,
+  deleteHiddenSources,
+  deleteLoosePassages,
+  removeUnreferencedBlobs,
+} from "../chat/delete";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
-import type { PlanFile } from "../../shared/plan-file";
+import { AUTHOR_MAX, type PlanFile } from "../../shared/plan-file";
+
+/** The profile name as a plan file carries it: trimmed, and cut to the file's limit without splitting a character. */
+function fileAuthor(name: string): string {
+  let author = name.trim().slice(0, AUTHOR_MAX);
+  if (/[\ud800-\udbff]$/.test(author)) author = author.slice(0, -1);
+  return author.trim();
+}
 
 export function planHandlers(
   db: Database.Database,
@@ -80,6 +93,9 @@ export function planHandlers(
     },
     usage() {
       return planDiskUsage(db, workspace);
+    },
+    freeSpace() {
+      return freeUpSpace(db, workspace);
     },
     build(input: { planId: string }) {
       return planBuildState(db, input.planId);
@@ -184,19 +200,51 @@ export function planHandlers(
       db.prepare(
         "DELETE FROM jobs WHERE (kind IN ('quiz-build', 'map-build', 'exercise-build') AND json_extract(params_json, '$.input.planId') = ?) OR (kind IN ('simulation-grade', 'simulation-build', 'cards-build', 'gap-drill', 'gap-insight', 'exercise-build', 'quiz-replace') AND json_extract(params_json, '$.planId') = ?) OR (kind IN ('quiz-grade', 'quiz-check') AND json_extract(params_json, '$.attemptId') IN (SELECT id FROM attempts WHERE plan_id = ?))",
       ).run(input.planId, input.planId, input.planId);
-      // Exercises written for this plan's topics belong to no book, so nothing else would ever remove them.
-      const generated = `SELECT id FROM exercises WHERE smartbook_id IS NULL
-        AND json_extract(locator_json, '$.topicId') IN (SELECT id FROM topics WHERE plan_id = ?)`;
-      db.prepare(
-        `DELETE FROM flags WHERE target_kind = 'exercise' AND target_id IN (${generated})`,
-      ).run(input.planId);
-      db.prepare(`DELETE FROM exercises WHERE id IN (${generated})`).run(input.planId);
-      deletePlan(db, input.planId);
-      db.prepare("DELETE FROM settings WHERE key IN (?,?,?)").run(
-        `plan-material:${input.planId}`,
-        `plan-import:${input.planId}`,
-        educationKey(input.planId),
-      );
+      const hashes = db.transaction(() => {
+        // What a plan file import brought: hidden copies of the originals, and quotes of skipped ones with no source.
+        // Read before the plan's rows go; whatever else still uses one keeps it.
+        const cited = `SELECT passage_id FROM topic_passages WHERE topic_id IN (SELECT id FROM topics WHERE plan_id = @plan)
+          UNION SELECT passage_id FROM item_passages WHERE item_id IN (SELECT id FROM items WHERE plan_id = @plan)
+          UNION SELECT passage_id FROM cards WHERE plan_id = @plan`;
+        const sources = db
+          .prepare(
+            `SELECT source_id FROM plan_sources WHERE plan_id = @plan
+             UNION SELECT source_id FROM passages WHERE id IN (${cited}) AND source_id IS NOT NULL`,
+          )
+          .pluck()
+          .all({ plan: input.planId }) as string[];
+        // Exercises written for this plan's topics, and book exercises an import tied to it because their book was
+        // skipped, belong to no book, so nothing else would ever remove them.
+        const owned = `SELECT id FROM exercises WHERE smartbook_id IS NULL
+          AND (json_extract(locator_json, '$.topicId') IN (SELECT id FROM topics WHERE plan_id = @plan)
+            OR json_extract(locator_json, '$.planId') = @plan)`;
+        const loose = db
+          .prepare(
+            `SELECT id FROM passages WHERE source_id IS NULL
+             AND (id IN (${cited}) OR id IN (SELECT passage_id FROM exercises WHERE id IN (${owned})))`,
+          )
+          .pluck()
+          .all({ plan: input.planId }) as string[];
+        db.prepare(
+          `DELETE FROM flags WHERE target_kind = 'exercise' AND target_id IN (${owned})`,
+        ).run({ plan: input.planId });
+        db.prepare(`DELETE FROM exercises WHERE id IN (${owned})`).run({ plan: input.planId });
+        deletePlan(db, input.planId);
+        db.prepare("DELETE FROM settings WHERE key IN (?,?,?)").run(
+          `plan-material:${input.planId}`,
+          `plan-import:${input.planId}`,
+          educationKey(input.planId),
+        );
+        const listed = chatListedSources(db);
+        deleteLoosePassages(db, loose);
+        // An imported smartbook's book row came with the import, so it goes too.
+        return deleteHiddenSources(
+          db,
+          sources.filter((id) => !listed.has(id)),
+          { books: true },
+        );
+      })();
+      removeUnreferencedBlobs(db, workspace, hashes);
       return { ok: true };
     },
     export(input: {
@@ -206,7 +254,7 @@ export function planHandlers(
       author?: boolean;
     }) {
       const author =
-        input.author === false ? "" : readProfile(db)?.displayName.trim();
+        input.author === false ? "" : fileAuthor(readProfile(db)?.displayName ?? "");
       return exportPlan(db, input.planId, {
         progress: input.progress === true,
         embed: input.embed === true,

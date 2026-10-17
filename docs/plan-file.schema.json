@@ -1381,7 +1381,7 @@
           "bytes": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 209715200
+            "maximum": 268435456
           },
           "mime": {
             "type": [
@@ -1391,7 +1391,7 @@
           },
           "data": {
             "type": "string",
-            "maxLength": 280000000
+            "maxLength": 357913944
           }
         },
         "required": [

@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { readFileSync, statSync } from "node:fs";
 import type { PlanFile } from "../../shared/plan-file";
+import { MAX_SOURCE_BYTES } from "../../shared/source-types";
 import { readBlob } from "../blobs";
 
 /**
@@ -26,7 +27,7 @@ export function withLibraryOriginals(
       throw new Error("plan-file");
     const path = readBlob(workspace, source.sha).file;
     const size = statSync(path).size;
-    if (size > 200 * 1024 * 1024 || (source.bytes != null && size !== source.bytes))
+    if (size > MAX_SOURCE_BYTES || (source.bytes != null && size !== source.bytes))
       throw new Error("plan-file");
     return { ...source, data: readFileSync(path).toString("base64") };
   });
