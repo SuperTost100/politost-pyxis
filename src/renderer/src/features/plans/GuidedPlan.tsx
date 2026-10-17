@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Button, Checkbox, Input, Steps, Tree } from "antd";
+import { Button, Checkbox, Input, Tree } from "antd";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { RequestInput, RequestOutput } from "@shared/ipc";
@@ -8,6 +8,7 @@ import { Navigate, useLocation, useNavigate } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
+import { Stepper } from "../../components/Stepper";
 import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import {
@@ -233,13 +234,10 @@ function Guided({ seed }: { seed: WizardSeed }) {
       primary={primary}
     >
       <div className="px-plan-wizard">
-        <Steps
-          size="small"
+        <Stepper
           current={shown}
-          items={(["period", "modules", "style", "topics"] as const).map(
-            (id) => ({
-              title: t(`wizard.guided.steps.${id}`),
-            }),
+          steps={(["period", "modules", "style", "topics"] as const).map((id) =>
+            t(`wizard.guided.steps.${id}`),
           )}
         />
         <h2 className="title-1 px-wizard-question">

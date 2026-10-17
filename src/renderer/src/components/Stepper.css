@@ -1,0 +1,43 @@
+.px-stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: var(--space-3);
+}
+.px-stepper-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-stepper-bar {
+  height: 3px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--border-control);
+  opacity: 0.45;
+}
+.px-stepper-item.is-done .px-stepper-bar,
+.px-stepper-item.is-current .px-stepper-bar {
+  background: var(--primary);
+  opacity: 1;
+}
+.px-stepper-label {
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-stepper-item.is-current .px-stepper-label {
+  color: var(--ink);
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .px-stepper-item:not(.is-current) .px-stepper-label {
+    display: none;
+  }
+  .px-stepper-item.is-current {
+    flex: 3 1 0;
+  }
+}

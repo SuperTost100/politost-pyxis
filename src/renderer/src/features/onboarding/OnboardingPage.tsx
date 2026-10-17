@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Steps } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { Button, Input } from "antd";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
+import { Stepper } from "../../components/Stepper";
 import { invoke } from "../../lib/ipc";
 import { useMenuLock } from "../../app/menu-state";
 import { useJobs } from "../jobs/queries";
@@ -105,24 +106,93 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
     setScreen((value) => Math.min(value + 1, screens.length - 1));
   const back = () => setScreen((value) => Math.max(value - 1, 0));
 
+  // Every screen ends in the same footer: one way back or out on the left, the way forward on the right.
+  const skipButton = (
+    <Button
+      type="text"
+      shape="round"
+      disabled={busy}
+      onClick={() => void finish(true)}
+    >
+      {t("onboarding.skip")}
+    </Button>
+  );
+  const backButton = (
+    <Button type="text" shape="round" disabled={busy} onClick={back}>
+      {t("nav.back")}
+    </Button>
+  );
+  const continueButton = (
+    onClick: () => void,
+    label = "onboarding.continue",
+  ) => (
+    <Button type="primary" shape="round" onClick={onClick}>
+      {t(label)}
+    </Button>
+  );
+  let secondary: ReactNode = null;
+  let primary: ReactNode = null;
+  if (id === "welcome") {
+    secondary = again ? (
+      <Button type="text" shape="round" onClick={backToSettings}>
+        {t("wizard.cancel")}
+      </Button>
+    ) : (
+      skipButton
+    );
+    primary = continueButton(next, "onboarding.welcome.start");
+  } else if (id === "ready") {
+    if (again) {
+      primary = continueButton(backToSettings, "onboarding.again.done");
+    } else {
+      secondary = (
+        <Button type="text" shape="round" onClick={() => navigate("/exams")}>
+          {t("onboarding.done")}
+        </Button>
+      );
+      primary = (
+        <>
+          <Button
+            shape="round"
+            onClick={() => navigate("/plans/new", { state: { books: true } })}
+          >
+            {t("onboarding.ready.book")}
+          </Button>
+          {continueButton(
+            () => navigate("/plans/new"),
+            "onboarding.ready.create",
+          )}
+        </>
+      );
+    }
+  } else {
+    secondary = id === "profile" && !again ? skipButton : backButton;
+    if (id === "engines")
+      primary = continueButton(
+        next,
+        enginesReady === false ? "onboarding.later" : "onboarding.continue",
+      );
+    else if (id === "privacy")
+      primary = (
+        <Button
+          type="primary"
+          shape="round"
+          loading={busy}
+          onClick={() => void finish(false)}
+        >
+          {t("onboarding.continue")}
+        </Button>
+      );
+    else primary = continueButton(next);
+  }
+
   return (
     <div className="px-onboarding">
       {numbered ? (
-        <>
-          <Steps
-            size="small"
-            current={step}
-            items={stepIds.map((item) => ({
-              title: t(`onboarding.steps.${item}`),
-            }))}
-          />
-          <p className="meta px-onboarding-count">
-            {t("onboarding.stepCount", {
-              current: step + 1,
-              total: stepIds.length,
-            })}
-          </p>
-        </>
+        <Stepper
+          steps={stepIds.map((item) => t(`onboarding.steps.${item}`))}
+          current={step}
+        />
       ) : null}
       <h1 className="display" tabIndex={-1} ref={heading}>
         {t(
@@ -162,7 +232,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
       {id === "engines" ? (
         <EnginesStep onReady={setEnginesReady} again={again} />
       ) : null}
-      {id === "photos" ? <PhotosStep onNext={next} /> : null}
+      {id === "photos" ? <PhotosStep /> : null}
       {id === "privacy" ? (
         <CrashReportsSwitch
           checked={crashReports}
@@ -174,97 +244,16 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
       {failed ? (
         <Notice tone="danger">{t("onboarding.saveFailed")}</Notice>
       ) : null}
-      {id === "welcome" ? (
-        <div className="px-onboarding-actions">
-          {again ? (
-            <Button type="text" shape="round" onClick={backToSettings}>
-              {t("wizard.cancel")}
-            </Button>
-          ) : (
-            <Button
-              type="text"
-              shape="round"
-              disabled={busy}
-              onClick={() => void finish(true)}
-            >
-              {t("onboarding.skip")}
-            </Button>
-          )}
-          <Button type="primary" shape="round" onClick={next}>
-            {t("onboarding.welcome.start")}
-          </Button>
-        </div>
-      ) : null}
-      {id === "ready" && again ? (
-        <div className="px-onboarding-actions is-end">
-          <Button type="primary" shape="round" onClick={backToSettings}>
-            {t("onboarding.again.done")}
-          </Button>
-        </div>
-      ) : null}
-      {id === "ready" && !again ? (
-        <div className="px-onboarding-actions is-end">
-          <Button shape="round" onClick={() => navigate("/exams")}>
-            {t("onboarding.done")}
-          </Button>
-          <Button
-            shape="round"
-            onClick={() => navigate("/plans/new", { state: { books: true } })}
-          >
-            {t("onboarding.ready.book")}
-          </Button>
-          <Button
-            type="primary"
-            shape="round"
-            onClick={() => navigate("/plans/new")}
-          >
-            {t("onboarding.ready.create")}
-          </Button>
-        </div>
-      ) : null}
-      {numbered ? (
-        <div className="px-onboarding-actions">
-          {id === "profile" && !again ? (
-            <Button
-              type="text"
-              shape="round"
-              disabled={busy}
-              onClick={() => void finish(true)}
-            >
-              {t("onboarding.skip")}
-            </Button>
-          ) : (
-            <Button type="text" shape="round" disabled={busy} onClick={back}>
-              {t("nav.back")}
-            </Button>
-          )}
-          {id === "photos" ? <span /> : null}
-          {id === "profile" ? (
-            <Button type="primary" shape="round" onClick={next}>
-              {t("onboarding.continue")}
-            </Button>
-          ) : null}
-          {id === "engines" ? (
-            <Button type="primary" shape="round" onClick={next}>
-              {t(
-                enginesReady === false
-                  ? "onboarding.later"
-                  : "onboarding.continue",
-              )}
-            </Button>
-          ) : null}
-          {id === "privacy" ? (
-            <Button
-              type="primary"
-              shape="round"
-              loading={busy}
-              onClick={() => void finish(false)}
-            >
-              {t("onboarding.continue")}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+      <div
+        className={
+          id === "ready" && !again
+            ? "px-onboarding-actions is-ready"
+            : "px-onboarding-actions"
+        }
+      >
+        <span>{secondary}</span>
+        <span className="px-onboarding-primary">{primary}</span>
+      </div>
     </div>
   );
 }
@@ -350,10 +339,10 @@ function ProfileStep(props: {
 }
 
 /**
- * The same one-time OCR language download as Settings > Data, with its own consent text, progress and retry. Pressing
- * "Later" moves on without downloading; a running download keeps going if the student continues.
+ * The same one-time OCR language download as Settings > Data, with its own consent text, progress and retry. Not
+ * downloading is the default: Continue in the footer moves on, and a running download keeps going.
  */
-function PhotosStep({ onNext }: { onNext: () => void }) {
+function PhotosStep() {
   const { t } = useTranslation();
   const { data: jobs = [] } = useJobs();
   const downloading = jobs.some(
@@ -361,25 +350,13 @@ function PhotosStep({ onNext }: { onNext: () => void }) {
       job.kind === "ocr-data-download" &&
       (job.state === "queued" || job.state === "running"),
   );
-  const continueButton = (
-    <Button type="primary" shape="round" onClick={onNext}>
-      {t("onboarding.continue")}
-    </Button>
-  );
   return (
     <div className="px-onboarding-photos">
-      <OcrDataCard
-        onLater={onNext}
-        laterLabel={t("onboarding.photos.later")}
-        readyAction={continueButton}
-      />
+      <OcrDataCard />
       {downloading ? (
-        <>
-          <p className="small px-onboarding-note">
-            {t("onboarding.photos.keepGoing")}
-          </p>
-          <div className="px-onboarding-inline">{continueButton}</div>
-        </>
+        <p className="small px-onboarding-note">
+          {t("onboarding.photos.keepGoing")}
+        </p>
       ) : null}
     </div>
   );

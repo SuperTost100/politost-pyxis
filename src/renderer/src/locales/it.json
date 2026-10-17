@@ -15,6 +15,10 @@
     "back": "Indietro",
     "exams": "Esami"
   },
+  "stepper": {
+    "label": "Avanzamento",
+    "position": "Passo {{current}} di {{total}}"
+  },
   "shortcuts": {
     "title": "Scorciatoie da tastiera",
     "lead": "Le scorciatoie generali sono anche nei menu.",
@@ -97,7 +101,6 @@
     },
     "saveFailed": "Il profilo non è stato salvato. Riprova.",
     "later": "Lo farò dopo",
-    "stepCount": "Passo {{current}} di {{total}}",
     "steps": {
       "profile": "Su di te",
       "engines": "Motori AI",
@@ -132,7 +135,6 @@
     "photos": {
       "title": "Foto e scansioni",
       "body": "Pyxis può leggere il testo di una foto o di una scansione direttamente su questo computer.",
-      "later": "Più tardi",
       "keepGoing": "Il download continua anche se vai avanti."
     },
     "privacy": {
@@ -152,8 +154,8 @@
     },
     "ready": {
       "title": "Tutto pronto",
-      "body": "Crea un esame e aggiungi il materiale. Il piano di studio lo preparo io.",
-      "create": "Crea il primo esame",
+      "body": "Scegli la materia, la data dell'esame e il materiale. Il piano di studio lo preparo io.",
+      "create": "Crea il tuo primo piano",
       "book": "Parti da un libro PoliTost gratuito"
     }
   },

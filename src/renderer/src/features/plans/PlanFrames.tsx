@@ -1,8 +1,9 @@
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StepLines } from "../../components/StepLines";
+import { Stepper } from "../../components/Stepper";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./PlanPage.css";
-import { Button, Input, Modal, Steps, DatePicker, Slider } from "antd";
+import { Button, Input, Modal, DatePicker, Slider } from "antd";
 import dayjs from "dayjs";
 import dateIt from "antd/es/date-picker/locale/it_IT";
 import dateEn from "antd/es/date-picker/locale/en_GB";
@@ -331,11 +332,7 @@ export function WizardFrame() {
       }
     >
       <div className="px-plan-wizard">
-        <Steps
-          size="small"
-          current={wizardStep}
-          items={stepNames.map((title) => ({ title }))}
-        />
+        <Stepper current={wizardStep} steps={stepNames} />
         <h2 className="title-1 px-wizard-question">
           {t(`wizard.questions.${wizardStep}`)}
         </h2>

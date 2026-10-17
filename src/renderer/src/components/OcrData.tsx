@@ -26,15 +26,12 @@ export function OcrDataCard({
   refusal,
   readyAction,
   onLater,
-  laterLabel,
 }: {
   /** Message key of the refusal that brought the student here. Without it the card is a plain status. */
   refusal?: string;
   readyAction?: ReactNode;
   /** Leaves the refused action pending. */
   onLater?: () => void;
-  /** Replaces the default "Not now" wording of the later button. */
-  laterLabel?: string;
 }) {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
@@ -167,7 +164,7 @@ export function OcrDataCard({
         </Button>
         {onLater ? (
           <Button type="text" shape="round" onClick={onLater}>
-            {laterLabel ?? t("sources.ocrData.later")}
+            {t("sources.ocrData.later")}
           </Button>
         ) : null}
       </div>

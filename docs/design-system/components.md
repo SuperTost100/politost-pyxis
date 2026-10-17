@@ -255,6 +255,16 @@ A vertical list of job steps.
 
 - Pending is a circle, running is a loader, done is a check in mastery, failed is a cross in danger.
 
+## Stepper
+
+Where the student is in a short flow of named steps. First setup and the new plan wizard use it.
+
+**Consumer provides** the step labels and the index of the current step.
+
+- A bar per step: past steps and the current one in `primary`, the rest in a muted line. The current label is bold.
+- On a narrow window only the current label stays.
+- The position is not printed. The current item carries `aria-current="step"` and a visually hidden "Step 2 of 4:" before its label.
+
 ## BuildingMark
 
 The plan-building mark. Three trails draw themselves as work finishes, around a star that stays still.
