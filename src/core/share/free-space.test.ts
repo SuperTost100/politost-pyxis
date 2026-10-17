@@ -13,13 +13,18 @@ import { deleteLoosePassages } from "../chat/delete";
 type Db = ReturnType<typeof openDatabase>;
 
 const dirs: string[] = [];
+const dbs: Db[] = [];
 afterEach(() => {
+  // Windows refuses to remove a folder while its database is still open.
+  for (const db of dbs.splice(0)) if (db.open) db.close();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 function workspace(): { dir: string; db: Db } {
   const dir = mkdtempSync(join(tmpdir(), "pyxis-free-"));
   dirs.push(dir);
-  return { dir, db: openDatabase(join(dir, "pyxis.db")) };
+  const db = openDatabase(join(dir, "pyxis.db"));
+  dbs.push(db);
+  return { dir, db };
 }
 function blob(dir: string, text: string): string {
   return putBlob(dir, Buffer.from(text), "application/pdf", "pdf");
