@@ -53,3 +53,55 @@
   height: auto;
   border-radius: var(--radius-md);
 }
+.px-python-snippets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-python-snippets h2 {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-python-snippets ul {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-python-snippets li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) 0;
+}
+.px-python-snippets li + li {
+  border-top: 1px solid var(--border);
+}
+.px-python-snippet {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-sm);
+  padding: var(--space-1) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: 400 calc(13px * var(--text-scale)) / 1.6 var(--font-mono);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+.px-python-snippet:hover {
+  background: var(--surface-raised);
+}
+.px-python-snippet:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
