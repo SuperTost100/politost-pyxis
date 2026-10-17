@@ -170,6 +170,42 @@ describe("generated exercises in the export (#101)", () => {
     expect(locator.passageIds).toHaveLength(2);
   });
 
+  it("imports a file an older version wrote with another plan's exercises in it", () => {
+    const db = openDatabase(":memory:");
+    const source = book(db);
+    const plan = createPlan(db, { title: "A", sourceIds: [source.sourceId] });
+    const passage = passageOf(db, source.sourceId);
+    generated(db, "mine", topicOf(db, plan.planId), [passage]);
+    const file = exportPlan(db, plan.planId);
+    const theirs = {
+      ...file.exercises![0]!,
+      id: "theirs",
+      locator: { kind: "generated", topicId: "b-topic", passageIds: [passage, "b-only-passage"], steps: [], hints: [] },
+    };
+    const old = { ...file, exercises: [...file.exercises!, theirs] };
+    expect(planFileSchema.safeParse(old).success).toBe(true);
+    const fresh = openDatabase(":memory:");
+    importPlan(fresh, old, 10_000);
+    expect(fresh.prepare("SELECT COUNT(*) FROM exercises WHERE smartbook_id IS NULL").pluck().get()).toBe(1);
+
+    // One the file's progress names stays, tied to the plan instead of a topic it does not have.
+    const named = {
+      ...old,
+      progress: [{ kind: "answer_given" as const, topic: 0, payload: { exerciseId: "theirs", correct: true }, at: 5 }],
+    };
+    const again = openDatabase(":memory:");
+    const planId = importPlan(again, named, 10_000);
+    const kept = again
+      .prepare("SELECT locator_json FROM exercises WHERE smartbook_id IS NULL AND prompt = 'Quanto vale?'")
+      .pluck()
+      .all()
+      .map((json) => JSON.parse(json as string) as { topicId?: string; planId?: string; passageIds: string[] });
+    expect(kept).toHaveLength(2);
+    const detached = kept.find((locator) => locator.planId === planId)!;
+    expect(detached.topicId).toBeUndefined();
+    expect(detached.passageIds).toHaveLength(1);
+  });
+
   it("keeps a plan's exercises after its topics moved to new passages", () => {
     const db = openDatabase(":memory:");
     const source = book(db);

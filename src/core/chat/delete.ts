@@ -4,8 +4,9 @@ import { removeBlob } from "../blobs";
 /**
  * What deleting a chat or a plan takes with it besides its own rows: the hidden documents it brought and their files.
  * A document is permanently deleted only when nothing else uses it. It stays when a chat's scope lists it, a plan uses
- * it, it is a smartbook (unless the caller owns the book, see `books`), a job that may still run names it, or any plan
- * item, card, exercise or chat citation points at its passages. A file is removed only when no source, attachment,
+ * it, it is a smartbook (unless the caller owns the book, see `books`), a job that may still run names it, any plan
+ * item, card, exercise or chat citation points at its passages, or JSON elsewhere names it, its passages or its book's
+ * exercises (see `jsonReferences`). A file is removed only when no source, attachment,
  * document version, whiteboard or job that may still run names its hash.
  */
 
@@ -17,8 +18,75 @@ const OPEN_JOBS = `SELECT params_json AS text FROM jobs WHERE state != 'succeede
   UNION ALL SELECT s.output_json FROM job_steps s JOIN jobs j ON j.id = s.job_id
   WHERE j.state != 'succeeded' AND s.output_json IS NOT NULL`;
 
-/** Whether anything outside the deleted chat or plan still depends on this source or its passages. */
-function sourceInUse(db: Database.Database, sourceId: string, books: boolean): boolean {
+/**
+ * Whether JSON without a foreign key names an ID: a lesson's citation order, a question's `sourceId`, an exercise
+ * directive, a generated exercise's `passageIds`, a map node's sources, a topic tree, a learning event's payload or a
+ * setting. Every ID-like word counts, so a mention anywhere keeps the row: deleting too little only costs space.
+ * `ownBook`: words in that book's own exercises do not count, because they go with it.
+ */
+type JsonReferences = (id: string, ownBook?: string) => boolean;
+
+/** Words with and without dots and colons, so an ID at the end of a sentence counts and so does one that has a dot. */
+const ID_WORDS = [/[\w-]+/g, /[\w.:-]+/g];
+
+function jsonReferences(db: Database.Database): JsonReferences {
+  const words = new Set<string>();
+  const each = (sql: string, visit: (row: unknown[]) => void) => {
+    for (const row of db.prepare(sql).raw().iterate() as Iterable<unknown[]>) visit(row);
+  };
+  const split = (text: unknown, add: (word: string) => void) => {
+    if (typeof text === "string")
+      for (const pattern of ID_WORDS) for (const [word] of text.matchAll(pattern)) add(word);
+  };
+  for (const sql of [
+    `SELECT body_json FROM items`,
+    `SELECT graph_json FROM maps`,
+    `SELECT tree_json FROM topics`,
+    `SELECT payload_json FROM learning_events`,
+    // A source's syllabus comparison goes with it.
+    `SELECT value_json FROM settings WHERE key NOT LIKE 'syllabus.%'`,
+  ])
+    each(sql, ([text]) => split(text, (word) => words.add(word)));
+  const inExercises = new Map<string, Set<unknown>>();
+  each(`SELECT smartbook_id, locator_json FROM exercises`, ([book, locator]) =>
+    split(locator, (word) => {
+      const books = inExercises.get(word) ?? new Set<unknown>();
+      books.add(book);
+      inExercises.set(word, books);
+    }),
+  );
+  return (id, ownBook) =>
+    words.has(id) || [...(inExercises.get(id) ?? [])].some((book) => ownBook === undefined || book !== ownBook);
+}
+
+/** Whether anything outside the deleted chat or plan still depends on this source, its passages or its book. */
+function sourceInUse(
+  db: Database.Database,
+  sourceId: string,
+  books: boolean,
+  references: () => JsonReferences,
+): boolean {
+  if (relationallyInUse(db, sourceId, books)) return true;
+  const named = references();
+  const book = (db.prepare(`SELECT id FROM smartbooks WHERE source_id = ?`).pluck().get(sourceId) ?? undefined) as
+    | string
+    | undefined;
+  const ownBook = books ? book : undefined;
+  return (
+    named(sourceId) ||
+    (db.prepare(`SELECT id FROM passages WHERE source_id = ?`).pluck().all(sourceId) as string[]).some((id) =>
+      named(id, ownBook),
+    ) ||
+    // An item or event that names one of the book's exercises keeps the book, and the exercise with it.
+    (books &&
+      book !== undefined &&
+      (db.prepare(`SELECT id FROM exercises WHERE smartbook_id = ?`).pluck().all(book) as string[]).some((id) =>
+        named(id, book),
+      ))
+  );
+}
+
+function relationallyInUse(db: Database.Database, sourceId: string, books: boolean): boolean {
   const cited = (table: string) =>
     `SELECT 1 FROM passages p JOIN ${table} x ON x.passage_id = p.id WHERE p.source_id = ?`;
   return (
@@ -77,6 +145,10 @@ function dropSource(db: Database.Database, sourceId: string, books: boolean): st
     // The book's exercises cascade with it.
     db.prepare(`DELETE FROM smartbooks WHERE source_id = ?`).run(sourceId);
   }
+  // A flag on a passage that is gone has nothing left to point at.
+  db.prepare(
+    `DELETE FROM flags WHERE target_kind = 'passage' AND target_id IN (SELECT id FROM passages WHERE source_id = ?)`,
+  ).run(sourceId);
   const vector = db.prepare(`DELETE FROM passages_vec WHERE passage_rowid = ?`);
   for (const row of db
     .prepare(`SELECT rowid AS n FROM passages WHERE source_id = ?`)
@@ -102,6 +174,8 @@ export function deleteHiddenSources(
 ): string[] {
   const books = options.books === true;
   const hashes: string[] = [];
+  let references: JsonReferences | undefined;
+  const named = () => (references ??= jsonReferences(db));
   for (const sourceId of candidates) {
     if (
       !db
@@ -109,7 +183,7 @@ export function deleteHiddenSources(
         .get(sourceId)
     )
       continue;
-    if (sourceInUse(db, sourceId, books)) continue;
+    if (sourceInUse(db, sourceId, books, named)) continue;
     hashes.push(...dropSource(db, sourceId, books));
   }
   return hashes;
@@ -121,9 +195,11 @@ export function deleteHiddenSources(
  */
 export function deleteRemovedSources(db: Database.Database, candidates: string[]): string[] {
   const hashes: string[] = [];
+  let references: JsonReferences | undefined;
+  const named = () => (references ??= jsonReferences(db));
   for (const sourceId of candidates) {
     if (!db.prepare(`SELECT 1 FROM sources WHERE id = ? AND status = 'removed'`).get(sourceId)) continue;
-    if (sourceInUse(db, sourceId, false)) continue;
+    if (sourceInUse(db, sourceId, false, named)) continue;
     hashes.push(...dropSource(db, sourceId, false));
   }
   return hashes;
@@ -135,6 +211,7 @@ export function deleteRemovedSources(db: Database.Database, candidates: string[]
  */
 export function deleteLoosePassages(db: Database.Database, candidates: string[]): void {
   const vector = db.prepare(`DELETE FROM passages_vec WHERE passage_rowid = ?`);
+  let references: JsonReferences | undefined;
   for (const id of new Set(candidates)) {
     const row = db
       .prepare(
@@ -146,7 +223,8 @@ export function deleteLoosePassages(db: Database.Database, candidates: string[])
          AND NOT EXISTS (SELECT 1 FROM exercises WHERE passage_id = p.id)`,
       )
       .get(id) as { n: number } | undefined;
-    if (!row) continue;
+    if (!row || (references ??= jsonReferences(db))(id)) continue;
+    db.prepare(`DELETE FROM flags WHERE target_kind = 'passage' AND target_id = ?`).run(id);
     vector.run(BigInt(row.n));
     db.prepare(`DELETE FROM passages WHERE id = ?`).run(id);
   }
