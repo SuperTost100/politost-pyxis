@@ -25,7 +25,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 16             | `sources.catalog_id` and `sources.catalog_version`, the free book a smartbook is        |
 | 17             | Indexes for hot lookups and for every foreign-key child column                          |
 | 18             | `cards.search_text`, the folded text the card browser searches                          |
-| 20             | `messages.error` and the `engine_usage` table                                           |
+| 20             | `messages.error`, `messages.passages_json` and the `engine_usage` table                 |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -35,7 +35,7 @@ Migration 17 indexes the latest review of a card (`card_reviews(card_id, reviewe
 
 Migration 18 adds `cards.search_text`: the card's front (a cloze as its text) and back, lower case, without accents or emphasis marks. The card browser fills it for every card where it is NULL before it searches, and the trigger `cards_search_stale` sets it back to NULL when the front or back changes. A new card and every card after the migration start at NULL.
 
-Migration 20 adds `messages.error`, the message key of the engine failure that cut a reply short (a stopped reply without it was stopped by the student), and `engine_usage`, one row per model call: time, provider, model, input and output tokens, prompt-cache reads and writes, and the chat and message or the job (with its kind) it was for. Those ids are plain text, not foreign keys, so the tokens of a deleted chat or a replaced reply still count in the week they were used.
+Migration 20 adds `messages.error`, the message key of the engine failure that cut a reply short (a stopped reply without it was stopped by the student), `messages.passages_json`, the passages a stopped reply was given as `{ passageId, index }` in P-number order, which Continue sends again unchanged, and `engine_usage`, one row per model call: time, provider, model, input and output tokens, prompt-cache reads and writes, and the chat and message or the job (with its kind) it was for. Those ids are plain text, not foreign keys, so the tokens of a deleted chat or a replaced reply still count in the week they were used.
 
 Current version is 20. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 

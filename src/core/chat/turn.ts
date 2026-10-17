@@ -84,9 +84,42 @@ type AskInput = {
   run?: Parameters<typeof generate>[0]["run"];
   /** `strong` answers with the plan task's engine at high effort ("Answer again with the strongest model"). */
   engine?: "chat" | "strong";
-  /** Continue: the text of the reply that was cut short. The model writes only the rest, appended to it. */
-  resumeFrom?: string;
+  /**
+   * Continue: the reply that was cut short. The model writes only the rest, appended to its text, from the passages it
+   * was written with (null for a reply saved before they were recorded, which retrieves them again).
+   */
+  resumeFrom?: { text: string; passages: KeptPassage[] | null };
 };
+
+/** A passage a stopped reply was written with, and the P-number it had. */
+type KeptPassage = { passageId: string; index: number };
+
+/** The passages a cut reply was written with, in its numbering. One deleted since then is left out; the rest keep their numbers. */
+function keptPassages(
+  db: Database.Database,
+  kept: KeptPassage[],
+): { hits: PassageHit[]; numbers: number[] } {
+  const read = db.prepare(
+    `SELECT id, source_id, text, section_path, locator_json FROM passages WHERE id = ?`,
+  );
+  const hits: PassageHit[] = [];
+  const numbers: number[] = [];
+  for (const passage of kept) {
+    const row = read.get(passage.passageId) as
+      | { id: string; source_id: string | null; text: string; section_path: string | null; locator_json: string | null }
+      | undefined;
+    if (!row) continue;
+    hits.push({
+      id: row.id,
+      sourceId: row.source_id ?? "",
+      text: row.text,
+      sectionPath: row.section_path,
+      locator: row.locator_json ? (JSON.parse(row.locator_json) as PassageHit["locator"]) : {},
+    });
+    numbers.push(passage.index);
+  }
+  return { hits, numbers };
+}
 
 /** Passages a chat turn sends to the model. Questions that ask for a full explanation need more than the default eight. */
 const CHAT_PASSAGES = 12;
@@ -684,8 +717,14 @@ async function answer(
   const thisTurnFile = notes.length > 0 || seesImage;
   // The passages are the main reference, not a gate: a question they do not cover is still answered from the model's own
   // knowledge, and the reply shows it by citing nothing (see replyGrounding).
-  const gathered =
-    input.allowGeneral ||
+  // Continue answers from the passages the cut reply was written with, in the same numbering, so the citations in its
+  // saved text still point where they did.
+  const kept = input.resumeFrom?.passages
+    ? keptPassages(db, input.resumeFrom.passages)
+    : undefined;
+  const gathered = kept
+    ? { hits: kept.hits, covered: true, usedVectors: false }
+    : input.allowGeneral ||
     (thisTurnFile && sourceIds.length === 0) ||
     (planId && sourceIds.length === 0)
       ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
@@ -694,14 +733,14 @@ async function answer(
     ...gathered,
     hits: [
       ...gathered.hits,
-      ...(await attachedPassages(db, input.text, attachedIds, gathered.hits, input.embed)),
+      ...(kept ? [] : await attachedPassages(db, input.text, attachedIds, gathered.hits, input.embed)),
     ],
   };
   const selected = sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
 
   const citations: ChatCitation[] = found.hits.map((hit, index) => ({
-    label: hit.sectionPath || hit.locator.paragraph || `P${index + 1}`,
-    index: index + 1,
+    label: hit.sectionPath || hit.locator.paragraph || `P${kept?.numbers[index] ?? index + 1}`,
+    index: kept?.numbers[index] ?? index + 1,
     passageId: hit.id,
     sourceId: hit.sourceId,
     sectionPath: hit.sectionPath,
@@ -739,7 +778,7 @@ async function answer(
   // What is new for this question goes last, after the parts that stay the same from turn to turn, so a provider's
   // prompt cache keeps the start of the prompt. A conversation the engine still holds gets only the new part.
   // Continue sends the reply that was cut short with the question, so the model writes only what is missing.
-  const resume = input.resumeFrom ?? "";
+  const resume = input.resumeFrom?.text ?? "";
   const resumeBlock = resume
     ? `\n\nYour earlier answer to this question was cut off. It ends here:\n${resume}\n\nContinue from exactly where it stops. Do not repeat any of it.`
     : "";
@@ -930,8 +969,8 @@ function finishReply(
   });
   db.prepare(
     `INSERT INTO messages
-      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, stopped, error, created_at)
-     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?)`,
+      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, stopped, error, passages_json, created_at)
+     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     messageId,
     chatId,
@@ -943,6 +982,10 @@ function finishReply(
     grounding,
     meta.stopped ? 1 : 0,
     meta.error,
+    // Every passage the reply was given, cited or not, so Continue can answer from the same ones in the same numbering.
+    JSON.stringify(
+      meta.citations.map((cite): KeptPassage => ({ passageId: cite.passageId, index: cite.index })),
+    ),
     meta.now + 1,
   );
   const link = db.prepare(
@@ -982,9 +1025,11 @@ export async function regenerateTurn(
   const { resume, ...rest } = input;
   const last = db
     .prepare(
-      `SELECT id, role, body, stopped FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, role, body, stopped, passages_json FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
     )
-    .get(input.chatId) as { id: string; role: string; body: string; stopped: number } | undefined;
+    .get(input.chatId) as
+    | { id: string; role: string; body: string; stopped: number; passages_json: string | null }
+    | undefined;
   const user = db
     .prepare(
       `SELECT id, body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC LIMIT 1`,
@@ -996,7 +1041,12 @@ export async function regenerateTurn(
   // The reply being replaced drops its math check.
   if (last?.role === "assistant") cancelChecks(input.chatId, last.id);
   const resumeFrom =
-    resume && last ? splitFollowups(splitChecks(last.body).body).body : undefined;
+    resume && last
+      ? {
+          text: splitFollowups(splitChecks(last.body).body).body,
+          passages: last.passages_json ? (JSON.parse(last.passages_json) as KeptPassage[]) : null,
+        }
+      : undefined;
   const result = await askTurn(
     db,
     { ...rest, text: user.body, resumeFrom },
