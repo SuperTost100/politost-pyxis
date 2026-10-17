@@ -5,7 +5,7 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { suggestStep, topicSuggestion, type Stage, type TopicStatus } from "./path";
-import { gradedActivities, readSteps } from "./steps";
+import { finishedLessons, gradedActivities, readSteps } from "./steps";
 import { countDueCards } from "../study/cards";
 import { gapSeverity, planMastery, syncGaps, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
@@ -290,9 +290,11 @@ export function readPlan(db: Database.Database, planId: string) {
     tree_json: string | null;
     grounding: "sources" | "mixed" | "general" | null;
   }>;
+  const finished = finishedLessons(db, planId);
   const topicViews = topics.map(({ tree_json, ...topic }) => ({
     ...topic,
     ...topicContent(db, planId, topic.id),
+    lessons: finished.filter((lesson) => lesson.topicId === topic.id).length,
     ...topicTree(tree_json),
   }));
   return {

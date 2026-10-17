@@ -108,7 +108,6 @@ export function topicContent(
       ),
     ],
     passageCount: passages.length,
-    itemCount: items.length,
     firstPassageId: passages[0]?.id ?? null,
     chapter: chapter ?? null,
     items,
