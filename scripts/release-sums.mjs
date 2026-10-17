@@ -11,6 +11,8 @@ import { pathToFileURL } from "node:url";
 /** The installers src/main/update-install.ts looks for on a release, by their asset names. */
 export function requiredAssets(version) {
   return [
+    `PoliTost.Pyxis-${version}-arm64-mac.zip`,
+    `PoliTost.Pyxis-${version}-mac.zip`,
     `PoliTost.Pyxis-${version}-arm64.dmg`,
     `PoliTost.Pyxis-${version}.dmg`,
     `PoliTost.Pyxis.Setup.${version}.exe`,
