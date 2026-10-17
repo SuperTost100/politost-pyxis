@@ -33,11 +33,13 @@ export type ImportedFrom = {
   exportedAt: number | null;
   importedAt: number;
 };
+/** The identity of a plan file: the exporting plan's ID and the time of the export. */
+export type PlanFileIdentity = { id?: string; createdAt?: number };
 export function markPlanImported(
   db: Database.Database,
   planId: string,
   now: number,
-  from?: { author?: string; exportedAt?: number },
+  from?: { author?: string; exportedAt?: number; fileId?: string },
 ) {
   db.prepare(
     "INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,?)",
@@ -46,9 +48,25 @@ export function markPlanImported(
     JSON.stringify({
       author: from?.author ?? null,
       exportedAt: from?.exportedAt ?? null,
+      fileId: from?.fileId ?? null,
     }),
     now,
   );
+}
+/**
+ * The newest plan still in the workspace that was imported from this same file: same exporting plan and same export
+ * time. A file without either, or one from a later export of the same plan, matches nothing.
+ */
+export function planImportedFrom(db: Database.Database, file: PlanFileIdentity) {
+  if (!file.id || file.createdAt == null) return null;
+  const row = db
+    .prepare(
+      `SELECT p.id AS planId, s.updated_at AS importedAt FROM settings s JOIN plans p ON s.key = 'plan-import:' || p.id
+       WHERE json_extract(s.value_json, '$.fileId') = ? AND json_extract(s.value_json, '$.exportedAt') = ?
+       ORDER BY s.updated_at DESC, p.id DESC LIMIT 1`,
+    )
+    .get(file.id, file.createdAt) as { planId: string; importedAt: number } | undefined;
+  return row ?? null;
 }
 export function planOrigin(db: Database.Database, planId: string) {
   const row = db

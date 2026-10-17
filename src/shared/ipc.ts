@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
-import { MAX_EXAM_AT, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
+import { MAX_EXAM_AT, PLAN_FILE_PARTS, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { MAX_IMAGE_BASE64 } from "./source-types";
 import { installableProviders } from "./installers";
 
@@ -1384,8 +1384,15 @@ export const requests = {
     // libraryFor: source index in the file -> library source whose stored original stands in for the missing one (SHR-05).
     input: planFileSchema.extend({
       libraryFor: z.record(z.string().regex(/^\d+$/), z.string()).optional(),
+      // The parts of the file the student agreed to import without, after a refusal that named them (SHR-05).
+      without: z.array(z.enum(PLAN_FILE_PARTS)).max(PLAN_FILE_PARTS.length).optional(),
     }),
     output: z.object({ planId: z.string() }),
+  },
+  "plans.importedFile": {
+    // The plan already imported from this same file (same exporting plan, same export time), if it is still there.
+    input: z.object({ id: z.string().min(1).max(160), createdAt: z.number().finite() }),
+    output: z.object({ planId: z.string(), importedAt: z.number() }).nullable(),
   },
   "plans.mastery": {
     input: z.object({ planId: z.string() }),
