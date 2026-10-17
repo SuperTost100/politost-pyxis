@@ -182,6 +182,7 @@
     "searchResults": "Risultati della ricerca",
     "searchCount_one": "{{count}} chat trovata",
     "searchCount_other": "{{count}} chat trovate",
+    "searchCapped": "Mostrate le {{count}} chat più recenti. Aggiungi una parola per restringere la ricerca.",
     "searchNone": "Nessuna chat contiene “{{query}}”.",
     "exportMarkdown": "Esporta come Markdown",
     "exportPdf": "Esporta come PDF",
@@ -1787,6 +1788,7 @@
     "retry": "Riprova",
     "internal": "Qualcosa non ha funzionato",
     "fileAccessDenied": "Seleziona questo file o questa cartella dal selettore prima di aprirli.",
+    "inputTooLong": "Il testo è troppo lungo. Tienilo sotto i {{max, number}} caratteri.",
     "notReady": "Pyxis si sta ancora avviando",
     "notAvailable": "Questa azione non è disponibile",
     "unknownRequest": "Richiesta sconosciuta",
@@ -1867,7 +1869,9 @@
       "socratic": "Socratico",
       "stop": "Interrompi",
       "send": "Invia",
-      "graph": "Grafico"
+      "graph": "Grafico",
+      "count": "{{used, number}} di {{max, number}} caratteri",
+      "full": "Limite del messaggio raggiunto: {{max, number}} caratteri. Accorcialo, o invialo a parti."
     },
     "chat": {
       "generalTag": "Conoscenza generale, non dalle tue fonti",

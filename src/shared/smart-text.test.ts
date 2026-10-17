@@ -16,6 +16,7 @@ import {
   smartLabels,
   splitCitationGroups,
   stripPassageRefs,
+  stripPassageRefsOutsideCode,
 } from "./smart-text";
 
 const check = {
@@ -250,6 +251,13 @@ describe("smart text", () => {
         "Partirai dalle misure. [01a110b2-3b89-7089-b52e-0855aadf1b56] Poi i vettori [P2] [01a110b2-3bc6-77ba-ba19-330c056ed84f].",
       ),
     ).toBe("Partirai dalle misure. Poi i vettori.");
+  });
+
+  it("leaves code alone when it strips markers: indentation, spaces before a colon and a literal [P1]", () => {
+    const code = "```python\nrows = (data\n    .map(f)\n    .filter(g))\nx : int = lst[P1]\n```";
+    expect(stripPassageRefsOutsideCode(`Vedi [P1] .\n\n${code}\n\nUsa \`a : b[P2]\` ora [P3] .`)).toBe(
+      `Vedi.\n\n${code}\n\nUsa \`a : b[P2]\` ora.`,
+    );
   });
 
   it("splits grouped citations into single ones", () => {

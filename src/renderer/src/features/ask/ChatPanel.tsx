@@ -75,7 +75,7 @@ export function ChatPanel({
   // Esc unmounts the field, so the blur that follows must not save what Esc just cancelled.
   const cancelled = useRef(false);
   const chats = history.data ?? [];
-  const hits = searching ? (found.data ?? []) : null;
+  const hits = searching ? (found.data?.hits ?? []) : null;
   const filed = chatSubjects(chats, subjects.data ?? []);
   // A filter for a subject no chat uses any more (its last chat was deleted) shows everything again.
   const filter = filed.includes(subject) ? subject : "";
@@ -315,6 +315,11 @@ export function ChatPanel({
               );
             })}
           </ul>
+        ) : null}
+        {searching && settled && found.data.capped ? (
+          <p className="small ask-panel-empty">
+            {t("ask.searchCapped", { count: found.data.hits.length })}
+          </p>
         ) : null}
       </Drawer>
       <Modal

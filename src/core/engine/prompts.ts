@@ -108,7 +108,13 @@ export function partialText(id: PartialId): string {
   return PARTIAL_SOURCES[id].trim();
 }
 
-/** Prompt wording for a stored language code; stored plan values are codes, profile values are names. */
+/** A language as a name, such as "Spanish" or "Brazilian Portuguese": letters, spaces and hyphens, one short line. */
+const LANGUAGE_NAME = /^\p{L}[\p{L}\p{M} -]{0,39}$/u;
+
+/**
+ * Prompt wording for a stored language code; stored plan values are codes, profile values are names. Plans can arrive
+ * in a shared file, so anything that is not a short name falls back instead of reaching a system prompt.
+ */
 export function languageName(
   stored: string | null | undefined,
   fallback = "Italian",
@@ -116,7 +122,7 @@ export function languageName(
   const value = stored?.trim();
   if (!value) return fallback;
   const names: Record<string, string> = { it: "Italian", en: "English" };
-  return names[value.toLowerCase()] ?? value;
+  return names[value.toLowerCase()] ?? (LANGUAGE_NAME.test(value) ? value : fallback);
 }
 
 /** Plan content language, falling back to the profile's interface language. */

@@ -7,6 +7,7 @@ import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { Stepper } from "../../components/Stepper";
+import { PROFILE_LIMITS } from "@shared/ipc";
 import { invoke } from "../../lib/ipc";
 import { useMenuLock } from "../../app/menu-state";
 import { useJobs } from "../jobs/queries";
@@ -284,6 +285,7 @@ function ProfileStep(props: {
         </label>
         <Input
           id="profile-name"
+          maxLength={PROFILE_LIMITS.displayName}
           value={values.name}
           onChange={(event) => set.setName(event.target.value)}
         />
@@ -309,6 +311,7 @@ function ProfileStep(props: {
           </label>
           <Input
             id="profile-year"
+            maxLength={PROFILE_LIMITS.year}
             value={values.year}
             onChange={(event) => set.setYear(event.target.value)}
           />
@@ -319,6 +322,7 @@ function ProfileStep(props: {
           </label>
           <Input
             id="profile-school"
+            maxLength={PROFILE_LIMITS.school}
             value={values.school}
             onChange={(event) => set.setSchool(event.target.value)}
           />
@@ -329,6 +333,7 @@ function ProfileStep(props: {
           </label>
           <Input
             id="profile-course"
+            maxLength={PROFILE_LIMITS.course}
             value={values.course}
             onChange={(event) => set.setCourse(event.target.value)}
           />
