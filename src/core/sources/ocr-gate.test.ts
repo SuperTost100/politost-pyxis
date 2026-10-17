@@ -79,3 +79,15 @@ it("names a scratch folder under the workspace for each OCR run and removes it w
     rmSync(tess, { recursive: true, force: true });
   }
 });
+
+it("reads imported files two at a time, so a large drop does not start a 2 GiB worker per job slot", async () => {
+  // The hanging stand-in above was never counted alive but was terminated, so the count starts over.
+  pool.live = 0;
+  pool.peak = 0;
+  const all = await Promise.all(
+    Array.from({ length: 6 }, () => runSourceWorker("extract-worker", { path: "/f.pdf", ext: ".pdf", tess: "" })),
+  );
+  expect(all).toEqual(Array(6).fill("texto"));
+  expect(pool.peak).toBe(2);
+  expect(pool.live).toBe(0);
+});
