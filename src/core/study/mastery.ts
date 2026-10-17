@@ -62,11 +62,65 @@ function decayWeight(now: number, at: number, halfLifeDays: number): number {
   return 0.5 ** (ageMs / (halfLifeDays * MS_PER_DAY));
 }
 
+/** The score of each topic with evidence. A topic without evidence is absent and counts as 0. */
 export function masteryFor(
   events: MasteryEvent[],
   now: number,
   opts?: { halfLifeDays?: number },
 ): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [topicId, detail] of Object.entries(
+    masteryDetail(events, now, opts),
+  ))
+    out[topicId] = detail.mastery;
+  return out;
+}
+
+/** The kinds of evidence a topic's mastery is made of. A lesson read counts for none. */
+export type MasteryGroup = "quiz" | "simulation" | "check" | "self" | "card";
+export const MASTERY_GROUPS: readonly MasteryGroup[] = [
+  "quiz",
+  "simulation",
+  "check",
+  "self",
+  "card",
+];
+
+/** A lesson read never reaches the sums; the fallback only satisfies the type. */
+function groupOf(event: MasteryEvent): MasteryGroup {
+  return event.kind === "lesson" ? "quiz" : event.kind;
+}
+
+export type MasteryPart = {
+  /** Observations that count: quiz answers, cards with a review, and so on. */
+  count: number;
+  /** Their weights added up after decay (cards do not decay). */
+  weight: number;
+  /** Their weighted scores added up. `points / (prior + all weights)` is what this part adds to the mastery. */
+  points: number;
+  /** The plain average score, without weights or decay; for cards, the average recall. */
+  mean: number;
+};
+
+export type TopicMastery = {
+  mastery: number;
+  parts: Record<MasteryGroup, MasteryPart>;
+  /** The empty observations added to every topic, so one lucky answer cannot look like mastery. */
+  priorWeight: number;
+  /** What age took off: the mastery minus the mastery the same evidence would give with no decay. */
+  decay: number;
+};
+
+/**
+ * The mastery of each topic with evidence, and the parts it is made of. `masteryFor` is this function's
+ * `mastery` field, so the parts always add up to the number shown:
+ * `mastery = sum(part.points) / (priorWeight + sum(part.weight))`, kept inside 0..1.
+ */
+export function masteryDetail(
+  events: MasteryEvent[],
+  now: number,
+  opts?: { halfLifeDays?: number },
+): Record<string, TopicMastery> {
   const halfLifeDays = opts?.halfLifeDays ?? DEFAULT_HALF_LIFE_DAYS;
   const byTopic = new Map<string, MasteryEvent[]>();
 
@@ -98,13 +152,21 @@ export function masteryFor(
     byTopic.set(e.topicId, list);
   }
 
-  const out: Record<string, number> = {};
+  const out: Record<string, TopicMastery> = {};
 
   for (const [topicId, topicEvents] of byTopic) {
     if (topicEvents.length === 0) continue;
 
+    const parts = Object.fromEntries(
+      MASTERY_GROUPS.map((group) => [
+        group,
+        { count: 0, weight: 0, points: 0, mean: 0 },
+      ]),
+    ) as Record<MasteryGroup, MasteryPart>;
     let weightedSum = 0;
     let totalWeight = 0;
+    let steadySum = 0;
+    let steadyWeight = 0;
 
     for (const e of topicEvents) {
       const typeWeight =
@@ -123,13 +185,33 @@ export function masteryFor(
         typeWeight *
         (e.kind === "card" ? 1 : decayWeight(now, e.at, halfLifeDays));
       if (w === 0) continue;
-      weightedSum += clamp01(e.score) * w;
+      const score = clamp01(e.score);
+      const part = parts[groupOf(e)];
+      part.count += 1;
+      part.weight += w;
+      part.points += score * w;
+      part.mean += score;
+      weightedSum += score * w;
       totalWeight += w;
+      steadySum += score * typeWeight;
+      steadyWeight += typeWeight;
     }
 
     if (totalWeight === 0) continue;
 
-    out[topicId] = clamp01(weightedSum / (MASTERY_PRIOR_COUNT + totalWeight));
+    for (const part of Object.values(parts))
+      if (part.count) part.mean /= part.count;
+    const mastery = clamp01(
+      weightedSum / (MASTERY_PRIOR_COUNT + totalWeight),
+    );
+    out[topicId] = {
+      mastery,
+      parts,
+      priorWeight: MASTERY_PRIOR_COUNT,
+      decay:
+        mastery -
+        clamp01(steadySum / (MASTERY_PRIOR_COUNT + steadyWeight)),
+    };
   }
 
   return out;

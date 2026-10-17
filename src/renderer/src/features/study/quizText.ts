@@ -57,3 +57,18 @@ export function stemText(stem: string): string {
 export function verdict(score: number): "correct" | "partial" | "wrong" {
   return score >= 1 ? "correct" : score > 0 ? "partial" : "wrong";
 }
+
+/**
+ * The order the student meets the questions in: skipped ones come back after all the others, in the order they were
+ * skipped. A question is skipped at most once, so this is the last move any question makes.
+ */
+export function skipOrder<T extends { id: string }>(
+  questions: T[],
+  skipped: string[],
+): T[] {
+  const late = new Set(skipped);
+  return [
+    ...questions.filter((question) => !late.has(question.id)),
+    ...skipped.flatMap((id) => questions.filter((question) => question.id === id)),
+  ];
+}
