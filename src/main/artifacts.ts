@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { mainChannels } from "../shared/bridge";
+import { MAX_ARTIFACT_BASE64 } from "../shared/plan-file";
 
 const fileName = z
   .string()
@@ -15,7 +16,7 @@ const artifact = z.object({
   ),
   base64: z
     .string()
-    .max(96 * 1024 * 1024)
+    .max(MAX_ARTIFACT_BASE64)
     .refine(
       (s) =>
         s.length % 4 === 0 &&
