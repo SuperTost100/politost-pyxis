@@ -13,7 +13,7 @@ describe("plan settings", () => {
     expect(
       savePlanSettings(
         db,
-        { planId: "p", title: "  Mechanics  ", target: 0.8, examAt: 1000 },
+        { planId: "p", title: "  Mechanics  ", target: 0.8, sessions: [{ date: 1000 }] },
         2000,
       ),
     ).toEqual({ ok: true });
@@ -35,7 +35,7 @@ describe("plan settings", () => {
         planId: "p",
         title: " ",
         target: 0.8,
-        examAt: null,
+        sessions: [],
       }),
     ).toThrow();
     expect(() =>
@@ -43,7 +43,7 @@ describe("plan settings", () => {
         planId: "p",
         title: "Fine",
         target: 1.1,
-        examAt: null,
+        sessions: [],
       }),
     ).toThrow();
     expect(() =>
@@ -51,7 +51,7 @@ describe("plan settings", () => {
         planId: "missing",
         title: "Fine",
         target: 0.8,
-        examAt: null,
+        sessions: [],
       }),
     ).toThrow("plan-missing-or-building");
     expect(db.prepare("SELECT title FROM plans").get()).toEqual({
@@ -66,7 +66,7 @@ describe("plan title limit", () => {
     const create = (title: string) =>
       requests["plans.create"].input.safeParse({ title, sourceIds: [] }).success;
     const settings = (title: string) =>
-      requests["plans.settings"].input.safeParse({ planId: "p", title, target: 0.8, examAt: null })
+      requests["plans.settings"].input.safeParse({ planId: "p", title, target: 0.8, sessions: [] })
         .success;
     expect(create("a".repeat(PLAN_TITLE_MAX))).toBe(true);
     expect(settings("a".repeat(PLAN_TITLE_MAX))).toBe(true);

@@ -298,7 +298,12 @@
     "continuePlan": "Continue {{title}}",
     "imported": "Imported",
     "aligned_one": "{{ready}} of {{count}} topic on track",
-    "aligned_other": "{{ready}} of {{count}} topics on track"
+    "aligned_other": "{{ready}} of {{count}} topics on track",
+    "status": "Status",
+    "statusActive": "Active",
+    "statusArchived": "Archived",
+    "noArchived": "No archived exams.",
+    "allArchived": "Every exam is archived. Choose Archived in the filter to see them."
   },
   "sources": {
     "dropSkipped": "Some items were skipped. Drop individual files of the listed types.",
@@ -777,6 +782,20 @@
     "introMissing": "This course has no introduction yet.",
     "introFailed": "The introduction could not be opened."
   },
+  "sessions": {
+    "heading": "Session {{n}}",
+    "remove": "Remove session {{n}}",
+    "removeShort": "Remove",
+    "date": "Date",
+    "time": "Time (optional)",
+    "name": "Name (optional)",
+    "namePlaceholder": "Written, oral",
+    "place": "Place (optional)",
+    "placePlaceholder": "Room or building",
+    "add": "Add another session",
+    "list": "Exam sessions",
+    "over": "over"
+  },
   "calendar": {
     "add": "Add to calendar",
     "saved": "Calendar file saved. Open it to add the exam date.",
@@ -784,7 +803,7 @@
     "nothing": "This exam has no upcoming date.",
     "oneNoDate": "This exam has no date yet. Set one to add it to a calendar.",
     "onePast": "This exam date has passed.",
-    "saveFirst": "Save the new date first."
+    "saveFirst": "Save the new sessions first."
   },
   "export": {
     "markdown": "Markdown",
@@ -1251,6 +1270,8 @@
     "examSummary": "Exam on {{date}}",
     "noDate": "No date yet",
     "noDateSummary": "No exam date for now. You can add one later in the plan's settings.",
+    "examSummaryMany_one": "{{count}} sessions, the first on {{date}}",
+    "examSummaryMany_other": "{{count}} sessions, the first on {{date}}",
     "examRequired": "Pick one of these to continue.",
     "sourcesInPlan_one": "{{count}} source in the plan",
     "sourcesInPlan_other": "{{count}} sources in the plan",
@@ -2171,7 +2192,12 @@
     "rebuildNoneArchived": "No topics are archived.",
     "educationLevel": "Education level",
     "educationHelp": "The tutor answers chats about this plan at this level. It was copied from your profile when the plan was made.",
-    "educationFailed": "The level could not be saved. Try again."
+    "educationFailed": "The level could not be saved. Try again.",
+    "archive": "Archive exam",
+    "archiveHelp": "Set a finished exam aside. It leaves your review queues, counts and recommendations. Lessons and progress stay, and you can restore it at any time.",
+    "restore": "Restore exam",
+    "restoreHelp": "Bring this exam back into your review queues and recommendations.",
+    "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations."
   },
   "smart": {
     "check": "Quick check",

@@ -26,6 +26,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 17             | Indexes for hot lookups and for every foreign-key child column                          |
 | 18             | `cards.search_text`, the folded text the card browser searches                          |
 | 19             | `messages.figures_json`, the images of the figures an answer drew                       |
+| 20             | `plan_sessions`, the exam sessions of a plan, and `plans.archived_at`                   |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -37,46 +38,49 @@ Migration 18 adds `cards.search_text`: the card's front (a cloze as its text) an
 
 Migration 19 stores the figures of an Ask answer. A model can ask for a figure as a fenced `pyxis-figure` block with a caption and matplotlib code. Core runs the code once in the Pyodide sandbox and keeps the PNG as a data URL in `messages.figures_json`, keyed by a hash of the code. The block stays in `body`; a block whose code failed is removed before the message is saved. A lesson keeps its figures the same way, in `figures` inside the item's `body_json`, so they are cached with the lesson and its rewrites.
 
-Current version is 19. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 20 lets a plan hold several exam sessions and be archived. `plan_sessions` has one row per sitting: `date` (local noon of the day, as `plans.exam_at` always was), `time` (`HH:MM` or NULL for an all-day entry), `place` and `label` (both optional text, such as "Aula 5" and "Oral"). At most ten per plan, and the rows cascade with the plan. `plans.exam_at` stays and holds the derived next exam date: the earliest session that is today or later, or the latest session when all are over, or NULL for "No date yet". Countdowns, the path and scheduling read only that column. Core rewrites it whenever the sessions are saved, and again when the plan list, a plan or its recommendations are read (`syncExamDates` in `src/core/plans/sessions.ts`), so it moves on to the oral part the day after the written part. The migration turns each non-null `exam_at` into one session whose ID is the plan's ID, so the calendar event keeps the UID it had (`<session id>@pyxis.politost.it`). A date after year 9999, which older versions accepted, is cut to the latest a session can hold. `plans.archived_at` is the time the student archived a finished exam, or NULL. It is separate from `status` (`building`, `draft`, `ready`), because a rebuild writes `status` and would undo the archive. An archived plan keeps all its content and history. It is left out of the card browser and its filters, its cards are never due (`countDueCards`, `dueCards`), its path recommends nothing (`planGuide`), and `plans.list` marks it so the Exams page can filter it. Opening it, its calendar file and its plan file still work, and restoring it clears the column.
 
-| Table            | A row is                                                                                |
-| ---------------- | --------------------------------------------------------------------------------------- |
-| profile          | The student's profile. The renderer writes it.                                          |
-| settings         | One app setting, keyed by name.                                                         |
-| engines          | A configured model provider.                                                            |
-| feature_engines  | Which engine a feature uses.                                                            |
-| subjects         | A school subject.                                                                       |
-| sources          | An imported file or link.                                                               |
-| source_documents | One extraction version of a source.                                                     |
-| passages         | An immutable chunk of a document.                                                       |
-| passages_fts     | The full-text index of passages.                                                        |
-| passages_vec     | The embedding index of passages.                                                        |
-| smartbooks       | Metadata for a PoliTost smartbook source.                                               |
-| exercises        | An exercise from a smartbook or a model.                                                |
-| plans            | A study plan. `exam_at`, `target`, `content_language` and `style` come from the wizard. |
-| plan_sources     | A source attached to a plan.                                                            |
-| topics           | A node in a plan's topic tree.                                                          |
-| topic_passages   | Passages that support a topic.                                                          |
-| path_nodes       | One step on a plan's path.                                                              |
-| items            | A generated lesson, question, or explanation.                                           |
-| item_passages    | Passages cited by an item. Deleting a passage is restricted.                            |
-| cards            | A flashcard. `passage_id` is the source passage shown on the back.                      |
-| card_reviews     | One rating of a card.                                                                   |
-| attempts         | A quiz or exercise attempt.                                                             |
-| attempt_answers  | One answer inside an attempt.                                                           |
-| gaps             | An open or closed knowledge gap. A topic can have several, one per misconception.       |
-| gap_items        | The drill quiz built for a gap.                                                         |
-| gap_answers      | A wrong answer (attempt and question) that counts for a gap.                            |
-| maps             | A concept map.                                                                          |
-| chats            | A tutor conversation.                                                                   |
-| messages         | One turn in a chat.                                                                     |
-| message_passages | Passages cited by a message.                                                            |
-| attachments      | A file attached to a message, stored as a blob hash.                                    |
-| whiteboards      | A whiteboard scene.                                                                     |
-| flags            | A student flag on a generated item.                                                     |
-| learning_events  | An append-only study event. Mastery is computed from these, not stored.                 |
-| jobs             | A long task: extraction, plan build, download.                                          |
-| job_steps        | One named step of a job. A retry skips steps that already stored output.                |
+Current version is 20. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+
+| Table            | A row is                                                                                                     |
+| ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| profile          | The student's profile. The renderer writes it.                                                               |
+| settings         | One app setting, keyed by name.                                                                              |
+| engines          | A configured model provider.                                                                                 |
+| feature_engines  | Which engine a feature uses.                                                                                 |
+| subjects         | A school subject.                                                                                            |
+| sources          | An imported file or link.                                                                                    |
+| source_documents | One extraction version of a source.                                                                          |
+| passages         | An immutable chunk of a document.                                                                            |
+| passages_fts     | The full-text index of passages.                                                                             |
+| passages_vec     | The embedding index of passages.                                                                             |
+| smartbooks       | Metadata for a PoliTost smartbook source.                                                                    |
+| exercises        | An exercise from a smartbook or a model.                                                                     |
+| plans            | A study plan. `exam_at` (the next exam date), `target`, `content_language` and `style` come from the wizard. |
+| plan_sessions    | One exam sitting of a plan: a day, an optional time and place.                                               |
+| plan_sources     | A source attached to a plan.                                                                                 |
+| topics           | A node in a plan's topic tree.                                                                               |
+| topic_passages   | Passages that support a topic.                                                                               |
+| path_nodes       | One step on a plan's path.                                                                                   |
+| items            | A generated lesson, question, or explanation.                                                                |
+| item_passages    | Passages cited by an item. Deleting a passage is restricted.                                                 |
+| cards            | A flashcard. `passage_id` is the source passage shown on the back.                                           |
+| card_reviews     | One rating of a card.                                                                                        |
+| attempts         | A quiz or exercise attempt.                                                                                  |
+| attempt_answers  | One answer inside an attempt.                                                                                |
+| gaps             | An open or closed knowledge gap. A topic can have several, one per misconception.                            |
+| gap_items        | The drill quiz built for a gap.                                                                              |
+| gap_answers      | A wrong answer (attempt and question) that counts for a gap.                                                 |
+| maps             | A concept map.                                                                                               |
+| chats            | A tutor conversation.                                                                                        |
+| messages         | One turn in a chat.                                                                                          |
+| message_passages | Passages cited by a message.                                                                                 |
+| attachments      | A file attached to a message, stored as a blob hash.                                                         |
+| whiteboards      | A whiteboard scene.                                                                                          |
+| flags            | A student flag on a generated item.                                                                          |
+| learning_events  | An append-only study event. Mastery is computed from these, not stored.                                      |
+| jobs             | A long task: extraction, plan build, download.                                                               |
+| job_steps        | One named step of a job. A retry skips steps that already stored output.                                     |
 
 ## Saved content and history
 

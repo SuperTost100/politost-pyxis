@@ -278,6 +278,74 @@ describe("buildCalendar", () => {
     ).toBe(title);
   });
 
+  describe("sessions with a time and a place", () => {
+    it("writes a 2 hour event with a floating local time and the place as LOCATION", () => {
+      const lines = unfold(
+        buildCalendar(
+          [exam({ sessionId: "s1", time: "09:30", place: "Aula 5, Edificio A", label: "Written" })],
+          "en",
+          NOW,
+        ).ics,
+      );
+      expect(lines).toContain("DTSTART:20261120T093000");
+      expect(lines).toContain("DTEND:20261120T113000");
+      expect(lines.some((l) => l.startsWith("DTSTART;VALUE=DATE"))).toBe(false);
+      expect(lines).toContain("LOCATION:Aula 5\\, Edificio A");
+      expect(lines).toContain("SUMMARY:Exam: Fisica 1 (Written)");
+      expect(lines.find((l) => l.startsWith("DESCRIPTION:Exam date"))).toContain("Place: Aula 5");
+    });
+
+    it("keeps the 9:00 reminder the day before, whatever the start time", () => {
+      const trigger = (time: string | null) =>
+        unfold(buildCalendar([exam({ time })], "en", NOW).ics).find((l) => l.startsWith("TRIGGER:"));
+      expect(trigger(null)).toBe("TRIGGER:-PT15H");
+      expect(trigger("00:00")).toBe("TRIGGER:-PT15H");
+      expect(trigger("09:00")).toBe("TRIGGER:-PT24H");
+      expect(trigger("14:45")).toBe("TRIGGER:-PT29H45M");
+    });
+
+    it("rolls a late session into the next day", () => {
+      const lines = unfold(buildCalendar([exam({ time: "23:00" })], "en", NOW).ics);
+      expect(lines).toContain("DTSTART:20261120T230000");
+      expect(lines).toContain("DTEND:20261121T010000");
+    });
+
+    it("writes no LOCATION for a session without a place, and no time for one without a time", () => {
+      const lines = unfold(buildCalendar([exam({ place: "  " })], "en", NOW).ics);
+      expect(lines.some((l) => l.startsWith("LOCATION"))).toBe(false);
+      expect(lines).toContain("DTSTART;VALUE=DATE:20261120");
+    });
+
+    it("gives two sessions of one plan two events with their own stable UIDs, in time order", () => {
+      const sessions = [
+        exam({ sessionId: "oral", examAt: noon(2026, 11, 20), time: "14:00", label: "Oral" }),
+        exam({ sessionId: "written", examAt: noon(2026, 11, 20), time: "09:00", label: "Written" }),
+        exam({ sessionId: "later", examAt: noon(2026, 12, 2) }),
+      ];
+      const lines = unfold(buildCalendar(sessions, "en", NOW).ics);
+      expect(lines.filter((l) => l.startsWith("UID:"))).toEqual([
+        "UID:written@pyxis.politost.it",
+        "UID:oral@pyxis.politost.it",
+        "UID:later@pyxis.politost.it",
+      ]);
+      // Moving the oral part keeps its UID.
+      const moved = unfold(
+        buildCalendar([exam({ sessionId: "oral", examAt: noon(2026, 11, 25), time: "10:00" })], "en", NOW).ics,
+      );
+      expect(moved).toContain("UID:oral@pyxis.politost.it");
+    });
+
+    it("skips a session that is over and keeps one today", () => {
+      const sessions = [
+        exam({ sessionId: "past", examAt: noon(2026, 10, 12), time: "09:00" }),
+        exam({ sessionId: "today", examAt: noon(2026, 10, 13), time: "08:00" }),
+      ];
+      const { ics, count } = buildCalendar(sessions, "en", NOW);
+      expect(count).toBe(1);
+      expect(ics).toContain("UID:today@");
+    });
+  });
+
   describe("calendar days", () => {
     it("uses the local date across a spring-forward change", () => {
       process.env["TZ"] = "Europe/Rome";
@@ -346,17 +414,21 @@ describe("exportCalendar", () => {
     db.prepare(
       "INSERT INTO subjects (id, name, position, created_at) VALUES ('s1', 'Fisica', 0, 1)",
     ).run();
+    // A plan's only session has the plan's id, as migration 19 gives an exam date the plan had before.
     const add = (
       id: string,
       title: string,
       examAt: number | null,
       subject: string | null = null,
-    ) =>
-      db
-        .prepare(
-          "INSERT INTO plans (id, title, status, subject_id, exam_at, created_at, updated_at) VALUES (?, ?, 'ready', ?, ?, 1, 1)",
-        )
-        .run(id, title, subject, examAt);
+    ) => {
+      db.prepare(
+        "INSERT INTO plans (id, title, status, subject_id, exam_at, created_at, updated_at) VALUES (?, ?, 'ready', ?, ?, 1, 1)",
+      ).run(id, title, subject, examAt);
+      if (examAt != null)
+        db.prepare(
+          "INSERT INTO plan_sessions (id, plan_id, date, created_at) VALUES (?, ?, ?, 1)",
+        ).run(id, id, examAt);
+    };
     return { db, add };
   }
   const decode = (base64: string) =>
@@ -417,6 +489,24 @@ describe("exportCalendar", () => {
     expect(
       exportCalendar(db, { planId: "a", language: "en" }, NOW).filename,
     ).toBe("exam.ics");
+  });
+
+  it("exports every session of a plan with its time and place", () => {
+    const { db, add } = fixture();
+    add("a", "Analisi", noon(2026, 11, 3));
+    db.prepare("UPDATE plan_sessions SET time = '09:00', place = 'Aula 2', label = 'Scritto' WHERE id = 'a'").run();
+    db.prepare(
+      "INSERT INTO plan_sessions (id, plan_id, date, time, place, label, created_at) VALUES ('a-orale', 'a', ?, '15:30', 'Studio 14', 'Orale', 2)",
+    ).run(noon(2026, 11, 17));
+    const lines = unfold(decode(exportCalendar(db, { planId: "a", language: "it" }, NOW).base64));
+    expect(lines.filter((l) => l === "BEGIN:VEVENT")).toHaveLength(2);
+    // The first session keeps the plan's id, so the event a student added before sessions existed is updated.
+    expect(lines).toContain("UID:a@pyxis.politost.it");
+    expect(lines).toContain("UID:a-orale@pyxis.politost.it");
+    expect(lines).toContain("DTSTART:20261103T090000");
+    expect(lines).toContain("DTSTART:20261117T153000");
+    expect(lines).toContain("LOCATION:Studio 14");
+    expect(lines).toContain("SUMMARY:Esame: Analisi (Orale)");
   });
 
   it("rejects a plan that does not exist", () => {

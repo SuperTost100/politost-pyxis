@@ -15,8 +15,11 @@ function tempDb() {
   return db;
 }
 
-/** Removes what migrations 17 and 18 add, so a test can rewind the version past them. */
+/** Removes what migrations 17 to 20 add, so a test can rewind the version past them. */
 function undoAfter16(db: Database.Database) {
+  db.exec(
+    "DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at;",
+  );
   db.exec(
     "DROP TRIGGER cards_search_stale; DROP INDEX cards_search_pending; ALTER TABLE cards DROP COLUMN search_text; ALTER TABLE messages DROP COLUMN figures_json;",
   );
@@ -94,7 +97,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(19);
+    expect(db.pragma("user_version", { simple: true })).toBe(20);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -109,7 +112,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(19);
+    expect(again.pragma("user_version", { simple: true })).toBe(20);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -126,7 +129,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(19);
+    expect(again.pragma("user_version", { simple: true })).toBe(20);
     expect(
       again
         .prepare(
@@ -153,7 +156,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(19);
+    expect(again.pragma("user_version", { simple: true })).toBe(20);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });

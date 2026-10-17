@@ -57,9 +57,19 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,
     });
-    const insert = db.prepare(
+    const insertPlan = db.prepare(
       "INSERT INTO plans (id,title,status,exam_at,created_at,updated_at) VALUES (?,?,'ready',?,1,1)",
     );
+    // A plan's only session has the plan's id, as migration 19 gives it to an exam date the plan already had.
+    const insertSession = db.prepare(
+      "INSERT INTO plan_sessions (id,plan_id,date,created_at) VALUES (?,?,?,1)",
+    );
+    const insert = {
+      run(id: string, title: string, examAt: number | null) {
+        insertPlan.run(id, title, examAt);
+        if (examAt !== null) insertSession.run(id, id, examAt);
+      },
+    };
     const near = noonIn(10);
     const far = noonIn(35);
     // The title holds every character that TEXT has to escape, plus non-Latin text.
