@@ -156,9 +156,12 @@ describe("effort by task", () => {
     db.close();
   });
 
-  it("gives API providers no effort", () => {
+  it("gives API providers the task's effort like the CLIs", () => {
     rememberModels("openai-api", [
       { id: "gpt-test", efforts: levels("low", "medium", "high") },
+    ]);
+    rememberModels("anthropic-api", [
+      { id: "claude-test", efforts: levels("low", "medium", "high", "max") },
     ]);
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);
@@ -167,10 +170,18 @@ describe("effort by task", () => {
     expect(selectionFor(db, "plan")).toEqual({
       provider: "openai-api",
       model: "gpt-test",
+      effort: "high",
     });
     expect(selectionFor(db, "chat")).toEqual({
       provider: "anthropic-api",
       model: "claude-test",
+      effort: "low",
+    });
+    // A model that lists no effort still runs without one.
+    rememberModels("openai-api", [{ id: "gpt-test", efforts: [] }]);
+    expect(selectionFor(db, "plan")).toEqual({
+      provider: "openai-api",
+      model: "gpt-test",
     });
     db.close();
   });
@@ -302,16 +313,21 @@ describe("the student's own effort", () => {
     db.close();
   });
 
-  it("refuses a level the model does not list, and any level for an API provider", () => {
+  it("refuses a level the model does not list, on a CLI or an API provider", () => {
     const { db, handlers } = setup();
     pin(handlers, "claude", "small", "chat");
     expect(() =>
       handlers.setEffort({ feature: "chat", effort: "max" }),
     ).toThrow();
+    rememberModels("openai-api", [
+      { id: "gpt-test", efforts: levels("low", "medium", "high") },
+    ]);
     pin(handlers, "openai-api", "gpt-test", "map");
     expect(() =>
-      handlers.setEffort({ feature: "map", effort: "high" }),
+      handlers.setEffort({ feature: "map", effort: "max" }),
     ).toThrow();
+    handlers.setEffort({ feature: "map", effort: "high" });
+    expect(selectionFor(db, "map").effort).toBe("high");
     expect(() =>
       handlers.setEffort({ feature: "vision", effort: "low" }),
     ).toThrow();
@@ -326,7 +342,7 @@ describe("automatic choice and effort", () => {
   ): AutoProvider => ({
     id,
     kind: id.endsWith("-api") ? "api" : "cli",
-    effort: !id.endsWith("-api"),
+    effort: true,
     models: models.map(([model, efforts]) => ({
       id: model,
       efforts: levels(...efforts),
@@ -354,11 +370,15 @@ describe("automatic choice and effort", () => {
     });
   });
 
-  it("gives API providers none", () => {
+  it("gives API providers the tier's level too", () => {
     const plan = planAuto([
       provider("openai-api", [["gpt-6-sol", ["low", "medium", "high"]]]),
     ]);
-    expect(plan.plan).toEqual({ provider: "openai-api", model: "gpt-6-sol" });
+    expect(plan.plan).toEqual({
+      provider: "openai-api",
+      model: "gpt-6-sol",
+      effort: "high",
+    });
   });
 });
 

@@ -1783,6 +1783,10 @@
     "check": "Check",
     "code": "Sign-in code",
     "sendCode": "Send",
+    "fallback": {
+      "limit": "{{from}} reached its usage limit, so {{to}} answered.",
+      "signed-out": "{{from}} is signed out, so {{to}} answered."
+    },
     "errors": {
       "not-installed": "The program is not installed.",
       "not-logged-in": "You're signed out of this engine. Sign in again in Settings, AI engines.",

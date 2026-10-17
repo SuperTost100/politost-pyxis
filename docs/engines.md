@@ -12,7 +12,7 @@ const result = await generate({
 });
 ```
 
-The result carries text, provider, model and input-token usage. Structured requests convert the Zod schema to JSON Schema, disallow unknown object properties and parse the response again with Zod. Invalid output triggers at most two repair turns. Final failure becomes `invalid-output`. `onDelta` streams text; `signal` cancels a turn. Supported image attachments have explicit media types and data.
+The result carries text, provider, model and token usage: input and output tokens, plus the input tokens the provider read from or wrote to its prompt cache (`cacheReadTokens`, `cacheWriteTokens`). Structured requests convert the Zod schema to JSON Schema, disallow unknown object properties and parse the response again with Zod. Invalid output triggers at most two repair turns. Claude Code, Codex and the API providers keep the first turn's conversation, so a repair sends them only the validation error and the invalid answer. Cursor Agent and Antigravity keep none and get the whole prompt again. Final failure becomes `invalid-output`. `onDelta` streams text; `signal` cancels a turn. Supported image attachments have explicit media types and data.
 
 `selectionFor(db, feature)` reads `feature_engines`. An unset feature uses `default`. With no `default` row it throws `engine-missing`. It also works out the reasoning effort, see below. The engine screen discovers available models and tests the selected one.
 
@@ -61,7 +61,7 @@ Every task runs at a reasoning effort that fits it, whether Pyxis or the student
 1. If the student picked a level for the task and the model lists it, that level wins.
 2. Otherwise the task's level, when the model lists it.
 3. Otherwise the nearest level the model lists. `nearestEffort()` looks lower first for `low` and `medium`, and higher first for `high`, then the other way. `none` is never chosen, and neither is a level the scale does not know.
-4. A model that lists no effort runs without one. API providers (`anthropic-api`, `openai-api`) never get an effort, because CLI Funnel does not pass one to them.
+4. A model that lists no effort runs without one. API providers (`anthropic-api`, `openai-api`) follow the same rules: CLI Funnel lists the levels each API model takes and sends the chosen one to the vendor.
 
 `selectionFor` is synchronous, so it reads the model lists that `engines.models` and `engines.autoConfigure` last fetched (`src/core/engine/efforts.ts`). Until a list has been read, a pinned row keeps the effort stored in it, and an automatic row sends only the level Pyxis worked out for the task, never the student's pick. `engines.test` sends the nearest level the model lists once its list is known. Core runs `autoConfigure` at startup, so the lists are normally there before the first task.
 
@@ -74,6 +74,45 @@ The student's pick lives in the same JSON as the engine:
 - Handing one task back to Pyxis keeps its pick. Resetting every task drops them.
 
 In Settings, Engines, with Advanced options on, each task has an effort picker next to its model. "Automatic" is the default and shows the level it resolves to.
+
+## Switching engines on a usage limit
+
+When the engine Pyxis chose for a task hits a usage limit or is signed out (a refused key counts for API providers), `generate()` asks once more on another engine. The replacement is what `planAuto()` would choose for the same task without the failed engine, among the engines the last automatic choice could use. Core then broadcasts `engine.fallback` and the window shows one line saying which engine answered.
+
+- Only automatic selections switch. `selectionFor` marks the selections it returns from an automatic row, so a task the student pinned keeps its engine and shows the error.
+- A background job that saved its selection when it was queued keeps that engine.
+- The retry happens once. If the second engine fails too, its error is shown.
+- A stopped turn never switches, and a turn with a picture switches only to an engine that can see it.
+- CLI Funnel already retries an API request twice on 429 and 5xx before any output. A limit is recognised from the `limit` CLI Funnel attaches to the error, and otherwise from the same classification that maps errors to `engines.errors.quota`, `not-logged-in` and `refused`.
+
+## Chat conversations and prompt caching
+
+Each chat keeps one conversation with its engine while the student stays in it. The first question sends the whole context: the system prompt (tutor template, profile, plan line, subject), then the pinned context and the earlier turns, then this question's passages and the question. The parts that stay the same come first so a provider's prompt cache keeps the start of the prompt. Later questions send only the new question and its passages, numbered from P1 again.
+
+| Engine                    | How the conversation is kept                                           |
+| ------------------------- | ---------------------------------------------------------------------- |
+| Claude Code, Codex        | A live CLI process (`createFunnel({ sessions: { keepAlive: true } })`) |
+| Anthropic and OpenAI API  | The conversation history in core's memory, sent with `sessionId`       |
+| Cursor Agent, Antigravity | None. Every question starts a new process and gets the whole context   |
+
+Chat turns ask for prompt caching (`cache: true`) on providers that take it, today the Anthropic API. It marks the system prompt and the newest turn, so the next question reads everything before it from the cache. OpenAI caches long prompts with the same start on its own.
+
+The conversation ends, and a live process with it, when:
+
+- the student leaves the chat (`chats.leave`), deletes it or clears its pinned context;
+- no question came for 10 minutes;
+- the chat's engine, effort or system prompt changed, or the student changed any engine choice;
+- a turn was stopped or failed, or a reply is regenerated;
+- the conversation carried more than 150,000 characters;
+- the app quits.
+
+The next question then starts a new conversation with the whole context. Runs outside a chat, such as lessons and plans, close their CLI process as soon as they end.
+
+## Startup and provider detection
+
+Core posts `core-ready` before it looks for any engine. The student's login-shell PATH, where nvm or Homebrew put the CLIs, is read in the background with `$SHELL -ilc` once per launch (`src/core/engine/shell-path.ts`), and CLI Funnel's own blocking lookup is turned off with `CLI_FUNNEL_NO_SHELL_PATH=1`. Detection waits for that PATH; nothing else does.
+
+Main sends the stored API keys right after `core-ready`, and that starts the one provider scan of the launch. Callers that ask for `engines.overview` while a scan runs share it. New keys replace only the API providers, so the funnel keeps the CLI detection and model lists it cached (CLI Funnel caches them for a minute).
 
 ## Templates and schemas
 

@@ -176,6 +176,14 @@ export function AskPage() {
     loadedFor.current = undefined;
   }, [chatId]);
 
+  // Core keeps the engine's conversation, and a live CLI process, for the chat on screen. Leaving it lets that stop.
+  useEffect(() => {
+    if (!chatId) return;
+    return () => {
+      void invoke("chats.leave", { chatId }).catch(() => undefined);
+    };
+  }, [chatId]);
+
   // ASK-02: a new conversation starts in the mode chosen in Settings.
   useEffect(() => {
     if (!chatId) setMode(defaultMode);

@@ -1,6 +1,7 @@
 import { IpcError } from "../../shared/ipc";
 import type Database from "better-sqlite3";
 import { automaticEffort, studentEffort } from "../../shared/effort";
+import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
 import { effortsOf } from "./efforts";
 import type { ProviderId } from "./funnel";
 
@@ -29,9 +30,9 @@ function readRow(
  * The engine for a task, with the reasoning effort it runs at. A model that
  * lists efforts gets the student's pick when it still lists it, otherwise the
  * level the task wants (low for chat and maps, medium for lessons, high for
- * plans and grading) or the nearest one it has. Models that list none, such
- * as API providers, run without an effort. This is worked out on every call,
- * so rows saved before efforts existed benefit without a migration.
+ * plans and grading) or the nearest one it has. Models that list none run
+ * without an effort. This is worked out on every call, so rows saved before
+ * efforts existed benefit without a migration.
  */
 export function selectionFor(
   db: Database.Database,
@@ -46,9 +47,7 @@ export function selectionFor(
   const picked = studentEffort({ auto, effort: stored, effortChoice });
   // The default engine's own effort belongs to the default task, not to a task that borrows the engine.
   const inherited = own || !auto ? stored : undefined;
-  const listed = selection.provider.endsWith("-api")
-    ? []
-    : effortsOf(selection.provider, selection.model);
+  const listed = effortsOf(selection.provider, selection.model);
   // Until the model's list is read, an automatic row sends only the level Pyxis worked out for the task: the student's
   // pick may be one this model does not list. A pinned row keeps what it stored.
   const effort = !listed
@@ -58,5 +57,34 @@ export function selectionFor(
     : picked && listed.includes(picked)
       ? picked
       : automaticEffort(feature, listed);
-  return { ...selection, ...(effort ? { effort } : {}) };
+  const chosen = { ...selection, ...(effort ? { effort } : {}) };
+  if (auto) automatic.set(chosen, feature);
+  return chosen;
+}
+
+/** Selections Pyxis chose itself, with their task. Only these may switch engines when theirs fails. */
+const automatic = new WeakMap<object, string>();
+/** The engines the last automatic choice could use, with their models. */
+let ready: AutoProvider[] = [];
+
+export function rememberReady(providers: AutoProvider[]): void {
+  ready = providers;
+}
+
+/**
+ * The engine an automatic selection switches to when its own hit a usage limit or was signed out: the choice the
+ * automatic plan makes for the same task without that engine. The result is not automatic itself, so a task switches
+ * at most once. A selection the student pinned, or one a background job saved when it was queued, gets none.
+ */
+export function fallbackSelection(
+  selection: object & { provider: string },
+): Omit<StoredSelection, "auto" | "effortChoice"> | undefined {
+  const feature = automatic.get(selection);
+  if (!feature) return undefined;
+  const choice = planAuto(
+    ready.filter((provider) => provider.id !== selection.provider),
+  )[feature as AutoFeature];
+  return choice
+    ? { ...choice, provider: choice.provider as ProviderId }
+    : undefined;
 }

@@ -1868,6 +1868,11 @@ export const requests = {
     input: z.object({ chatId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
   },
+  // The chat left the screen, so core can stop the engine conversation it kept for it.
+  "chats.leave": {
+    input: z.object({ chatId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "chats.ask": {
     input: z.object({
       chatId: z.string().optional(),
@@ -2177,6 +2182,12 @@ export const broadcasts = {
   "plans.evidence": z.object({}),
   // Background recomputation of automatic engine choices finished.
   "engine.auto": z.object({}),
+  // The automatic engine hit a usage limit or was signed out, and another engine answered.
+  "engine.fallback": z.object({
+    from: z.string(),
+    to: z.string(),
+    reason: z.enum(["limit", "signed-out"]),
+  }),
   // A chunk of installer output while `engines.install` runs.
   "engine.install": z.object({ provider: z.string(), text: z.string() }),
   "engine.login": z.object({
