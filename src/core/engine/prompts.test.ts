@@ -51,16 +51,17 @@ describe("prompt templates", () => {
       "plan.synopsis",
       "map.generate",
       "map.edit",
-      "simulation.grade",
     ] as const) {
       expect(loadTemplate(id).version, id).toBe("2");
     }
+    // Version 3 reads the SymPy mathCheck.
+    expect(loadTemplate("simulation.grade").version).toBe("3");
     expect(loadTemplate("plan.topics").version).toBe("3");
     // Diagnostic passages now name their topic, so citations can match the question's topic. Version 5 asks the
     // model to vary the correct option's position and not to refer to options by letter.
     expect(loadTemplate("plan.diagnostic").version).toBe("5");
-    // Reference-language grading is unchanged; solve checks now require every real root.
-    expect(loadTemplate("quiz.open-grade").version).toBe("1");
+    // Version 2 reads the SymPy mathCheck; solve checks now require every real root.
+    expect(loadTemplate("quiz.open-grade").version).toBe("2");
     expect(loadTemplate("chat.checks").version).toBe("2");
     expect(loadTemplate("exercise.generate").version).toBe("exercise-2");
   });
