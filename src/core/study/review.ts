@@ -345,10 +345,14 @@ function gapBuckets(db: Database.Database, planId: string, now: number, used: Se
   });
 }
 
+/** Passages earlier reviews and quizzes asked about. A redo quiz repeats mistakes, so it says nothing about what is new. */
 function usedSources(db: Database.Database, planId: string): Set<string> {
   const used = new Set<string>();
   const past = db
-    .prepare(`SELECT body_json FROM items WHERE plan_id = ? AND kind IN ('quiz', 'review')`)
+    .prepare(
+      `SELECT body_json FROM items
+       WHERE plan_id = ? AND (kind = 'review' OR (kind = 'quiz' AND json_extract(body_json, '$.redo') IS NOT 1))`,
+    )
     .all(planId) as Array<{ body_json: string }>;
   for (const row of past) {
     try {

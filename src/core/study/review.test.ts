@@ -14,6 +14,7 @@ import { finalizeAttempt } from "./quizGrading";
 import { readGapDrill } from "./gapDrill";
 import { discardReview, readReview, reviewWaiting, skipDrill, startReview } from "./review";
 import { insertGap } from "./gapRows";
+import { topicExercises } from "./exercises";
 import { startTopicQuiz } from "./topicQuiz";
 
 /** Three chapters with three exercises each, and a fourth chapter with none. */
@@ -320,6 +321,23 @@ describe("gap drills join the review queue (LES-13)", () => {
     expect(drillEvents).toHaveLength(1);
     expect((JSON.parse(drillEvents[0]!.payload_json) as { scores: number[] }).scores).toHaveLength(2);
     expect(new Set(events.map((row) => row.topic_id)).size).toBe(events.length);
+  });
+
+  it("steers new questions away from earlier quizzes but not from redo quizzes", () => {
+    const { db, planId, topics } = setup();
+    const ids = topicExercises(db, topics[0]!).map((row) => row.id);
+    expect(ids.length).toBeGreaterThanOrEqual(3);
+    const quiz = saveQuiz(
+      db,
+      planId,
+      ids.map((id) => ({ id, sourceId: id, stem: id, grade: { kind: "open" as const, answer: "", reference: "r" } })),
+    );
+    expect(startReview(db, planId).questions).toEqual([]);
+    // The mistakes notebook marks a redo quiz in its body; asking it again says nothing about what the review has shown.
+    db.prepare("UPDATE items SET body_json = json_set(body_json, '$.redo', json('true')) WHERE id = ?").run(quiz);
+    const shown = startReview(db, planId).questions;
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.every((question) => ids.includes(question.sourceId ?? ""))).toBe(true);
   });
 
   it("keeps a review of only drills, shows recovery for a failed job, and finishes once the job is cancelled", () => {
