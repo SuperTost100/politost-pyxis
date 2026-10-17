@@ -620,6 +620,19 @@ describe("specified mastery evidence", () => {
     }
     expect(planMastery(db, "p", at)[0]!.mastery).toBe(0);
     expect(planMastery(db, "p", at + 86_400_000)[0]!.mastery).toBe(0);
+    // Rating one card Good later lifts the cached mastery; rating it Again after that brings it back to 0.
+    const later = at + 2 * 86_400_000;
+    const rate = (id: string, rating: "good" | "again", when: number) =>
+      db.prepare("INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,'c0',?,?,?)").run(
+        id,
+        rating,
+        JSON.stringify(review(JSON.parse(failed), rating, when)),
+        when,
+      );
+    rate("good", "good", later);
+    expect(planMastery(db, "p", later)[0]!.mastery).toBeGreaterThan(0);
+    rate("again", "again", later + 1000);
+    expect(planMastery(db, "p", later + 1000)[0]!.mastery).toBe(0);
     db.close();
   });
   it("removes flagged exercises from evidence recorded before scores named their source", () => {

@@ -23,12 +23,44 @@ export type MasteryEvent = {
   cardId?: string;
   /** The exercise a "self" rating is about; ratings without one never replace each other. */
   exerciseId?: string;
+  /**
+   * The lesson a quick check was answered in, the question, and whether the question is still in the lesson's current
+   * text. Checks without one (their lesson is unknown) all count.
+   */
+  lessonCheck?: LessonCheck;
   score: number;
   at: number;
 };
 
+export type LessonCheck = { itemId: string; blockId: string; current: boolean };
+
 const MS_PER_DAY = 86_400_000;
 const DEFAULT_HALF_LIFE_DAYS = MASTERY_HALF_LIFE_DAYS;
+
+/**
+ * Quick checks count from one lesson per topic: the one, in any wording, answered most recently by `now`. Its answers
+ * count once per question, the first one as the lesson shows it, and only for questions still in its current text, so
+ * rewriting the lesson or reading it in another wording cannot add evidence. Returns the checks that count.
+ */
+export function currentChecks<T extends { topicId: string; at: number; lessonCheck?: LessonCheck }>(
+  rows: T[],
+  now: number,
+): Set<T> {
+  const answered = rows.filter((row) => row.lessonCheck && row.at <= now).sort((a, b) => a.at - b.at);
+  const latest = new Map<string, string>();
+  for (const row of answered) latest.set(row.topicId, row.lessonCheck!.itemId);
+  const kept = new Set<T>();
+  const seen = new Set<string>();
+  for (const row of answered) {
+    const check = row.lessonCheck!;
+    if (!check.current || latest.get(row.topicId) !== check.itemId) continue;
+    const key = `${check.itemId}\u0000${check.blockId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.add(row);
+  }
+  return kept;
+}
 
 /** Drops each rating that a later rating of the same exercise replaced within the window. Keeps the order of the rest. */
 export function currentRatings<T extends { at: number }>(
@@ -78,8 +110,14 @@ export function masteryFor(
       (e) => (e.exerciseId ? `${e.topicId}\u0000${e.exerciseId}` : undefined),
     ),
   );
+  // Like ratings, a later lesson replaces an earlier one's checks only from when it was answered.
+  const checks = currentChecks(
+    events.filter((e) => e.kind === "check"),
+    now,
+  );
   for (const e of events) {
     if (e.kind === "self" && !ratings.has(e)) continue;
+    if (e.kind === "check" && e.lessonCheck && !checks.has(e)) continue;
     if (e.kind === "lesson" || e.at > now || !Number.isFinite(e.score))
       continue;
     if (e.kind === "card" && e.cardId) {

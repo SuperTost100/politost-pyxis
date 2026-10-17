@@ -1,5 +1,5 @@
 import { shouldClose, shouldOpen, type OpenGap } from "./gaps";
-import { currentRatings, masteryFor, type MasteryEvent } from "./mastery";
+import { currentRatings, masteryFor, type LessonCheck, type MasteryEvent } from "./mastery";
 
 export type SeriesEvent = {
   topicId: string;
@@ -19,7 +19,7 @@ export type SeriesEvent = {
    * The lesson a quick check was answered in, the question, and whether the question is still in the lesson's current
    * text. Unset when the lesson is unknown.
    */
-  lessonCheck?: { itemId: string; blockId: string; current: boolean };
+  lessonCheck?: LessonCheck;
   kind: "quiz" | "card" | "lesson" | "active";
   seconds?: number;
 };
@@ -108,48 +108,15 @@ function meanMastery(studied: SeriesEvent[], until: number): number {
     : scores.reduce((sum, score) => sum + score, 0) / scores.length;
 }
 
-/**
- * Quick checks count from one lesson per topic: the one, in any wording, answered most recently. Its answers count once
- * per question, and only for questions still in its current text, so rewriting the lesson or reading it in another
- * wording cannot add evidence.
- */
-function currentChecks(events: SeriesEvent[]): Set<SeriesEvent> {
-  const latest = new Map<string, SeriesEvent>();
-  for (const event of events) {
-    if (event.evidenceKind !== "check" || !event.lessonCheck) continue;
-    const previous = latest.get(event.topicId);
-    if (!previous || previous.at <= event.at) latest.set(event.topicId, event);
-  }
-  const kept = new Set<SeriesEvent>();
-  const seen = new Set<string>();
-  for (const event of [...events].sort((a, b) => a.at - b.at)) {
-    const check = event.lessonCheck;
-    if (event.evidenceKind !== "check" || !check?.current) continue;
-    if (latest.get(event.topicId)?.lessonCheck?.itemId !== check.itemId) continue;
-    // The first answer to a question stays, as the lesson shows it.
-    const key = `${check.itemId}\u0000${check.blockId}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    kept.add(event);
-  }
-  return kept;
-}
-
 /** Legacy attempts retain their individual scores; missing answer kinds use quiz weight. */
 export function seriesEvidence(events: SeriesEvent[]): MasteryEvent[] {
-  const checks = currentChecks(events);
   return events.flatMap((event) => {
     if (event.kind !== "quiz") return [];
-    if (
-      event.evidenceKind === "check" &&
-      event.lessonCheck &&
-      !checks.has(event)
-    )
-      return [];
     return (event.scores ?? [event.score]).map((score, index) => ({
       topicId: event.topicId,
       kind: event.evidenceKind ?? "quiz",
       exerciseId: ratedExercise(event),
+      ...(event.lessonCheck ? { lessonCheck: event.lessonCheck } : {}),
       answerKind: event.answerKinds?.[index],
       score,
       at: event.at,

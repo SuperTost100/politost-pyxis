@@ -215,6 +215,40 @@ describe("smart lessons", () => {
     db.close();
   });
 
+  it("replays an earlier date with the lesson answered by then, and follows a rewrite once mastery is cached", async () => {
+    const { db, planId, topicId, run, reply } = setup();
+    const day = 86_400_000;
+    const monday = new Date(2026, 0, 5, 10).getTime();
+    const mastery = (at: number) => planMastery(db, planId, at).find((t) => t.id === topicId)!.mastery;
+    const answer = (itemId: string, markdown: string, at: number, right: boolean, count = Infinity) => {
+      for (const question of [...smartQuestions(parseSmartText(markdown)).values()].slice(0, count))
+        answerSmartCheck(
+          db,
+          { planId, itemId, blockId: question.id, pick: right ? question.answer : (question.answer + 1) % question.options.length },
+          at,
+        );
+    };
+    const balanced = await writeLesson(db, planId, topicId, run);
+    answer(balanced.itemId!, balanced.markdown, monday, true);
+    expect(mastery(monday)).toBeCloseTo(0.4);
+    reply(smartLesson.replaceAll("?", " in breve?").replace("Ripasso 1", "Ripasso primo"));
+    const simple = await writeLesson(db, planId, topicId, run, { wording: "simple" });
+    answer(simple.itemId!, simple.markdown, monday + 2 * day, false, 2);
+    // Wednesday's answers replace Monday's only from Wednesday on.
+    expect(mastery(monday + 2 * day)).toBe(0);
+    expect(mastery(monday + day)).toBeGreaterThan(0.35);
+    // The cached value follows a rewrite of the lesson that counts: Simple's two answered checks leave its text.
+    reply(smartLesson.replaceAll("?", " ancora?").replace("Ripasso 1", "Ripasso due"));
+    const rewritten = await writeLesson(db, planId, topicId, run, { wording: "simple", regenerate: true });
+    answer(rewritten.itemId!, rewritten.markdown, monday + 3 * day, true, 1);
+    // One right answer of weight 0.5: 0.5 / 3.5.
+    expect(mastery(monday + 3 * day)).toBeCloseTo(0.5 / 3.5);
+    reply(smartLesson.replaceAll("?", " di nuovo?").replace("Ripasso 1", "Ripasso tre"));
+    await writeLesson(db, planId, topicId, run, { wording: "simple", regenerate: true });
+    expect(mastery(monday + 3 * day)).toBe(0);
+    db.close();
+  });
+
   it("grades the option the reader sees, whatever order the model wrote", async () => {
     const { db, planId, topicId, run, reply } = setup();
     // The model always puts the right option first.
