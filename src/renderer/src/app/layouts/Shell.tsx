@@ -2,7 +2,7 @@ import { Button, Segmented } from "antd";
 import { PageContainer, ProLayout } from "@ant-design/pro-components";
 import { GraduationCap, MessageCircle, Network, Settings } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import logoDark from "../../design-system/logo/pyxis-lockup-dark.svg";
@@ -48,6 +48,20 @@ function doorForPath(pathname: string): Door | null {
   return null;
 }
 
+/**
+ * Records `pathname` as where its door was left. The router calls it on every navigation it finishes, not a render
+ * effect: React can skip the render of a page the student passed through quickly, and the door would then remember a
+ * page left earlier.
+ */
+export function rememberDoorPath(pathname: string): void {
+  const door = doorForPath(pathname);
+  if (!door) return;
+  sessionStorage.setItem(
+    LAST_KEY,
+    JSON.stringify({ ...readLast(), [door]: pathname }),
+  );
+}
+
 /** Where a door leads from `pathname`: back to where it was left, or to its root when it is already open. */
 export function doorTarget(door: Door, pathname: string): string {
   if (doorForPath(pathname) === door) return doorRoots[door];
@@ -64,7 +78,6 @@ export function Shell() {
   const client = useQueryClient();
   const { appearance } = useAppState();
   const mode = appearance.resolved;
-  const [last, setLast] = useState(readLast);
   const activeDoor = doorForPath(location.pathname);
   const profile = useQuery({
     queryKey: ["profile"],
@@ -128,14 +141,6 @@ export function Shell() {
       .catch(() => undefined);
   }, [storedLanguage, interfaceLanguage, client]);
 
-  useEffect(() => {
-    const door = doorForPath(location.pathname);
-    if (!door) return;
-    const next = { ...readLast(), [door]: location.pathname };
-    sessionStorage.setItem(LAST_KEY, JSON.stringify(next));
-    setLast(next);
-  }, [location.pathname]);
-
   return (
     <ProLayout
       layout="top"
@@ -172,7 +177,7 @@ export function Shell() {
             className="px-doors"
             aria-label={t("doors.label")}
             value={activeSimulation.data ? "exams" : (activeDoor ?? NO_DOOR)}
-            onChange={(value) => navigate(last[value])}
+            onChange={(value) => navigate(readLast()[value])}
             options={[
               ...(!activeSimulation.data
                 ? [

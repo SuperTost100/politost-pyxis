@@ -18,7 +18,7 @@ import {
   SharedPlanPage,
   WizardFrame,
 } from "../features/plans/PlanFrames";
-import { Shell } from "./layouts/Shell";
+import { rememberDoorPath, Shell } from "./layouts/Shell";
 
 function RouteError() {
   const { t } = useTranslation();
@@ -43,6 +43,7 @@ const settings = page(() => import("../features/settings/SettingsPage"), "Settin
 export const router = createHashRouter([
   { path: "/print", element: <PrintPage /> },
   {
+    id: "shell",
     path: "/",
     element: <Shell />,
     children: [
@@ -82,3 +83,12 @@ export const router = createHashRouter([
   { path: "/tools/graph", lazy: page(() => import("../features/tools/GraphPage"), "GraphPage") },
   { path: "/tools/python", lazy: page(() => import("../features/tools/PythonPage"), "PythonPage") },
 ].map((route) => ({ ...route, errorElement: <RouteError /> })));
+
+// The page the window opens on, then every page the router reaches, in order. Full-screen pages outside the shell,
+// such as a lesson or a map, are not where a door was left.
+function remember(state: typeof router.state) {
+  if (state.matches.some((match) => match.route.id === "shell"))
+    rememberDoorPath(state.location.pathname);
+}
+remember(router.state);
+router.subscribe(remember);
