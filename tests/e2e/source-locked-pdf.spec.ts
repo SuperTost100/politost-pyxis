@@ -102,12 +102,13 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
       .prepare("UPDATE sources SET kind = 'link', origin_url = 'https://appunti.invalid/fisica', fetched_at = ? WHERE id = ?")
       .run(Date.UTC(2026, 9, 1), link.sourceId);
     seed.close();
-    await page.evaluate(() => {
-      window.location.hash = "/exams";
-    });
+    // The Library read the list before the seed. Two quick route changes can leave it mounted with that copy, so the
+    // window is reloaded, and the row's type must say Link before its menu is opened.
+    await page.reload();
     await page.evaluate(() => {
       window.location.hash = "/exams/library";
     });
+    await expect(page.getByRole("row", { name: /^Appunti Link/ })).toBeVisible();
     await page.getByRole("button", { name: "Azioni per Dispense" }).click();
     await expect(page.getByRole("menuitem", { name: "Controlla se c'è una nuova versione" })).toHaveCount(0);
     await page.keyboard.press("Escape");
