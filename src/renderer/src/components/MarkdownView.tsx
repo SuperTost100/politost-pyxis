@@ -7,10 +7,9 @@ import {
   type AnchoredCheck,
   type MathCheck,
 } from "@shared/math-check";
-import type { ComponentPropsWithoutRef } from "react";
-import { isValidElement, useContext, useMemo } from "react";
+import { createContext, isValidElement, memo, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -27,7 +26,88 @@ import "./MarkdownView.css";
 
 export type { CitationResolver };
 
-export function MarkdownView({
+// Built once: react-markdown can then reuse its pipeline, and a message that re-renders without new text is not parsed again.
+const remarkPlugins = [remarkGfm, remarkMath];
+const rehypePlugins = [rehypeKatex];
+const urlTransform = (url: string) =>
+  /^(?:cite:p|mathcheck:)\d+$/.test(url) ? url : defaultUrlTransform(url);
+
+/** What the shared renderers below need from the message they draw. */
+type MarkdownScope = {
+  claims: MathCheck[];
+  canRun: boolean;
+  onCitationClick?: (passageId: number) => void;
+  figures?: Record<string, string>;
+  drawing: boolean;
+};
+const Scope = createContext<MarkdownScope>({ claims: [], canRun: false, drawing: false });
+
+const components: Components = {
+  a: function Link({ href, children: linkChildren, node: _node, ...rest }) {
+    const { claims, onCitationClick } = useContext(Scope);
+    const check = href?.match(/^mathcheck:(\d+)$/);
+    if (check) {
+      const claim = claims[Number(check[1])];
+      return claim ? <AsyncCheck claim={claim} /> : null;
+    }
+    const match = href?.match(/^cite:p(\d+)$/);
+    if (match) {
+      const id = Number(match[1]);
+      return (
+        <CitationChip onClick={() => onCitationClick?.(id)}>
+          {linkChildren}
+        </CitationChip>
+      );
+    }
+    return (
+      <a href={href} {...rest} rel="noreferrer" target="_blank">
+        {linkChildren}
+      </a>
+    );
+  },
+  // A wide table scrolls in its own box instead of pushing the page sideways.
+  table: ({ children: tableChildren, node: _node, ...rest }) => (
+    <div className="px-table-scroll" tabIndex={0}>
+      <table {...rest}>{tableChildren}</table>
+    </div>
+  ),
+  pre: function Pre({ children: preChildren, node: _node, ...rest }) {
+    const { canRun, figures, drawing } = useContext(Scope);
+    let codeText = "";
+    let lang = "";
+    const child = Array.isArray(preChildren) ? preChildren[0] : preChildren;
+    if (isValidElement(child) && child.props) {
+      const props = child.props as {
+        className?: string;
+        children?: unknown;
+      };
+      lang = props.className?.replace("language-", "") ?? "";
+      codeText = String(props.children ?? "").replace(/\n$/, "");
+    }
+    if (lang === "python" && canRun) return <PythonBlock code={codeText} />;
+    // Figure code is for the sandbox, never shown: the image, a placeholder while it is drawn, or nothing.
+    if (lang === "pyxis-figure") {
+      const figure = parseFigure(codeText);
+      return (
+        <Figure
+          caption={figure?.caption ?? ""}
+          image={figure ? figures?.[figureKey(figure.code)] : undefined}
+          drawing={drawing}
+        />
+      );
+    }
+    return (
+      <div className="px-code-block">
+        <pre className="px-code-pre" tabIndex={0} {...rest}>
+          {preChildren}
+        </pre>
+      </div>
+    );
+  },
+};
+
+/** Memoized: a long chat re-renders around its messages, and parsing Markdown and math again is the costly part. */
+export const MarkdownView = memo(function MarkdownView({
   children,
   variant = "reading",
   citationResolver,
@@ -73,106 +153,32 @@ export function MarkdownView({
     }
     return normalizeMathDelimiters(linkCitations(body, citationResolver));
   }, [children, citationResolver, claims]);
-
-  return (
-    <div className={["px-markdown", `is-${variant}`].join(" ")}>
+  const scope = useMemo(
+    () => ({ claims, canRun, onCitationClick, figures, drawing }),
+    [claims, canRun, onCitationClick, figures, drawing],
+  );
+  // The same element for the same text, so React skips the parse; the renderers read a changed scope from context.
+  const tree = useMemo(
+    () => (
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         skipHtml
-        urlTransform={(url) =>
-          /^(?:cite:p|mathcheck:)\d+$/.test(url)
-            ? url
-            : defaultUrlTransform(url)
-        }
-        components={{
-          a: ({ href, children: linkChildren, ...rest }) => {
-            const check = href?.match(/^mathcheck:(\d+)$/);
-            if (check) {
-              const claim = claims[Number(check[1])];
-              return claim ? <AsyncCheck claim={claim} /> : null;
-            }
-            const match = href?.match(/^cite:p(\d+)$/);
-            if (match) {
-              const id = Number(match[1]);
-              return (
-                <CitationChip onClick={() => onCitationClick?.(id)}>
-                  {linkChildren}
-                </CitationChip>
-              );
-            }
-            return (
-              <a href={href} {...rest} rel="noreferrer" target="_blank">
-                {linkChildren}
-              </a>
-            );
-          },
-          // A wide table scrolls in its own box instead of pushing the page sideways.
-          table: ({ children: tableChildren, ...rest }) => (
-            <div className="px-table-scroll" tabIndex={0}>
-              <table {...rest}>{tableChildren}</table>
-            </div>
-          ),
-          pre: ({ children: preChildren, ...rest }) => {
-            let codeText = "";
-            let lang = "";
-            const child = Array.isArray(preChildren)
-              ? preChildren[0]
-              : preChildren;
-            if (isValidElement(child) && child.props) {
-              const props = child.props as {
-                className?: string;
-                children?: unknown;
-              };
-              lang = props.className?.replace("language-", "") ?? "";
-              codeText = String(props.children ?? "").replace(/\n$/, "");
-            }
-            if (lang === "python" && canRun)
-              return <PythonBlock code={codeText} />;
-            // Figure code is for the sandbox, never shown: the image, a placeholder while it is drawn, or nothing.
-            if (lang === "pyxis-figure") {
-              const figure = parseFigure(codeText);
-              return (
-                <Figure
-                  caption={figure?.caption ?? ""}
-                  image={figure ? figures?.[figureKey(figure.code)] : undefined}
-                  drawing={drawing}
-                />
-              );
-            }
-            return (
-              <div className="px-code-block">
-                <pre className="px-code-pre" tabIndex={0} {...rest}>
-                  {preChildren}
-                </pre>
-              </div>
-            );
-          },
-          code: ({
-            className,
-            children,
-            ...rest
-          }: ComponentPropsWithoutRef<"code"> & { inline?: boolean }) => {
-            if (!className) {
-              return (
-                <code className={className} {...rest}>
-                  {children}
-                </code>
-              );
-            }
-            return (
-              <code className={className} {...rest}>
-                {children}
-              </code>
-            );
-          },
-        }}
+        urlTransform={urlTransform}
+        components={components}
       >
         {source}
       </ReactMarkdown>
+    ),
+    [source],
+  );
+
+  return (
+    <div className={["px-markdown", `is-${variant}`].join(" ")}>
+      <Scope.Provider value={scope}>{tree}</Scope.Provider>
     </div>
   );
-}
+});
 
 function AsyncCheck({ claim }: { claim: MathCheck }) {
   const { t } = useTranslation();

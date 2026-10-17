@@ -1004,8 +1004,8 @@ export function deleteChat(db: Database.Database, workspace: string, chatId: str
 
 export function listChats(db: Database.Database) {
   return db
-    .prepare(`SELECT id, title, updated_at FROM chats ORDER BY updated_at DESC`)
-    .all() as Array<{ id: string; title: string | null; updated_at: number }>;
+    .prepare(`SELECT id, title, subject, updated_at FROM chats ORDER BY updated_at DESC`)
+    .all() as Array<{ id: string; title: string | null; subject: string | null; updated_at: number }>;
 }
 
 export function heldSources(

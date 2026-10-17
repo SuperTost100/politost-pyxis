@@ -33,6 +33,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       return listChats(db).map((row) => ({
         id: row.id,
         title: row.title,
+        subject: row.subject,
         updatedAt: row.updated_at,
       }));
     },

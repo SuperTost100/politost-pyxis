@@ -1,8 +1,17 @@
 import { openSourceViewer } from "../../components/SourceViewer";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
-import { PanelLeft, Plus, RefreshCw, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { RefreshCw, X } from "lucide-react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type DragEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ChatMessage, ThinkingMessage } from "../../components/ChatMessage";
@@ -14,7 +23,10 @@ import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
+import { MAX_DROPPED_FILES } from "@shared/source-types";
 import {
+  ATTACH_EXTENSIONS,
+  attachable,
   draftKey,
   fileName,
   readPendingFiles,
@@ -22,12 +34,15 @@ import {
   writePendingFiles,
   addPendingFiles,
 } from "./attachments";
+import { ChatHeader } from "./ChatHeader";
+import { pastedPng } from "./paste";
 import { ChatPanel } from "./ChatPanel";
 import { replyPlainText } from "./replyText";
 import { addIds, allowsGeneral, applySubject, scopeItems, type ScopeItem } from "./scope";
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
-import { latestEvery } from "./throttle";
+import { activePlans, starterPrompts, type Starter } from "./starters";
+import { latestEvery, liveValue } from "./throttle";
 import "./AskPage.css";
 
 function errorKey(err: unknown): string {
@@ -50,6 +65,114 @@ function errorParams(err: unknown): Record<string, unknown> {
       ? (err as { params: unknown }).params
       : undefined;
   return params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+}
+
+type ChatRow = Awaited<ReturnType<typeof invoke<"chats.read">>>["messages"][number];
+type LiveText = ReturnType<typeof liveValue<string>>;
+/** An image staged for the next message, shown in its attachment chip. A pasted one is named for what it is. */
+type Preview = { src: string; alt: string; name?: string };
+
+/** A chat opens with this many recent messages; older ones join as the student scrolls up to them. */
+const RECENT = 8;
+
+/** One function identity across renders that always calls the latest `fn`, so a memoized message keeps its props. */
+function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const latest = useRef(fn);
+  latest.current = fn;
+  return useCallback((...args: A) => latest.current(...args), []);
+}
+
+const Question = memo(function Question({ body }: { body: string }) {
+  return (
+    <ChatMessage role="user">
+      <MathText text={body} />
+    </ChatMessage>
+  );
+});
+
+/**
+ * A finished reply. The chat query hands back the same row object until the row changes, so with stable handlers a
+ * new message or a streamed piece leaves this one alone instead of parsing its Markdown and math again.
+ */
+const Reply = memo(function Reply({
+  row,
+  last,
+  busy,
+  onRegenerate,
+  onSuggest,
+  onReact,
+}: {
+  row: ChatRow;
+  /** The reply that ends the chat: it carries Regenerate and the suggestions. */
+  last: boolean;
+  busy: boolean;
+  onRegenerate?: () => void;
+  onSuggest: (text: string) => void;
+  onReact: (messageId: string, reaction: "up" | "down") => void;
+}) {
+  const citationResolver = useCallback(
+    (index: number) => row.citations.find((cite) => cite.index === index)?.label,
+    [row.citations],
+  );
+  const onCitationClick = useCallback(
+    (index: number) => {
+      const cite = row.citations.find((item) => item.index === index);
+      if (!cite) return;
+      openSourceViewer({
+        passageId: cite.passageId,
+        sourceId: cite.sourceId,
+      });
+    },
+    [row.citations],
+  );
+  return (
+    <ChatMessage
+      engine={
+        row.provider && row.modelId
+          ? `${row.provider} · ${row.modelId}`
+          : (row.modelId ?? row.provider ?? undefined)
+      }
+      general={row.grounding === "general"}
+      stopped={row.stopped}
+      text={replyPlainText(row.body)}
+      reaction={row.reaction}
+      regenerateDisabled={busy}
+      onRegenerate={last ? onRegenerate : undefined}
+      suggestions={last && !busy && row.followups.length > 0 ? row.followups : undefined}
+      onSuggest={onSuggest}
+      onReact={(reaction) => onReact(row.id, reaction)}
+    >
+      <MarkdownView
+        checks={row.checks}
+        figures={row.figures}
+        citationResolver={citationResolver}
+        onCitationClick={onCitationClick}
+      >
+        {row.body}
+      </MarkdownView>
+    </ChatMessage>
+  );
+});
+
+/** The reply being written. Only this component follows the stream, so the conversation above it does not re-render. */
+function StreamingReply({
+  live,
+  usesSources,
+  onGrow,
+}: {
+  live: LiveText;
+  usesSources: boolean;
+  onGrow: () => void;
+}) {
+  const text = useSyncExternalStore(live.subscribe, live.get);
+  useEffect(() => onGrow(), [text, onGrow]);
+  return text ? (
+    <ChatMessage role="tutor" streaming>
+      <MarkdownView drawing>{text}</MarkdownView>
+    </ChatMessage>
+  ) : (
+    <ThinkingMessage usesSources={usesSources} />
+  );
 }
 
 export function AskPage() {
@@ -78,9 +201,9 @@ export function AskPage() {
   const loadedFor = useRef<string | undefined>(undefined);
   const [uncovered, setUncovered] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [live, setLive] = useState("");
+  const [live] = useState(() => liveValue(""));
   // Each delta carries the whole reply so far. Rendering it at most every 100 ms keeps long answers with math responsive.
-  const liveUpdates = useRef(latestEvery<string>(100, setLive));
+  const liveUpdates = useRef(latestEvery<string>(100, live.set));
   // The finished reply, read out once by screen readers.
   const [announcement, setAnnouncement] = useState("");
   // A chat deleted while its reply streams: its turn ends quietly, without putting the message back.
@@ -104,8 +227,8 @@ export function AskPage() {
   const [files, setFiles] = useState<string[]>(() =>
     readPendingFiles(sessionStorage, chatId),
   );
-  // Whiteboard images staged by Attach, keyed by the file they belong to.
-  const [previews, setPreviews] = useState<Record<string, string>>({});
+  // Images staged by the whiteboard's Attach or by a paste, keyed by the file they belong to.
+  const [previews, setPreviews] = useState<Record<string, Preview>>({});
   // Picked files are kept by path, so opening the whiteboard or the graph and coming back does not lose them.
   useEffect(() => {
     writePendingFiles(sessionStorage, composerFor.current, files);
@@ -125,7 +248,11 @@ export function AskPage() {
       current.includes(board.path) ? current : [...current, board.path],
     );
     const { path, preview } = board;
-    if (preview) setPreviews((current) => ({ ...current, [path]: preview }));
+    if (preview)
+      setPreviews((current) => ({
+        ...current,
+        [path]: { src: preview, alt: t("tools.whiteboardTitle") },
+      }));
   }, []);
   const [error, setError] = useState<string | null>(null);
   const [errorValues, setErrorValues] = useState<Record<string, unknown>>({});
@@ -234,9 +361,12 @@ export function AskPage() {
       queryFn: () => invoke("plans.read", { planId: id }),
       staleTime: 15_000,
     });
-    setPicked((current) =>
-      addIds(current, plan?.sources.map((source) => source.id) ?? []),
+    // Set here too, so a message sent right after (a starter prompt) carries the plan's sources.
+    pickedNow.current = addIds(
+      pickedNow.current,
+      plan?.sources.map((source) => source.id) ?? [],
     );
+    setPicked(pickedNow.current);
   }
 
   function removeItem(item: ScopeItem) {
@@ -307,25 +437,6 @@ export function AskPage() {
     };
   }, []);
 
-  // The chat controls sit under the header, aligned with the logo's left edge, which is left of the centred column.
-  useLayoutEffect(() => {
-    const node = page.current;
-    if (!node) return;
-    const align = () => {
-      const logo = document.querySelector("header img")?.getBoundingClientRect().left;
-      const shift =
-        logo === undefined ? 0 : Math.max(0, Math.round(node.getBoundingClientRect().left - logo));
-      node.style.setProperty("--ask-bar-shift", `${shift}px`);
-    };
-    align();
-    const frame = requestAnimationFrame(align);
-    window.addEventListener("resize", align);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", align);
-    };
-  }, []);
-
   // Keep the newest text in view while the student has not scrolled up.
   const page = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -353,7 +464,10 @@ export function AskPage() {
   }, [chatId]);
   useEffect(() => {
     if (following.current) toBottom();
-  }, [messages.length, live, busy, pendingQuestion, thread.dataUpdatedAt]);
+  }, [messages.length, busy, pendingQuestion, thread.dataUpdatedAt]);
+  const followStream = useCallback(() => {
+    if (following.current) toBottom();
+  }, []);
   useEffect(() => {
     const node = page.current;
     if (!node || typeof ResizeObserver === "undefined") return;
@@ -367,7 +481,7 @@ export function AskPage() {
   // A suggestion chip or "Answer generally" sends only its own text: the typed draft and pending photos stay in the composer, unsent.
   async function send(
     text: string,
-    options: { allowGeneral?: boolean; textOnly?: boolean } = {},
+    options: { allowGeneral?: boolean; textOnly?: boolean; subject?: string } = {},
   ) {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
@@ -390,7 +504,7 @@ export function AskPage() {
     }
     const ids = visible(pickedNow.current);
     liveUpdates.current.cancel();
-    setLive("");
+    live.set("");
     setError(null);
     setAnnouncement("");
     setSkipped([]);
@@ -439,7 +553,7 @@ export function AskPage() {
         sourceIds: ids,
         planId,
         mode,
-        subject,
+        subject: options.subject ?? subject,
         files: attached.length > 0 ? attached : undefined,
         allowGeneral: general,
       },
@@ -494,7 +608,7 @@ export function AskPage() {
     } finally {
       stop.current = null;
       liveUpdates.current.cancel();
-      setLive("");
+      live.set("");
       setPendingQuestion(null);
       setStreamIn(null);
       setBusy(false);
@@ -517,7 +631,7 @@ export function AskPage() {
     setAnnouncement("");
     dropped.current = null;
     liveUpdates.current.cancel();
-    setLive("");
+    live.set("");
     following.current = true;
     const handle = window.pyxis.stream(
       "chats.regenerate",
@@ -568,7 +682,7 @@ export function AskPage() {
       .finally(() => {
         stop.current = null;
         liveUpdates.current.cancel();
-        setLive("");
+        live.set("");
         setRegenerating(false);
         setStreamIn(null);
         setBusy(false);
@@ -582,6 +696,126 @@ export function AskPage() {
     : messages;
   const usesSources = hasScope || files.length > 0;
   const name = profile.data?.displayName.trim() ?? "";
+
+  // Where the rendered part of a long chat starts. It is fixed when the chat opens, so new messages add to the end
+  // without pushing older ones out, and it moves back as the student scrolls up.
+  const [range, setRange] = useState<{ chat?: string; from: number }>({ from: 0 });
+  const firstShown =
+    range.chat === chatId ? range.from : Math.max(0, shownMessages.length - RECENT);
+  useEffect(() => {
+    if (thread.data && range.chat !== chatId)
+      setRange({ chat: chatId, from: Math.max(0, thread.data.messages.length - RECENT) });
+  }, [chatId, thread.data, range.chat]);
+  const showEarlier = useStable(() =>
+    setRange({ chat: chatId, from: Math.max(0, firstShown - RECENT) }),
+  );
+  const earlier = useRef<HTMLDivElement>(null);
+  // Reaching the top of what is shown loads the previous messages. Watching again after each load catches a chat
+  // whose recent messages are too short to fill the window.
+  useEffect(() => {
+    const node = earlier.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const watch = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) showEarlier();
+      },
+      { rootMargin: "600px 0px 0px 0px" },
+    );
+    watch.observe(node);
+    return () => watch.disconnect();
+  }, [firstShown, chatId, showEarlier]);
+
+  const lastTutorId = lastTutor?.id;
+  const regenerateNow = useStable(regenerate);
+  const suggest = useStable((text: string) => void send(text, { textOnly: true }));
+  const react = useStable((messageId: string, reaction: "up" | "down") => {
+    void invoke("chats.rate", { messageId, reaction }).then(
+      () => client.invalidateQueries({ queryKey: ["chat", chatId] }),
+      fail,
+    );
+  });
+
+  // Starter prompts on an empty chat, from the topics of the plans the student is preparing.
+  const starterPlans = activePlans(plans.data ?? []);
+  const starterReads = useQueries({
+    queries: starterPlans.map((plan) => ({
+      queryKey: ["plan", plan.id],
+      queryFn: () => invoke("plans.read", { planId: plan.id }),
+      enabled: !conversation,
+    })),
+  });
+  const starters = conversation
+    ? []
+    : starterPrompts(
+        starterReads.flatMap((read) =>
+          read.data
+            ? [
+                {
+                  id: read.data.id,
+                  subject: read.data.subject,
+                  topics: [...read.data.topics].sort((a, b) => a.position - b.position),
+                  studied: read.data.steps.flatMap((step) => (step.topicId ? [step.topicId] : [])),
+                },
+              ]
+            : [],
+        ),
+      );
+  /** A starter prompt asks at once, with its plan's material: the plan's subject when it has one, else its sources. */
+  function start(starter: Starter) {
+    if (busy) return;
+    if (starter.subject) void chooseSubject(starter.subject);
+    else scopeReady.current = addPlan(starter.planId);
+    void send(t(`ask.starter.${starter.kind}`, { topic: starter.topic }), {
+      textOnly: true,
+      subject: starter.subject ?? subject,
+    });
+  }
+
+  const chats = useQuery({
+    queryKey: ["chats"],
+    queryFn: () => invoke("chats.list", {}),
+  });
+  const title = chatId
+    ? chats.data?.find((chat) => chat.id === chatId)?.title
+    : undefined;
+
+  // Pasted screenshots and dropped files join the picked files. A note says when some could not.
+  const [attachNote, setAttachNote] = useState<string | null>(null);
+  useEffect(() => setAttachNote(null), [chatId]);
+  const [dropping, setDropping] = useState(false);
+  async function attachPasted(images: File[]) {
+    setAttachNote(null);
+    for (const image of images) {
+      try {
+        const src = await pastedPng(image);
+        const staged = await invoke("tools.stagePng", { dataUrl: src });
+        setFiles((current) => addPendingFiles(current, [staged.path]));
+        setPreviews((current) => ({
+          ...current,
+          [staged.path]: { src, alt: t("ask.pastedImage"), name: t("ask.pastedImage") },
+        }));
+      } catch {
+        setAttachNote("ask.pasteFailed");
+      }
+    }
+  }
+  async function attachDropped(dropped: File[]) {
+    setAttachNote(null);
+    if (dropped.length > MAX_DROPPED_FILES) {
+      setAttachNote("ask.dropTooMany");
+      return;
+    }
+    try {
+      const granted = await window.pyxis.grantDroppedFiles(dropped);
+      const usable = attachable(granted.paths);
+      if (usable.paths.length > 0)
+        setFiles((current) => addPendingFiles(current, usable.paths));
+      if (granted.skipped + usable.skipped > 0) setAttachNote("ask.dropSkipped");
+    } catch (err) {
+      fail(err);
+    }
+  }
+  const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
 
   function openChat(id: string) {
     navigate(`/ask/${id}`);
@@ -598,25 +832,37 @@ export function AskPage() {
   }
 
   return (
-    <div className="ask-page" ref={page}>
-      <div className="ask-bar">
-        <div className="ask-bar-tools">
-          <Button
-            type="text"
-            aria-label={t("ask.chatsOpen")}
-            aria-expanded={panelOpen}
-            icon={<PanelLeft size={18} aria-hidden />}
-            onClick={() => setPanelOpen(true)}
-          />
-          <Button
-            type="text"
-            icon={<Plus size={16} aria-hidden />}
-            onClick={() => navigate("/ask")}
-          >
-            {t("ask.new")}
-          </Button>
-        </div>
-      </div>
+    <div
+      className="ask-page"
+      ref={page}
+      onDragEnter={(event) => {
+        if (!carriesFiles(event)) return;
+        event.preventDefault();
+        setDropping(true);
+      }}
+      onDragOver={(event) => {
+        if (!carriesFiles(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropping(false);
+      }}
+      onDrop={(event) => {
+        if (!carriesFiles(event)) return;
+        event.preventDefault();
+        setDropping(false);
+        const dropped = Array.from(event.dataTransfer.files);
+        if (dropped.length > 0) void attachDropped(dropped);
+      }}
+    >
+      <ChatHeader
+        chatId={chatId}
+        title={title}
+        panelOpen={panelOpen}
+        onOpenPanel={() => setPanelOpen(true)}
+        onNew={() => navigate("/ask")}
+      />
       <ChatPanel
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
@@ -637,69 +883,42 @@ export function AskPage() {
                 ? t("ask.scopeSubject", { subject })
                 : t("ask.scopeReady")}
           </p>
+          {starters.length > 0 ? (
+            <ul className="ask-starters" aria-label={t("ask.startersLabel")}>
+              {starters.map((starter) => (
+                <li key={`${starter.kind}-${starter.planId}-${starter.topic}`}>
+                  <Button shape="round" disabled={busy} onClick={() => start(starter)}>
+                    {t(`ask.starter.${starter.kind}`, { topic: starter.topic })}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="small ask-attach-hint">{t("ask.attachHint")}</p>
         </div>
       ) : (
         <div className="ask-thread">
           <h1 className="visually-hidden">{t("doors.ask")}</h1>
-          {shownMessages.map((row) =>
+          {firstShown > 0 ? (
+            <div className="ask-earlier" ref={earlier}>
+              <Button shape="round" size="small" onClick={showEarlier}>
+                {t("ask.showEarlier", { count: firstShown })}
+              </Button>
+            </div>
+          ) : null}
+          {shownMessages.slice(firstShown).map((row) =>
             row.role === "user" ? (
-              <ChatMessage key={row.id} role="user">
-                <MathText text={row.body} />
-              </ChatMessage>
+              <Question key={row.id} body={row.body} />
             ) : (
-              <ChatMessage
+              <Reply
                 key={row.id}
-                engine={
-                  row.provider && row.modelId
-                    ? `${row.provider} · ${row.modelId}`
-                    : (row.modelId ?? row.provider ?? undefined)
-                }
-                general={row.grounding === "general"}
-                stopped={row.stopped}
-                text={replyPlainText(row.body)}
-                reaction={row.reaction}
-                regenerateDisabled={busy}
-                onRegenerate={
-                  row.id === lastTutor?.id && chatId
-                    ? regenerate
-                    : undefined
-                }
-                suggestions={
-                  row.id === lastTutor?.id && !busy && row.followups.length > 0
-                    ? row.followups
-                    : undefined
-                }
-                onSuggest={(text) => send(text, { textOnly: true })}
-                onReact={(reaction) => {
-                  void invoke("chats.rate", {
-                    messageId: row.id,
-                    reaction,
-                  }).then(
-                    () => client.invalidateQueries({ queryKey: ["chat", chatId] }),
-                    fail,
-                  );
-                }}
-              >
-                <MarkdownView
-                  checks={row.checks}
-                  figures={row.figures}
-                  citationResolver={(index) =>
-                    row.citations.find((cite) => cite.index === index)?.label
-                  }
-                  onCitationClick={(index) => {
-                    const cite = row.citations.find(
-                      (item) => item.index === index,
-                    );
-                    if (!cite) return;
-                    openSourceViewer({
-                      passageId: cite.passageId,
-                      sourceId: cite.sourceId,
-                    });
-                  }}
-                >
-                  {row.body}
-                </MarkdownView>
-              </ChatMessage>
+                row={row}
+                last={row.id === lastTutorId}
+                busy={row.id === lastTutorId && busy}
+                onRegenerate={chatId ? regenerateNow : undefined}
+                onSuggest={suggest}
+                onReact={react}
+              />
             ),
           )}
           {unanswered && chatId && !(busy && streamHere) ? (
@@ -716,16 +935,11 @@ export function AskPage() {
             </div>
           ) : null}
           {streamHere && pendingQuestion !== null && !regenerating ? (
-            <ChatMessage role="user">
-              <MathText text={pendingQuestion} />
-            </ChatMessage>
+            <Question body={pendingQuestion} />
           ) : null}
-          {streamHere && busy && live ? (
-            <ChatMessage role="tutor" streaming>
-              <MarkdownView drawing>{live}</MarkdownView>
-            </ChatMessage>
+          {streamHere && busy ? (
+            <StreamingReply live={live} usesSources={usesSources} onGrow={followStream} />
           ) : null}
-          {streamHere && busy && !live ? <ThinkingMessage usesSources={usesSources} /> : null}
         </div>
       )}
       <div className="visually-hidden" role="status" aria-live="polite">
@@ -766,6 +980,14 @@ export function AskPage() {
             </Notice>
           ) : null;
         })}
+        {attachNote ? (
+          <Notice tone="warning">{t(attachNote, { max: MAX_DROPPED_FILES })}</Notice>
+        ) : null}
+        {dropping ? (
+          <p className="small ask-drop-hint" aria-hidden>
+            {t("ask.dropActive")}
+          </p>
+        ) : null}
         {skipped.includes("over-limit") ? (
           <Notice tone="warning">{t("ask.skippedOverLimit")}</Notice>
         ) : null}
@@ -825,13 +1047,14 @@ export function AskPage() {
         {files.length > 0 ? (
           <ul className="ask-attachments">
             {files.map((file) => {
-              const label = fileName(file);
+              const preview = previews[file];
+              const label = preview?.name ?? fileName(file);
               return (
                 <li key={file}>
-                  {previews[file] ? (
+                  {preview ? (
                     <img
-                      alt={t("tools.whiteboardTitle")}
-                      src={previews[file]}
+                      alt={preview.alt}
+                      src={preview.src}
                       className="ask-attachment-preview"
                     />
                   ) : null}
@@ -901,6 +1124,8 @@ export function AskPage() {
           streaming={busy}
           onStop={() => stop.current?.()}
           onSend={() => void send(draft)}
+          onPasteImages={(images) => void attachPasted(images)}
+          dropping={dropping}
           onAttach={() => {
             void window.pyxis
               .showOpenDialog({
@@ -908,19 +1133,7 @@ export function AskPage() {
                 filters: [
                   {
                     name: t("ask.attachFilter"),
-                    extensions: [
-                      "png",
-                      "jpg",
-                      "jpeg",
-                      "webp",
-                      "heic",
-                      "heif",
-                      "pdf",
-                      "docx",
-                      "pptx",
-                      "txt",
-                      "md",
-                    ],
+                    extensions: [...ATTACH_EXTENSIONS],
                   },
                 ],
               })

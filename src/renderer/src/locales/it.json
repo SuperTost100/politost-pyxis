@@ -243,7 +243,29 @@
     "subjectDragCancelled": "Riordino annullato.",
     "retry": "Riprova",
     "attachFilter": "Foto e documenti",
-    "replied": "Pyxis ha risposto."
+    "replied": "Pyxis ha risposto.",
+    "renameTitle": "Fai clic per rinominare",
+    "renameNamed": "Rinomina {{title}}",
+    "startersLabel": "Domande suggerite",
+    "starter": {
+      "explain": "Spiegami i concetti chiave di {{topic}}",
+      "quiz": "Fammi 3 domande su {{topic}}",
+      "exercise": "Dammi un esercizio su {{topic}}"
+    },
+    "attachHint": "Allega appunti, un PDF o una foto con la graffetta, incolla uno screenshot o trascina qui i file.",
+    "showEarlier_one": "Mostra {{count}} messaggio precedente",
+    "showEarlier_other": "Mostra {{count}} messaggi precedenti",
+    "pastedImage": "Immagine incollata",
+    "pasteFailed": "Non è stato possibile allegare l'immagine. Salvala come file e allegala con la graffetta.",
+    "dropActive": "Rilascia per allegare al messaggio.",
+    "dropTooMany": "Puoi trascinare al massimo {{max}} file alla volta.",
+    "dropSkipped": "Alcuni file sono stati saltati. Un messaggio può contenere foto, PDF, Word, PowerPoint, testo e Markdown.",
+    "groupToday": "Oggi",
+    "groupWeek": "Questa settimana",
+    "groupOlder": "Meno recenti",
+    "subjectFilter": "Filtra per materia",
+    "subjectAll": "Tutte le materie",
+    "searchNoneSubject": "Nessuna chat di {{subject}} contiene “{{query}}”."
   },
   "exams": {
     "view": "Mostra",

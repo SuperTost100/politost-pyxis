@@ -1,13 +1,18 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Dropdown, Input, Modal } from "antd";
-import { Ellipsis, Plus, Search } from "lucide-react";
+import { App, Button, Drawer, Dropdown, Input, Modal, Select } from "antd";
+import { Ellipsis, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
 import { textBase64 } from "../share/ExportButton";
+import { chatSubjects, filterBySubject, groupChats, type ChatGroup } from "./chatList";
 import "./ChatPanel.css";
 
-/** The saved chats as a drawer from the left. A search box narrows them by title and message text. Each row opens its chat; a menu renames, exports or deletes it on demand. */
+/**
+ * The saved chats as a drawer from the left, newest first under Today, This week and Older. A search box narrows them
+ * by title and message text, and a subject filter by the subject each chat is filed under; the two combine. Each row
+ * opens its chat; a menu renames, exports or deletes it on demand. New chat lives in the page header.
+ */
 export function ChatPanel({
   open,
   onClose,
@@ -31,7 +36,12 @@ export function ChatPanel({
     queryKey: ["chats"],
     queryFn: () => invoke("chats.list", {}),
   });
+  const subjects = useQuery({
+    queryKey: ["subjects"],
+    queryFn: () => invoke("subjects.list", {}),
+  });
   const [query, setQuery] = useState("");
+  const [subject, setSubject] = useState("");
   const [asked, setAsked] = useState("");
   const [exporting, setExporting] = useState(false);
   // Leaving the drawer clears the search, so the next visit starts with the whole list.
@@ -66,11 +76,20 @@ export function ChatPanel({
   const cancelled = useRef(false);
   const chats = history.data ?? [];
   const hits = searching ? (found.data ?? []) : null;
-  const rows: Array<{
+  const filed = chatSubjects(chats, subjects.data ?? []);
+  // A filter for a subject no chat uses any more (its last chat was deleted) shows everything again.
+  const filter = filed.includes(subject) ? subject : "";
+  const rows = filterBySubject<{
     id: string;
     title: string | null;
+    updatedAt: number;
     snippet?: { text: string; start: number; end: number } | null;
-  }> = hits ?? chats;
+  }>(hits ?? chats, filter, chats);
+  const groupName: Record<ChatGroup, string> = {
+    today: t("ask.groupToday"),
+    week: t("ask.groupWeek"),
+    older: t("ask.groupOlder"),
+  };
   const settled = searching && asked === query.trim() && !found.isFetching && found.data;
   const nameOf = (title: string | null) => title?.trim() || t("ask.untitled");
 
@@ -146,18 +165,7 @@ export function ChatPanel({
         closable={{ "aria-label": t("ask.chatsClose") }}
         rootClassName="ask-panel"
       >
-        <Button
-          shape="round"
-          block
-          icon={<Plus size={16} aria-hidden />}
-          onClick={() => {
-            onNew();
-            onClose();
-          }}
-        >
-          {t("ask.new")}
-        </Button>
-        <div role="search">
+        <div role="search" className="ask-panel-search">
           <Input
             aria-label={t("ask.searchLabel")}
             placeholder={t("ask.searchPlaceholder")}
@@ -174,13 +182,27 @@ export function ChatPanel({
               }
             }}
           />
+          {filed.length > 0 ? (
+            <Select
+              aria-label={t("ask.subjectFilter")}
+              value={filter}
+              onChange={setSubject}
+              popupMatchSelectWidth={false}
+              options={[
+                { value: "", label: t("ask.subjectAll") },
+                ...filed.map((name) => ({ value: name, label: name })),
+              ]}
+            />
+          ) : null}
         </div>
         <div className="visually-hidden" role="status" aria-live="polite">
-          {settled ? t("ask.searchCount", { count: found.data.length }) : ""}
+          {settled ? t("ask.searchCount", { count: rows.length }) : ""}
         </div>
         {searching && settled && rows.length === 0 ? (
           <p className="small ask-panel-empty">
-            {t("ask.searchNone", { query: query.trim() })}
+            {filter
+              ? t("ask.searchNoneSubject", { query: query.trim(), subject: filter })
+              : t("ask.searchNone", { query: query.trim() })}
           </p>
         ) : !searching && chats.length === 0 ? (
           <p className="small ask-panel-empty">{t("ask.chatsEmpty")}</p>
@@ -189,100 +211,106 @@ export function ChatPanel({
             className="ask-panel-list"
             aria-label={searching ? t("ask.searchResults") : t("ask.history")}
           >
-            {rows.map((chat) => {
+            {groupChats(rows)
+              .flatMap(({ group, chats: grouped }) =>
+                grouped.map((chat, index) => ({ chat, heading: index === 0 ? group : null })),
+              )
+              .map(({ chat, heading }) => {
               const title = nameOf(chat.title);
               const editing = renaming?.id === chat.id;
               const snippet = chat.snippet;
               return (
-                <li
-                  key={chat.id}
-                  className={
-                    chat.id === chatId
-                      ? "ask-panel-row is-current"
-                      : "ask-panel-row"
-                  }
-                >
-                  {editing ? (
-                    <Input
-                      autoFocus
-                      className="ask-panel-rename"
-                      aria-label={t("ask.renameLabel")}
-                      maxLength={80}
-                      value={renaming.title}
-                      onFocus={(event) => event.target.select()}
-                      onChange={(event) =>
-                        setRenaming({ id: chat.id, title: event.target.value })
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          cancelled.current = false;
-                          void saveRename();
+                <li key={chat.id} className="ask-panel-item">
+                  {heading ? <h2 className="ask-panel-heading">{groupName[heading]}</h2> : null}
+                  <div
+                    className={
+                      chat.id === chatId
+                        ? "ask-panel-row is-current"
+                        : "ask-panel-row"
+                    }
+                  >
+                    {editing ? (
+                      <Input
+                        autoFocus
+                        className="ask-panel-rename"
+                        aria-label={t("ask.renameLabel")}
+                        maxLength={80}
+                        value={renaming.title}
+                        onFocus={(event) => event.target.select()}
+                        onChange={(event) =>
+                          setRenaming({ id: chat.id, title: event.target.value })
                         }
-                        if (event.key === "Escape") {
-                          event.stopPropagation();
-                          cancelled.current = true;
-                          setRenaming(null);
-                        }
-                      }}
-                      onBlur={() => void saveRename()}
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className="ask-panel-title"
-                      aria-current={chat.id === chatId ? "page" : undefined}
-                      onClick={() => {
-                        onOpenChat(chat.id);
-                        onClose();
-                      }}
-                    >
-                      <span className="ask-panel-name">{title}</span>
-                      {snippet ? (
-                        <span className="ask-panel-snippet">
-                          {snippet.text.slice(0, snippet.start)}
-                          <mark>{snippet.text.slice(snippet.start, snippet.end)}</mark>
-                          {snippet.text.slice(snippet.end)}
-                        </span>
-                      ) : null}
-                    </button>
-                  )}
-                  {editing ? null : (
-                    <Dropdown
-                      trigger={["click"]}
-                      placement="bottomRight"
-                      menu={{
-                        items: [
-                          { key: "rename", label: t("ask.rename") },
-                          { key: "markdown", label: t("ask.exportMarkdown") },
-                          { key: "pdf", label: t("ask.exportPdf") },
-                          { type: "divider" },
-                          {
-                            key: "delete",
-                            label: t("ask.delete"),
-                            danger: true,
-                          },
-                        ],
-                        onClick: ({ key }) => {
-                          if (key === "rename") {
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
                             cancelled.current = false;
-                            setRenaming({ id: chat.id, title: chat.title ?? "" });
+                            void saveRename();
                           }
-                          if (key === "markdown" || key === "pdf")
-                            void exportChat(chat.id, key);
-                          if (key === "delete")
-                            setDeleting({ id: chat.id, title });
-                        },
-                      }}
-                    >
-                      <Button
-                        type="text"
-                        shape="circle"
-                        size="small"
-                        aria-label={t("ask.chatActions", { title })}
-                        icon={<Ellipsis size={16} aria-hidden />}
+                          if (event.key === "Escape") {
+                            event.stopPropagation();
+                            cancelled.current = true;
+                            setRenaming(null);
+                          }
+                        }}
+                        onBlur={() => void saveRename()}
                       />
-                    </Dropdown>
-                  )}
+                    ) : (
+                      <button
+                        type="button"
+                        className="ask-panel-title"
+                        aria-current={chat.id === chatId ? "page" : undefined}
+                        onClick={() => {
+                          onOpenChat(chat.id);
+                          onClose();
+                        }}
+                      >
+                        <span className="ask-panel-name">{title}</span>
+                        {snippet ? (
+                          <span className="ask-panel-snippet">
+                            {snippet.text.slice(0, snippet.start)}
+                            <mark>{snippet.text.slice(snippet.start, snippet.end)}</mark>
+                            {snippet.text.slice(snippet.end)}
+                          </span>
+                        ) : null}
+                      </button>
+                    )}
+                    {editing ? null : (
+                      <Dropdown
+                        trigger={["click"]}
+                        placement="bottomRight"
+                        menu={{
+                          items: [
+                            { key: "rename", label: t("ask.rename") },
+                            { key: "markdown", label: t("ask.exportMarkdown") },
+                            { key: "pdf", label: t("ask.exportPdf") },
+                            { type: "divider" },
+                            {
+                              key: "delete",
+                              label: t("ask.delete"),
+                              danger: true,
+                            },
+                          ],
+                          onClick: ({ key }) => {
+                            if (key === "rename") {
+                              cancelled.current = false;
+                              setRenaming({ id: chat.id, title: chat.title ?? "" });
+                            }
+                            if (key === "markdown" || key === "pdf")
+                              void exportChat(chat.id, key);
+                            if (key === "delete")
+                              setDeleting({ id: chat.id, title });
+                          },
+                        }}
+                      >
+                        <Button
+                          type="text"
+                          shape="circle"
+                          size="small"
+                          aria-label={t("ask.chatActions", { title })}
+                          icon={<Ellipsis size={16} aria-hidden />}
+                        />
+                      </Dropdown>
+                    )}
+                  </div>
                 </li>
               );
             })}

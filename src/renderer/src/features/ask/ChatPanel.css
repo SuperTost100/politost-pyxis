@@ -1,7 +1,11 @@
 .ask-panel .ant-drawer-content { background: var(--surface); }
 .ask-panel .ant-drawer-body { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); }
 .ask-panel-empty { margin: 0; color: var(--ink-muted); }
+.ask-panel-search { display: flex; flex-direction: column; gap: var(--space-2); }
 .ask-panel-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+/* Each date group starts with its heading, inside its first row's item so the list counts chats only. */
+.ask-panel-heading { margin: var(--space-4) 0 var(--space-1); padding-left: var(--space-3); color: var(--ink-muted); font: 500 calc(13px * var(--text-scale))/calc(18px * var(--text-scale)) var(--font-sans); }
+.ask-panel-item:first-child .ask-panel-heading { margin-top: 0; }
 .ask-panel-row { display: flex; align-items: center; gap: var(--space-1); min-height: var(--control-md); padding-left: var(--space-3); padding-right: var(--space-1); border-radius: var(--radius-md); }
 .ask-panel-row:hover, .ask-panel-row:focus-within { background: var(--surface-raised); }
 .ask-panel-row.is-current { background: var(--primary-soft); }

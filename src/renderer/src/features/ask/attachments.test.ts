@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addPendingFiles,
+  attachable,
   draftKey,
   fileName,
   lastAskChat,
@@ -83,5 +84,11 @@ describe("addPendingFiles", () => {
     expect(
       addPendingFiles(["/a/foto.png"], ["/a/foto.png", "/a/notes.pdf"]),
     ).toEqual(["/a/foto.png", "/a/notes.pdf"]);
+  });
+
+  it("keeps dropped files a message can carry and counts the rest", () => {
+    expect(
+      attachable(["/a/notes.PDF", "C:\\Users\\me\\shot.png", "/a/book.ptsb", "/a/README", "/a/x.md"]),
+    ).toEqual({ paths: ["/a/notes.PDF", "C:\\Users\\me\\shot.png", "/a/x.md"], skipped: 2 });
   });
 });

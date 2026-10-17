@@ -23,6 +23,8 @@ export function Composer({
   onStop,
   onModeChange,
   onAttach,
+  onPasteImages,
+  dropping,
 }: {
   subject?: string;
   /** Replaces the plain subject label, for a chip that opens the subject menu. */
@@ -39,6 +41,10 @@ export function Composer({
   onStop?: () => void;
   onModeChange?: (mode: "solver" | "socratic") => void;
   onAttach?: () => void;
+  /** Images pasted without text, such as a screenshot. Text pastes into the field as usual. */
+  onPasteImages?: (images: File[]) => void;
+  /** Files are being dragged over the page, so the card shows it takes them. */
+  dropping?: boolean;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -53,7 +59,18 @@ export function Composer({
   const field = useRef<MathTextEditorHandle>(null);
   const formula = useFormulaKeys(field);
   return (
-    <div className="px-composer" data-keeps-draft>
+    <div
+      className={dropping ? "px-composer is-dropping" : "px-composer"}
+      data-keeps-draft
+      onPaste={(event) => {
+        const images = Array.from(event.clipboardData.files).filter((file) =>
+          file.type.startsWith("image/"),
+        );
+        if (!onPasteImages || images.length === 0 || event.clipboardData.getData("text/plain")) return;
+        event.preventDefault();
+        onPasteImages(images);
+      }}
+    >
       <div className="px-composer-top">
         {subjectControl ?? (
           <span className="px-subject">

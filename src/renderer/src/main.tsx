@@ -13,6 +13,9 @@ const queryClient = new QueryClient({
 // them stale: a job update, a study write (the `plans.evidence` broadcast) or an explicit invalidation.
 for (const key of ["plans", "plan", "series"])
   queryClient.setQueryDefaults([key], { staleTime: 30_000 });
+// A long chat or lesson is a lot of text and math. Its data goes 30 s after leaving it, not after the default 5 minutes.
+for (const key of ["chat", "lesson"])
+  queryClient.setQueryDefaults([key], { gcTime: 30_000 });
 
 const root = document.getElementById("root");
 if (!root) throw new Error("missing-root");
