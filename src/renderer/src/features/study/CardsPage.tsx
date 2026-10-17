@@ -16,8 +16,12 @@ import { nextLearningDue, trackLearning, type LearningCards } from "./learningCa
 
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
 import { Notice } from "../../components/Notice";
+import { LoadError } from "../../components/LoadError";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
+
+/** A card's text without its Markdown emphasis, for a screen reader's label. */
+const plainText = (markdown: string) => markdown.replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
 
 export function CardsPage() {
   const { t } = useTranslation();
@@ -139,6 +143,14 @@ export function CardsPage() {
   const [ratedIn, setRatedIn] = useState<
     Array<{ planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
   >([]);
+  // Until the deck arrives (and the topic's build is known) "No cards are due." would be a guess.
+  const shown = everywhere ? dueEverywhere : reviewing ? reviewQueue : cards;
+  const deckLoading = shown.isLoading || (!reviewing && build.isLoading);
+  // Said aloud when a rating brings up the next card; the old card's buttons are gone and focus falls to the page.
+  const nextCardText =
+    seen.length > 0 && card
+      ? plainText(isCloze(card.front) ? clozeQuestion(card.front) : card.front)
+      : "";
   const [recorded, setRecorded] = useState(false);
   const [finishFailed, setFinishFailed] = useState(false);
   /** Records this topic's card session on the path: when its last due card is rated, or with "Mark as done". */
@@ -320,7 +332,7 @@ export function CardsPage() {
       onClose={
         everywhere
           ? () => void finishEverywhere().then((ok) => ok && navigate("/exams"))
-          : undefined
+          : () => navigate(`/plans/${planId ?? ""}`)
       }
       secondary={
         <Button
@@ -415,8 +427,17 @@ export function CardsPage() {
         {finishFailed ? (
           <Notice tone="danger">{t("planOverview.failed")}</Notice>
         ) : null}
+        <div className="visually-hidden" role="status" aria-live="polite">
+          {nextCardText ? t("cards.nextCard", { front: nextCardText }) : ""}
+        </div>
         {!card ? (
-          building ? null : waiting && learningDue != null ? (
+          building || deckLoading ? null : shown.isError ? (
+            <LoadError
+              onRetry={() => void shown.refetch()}
+            >
+              {t("cards.loadFailed")}
+            </LoadError>
+          ) : waiting && learningDue != null ? (
             <p className="body" role="status">
               {t("cards.learningWait", {
                 count: Math.max(1, Math.ceil((learningDue - clock) / 60_000)),
@@ -588,10 +609,17 @@ export function CardsPage() {
           </article>
         )}
         {(parked.data ?? []).map((item) => (
-          <p key={item.id} className="small">
-            {item.front}{" "}
+          <div key={item.id} className="px-cards-parked">
+            <MarkdownView variant="body">
+              {isCloze(item.front) ? clozeAnswer(item.front) : item.front}
+            </MarkdownView>
             <Button
               shape="round"
+              aria-label={t("cards.resumeCard", {
+                front: plainText(
+                  isCloze(item.front) ? clozeAnswer(item.front) : item.front,
+                ),
+              })}
               onClick={() => {
                 act(
                   invoke("study.suspend", {
@@ -604,7 +632,7 @@ export function CardsPage() {
             >
               {t("cards.resume")}
             </Button>
-          </p>
+          </div>
         ))}
         {reviewing && reviewQueue.data?.next === "questions" && !card ? (
           <Button
@@ -631,7 +659,7 @@ export function CardsPage() {
           </Notice>
         ) : null}
         {seen.length > 0 && !card ? (
-          <p className="body">
+          <p className="body" role="status">
             {t("cards.summary", {
               seen: seen.length,
               again: counts.again,

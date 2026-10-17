@@ -1,0 +1,231 @@
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page,
+} from "@playwright/test";
+import { strToU8, zipSync } from "fflate";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { importPickedSource } from "./picked-source";
+
+const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+
+function smartbook() {
+  return zipSync({
+    "smartbook.json": strToU8(
+      JSON.stringify({
+        id: "states",
+        title: "Fisica",
+        access: "public",
+        chapters: [1, 2].map((n) => ({ id: `c${n}`, number: n, title: `Tema ${n}`, file: `0${n}.md` })),
+      }),
+    ),
+    ...Object.fromEntries(
+      [1, 2].map((n) => [`chapters/0${n}.md`, strToU8(`## p1 | Tema ${n}\nIl moto rettilineo uniforme del tema ${n}.\n`)]),
+    ),
+  });
+}
+
+const diagnostic = {
+  questions: Array.from({ length: 10 }, (_, i) => ({
+    stem: `Diagnosi ${i}`,
+    options: ["a", "b", "c", "d"],
+    correct: 0,
+    topicIndex: i % 2,
+    passageIds: [`{{passage:${i % 2}}}`],
+    explanation: "La relazione fisica.",
+  })),
+};
+
+async function launch(delay = 0) {
+  mkdirSync(".shots", { recursive: true });
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-ui-states-"));
+  const env = {
+    ...process.env,
+    PYXIS_USER_DATA: userData,
+    PYXIS_E2E: "1",
+    PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
+      markdown: { markdown: "## Ripasso\nUsa le formule [P1]." },
+      questions: diagnostic,
+    }),
+    PYXIS_E2E_PLAN_DELAY: String(delay),
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({ args: [MAIN], env });
+  const page = await app.firstWindow();
+  page.setDefaultTimeout(30000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Salta" }).click();
+  await expect(page).toHaveURL(/#\/exams$/);
+  return { app, page, userData };
+}
+
+const goto = (page: Page, hash: string) =>
+  page.evaluate((hash) => {
+    window.location.hash = hash;
+  }, hash);
+
+async function addSource(page: Page, app: ElectronApplication, userData: string) {
+  const file = join(userData, "fisica.ptsb");
+  writeFileSync(file, smartbook());
+  const { sourceId } = (await importPickedSource(page, app, file)) as { sourceId: string };
+  await expect
+    .poll(async () =>
+      (
+        (await page.evaluate(() => window.pyxis.invoke("sources.list", {}))) as Array<{
+          id: string;
+          status: string;
+        }>
+      ).find((row) => row.id === sourceId)?.status,
+    )
+    .toBe("ready");
+  return sourceId;
+}
+
+/** Picks a menu item the way a click on it would: runs its handler in the main process. */
+async function pick(app: ElectronApplication, id: string) {
+  const found = await app.evaluate(({ Menu }, id) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(id);
+    item?.click();
+    return Boolean(item);
+  }, id);
+  expect(found, `menu item ${id}`).toBe(true);
+}
+
+test("UI-01 the menu works while a plan builds, a wizard error goes away, and the close button of study pages leads to the plan", async () => {
+  test.setTimeout(240000);
+  const { app, page, userData } = await launch(3000);
+  try {
+    const sourceId = await addSource(page, app, userData);
+
+    // A failed "Add subject" says so on its step and not on the next one.
+    await goto(page, "/plans/new");
+    await page.getByLabel("Titolo", { exact: true }).fill("Fisica");
+    await page.getByLabel("Materia", { exact: true }).fill("x".repeat(130));
+    await page.getByRole("button", { name: "Aggiungi questa materia", exact: true }).click();
+    await expect(page.getByRole("alert")).toHaveText("Non riesco a preparare il piano.");
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Quando hai l'esame?" })).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+
+    // The answers are saved once the plan exists: the build screen must not hold the menu.
+    const { planId } = (await page.evaluate(
+      (sourceId) => window.pyxis.invoke("plans.create", { title: "Fisica", sourceIds: [sourceId] }),
+      sourceId,
+    )) as { planId: string };
+    await goto(page, `/plans/new?build=${planId}`);
+    await expect(page.getByRole("heading", { name: "Sto preparando Fisica" })).toBeVisible();
+    await pick(app, "settings");
+    await expect(page).toHaveURL(/#\/settings/);
+
+    await expect
+      .poll(
+        async () =>
+          (
+            (await page.evaluate((planId) => window.pyxis.invoke("plans.build", { planId }), planId)) as {
+              state: string;
+            }
+          ).state,
+        { timeout: 120000 },
+      )
+      .toBe("succeeded");
+    const plan = (await page.evaluate(
+      (planId) => window.pyxis.invoke("plans.read", { planId }),
+      planId,
+    )) as { topics: Array<{ id: string }> };
+    const topic = plan.topics[0]!.id;
+
+    // The X of Cards, Practice and Review goes where Back goes: the plan.
+    for (const route of [`cards/${topic}`, `practice/${topic}`, "review"]) {
+      await goto(page, `/plans/${planId}/${route}`);
+      await page.getByRole("button", { name: "Chiudi", exact: true }).click();
+      await expect(page, route).toHaveURL(new RegExp(`#/plans/${planId}$`));
+    }
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test("UI-02 a passage search says when nothing matches, ignores an empty query and drops hits of a removed source", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  try {
+    await addSource(page, app, userData);
+    await goto(page, "/exams/library");
+    const query = page.getByRole("textbox", { name: "Cerca nei brani" });
+    const search = page.getByRole("button", { name: "Cerca", exact: true });
+    await expect(search).toBeDisabled();
+    await query.fill("   ");
+    await expect(search).toBeDisabled();
+
+    await query.fill("pappagallo");
+    await search.click();
+    await expect(page.getByText("Nessun brano delle tue fonti corrisponde a “pappagallo”.")).toBeVisible();
+    await page.screenshot({ path: ".shots/ui-states-search-none-it.png", animations: "disabled" });
+
+    await query.fill("moto rettilineo");
+    await search.click();
+    const hits = page.locator(".choice-list .choice");
+    await expect(hits.first()).toBeVisible();
+    await expect(page.getByText(/Nessun brano delle tue fonti/)).toHaveCount(0);
+
+    // The source goes away: its hits go with it, and the search says nothing matches.
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Azioni per Fisica" }).click();
+    await page.getByRole("menuitem", { name: "Rimuovi", exact: true }).click();
+    await expect(hits).toHaveCount(0);
+    await expect(page.getByText("Nessun brano delle tue fonti corrisponde a “moto rettilineo”.")).toBeVisible();
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test("UI-03 the cards page announces the next card, names parked cards, and shows the wizard's progress", async () => {
+  test.setTimeout(240000);
+  const { app, page, userData } = await launch();
+  try {
+    const sourceId = await addSource(page, app, userData);
+    const invoke = <T>(channel: string, input: object) =>
+      page.evaluate(([c, i]) => window.pyxis.invoke(c as never, i as never), [channel, input] as const) as Promise<T>;
+    const { planId } = await invoke<{ planId: string }>("plans.create", { title: "Fisica", sourceIds: [sourceId] });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>("plans.build", { planId })).state, { timeout: 120000 })
+      .toBe("succeeded");
+    const { topics } = await invoke<{ topics: Array<{ id: string }> }>("plans.read", { planId });
+    const topicId = topics[0]!.id;
+    const save = (front: string, back: string) => invoke<{ id: string }>("study.save", { planId, topicId, front, back });
+    await save("Prima carta", "Retro uno");
+    await save("Seconda carta", "Retro due");
+    const parkedA = await save("La {{c1::energia}} cinetica", "Retro tre");
+    const parkedB = await save("Il {{c1::lavoro}} meccanico", "Retro quattro");
+    for (const card of [parkedA, parkedB]) await invoke("study.suspend", { cardId: card.id, suspended: true });
+
+    await goto(page, `/plans/${planId}/cards/${topicId}`);
+    // Parked cloze cards read as sentences, and each Resume names its card.
+    await expect(page.getByText("{{c1::")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Riprendi la flashcard: La energia cinetica" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Riprendi la flashcard: Il lavoro meccanico" })).toBeVisible();
+    await page.screenshot({ path: ".shots/ui-states-cards-parked-it.png", animations: "disabled", fullPage: true });
+
+    // Rating a card says which one comes next, since the buttons the focus was on are gone.
+    await page.getByRole("button", { name: /^Gira/ }).click();
+    await page.getByRole("button", { name: "Bene", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Scheda successiva:" })).toContainText(
+      /Flashcard successiva: (Prima|Seconda) carta/,
+    );
+
+    // The wizard's progress line is a progress bar.
+    await goto(page, "/plans/new");
+    const progress = page.getByRole("progressbar");
+    await expect(progress).toHaveAttribute("aria-valuenow", "17");
+    await expect(progress).toHaveAttribute("aria-valuemax", "100");
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});

@@ -28,7 +28,7 @@
       "general": "Anywhere",
       "ask": "Ask",
       "cards": "Flashcards",
-      "quiz": "Quizzes and simulations",
+      "quiz": "Quizzes",
       "whiteboard": "Whiteboard",
       "python": "Python"
     },
@@ -313,6 +313,9 @@
     "readByOcrAfter": "Text read by local OCR after vision could not read it.",
     "search": "Search passages",
     "searchGo": "Search",
+    "viewerFailed": "This passage could not be loaded.",
+    "searchNone": "Nothing in your sources matches “{{query}}”.",
+    "loadFailed": "The sources could not be loaded.",
     "encrypted": "This smartbook is protected. Pyxis opens plain packages only.",
     "importFailed": "This file could not be read.",
     "tooBig": "This file is too large to import. Pyxis takes documents up to 256 MB and photos up to 40 MB.",
@@ -531,6 +534,9 @@
     "spaceKey": "Space",
     "title": "Flashcards",
     "empty": "No flashcards are due.",
+    "loadFailed": "The flashcards could not be loaded.",
+    "nextCard": "Next flashcard: {{front}}",
+    "resumeCard": "Resume flashcard: {{front}}",
     "flip": "Flip",
     "again": "Again",
     "hard": "Hard",
@@ -725,6 +731,8 @@
     "apply": "Apply changes",
     "applied": "Changes applied. Undo restores the previous map.",
     "editFailed": "The map could not be changed. Try again.",
+    "editConflict": "The map changed while Pyxis was editing it, and that edit no longer fits. Your changes are kept. Try the request again.",
+    "loadFailed": "The map could not be loaded.",
     "generateFailed": "The maps could not be built. Try again.",
     "exportFailed": "The image could not be exported. Try again.",
     "empty": "Build a map of this topic",
@@ -1762,7 +1770,9 @@
       "actionFor": "{{action}} {{name}}"
     },
     "notice": {
-      "details": "Details"
+      "details": "Details",
+      "retry": "Try again",
+      "loadFailed": "This could not be loaded."
     },
     "markdown": {
       "run": "Run",
@@ -2227,6 +2237,7 @@
     "save": "Save",
     "attach": "Attach to chat",
     "erase": "Eraser",
+    "clear": "Clear",
     "pen": "Pen",
     "redo": "Redo",
     "whiteboardTitle": "Whiteboard",

@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
@@ -119,6 +120,8 @@ export function LibraryPanel({
   const [hits, setHits] = useState<
     Awaited<ReturnType<typeof invoke<"sources.search">>>
   >([]);
+  // The query the shown hits answer, so an empty answer can say so; null before the first search.
+  const [searched, setSearched] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The action local OCR data refused, kept so the student can run it again once the data is ready.
   const [again, setAgain] = useState<{ label: string; run: () => void } | null>(
@@ -485,6 +488,10 @@ export function LibraryPanel({
     queryFn: () => invoke("sources.embedState", {}),
   });
   const sources = list.data ?? [];
+  // A hit whose source was removed since the search would open nothing.
+  const shownHits = hits.filter((hit) =>
+    sources.some((source) => source.id === hit.sourceId),
+  );
   type SourceRow = (typeof sources)[number];
   // New versions of free books are checked only while the Library is open, and only when it holds a smartbook.
   const freeBooks = useFreeBooks(
@@ -1192,7 +1199,11 @@ export function LibraryPanel({
   return (
     <div className="px-library">
       {addModal}
-      {sources.length === 0 ? (
+      {list.isError && !list.data ? (
+        <LoadError onRetry={() => void list.refetch()}>
+          {t("sources.loadFailed")}
+        </LoadError>
+      ) : list.isSuccess && sources.length === 0 ? (
         <EmptyState
           title={t("exams.sourcesEmptyTitle")}
           body={t("exams.sourcesEmptyBody")}
@@ -1315,7 +1326,14 @@ export function LibraryPanel({
         className="px-form-inline"
         onSubmit={(event) => {
           event.preventDefault();
-          void invoke("sources.search", { query }).then(setHits).catch(fail);
+          const asked = query.trim();
+          if (!asked) return;
+          void invoke("sources.search", { query: asked })
+            .then((found) => {
+              setHits(found);
+              setSearched(asked);
+            })
+            .catch(fail);
         }}
       >
         <Input
@@ -1324,13 +1342,18 @@ export function LibraryPanel({
           placeholder={t("sources.search")}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <Button htmlType="submit" shape="round">
+        <Button htmlType="submit" shape="round" disabled={!query.trim()}>
           {t("sources.searchGo")}
         </Button>
       </form>
-      {hits.length > 0 ? (
+      {searched != null && shownHits.length === 0 ? (
+        <p className="small" role="status">
+          {t("sources.searchNone", { query: searched })}
+        </p>
+      ) : null}
+      {shownHits.length > 0 ? (
         <ul className="choice-list">
-          {hits.map((hit) => (
+          {shownHits.map((hit) => (
             <li key={hit.id}>
               <button
                 type="button"

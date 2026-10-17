@@ -28,7 +28,7 @@
       "general": "Ovunque",
       "ask": "Chiedi",
       "cards": "Flashcard",
-      "quiz": "Quiz e simulazioni",
+      "quiz": "Quiz",
       "whiteboard": "Lavagna",
       "python": "Python"
     },
@@ -313,6 +313,9 @@
     "readByOcrAfter": "Testo letto tramite OCR locale dopo il tentativo con la visione.",
     "search": "Cerca nei brani",
     "searchGo": "Cerca",
+    "viewerFailed": "Non è stato possibile caricare questo brano.",
+    "searchNone": "Nessun brano delle tue fonti corrisponde a “{{query}}”.",
+    "loadFailed": "Non è stato possibile caricare le fonti.",
     "encrypted": "Questo smartbook è protetto. Pyxis apre solo i pacchetti in chiaro.",
     "importFailed": "Non riesco a leggere questo file.",
     "tooBig": "Il file è troppo grande da importare. Pyxis accetta documenti fino a 256 MB e foto fino a 40 MB.",
@@ -531,6 +534,9 @@
     "spaceKey": "Spazio",
     "title": "Flashcard",
     "empty": "Nessuna flashcard in scadenza.",
+    "loadFailed": "Non è stato possibile caricare le flashcard.",
+    "nextCard": "Flashcard successiva: {{front}}",
+    "resumeCard": "Riprendi la flashcard: {{front}}",
     "flip": "Gira",
     "again": "Da rivedere",
     "hard": "Difficile",
@@ -725,6 +731,8 @@
     "apply": "Applica modifiche",
     "applied": "Modifiche applicate. Annulla ripristina la mappa precedente.",
     "editFailed": "Non riesco a modificare la mappa. Riprova.",
+    "editConflict": "La mappa è cambiata mentre Pyxis la modificava e quella modifica non si adatta più. Le tue modifiche restano. Ripeti la richiesta.",
+    "loadFailed": "Non è stato possibile caricare la mappa.",
     "generateFailed": "Non riesco a creare le mappe. Riprova.",
     "exportFailed": "Non riesco a esportare l’immagine. Riprova.",
     "empty": "Crea una mappa di questo argomento",
@@ -1762,7 +1770,9 @@
       "actionFor": "{{action}} {{name}}"
     },
     "notice": {
-      "details": "Dettagli"
+      "details": "Dettagli",
+      "retry": "Riprova",
+      "loadFailed": "Non è stato possibile caricarlo."
     },
     "markdown": {
       "run": "Esegui",
@@ -2227,6 +2237,7 @@
     "save": "Salva",
     "attach": "Allega alla chat",
     "erase": "Gomma",
+    "clear": "Cancella tutto",
     "pen": "Penna",
     "redo": "Ripeti",
     "whiteboardTitle": "Lavagna",
