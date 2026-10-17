@@ -362,9 +362,20 @@ function appendVersion(
 }
 
 /**
+ * A free book can't be replaced with a document. The new version would keep the book's catalog link, chapters and
+ * exercises under another kind, so the books list would offer an update that fails. Refusing keeps the book, its
+ * exercises and its citations as they are; the file can be added as a new source, and a book updates from the books list.
+ */
+export function refuseSmartbookReplace(db: Database.Database, sourceId: string): void {
+  const row = db.prepare(`SELECT kind FROM sources WHERE id = ?`).get(sourceId) as { kind: string } | undefined;
+  if (row?.kind === "smartbook") throw new Error("replace-smartbook");
+}
+
+/**
  * New extraction of an existing source from a new file. Older passages stay for citations. A file with no text at all
  * (a wholly scanned PDF, an empty file) is refused as `replace-no-text` rather than published, as a re-read is: an
  * empty version would hide the text in use until OCR finished. Added as a new source, a scan can be read with OCR.
+ * A free book is refused as `replace-smartbook`.
  */
 export function addDocumentVersion(
   db: Database.Database,
@@ -381,6 +392,7 @@ export function addDocumentVersion(
     .prepare(`SELECT id FROM sources WHERE id = ? AND status != 'removed'`)
     .get(sourceId);
   if (!existing) throw new Error("source-missing");
+  refuseSmartbookReplace(db, sourceId);
   const kept = keptPages(input.extracted);
   if (kept.length === 0) throw new Error("replace-no-text");
   const sha = storeOriginal(workspace, input, input.mime, input.ext);

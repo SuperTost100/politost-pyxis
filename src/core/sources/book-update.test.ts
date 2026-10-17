@@ -292,6 +292,29 @@ describe("free book catalog link", () => {
     ctx.db.close();
   });
 
+  it("refuses to replace a free book with another file, and offers no update on one an older version turned into a PDF", async () => {
+    const ctx = setup();
+    const { sourceId } = await importedV1(ctx);
+    const path = join(temp("pyxis-book-replace-"), "Fisica.pdf");
+    writeFileSync(path, "%PDF-1.4");
+    await expect(ctx.handlers.replace({ sourceId, path })).rejects.toMatchObject({
+      messageKey: "sources.replaceSmartbook",
+    });
+    expect(one(ctx.db, "SELECT kind, status, catalog_id FROM sources WHERE id = ?", sourceId)).toEqual({
+      kind: "smartbook",
+      status: "ready",
+      catalog_id: "fisica-demo",
+    });
+    expect(one(ctx.db, "SELECT COUNT(*) AS n FROM source_documents WHERE source_id = ?", sourceId)).toEqual({ n: 1 });
+    // Before this check, Replace turned the book into a PDF and kept its catalog link.
+    ctx.db.prepare("UPDATE sources SET kind = 'pdf', mime = 'application/pdf' WHERE id = ?").run(sourceId);
+    release(ctx, "1.1.0", pack("1.1.0", 2));
+    expect(await ctx.handlers.books()).toEqual([
+      expect.objectContaining({ id: "fisica-demo", sourceId: null, update: null }),
+    ]);
+    ctx.db.close();
+  });
+
   it("does not offer a removed book, and a removed book can be added again", async () => {
     const ctx = setup();
     const { sourceId } = await importedV1(ctx);

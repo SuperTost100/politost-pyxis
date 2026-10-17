@@ -10,6 +10,7 @@ import {
   addExtractionVersion,
   kindFor,
   mimeFor,
+  refuseSmartbookReplace,
   storeExtracted,
   type ExtractedDocument,
 } from "./documents";
@@ -612,6 +613,7 @@ export function enqueueSourceData(
       : kind === "image"
         ? imageMime(ext)
         : mimeFor(ext);
+  if (existingId && kind !== "smartbook") refuseSmartbookReplace(db, existingId);
   if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: import blob start");
   const sha = putBlob(workspace, bytes, mime, ext.slice(1));
   if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: import transaction start");
