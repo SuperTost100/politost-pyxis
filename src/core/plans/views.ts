@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { IpcError } from "../../shared/ipc";
 import { startAttempt } from "../study/attempt";
 
 const materialKey = (planId: string) => `plan-material:${planId}`;
@@ -127,6 +128,13 @@ export function attachPlanSources(
         .prepare("SELECT status FROM sources WHERE id=?")
         .get(sourceId) as { status: string } | undefined;
       if (source?.status !== "ready") throw new Error("source-not-ready");
+      // A source is one link per plan: a past paper cannot also be study material of the same plan.
+      if (
+        db
+          .prepare("SELECT 1 FROM plan_sources WHERE plan_id=? AND source_id=? AND role='past_paper'")
+          .get(planId, sourceId)
+      )
+        throw new IpcError("source-is-past-paper", "pastPapers.isPaper");
       const info = db
         .prepare(
           "INSERT OR IGNORE INTO plan_sources(plan_id,source_id) VALUES(?,?)",

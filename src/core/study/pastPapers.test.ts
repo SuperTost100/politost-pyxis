@@ -6,6 +6,7 @@ import { loadTemplate } from "../engine/prompts";
 import { readPlan } from "../plans/create";
 import { exportPlan } from "../plans/file";
 import { startRebuild } from "../plans/jobs";
+import { attachPlanSources } from "../plans/views";
 import { removeSource } from "../sources/manage";
 import {
   addPastPaper,
@@ -164,7 +165,7 @@ describe("past papers", () => {
     expect(paper).toMatchObject({
       sourceId: "ap1",
       title: "Analisi 1, appello di giugno",
-      files: 1,
+      sourceIds: ["ap1"],
       status: "ready",
       questions: 6,
       minutes: 120,
@@ -196,7 +197,7 @@ describe("past papers", () => {
     registerPastPaperJobs(db, runner, reader(exam));
     const { jobId } = addPastPaper(db, runner, "plan", ["pg1", "pg2"]);
     await settled(db, jobId);
-    expect(pastPaperViews(db, "plan")).toMatchObject([{ sourceId: "pg1", files: 2, status: "ready" }]);
+    expect(pastPaperViews(db, "plan")).toMatchObject([{ sourceId: "pg1", sourceIds: ["pg1", "pg2"], status: "ready" }]);
     const prompt = prompts.at(-1)!.prompt;
     expect(prompt.indexOf("Pagina uno")).toBeLessThan(prompt.indexOf("Pagina due"));
     expect(
@@ -273,6 +274,17 @@ describe("past papers", () => {
     registerPastPaperJobs(db, runner, reader(exam));
     await settled(db, addPastPaper(db, runner, "plan", ["ap1"]).jobId);
     expect(() => startRebuild(db, runner, "plan")).toThrow("no-sources");
+    db.close();
+  });
+
+  it("does not let the plan's study material take a file that is one of its past papers", async () => {
+    const db = fixture();
+    addSource(db, "ap1", "Testo");
+    const runner = createRunner(db, () => {});
+    registerPastPaperJobs(db, runner, reader(exam));
+    await settled(db, addPastPaper(db, runner, "plan", ["ap1"]).jobId);
+    expect(() => attachPlanSources(db, "plan", ["ap1"])).toThrow("source-is-past-paper");
+    expect(db.prepare("SELECT role FROM plan_sources WHERE source_id = 'ap1'").all()).toEqual([{ role: "past_paper" }]);
     db.close();
   });
 

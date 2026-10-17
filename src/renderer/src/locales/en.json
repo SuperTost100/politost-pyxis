@@ -845,6 +845,7 @@
     "oneOrMany": "You added {{count}} files. Are they pages of one exam or separate exams?",
     "onePaper": "One exam",
     "separatePapers": "Separate exams",
+    "isPaper": "This file is a past exam of the plan. Remove it there first to use it as study material.",
     "inPlan": "This file is already in the plan.",
     "addFailed": "Pyxis could not add this exam. Try again.",
     "practiceTitle": "Past questions",
