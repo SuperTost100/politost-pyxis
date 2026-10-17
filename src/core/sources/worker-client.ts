@@ -30,8 +30,8 @@ const spawnShared = (name: string, data?: unknown) => {
  * last thread that loaded it closes (nodejs/node#48353, closed as not planned). `onnxruntime_binding.node` registers
  * itself from a static constructor, and the OS does not really unload it when Node asks: glibc pins an object that
  * defines a GNU_UNIQUE symbol (it has `Ort::Global<void>::api_`), and macOS dyld pins one that has thread-local
- * variables (libonnxruntime has them). So once every embed worker had exited, for instance a cancelled call followed by the
- * idle close, the next worker found the addon still mapped, no entry and no constructor run, and failed with
+ * variables (libonnxruntime has them). So once every embed worker had exited (now only after a stuck or crashed one),
+ * the next worker found the addon still mapped, no entry and no constructor run, and failed with
  * "Module did not self-register". Loading it here first keeps one reference, so every worker finds the entry.
  * It must run before the first embed worker is spawned. It only maps the addon: no session or environment is created.
  */
@@ -84,30 +84,26 @@ export class Gate {
 
 /** Decoding a photo, or reading a chat attachment, can take hundreds of MB, so two at a time. Job extraction is bounded by the job runner instead. */
 const decodeGate = new Gate(2);
-/** The shared embedding worker serves one call. One more may run beside it, so chat does not wait on indexing. */
-const embedFallbackGate = new Gate(1);
+/**
+ * The one embedding thread. It keeps the model loaded between calls and serves them one at a time, in order. It
+ * stays up for the life of core and releases the model after a minute without work: a thread with ONNX Runtime that
+ * is terminated, or that exits near another one loading it, can abort the process (#58).
+ */
+const embedder = new ReusableWorker<{ dir: string; texts: string[] }, number[][]>(() => spawnShared("embed-worker"));
 
-/** The embedding model is slow to load, so one worker stays up between calls. It serves one call at a time. */
-let embedder: { dir: string; worker: ReusableWorker<{ texts: string[] }, number[][]> } | null = null;
-
-/** Stops the shared embedding worker. The app lets it idle out, so this is for tests and shutdown. */
+/** Fails embedding calls in flight and has the embedding thread release its model now, as it does after a minute idle. For tests. */
 export function closeSourceWorkers(): void {
-  embedder?.worker.close();
-  embedder = null;
+  embedder.unload();
 }
 
 /** Workers own extraction and inference; only core writes the database. */
 export function runSourceWorker<T>(name: "extract-worker" | "embed-worker", input: unknown, signal?: AbortSignal): Promise<T> {
   if (name === "embed-worker") {
-    const { dir, texts } = input as { dir: string; texts: string[] };
+    const { dir, texts, urgent } = input as { dir: string; texts: string[]; urgent?: boolean };
     pinInferenceAddon();
-    if (embedder?.dir !== dir) {
-      embedder?.worker.close();
-      embedder = { dir, worker: new ReusableWorker(() => spawnShared("embed-worker", { dir })) };
-    }
-    // A call that arrives while the shared worker is busy gets one extra worker, and further calls queue for it.
-    if (!embedder.worker.busy) return embedder.worker.run({ texts }, signal) as Promise<T>;
-    return embedFallbackGate.hold(() => oneShot<T>(name, input, signal), signal);
+    // Indexing jobs wait in turn, so the model loads once however many run. An urgent call (a search) goes before
+    // them and waits only for the batch already running.
+    return embedder.run({ dir, texts }, signal, urgent) as Promise<T>;
   }
   const mode = (input as { mode?: string }).mode;
   if (name === "extract-worker" && (mode === "vision" || mode === "pixels" || mode === "quality" || mode === "ocr" || mode === "extract"))

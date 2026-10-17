@@ -99,8 +99,9 @@ export async function downloadModel(dir: string, signal: AbortSignal): Promise<v
   }
 }
 
-export async function embedTexts(dir: string, texts: string[], signal?: AbortSignal): Promise<Float32Array[]> {
-  const vectors = await runSourceWorker<number[][]>("embed-worker", { dir, texts }, signal);
+/** `urgent` is for a search the student waits on: it does not queue behind indexing for the shared worker. */
+export async function embedTexts(dir: string, texts: string[], signal?: AbortSignal, urgent = false): Promise<Float32Array[]> {
+  const vectors = await runSourceWorker<number[][]>("embed-worker", { dir, texts, ...(urgent ? { urgent } : {}) }, signal);
   return vectors.map((vector) => {
     if (vector.length !== 384 || vector.some((n) => !Number.isFinite(n))) throw new Error("embed-dim");
     return Float32Array.from(vector);

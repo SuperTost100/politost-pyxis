@@ -1,46 +1,53 @@
-import { parentPort, workerData } from "node:worker_threads";
+import { parentPort } from "node:worker_threads";
 import { env, pipeline } from "@huggingface/transformers";
 
 // SRC-21: inference has no network access, including tokenizer loading.
 env.allowRemoteModels = false;
 env.allowLocalModels = true;
 env.useFSCache = false;
-const input = workerData as { dir: string; texts?: string[] };
-const load = () => pipeline("feature-extraction", input.dir, { dtype: "q8", device: "cpu" });
+const load = (dir: string) => pipeline("feature-extraction", dir, { dtype: "q8", device: "cpu" });
 type Extractor = Awaited<ReturnType<typeof load>>;
-async function embed(extractor: Extractor, texts: string[]): Promise<number[][]> {
+/** The vectors, or null when `stop` says to stop before the next text. */
+async function embed(extractor: Extractor, texts: string[], stop: () => boolean): Promise<number[][] | null> {
   const vectors: number[][] = [];
   for (const text of texts) {
+    if (stop()) return null;
     const result = await extractor(text, { pooling: "mean", normalize: true });
     vectors.push(Array.from(result.data as Float32Array));
   }
   return vectors;
 }
 
-if (input.texts) {
-  // One call, one worker. Core uses this when the shared worker below is busy.
+// One thread for the life of core. ONNX Runtime can abort the whole process when a thread that loaded it is
+// terminated mid-inference, or exits while, or shortly before, another thread loads it (#58). So nothing stops this
+// thread: a cancel is a message, and the request stops before its next text; an unload disposes the model, once the
+// request before it has finished, to give its memory back, and the next request loads it again.
+let model: { dir: string; extractor: Promise<Extractor> } | undefined;
+let current: Promise<void> = Promise.resolve();
+const cancelled = new Set<number>();
+const unload = async () => {
+  const loaded = model;
+  model = undefined;
+  await (await loaded?.extractor.catch(() => undefined))?.dispose();
+};
+const serve = async (id: number, dir: string, texts: string[]) => {
   try {
-    const extractor = await load();
-    const vectors = await embed(extractor, input.texts);
-    await extractor.dispose();
-    parentPort?.postMessage({ value: vectors });
+    if (model?.dir !== dir) await unload();
+    model ??= { dir, extractor: load(dir) };
+    const vectors = await embed(await model.extractor, texts, () => cancelled.has(id));
+    parentPort?.postMessage(vectors ? { id, value: vectors } : { id, error: "embed-cancelled" });
   } catch (error) {
-    parentPort?.postMessage({ error: error instanceof Error ? error.message : "embed-load" });
+    await unload().catch(() => undefined);
+    parentPort?.postMessage({ id, error: error instanceof Error ? error.message : "embed-load" });
+  } finally {
+    cancelled.delete(id);
   }
-} else {
-  // Shared worker: the model loads on the first request and stays until core says close.
-  let extractor: Promise<Extractor> | undefined;
-  parentPort?.on("message", async (message: { id: number; request: { texts: string[] } } | { close: true }) => {
-    if ("close" in message) {
-      await (await extractor?.catch(() => undefined))?.dispose();
-      process.exit(0);
-    }
-    try {
-      extractor ??= load();
-      parentPort?.postMessage({ id: message.id, value: await embed(await extractor, message.request.texts) });
-    } catch (error) {
-      extractor = undefined;
-      parentPort?.postMessage({ id: message.id, error: error instanceof Error ? error.message : "embed-load" });
-    }
-  });
-}
+};
+parentPort?.on(
+  "message",
+  (message: { id: number; request: { dir: string; texts: string[] } } | { cancel: number } | { unload: true }) => {
+    if ("cancel" in message) cancelled.add(message.cancel);
+    else if ("unload" in message) current = current.then(unload).catch(() => undefined);
+    else current = current.then(() => serve(message.id, message.request.dir, message.request.texts));
+  },
+);

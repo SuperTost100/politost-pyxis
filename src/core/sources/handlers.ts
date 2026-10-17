@@ -102,7 +102,7 @@ export function sourceHandlers(
   stopOcr(db);
   setRetrievalModel(async (text, signal) => {
     if (!embeddingConsent(db) || !embeddingReady(modelDir)) return null;
-    return (await embedTexts(modelDir, [text], signal))[0] ?? null;
+    return (await embedTexts(modelDir, [text], signal, true))[0] ?? null;
   });
   if (runner) {
     markInterruptedImports(db);

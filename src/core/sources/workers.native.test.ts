@@ -253,7 +253,7 @@ describe.skipIf(!haveOcrData)("built extract worker, OCR language data", () => {
 });
 
 describe.skipIf(!have || !embeddingReady(model))("built embed worker", () => {
-  it("loads the model once for repeated calls and gives a call made during another its own worker", async () => {
+  it("loads the model once for repeated calls, queues calls made during another, and cancels without stopping the thread", async () => {
     const first = performance.now();
     const [one] = await embedTexts(model, ["query: derivata di x^2"]);
     const cold = performance.now() - first;
@@ -264,23 +264,28 @@ describe.skipIf(!have || !embeddingReady(model))("built embed worker", () => {
     expect(Array.from(again!)).toEqual(Array.from(one!));
     // Not a benchmark: a reload of the model per call would cost about as much as the cold start.
     expect(warm).toBeLessThan(cold / 2);
-    const [a, b] = await Promise.all([
+    const [a, b, c] = await Promise.all([
       embedTexts(model, ["passage: primo"]),
       embedTexts(model, ["passage: secondo"]),
+      embedTexts(model, ["query: urgente"], undefined, true),
     ]);
     expect(a).toHaveLength(1);
     expect(b).toHaveLength(1);
-    const controller = new AbortController();
-    const cancelled = embedTexts(model, ["passage: lungo"], controller.signal);
-    const expectation = expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
-    controller.abort();
-    await expectation;
+    expect(c).toHaveLength(1);
+    // #58: terminating the thread mid-inference, or replacing it, could abort the whole process. Cancels at every point
+    // of a batch now stop inside the thread, and the next call runs on it.
+    const texts = Array.from({ length: 16 }, (_, i) => `passage: ${"la derivata di una funzione ".repeat(20)}${i}`);
+    for (let round = 0; round < 20; round += 1) {
+      const controller = new AbortController();
+      const cancelled = embedTexts(model, texts, controller.signal);
+      const expectation = expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+      await new Promise((resolve) => setTimeout(resolve, (round * 13) % 150));
+      controller.abort();
+      await expectation;
+    }
     expect(await embedTexts(model, ["passage: dopo"])).toHaveLength(1);
-    // Once every embed worker has exited, a new one must still load the addon. Node forgets an addon when the last
-    // thread that loaded it closes, but glibc and macOS keep onnxruntime_binding.node mapped, so without the pin in
-    // worker-client.ts this fails with "Module did not self-register".
+    // Releasing the model, as after a minute idle, keeps the thread, and the next call loads the model again.
     closeSourceWorkers();
-    await new Promise((resolve) => setTimeout(resolve, 500));
     expect(await embedTexts(model, ["passage: ancora"])).toHaveLength(1);
   }, 120_000);
 });

@@ -5,29 +5,36 @@ import { Worker } from "node:worker_threads";
 import { afterEach, describe, expect, it } from "vitest";
 import { ReusableWorker } from "./reusable-worker";
 
-// A stand-in for the embedding worker: loads once ("model"), answers requests, exits on close.
+// A stand-in for the embedding worker: counts the requests served since its "model" loaded, drops the model on unload,
+// and answers a cancel for a slow request. A stuck request ignores the cancel.
 const SCRIPT = `
 const { parentPort, threadId } = require("node:worker_threads");
 let loads = 0;
+const slow = new Set();
 parentPort.on("message", async (m) => {
-  if (m.close) process.exit(0);
+  if (m.unload) return void (loads = 0);
+  if (m.cancel) {
+    if (slow.delete(m.cancel)) parentPort.postMessage({ id: m.cancel, error: "embed-cancelled" });
+    return;
+  }
   const { id, request } = m;
   if (request === "crash") process.exit(3);
   if (request === "fail") return parentPort.postMessage({ id, error: "boom" });
-  if (request === "slow") return;
+  if (request === "slow") return slow.add(id);
+  if (request === "stuck") return;
   loads += 1;
   parentPort.postMessage({ id, value: { thread: threadId, loads, request } });
 });
 `;
 
 const dirs: string[] = [];
-const workers: ReusableWorker<unknown, unknown>[] = [];
-afterEach(() => {
-  for (const worker of workers.splice(0)) worker.close();
+const threads: Worker[] = [];
+afterEach(async () => {
+  await Promise.all(threads.splice(0).map((thread) => thread.terminate()));
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function setup(idleMs = 60_000) {
+function setup(idleMs = 60_000, cancelMs = 30_000) {
   const dir = mkdtempSync(join(tmpdir(), "pyxis-reusable-"));
   dirs.push(dir);
   const file = join(dir, "worker.cjs");
@@ -36,17 +43,18 @@ function setup(idleMs = 60_000) {
   const pool = new ReusableWorker<unknown, { thread: number; loads: number; request: unknown }>(
     () => {
       spawned += 1;
-      return new Worker(file);
+      const thread = new Worker(file);
+      threads.push(thread);
+      return thread;
     },
     idleMs,
-    200,
+    cancelMs,
   );
-  workers.push(pool as ReusableWorker<unknown, unknown>);
   return { pool, spawned: () => spawned };
 }
 
 describe("a worker kept alive between calls", () => {
-  it("serves several calls from one worker and reports busy while one is running", async () => {
+  it("serves several calls from one worker, in order, and reports busy while one is running or waiting", async () => {
     const { pool, spawned } = setup();
     const first = await pool.run("a");
     const second = await pool.run("b");
@@ -54,25 +62,60 @@ describe("a worker kept alive between calls", () => {
     expect(second.thread).toBe(first.thread);
     expect(second.loads).toBe(2);
     const slow = pool.run("slow");
-    const closed = expect(slow).rejects.toThrow("source-worker-exited");
+    const unloaded = expect(slow).rejects.toThrow("source-worker-exited");
     expect(pool.busy).toBe(true);
-    expect(() => pool.run("c")).toThrow("worker-busy");
-    pool.close();
-    await closed;
+    const waiting = expect(pool.run("c")).rejects.toThrow("source-worker-exited");
+    pool.unload();
+    await unloaded;
+    await waiting;
+    // The slow request is cancelled and the model released, but the thread stays.
+    const [c, d] = await Promise.all([pool.run("c"), pool.run("d")]);
+    expect([c.request, d.request]).toEqual(["c", "d"]);
+    expect(c).toMatchObject({ thread: first.thread, loads: 1 });
+    expect(spawned()).toBe(1);
     expect(pool.busy).toBe(false);
   });
 
-  it("terminates on cancel, and the next call gets a fresh worker", async () => {
+  it("puts an urgent call before the waiting ones, after the call already running", async () => {
+    const { pool } = setup();
+    await pool.run("warm");
+    const order: unknown[] = [];
+    const track = (request: string, urgent = false) =>
+      pool.run(request, undefined, urgent).then((value) => order.push(value.request));
+    await Promise.all([track("running"), track("queued 1"), track("queued 2"), track("urgent 1", true), track("urgent 2", true)]);
+    expect(order).toEqual(["running", "urgent 1", "urgent 2", "queued 1", "queued 2"]);
+  });
+
+  it("cancels inside the worker instead of terminating it, and the next call waits for that answer", async () => {
     const { pool, spawned } = setup();
+    const warm = await pool.run("warm");
     const controller = new AbortController();
     const first = pool.run("slow", controller.signal);
+    const queued = new AbortController();
+    const dropped = pool.run("never", queued.signal);
     await new Promise((resolve) => setTimeout(resolve, 20));
     const cancelled = expect(first).rejects.toMatchObject({ name: "AbortError" });
     controller.abort();
+    queued.abort();
+    // The caller hears of the cancel at once; a waiting call leaves the queue without reaching the worker.
     await cancelled;
-    await expect(pool.run("again")).resolves.toMatchObject({ loads: 1 });
-    expect(spawned()).toBe(2);
+    await expect(dropped).rejects.toMatchObject({ name: "AbortError" });
+    const after = await pool.run("again");
+    expect(after).toMatchObject({ thread: warm.thread, loads: 2 });
+    expect(spawned()).toBe(1);
     await expect(pool.run("x", controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(spawned()).toBe(1);
+  });
+
+  it("terminates a worker that does not answer a cancel in time, and the next call gets a fresh one", async () => {
+    const { pool, spawned } = setup(60_000, 50);
+    const controller = new AbortController();
+    const stuck = pool.run("stuck", controller.signal);
+    const next = pool.run("next");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    controller.abort();
+    await expect(stuck).rejects.toMatchObject({ name: "AbortError" });
+    await expect(next).resolves.toMatchObject({ loads: 1, request: "next" });
     expect(spawned()).toBe(2);
   });
 
@@ -86,11 +129,11 @@ describe("a worker kept alive between calls", () => {
     expect(spawned()).toBe(2);
   });
 
-  it("lets the worker go after the idle time", async () => {
+  it("releases the model after the idle time and keeps the thread", async () => {
     const { pool, spawned } = setup(40);
-    await pool.run("a");
+    const first = await pool.run("a");
     await new Promise((resolve) => setTimeout(resolve, 150));
-    await expect(pool.run("b")).resolves.toMatchObject({ loads: 1 });
-    expect(spawned()).toBe(2);
+    await expect(pool.run("b")).resolves.toMatchObject({ thread: first.thread, loads: 1 });
+    expect(spawned()).toBe(1);
   });
 });
