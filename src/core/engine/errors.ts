@@ -16,6 +16,49 @@ const funnelCodes = new Set([
   "aborted",
 ]);
 
+/** True when CLI Funnel attached a rate or quota `limit` to the failure. */
+function hasLimit(err: unknown): boolean {
+  return !!err && typeof err === "object" && "limit" in err && !!err.limit;
+}
+
+/**
+ * The HTTP status a failure text states, or 0. A bare number is not one: a line number, a port or a process id
+ * must not read as "signed out" or "usage limit". The status has to follow a word that introduces it (`HTTP 401`,
+ * `status code 429`, `returned 401`, `error: 429`) or sit after a provider label at the start (`OpenAI 401: ...`).
+ */
+function httpStatus(message: string): number {
+  const stated =
+    /\b(?:http(?:\/[\d.]+)?|status(?: code)?|returned|error|code)[\s:=]+([1-5]\d\d)\b/i.exec(
+      message,
+    ) ?? /^[A-Za-z][\w .-]{0,40}?\s([1-5]\d\d)(?=[:.])/.exec(message);
+  return stated ? Number(stated[1]) : 0;
+}
+
+/**
+ * Classifies a failure by its text when it carries no structured code or limit: the status it states first, then
+ * whole words. Stderr goes through here too, so every pattern is anchored to a word or a stated status.
+ */
+function textKind(rawCode: string, message: string): "refused" | "quota" | "" {
+  const status =
+    httpStatus(message) || (/^[1-5]\d\d$/.test(rawCode) ? Number(rawCode) : 0);
+  if (status === 401) return "refused";
+  if (status === 429) return "quota";
+  const text = `${rawCode} ${message}`;
+  if (
+    /\b(?:invalid[ _-]api[ _-]key|unauthori[sz]ed|authentication(?:[ _-](?:error|failed|required))?)\b/i.test(
+      text,
+    )
+  )
+    return "refused";
+  if (
+    /\b(?:rate[ _-]limit(?:ed|[ _-]exceeded)?|too many requests|usage[ _-]limit|spend[ _-]limit|(?:insufficient[ _-])?quota)\b/i.test(
+      text,
+    )
+  )
+    return "quota";
+  return "";
+}
+
 /**
  * Maps a funnel or vendor failure to a translated key. The raw text stays in `detail`. A refused login on a CLI engine
  * means its sign-in expired, not that an API key is wrong: students on a subscription have no key.
@@ -33,20 +76,19 @@ export function translateEngineError(
       messageKey: "engines.errors.disclosure-required",
     };
   }
+  // CLI Funnel attaches the limit a provider reported to the error. That is firmer than any wording in the text.
+  if (hasLimit(err))
+    return { code: "quota", messageKey: "engines.errors.quota" };
   if (funnelCodes.has(rawCode))
     return { code: rawCode, messageKey: `engines.errors.${rawCode}` };
-  if (/401|invalid api key|authentication/i.test(`${rawCode} ${message}`)) {
+  const kind = textKind(rawCode, message);
+  if (kind === "refused") {
     return provider && !provider.endsWith("-api")
       ? { code: "not-logged-in", messageKey: "engines.errors.not-logged-in" }
       : { code: "refused", messageKey: "engines.errors.refused" };
   }
-  if (
-    /429|rate limit|usage limit|spend limit|quota/i.test(
-      `${rawCode} ${message}`,
-    )
-  ) {
+  if (kind === "quota")
     return { code: "quota", messageKey: "engines.errors.quota" };
-  }
   const code = err instanceof FunnelError ? err.code : "cli-failed";
   return { code, messageKey: `engines.errors.${code}` };
 }

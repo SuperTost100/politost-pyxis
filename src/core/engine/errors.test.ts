@@ -32,11 +32,64 @@ describe("translateEngineError", () => {
     expect(translateEngineError(new Error("HTTP 401")).messageKey).toBe(
       "engines.errors.refused",
     );
-    expect(translateEngineError(new Error("usage limit reached")).messageKey).toBe(
-      "engines.errors.quota",
+    expect(
+      translateEngineError(new Error("usage limit reached")).messageKey,
+    ).toBe("engines.errors.quota");
+    expect(
+      translateEngineError(
+        Object.assign(new Error("spend limit"), { code: "429" }),
+      ).messageKey,
+    ).toBe("engines.errors.quota");
+  });
+
+  it("does not read digits in a stack trace, a port or a line number as an HTTP status", () => {
+    const stderr =
+      "Error: listen EADDRINUSE 127.0.0.1:4010\n    at Server.setupListenHandle (node:net:1817:16)\n    at /app/main.js:401:12\n    at worker 429 of 8429";
+    expect(translateEngineError(new Error(stderr), "claude").code).toBe(
+      "cli-failed",
     );
-    expect(translateEngineError(Object.assign(new Error("spend limit"), { code: "429" })).messageKey).toBe(
-      "engines.errors.quota",
-    );
+    expect(
+      translateEngineError(new Error("Failed on line 429"), "codex").code,
+    ).toBe("cli-failed");
+  });
+
+  it("still reads an HTTP status written the way the providers write it", () => {
+    for (const text of [
+      "Anthropic API returned 401.",
+      "OpenAI 401: Incorrect API key",
+      "request failed with status code 401",
+      "401 Unauthorized",
+    ])
+      expect(translateEngineError(new Error(text)).code).toBe("refused");
+    for (const text of [
+      "OpenAI 429: Too many requests",
+      "Gemini API returned 429.",
+      "HTTP 429",
+      "rate_limit_exceeded",
+      "insufficient_quota",
+    ])
+      expect(translateEngineError(new Error(text)).code).toBe("quota");
+  });
+
+  it("trusts the limit CLI Funnel attached before any text", () => {
+    const limit = { kind: "quota", detail: "Weekly limit reached" };
+    expect(
+      translateEngineError(
+        Object.assign(new Error("exited with code 1"), {
+          code: "cli-failed",
+          limit,
+        }),
+        "claude",
+      ),
+    ).toEqual({ code: "quota", messageKey: "engines.errors.quota" });
+    // A limit wins over the words around it, such as an authentication mention.
+    expect(
+      translateEngineError(
+        Object.assign(new Error("authentication ok, but out of credits"), {
+          limit,
+        }),
+        "codex",
+      ).code,
+    ).toBe("quota");
   });
 });

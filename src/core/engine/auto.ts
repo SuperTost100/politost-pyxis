@@ -54,8 +54,18 @@ function loadOf(feature: string): number {
   return weightOf(feature) * data.tierCost[featureTier(feature)];
 }
 
+/** A snapshot date at the end of an id: `-20250929`, `@20250929` or `-2025-08-07`. It says when, not which version. */
+const SNAPSHOT_DATE = /[-@](?:\d{8}|\d{4}-\d{2}-\d{2})$/;
+
+/** The version numbers of a model id, without its snapshot date, so `claude-sonnet-4-5-20250929` reads 4.5 and not 4.20250929. */
 function versionParts(id: string): number[] {
-  return (id.match(/\d+/g) ?? []).map(Number);
+  return (id.replace(SNAPSHOT_DATE, "").match(/\d+/g) ?? []).map(Number);
+}
+
+/** The snapshot date as a number, 0 when the id has none. Among equal versions the newer snapshot wins. */
+function snapshotOf(id: string): number {
+  const date = SNAPSHOT_DATE.exec(id)?.[0].replace(/\D/g, "");
+  return date ? Number(date) : 0;
 }
 
 function compareVersionsDesc(a: AutoModel, b: AutoModel): number {
@@ -65,7 +75,7 @@ function compareVersionsDesc(a: AutoModel, b: AutoModel): number {
     const diff = (right[i] ?? -1) - (left[i] ?? -1);
     if (diff !== 0) return diff;
   }
-  return 0;
+  return snapshotOf(b.id) - snapshotOf(a.id);
 }
 
 function usableModels(provider: AutoProvider, feature: string): AutoModel[] {

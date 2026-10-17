@@ -99,6 +99,35 @@ describe("automatic engine policy", () => {
     });
   });
 
+  it("compares versions without the snapshot date, so a newer model beats an older dated one", () => {
+    const api: AutoProvider = {
+      id: "anthropic-api",
+      kind: "api",
+      effort: false,
+      models: [
+        model("claude-sonnet-4-20250514", []),
+        model("claude-sonnet-4-5-20250929", []),
+        model("claude-opus-4-20250514", []),
+        model("claude-opus-4-1-20250805", []),
+        model("claude-haiku-4-5-20251001", []),
+      ],
+    };
+    const plan = summary(planAuto([api]));
+    expect(plan.lesson).toBe("anthropic-api:claude-sonnet-4-5-20250929");
+    expect(plan.plan).toBe("anthropic-api:claude-opus-4-1-20250805");
+    // The same version in two snapshots takes the newer one, whatever the listing order.
+    const snapshots: AutoProvider = {
+      ...api,
+      models: [
+        model("claude-sonnet-4-5-20250929", []),
+        model("claude-sonnet-4-5-20251101", []),
+      ],
+    };
+    expect(summary(planAuto([snapshots])).lesson).toBe(
+      "anthropic-api:claude-sonnet-4-5-20251101",
+    );
+  });
+
   it("puts everything on Codex by tier when it is the only engine", () => {
     expect(summary(planAuto([codex]))).toEqual({
       chat: "codex:gpt-6-luna:low",
