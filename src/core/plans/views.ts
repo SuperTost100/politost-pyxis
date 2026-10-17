@@ -175,7 +175,7 @@ export function suggestSourceRebuild(
   now = Date.now(),
 ) {
   const plans = db
-    .prepare("SELECT plan_id AS id FROM plan_sources WHERE source_id=?")
+    .prepare("SELECT plan_id AS id FROM plan_sources WHERE source_id=? AND role='material'")
     .all(sourceId) as { id: string }[];
   for (const plan of plans)
     savePending(

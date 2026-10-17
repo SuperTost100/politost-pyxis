@@ -54,6 +54,9 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "books-integrity": "sources.books.integrity",
   "books-missing": "sources.books.missing",
   "book-up-to-date": "sources.books.upToDate",
+  "paper-empty": "pastPapers.errors.empty",
+  "paper-no-text": "pastPapers.errors.noText",
+  "paper-needs-ocr": "pastPapers.errors.needsText",
 };
 
 /** The message key for a source error code, or null when the code has no specific message. */

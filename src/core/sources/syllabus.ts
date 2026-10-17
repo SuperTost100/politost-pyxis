@@ -119,7 +119,7 @@ export async function checkSyllabus(
   const plans = db
     .prepare(
       `SELECT p.id, p.title FROM plans p JOIN plan_sources ps ON ps.plan_id = p.id
-       WHERE ps.source_id = ? ORDER BY p.created_at`,
+       WHERE ps.source_id = ? AND ps.role = 'material' ORDER BY p.created_at`,
     )
     .all(sourceId) as Array<{ id: string; title: string }>;
   if (plans.length === 0) return [];
@@ -154,7 +154,7 @@ function fingerprint(db: Database.Database, sourceId: string): string {
     db.prepare(`SELECT MAX(version) AS v FROM source_documents WHERE source_id = ?`).get(sourceId) as { v: number | null }
   ).v;
   const plans = db
-    .prepare(`SELECT ps.plan_id AS id FROM plan_sources ps WHERE ps.source_id = ? ORDER BY ps.plan_id`)
+    .prepare(`SELECT ps.plan_id AS id FROM plan_sources ps WHERE ps.source_id = ? AND ps.role = 'material' ORDER BY ps.plan_id`)
     .all(sourceId) as Array<{ id: string }>;
   return createHash("sha256")
     .update(JSON.stringify([version, plans.map((plan) => [plan.id, planContextTexts(db, plan.id)])]))
@@ -235,7 +235,7 @@ export async function compareToPlans(
  */
 export function queueSyllabusChecks(db: Database.Database, runner: Runner, planId: string): number {
   if (!embeddingConsent(db)) return 0;
-  const sources = db.prepare(`SELECT source_id AS id FROM plan_sources WHERE plan_id = ?`).all(planId) as Array<{ id: string }>;
+  const sources = db.prepare(`SELECT source_id AS id FROM plan_sources WHERE plan_id = ? AND role = 'material'`).all(planId) as Array<{ id: string }>;
   const queued = db.prepare(
     `SELECT 1 FROM jobs WHERE kind = 'source-index' AND state = 'queued' AND json_extract(params_json, '$.sourceId') = ?`,
   );

@@ -31,10 +31,13 @@ export function recordedPlanRun(
     }
     const schema = input.responseSchema?.schema as
       { properties?: Record<string, unknown> } | undefined;
+    // A past paper's reply is the whole object, so it cannot be told apart by its first property.
     const key =
       input.system?.startsWith("Create distinct") && replies.quizQuestions
         ? "quizQuestions"
-        : (Object.keys(schema?.properties ?? {})[0] ?? "markdown");
+        : input.system?.startsWith("Read one past written exam") && replies.paper
+          ? "paper"
+          : (Object.keys(schema?.properties ?? {})[0] ?? "markdown");
     const context = JSON.parse(input.prompt) as {
       passages?: Array<{ id: string }>;
       sources?: Array<{ sourceId: string; section: string; segmentId?: string }>;
