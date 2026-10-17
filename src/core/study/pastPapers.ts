@@ -115,14 +115,15 @@ function leadRows(db: Database.Database, planId: string): PaperRow[] {
     .all(planId) as PaperRow[];
 }
 
-function partCount(db: Database.Database, planId: string, leadId: string): number {
+/** The other files of a paper, in the order they were added. */
+function partIds(db: Database.Database, planId: string, leadId: string): string[] {
   return (
     db
       .prepare(
-        `SELECT COUNT(*) AS n FROM plan_sources WHERE plan_id = ? AND role = 'past_paper' AND json_extract(paper_json, '$.partOf') = ?`,
+        `SELECT source_id AS id FROM plan_sources WHERE plan_id = ? AND role = 'past_paper' AND json_extract(paper_json, '$.partOf') = ? ORDER BY rowid`,
       )
-      .get(planId, leadId) as { n: number }
-  ).n;
+      .all(planId, leadId) as Array<{ id: string }>
+  ).map((row) => row.id);
 }
 
 function readJob(db: Database.Database, planId: string, sourceId: string) {
@@ -169,7 +170,8 @@ export function pastPaperViews(db: Database.Database, planId: string) {
     return {
       sourceId: row.source_id,
       title: paper?.title || row.title,
-      files: 1 + partCount(db, planId, row.source_id),
+      /** Every file of the paper, so a picker can leave them out. */
+      sourceIds: [row.source_id, ...partIds(db, planId, row.source_id)],
       status: ready
         ? ("ready" as const)
         : state === "queued" || state === "running"

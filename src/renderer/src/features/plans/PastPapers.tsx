@@ -136,7 +136,7 @@ export function PastPapers({ planId }: { planId: string }) {
                       t("pastPapers.questions", { count: paper.questions }),
                       paper.minutes ? t("pastPapers.minutes", { count: paper.minutes }) : "",
                       typeList(t, paper.types),
-                      paper.files > 1 ? t("pastPapers.files", { count: paper.files }) : "",
+                      paper.sourceIds.length > 1 ? t("pastPapers.files", { count: paper.sourceIds.length }) : "",
                     ]
                       .filter(Boolean)
                       .join(" · ")}

@@ -547,7 +547,10 @@ export function PlanPage() {
           loading={library.isPending}
           dataSource={(library.data ?? []).filter(
             (source) =>
-              !plan.data?.sources.some((attached) => attached.id === source.id),
+              !plan.data?.sources.some((attached) => attached.id === source.id) &&
+              !pastPapers.data?.papers.some((paper) =>
+                paper.sourceIds.includes(source.id),
+              ),
           )}
           rowSelection={{
             selectedRowKeys: selectedSources,

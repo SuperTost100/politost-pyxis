@@ -803,8 +803,8 @@ export const requests = {
         z.object({
           sourceId: z.string(),
           title: z.string(),
-          /** Photos or pages that make up this paper. */
-          files: z.number(),
+          /** The files (photos or pages) that make up this paper. */
+          sourceIds: z.array(z.string()),
           status: z.enum(["reading", "ready", "failed", "interrupted", "cancelled"]),
           jobId: z.string().optional(),
           error: z.string().optional(),

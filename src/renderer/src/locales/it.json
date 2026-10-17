@@ -739,6 +739,7 @@
     "oneOrMany": "Hai aggiunto {{count}} file. Sono le pagine di un solo appello o appelli diversi?",
     "onePaper": "Un solo appello",
     "separatePapers": "Appelli diversi",
+    "isPaper": "Questo file è un appello passato del piano. Toglilo da lì per usarlo come materiale di studio.",
     "inPlan": "Questo file è già nel piano.",
     "addFailed": "Pyxis non è riuscito ad aggiungere questo appello. Riprova.",
     "practiceTitle": "Domande passate",
