@@ -190,7 +190,7 @@ describe("application menu", () => {
     ]);
     expect(
       submenu(menu, "Vai").flatMap((item) => (item.label ? [item.label] : [])),
-    ).toEqual(["Chiedi", "Esami", "Mappe", "Libreria", "Flashcard", "Indietro"]);
+    ).toEqual(["Chiedi", "Esami", "Libreria", "Flashcard", "Mappe", "Indietro"]);
     expect(
       submenu(menu, "Aiuto").flatMap((item) =>
         item.label ? [item.label] : [],
