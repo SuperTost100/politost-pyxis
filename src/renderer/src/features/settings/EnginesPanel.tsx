@@ -34,6 +34,7 @@ import {
   type InstallableProvider,
 } from "@shared/installers";
 import { invoke, onBroadcast } from "../../lib/ipc";
+import { EngineUsage } from "./EngineUsage";
 import "./EnginesPanel.css";
 
 const featureNames = [
@@ -638,6 +639,7 @@ export function EnginesPanel() {
           {t("engines.installHelp")}
         </Notice>
       ) : null}
+      <EngineUsage />
       {advanced ? (
         <>
           <div className="engines-heading">

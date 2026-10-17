@@ -22,7 +22,7 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
-import { invoke } from "../../lib/ipc";
+import { invoke, onBroadcast } from "../../lib/ipc";
 import { MAX_DROPPED_FILES } from "@shared/source-types";
 import {
   ATTACH_EXTENSIONS,
@@ -43,6 +43,7 @@ import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { activePlans, starterPrompts, type Starter } from "./starters";
 import { latestEvery, liveValue } from "./throttle";
+import { formatTokens } from "../../lib/tokens";
 import "./AskPage.css";
 
 function errorKey(err: unknown): string {
@@ -99,6 +100,8 @@ const Reply = memo(function Reply({
   last,
   busy,
   onRegenerate,
+  onAnswerStronger,
+  onContinue,
   onSuggest,
   onReact,
 }: {
@@ -107,9 +110,13 @@ const Reply = memo(function Reply({
   last: boolean;
   busy: boolean;
   onRegenerate?: () => void;
+  onAnswerStronger?: () => void;
+  /** Continue a reply the engine cut short. */
+  onContinue?: () => void;
   onSuggest: (text: string) => void;
   onReact: (messageId: string, reaction: "up" | "down") => void;
 }) {
+  const { t } = useTranslation();
   const citationResolver = useCallback(
     (index: number) => row.citations.find((cite) => cite.index === index)?.label,
     [row.citations],
@@ -134,10 +141,14 @@ const Reply = memo(function Reply({
       }
       general={row.grounding === "general"}
       stopped={row.stopped}
+      failure={row.error ? t(row.error) : undefined}
+      onContinue={last && row.error ? onContinue : undefined}
+      checking={row.checking}
       text={replyPlainText(row.body)}
       reaction={row.reaction}
       regenerateDisabled={busy}
       onRegenerate={last ? onRegenerate : undefined}
+      onAnswerStronger={last ? onAnswerStronger : undefined}
       suggestions={last && !busy && row.followups.length > 0 ? row.followups : undefined}
       onSuggest={onSuggest}
       onReact={(reaction) => onReact(row.id, reaction)}
@@ -176,7 +187,7 @@ function StreamingReply({
 }
 
 export function AskPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { chatId } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -303,6 +314,15 @@ export function AskPage() {
     loadedFor.current = undefined;
   }, [chatId]);
 
+  // A reply's math check runs after the reply is saved. When it ends, the chat is read again for its badges.
+  useEffect(
+    () =>
+      onBroadcast("chats.checks", (event) => {
+        void client.invalidateQueries({ queryKey: ["chat", event.chatId] });
+      }),
+    [client],
+  );
+
   // Core keeps the engine's conversation, and a live CLI process, for the chat on screen. Leaving it lets that stop.
   useEffect(() => {
     if (!chatId) return;
@@ -383,6 +403,14 @@ export function AskPage() {
   }
 
   const messages = thread.data?.messages ?? [];
+  const usage = chatId ? thread.data?.usage : null;
+  const usageDetail = usage
+    ? t("ask.usageDetail", {
+        input: formatTokens(usage.inputTokens, i18n.language),
+        output: formatTokens(usage.outputTokens, i18n.language),
+        cached: formatTokens(usage.cacheReadTokens, i18n.language),
+      })
+    : "";
   const held = thread.data?.held ?? [];
   // Regenerate and the suggestions belong to the answer that ends the chat. A question left without one gets Try again.
   const lastRow = messages.at(-1);
@@ -630,7 +658,8 @@ export function AskPage() {
     window.setTimeout(() => setAnnouncement(t("ask.replied")), 50);
   }
 
-  function regenerate() {
+  /** Answers the last question again. `strong` uses the strongest model; `resume` continues a reply that was cut short. */
+  function regenerate(options: { engine?: "strong"; resume?: boolean } = {}) {
     if (!chatId) return;
     setBusy(true);
     setStreamIn(chatId);
@@ -645,6 +674,7 @@ export function AskPage() {
       "chats.regenerate",
       {
         chatId,
+        ...options,
         sourceIds: sendIds,
         planId,
         mode,
@@ -734,7 +764,10 @@ export function AskPage() {
   }, [firstShown, chatId, showEarlier]);
 
   const lastTutorId = lastTutor?.id;
-  const regenerateNow = useStable(regenerate);
+  // Called with no arguments: a click event must not reach `regenerate` as its options.
+  const regenerateNow = useStable(() => regenerate());
+  const strongerNow = useStable(() => regenerate({ engine: "strong" }));
+  const continueNow = useStable(() => regenerate({ resume: true }));
   const suggest = useStable((text: string) => void send(text, { textOnly: true }));
   const react = useStable((messageId: string, reaction: "up" | "down") => {
     void invoke("chats.rate", { messageId, reaction }).then(
@@ -870,6 +903,17 @@ export function AskPage() {
         panelOpen={panelOpen}
         onOpenPanel={() => setPanelOpen(true)}
         onNew={() => navigate("/ask")}
+        usage={
+          usage
+            ? {
+                short: t("ask.usage", {
+                  count: usage.inputTokens + usage.outputTokens,
+                  tokens: formatTokens(usage.inputTokens + usage.outputTokens, i18n.language, true),
+                }),
+                detail: usageDetail,
+              }
+            : undefined
+        }
       />
       <ChatPanel
         open={panelOpen}
@@ -924,6 +968,8 @@ export function AskPage() {
                 last={row.id === lastTutorId}
                 busy={row.id === lastTutorId && busy}
                 onRegenerate={chatId ? regenerateNow : undefined}
+                onAnswerStronger={chatId ? strongerNow : undefined}
+                onContinue={chatId ? continueNow : undefined}
                 onSuggest={suggest}
                 onReact={react}
               />
@@ -935,7 +981,7 @@ export function AskPage() {
                 shape="round"
                 size="small"
                 icon={<RefreshCw size={14} aria-hidden />}
-                onClick={regenerate}
+                onClick={() => regenerate()}
                 disabled={busy}
               >
                 {t("ask.retry")}

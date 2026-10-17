@@ -3,6 +3,7 @@ import { availableParallelism } from "node:os";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError, isAbort, type JobView } from "../../shared/ipc";
+import { withUsageScope } from "../engine/usage";
 
 export type JobClass = "model-cli" | "model-api" | "local" | "demo";
 
@@ -187,12 +188,14 @@ export function createRunner(
           }
           entry.jobClass = desired;
           queueMicrotask(kick);
-          const output = await specStep.run({
-            name: step.name,
-            signal: entry.controller.signal,
-            params: readParams(jobId),
-            setParams: (params) => setParams(jobId, params),
-          });
+          const output = await withUsageScope({ jobId, kind: job.kind }, () =>
+            specStep.run({
+              name: step.name,
+              signal: entry.controller.signal,
+              params: readParams(jobId),
+              setParams: (params) => setParams(jobId, params),
+            }),
+          );
           if (entry.controller.signal.aborted) {
             db.prepare(
               `UPDATE job_steps SET state = 'pending' WHERE id = ?`,

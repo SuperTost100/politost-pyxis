@@ -137,6 +137,30 @@ END;`,
     version: 19,
     sql: `ALTER TABLE messages ADD COLUMN figures_json TEXT CHECK (figures_json IS NULL OR json_valid(figures_json));`,
   },
+  // `messages.error` is the message key of the engine failure that cut a reply short. `engine_usage` is one row per model
+  // call with its tokens and the chat message or job it was for. The ids are plain text, so a deleted chat's or a
+  // replaced reply's tokens still count in the week they were used.
+  {
+    version: 20,
+    sql: `ALTER TABLE messages ADD COLUMN error TEXT;
+CREATE TABLE engine_usage (
+  id TEXT PRIMARY KEY,
+  at INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT,
+  kind TEXT,
+  chat_id TEXT,
+  message_id TEXT,
+  job_id TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX engine_usage_at ON engine_usage(at);
+CREATE INDEX engine_usage_chat ON engine_usage(chat_id);
+CREATE INDEX engine_usage_job ON engine_usage(job_id);`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {
