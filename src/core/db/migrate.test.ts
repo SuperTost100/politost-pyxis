@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type Database from "better-sqlite3";
 import { openDatabase } from "./connection";
 import { uuidv7 } from "../../shared/ids";
 
@@ -12,6 +13,19 @@ function tempDb() {
   const db = openDatabase(join(dir, "pyxis.db"));
   opened.push(db);
   return db;
+}
+
+/** Removes what migrations 17 and 18 add, so a test can rewind the version past them. */
+function undoAfter16(db: Database.Database) {
+  db.exec(
+    "DROP TRIGGER cards_search_stale; DROP INDEX cards_search_pending; ALTER TABLE cards DROP COLUMN search_text;",
+  );
+  const before = ["jobs_state", "messages_chat", "passages_source", "learning_events_plan", "job_steps_job", "gap_answers_attempt"];
+  const added = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL")
+    .pluck()
+    .all() as string[];
+  for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
 afterEach(() => {
@@ -80,7 +94,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(16);
+    expect(db.pragma("user_version", { simple: true })).toBe(18);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -95,13 +109,14 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(16);
+    expect(again.pragma("user_version", { simple: true })).toBe(18);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
     const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
     const db = openDatabase(file);
     db.pragma("user_version = 15");
+    undoAfter16(db);
     db.exec(
       "ALTER TABLE sources DROP COLUMN catalog_id; ALTER TABLE sources DROP COLUMN catalog_version;",
     );
@@ -111,7 +126,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(16);
+    expect(again.pragma("user_version", { simple: true })).toBe(18);
     expect(
       again
         .prepare(

@@ -23,7 +23,7 @@ import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import { getLoadablePath } from "sqlite-vec";
 import { Inflate, Zip, ZipDeflate } from "fflate";
-import { openDatabase } from "../db/connection";
+import { closeDatabase, openDatabase } from "../db/connection";
 
 const CORRUPT = "backup-corrupt";
 const MAX_EXPANDED = 2 * 1024 * 1024 * 1024;
@@ -777,7 +777,9 @@ export function backupWorkspace(
     renameSync(archive, destZip);
     syncDirectory(dirname(destZip));
   } finally {
-    db?.close();
+    // The live connection is read-only and must leave core's WAL alone.
+    if (db && options.live) db.close();
+    else if (db) closeDatabase(db);
     removeTree(temporary);
   }
 }
@@ -1054,8 +1056,7 @@ function restoreFromArchive(
     const stagedDb = join(staging, "pyxis.db");
     if (!isPyxisBackup(stagedDb)) corrupt();
     try {
-      const db = openDatabase(stagedDb);
-      db.close();
+      closeDatabase(openDatabase(stagedDb));
     } catch {
       corrupt();
     }

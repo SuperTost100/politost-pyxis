@@ -2173,6 +2173,8 @@ export const streams = {} as const;
 
 export const broadcasts = {
   "job.updated": JobView,
+  // A write changed the evidence mastery is computed from (an answer, a card rating, a flag).
+  "plans.evidence": z.object({}),
   // Background recomputation of automatic engine choices finished.
   "engine.auto": z.object({}),
   // A chunk of installer output while `engines.install` runs.

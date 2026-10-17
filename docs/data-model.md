@@ -1,6 +1,6 @@
 # Data model
 
-One SQLite file, `pyxis.db`, in the workspace. WAL and foreign keys are on. `0001_init.sql` creates the tables below. `PRAGMA user_version` is the migration marker. IDs are UUIDv7 text. Times are milliseconds. JSON columns are text with `json_valid`. Generated rows carry provenance: engine, model, template, version, and grounding.
+One SQLite file, `pyxis.db`, in the workspace. WAL and foreign keys are on. `synchronous` is `NORMAL`: a power cut can lose the last transactions but cannot corrupt the file. Core uses a 32 MB page cache and up to 256 MB of memory-mapped reads. On shutdown, and before main copies the workspace for a backup, restore or move, core checkpoints the WAL into `pyxis.db` and closes it. `0001_init.sql` creates the tables below. `PRAGMA user_version` is the migration marker. IDs are UUIDv7 text. Times are milliseconds. JSON columns are text with `json_valid`. Generated rows carry provenance: engine, model, template, version, and grounding.
 
 `passages.rowid` is an integer. `passages_vec` stores that integer, because sqlite-vec primary keys are integers and must be bound as BigInt from JavaScript. Passage text is mirrored into `passages_fts`.
 
@@ -23,12 +23,18 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 14             | `gaps.misconception` and `gaps.severity` (`severe` or `minor`), from the model analysis |
 | 15             | `gaps.origin`, `gaps.comparison`, `gaps.merged_into` and the `gap_answers` table        |
 | 16             | `sources.catalog_id` and `sources.catalog_version`, the free book a smartbook is        |
+| 17             | Indexes for hot lookups and for every foreign-key child column                          |
+| 18             | `cards.search_text`, the folded text the card browser searches                          |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
 Migration 16 links a smartbook to the free PoliTost book it came from: its catalog id and the version it holds. Adding a book from the books list sets both. A book imported before 0.3 gets them the next time the list or the Sources page reads the catalog: by the package's SHA-256 when the catalog lists that package, otherwise by the `id` and semver `version` in the package's own `smartbook.json`. An update to a newer version adds the next `source_documents` version of the same source, rewrites `smartbooks.meta_json`, and keeps exercise ids (matched by the book's exercise id and kind). An exercise the new version dropped loses its `smartbook_id` but keeps its row, so flags and history on it still resolve. Lesson and quiz citations whose exact passage text is gone from the new version get `item_passages.stale = 1`.
 
-Current version is 16. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 17 indexes the latest review of a card (`card_reviews(card_id, reviewed_at)`), events by topic or item and kind, and every foreign-key child column that had no index, so a delete or a cascade finds its rows without reading the whole child table. `src/core/db/queryPlans.test.ts` fails if a hot query reads all of `card_reviews` or `learning_events` again.
+
+Migration 18 adds `cards.search_text`: the card's front (a cloze as its text) and back, lower case, without accents or emphasis marks. The card browser fills it for every card where it is NULL before it searches, and the trigger `cards_search_stale` sets it back to NULL when the front or back changes. A new card and every card after the migration start at NULL.
+
+Current version is 18. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table            | A row is                                                                                |
 | ---------------- | --------------------------------------------------------------------------------------- |
@@ -79,7 +85,7 @@ Cards come from the `cards.generate` prompt, one passage at a time, or from the 
 
 Subjects have a stable saved position. Source documents and passages retain extraction and locator information; the blob hash identifies original bytes. Deleting cited passages is constrained by references. Flags have a target kind as well as an ID so a flagged exercise cannot accidentally suppress a card with the same ID.
 
-`learning_events` is the input for derived mastery, activity and gap calculations. Active-time events count time rather than evidence of knowledge. Flagged exercise evidence is excluded by progress queries. Graph and heatmap buckets use local calendar boundaries. Gap closure's distinct-day rule uses local calendar days too (`study/gaps.ts`). Each gap writes one `gap_opened` and one `gap_closed` event; see [mastery](mastery.md).
+`learning_events` is the input for derived mastery, activity and gap calculations. Active-time events count time rather than evidence of knowledge. Flagged exercise evidence is excluded by progress queries. Graph and heatmap buckets use local calendar boundaries. Gap closure's distinct-day rule uses local calendar days too (`study/gaps.ts`). Each gap writes one `gap_opened` and one `gap_closed` event; see [mastery](mastery.md). Core keeps each plan's events and card reviews in memory after the first read (`src/core/plans/evidenceCache.ts`). Temporary triggers on its connection drop a plan's copy when a row of `learning_events`, `card_reviews`, `cards`, `items`, `attempts` or `attempt_answers` for that plan changes, and every copy when `flags` changes. The same triggers send the `plans.evidence` broadcast, which marks the renderer's exam list, plan and Progress data out of date.
 
 Plan files are a portability format, not a database dump. Version 2 includes study content and cited source excerpts, remaps IDs on import and optionally carries progress/original sources. With progress it also carries the gap rows, the attempts events name, the wrong answers each gap owns and its drill quiz. See [plan file](plan-file.md). Workspace backups preserve the study database and source blobs. They exclude provider keys, runtime/model caches, scratch files and the exports folder. Restore preserves runtime/model caches already downloaded in the destination workspace; a fresh workspace can download them again. Restore validates and migrates a staging copy before replacing the active workspace.
 

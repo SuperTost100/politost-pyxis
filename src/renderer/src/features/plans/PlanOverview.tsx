@@ -69,7 +69,6 @@ export function PlanPage() {
     queryKey: ["series", planId],
     enabled: !!planId,
     queryFn: () => invoke("plans.series", { planId }),
-    refetchOnMount: "always",
   });
   const [pickerOpen, setPickerOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);

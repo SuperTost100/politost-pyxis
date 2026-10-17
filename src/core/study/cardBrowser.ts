@@ -73,12 +73,25 @@ function searchable(front: string, back: string): string {
   return foldText(`${clozeAnswer(front)}\n${back}`).replaceAll("**", "");
 }
 
+/** Folds the text of cards that are new or changed since the last search (`search_text` is NULL for them). */
+function fillSearchText(db: Database.Database): void {
+  const pending = db
+    .prepare(`SELECT id, front, back FROM cards WHERE search_text IS NULL`)
+    .all() as Array<{ id: string; front: string; back: string }>;
+  if (!pending.length) return;
+  const store = db.prepare(`UPDATE cards SET search_text = ? WHERE id = ?`);
+  db.transaction(() => {
+    for (const card of pending)
+      store.run(searchable(card.front, card.back), card.id);
+  })();
+}
+
 const PAGE_MAX = 100;
 
 /**
  * Cards across every exam, grouped by subject and ordered subject, exam, topic, creation.
- * Cards of an archived topic stay out, as in the review queue. The search is plain code:
- * every word has to appear in the front or the back.
+ * Cards of an archived topic stay out, as in the review queue. Every word of the search has to
+ * appear in the front or the back, compared on the folded copy in `cards.search_text`.
  */
 export function browseCards(
   db: Database.Database,
@@ -96,27 +109,22 @@ export function browseCards(
   const words = foldText(input.query ?? "")
     .split(/\s+/)
     .filter(Boolean);
+  fillSearchText(db);
   const rows = db
     .prepare(
       `SELECT c.id, c.front, c.back, c.plan_id, p.title AS plan_title,
         c.topic_id, t.title AS topic_title, s.id AS subject_id, s.name AS subject_name,
         c.suspended, c.removed, c.seed_key,
-        lr.due_at
+        (SELECT CAST(json_extract(cr.state_json, '$.dueAt') AS INTEGER) FROM card_reviews cr
+         WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS due_at
        FROM cards c
        JOIN plans p ON p.id = c.plan_id
        LEFT JOIN topics t ON t.id = c.topic_id
        LEFT JOIN subjects s ON s.id = p.subject_id
-       LEFT JOIN (
-         -- The newest review of each card, found in one pass over card_reviews.
-         SELECT card_id, CAST(json_extract(state_json, '$.dueAt') AS INTEGER) AS due_at
-         FROM (
-           SELECT card_id, state_json,
-             ROW_NUMBER() OVER (PARTITION BY card_id ORDER BY reviewed_at DESC, rowid DESC) AS rn
-           FROM card_reviews)
-         WHERE rn = 1) lr ON lr.card_id = c.id
        WHERE t.archived_at IS NULL
          AND (? IS NULL OR c.plan_id = ?)
          AND (? IS NULL OR c.topic_id = ?)
+         AND NOT EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(c.search_text, w.value) = 0)
        ORDER BY s.id IS NULL, s.position, s.name COLLATE NOCASE, s.id,
          p.title COLLATE NOCASE, p.id,
          t.id IS NULL, t.position, t.id,
@@ -127,16 +135,13 @@ export function browseCards(
       input.planId ?? null,
       input.topicId ?? null,
       input.topicId ?? null,
+      JSON.stringify(words),
     ) as Row[];
 
   const matches: BrowsedCard[] = [];
   for (const row of rows) {
     if (status === "removed" ? !row.removed : row.removed) continue;
     if (status === "suspended" && !row.suspended) continue;
-    if (words.length) {
-      const text = searchable(row.front, row.back);
-      if (!words.every((word) => text.includes(word))) continue;
-    }
     const dueAt = row.due_at;
     const state = dueAt == null ? "new" : dueAt <= now ? "due" : "scheduled";
     if (status === "due" && (row.suspended || state === "scheduled")) continue;
