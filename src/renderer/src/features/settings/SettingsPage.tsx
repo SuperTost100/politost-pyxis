@@ -2,7 +2,7 @@ import { AboutPanel } from "./AboutPanel";
 import { UpdatesPanel } from "./UpdatesPanel";
 import { AutoBackupsSection } from "./AutoBackups";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Checkbox, Input } from "antd";
+import { App, Button, Checkbox, Input, InputNumber } from "antd";
 import {
   ArrowLeft,
   ChevronRight,
@@ -17,6 +17,7 @@ import {
   Info,
   ALargeSmall,
   Terminal,
+  Layers,
 } from "lucide-react";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
@@ -71,6 +72,32 @@ export function SettingsPage() {
     queryKey: ["profile"],
     queryFn: () => invoke("profile.get", {}),
   });
+
+  const cardSettings = useQuery({
+    queryKey: ["card-settings"],
+    queryFn: () => invoke("study.cardSettings", {}),
+  });
+  const [draftNewPerDay, setDraftNewPerDay] = useState<number | null>(null);
+  async function saveNewPerDay() {
+    const value = draftNewPerDay;
+    setDraftNewPerDay(null);
+    if (value == null || value === cardSettings.data?.newPerDay) return;
+    setSaveError(false);
+    try {
+      client.setQueryData(
+        ["card-settings"],
+        await invoke("study.saveCardSettings", { newPerDay: value }),
+      );
+      // Due counts on the path and in card sessions follow the new limit.
+      await Promise.all(
+        ["plan", "plans", "card-queue", "cards"].map((key) =>
+          client.invalidateQueries({ queryKey: [key] }),
+        ),
+      );
+    } catch {
+      setSaveError(true);
+    }
+  }
 
   const [saveError, setSaveError] = useState(false);
   const [draftInterests, setDraftInterests] = useState<string | null>(null);
@@ -132,6 +159,7 @@ export function SettingsPage() {
     engines: t("settings.enginesTitle"),
     tutor: t("settings.tutor"),
     reading: t("settings.reading"),
+    flashcards: t("settings.flashcards"),
     appearance: t("settings.appearance"),
     language: t("settings.language"),
     data: t("settings.data"),
@@ -179,6 +207,11 @@ export function SettingsPage() {
           key: "reading",
           icon: ALargeSmall,
           value: t(`settings.text.${profile.data?.textSize ?? "md"}`),
+        },
+        {
+          key: "flashcards",
+          icon: Layers,
+          value: cardSettings.data ? String(cardSettings.data.newPerDay) : "",
         },
       ],
     },
@@ -347,6 +380,27 @@ export function SettingsPage() {
           <p>{t("settings.readingSample")}</p>
         </div>
       </>
+    ),
+    flashcards: (
+      <div className="px-form-field px-settings-cards">
+        <label className="label" htmlFor="settings-new-per-day">
+          {t("settings.newPerDay")}
+        </label>
+        <InputNumber
+          id="settings-new-per-day"
+          min={0}
+          max={999}
+          precision={0}
+          value={draftNewPerDay ?? cardSettings.data?.newPerDay ?? 20}
+          onChange={(value) => setDraftNewPerDay(value ?? null)}
+          onBlur={() => void saveNewPerDay()}
+          onPressEnter={() => void saveNewPerDay()}
+          aria-describedby="settings-new-per-day-hint"
+        />
+        <p className="small section-hint" id="settings-new-per-day-hint">
+          {t("settings.newPerDayHint")}
+        </p>
+      </div>
     ),
     data: (
       <>

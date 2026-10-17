@@ -427,6 +427,13 @@ async function dispatchValidated(
       );
     case "study.queue":
       return study?.queue(requests["study.queue"].input.parse(input));
+    case "study.cardSettings":
+      requests["study.cardSettings"].input.parse(input);
+      return study?.cardSettings();
+    case "study.saveCardSettings":
+      return study?.saveCardSettings(
+        requests["study.saveCardSettings"].input.parse(input),
+      );
     case "study.save":
       return study?.save(requests["study.save"].input.parse(input));
     case "study.remove":
@@ -449,6 +456,8 @@ async function dispatchValidated(
       );
     case "study.rate":
       return study?.rate(requests["study.rate"].input.parse(input));
+    case "study.undoRate":
+      return study?.undoRate(requests["study.undoRate"].input.parse(input));
     case "study.active":
       return study?.active(requests["study.active"].input.parse(input));
     case "study.exercises":

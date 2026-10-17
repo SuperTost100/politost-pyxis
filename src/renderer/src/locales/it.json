@@ -56,7 +56,11 @@
       "redo": "Ripeti",
       "pen": "Penna",
       "eraser": "Gomma",
-      "runCode": "Esegui il codice"
+      "runCode": "Esegui il codice",
+      "undoCard": "Annulla l'ultima valutazione, sospensione o eliminazione",
+      "editCard": "Modifica la flashcard",
+      "suspendCard": "Sospendi la flashcard",
+      "deleteCard": "Elimina la flashcard"
     },
     "keys": {
       "enter": "Invio",
@@ -562,7 +566,19 @@
     "reviewDrillCancelled": "Hai saltato le domande su {{topic}}. Puoi finire il ripasso senza.",
     "reviewDrillCancelledAction": "Riprova",
     "reviewDrillSkipped": "Hai saltato le domande su {{topic}}. Puoi finire il ripasso senza.",
-    "reviewDrillSkip": "Salta"
+    "reviewDrillSkip": "Salta",
+    "rated": "Hai scelto {{rating}}.",
+    "suspended": "Flashcard sospesa.",
+    "deleted": "Flashcard rimossa.",
+    "undo": "Annulla",
+    "more": "Azioni sulla flashcard",
+    "card": "Flashcard",
+    "askTutor": "Chiedi al tutor",
+    "askSource": "Fonte: {{section}}",
+    "askFailed": "Non sono riuscito ad aprire la chat con il tutor. Riprova.",
+    "sessionProgress": "{{done}} di {{total}}",
+    "dailyLimit_one": "Hai visto la {{count}} flashcard nuova di oggi per questo esame. Le altre arrivano domani. Puoi cambiare il limite nelle Impostazioni.",
+    "dailyLimit_other": "Hai visto le {{count}} flashcard nuove di oggi per questo esame. Le altre arrivano domani. Puoi cambiare il limite nelle Impostazioni."
   },
   "cardImport": {
     "open": "Importa da Anki",
@@ -621,7 +637,8 @@
       "all": "Tutte le flashcard",
       "due": "In scadenza",
       "suspended": "Sospese",
-      "removed": "Rimosse"
+      "removed": "Rimosse",
+      "leech": "Dimenticate spesso"
     },
     "noSubject": "Nessuna materia",
     "noTopic": "Nessun argomento",
@@ -651,7 +668,14 @@
     "deleted": "Flashcard rimossa. Puoi ripristinarla da Rimosse.",
     "deletedForever": "Flashcard eliminata.",
     "restored": "Flashcard ripristinata.",
-    "pages": "Pagine"
+    "pages": "Pagine",
+    "tagLeech": "Dimenticata spesso",
+    "leechHint_one": "Dimenticata {{count}} volta. Riscrivila, controlla la fonte o sospendila.",
+    "leechHint_other": "Dimenticata {{count}} volte. Riscrivila, controlla la fonte o sospendila.",
+    "rewrite": "Riscrivi",
+    "openSource": "Apri la fonte",
+    "leechHintNoSource_one": "Dimenticata {{count}} volta. Riscrivila o sospendila.",
+    "leechHintNoSource_other": "Dimenticata {{count}} volte. Riscrivila o sospendila."
   },
   "mistakes": {
     "title": "Quaderno degli errori",
@@ -1453,7 +1477,10 @@
     },
     "crashOn": "Acceso: se Pyxis si chiude per errore, potrà usare un rapporto tecnico per correggerlo. Per ora Pyxis non invia nessun rapporto: la scelta resta su questo computer.",
     "crashOff": "Spento: nessun rapporto lascia questo computer.",
-    "crashContents": "Un rapporto di crash descrive lo stato tecnico del programma al momento dell'errore: versione, sistema e alcune porzioni di memoria. Pyxis non ci aggiunge i tuoi file né le tue chat, ma la memoria può contenere frammenti di ciò che stavi usando."
+    "crashContents": "Un rapporto di crash descrive lo stato tecnico del programma al momento dell'errore: versione, sistema e alcune porzioni di memoria. Pyxis non ci aggiunge i tuoi file né le tue chat, ma la memoria può contenere frammenti di ciò che stavi usando.",
+    "flashcards": "Flashcard",
+    "newPerDay": "Flashcard nuove al giorno",
+    "newPerDayHint": "Per ogni esame. Le flashcard già iniziate tornano quando scadono, qualunque sia il limite. Con 0 non ne partono di nuove."
   },
   "jobs": {
     "label_one": "{{count}} attività",
