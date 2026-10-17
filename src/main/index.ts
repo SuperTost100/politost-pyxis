@@ -61,7 +61,7 @@ import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
 import { rendererCsp } from "./csp";
 import { APP_PAGE, APP_SCHEME, appPrivileges, registerAppProtocol } from "./app-protocol";
-import { carryLanguage } from "./carried-language";
+import { carryStorage } from "./carried-storage";
 import {
   recoverInterruptedWipe,
   wipePending,
@@ -101,11 +101,6 @@ function systemLanguage(): "it" | "en" {
     if (primary === "it" || primary === "en") return primary;
   }
   return "en";
-}
-let carriedLanguage: "it" | "en" | null = null;
-/** The language a profile without its own choice starts in: the one carried from the file:// origin, else the system's. */
-function startLanguage(): "it" | "en" {
-  return carriedLanguage ?? systemLanguage();
 }
 const userDataOverride = process.env["PYXIS_USER_DATA"];
 if (userDataOverride) app.setPath("userData", userDataOverride);
@@ -735,7 +730,7 @@ function installMenu(): void {
     Menu.buildFromTemplate(
       buildMenuTemplate({
         platform: process.platform,
-        language: menuLanguage ?? startLanguage(),
+        language: menuLanguage ?? systemLanguage(),
         packaged: app.isPackaged,
         send: sendMenuCommand,
       }),
@@ -976,7 +971,7 @@ function registerIpc(): void {
   ipcMain.handle(mainChannels.menuLanguage, (event, language: unknown) => {
     requireMainSender(event, "menu-untrusted-sender");
     if (!isMenuLanguage(language)) throw new Error("invalid-language");
-    if (language === (menuLanguage ?? startLanguage())) return;
+    if (language === (menuLanguage ?? systemLanguage())) return;
     menuLanguage = language;
     installMenu();
   });
@@ -1105,7 +1100,7 @@ function registerIpc(): void {
     event.returnValue = !app.isPackaged;
   });
   ipcMain.on("app:system-language", (event) => {
-    event.returnValue = startLanguage();
+    event.returnValue = systemLanguage();
   });
   ipcMain.handle("dev:killCore", (event) => {
     if (app.isPackaged) return;
@@ -1411,14 +1406,11 @@ function registerProtocols(): void {
 
 function openFirstWindow(): Promise<void> | void {
   if (isDev) return createWindow();
-  return carryLanguage(
-    userFile("language.json"),
+  return carryStorage(
+    userFile("storage-carried.json"),
     app.getPath("userData"),
     rendererRoot,
-    (language) => {
-      carriedLanguage = language;
-      createWindow();
-    },
+    createWindow,
   );
 }
 

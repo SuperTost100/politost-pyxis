@@ -110,9 +110,9 @@ describe("pyxis-app protocol", () => {
     expect(script.headers.get("x-content-type-options")).toBe("nosniff");
     const font = await handle(new Request("pyxis-app://app/assets/font.woff2"));
     expect(font.headers.get("content-type")).toBe("font/woff2");
-    expect(
-      (await handle(new Request("pyxis-app://app/../secret.txt"))).status,
-    ).toBe(404);
+    const refused = await handle(new Request("pyxis-app://app/../secret.txt"));
+    expect(refused.status).toBe(404);
+    expect(refused.headers.get("content-security-policy")).toBe(rendererCsp());
     expect(
       (await handle(new Request(APP_PAGE, { method: "POST", body: "x" })))
         .status,

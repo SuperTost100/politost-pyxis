@@ -85,21 +85,28 @@ export function appFile(root: string, rawUrl: string): string | null {
 
 /** Serves the built renderer from `root` (out/renderer) with the window's CSP. */
 export function registerAppProtocol(root: string): void {
-  const csp = rendererCsp();
+  const headers = {
+    "Content-Security-Policy": rendererCsp(),
+    "X-Content-Type-Options": "nosniff",
+  };
+  const missing = () =>
+    new Response("not found", {
+      status: 404,
+      headers: { ...headers, "Content-Type": "text/plain; charset=utf-8" },
+    });
   protocol.handle(APP_SCHEME, async (request) => {
     const file = request.method === "GET" ? appFile(root, request.url) : null;
-    if (!file) return new Response("not found", { status: 404 });
+    if (!file) return missing();
     try {
       return new Response(new Uint8Array(await readFile(file)), {
         headers: {
+          ...headers,
           "Content-Type":
             types[extname(file).toLowerCase()] ?? "application/octet-stream",
-          "Content-Security-Policy": csp,
-          "X-Content-Type-Options": "nosniff",
         },
       });
     } catch {
-      return new Response("not found", { status: 404 });
+      return missing();
     }
   });
 }
