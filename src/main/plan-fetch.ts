@@ -1,4 +1,7 @@
-import { blockedAddress, fetchPublicResponse } from "../core/sources/link";
+import {
+  blockedAddress,
+  fetchPublicResponse,
+} from "../core/sources/public-fetch";
 import { httpPlanUrl } from "../shared/plan-file";
 
 // One schema-supported embedded 200 MiB source plus base64 and plan content.

@@ -9,6 +9,7 @@ import { strToU8, zipSync } from "fflate";
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -23,7 +24,7 @@ async function clean(page: Page) {
   ).toEqual([]);
 }
 
-// The window loads index.html from file://. CI also runs this against the packaged app.
+// The window loads index.html from pyxis-app://app. CI also runs this against the packaged app.
 test("window CSP: no string eval and no remote images in the main window", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-csp-"));
   const image = "https://tracker.example.com/pixel.png";
@@ -40,7 +41,7 @@ test("window CSP: no string eval and no remote images in the main window", async
     await expect(
       page.getByRole("heading", { name: "Ciao, sono Pyxis", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
-    expect(page.url()).toMatch(/^file:/);
+    expect(page.url()).toMatch(/^pyxis-app:\/\/app\/index\.html#/);
     // The route answers like the remote server would; a request the CSP blocks never reaches it.
     let requests = 0;
     await page.route(image, (route) => {
@@ -89,6 +90,68 @@ test("window CSP: no string eval and no remote images in the main window", async
     expect.soft(requests).toBe(0);
   } finally {
     await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+// Up to 0.3.1 the window loaded from file://, so its localStorage (the language, dismissed notices, page settings)
+// belongs to that origin. The update copies it once.
+test("an update from the file:// window keeps what the renderer stored", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-storage-"));
+  const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const launch = () =>
+    electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const assets = join(process.cwd(), "out/renderer/assets");
+  const stylesheet = join(
+    assets,
+    readdirSync(assets).find((name) => name.endsWith(".css"))!,
+  );
+  const marker = join(userData, "storage-carried.json");
+  try {
+    const first = await launch();
+    const page = await first.firstWindow();
+    await expect(
+      page.getByRole("heading", { name: "Ciao, sono Pyxis", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    expect(JSON.parse(readFileSync(marker, "utf8"))).toEqual({ keys: 0 });
+    // A value the new origin already has is newer and stays.
+    await page.evaluate(() => localStorage.setItem("pyxis-source-quality", "new"));
+    // What 0.3.1 left behind: file:// storage, saved window bounds and no record of a copy.
+    await first.evaluate(async ({ BrowserWindow }, stylesheet) => {
+      const old = new BrowserWindow({ show: false });
+      await old.loadFile(stylesheet);
+      await old.webContents.executeJavaScript(
+        'localStorage.setItem("pyxis.lang", "en"); localStorage.setItem("pyxis-dismissed-release", "v9.9.9"); localStorage.setItem("pyxis-source-quality", "old")',
+      );
+      old.destroy();
+    }, stylesheet);
+    await first.close();
+    rmSync(marker);
+    writeFileSync(join(userData, "window.json"), JSON.stringify({ width: 1280, height: 832 }));
+
+    const updated = await launch();
+    try {
+      // The copy runs in a hidden window that opens before the main one.
+      await expect
+        .poll(() => updated.windows().some((w) => w.url().startsWith("pyxis-app://app/index.html")), { timeout: 30_000 })
+        .toBe(true);
+      const window = updated.windows().find((w) => w.url().startsWith("pyxis-app://app/index.html"))!;
+      await expect(
+        window.getByRole("heading", { name: "Hi, I'm Pyxis", exact: true }),
+      ).toBeVisible({ timeout: 30_000 });
+      expect(
+        await window.evaluate(() => [
+          localStorage.getItem("pyxis-dismissed-release"),
+          localStorage.getItem("pyxis-source-quality"),
+        ]),
+      ).toEqual(["v9.9.9", "new"]);
+      await expect.poll(() => updated.windows().length).toBe(1);
+    } finally {
+      await updated.close();
+    }
+    expect(JSON.parse(readFileSync(marker, "utf8"))).toEqual({ keys: 2 });
+  } finally {
     rmSync(userData, { recursive: true, force: true });
   }
 });

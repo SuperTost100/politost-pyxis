@@ -14,6 +14,7 @@ import { partialText, templateVersion } from "../engine/prompts";
 import { startDiagnostic } from "../study/topicQuiz";
 import { readPlan } from "./create";
 import { SEGMENT_LIMIT } from "./segments";
+import { recordedPlanRun } from "../engine/recorded-plan";
 
 async function until(
   db: ReturnType<typeof openDatabase>,
@@ -642,5 +643,113 @@ describe("PLAN-21 durable plan build", () => {
       topics: [{ grounding: "sources" }],
     });
     db.close();
+  });
+  describe("introduction and diagnostic", () => {
+    const replies = JSON.stringify({
+      markdown: { markdown: "Il moto [P1]." },
+      questions: {
+        questions: Array.from({ length: 10 }, (_, i) => ({
+          stem: `Domanda ${i}`,
+          options: ["a", "b", "c", "d"],
+          correct: 0,
+          topicIndex: 0,
+          passageIds: ["{{passage:0}}"],
+          explanation: "Spiegazione",
+        })),
+      },
+    });
+    function setup() {
+      const db = openDatabase(":memory:");
+      db.prepare(
+        "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+      ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+      return { db, sourceId: source(db) };
+    }
+    const kind = (input: { system?: string }) =>
+      input.system?.startsWith("Write") ? "intro" : "diagnostic";
+    const saved = (db: ReturnType<typeof openDatabase>) =>
+      db
+        .prepare("SELECT kind FROM items WHERE kind IN ('intro', 'diagnostic') ORDER BY kind")
+        .all()
+        .map((row) => (row as { kind: string }).kind);
+
+    it("asks for both at once", async () => {
+      const { db, sourceId } = setup();
+      const recorded = recordedPlanRun(replies, 50);
+      let active = 0;
+      let most = 0;
+      const run: GenerateInput["run"] = async (input) => {
+        most = Math.max(most, ++active);
+        try {
+          return await recorded(input);
+        } finally {
+          active--;
+        }
+      };
+      const runner = createRunner(db, () => {});
+      registerPlanJobs(db, runner, run);
+      const built = enqueuePlan(db, runner, { title: "Fisica", sourceIds: [sourceId] });
+      await until(db, built.planId, "succeeded");
+      expect(most).toBe(2);
+      expect(saved(db)).toEqual(["diagnostic", "intro"]);
+      expect(
+        db.prepare("SELECT name, label FROM job_steps WHERE job_id = ? ORDER BY position").all(built.jobId),
+      ).toEqual([
+        { name: "sources", label: "wizard.stepSources" },
+        { name: "topics", label: "wizard.stepTopics" },
+        { name: "path", label: "wizard.stepPath" },
+        { name: "intro", label: "wizard.stepIntroDiagnostic" },
+        { name: "ready", label: "wizard.stepReady" },
+      ]);
+      db.close();
+    });
+
+    it("keeps the diagnostic when the introduction fails and retries only the introduction", async () => {
+      const { db, sourceId } = setup();
+      const recorded = recordedPlanRun(replies);
+      const calls = { intro: 0, diagnostic: 0 };
+      const run: GenerateInput["run"] = async (input) => {
+        const which = kind(input);
+        calls[which]++;
+        // The introduction fails at once, while the diagnostic is still being written.
+        if (which === "intro" && calls.intro === 1) throw new Error("offline");
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return recorded(input);
+      };
+      const runner = createRunner(db, () => {});
+      registerPlanJobs(db, runner, run);
+      const built = enqueuePlan(db, runner, { title: "Fisica", sourceIds: [sourceId] });
+      await until(db, built.planId, "failed");
+      expect(saved(db)).toEqual(["diagnostic"]);
+      runner.retry(built.jobId);
+      await until(db, built.planId, "succeeded");
+      expect(calls).toEqual({ intro: 2, diagnostic: 1 });
+      expect(saved(db)).toEqual(["diagnostic", "intro"]);
+      db.close();
+    });
+
+    it("finishes a build saved with a separate diagnostic step", async () => {
+      const { db, sourceId } = setup();
+      const recorded = recordedPlanRun(replies);
+      const calls = { intro: 0, diagnostic: 0 };
+      const run: GenerateInput["run"] = async (input) => {
+        calls[kind(input)]++;
+        return recorded(input);
+      };
+      const runner = createRunner(db, () => {}, undefined, true);
+      registerPlanJobs(db, runner, run);
+      const built = enqueuePlan(db, runner, { title: "Fisica", sourceIds: [sourceId] });
+      db.prepare("UPDATE job_steps SET position = 5 WHERE job_id = ? AND name = 'ready'").run(built.jobId);
+      db.prepare(
+        "INSERT INTO job_steps (id, job_id, name, position, label, state) VALUES ('legacy', ?, 'diagnostic', 4, 'wizard.stepDiagnostic', 'pending')",
+      ).run(built.jobId);
+      runner.activate();
+      await until(db, built.planId, "succeeded");
+      expect(calls).toEqual({ intro: 1, diagnostic: 1 });
+      expect(
+        db.prepare("SELECT state FROM job_steps WHERE id = 'legacy'").get(),
+      ).toEqual({ state: "succeeded" });
+      db.close();
+    });
   });
 });

@@ -79,23 +79,3 @@
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
-.px-review-progress {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.px-review-progress > p {
-  margin: 0;
-}
-.px-review-count {
-  margin: var(--space-5) 0;
-}
-.px-review-count .label {
-  margin: 0 0 var(--space-2);
-}
-.px-review-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}

@@ -55,10 +55,11 @@ import {
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
 import { rendererCsp } from "./csp";
+import { APP_PAGE, APP_SCHEME, appPrivileges, registerAppProtocol } from "./app-protocol";
+import { carryStorage } from "./carried-storage";
 import { recoverInterruptedWipe, wipeWorkspace } from "../core/share/wipe";
 import { ensureWorkspace, ensureWorkspaceDirs } from "./workspace";
 import {
@@ -104,6 +105,7 @@ if (e2eSeam() && process.env.PYXIS_E2E === "1" && process.env.PYXIS_CRASH_DIR) {
 }
 
 protocol.registerSchemesAsPrivileged([
+  { scheme: APP_SCHEME, privileges: appPrivileges },
   {
     scheme: "pyxis-blob",
     privileges: {
@@ -203,15 +205,13 @@ function installNavigationGuards(): void {
     contents.on("will-navigate", (event, url) => {
       const devOrigin = process.env["ELECTRON_RENDERER_URL"];
       if (devOrigin && url.startsWith(devOrigin)) return;
-      if (url.split("#")[0] === rendererPage) return;
+      if (url.split("#")[0] === APP_PAGE) return;
       event.preventDefault();
     });
   });
 }
 
-const rendererPage = pathToFileURL(
-  join(import.meta.dirname, "../renderer/index.html"),
-).href;
+const rendererRoot = join(import.meta.dirname, "../renderer");
 
 // A study app needs no camera, microphone, location, notifications or devices, so pages never get them.
 // Everything else (clipboard, fullscreen…) keeps Electron's default.
@@ -420,12 +420,9 @@ function createWindow(): void {
     if (hash) url.hash = hash;
     void mainWindow.loadURL(url.toString());
   } else {
-    void mainWindow.loadFile(
-      join(import.meta.dirname, "../renderer/index.html"),
-      {
-        hash: hash?.replace(/^#/, ""),
-      },
-    );
+    const url = new URL(APP_PAGE);
+    if (hash) url.hash = hash;
+    void mainWindow.loadURL(url.toString());
   }
 }
 
@@ -1336,6 +1333,17 @@ function registerAutoBackupIpc(): void {
 function registerProtocols(): void {
   registerBlobProtocol(() => workspacePath);
   registerRuntimeProtocol(session.defaultSession, () => workspacePath);
+  if (!isDev) registerAppProtocol(rendererRoot);
+}
+
+function openFirstWindow(): Promise<void> | void {
+  if (isDev) return createWindow();
+  return carryStorage(
+    userFile("storage-carried.json"),
+    app.getPath("userData"),
+    rendererRoot,
+    createWindow,
+  );
 }
 
 app.on("second-instance", () => {
@@ -1408,7 +1416,7 @@ app.whenReady().then(() => {
   registerAutoBackupIpc();
   nativeTheme.on("updated", broadcastAppearance);
   startCore();
-  createWindow();
+  void openFirstWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

@@ -494,6 +494,120 @@ export function registerPlanJobs(
     },
   };
 
+  async function writeIntro(ctx: StepContext, params: Params): Promise<void> {
+    if (params.introId) return;
+    const rows = samplePassages(params, passages(db, params));
+    const result = await generate({
+      selection: params.selection,
+      signal: ctx.signal,
+      run,
+      system: systemPrompt("plan.intro", {
+        contentLanguage: planLanguage(db, params.planId),
+      }),
+      prompt: introPrompt(params, rows),
+    });
+    const markdown = introText(result.text);
+    if (!markdown) throw new Error("intro-invalid");
+    checkpoint(db, ctx, params, () => {
+      params.introId = saveItem(
+        db,
+        params,
+        "intro",
+        { markdown, passageIds: rows.map((row) => row.id) },
+        rows.map((row) => row.id),
+        result.model,
+        result.provider,
+        promptProvenance("plan.intro"),
+      );
+    });
+  }
+
+  async function writeDiagnostic(ctx: StepContext, params: Params): Promise<void> {
+    if (params.diagnosticId) return;
+    const indices = diagnosticTopics(params.tree ?? []);
+    const rows = samplePassages(params, passages(db, params), indices);
+    const schema = diagnosticSchema.superRefine((value, ctx) => {
+      const covered = new Set(value.questions.map((q) => q.topicIndex));
+      for (const i of indices)
+        if (!covered.has(i))
+          ctx.addIssue({
+            code: "custom",
+            message: `Missing diagnostic question for topic ${i}`,
+          });
+      value.questions.forEach((q, i) => {
+        if (!indices.includes(q.topicIndex))
+          ctx.addIssue({
+            code: "custom",
+            message: "Unknown topic index",
+            path: ["questions", i, "topicIndex"],
+          });
+      });
+    });
+    // A wrong citation is dropped rather than failing the whole plan: it keeps only supplied passages of the question's topic, or falls back to that topic's first supplied passage.
+    const cite = (q: { topicIndex: number; passageIds: string[] }) => {
+      const own = rows
+        .slice(0, 40)
+        .filter((row) =>
+          params.tree?.[q.topicIndex]?.passageIds.includes(row.id),
+        )
+        .map((row) => row.id);
+      const kept = q.passageIds.filter((id) => own.includes(id));
+      return kept.length ? kept : own.slice(0, 1);
+    };
+    const result = await generate({
+      selection: params.selection,
+      signal: ctx.signal,
+      run,
+      schema,
+      system: systemPrompt("plan.diagnostic", {
+        contentLanguage: planLanguage(db, params.planId),
+      }),
+      prompt: contentPrompt(params, rows, indices),
+    });
+    const parsed = result.data as z.infer<typeof diagnosticSchema>;
+    const data = {
+      questions: acrossTopics(
+        indices.map((index) =>
+          parsed.questions.filter((q) => q.topicIndex === index),
+        ),
+        QUIZ_MAX_QUESTIONS,
+      ).map((q) => ({
+        ...q,
+        passageIds: cite(q),
+      })),
+    };
+    checkpoint(db, ctx, params, () => {
+      const topics = db
+        .prepare(
+          "SELECT id FROM topics WHERE plan_id = ? ORDER BY position",
+        )
+        .all(params.planId) as Array<{ id: string }>;
+      const questions = data.questions.map((q) => {
+        // The model's options are not kept in its order: it favours some positions for the right one.
+        const shown = shuffleChoices(q.options, q.correct, randomUnit);
+        return {
+          id: uuidv7(),
+          stem: q.stem,
+          options: shown.options,
+          explanation: q.explanation,
+          topicId: topics[q.topicIndex]!.id,
+          sourceIds: q.passageIds,
+          answer: { kind: "mcq", picked: -1, correct: shown.correct },
+        };
+      });
+      params.diagnosticId = saveItem(
+        db,
+        params,
+        "diagnostic",
+        { questions },
+        [...new Set(data.questions.flatMap((q) => q.passageIds))],
+        result.model,
+        result.provider,
+        promptProvenance("plan.diagnostic"),
+      );
+    });
+  }
+
   runner.register("plan-build", {
     retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "plan") }),
     jobClass: "local",
@@ -524,126 +638,28 @@ export function registerPlanJobs(
       {
         name: "intro",
         jobClass: "model-cli",
-        label: "wizard.stepIntro",
+        label: "wizard.stepIntroDiagnostic",
         async run(ctx) {
           const params = ctx.params as Params;
-          if (params.introId) return true;
-          const rows = samplePassages(params, passages(db, params));
-          const result = await generate({
-            selection: params.selection,
-            signal: ctx.signal,
-            run,
-            system: systemPrompt("plan.intro", {
-              contentLanguage: planLanguage(db, params.planId),
-            }),
-            prompt: introPrompt(params, rows),
-          });
-          const markdown = introText(result.text);
-          if (!markdown) throw new Error("intro-invalid");
-          checkpoint(db, ctx, params, () => {
-            params.introId = saveItem(
-              db,
-              params,
-              "intro",
-              { markdown, passageIds: rows.map((row) => row.id) },
-              rows.map((row) => row.id),
-              result.model,
-              result.provider,
-              promptProvenance("plan.intro"),
-            );
-          });
+          // Neither call needs the other's answer. Each one saves as it arrives, so a failure keeps the other half and
+          // a retry asks only for what is missing.
+          const settled = await Promise.allSettled([
+            writeIntro(ctx, params),
+            writeDiagnostic(ctx, params),
+          ]);
+          const failed = settled.find((result) => result.status === "rejected");
+          if (failed) throw failed.reason;
           return true;
         },
       },
       {
+        // Builds saved before the intro step also wrote the diagnostic still have this step.
         name: "diagnostic",
         jobClass: "model-cli",
         label: "wizard.stepDiagnostic",
+        retired: true,
         async run(ctx) {
-          const params = ctx.params as Params;
-          if (params.diagnosticId) return true;
-          const indices = diagnosticTopics(params.tree ?? []);
-          const rows = samplePassages(params, passages(db, params), indices);
-          const schema = diagnosticSchema.superRefine((value, ctx) => {
-            const covered = new Set(value.questions.map((q) => q.topicIndex));
-            for (const i of indices)
-              if (!covered.has(i))
-                ctx.addIssue({
-                  code: "custom",
-                  message: `Missing diagnostic question for topic ${i}`,
-                });
-            value.questions.forEach((q, i) => {
-              if (!indices.includes(q.topicIndex))
-                ctx.addIssue({
-                  code: "custom",
-                  message: "Unknown topic index",
-                  path: ["questions", i, "topicIndex"],
-                });
-            });
-          });
-          // A wrong citation is dropped rather than failing the whole plan: it keeps only supplied passages of the question's topic, or falls back to that topic's first supplied passage.
-          const cite = (q: { topicIndex: number; passageIds: string[] }) => {
-            const own = rows
-              .slice(0, 40)
-              .filter((row) =>
-                params.tree?.[q.topicIndex]?.passageIds.includes(row.id),
-              )
-              .map((row) => row.id);
-            const kept = q.passageIds.filter((id) => own.includes(id));
-            return kept.length ? kept : own.slice(0, 1);
-          };
-          const result = await generate({
-            selection: params.selection,
-            signal: ctx.signal,
-            run,
-            schema,
-            system: systemPrompt("plan.diagnostic", {
-              contentLanguage: planLanguage(db, params.planId),
-            }),
-            prompt: contentPrompt(params, rows, indices),
-          });
-          const parsed = result.data as z.infer<typeof diagnosticSchema>;
-          const data = {
-            questions: acrossTopics(
-              indices.map((index) =>
-                parsed.questions.filter((q) => q.topicIndex === index),
-              ),
-              QUIZ_MAX_QUESTIONS,
-            ).map((q) => ({
-              ...q,
-              passageIds: cite(q),
-            })),
-          };
-          checkpoint(db, ctx, params, () => {
-            const topics = db
-              .prepare(
-                "SELECT id FROM topics WHERE plan_id = ? ORDER BY position",
-              )
-              .all(params.planId) as Array<{ id: string }>;
-            const questions = data.questions.map((q) => {
-              // The model's options are not kept in its order: it favours some positions for the right one.
-              const shown = shuffleChoices(q.options, q.correct, randomUnit);
-              return {
-                id: uuidv7(),
-                stem: q.stem,
-                options: shown.options,
-                explanation: q.explanation,
-                topicId: topics[q.topicIndex]!.id,
-                sourceIds: q.passageIds,
-                answer: { kind: "mcq", picked: -1, correct: shown.correct },
-              };
-            });
-            params.diagnosticId = saveItem(
-              db,
-              params,
-              "diagnostic",
-              { questions },
-              [...new Set(data.questions.flatMap((q) => q.passageIds))],
-              result.model,
-              result.provider,
-              promptProvenance("plan.diagnostic"),
-            );
-          });
+          await writeDiagnostic(ctx, ctx.params as Params);
           return true;
         },
       },

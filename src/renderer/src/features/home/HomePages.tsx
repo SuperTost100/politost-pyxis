@@ -1,12 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Button, Dropdown, Input, Modal, Segmented, Select } from "antd";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Search, Settings2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
-import { CardBrowser } from "./CardBrowser";
 import { LibraryPanel } from "./LibraryPanel";
 import { PlanCard } from "../../components/PlanCard";
 import { Notice } from "../../components/Notice";
@@ -16,6 +15,11 @@ import { ImportReview } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
 import { examDaysLabel } from "../plans/examDays";
 import "./HomePages.css";
+
+// Card text renders Markdown and math, which load with the tab rather than with the window.
+const CardBrowser = lazy(() =>
+  import("./CardBrowser").then((module) => ({ default: module.CardBrowser })),
+);
 
 export function ExamsHome() {
   const { t } = useTranslation();
@@ -107,7 +111,9 @@ export function ExamsHome() {
       {tab === "sources" ? (
         <LibraryPanel />
       ) : tab === "cards" ? (
-        <CardBrowser />
+        <Suspense fallback={null}>
+          <CardBrowser />
+        </Suspense>
       ) : plans.isPending ? null : (plans.data?.length ?? 0) > 0 ? (
         <div>
           <div className="px-exams-toolbar">
