@@ -18,6 +18,15 @@ import { recordStep, stepResult } from "../plans/steps";
 import { topicExercises } from "./exercises";
 import { acrossTopics } from "./topicQuiz";
 import { DRAFT_GRACE_MS } from "./attempt";
+import {
+  PAPER_TYPES,
+  pastStyle,
+  spaceOptions,
+  styleSlots,
+  type PaperType,
+  type PastStyle,
+  type Slot,
+} from "./pastPapers";
 
 type Stored = {
   minutes: number;
@@ -29,11 +38,15 @@ type Stored = {
   generated?: { provider: string; model: string };
   /** The prepared build this attempt was started from, so one build starts one exam. */
   buildJobId?: string;
+  /** How many past papers the questions were shaped after, when the build followed them. */
+  styledOn?: number;
   questions: Array<{
     id: string;
     sourceId?: string;
     topicId?: string;
     passageIds?: string[];
+    /** The type the past papers asked for at this position. */
+    type?: PaperType;
     stem: string;
     answer: { kind: "completion"; accepted: string[][] };
   }>;
@@ -190,6 +203,7 @@ export function startSimulation(
           model: ready.params.model ?? "",
         },
         buildJobId: ready.jobId,
+        styledOn: ready.params.style?.papers,
       },
       now,
       [...new Set(ready.params.questions.flatMap((q) => q.passageIds ?? []))],
@@ -212,9 +226,13 @@ type BuildParams = {
   language: string;
   /** PER-04 line captured at start, so a retry writes the same kind of problems. */
   interests?: string;
+  /** The past papers' structure this build copies. Absent for the generic format. */
+  style?: PastStyle;
   batches: Array<{
     topicId: string;
     count: number;
+    /** What the past papers ask for at each of this batch's positions. */
+    slots?: Slot[];
     passages: Array<{ id: string; text: string }>;
   }>;
   next: number;
@@ -224,47 +242,60 @@ type BuildParams = {
   /** Older builds started their own attempt; newer ones leave the exam ready until Start. */
   attemptId?: string;
 };
-const questionsSchema = (count: number) =>
-  z.object({
+const questionsSchema = (count: number, styled = false) => {
+  const question = z.object({
+    stem: z.string().trim().min(1).max(5000),
+    reference: z.string().trim().min(1).max(5000),
+    passageIds: z.array(z.string()).min(1).max(8),
+  });
+  return z.object({
     questions: z
-      .array(
-        z.object({
-          stem: z.string().trim().min(1).max(5000),
-          reference: z.string().trim().min(1).max(5000),
-          passageIds: z.array(z.string()).min(1).max(8),
-        }),
-      )
+      .array(styled ? question.extend({ type: z.enum(PAPER_TYPES) }) : question)
       .length(count),
   });
+};
 const BUILD_QUESTIONS = 20;
-const BUILD_TOPICS = BUILD_QUESTIONS;
 
-function buildBatches(db: Database.Database, planId: string) {
+function buildBatches(
+  db: Database.Database,
+  planId: string,
+  style?: PastStyle | null,
+) {
   const all = topicPassages(db, planId);
-  const topicCount = Math.min(BUILD_TOPICS, all.length);
+  const total = style ? style.questions : BUILD_QUESTIONS;
+  const topicCount = Math.min(total, all.length);
   const spread = Array.from(
     { length: topicCount },
     (_, i) =>
       all[Math.floor((i * (all.length - 1)) / Math.max(1, topicCount - 1))]!,
   );
-  return spread.map((topic, i) => ({
-    topicId: topic.topicId,
-    count:
-      Math.floor(BUILD_QUESTIONS / spread.length) +
-      (i < BUILD_QUESTIONS % spread.length ? 1 : 0),
-    passages: topic.passages
-      .filter(
-        (_, j) => j % Math.max(1, Math.ceil(topic.passages.length / 8)) === 0,
-      )
-      .slice(0, 8)
-      .map((row) => ({ id: row.id, text: row.text.slice(0, 1000) })),
-  }));
+  const slots = style ? styleSlots(style, total) : undefined;
+  let at = 0;
+  return spread.map((topic, i) => {
+    const count =
+      Math.floor(total / spread.length) + (i < total % spread.length ? 1 : 0);
+    const own = slots?.slice(at, at + count);
+    at += count;
+    return {
+      topicId: topic.topicId,
+      count,
+      ...(own ? { slots: own } : {}),
+      passages: topic.passages
+        .filter(
+          (_, j) => j % Math.max(1, Math.ceil(topic.passages.length / 8)) === 0,
+        )
+        .slice(0, 8)
+        .map((row) => ({ id: row.id, text: row.text.slice(0, 1000) })),
+    };
+  });
 }
 
 /**
  * Starts the attempt at once from smartbook exercises, or queues a cancellable,
  * retryable job that has the model write questions from topic passages. A finished
  * build is returned as it is; the student starts it with startSimulation.
+ * With past papers on the plan, `matchPast` (the default) has the model write the questions after them instead:
+ * their count, types and difficulty. That takes the model route even when the plan has smartbook exercises.
  */
 export function enqueueSimulation(
   db: Database.Database,
@@ -272,16 +303,22 @@ export function enqueueSimulation(
   minutes = 30,
   now = Date.now(),
   source: "exam" | "mixed" = "exam",
+  matchPast = true,
 ): { attemptId: string } | { jobId: string } {
   const runner = runtimes.get(db);
   if (!runner) throw new Error("simulation-grading-unavailable");
   selectionFor(db, "grading");
-  if (smartbookQuestions(db, planId, source).length)
+  const past = matchPast ? pastStyle(db, planId) : null;
+  const batches = buildBatches(db, planId, past);
+  // Without topic passages to write from, a plan with past papers still falls back to its smartbook exercises.
+  const style = batches.length ? past : null;
+  if (!style && smartbookQuestions(db, planId, source).length)
     return {
       attemptId: startSimulation(db, planId, minutes, now, source).attemptId,
     };
   const ready = readyBuild(db, planId);
-  if (ready) {
+  // A prepared exam in the other format is not what was asked for: a new build replaces it.
+  if (ready && Boolean(ready.params.style) === Boolean(style)) {
     // The prepared questions stand; the length is only a time budget, so the latest request is the one that applies.
     if (ready.params.minutes !== minutes)
       db.prepare("UPDATE jobs SET params_json = json_set(params_json, '$.minutes', ?) WHERE id = ?").run(
@@ -290,7 +327,6 @@ export function enqueueSimulation(
       );
     return { jobId: ready.jobId };
   }
-  const batches = buildBatches(db, planId);
   if (!batches.length) throw new Error("simulation-empty");
   const running = buildJob(db, planId);
   if (running && ["queued", "running", "interrupted"].includes(running.state)) {
@@ -303,6 +339,7 @@ export function enqueueSimulation(
     selection: selectionFor(db, "lesson"),
     language: planLanguage(db, planId),
     interests: interestsLine(db) || undefined,
+    style: style ?? undefined,
     batches,
     next: 0,
     questions: [],
@@ -379,6 +416,8 @@ export function readSimulationBuild(db: Database.Database, planId: string) {
     error: job.error,
     progress: job.params.next / Math.max(1, job.params.batches.length),
     minutes: job.params.minutes,
+    /** Whether the questions follow the plan's past papers. */
+    styled: Boolean(job.params.style),
     provider: job.params.provider,
     model: job.params.model,
   };
@@ -451,26 +490,34 @@ export function registerSimulationJobs(
             ctx.signal.throwIfAborted();
             const batch = params.batches[params.next]!;
             const known = new Set(batch.passages.map((row) => row.id));
-            const schema = questionsSchema(batch.count).superRefine(
-              (data, issue) => {
-                const seen = new Set(
-                  params.questions.map((q) => q.stem.trim().toLowerCase()),
-                );
-                data.questions.forEach((question, i) => {
-                  const key = question.stem.trim().toLowerCase();
-                  if (
-                    seen.has(key) ||
-                    question.passageIds.some((id) => !known.has(id))
-                  )
-                    issue.addIssue({
-                      code: "custom",
-                      message: "Repeated question or unknown passage ID",
-                      path: ["questions", i],
-                    });
-                  seen.add(key);
-                });
-              },
-            );
+            const schema = questionsSchema(
+              batch.count,
+              Boolean(batch.slots),
+            ).superRefine((data, issue) => {
+              const seen = new Set(
+                params.questions.map((q) => q.stem.trim().toLowerCase()),
+              );
+              data.questions.forEach((question, i) => {
+                const key = question.stem.trim().toLowerCase();
+                if (
+                  seen.has(key) ||
+                  question.passageIds.some((id) => !known.has(id))
+                )
+                  issue.addIssue({
+                    code: "custom",
+                    message: "Repeated question or unknown passage ID",
+                    path: ["questions", i],
+                  });
+                const type = (question as { type?: PaperType }).type;
+                if (batch.slots && type !== batch.slots[i]?.type)
+                  issue.addIssue({
+                    code: "custom",
+                    message: `Question ${i + 1} must be of type ${batch.slots[i]?.type}`,
+                    path: ["questions", i, "type"],
+                  });
+                seen.add(key);
+              });
+            });
             const result = await generate({
               run,
               signal: ctx.signal,
@@ -488,17 +535,30 @@ export function registerSimulationJobs(
                 count: batch.count,
                 passages: batch.passages,
                 previousQuestions: params.questions.map((q) => q.stem),
+                ...(batch.slots && params.style
+                  ? {
+                      slots: batch.slots,
+                      examples: params.style.examples,
+                      ...(params.style.totalPoints
+                        ? { examTotalPoints: params.style.totalPoints }
+                        : {}),
+                    }
+                  : {}),
               }),
             });
             ctx.signal.throwIfAborted();
-            for (const row of (result.data as z.infer<typeof schema>).questions)
+            for (const row of (result.data as z.infer<typeof schema>)
+              .questions) {
+              const type = (row as { type?: PaperType }).type;
               params.questions.push({
                 id: uuidv7(),
                 topicId: batch.topicId,
                 passageIds: row.passageIds,
-                stem: row.stem,
+                ...(type ? { type } : {}),
+                stem: spaceOptions(row.stem),
                 answer: { kind: "completion", accepted: [[row.reference]] },
               });
+            }
             params.provider = result.provider;
             params.model = result.model;
             params.next++;
