@@ -13,9 +13,85 @@
 .px-graph-controls p {
   margin: 0;
 }
+.px-graph-curves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-graph-curve {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.px-graph-curve .ant-input {
+  flex: 1;
+  min-width: 0;
+}
+.px-graph-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  min-width: 52px;
+  color: var(--ink-muted);
+}
+.px-graph-swatch {
+  flex: none;
+  width: 24px;
+  height: 8px;
+}
 .px-graph-preview {
+  display: flex;
+  flex-direction: column;
   min-height: 52px;
   padding: var(--space-3) 0;
+}
+.px-graph-formula-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+/* Integral limits reach past the line box; the padding keeps them in view without a vertical scrollbar. */
+.px-graph-formula-row .px-graph-formula {
+  flex: 1 1 0;
+  overflow-y: hidden;
+  padding: 6px 0;
+}
+.px-graph-meets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-graph-meets h2 {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-graph-meets ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 224px;
+  overflow-y: auto;
+  border-radius: var(--radius-sm);
+}
+.px-graph-meets ul:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-graph-meets li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+}
+.px-graph-meets li + li {
+  border-top: 1px solid var(--border);
+}
+.px-graph-meet {
+  fill: var(--ink);
+  stroke: var(--surface);
+  stroke-width: 2;
 }
 .px-graph-formula {
   min-width: 0;
@@ -86,7 +162,7 @@
 .px-graph-panel h2 {
   margin: 0;
 }
-.px-graph-panel svg {
+.px-graph-panel > svg {
   display: block;
   width: 100%;
   height: auto;
@@ -95,7 +171,7 @@
   cursor: grab;
   outline-offset: 2px;
 }
-.px-graph-panel svg:focus-visible {
+.px-graph-panel > svg:focus-visible {
   outline: 2px solid var(--focus-ring);
 }
 .px-graph-panel svg text {

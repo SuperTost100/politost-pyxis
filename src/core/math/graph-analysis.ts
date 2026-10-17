@@ -154,3 +154,87 @@ export function analyzeGraph(
     at,
   };
 }
+
+/**
+ * Where two curves meet in the range: sign changes of f − g refined by bisection, and touching points (a local minimum
+ * of |f − g| that reaches zero) refined by golden-section search. A pole where f − g jumps across zero is not a meeting
+ * point, and two curves that coincide have none to mark.
+ */
+export function graphIntersections(
+  f: (x: number) => number,
+  g: (x: number) => number,
+  range: GraphRange,
+  count = 600,
+): GraphPoint[] {
+  const [a, b] = range;
+  if (!(b > a)) return [];
+  const gap = (x: number) => f(x) - g(x);
+  const meets = (x: number) => {
+    const fx = f(x),
+      gx = g(x);
+    return (
+      Number.isFinite(fx) &&
+      Number.isFinite(gx) &&
+      Math.abs(fx - gx) <= 1e-6 * Math.max(1, Math.abs(fx), Math.abs(gx))
+    );
+  };
+  const xs = Array.from({ length: count + 1 }, (_, i) => a + ((b - a) * i) / count);
+  const ds = xs.map(gap);
+  if (xs.filter((x) => meets(x)).length > count / 2) return [];
+  const found: number[] = [];
+  for (let i = 0; i <= count; i++) {
+    const d = ds[i]!;
+    if (!Number.isFinite(d)) continue;
+    if (d === 0) {
+      found.push(xs[i]!);
+      continue;
+    }
+    const next = ds[i + 1];
+    if (next !== undefined && Number.isFinite(next) && next !== 0 && Math.sign(next) !== Math.sign(d)) {
+      let lo = xs[i]!,
+        hi = xs[i + 1]!,
+        low = d;
+      for (let step = 0; step < 80; step++) {
+        const mid = (lo + hi) / 2,
+          value = gap(mid);
+        if (!Number.isFinite(value)) break;
+        if (Math.sign(value) === Math.sign(low)) {
+          lo = mid;
+          low = value;
+        } else hi = mid;
+      }
+      const x = (lo + hi) / 2;
+      if (meets(x)) found.push(x);
+    }
+    const previous = ds[i - 1];
+    if (
+      previous !== undefined &&
+      next !== undefined &&
+      Number.isFinite(previous) &&
+      Number.isFinite(next) &&
+      Math.sign(previous) === Math.sign(d) &&
+      Math.sign(next) === Math.sign(d) &&
+      Math.abs(d) < Math.abs(previous) &&
+      Math.abs(d) <= Math.abs(next)
+    ) {
+      const ratio = (Math.sqrt(5) - 1) / 2;
+      let lo = xs[i - 1]!,
+        hi = xs[i + 1]!;
+      for (let step = 0; step < 80; step++) {
+        const p = hi - ratio * (hi - lo),
+          q = lo + ratio * (hi - lo);
+        if (Math.abs(gap(p)) < Math.abs(gap(q))) hi = q;
+        else lo = p;
+      }
+      const x = (lo + hi) / 2;
+      if (meets(x)) found.push(x);
+    }
+  }
+  const tolerance = (b - a) * 1e-6;
+  return found
+    .sort((p, q) => p - q)
+    .filter((x, index, all) => index === 0 || x - all[index - 1]! > tolerance)
+    .map((x) => ({ x, y: (f(x) + g(x)) / 2 }))
+    .filter((point) => Number.isFinite(point.y))
+    .slice(0, 50);
+}

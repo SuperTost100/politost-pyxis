@@ -24,7 +24,8 @@
       "ask": "Ask",
       "cards": "Cards",
       "quiz": "Quizzes and simulations",
-      "whiteboard": "Whiteboard"
+      "whiteboard": "Whiteboard",
+      "python": "Python"
     },
     "rows": {
       "newExam": "New exam",
@@ -50,7 +51,8 @@
       "undo": "Undo the last stroke",
       "redo": "Redo",
       "pen": "Pen",
-      "eraser": "Eraser"
+      "eraser": "Eraser",
+      "runCode": "Run the code"
     },
     "keys": {
       "enter": "Enter",
@@ -1837,7 +1839,6 @@
     "integral": "Integral from 0.05 to 8: {{value}}",
     "legend": "Green is f, cobalt is f', the dashed line is f''.",
     "invalid": "This formula could not be read.",
-    "function": "Function",
     "preview": "Formula preview",
     "xMin": "From x",
     "xMax": "To x",
@@ -1848,9 +1849,7 @@
     "rangeError": "Choose a finite x range with the lower value first.",
     "plotHelp": "Drag to pan. Scroll or use + and − to zoom. Arrow keys move the range; Home resets it.",
     "reset": "Reset zoom",
-    "copy": "Copy function",
-    "copied": "Function copied.",
-    "copyFailed": "Could not copy the function.",
+    "copyFailed": "Could not copy.",
     "download": "Download PNG",
     "saved": "Graph saved.",
     "exportFailed": "Could not export this graph. Try again.",
@@ -1859,7 +1858,18 @@
     "lower": "Lower bound",
     "integralUnavailable": "The integral is undefined at this lower bound or across a gap in the function.",
     "runtimeNeeded": "Download Python in the Python tool to show symbolic expressions.",
-    "preparePython": "Open Python"
+    "preparePython": "Open Python",
+    "functions": "Functions",
+    "curveLabel": "Function {{name}}",
+    "addCurve": "Add a function",
+    "removeCurve": "Remove {{name}}",
+    "intersections": "Intersections",
+    "noIntersections": "The curves do not meet in this range.",
+    "pair": "{{a}} and {{b}}",
+    "copy_one": "Copy function",
+    "copy_other": "Copy functions",
+    "copied_one": "Function copied.",
+    "copied_other": "Functions copied."
   },
   "python": {
     "title": "Python",
@@ -1883,7 +1893,15 @@
     "truncated": "Output stopped at 200 KB.",
     "reset": "Reset code",
     "tooLong": "Python code is limited to {{count}} characters.",
-    "setup": "Set up Python"
+    "setup": "Set up Python",
+    "saveSnippet": "Save snippet",
+    "snippets": "Saved snippets",
+    "openSnippet": "Open {{name}}",
+    "deleteSnippet": "Delete snippet {{name}}",
+    "replaceTitle": "Replace the code in the editor?",
+    "replaceBody": "The code you have now is not saved as a snippet.",
+    "replace": "Replace",
+    "keep": "Keep my code"
   },
   "tools": {
     "save": "Save",

@@ -73,7 +73,10 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
         name: /Codice Python|Python code/,
       });
       await code.fill("print('42')\nraise ValueError('example error')");
-      await page.getByRole("button", { name: /Esegui|Run/ }).click();
+      // The button in Italian, the Ctrl or Cmd+Enter shortcut from the editor in English.
+      if (language === "it")
+        await page.getByRole("button", { name: /Esegui|Run/ }).click();
+      else await code.press("ControlOrMeta+Enter");
       await expect(page.locator(".px-python pre").first()).toHaveText("42\n", {
         timeout: 30000,
       });
@@ -107,6 +110,43 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
       (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
     ).toEqual([]);
     await page.screenshot({ path: ".shots/m9-failed-light.png" });
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test("Graph several functions and mark where they meet", async () => {
+  test.skip(
+    !existsSync(".tmp/pyodide/pyodide.js"),
+    "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.",
+  );
+  const { app, page, userData } = await launch();
+  try {
+    await page.evaluate(() => {
+      window.location.hash = "/tools/graph";
+    });
+    const first = page.getByRole("textbox", { name: "Funzione f" });
+    await first.fill("x^2");
+    await page.getByRole("button", { name: "Aggiungi una funzione" }).click();
+    await page.getByRole("textbox", { name: "Funzione g" }).fill("x+2");
+    const meets = page.getByRole("region", { name: "Intersezioni" });
+    await expect(meets.getByText("f e g")).toHaveCount(2);
+    await expect(meets.getByText("(-1, 1)")).toBeVisible();
+    await expect(meets.getByText("(2, 4)")).toBeVisible();
+    await expect(page.locator(".px-graph-meet")).toHaveCount(2);
+    // Each curve has its own stroke; g is dashed.
+    await expect(page.locator("polyline[stroke-dasharray]").first()).toBeVisible();
+    await page.getByRole("textbox", { name: "Funzione g" }).fill("x^2+1");
+    await expect(
+      meets.getByText("Le curve non si incontrano in questo intervallo."),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Rimuovi g" }).click();
+    await expect(page.getByRole("textbox", { name: "Funzione g" })).toHaveCount(0);
+    await expect(page.locator(".px-graph-meets")).toHaveCount(0);
+    expect(
+      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
+    ).toEqual([]);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -177,7 +217,7 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
     await page.evaluate(() => {
       window.location.hash = "/tools/graph";
     });
-    await expect(page.getByRole("textbox", { name: "Grafico" })).toHaveValue(
+    await expect(page.getByRole("textbox", { name: "Funzione f" })).toHaveValue(
       "sin(x)/x",
     );
     expect(await page.locator("svg polyline").count()).toBeGreaterThanOrEqual(
