@@ -55,6 +55,29 @@ export function smartAnswers(
 }
 
 /**
+ * Where each question of a plan's lessons and introductions sits in its current text, by item and question id: its
+ * index among the item's questions. A question that a rewrite removed has no place.
+ */
+export function questionPlaces(
+  db: Database.Database,
+  planId: string,
+): Map<string, Map<string, number>> {
+  const items = db
+    .prepare(`SELECT id, kind, body_json FROM items WHERE plan_id = ? AND kind IN ('lesson', 'intro')`)
+    .all(planId) as Array<{ id: string; kind: string; body_json: string }>;
+  return new Map(
+    items.map((item) => [
+      item.id,
+      new Map(
+        [...smartQuestions(parseSmartText(markdownOf(item.body_json, item.kind))).keys()].map(
+          (id, index) => [id, index],
+        ),
+      ),
+    ]),
+  );
+}
+
+/**
  * The text the reader is shown, which the question ids are made from. The page shows an introduction without the
  * passage references an older one carried (see `plans.intro`), so they are removed here too: core and page then
  * always hash the same text.

@@ -6,6 +6,8 @@ import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
 import { cosine } from "../plans/rebuild";
 import { embedWithModel } from "../sources/retrieve";
+import { questionFlagged } from "./attempt";
+import { flaggedIds } from "./flags";
 import { assignAnswers, insertGap, mergeGap } from "./gapRows";
 
 /** Short form of one mistake, for the progress screen and as the fallback while no analysis exists. */
@@ -47,13 +49,17 @@ type Row = { topic_id: string | null; body_json: string; payload_json: string };
 
 const KINDS = "('quiz', 'diagnostic', 'simulation', 'review')";
 
-/** Wrong answers of one graded attempt row. A mixed item (diagnostic, simulation, review) files each by its question's topic. */
-function wrongsIn(row: Row): GapEvidence[] {
+/**
+ * Wrong answers of one graded attempt row. A mixed item (diagnostic, simulation, review) files each by its question's topic.
+ * A question marked wrong, on this attempt or through its source exercise, is not the student's mistake and is left out.
+ */
+function wrongsIn(row: Row, blocked: Set<string>): GapEvidence[] {
   const body = JSON.parse(row.body_json) as {
     questions?: Array<{
       id: string;
       stem?: string;
       topicId?: string;
+      sourceId?: string;
       sourceIds?: string[];
       options?: string[];
       answer?: { kind: string };
@@ -61,13 +67,14 @@ function wrongsIn(row: Row): GapEvidence[] {
   };
   const { results = [], picks = {} } = JSON.parse(row.payload_json) as {
     picks?: Record<string, unknown>;
-    results?: Array<{ id: string; score: number; expected?: string; explanation?: string }>;
+    results?: Array<{ id: string; score: number; expected?: string; explanation?: string; flagged?: boolean }>;
   };
   const wrongs: GapEvidence[] = [];
   for (const result of results) {
     const question = body.questions?.find((item) => item.id === result.id);
     const topicId = row.topic_id ?? question?.topicId;
     if (!question?.stem || result.score >= 1 || !topicId) continue;
+    if (result.flagged || questionFlagged(blocked, question)) continue;
     wrongs.push({
       id: question.id,
       topicId,
@@ -121,10 +128,11 @@ export function gapEvidence(db: Database.Database, gapId: string, limit = 5): Ga
           )
           .all(gap.planId, gap.topicId, gap.topicId, gap.openedAt - SLACK)
   ) as Array<Row & { attemptId: string }>;
+  const blocked = flaggedIds(db, "exercise");
   const seen = new Set<string>();
   const found: GapEvidence[] = [];
   for (const row of rows)
-    for (const wrong of wrongsIn(row)) {
+    for (const wrong of wrongsIn(row, blocked)) {
       if (wrong.topicId !== gap.topicId || seen.has(wrong.question)) continue;
       if (linked.length > 0 && !mine.has(`${row.attemptId}\u0000${wrong.id}`)) continue;
       seen.add(wrong.question);
@@ -161,9 +169,10 @@ export function attemptGroups(db: Database.Database, attemptId: string) {
          AND json_type(aa.payload_json, '$.results') = 'array'`,
     )
     .all(attemptId) as Row[];
+  const blocked = flaggedIds(db, "exercise");
   const groups = new Map<string, GapEvidence[]>();
   for (const row of rows)
-    for (const wrong of wrongsIn(row))
+    for (const wrong of wrongsIn(row, blocked))
       groups.set(wrong.topicId, [...(groups.get(wrong.topicId) ?? []), wrong]);
   return [...groups].map(([topicId, wrongs]) => ({
     topicId,

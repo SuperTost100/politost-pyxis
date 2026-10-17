@@ -394,8 +394,10 @@ export function planGuide(
       `SELECT topic_id, severity FROM gaps WHERE plan_id = ? AND closed_at IS NULL`,
     )
     .all(planId) as Array<{ topic_id: string | null; severity: "severe" | "minor" | null }>;
+  // Gap rows are written by the app itself (syncs, flags, merges), so they say nothing about when the topic was studied.
   const lastStudied = db.prepare(
-    `SELECT MAX(created_at) AS at FROM learning_events WHERE plan_id = ? AND topic_id = ?`,
+    `SELECT MAX(created_at) AS at FROM learning_events
+     WHERE plan_id = ? AND topic_id = ? AND kind NOT IN ('gap_opened', 'gap_closed')`,
   );
   // A topic's lesson is recorded once, so its step marks when the stay on that topic began.
   const readAt = new Map(

@@ -608,6 +608,68 @@ describe("specified mastery evidence", () => {
     expect(planMastery(db, "p", now)[0]!.mastery).toBe(0);
     db.close();
   });
+  it("keeps mastery at zero when every new card was rated Again", () => {
+    const db = fixture();
+    const at = new Date(2026, 0, 1, 12).getTime();
+    const failed = JSON.stringify(review(newCard(at), "again", at));
+    for (let i = 0; i < 12; i++) {
+      db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES(?,'p','a','Q','A',?)").run(`c${i}`, at);
+      db.prepare(
+        "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,?,'again',?,?)",
+      ).run(`r${i}`, `c${i}`, failed, at);
+    }
+    expect(planMastery(db, "p", at)[0]!.mastery).toBe(0);
+    expect(planMastery(db, "p", at + 86_400_000)[0]!.mastery).toBe(0);
+    // Rating one card Good later lifts the cached mastery; rating it Again after that brings it back to 0.
+    const later = at + 2 * 86_400_000;
+    const rate = (id: string, rating: "good" | "again", when: number) =>
+      db.prepare("INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,'c0',?,?,?)").run(
+        id,
+        rating,
+        JSON.stringify(review(JSON.parse(failed), rating, when)),
+        when,
+      );
+    rate("good", "good", later);
+    expect(planMastery(db, "p", later)[0]!.mastery).toBeGreaterThan(0);
+    rate("again", "again", later + 1000);
+    expect(planMastery(db, "p", later + 1000)[0]!.mastery).toBe(0);
+    db.close();
+  });
+  it("removes flagged exercises from evidence recorded before scores named their source", () => {
+    const db = fixture();
+    // A review recorded by an older version: its question scores carry the question id only.
+    db.prepare(
+      "INSERT INTO items(id,plan_id,kind,body_json,grounding,created_at) VALUES('review','p','review',?,'sources',1)",
+    ).run(
+      JSON.stringify({
+        questions: [
+          { id: "EX-mcq-0", topicId: "a", sourceId: "ex-a", answer: { kind: "mcq" } },
+          { id: "EX-mcq-1", topicId: "a", sourceId: "ex-b", answer: { kind: "mcq" } },
+        ],
+      }),
+    );
+    db.prepare(
+      "INSERT INTO attempts(id,plan_id,item_id,started_at,submitted_at) VALUES('att','p','review',1,1000)",
+    ).run();
+    db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('e','answer_given','p','a',?,1000)",
+    ).run(
+      JSON.stringify({
+        score: 0.5,
+        scores: [1, 0],
+        evidenceKind: "quiz",
+        attemptId: "att",
+        questionScores: [
+          { id: "EX-mcq-0", kind: "mcq", score: 1 },
+          { id: "EX-mcq-1", kind: "mcq", score: 0 },
+        ],
+      }),
+    );
+    expect(planMastery(db, "p", 1000)[0]!.mastery).toBeCloseTo(1 / 5);
+    flagTarget(db, "exercise", "ex-b", "wrong-question");
+    expect(planMastery(db, "p", 1000)[0]!.mastery).toBeCloseTo(1 / 4);
+    db.close();
+  });
   it("leaves cards that were never reviewed out of mastery", () => {
     const db = fixture();
     const at = new Date(2026, 0, 1, 12).getTime();

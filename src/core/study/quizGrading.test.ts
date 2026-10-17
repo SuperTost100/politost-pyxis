@@ -213,6 +213,31 @@ describe("quiz grading job", () => {
     }
   });
 
+  it("stamps the evidence, the step and the attempt with the submit time, not the grading time", async () => {
+    const { db, attemptId } = fixture([mcq, open("a")], "quiz");
+    db.prepare(
+      "UPDATE items SET topic_id = 'topic' WHERE id = (SELECT item_id FROM attempts WHERE id = ?)",
+    ).run(attemptId);
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async () => reply(1));
+    // Submitted at 23:50 the day before; grading finishes now.
+    const at = new Date(2026, 0, 1, 23, 50).getTime();
+    submitQuiz(db, runner, attemptId, { m: "0", a: "ten" }, at);
+    await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(submitted(db, attemptId)).toBe(at);
+    expect(
+      db
+        .prepare(
+          "SELECT kind, created_at FROM learning_events WHERE kind IN ('answer_given', 'lesson_completed') ORDER BY created_at",
+        )
+        .all(),
+    ).toEqual([
+      { kind: "answer_given", created_at: at },
+      { kind: "lesson_completed", created_at: at + 1 },
+    ]);
+    db.close();
+  });
+
   it("makes no model call when every open answer is blank", async () => {
     const { db, attemptId } = fixture([open("a", ""), mcq], "quiz");
     let calls = 0;
@@ -515,6 +540,40 @@ describe("quiz grading job", () => {
     );
     expect(done.result!.picks).toEqual({ cfg: "early", two: "draft-two" });
     expect(seen).toEqual(["early", "draft-two"]);
+    // The answers froze at time-up, so that is when the quiz counts as submitted.
+    expect(submitted(db, attemptId)).toBe(t0 + 60_000);
+    db.close();
+  });
+
+  it("takes no answers on a timed quiz until every question is ready, so none are given off the clock", async () => {
+    const { db, attemptId } = fixture([open("cfg"), open("two")], "quiz");
+    const item = db
+      .prepare("SELECT id, body_json FROM items WHERE kind = 'quiz'")
+      .get() as { id: string; body_json: string };
+    const body = JSON.parse(item.body_json);
+    body.config.timerMinutes = 1;
+    body.complete = false;
+    const setBody = () =>
+      db.prepare("UPDATE items SET body_json = ? WHERE id = ?").run(JSON.stringify(body), item.id);
+    setBody();
+    const runner = createRunner(db, () => {});
+    const run: GenerateInput["run"] = async () => reply(1);
+    registerQuizGradingJobs(db, runner, run);
+    const t0 = 1_000_000;
+    expect(() => saveQuizDraft(db, attemptId, { cfg: "early" }, 0, undefined, t0)).toThrow("quiz-building");
+    await expect(checkQuestion(db, runner, run, attemptId, "cfg", "early", t0)).rejects.toThrow("quiz-building");
+    // Moving between questions is still saved, and starts no clock.
+    saveQuizDraft(db, attemptId, {}, 1, undefined, t0);
+    expect(checkedAnswer(db, attemptId, "cfg")).toBeUndefined();
+    body.complete = true;
+    setBody();
+    saveQuizDraft(db, attemptId, { cfg: "ready" }, 0, undefined, t0 + 5_000);
+    await checkQuestion(db, runner, run, attemptId, "cfg", "ready", t0 + 6_000);
+    expect(checkedAnswer(db, attemptId, "cfg")).toMatchObject({ pick: "ready" });
+    const deadline = db
+      .prepare("SELECT json_extract(payload_json, '$.deadlineAt') AS at FROM attempt_answers WHERE json_type(payload_json, '$.draft') = 'object'")
+      .get() as { at: number };
+    expect(deadline.at).toBe(t0 + 5_000 + 60_000);
     db.close();
   });
 

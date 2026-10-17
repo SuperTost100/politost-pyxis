@@ -116,13 +116,35 @@ export function isMastered(state: ScheduleState): boolean {
   );
 }
 
-/** Current recall probability, rather than a rating counted as another success. */
-export function retrievability(state: ScheduleState, now: number): number {
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * Current recall probability, rather than a rating counted as another success.
+ * Elapsed time is fractional: ts-fsrs `get_retrievability` rounds down to whole
+ * days, which keeps a card at 1 for the day of its review. A card whose latest
+ * rating is Again is in Learning or Relearning and scores 0 until it is rated
+ * again, so failing cards cannot raise mastery.
+ */
+export function retrievability(
+  state: ScheduleState,
+  now: number,
+  latestRating?: string | null,
+): number {
   if (!state.fsrs?.last_review || state.fsrs.reps === 0) return 0;
-  const value = scheduler.get_retrievability(
-    revive(state.fsrs),
-    new Date(now),
-    false,
+  if (state.fsrs.state === FsrsState.New) return 0;
+  if (
+    latestRating === "again" &&
+    (state.fsrs.state === FsrsState.Learning ||
+      state.fsrs.state === FsrsState.Relearning)
+  )
+    return 0;
+  const elapsedDays = Math.max(
+    0,
+    (now - new Date(state.fsrs.last_review).getTime()) / MS_PER_DAY,
+  );
+  const value = scheduler.forgetting_curve(
+    elapsedDays,
+    state.fsrs.stability,
   );
   return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }

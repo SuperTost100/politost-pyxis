@@ -25,9 +25,14 @@ function numbersClose(left: string, right: string): boolean {
   // Whole numbers such as years, counts or codes must match exactly; 1% would let 1860 pass for 1848.
   const whole = /^\s*[-+]?\d+\s*$/;
   if (whole.test(left) && whole.test(right)) return a === b;
-  const scale = Math.max(Math.abs(a), Math.abs(b), 1);
+  // 1% of the larger value, with no floor: a floor of 1 let 0 pass for 0.004. A zero reference has nothing to be
+  // relative to, so it accepts only rounding noise.
+  if (b === 0) return Math.abs(a) <= ZERO_EPSILON;
+  const scale = Math.max(Math.abs(a), Math.abs(b));
   return Math.abs(a - b) <= scale * 0.01;
 }
+
+const ZERO_EPSILON = 1e-9;
 
 export function gradeAnswer(input: Grade): number {
   if (input.kind === "mcq") return input.picked === input.correct ? 1 : 0;

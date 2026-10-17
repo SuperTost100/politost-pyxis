@@ -824,6 +824,7 @@
     "pageSourcePlaceholder": "Choose a source",
     "pageNumber": "Page",
     "pageEmpty": "No text from that page is in this plan. Check the source and page number.",
+    "timerWaiting": "You can answer once every question is ready. The clock starts then.",
     "timerOption": "Set a time limit",
     "timerMinutes": "Minutes",
     "timer": "Time left",

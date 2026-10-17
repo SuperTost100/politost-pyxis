@@ -10,6 +10,7 @@ import {
   scoresForGap,
 } from "../study/gapRows";
 import { retrievability, type ScheduleState } from "../study/schedule";
+import { questionPlaces } from "../study/smartText";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { masteryFor, type MasteryEvent } from "../study/mastery";
@@ -54,8 +55,8 @@ type PlanEvidence = {
     id: string;
     topicId: string;
     createdAt: number;
-    /** `state` is parsed from `json` the first time it is needed. */
-    reviews: Array<{ at: number; json: string; state?: ScheduleState }>;
+    /** `state` is parsed from `json` the first time it is needed. `rating` is the button pressed. */
+    reviews: Array<{ at: number; json: string; rating: string; state?: ScheduleState }>;
   }>;
 };
 
@@ -63,7 +64,7 @@ function planEvidence(db: Database.Database, planId: string): PlanEvidence {
   return cachedEvidence(db, planId, () => {
     const rows = db
       .prepare(
-        `SELECT c.id, c.topic_id, c.created_at, cr.state_json, cr.reviewed_at
+        `SELECT c.id, c.topic_id, c.created_at, cr.state_json, cr.rating, cr.reviewed_at
          FROM cards c JOIN card_reviews cr ON cr.card_id = c.id
          WHERE c.plan_id = ? AND c.topic_id IS NOT NULL AND c.suspended = 0 AND c.removed = 0
          ORDER BY c.id, cr.reviewed_at, cr.rowid`,
@@ -73,6 +74,7 @@ function planEvidence(db: Database.Database, planId: string): PlanEvidence {
       topic_id: string;
       created_at: number;
       state_json: string;
+      rating: string;
       reviewed_at: number;
     }>;
     const cards: PlanEvidence["cards"] = [];
@@ -87,7 +89,7 @@ function planEvidence(db: Database.Database, planId: string): PlanEvidence {
         };
         cards.push(card);
       }
-      card.reviews.push({ at: row.reviewed_at, json: row.state_json });
+      card.reviews.push({ at: row.reviewed_at, json: row.state_json, rating: row.rating });
     }
     const series = readSeries(db, planId);
     return { series, answers: seriesEvidence(series), cards };
@@ -111,7 +113,7 @@ function masteryEvidence(evidence: PlanEvidence, now: number): MasteryEvent[] {
       topicId: card.topicId,
       kind: "card",
       cardId: card.id,
-      score: retrievability(state, now),
+      score: retrievability(state, now, latest.rating),
       at: now,
     });
   }
@@ -145,16 +147,19 @@ export function weightedPlanMastery(
 function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   const rows = db
     .prepare(
-      `SELECT topic_id, kind, payload_json, created_at FROM learning_events
+      `SELECT topic_id, item_id, kind, payload_json, created_at FROM learning_events
        WHERE plan_id = ?`,
     )
     .all(planId) as Array<{
     topic_id: string | null;
+    item_id: string | null;
     kind: string;
     payload_json: string;
     created_at: number;
   }>;
   const blocked = flaggedIds(db, "exercise");
+  const places = questionPlaces(db, planId);
+  const attemptSources = attemptQuestionSources(db, planId);
   const questionKinds = new Map<string, string>();
   const itemBodies = db
     .prepare(
@@ -207,7 +212,7 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   });
   return rows.flatMap((row): SeriesEvent[] => {
     if (row.kind === "gap_opened" || row.kind === "gap_closed") return [];
-    const payload = scorePayload(row.payload_json, blocked);
+    const payload = scorePayload(row.payload_json, blocked, attemptSources);
     if (!payload) return [];
     if (row.kind === "active_time") {
       return [
@@ -252,6 +257,15 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
               ? 1
               : 0.5,
         attemptId: payload.attemptId,
+        ...(payload.evidenceKind === "check" && row.item_id && places.has(row.item_id)
+          ? {
+              lessonCheck: {
+                itemId: row.item_id,
+                blockId: payload.blockId ?? "",
+                current: places.get(row.item_id)!.has(payload.blockId ?? ""),
+              },
+            }
+          : {}),
         answers: payload.questionScores?.map(({ id, score }) => ({ id, score })),
         evidenceKind:
           payload.evidenceKind ?? (legacySimulation ? "simulation" : undefined),
@@ -550,6 +564,8 @@ type ScorePayload = {
   scores?: number[];
   seconds?: number;
   evidenceKind?: "quiz" | "simulation" | "check" | "self";
+  /** The question a lesson's quick check answered. */
+  blockId?: string;
   questionScores?: Array<{
     id?: string;
     sourceIds?: string[];
@@ -558,13 +574,49 @@ type ScorePayload = {
   }>;
 };
 
-function scorePayload(raw: string, blocked: Set<string>): ScorePayload | null {
+/**
+ * The source exercises of each question of the plan's graded attempts, by attempt and question id. Question scores
+ * recorded before they named their sources (mixed reviews, diagnostics and simulations) find them here, so a later
+ * "wrong question" flag still removes them.
+ */
+function attemptQuestionSources(db: Database.Database, planId: string) {
+  const rows = db
+    .prepare(
+      `SELECT a.id, i.body_json FROM attempts a JOIN items i ON i.id = a.item_id
+       WHERE a.plan_id = ? AND i.kind IN ('quiz', 'diagnostic', 'review', 'simulation')`,
+    )
+    .all(planId) as Array<{ id: string; body_json: string }>;
+  const sources = new Map<string, string[]>();
+  for (const row of rows) {
+    const body = JSON.parse(row.body_json) as {
+      questions?: Array<{ id: string; sourceId?: string; sourceIds?: string[] }>;
+    };
+    for (const question of body.questions ?? []) {
+      const ids = [question.sourceId, ...(question.sourceIds ?? [])].filter(
+        (id): id is string => !!id,
+      );
+      if (ids.length) sources.set(`${row.id}\u0000${question.id}`, ids);
+    }
+  }
+  return sources;
+}
+
+function scorePayload(
+  raw: string,
+  blocked: Set<string>,
+  attemptSources: ReadonlyMap<string, string[]> = new Map(),
+): ScorePayload | null {
   const payload = JSON.parse(raw) as ScorePayload;
   if (!payload.questionScores) return payload;
+  const sourcesOf = (row: { id?: string; sourceIds?: string[] }) =>
+    row.sourceIds ??
+    (payload.attemptId && row.id
+      ? (attemptSources.get(`${payload.attemptId}\u0000${row.id}`) ?? [])
+      : []);
   const rows = payload.questionScores.filter(
     (row) =>
       (!row.id || !blocked.has(row.id)) &&
-      !(row.sourceIds ?? []).some((id) => blocked.has(id)),
+      !sourcesOf(row).some((id) => blocked.has(id)),
   );
   if (!rows.length) return null;
   return {

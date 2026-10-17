@@ -61,6 +61,19 @@ describe("gradeAnswer", () => {
     expect(
       gradeAnswer({ kind: "open", answer: "1849", reference: "1848" }),
     ).toBe(0);
+    // Small values get the same 1% relative tolerance, not 0.01 absolute.
+    const close = (answer: string, reference: string) =>
+      gradeAnswer({ kind: "completion", answers: [answer], accepted: [[reference]] });
+    expect(close("0", "0.004")).toBe(0);
+    expect(close("0.009", "0.002")).toBe(0);
+    expect(close("0.49", "0.504")).toBe(0);
+    expect(close("0.5", "0.504")).toBe(1);
+    expect(close("0.00201", "0.002")).toBe(1);
+    expect(close("6.62e-34", "6.626e-34")).toBe(1);
+    expect(close("0", "6.626e-34")).toBe(0);
+    expect(close("0.0", "0")).toBe(1);
+    expect(close("1e-12", "0")).toBe(1);
+    expect(close("0.001", "0")).toBe(0);
     expect(
       gradeAnswer({
         kind: "matching",

@@ -1,5 +1,5 @@
 import { shouldClose, shouldOpen, type OpenGap } from "./gaps";
-import { currentRatings, masteryFor, type MasteryEvent } from "./mastery";
+import { currentRatings, masteryFor, type LessonCheck, type MasteryEvent } from "./mastery";
 
 export type SeriesEvent = {
   topicId: string;
@@ -15,6 +15,11 @@ export type SeriesEvent = {
   /** The attempt this event came from and its answers by question id, when recorded; links wrong answers to gaps. */
   attemptId?: string;
   answers?: Array<{ id?: string; score: number }>;
+  /**
+   * The lesson a quick check was answered in, the question, and whether the question is still in the lesson's current
+   * text. Unset when the lesson is unknown.
+   */
+  lessonCheck?: LessonCheck;
   kind: "quiz" | "card" | "lesson" | "active";
   seconds?: number;
 };
@@ -111,6 +116,7 @@ export function seriesEvidence(events: SeriesEvent[]): MasteryEvent[] {
       topicId: event.topicId,
       kind: event.evidenceKind ?? "quiz",
       exerciseId: ratedExercise(event),
+      ...(event.lessonCheck ? { lessonCheck: event.lessonCheck } : {}),
       answerKind: event.answerKinds?.[index],
       score,
       at: event.at,

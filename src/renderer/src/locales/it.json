@@ -824,6 +824,7 @@
     "pageSourcePlaceholder": "Scegli una fonte",
     "pageNumber": "Pagina",
     "pageEmpty": "In questo piano non c'è testo di quella pagina. Controlla fonte e numero di pagina.",
+    "timerWaiting": "Potrai rispondere quando tutte le domande saranno pronte. Il tempo parte in quel momento.",
     "timerOption": "Imposta un limite di tempo",
     "timerMinutes": "Minuti",
     "timer": "Tempo rimasto",

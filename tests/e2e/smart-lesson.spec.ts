@@ -298,6 +298,33 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(page.getByText("Lezione completata")).toBeVisible();
     expect(await done("lesson", learn.topicId)).toBe(true);
 
+    // Another wording is another lesson: the same recap there starts unanswered, and its answer is saved for it.
+    // The topic's own answers: the introduction's check answered above has no topic.
+    const checkAnswers = () => {
+      const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+      try {
+        return (
+          db
+            .prepare(
+              "SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'answer_given' AND json_extract(payload_json, '$.evidenceKind') = 'check' AND topic_id = ?",
+            )
+            .get(learn.topicId) as { n: number }
+        ).n;
+      } finally {
+        db.close();
+      }
+    };
+    expect(checkAnswers()).toBe(4);
+    await page.getByRole("button", { name: "Livello di linguaggio: Bilanciato" }).click();
+    await page.getByRole("menuitem", { name: "Semplice" }).click();
+    await expect(page.getByRole("button", { name: "Livello di linguaggio: Semplice" })).toBeVisible();
+    await expect(status).toBeVisible();
+    await expect(status).toHaveCount(0, { timeout: 20000 });
+    await expect(recap.getByText("2 su 3 giuste")).toHaveCount(0);
+    await recap.getByRole("button", { name: /^(B\s*)?Newton$/ }).click();
+    await expect.poll(checkAnswers).toBe(5);
+    await language(page, "it", "light");
+
     // Sources used: collapsed, and each place opens the source viewer.
     const sources = page.locator(".px-reader-sources");
     await expect(sources.getByRole("button", { name: /cap\. 1/ })).toBeHidden();

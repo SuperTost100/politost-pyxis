@@ -2,6 +2,8 @@ import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan } from "../plans/create";
+import { planMastery } from "../plans/progress";
+import { flagTarget } from "./flags";
 import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
 import { createRunner } from "../jobs/runner";
@@ -241,6 +243,18 @@ describe("M11 model-graded simulations", () => {
       [first!.id]: "dieci metri al secondo",
       [second!.id]: "dieci newton",
     });
+    // Evidence and the step count from time-up, when the answers froze, not from when grading finished.
+    expect(
+      db
+        .prepare(
+          "SELECT kind, created_at FROM learning_events WHERE kind IN ('answer_given', 'lesson_completed') ORDER BY created_at",
+        )
+        .all(),
+    ).toEqual([
+      { kind: "answer_given", created_at: deadline },
+      { kind: "answer_given", created_at: deadline + 1 },
+      { kind: "lesson_completed", created_at: deadline + 3 },
+    ]);
     db.close();
   });
   it("freezes the saved answers once the grace after time-up is over", async () => {
@@ -695,6 +709,52 @@ describe("M11 model-graded simulations", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(count(db, "attempts")).toBe(0);
     expect(count(db, "items")).toBe(0);
+    db.close();
+  });
+  it("leaves an exercise flagged as wrong out of the next simulation", () => {
+    const { db, planId } = fixture();
+    const { id } = db
+      .prepare("SELECT id FROM exercises WHERE prompt LIKE 'Quanto vale la velocità%'")
+      .get() as { id: string };
+    flagTarget(db, "exercise", id, "wrong-question");
+    const opened = startSimulation(db, planId, 30, Date.now(), "exam");
+    expect(opened.questions.map((q) => q.stem)).toEqual([
+      "Quanto vale la forza?",
+    ]);
+    db.close();
+  });
+  it("records each question's source exercise so flagging it removes the evidence", () => {
+    const { db, planId } = fixture();
+    const [topic] = db
+      .prepare("SELECT id FROM topics WHERE plan_id=? ORDER BY position")
+      .all(planId) as { id: string }[];
+    recordTopicScores(
+      db,
+      planId,
+      [
+        { topicId: topic!.id, id: "EX-mcq-0", sourceId: "ex-a" },
+        { topicId: topic!.id, id: "EX-pair-1", sourceId: "ex-b", sourceIds: ["ex-b", "ex-c"] },
+      ],
+      [{ score: 1 }, { score: 0 }],
+      Date.now(),
+      "quiz",
+    );
+    const payload = JSON.parse(
+      (
+        db
+          .prepare("SELECT payload_json FROM learning_events WHERE kind='answer_given'")
+          .get() as { payload_json: string }
+      ).payload_json,
+    );
+    expect(payload.questionScores.map((row: { sourceIds: string[] }) => row.sourceIds)).toEqual([
+      ["ex-a"],
+      ["ex-b", "ex-c"],
+    ]);
+    const mastery = () =>
+      planMastery(db, planId).find((row) => row.id === topic!.id)!.mastery;
+    expect(mastery()).toBeGreaterThan(0);
+    flagTarget(db, "exercise", "ex-a", "wrong-question");
+    expect(mastery()).toBe(0);
     db.close();
   });
   it("keeps repeated question scores on their own topics", () => {

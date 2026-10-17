@@ -343,6 +343,8 @@ export function QuizPage() {
     submit.isPending ||
     gradingStarted ||
     expired ||
+    // A timed quiz's clock starts once every question exists; until then it takes no answers.
+    (timed && session.data?.state !== "succeeded") ||
     (Boolean(attemptId) && hydratedAttempt !== attemptId);
   const [remaining, setRemaining] = useState(10);
   useEffect(() => {
@@ -652,6 +654,7 @@ export function QuizPage() {
               })}
             </p>
           ) : null}
+          {generating && timed ? <p className="small ink-muted">{t("quiz.timerWaiting")}</p> : null}
           {generationFailed ? (
             <>
               <p className="small" role="alert">

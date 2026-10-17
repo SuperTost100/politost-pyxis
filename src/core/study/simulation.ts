@@ -16,6 +16,7 @@ import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
 import { recordStep, stepResult } from "../plans/steps";
 import { topicExercises } from "./exercises";
+import { flaggedIds } from "./flags";
 import { acrossTopics } from "./topicQuiz";
 import { DRAFT_GRACE_MS } from "./attempt";
 
@@ -85,10 +86,12 @@ function smartbookQuestions(
   const topics = db
     .prepare(`SELECT id FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position`)
     .all(planId) as Array<{ id: string }>;
+  const blocked = flaggedIds(db, "exercise");
   return acrossTopics(
     topics.map((topic) =>
       topicExercises(db, topic.id)
         .filter((row) => row.answer && row.answer.trim())
+        .filter((row) => !blocked.has(row.id))
         .filter((row) => source === "mixed" || row.kind === "esame")
         .map((row) => ({
           id: uuidv7(),
@@ -611,12 +614,13 @@ export function registerSimulationJobs(
             db.prepare(
               "UPDATE attempts SET submitted_at=? WHERE id=? AND submitted_at IS NULL",
             ).run(params.frozenAt, params.attemptId);
+            // Evidence and the step count from when the answers froze, as the attempt does, not from when grading ended.
             recordTopicScores(
               db,
               params.planId,
               params.questions,
               params.results,
-              now,
+              params.frozenAt,
               "simulation",
               params.attemptId,
             );
@@ -628,7 +632,7 @@ export function registerSimulationJobs(
                 result: stepResult(params.results),
                 attemptId: params.attemptId,
               },
-              now + params.results.length + 1,
+              params.frozenAt + params.results.length + 1,
             );
             syncGaps(db, params.planId, now);
           })();
@@ -820,6 +824,8 @@ export function recordTopicScores(
     topicId?: string;
     id?: string;
     answer?: { kind: string };
+    sourceId?: string;
+    sourceIds?: string[];
   }>,
   results: Array<{ score: number }>,
   now: number,
@@ -828,14 +834,22 @@ export function recordTopicScores(
 ): void {
   const byTopic = new Map<
     string,
-    Array<{ id?: string; kind?: string; score: number }>
+    Array<{ id?: string; kind?: string; sourceIds: string[]; score: number }>
   >();
   questions.forEach((question, index) => {
     const topicId = question.topicId;
     const score = results[index]?.score;
     if (!topicId || score == null) return;
     const list = byTopic.get(topicId) ?? [];
-    list.push({ id: question.id, kind: question.answer?.kind, score });
+    // The source exercises let a later "wrong question" flag remove this evidence.
+    const sourceIds = [
+      ...new Set(
+        [question.sourceId, ...(question.sourceIds ?? [])].filter(
+          (id): id is string => !!id,
+        ),
+      ),
+    ];
+    list.push({ id: question.id, kind: question.answer?.kind, sourceIds, score });
     byTopic.set(topicId, list);
   });
   let at = now;
