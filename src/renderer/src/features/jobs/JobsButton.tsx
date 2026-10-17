@@ -1,4 +1,5 @@
-import { Button, Popover, Progress } from "antd";
+import { useQueryClient } from "@tanstack/react-query";
+import { App, Button, Popover, Progress } from "antd";
 import { ListChecks, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { JobView } from "@shared/ipc";
@@ -13,6 +14,17 @@ function stepText(label: string, t: (key: string) => string): string {
 
 function JobList({ jobs }: { jobs: JobView[] }) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
+  const client = useQueryClient();
+  // A job that changed meanwhile, or a core that restarted, refuses the action. Say so and show the list as it is now.
+  const act = (
+    request: "jobs.cancel" | "jobs.retry" | "jobs.resume" | "jobs.dismiss",
+    jobId: string,
+  ) =>
+    void invoke(request, { jobId }).catch(() => {
+      void message.error(t("jobs.actionFailed"));
+      void client.invalidateQueries({ queryKey: ["jobs"] });
+    });
   const stateText = (job: JobView) =>
     job.stepLabel ? stepText(job.stepLabel, t) : t(`jobs.state.${job.state}`);
   return (
@@ -30,7 +42,7 @@ function JobList({ jobs }: { jobs: JobView[] }) {
               <Button
                 type="text"
                 size="small"
-                onClick={() => void invoke("jobs.cancel", { jobId: job.id })}
+                onClick={() => act("jobs.cancel", job.id)}
               >
                 {t("jobs.cancel")}
               </Button>
@@ -40,14 +52,14 @@ function JobList({ jobs }: { jobs: JobView[] }) {
                 <Button
                   type="text"
                   size="small"
-                  onClick={() => void invoke("jobs.retry", { jobId: job.id })}
+                  onClick={() => act("jobs.retry", job.id)}
                 >
                   {t("jobs.retry")}
                 </Button>
                 <Button
                   type="text"
                   size="small"
-                  onClick={() => void invoke("jobs.dismiss", { jobId: job.id })}
+                  onClick={() => act("jobs.dismiss", job.id)}
                 >
                   {t("jobs.dismiss")}
                 </Button>
@@ -58,14 +70,14 @@ function JobList({ jobs }: { jobs: JobView[] }) {
                 <Button
                   type="text"
                   size="small"
-                  onClick={() => void invoke("jobs.resume", { jobId: job.id })}
+                  onClick={() => act("jobs.resume", job.id)}
                 >
                   {t("jobs.resume")}
                 </Button>
                 <Button
                   type="text"
                   size="small"
-                  onClick={() => void invoke("jobs.dismiss", { jobId: job.id })}
+                  onClick={() => act("jobs.dismiss", job.id)}
                 >
                   {t("jobs.dismiss")}
                 </Button>

@@ -13,10 +13,12 @@ import { DatabaseSync } from "node:sqlite";
 import { unzipSync } from "fflate";
 
 test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export modal", async () => {
-  const userData = mkdtempSync(join(tmpdir(), "pyxis-export-check-"));
+  const root = mkdtempSync(join(tmpdir(), "pyxis-export-check-"));
+  // Saved files go next to the app's data: Pyxis refuses to save a backup inside it.
+  const userData = join(root, "userData");
   mkdirSync(".tmp", { recursive: true });
   mkdirSync(".shots", { recursive: true });
-  const saved = join(userData, "export.bin");
+  const saved = join(root, "export.bin");
   const env = {
     ...process.env,
     PYXIS_USER_DATA: userData,
@@ -255,6 +257,6 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     expect(errors).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 });

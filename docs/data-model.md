@@ -98,6 +98,10 @@ Automatic backups use the same archive format, so Restore accepts them unchanged
 
 The settings and the last result are main-process state in `userData/backups.json`, not a row in the `settings` table. The folder is a path on this computer, and a restore or a move must not roll back the record of the last backup.
 
+A workspace with no source, plan, chat or whiteboard is not backed up automatically. On a new computer set up to restore, that empty copy would be the newest file in a synced folder. Back up now still copies it, because the student asked.
+
+Each computer marks its automatic backups with an ID: eight hex digits made on its first backup, saved in `backups.json` as `backupId` and added to every file name, as in `pyxis-auto-backup-2026-10-13-210512-1a2b3c4d.zip`. The ID is in `backups.json` and not in the database, so a computer that restores another one's backup still gets its own. Retention keeps the newest three files with this computer's ID and deletes nothing else, so two computers sharing a synced folder never delete each other's backups. Files from Pyxis 0.3.1 and earlier have no ID. Retention never deletes them, since nothing proves which computer wrote them, and Restore accepts them as before. Delete all data with its backups box ticked removes this computer's backups and those without an ID, and keeps backups with another computer's ID.
+
 ## Restore safety
 
 Restore validates and migrates a staging copy, keeps the original workspace until the new core is healthy, and recovers from an interrupted swap. The steps are in [architecture](architecture.md#restore-safety).

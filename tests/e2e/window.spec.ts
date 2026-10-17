@@ -97,10 +97,12 @@ test("window CSP: no string eval and no remote images in the main window", async
 // Live mode uses the signed-in engine for plan, lesson and quiz generation.
 test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restore", async () => {
   test.setTimeout(process.env.PYXIS_LIVE_RELEASE === "1" ? 600000 : 240000);
-  const userData = mkdtempSync(join(tmpdir(), "pyxis-release-"));
-  const book = join(userData, "motion.ptsb");
-  const backup = join(userData, "backup.zip");
-  const exported = join(userData, "Motion.pyxis");
+  const root = mkdtempSync(join(tmpdir(), "pyxis-release-"));
+  // The backup goes next to the app's data: Pyxis refuses to save one inside it.
+  const userData = join(root, "userData");
+  const book = join(root, "motion.ptsb");
+  const backup = join(root, "backup.zip");
+  const exported = join(root, "Motion.pyxis");
   writeFileSync(
     book,
     zipSync({
@@ -546,7 +548,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       );
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

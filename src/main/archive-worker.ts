@@ -2,6 +2,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import {
   backupWorkspace,
   hasActiveJobs,
+  hasStudyData,
   restoreWorkspace,
   commitWorkspaceRestore,
   recoverInterruptedRestore,
@@ -14,13 +15,17 @@ const data = workerData as {
   /** Automatic backups: one Int32 that main sets to 1 to stop the copy. */
   stop?: SharedArrayBuffer;
   waitForJobs?: boolean;
+  /** Automatic backups: skip a workspace with no study data yet. */
+  requireData?: boolean;
 };
 
 try {
   if (!data.workspace) throw new Error("backup-failed");
   if (data.op === "recover") {
-    recoverInterruptedRestore(data.workspace);
-    parentPort?.postMessage({ ok: true });
+    parentPort?.postMessage({
+      ok: true,
+      outcome: recoverInterruptedRestore(data.workspace),
+    });
   } else if (data.op === "commit") {
     parentPort?.postMessage({
       ok: true,
@@ -30,6 +35,8 @@ try {
     if (!data.zip) throw new Error("backup-failed");
     if (data.op === "backup") backupWorkspace(data.workspace, data.zip);
     else if (data.op === "live-backup") {
+      if (data.requireData && !hasStudyData(data.workspace))
+        throw new Error("backup-empty");
       if (data.waitForJobs && hasActiveJobs(data.workspace))
         throw new Error("backup-jobs-active");
       const flag = data.stop ? new Int32Array(data.stop) : undefined;

@@ -1264,7 +1264,7 @@
     "wipeConfirm": "Cancella per sempre",
     "wipeHint": "Cancella piani, fonti, chat e chiavi dei motori su questo computer. Le chiavi vengono rimosse per prime, quindi dovrai aggiungerle di nuovo. Scegli tu se cancellare anche le copie automatiche.",
     "wipeBackups": "Cancella anche le copie automatiche",
-    "wipeBackupsFolder": "Pyxis cancella solo i suoi file di copia in {{folder}}.",
+    "wipeBackupsFolder": "Pyxis cancella le copie automatiche fatte da questo computer in {{folder}} e quelle delle versioni precedenti di Pyxis. Le copie di un altro computer e gli altri tuoi file restano.",
     "wipeBackupsLeftTitle": "I tuoi dati sono stati cancellati",
     "wipeBackupsLeft": "Pyxis non è riuscito a cancellare le copie automatiche in {{folder}}. Se non le vuoi più, cancellale tu da quella cartella.",
     "wipeConfirmHint": "Le copie automatiche restano nella tua cartella delle copie. Se non le vuoi più, cancellale tu da quella cartella.",
@@ -1274,6 +1274,7 @@
     "backupFailed": "La copia non è riuscita.",
     "backupTooLarge": "Posso salvare al massimo {{limit}} GB in una copia, e questo spazio di lavoro ne occupa {{size}} GB. Rimuovi le fonti che non ti servono più e riprova.",
     "backupTooManyFiles": "Questo spazio di lavoro ha più file di quanti ne possa contenere una copia. Rimuovi le fonti che non ti servono più e riprova.",
+    "backupInsideData": "Salva la copia fuori dai dati di Pyxis. Lì andrebbe persa insieme a loro, o potrebbe sostituire i tuoi dati.",
     "autoBackup": {
       "title": "Copie automatiche",
       "switch": "Copia di sicurezza automatica",
@@ -1289,6 +1290,7 @@
       "failed": "La copia del {{at}} non è riuscita.",
       "lastGood": "L'ultima copia completa è del {{at}}.",
       "fix": "Impostazioni copie",
+      "dismissFailed": "Pyxis non è riuscito a nascondere questo avviso. Riprova.",
       "notice": "La copia automatica non è riuscita. {{reason}}",
       "reason": {
         "folder-missing": "La cartella delle copie non è disponibile. Collega il disco su cui si trova, oppure scegli un'altra cartella.",
@@ -1310,6 +1312,8 @@
       }
     },
     "restoreFailed": "Il file non è una copia valida.",
+    "restoreRolledBack": "Il ripristino non è riuscito a finire, quindi Pyxis è tornato ai dati che avevi prima. Della copia non è stato tenuto nulla.",
+    "restoreRecoveryRequired": "Pyxis non è riuscito né a finire né ad annullare il ripristino, quindi si è fermato per non mettere a rischio i tuoi dati. Esci da Pyxis e riaprilo per riavere i dati che avevi prima del ripristino.",
     "about": "Informazioni",
     "move": "Sposta lo spazio di lavoro",
     "moveHint": "Scegli una cartella. Pyxis crea una sottocartella e verifica i dati prima di spostarli.",
@@ -1345,6 +1349,7 @@
     "retry": "Riprova",
     "resume": "Riprendi",
     "dismiss": "Chiudi",
+    "actionFailed": "Pyxis non è riuscito a modificare questa attività. Riprova.",
     "demoFailed": "Il secondo passo non è riuscito.",
     "demo": {
       "one": "Preparo il primo passo",

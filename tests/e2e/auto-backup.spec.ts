@@ -20,8 +20,21 @@ import { DatabaseSync } from "node:sqlite";
 import { quitPyxis } from "./app-exit";
 import { animationsSettled } from "./settled";
 
-const automatic = /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}\.zip$/;
+const automatic =
+  /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}(?:-[0-9a-f]{8})?\.zip$/;
 const HOUR = 60 * 60 * 1000;
+
+/** Gives the workspace some study data. Without any, Pyxis makes no automatic backup. */
+function addPlan(workspace: string, id = "auto-plan", title = "Motion") {
+  const db = new DatabaseSync(join(workspace, "pyxis.db"), { timeout: 10000 });
+  try {
+    db.prepare(
+      "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES (?,?,'ready',1,1)",
+    ).run(id, title);
+  } finally {
+    db.close();
+  }
+}
 
 /** Main's own log lines, such as "pyxis: automatic backup failed (permission)". */
 const mainLog: string[] = [];
@@ -104,7 +117,7 @@ function removeTestFolder(root: string) {
   }
 }
 
-test("automatic backups: first launch, not twice a day, a day later with retention, and restore", async () => {
+test("automatic backups: not while empty, then once a day with retention of this computer's files, and restore", async () => {
   test.setTimeout(180_000);
   const root = mkdtempSync(join(tmpdir(), "pyxis-auto-backup-"));
   const userData = join(root, "userData");
@@ -114,16 +127,27 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
   const env = { PYXIS_USER_DATA: userData, PYXIS_E2E_DOCUMENTS: documents };
   let app: ElectronApplication | undefined;
   try {
-    // First launch: the folder does not exist yet; Pyxis creates it and backs up shortly after starting.
+    // First launch: an empty workspace is not backed up, even after several checks (one every 2 s here).
     app = await launch(env);
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
     await expect(page).toHaveURL(/#\/exams$/);
+    const workspace = await page.evaluate(() => window.pyxis.workspacePath());
+    await page.waitForTimeout(5000);
+    expect(backupsIn(folder)).toEqual([]);
+    expect(
+      (await page.evaluate(() => window.pyxis.autoBackups.status())).notice,
+    ).toBeNull();
+    // With a plan there is something to keep: Pyxis creates the folder and backs up at the next check.
+    addPlan(workspace);
     await expect
       .poll(() => backupsIn(folder), { timeout: 30_000 })
       .toHaveLength(1);
     const first = backupsIn(folder)[0]!;
+    const stateFile = join(userData, "backups.json");
+    const id = JSON.parse(readFileSync(stateFile, "utf8")).backupId as string;
+    expect(first).toMatch(new RegExp(`-${id}\\.zip$`));
     await page.evaluate(() => {
       location.hash = "/settings/data";
     });
@@ -131,14 +155,6 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
     await expect(
       page.getByText(`Cartella: ${folder}`, { exact: true }),
     ).toBeVisible();
-    const workspace = await page.evaluate(() => window.pyxis.workspacePath());
-    const db = new DatabaseSync(join(workspace, "pyxis.db"), {
-      timeout: 10000,
-    });
-    db.exec(
-      "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('auto-plan','Motion','ready',1,1)",
-    );
-    db.close();
     await quitPyxis(app);
 
     // Second launch the same day: no new backup.
@@ -153,32 +169,43 @@ test("automatic backups: first launch, not twice a day, a day later with retenti
     expect(backupsIn(folder)).toEqual([first]);
     await quitPyxis(app);
 
-    // A day later, with three older automatic backups and two other files in the folder.
-    const stateFile = join(userData, "backups.json");
+    // A day later, with three older automatic backups of this computer, two of another computer, one from 0.3.1 and two
+    // other files in the folder.
     const state = JSON.parse(readFileSync(stateFile, "utf8"));
     state.lastSuccessAt -= 25 * HOUR;
     state.lastAttemptAt -= 25 * HOUR;
     state.last.at -= 25 * HOUR;
     writeFileSync(stateFile, JSON.stringify(state));
     const older = [1, 2, 3].map(
-      (day) => `pyxis-auto-backup-2020-01-0${day}-090000.zip`,
+      (day) => `pyxis-auto-backup-2020-01-0${day}-090000-${id}.zip`,
     );
-    for (const name of older) writeFileSync(join(folder, name), "old");
+    const others = [
+      "pyxis-auto-backup-2020-01-01-080000-ffee0011.zip",
+      "pyxis-auto-backup-2020-01-02-080000-ffee0011.zip",
+      "pyxis-auto-backup-2019-12-31-090000.zip",
+    ];
+    for (const name of [...older, ...others])
+      writeFileSync(join(folder, name), "old");
     writeFileSync(join(folder, "notes.txt"), "mine");
     writeFileSync(join(folder, "pyxis-backup.zip"), "a manual backup");
     app = await launch(env);
     page = await app.firstWindow();
+    const mine = () =>
+      backupsIn(folder).filter((name) => name.endsWith(`-${id}.zip`));
     await expect
-      .poll(() => backupsIn(folder).filter((name) => !older.includes(name)), {
+      .poll(() => mine().filter((name) => !older.includes(name)), {
         timeout: 30_000,
       })
       .toHaveLength(2);
     // Old backups are pruned just after the new one is saved; wait for that before reading the list.
-    await expect.poll(() => backupsIn(folder).length).toBe(3);
-    const newest = backupsIn(folder).at(-1)!;
+    await expect.poll(() => mine().length).toBe(3);
+    const newest = mine().at(-1)!;
     expect(newest > first).toBe(true);
-    // Three kept: today's two and the newest of the old ones. The student's own files stay.
-    expect(backupsIn(folder)).toEqual([older[2], first, newest]);
+    // Three of this computer's kept: today's two and the newest of the old ones. Another computer's backups, the one
+    // without an ID and the student's own files stay.
+    expect(mine()).toEqual([older[2], first, newest]);
+    for (const name of others)
+      expect(readFileSync(join(folder, name), "utf8")).toBe("old");
     expect(readFileSync(join(folder, "notes.txt"), "utf8")).toBe("mine");
     expect(readFileSync(join(folder, "pyxis-backup.zip"), "utf8")).toBe(
       "a manual backup",
@@ -347,6 +374,7 @@ test("quitting during an automatic backup stops it and leaves no Pyxis process b
       "CREATE TABLE ballast (data BLOB); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 128) INSERT INTO ballast SELECT randomblob(1048576) FROM n",
     );
     db.close();
+    addPlan(workspace);
     writeFileSync(stateFile, JSON.stringify({ enabled: true }));
     app = await launch(env);
     page = await app.firstWindow();
@@ -386,6 +414,8 @@ test("a check that finds core still starting waits for it instead of failing", a
       PYXIS_E2E_CORE_DELAY: "4000",
     });
     const page = await app.firstWindow();
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    addPlan(join(userData, "workspace"));
     await expect
       .poll(() => backupsIn(join(documents, "Pyxis backups")), {
         timeout: 30_000,
@@ -418,13 +448,18 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
+    addPlan(await page.evaluate(() => window.pyxis.workspacePath()));
     await expect
       .poll(() => backupsIn(folder), { timeout: 30_000 })
       .toHaveLength(1);
     writeFileSync(join(folder, "notes.txt"), "mine");
     writeFileSync(join(folder, "pyxis-backup.zip"), "a manual backup");
+    const legacy = "pyxis-auto-backup-2020-01-01-090000.zip";
+    const theirs = "pyxis-auto-backup-2020-01-01-090000-ffee0011.zip";
+    writeFileSync(join(folder, legacy), "from 0.3.1");
+    writeFileSync(join(folder, theirs), "another computer's");
 
-    // Ticked by default: only Pyxis's own backups go.
+    // Ticked by default: this computer's backups and the old ones without an ID go.
     await page.evaluate(() => {
       location.hash = "/settings/data";
     });
@@ -436,9 +471,10 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
     });
     await expect(tick).toBeChecked();
     await expect(
-      page.getByText(`Pyxis cancella solo i suoi file di copia in ${folder}.`, {
-        exact: true,
-      }),
+      page.getByText(
+        `Pyxis cancella le copie automatiche fatte da questo computer in ${folder} e quelle delle versioni precedenti di Pyxis. Le copie di un altro computer e gli altri tuoi file restano.`,
+        { exact: true },
+      ),
     ).toBeVisible();
     const axe = await new AxeBuilder({ page })
       .setLegacyMode()
@@ -458,11 +494,10 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
       .getByRole("button", { name: "Cancella per sempre", exact: true })
       .click();
     await expect(page.getByRole("button", { name: "Salta" })).toBeVisible();
-    expect(backupsIn(folder)).toEqual([]);
-    expect(readdirSync(folder).sort()).toEqual([
-      "notes.txt",
-      "pyxis-backup.zip",
-    ]);
+    expect(backupsIn(folder)).toEqual([theirs]);
+    expect(readdirSync(folder).sort()).toEqual(
+      ["notes.txt", "pyxis-backup.zip", theirs].sort(),
+    );
 
     // Not ticked: the backups stay.
     const kept = "pyxis-auto-backup-2020-01-01-090000.zip";
@@ -470,7 +505,7 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
     expect(
       await page.evaluate(() => window.pyxis.wipeWorkspace({ backups: false })),
     ).toBe("wiped");
-    expect(backupsIn(folder)).toEqual([kept]);
+    expect(backupsIn(folder)).toEqual([kept, theirs].sort());
 
     // A chosen folder that isn't there: the data goes, and Pyxis says the backups may still be there.
     const unplugged = join(root, "USB", "Backups");
@@ -493,7 +528,7 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
       .click();
     await expect(
       page.getByText(
-        `Pyxis cancella solo i suoi file di copia in ${unplugged}.`,
+        `Pyxis cancella le copie automatiche fatte da questo computer in ${unplugged} e quelle delle versioni precedenti di Pyxis. Le copie di un altro computer e gli altri tuoi file restano.`,
       ),
     ).toBeVisible();
     await page

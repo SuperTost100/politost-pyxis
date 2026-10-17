@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Switch } from "antd";
+import { App, Button, Switch } from "antd";
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AutoBackupStatus } from "../../../../shared/bridge";
@@ -81,9 +81,17 @@ export function AutoBackupsSection({
           id={id}
           checked={status.enabled}
           aria-describedby={`${id}-hint`}
-          onChange={(enabled) =>
-            void window.pyxis.autoBackups.setEnabled(enabled).then(save)
-          }
+          onChange={(enabled) => {
+            setNote(null);
+            void window.pyxis.autoBackups
+              .setEnabled(enabled)
+              .then(save)
+              .catch(() => {
+                setNote(t("settings.saveFailed"));
+                // The switch shows the saved setting again, not the one that failed.
+                void client.invalidateQueries({ queryKey: KEY });
+              });
+          }}
         />
       </div>
       <p className="small px-autobackup-path">
@@ -172,6 +180,7 @@ export function AutoBackupsSection({
  */
 export function BackupNotice() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const client = useQueryClient();
   const { data } = useAutoBackups();
   if (!data?.notice) return null;
@@ -200,6 +209,10 @@ export function BackupNotice() {
             void window.pyxis.autoBackups
               .dismissNotice()
               .then((status) => client.setQueryData(KEY, status))
+              .catch(() => {
+                void message.error(t("settings.autoBackup.dismissFailed"));
+                void client.invalidateQueries({ queryKey: KEY });
+              })
           }
         >
           {t("updates.dismiss")}
