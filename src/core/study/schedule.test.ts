@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isMastered, newCard, review, type ScheduleState } from "./schedule";
+import {
+  isMastered,
+  newCard,
+  retrievability,
+  review,
+  type ScheduleState,
+} from "./schedule";
 
 const MS_PER_DAY = 86_400_000;
 const T0 = Date.UTC(2026, 2, 15, 10, 0, 0);
@@ -54,5 +60,31 @@ describe("review", () => {
     // Long interval but low stability stays in learning.
     expect(isMastered({ ...make(2, 5), intervalDays: 30 })).toBe(false);
     expect(isMastered({ intervalDays: 21, ease: 2.5, dueAt: T0 })).toBe(true);
+  });
+});
+
+describe("retrievability", () => {
+  it("decays within the first day instead of staying at 1", () => {
+    const card = review(newCard(T0), "good", T0);
+    expect(retrievability(card, T0)).toBe(1);
+    const halfDay = retrievability(card, T0 + MS_PER_DAY / 2);
+    const fullDay = retrievability(card, T0 + MS_PER_DAY);
+    expect(halfDay).toBeLessThan(1);
+    expect(fullDay).toBeLessThan(halfDay);
+  });
+
+  it("scores a card rated Again at 0 until its next rating", () => {
+    const failed = review(newCard(T0), "again", T0);
+    expect(failed.fsrs?.state).toBe(1);
+    expect(retrievability(failed, T0, "again")).toBe(0);
+    expect(retrievability(failed, T0 + MS_PER_DAY, "again")).toBe(0);
+    const warmed = review(review(newCard(T0), "good", T0), "good", T0);
+    const lapsed = review(warmed, "again", T0 + 3 * MS_PER_DAY);
+    expect(lapsed.fsrs?.state).toBe(3);
+    expect(retrievability(lapsed, T0 + 3 * MS_PER_DAY, "again")).toBe(0);
+    const relearned = review(lapsed, "good", T0 + 3 * MS_PER_DAY + 600_000);
+    expect(
+      retrievability(relearned, T0 + 3 * MS_PER_DAY + 600_000, "good"),
+    ).toBeGreaterThan(0.9);
   });
 });

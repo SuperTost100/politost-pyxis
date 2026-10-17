@@ -608,6 +608,20 @@ describe("specified mastery evidence", () => {
     expect(planMastery(db, "p", now)[0]!.mastery).toBe(0);
     db.close();
   });
+  it("keeps mastery at zero when every new card was rated Again", () => {
+    const db = fixture();
+    const at = new Date(2026, 0, 1, 12).getTime();
+    const failed = JSON.stringify(review(newCard(at), "again", at));
+    for (let i = 0; i < 12; i++) {
+      db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES(?,'p','a','Q','A',?)").run(`c${i}`, at);
+      db.prepare(
+        "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,?,'again',?,?)",
+      ).run(`r${i}`, `c${i}`, failed, at);
+    }
+    expect(planMastery(db, "p", at)[0]!.mastery).toBe(0);
+    expect(planMastery(db, "p", at + 86_400_000)[0]!.mastery).toBe(0);
+    db.close();
+  });
   it("leaves cards that were never reviewed out of mastery", () => {
     const db = fixture();
     const at = new Date(2026, 0, 1, 12).getTime();

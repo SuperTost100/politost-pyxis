@@ -54,8 +54,8 @@ type PlanEvidence = {
     id: string;
     topicId: string;
     createdAt: number;
-    /** `state` is parsed from `json` the first time it is needed. */
-    reviews: Array<{ at: number; json: string; state?: ScheduleState }>;
+    /** `state` is parsed from `json` the first time it is needed. `rating` is the button pressed. */
+    reviews: Array<{ at: number; json: string; rating: string; state?: ScheduleState }>;
   }>;
 };
 
@@ -63,7 +63,7 @@ function planEvidence(db: Database.Database, planId: string): PlanEvidence {
   return cachedEvidence(db, planId, () => {
     const rows = db
       .prepare(
-        `SELECT c.id, c.topic_id, c.created_at, cr.state_json, cr.reviewed_at
+        `SELECT c.id, c.topic_id, c.created_at, cr.state_json, cr.rating, cr.reviewed_at
          FROM cards c JOIN card_reviews cr ON cr.card_id = c.id
          WHERE c.plan_id = ? AND c.topic_id IS NOT NULL AND c.suspended = 0 AND c.removed = 0
          ORDER BY c.id, cr.reviewed_at, cr.rowid`,
@@ -73,6 +73,7 @@ function planEvidence(db: Database.Database, planId: string): PlanEvidence {
       topic_id: string;
       created_at: number;
       state_json: string;
+      rating: string;
       reviewed_at: number;
     }>;
     const cards: PlanEvidence["cards"] = [];
@@ -87,7 +88,7 @@ function planEvidence(db: Database.Database, planId: string): PlanEvidence {
         };
         cards.push(card);
       }
-      card.reviews.push({ at: row.reviewed_at, json: row.state_json });
+      card.reviews.push({ at: row.reviewed_at, json: row.state_json, rating: row.rating });
     }
     const series = readSeries(db, planId);
     return { series, answers: seriesEvidence(series), cards };
@@ -111,7 +112,7 @@ function masteryEvidence(evidence: PlanEvidence, now: number): MasteryEvent[] {
       topicId: card.topicId,
       kind: "card",
       cardId: card.id,
-      score: retrievability(state, now),
+      score: retrievability(state, now, latest.rating),
       at: now,
     });
   }
