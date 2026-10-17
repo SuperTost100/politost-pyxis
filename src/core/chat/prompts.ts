@@ -20,17 +20,23 @@ export function chatTemplateId(input: {
       : "chat.solver";
 }
 
-/** ASK-03: with the switch off, the follow-up instruction is left out of the template. */
+/**
+ * ASK-03: with the switch off, the follow-up instruction is left out of the template. The figure instruction is left
+ * out when there is no sandbox to draw figures in.
+ */
 export function chatSystemPrompt(
   id: ChatTemplateId,
   contentLanguage: string,
   followups = true,
+  figures = false,
 ): string {
-  const text = systemPrompt(id, { contentLanguage });
-  if (followups) return text;
-  return text
+  return systemPrompt(id, { contentLanguage })
     .split("\n")
-    .filter((line) => !line.includes("<followups>"))
+    .filter(
+      (line) =>
+        (followups || !line.includes("<followups>")) &&
+        (figures || !line.includes("pyxis-figure")),
+    )
     .join("\n");
 }
 

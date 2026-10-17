@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { figureImages } from "../../shared/smart-text";
 
 export type CacheKeyInput = {
   kind: string;
@@ -31,6 +32,8 @@ export type SaveLessonInput = {
   prompt?: { template: string; version: string };
   /** Defaults to "sources"; "general" marks model knowledge with no passages (LES-32). */
   grounding?: "sources" | "general";
+  /** Images of the lesson's figure blocks, by `figureKey`, saved in the same row as the text. */
+  figures?: Record<string, string>;
 };
 
 export type LoadedLesson = {
@@ -40,6 +43,7 @@ export type LoadedLesson = {
   passageIds: string[];
   /** Present only when a model wrote the lesson. */
   provider?: string;
+  figures: Record<string, string>;
 };
 
 export function saveLesson(
@@ -51,6 +55,9 @@ export function saveLesson(
     cacheKey: input.key,
     markdown: input.markdown,
     passageIds: input.passageIds,
+    ...(input.figures && Object.keys(input.figures).length
+      ? { figures: input.figures }
+      : {}),
   });
   const provider = input.engine?.provider ?? null;
   const model = input.engine?.model ?? null;
@@ -157,6 +164,7 @@ function loaded(db: Database.Database, row: LessonRow): LoadedLesson {
     cacheKey: string;
     markdown: string;
     passageIds?: string[];
+    figures?: unknown;
   };
   const passages = db
     .prepare(
@@ -170,5 +178,7 @@ function loaded(db: Database.Database, row: LessonRow): LoadedLesson {
     markdown: body.markdown,
     passageIds: body.passageIds ?? passages.map((p) => p.passage_id),
     ...(row.engine_provider ? { provider: row.engine_provider } : {}),
+    // Checked again on every read: a lesson can come from a shared plan file.
+    figures: figureImages(body.figures),
   };
 }

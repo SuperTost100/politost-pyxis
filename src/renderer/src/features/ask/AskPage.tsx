@@ -682,6 +682,7 @@ export function AskPage() {
               >
                 <MarkdownView
                   checks={row.checks}
+                  figures={row.figures}
                   citationResolver={(index) =>
                     row.citations.find((cite) => cite.index === index)?.label
                   }
@@ -721,7 +722,7 @@ export function AskPage() {
           ) : null}
           {streamHere && busy && live ? (
             <ChatMessage role="tutor" streaming>
-              <MarkdownView>{live}</MarkdownView>
+              <MarkdownView drawing>{live}</MarkdownView>
             </ChatMessage>
           ) : null}
           {streamHere && busy && !live ? <ThinkingMessage usesSources={usesSources} /> : null}

@@ -132,6 +132,11 @@ CREATE TRIGGER cards_search_stale AFTER UPDATE OF front, back ON cards BEGIN
   UPDATE cards SET search_text = NULL WHERE id = new.id;
 END;`,
   },
+  // Images of the figures an answer drew in the Python sandbox, by figure key, as PNG data URLs.
+  {
+    version: 19,
+    sql: `ALTER TABLE messages ADD COLUMN figures_json TEXT CHECK (figures_json IS NULL OR json_valid(figures_json));`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

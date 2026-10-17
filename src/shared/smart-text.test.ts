@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  FIGURE_CODE_MAX,
+  FIGURE_IMAGE_MAX,
+  figureImages,
+  figureKey,
+  mapFigureBlocks,
+  parseFigure,
   finalRecap,
   parseLooseJson,
   parseSmartText,
@@ -249,6 +255,68 @@ describe("smart text", () => {
   it("splits grouped citations into single ones", () => {
     expect(splitCitationGroups("Vale F = ma [P1, P3] e anche [P2; 4], non [P5].")).toBe(
       "Vale F = ma [P1][P3] e anche [P2][P4], non [P5].",
+    );
+  });
+});
+
+describe("figure blocks", () => {
+  const png =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  // As a model writes it: raw line breaks in the code string and a single backslash before a LaTeX command.
+  const loose = [
+    "```pyxis-figure",
+    '{"caption": "Il vettore $\\vec F$", "code": "import numpy as np',
+    'plt.quiver(0, 0, 1, 2)"}',
+    "```",
+  ].join("\n");
+
+  it("parses a figure as a block and keys its image by the code alone", () => {
+    const [block] = parseSmartText(loose).flatMap((segment) =>
+      segment.type === "block" ? [segment.block] : [],
+    );
+    expect(block).toMatchObject({
+      kind: "figure",
+      caption: "Il vettore $\\vec F$",
+      code: "import numpy as np\nplt.quiver(0, 0, 1, 2)",
+    });
+    const figure = parseFigure('{"title": "Altro titolo", "python": "import numpy as np\\nplt.quiver(0, 0, 1, 2)"}');
+    expect(figureKey(figure!.code)).toBe(figureKey("import numpy as np\nplt.quiver(0, 0, 1, 2)"));
+    expect(parseFigure('{"caption": "Senza codice"}')).toBeNull();
+    expect(parseFigure(JSON.stringify({ caption: "Troppo", code: "x".repeat(FIGURE_CODE_MAX + 1) }))).toBeNull();
+    expect(parseSmartText("```pyxis-figure\n{\"caption\": \"a\"", { streaming: true })).toEqual([
+      { type: "pending", kind: "figure" },
+    ]);
+  });
+
+  it("rewrites figure blocks outside other code and leaves one blank line where one is removed", () => {
+    const quoted = ["````markdown", loose, "````"].join("\n");
+    const text = ["Prima.", "", loose, "", "Dopo.", "", quoted].join("\n");
+    expect(mapFigureBlocks(text, () => "")).toBe(["Prima.", "", "Dopo.", "", quoted].join("\n"));
+    expect(mapFigureBlocks(text, (figure) => `*${figure!.caption}*`)).toBe(
+      ["Prima.", "", "*Il vettore $\\vec F$*", "", "Dopo.", "", quoted].join("\n"),
+    );
+    expect(mapFigureBlocks(text, () => null)).toBe(text);
+    expect(mapFigureBlocks("```pyxis-figure\n{broken", () => "")).toBe("```pyxis-figure\n{broken");
+  });
+
+  it("keeps only PNG data URLs under figure keys", () => {
+    const key = figureKey("plt.plot([1, 2])");
+    expect(
+      figureImages({
+        [key]: png,
+        "figure-svg": "data:image/svg+xml;base64,PHN2Zy8+",
+        "figure-script": "javascript:alert(1)",
+        "not-a-key": png,
+        "figure-big": `data:image/png;base64,${"A".repeat(FIGURE_IMAGE_MAX)}`,
+      }),
+    ).toEqual({ [key]: png });
+    expect(figureImages(null)).toEqual({});
+    expect(figureImages([png])).toEqual({});
+  });
+
+  it("exports a figure as its caption", () => {
+    expect(smartTextToMarkdown(`Testo.\n\n${loose}`, smartLabels.it)).toBe(
+      "Testo.\n\n*Figura: Il vettore $\\vec F$*",
     );
   });
 });

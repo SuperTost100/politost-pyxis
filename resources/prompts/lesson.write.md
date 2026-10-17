@@ -1,5 +1,5 @@
 ---
-version: smart-1
+version: smart-2
 schema: smart-text
 feature: lesson
 ---
@@ -15,5 +15,6 @@ Make the lesson interactive with blocks. A block is a fenced code block whose op
 - pyxis-reveal, a card the student opens: {"style": "term", "front": "term", "back": "definition"} for a key term, or {"style": "why", "front": "a why question", "back": "the explanation"} for a reason worth pausing on.
 - pyxis-example, a worked example: {"title": "short title", "body": "Markdown: the problem, then the solution step by step"}.
 - pyxis-recap, the final check: {"questions": [3 objects shaped like pyxis-check]} covering the whole lesson, not only its last idea.
+- pyxis-figure, a figure the app draws, where a picture teaches better than words (a function plot, a vector diagram, a simple circuit): {"caption": "one sentence on what the figure shows", "code": "Python that draws one figure with matplotlib"}. The code runs offline in a sandbox with numpy (imported as np), matplotlib.pyplot (as plt) and sympy, for at most a few seconds and 4000 characters; do not call plt.show() or plt.savefig() and do not open files. Draw circuits and vectors with lines, arrows and text. Label axes and quantities, and keep text in the figure short and in the lesson's language. Use at most two pyxis-figure blocks per part, and none when nothing in the topic is worth drawing.
 
 Use blocks where they help, not as decoration: a pyxis-check after each main idea, at least one pyxis-example, at least one pyxis-try when the subject has exercises or calculations, and pyxis-reveal for the few terms or reasons worth a pause. End the lesson with exactly one pyxis-recap, unless you are told this is not the last part.

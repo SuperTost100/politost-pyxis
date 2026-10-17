@@ -7,6 +7,12 @@ import { selectionFor } from "../engine/selection";
 import { cacheKey, loadLesson, loadLessonById, saveLesson } from "./lesson";
 import { IpcError } from "../../shared/ipc";
 import { replaceSection, smartSections } from "../../shared/smart-text";
+import {
+  drawFigures,
+  figureRunner,
+  noSandbox,
+  type FigureRunner,
+} from "../math/figures";
 
 const BOOK_VERSION = "book-1";
 // Part of the lesson cache key; comes from the template front matter.
@@ -174,12 +180,31 @@ function readerContext(context: { school: string; course: string }) {
     : "";
 }
 
+/** Without the Python runtime nothing can draw a figure, so the prompt does not offer the block. */
+function withoutFigures(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !line.includes("pyxis-figure"))
+    .join("\n");
+}
+
+/** Without a sandbox no new figure draws: the blocks are dropped, and figures drawn before keep their images. */
+function withFigures(
+  markdown: string,
+  python: FigureRunner | null,
+  options: { known?: Record<string, string>; signal?: AbortSignal },
+) {
+  return drawFigures(markdown, { ...options, python: python ?? noSandbox });
+}
+
 function lessonSystem(
   context: ReturnType<typeof modelContext>,
   grounded: boolean,
+  figures: boolean,
 ) {
   const style = `Reader education level: ${context.education}. Wording: ${context.wording}. ${WORDING_RULES[context.wording]} Match the depth to the reader's education level.${readerContext(context)}`;
-  const base = systemPrompt("lesson.write", { contentLanguage: context.language });
+  const template = systemPrompt("lesson.write", { contentLanguage: context.language });
+  const base = figures ? template : withoutFigures(template);
   const general = grounded
     ? ""
     : "\nNo material was supplied for this topic: teach it from your general knowledge.";
@@ -260,6 +285,7 @@ export function readLessonItem(
     passageIds: lesson.passageIds,
     itemId: lesson.itemId,
     ...(wording ? { wording } : {}),
+    ...(Object.keys(lesson.figures).length ? { figures: lesson.figures } : {}),
     ...(lesson.grounding === "general" ? { general: true } : {}),
     ...(lesson.provider ? {} : { fallback: true }),
     ...(lesson.provider && lesson.key !== modelContext(db, planId, topicId).key ? { earlier: true } : {}),
@@ -286,6 +312,8 @@ export type LessonResult = {
   fallback?: boolean;
   /** Written by an earlier lesson prompt, before smart text; shown until rewritten. */
   earlier?: boolean;
+  /** Images of the lesson's figure blocks, by `figureKey`. */
+  figures?: Record<string, string>;
 };
 
 export async function writeLesson(
@@ -298,6 +326,8 @@ export async function writeLesson(
     wording?: Wording;
     /** Ignore the cached lesson for this variant; the old one stays if the new one fails. */
     regenerate?: boolean;
+    /** Runs figure code; null turns figures off. Defaults to the Pyodide sandbox when its runtime is downloaded. */
+    python?: FigureRunner | null;
   },
 ): Promise<LessonResult> {
   const context = modelContext(db, planId, topicId, options?.wording);
@@ -317,6 +347,7 @@ export async function writeLesson(
       passageIds: cached.passageIds,
       itemId: cached.itemId,
       wording,
+      ...(Object.keys(cached.figures).length ? { figures: cached.figures } : {}),
       ...(cached.grounding === "general" ? { general: true } : {}),
       ...(earlier ? { earlier: true } : {}),
     };
@@ -342,7 +373,9 @@ export async function writeLesson(
   let result: Awaited<ReturnType<typeof generate>> | undefined;
   const written: string[] = [];
   const models = new Set<string>();
+  let drawn: Awaited<ReturnType<typeof withFigures>> | undefined;
   try {
+    const python = await figureRunner(options?.python);
     const batches = grounded ? parts : [[]];
     for (let index = 0; index < batches.length; index++) {
       options?.signal?.throwIfAborted();
@@ -355,7 +388,7 @@ export async function writeLesson(
         prompt: grounded
           ? `Topic: ${topic.title}\n${partNote(index, batches.length)}\n\nMaterial:\n\n${materialText(batch)}`
           : `Topic: ${topic.title}`,
-        system: [lessonSystem(context, grounded), interestsLine(db)]
+        system: [lessonSystem(context, grounded, python != null), interestsLine(db)]
           .filter(Boolean)
           .join("\n"),
         selection,
@@ -367,6 +400,10 @@ export async function writeLesson(
       models.add(result.model);
       written.push(markdown);
     }
+    // A figure that fails is left out; the lesson is saved with the ones that drew.
+    drawn = await withFigures(written.join("\n\n"), python, {
+      signal: options?.signal,
+    });
   } catch (error) {
     // An engine that failed or is signed out falls back to the book, like any other failed call; the rest end the lesson.
     if (
@@ -379,8 +416,8 @@ export async function writeLesson(
       throw error;
     return failed(error);
   }
-  const markdown = written.join("\n\n");
-  if (!result) return failed();
+  if (!result || !drawn) return failed();
+  const { markdown, figures } = drawn;
   const itemId = saveLesson(db, {
     planId,
     topicId,
@@ -391,12 +428,14 @@ export async function writeLesson(
     engine: { provider: result.provider, model: [...models].join(", ") },
     prompt: { template: "lesson.write", version: MODEL_VERSION },
     grounding: grounded ? "sources" : "general",
+    figures,
   });
   return {
     markdown,
     passageIds,
     itemId,
     wording,
+    ...(Object.keys(figures).length ? { figures } : {}),
     ...(grounded ? {} : { general: true }),
   };
 }
@@ -447,6 +486,8 @@ export async function rewriteLessonSection(
     note?: string;
     wording?: Wording;
     signal?: AbortSignal;
+    /** As for `writeLesson`. */
+    python?: FigureRunner | null;
   },
 ): Promise<LessonResult> {
   const context = modelContext(db, planId, topicId, options.wording);
@@ -462,6 +503,7 @@ export async function rewriteLessonSection(
     .get(topicId) as { title: string };
   const grounded = context.all.length > 0;
   const note = options.note?.replace(/\s+/g, " ").trim().slice(0, 500);
+  const python = await figureRunner(options.python);
   const result = await generate({
     signal: options.signal,
     prompt: [
@@ -474,7 +516,7 @@ export async function rewriteLessonSection(
     ]
       .filter(Boolean)
       .join("\n\n"),
-    system: [lessonSystem(context, grounded), interestsLine(db)]
+    system: [lessonSystem(context, grounded, python != null), interestsLine(db)]
       .filter(Boolean)
       .join("\n"),
     selection: selectionFor(db, "lesson"),
@@ -484,7 +526,12 @@ export async function rewriteLessonSection(
   let text = lessonText(result.text);
   if (!text) throw new Error("lesson-invalid");
   if (!/^##\s/.test(text)) text = `${lines[section.start]}\n\n${text}`;
-  const markdown = replaceSection(cached.markdown, options.section, text);
+  // Figures the rest of the lesson already has keep their images; a new one in the rewritten part is drawn.
+  const { markdown, figures } = await withFigures(
+    replaceSection(cached.markdown, options.section, text),
+    python,
+    { known: cached.figures, signal: options.signal },
+  );
   const itemId = saveLesson(db, {
     planId,
     topicId,
@@ -495,12 +542,14 @@ export async function rewriteLessonSection(
     engine: { provider: result.provider, model: result.model },
     prompt: { template: "lesson.write", version: MODEL_VERSION },
     grounding: grounded ? "sources" : "general",
+    figures,
   });
   return {
     markdown,
     passageIds: context.passageIds,
     itemId,
     wording: context.wording,
+    ...(Object.keys(figures).length ? { figures } : {}),
     ...(grounded ? {} : { general: true }),
   };
 }

@@ -3,7 +3,18 @@ import { splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
-import { splitCitationGroups } from "../../shared/smart-text";
+import {
+  figureImages,
+  mapFigureBlocks,
+  splitCitationGroups,
+} from "../../shared/smart-text";
+import {
+  drawFigures,
+  figureCaptions,
+  figureRunner,
+  noSandbox,
+  type FigureRunner,
+} from "../math/figures";
 import { isAbort, IpcError } from "../../shared/ipc";
 import { generate } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
@@ -50,6 +61,8 @@ export type ChatMessageView = {
   reaction: "up" | "down" | null;
   stopped: boolean;
   checks: AnchoredCheck[];
+  /** Images of the answer's figure blocks, by `figureKey`. */
+  figures?: Record<string, string>;
 };
 
 export type AskResult = {
@@ -76,6 +89,8 @@ type AskInput = {
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
   run?: Parameters<typeof generate>[0]["run"];
+  /** Runs figure code; null turns figures off. Defaults to the Pyodide sandbox when its runtime is downloaded. */
+  python?: FigureRunner | null;
 };
 
 /** Passages a chat turn sends to the model. Questions that ask for a full explanation need more than the default eight. */
@@ -141,7 +156,10 @@ function historyText(
   for (const row of rows) {
     const body =
       row.role === "assistant"
-        ? stripCheckFences(splitFollowups(splitChecks(row.body).body).body).trim()
+        ? figureCaptions(
+            stripCheckFences(splitFollowups(splitChecks(row.body).body).body),
+            "Figure",
+          ).trim()
         : row.body;
     const line = `${row.role}: ${body}`;
     if (used + line.length > HISTORY_CHARS) {
@@ -644,8 +662,15 @@ async function answer(
   const mode = input.mode ?? profile?.tutorMode ?? "solver";
   const template = chatTemplateId({ ...input, mode });
   const where = chatPrompt(db, planId);
+  // A Socratic turn asks a question, so only answers offer figures.
+  const python = template === "chat.socratic" ? null : await figureRunner(input.python);
   const system = [
-    chatSystemPrompt(template, where.language, profile?.followups !== false),
+    chatSystemPrompt(
+      template,
+      where.language,
+      profile?.followups !== false,
+      python != null,
+    ),
     profileContext(db, planId),
     where.planLine,
     subjectLine,
@@ -717,14 +742,19 @@ async function answer(
   }
   const parsed = splitFollowups(result.text);
   if (profile?.followups === false) parsed.followups = [];
-  const checks =
+  // The checks and the figures use different sandbox lanes, so they run side by side. A figure that fails is left out.
+  const [checks, drawn] = await Promise.all([
     mode !== "socratic"
-      ? await solverChecks(parsed.body, {
+      ? solverChecks(parsed.body, {
           selection,
           signal: input.signal,
           run: input.run,
         })
-      : [];
+      : Promise.resolve([]),
+    drawFigures(parsed.body, { python: python ?? noSandbox, signal: input.signal }),
+  ]);
+  parsed.body = drawn.markdown;
+  const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
 
   requireTutorAvailable(db);
   requireChat(db, chatId);
@@ -749,8 +779,8 @@ async function answer(
   });
   db.prepare(
     `INSERT INTO messages
-      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, created_at)
-     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?)`,
+      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, figures_json, created_at)
+     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?)`,
   ).run(
     messageId,
     chatId,
@@ -760,6 +790,7 @@ async function answer(
     template,
     chatProvenance(template).version,
     grounding,
+    figures ? JSON.stringify(figures) : null,
     now + 1,
   );
   const link = db.prepare(
@@ -783,6 +814,7 @@ async function answer(
       reaction: null,
       stopped: false,
       checks,
+      ...(figures ? { figures } : {}),
     },
     ...skippedImages,
   };
@@ -806,6 +838,8 @@ function finishReply(
 ): AskResult {
   requireChat(db, chatId);
   const parsed = splitFollowups(text);
+  // Nothing draws a stopped reply's figures, so their blocks go.
+  parsed.body = mapFigureBlocks(parsed.body, () => "");
   const messageId = uuidv7(meta.now + 2);
   const used = new Set(
     [...splitCitationGroups(parsed.body).matchAll(/\[P(\d+)\]/g)].map((match) =>
@@ -1003,7 +1037,7 @@ export function readChat(
 ): ChatMessageView[] {
   const rows = db
     .prepare(
-      `SELECT id, role, body, model_id, engine_provider, grounding, reaction, stopped FROM messages
+      `SELECT id, role, body, model_id, engine_provider, grounding, reaction, stopped, figures_json FROM messages
        WHERE chat_id = ? ORDER BY created_at`,
     )
     .all(chatId) as Array<{
@@ -1015,6 +1049,7 @@ export function readChat(
     grounding: "sources" | "general" | null;
     reaction: string | null;
     stopped: number;
+    figures_json: string | null;
   }>;
   const chips = readProfile(db)?.followups !== false;
   const links = db.prepare(
@@ -1063,6 +1098,9 @@ export function readChat(
         row.reaction === "up" || row.reaction === "down" ? row.reaction : null,
       stopped: row.stopped === 1,
       checks: metadata.checks,
+      ...(row.figures_json
+        ? { figures: figureImages(JSON.parse(row.figures_json)) }
+        : {}),
     };
   });
 }

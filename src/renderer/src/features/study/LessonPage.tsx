@@ -345,6 +345,7 @@ export function LessonPage() {
       <SelectionMenu planId={planId} onAsk={(chatId) => navigate(`/ask/${chatId}`)}>
         <SmartText
           streaming={writing}
+          figures={data?.figures}
           answers={data?.answers}
           onAnswer={
             writing ? (live ? answer : undefined) : model && data?.itemId ? answer : undefined

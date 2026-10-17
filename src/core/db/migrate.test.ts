@@ -18,7 +18,7 @@ function tempDb() {
 /** Removes what migrations 17 and 18 add, so a test can rewind the version past them. */
 function undoAfter16(db: Database.Database) {
   db.exec(
-    "DROP TRIGGER cards_search_stale; DROP INDEX cards_search_pending; ALTER TABLE cards DROP COLUMN search_text;",
+    "DROP TRIGGER cards_search_stale; DROP INDEX cards_search_pending; ALTER TABLE cards DROP COLUMN search_text; ALTER TABLE messages DROP COLUMN figures_json;",
   );
   const before = ["jobs_state", "messages_chat", "passages_source", "learning_events_plan", "job_steps_job", "gap_answers_attempt"];
   const added = db
@@ -94,7 +94,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(18);
+    expect(db.pragma("user_version", { simple: true })).toBe(19);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -109,7 +109,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(18);
+    expect(again.pragma("user_version", { simple: true })).toBe(19);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -126,7 +126,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(18);
+    expect(again.pragma("user_version", { simple: true })).toBe(19);
     expect(
       again
         .prepare(
@@ -137,6 +137,33 @@ describe("migrate", () => {
       catalog_id: null,
       catalog_version: null,
     });
+  });
+
+  it("adds figure images to messages, empty for messages that already exist, and only as JSON", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
+    const db = openDatabase(file);
+    db.pragma("user_version = 18");
+    db.exec("ALTER TABLE messages DROP COLUMN figures_json;");
+    db.prepare(
+      `INSERT INTO chats (id, title, created_at, updated_at) VALUES ('chat', 'Fisica', 1, 1)`,
+    ).run();
+    db.prepare(
+      `INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('old', 'chat', 'assistant', 'Risposta', 1)`,
+    ).run();
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(19);
+    expect(
+      again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
+    ).toEqual({ figures_json: null });
+    expect(() =>
+      again
+        .prepare(
+          `INSERT INTO messages (id, chat_id, role, body, figures_json, created_at) VALUES ('bad', 'chat', 'assistant', 'x', 'not json', 2)`,
+        )
+        .run(),
+    ).toThrow();
   });
 
   it("inserts and queries a vector", () => {

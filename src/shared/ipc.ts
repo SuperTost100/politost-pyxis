@@ -310,6 +310,8 @@ const LessonOutput = z.object({
   general: z.boolean().optional(),
   /** Written by an earlier lesson prompt, before smart text: Markdown with citations, until rewritten. */
   earlier: z.boolean().optional(),
+  /** Images of the lesson's figure blocks, by figure key. */
+  figures: z.record(z.string(), z.string()).optional(),
   /** Saved picks of the lesson's quick checks and recap, by question id. */
   answers: SmartAnswers,
   /** The sources and places the lesson was given, for its "Sources used" footer. */
@@ -1827,6 +1829,8 @@ export const requests = {
           id: z.string(),
           role: z.enum(["user", "assistant"]),
           checks: z.array(anchoredCheckSchema).optional(),
+          /** Images of the answer's figure blocks, by figure key. */
+          figures: z.record(z.string(), z.string()).optional(),
           body: z.string(),
           modelId: z.string().nullable(),
           provider: z.string().nullable(),
@@ -1887,6 +1891,8 @@ export const requests = {
           id: z.string(),
           role: z.enum(["user", "assistant"]),
           checks: z.array(anchoredCheckSchema).optional(),
+          /** Images of the answer's figure blocks, by figure key. */
+          figures: z.record(z.string(), z.string()).optional(),
           body: z.string(),
           modelId: z.string().nullable(),
           provider: z.string().nullable(),
