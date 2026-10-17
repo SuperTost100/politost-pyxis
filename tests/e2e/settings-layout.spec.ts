@@ -14,6 +14,8 @@ test("settings show a sidebar from 960px and drill down below it", async () => {
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping setup opens Exams; a route set before that lands is replaced by it.
+    await expect(page).toHaveURL(/#\/exams$/);
     const sidebar = page.getByRole("navigation", { name: "Impostazioni" });
     const back = page.getByRole("button", { name: "Torna alle impostazioni" });
 
