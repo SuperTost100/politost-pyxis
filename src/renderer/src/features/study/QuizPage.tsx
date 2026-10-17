@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { App, Button, Input, InputNumber, Select } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Icon } from "../../components/Icon";
@@ -48,8 +48,11 @@ export function QuizPage() {
   const { planId, topicId } = useParams();
   useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
-  const diagnostic = !topicId;
+  // Past questions: a quiz of the plan's past exam questions, opened at /plans/:planId/past.
+  const past = useLocation().pathname.endsWith("/past");
+  const diagnostic = !topicId && !past;
   const [searchParams, setSearchParams] = useSearchParams();
+  const paper = searchParams.get("paper") ?? undefined;
   const savedAttempt = searchParams.get("attempt");
   const restoredAttempt = useRef<string | null>(null);
   const [hydratedAttempt, setHydratedAttempt] = useState<string | null>(null);
@@ -76,6 +79,11 @@ export function QuizPage() {
     queryFn: () =>
       invoke("study.diagnosticPreview", { planId: planId ?? "" }),
   });
+  const papers = useQuery({
+    queryKey: ["past-papers", planId],
+    enabled: past && !savedAttempt && Boolean(planId),
+    queryFn: () => invoke("study.pastPapers", { planId: planId ?? "" }),
+  });
   const library = useQuery({
     queryKey: ["sources"],
     queryFn: () => invoke("sources.list", {}),
@@ -91,7 +99,9 @@ export function QuizPage() {
   const heading = useRef<HTMLDivElement>(null);
   const start = useMutation({
     mutationFn: () =>
-      topicId
+      past
+        ? invoke("study.pastPracticeStart", { planId: planId ?? "", sourceId: paper })
+        : topicId
         ? invoke("study.quizStart", {
             planId: planId ?? "",
             scope,
@@ -105,7 +115,10 @@ export function QuizPage() {
         : invoke("study.diagnosticStart", { planId: planId ?? "" }),
     onSuccess: (session) => {
       if (session.attemptId)
-        setSearchParams({ attempt: session.attemptId }, { replace: true });
+        setSearchParams(
+          { ...(paper ? { paper } : {}), attempt: session.attemptId },
+          { replace: true },
+        );
     },
   });
   const attemptId = savedAttempt ?? start.data?.attemptId ?? "";
@@ -581,6 +594,20 @@ export function QuizPage() {
   const answered = questions.filter((row) => checked[row.id]).length;
   const topic = plan.data?.topics.find((row) => row.id === topicId);
   const showIntro = !start.data && !savedAttempt;
+  // The questions the start button will ask: one paper's, or at most a quiz's ten from all of them.
+  const pastCount = (() => {
+    const rows = (papers.data?.papers ?? []).filter(
+      (row) => row.status === "ready" && (!paper || row.sourceId === paper),
+    );
+    const total = rows.reduce((sum, row) => sum + row.questions, 0);
+    return paper ? total : Math.min(QUIZ_MAX_QUESTIONS, total);
+  })();
+  // A new quiz of the same kind: on the same topic, a new diagnostic, or the same past paper again.
+  const redoPath = past
+    ? `/plans/${planId ?? ""}/past${paper ? `?paper=${paper}` : ""}`
+    : diagnostic
+      ? `/plans/${planId ?? ""}/diagnostic`
+      : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`;
   const kind = question?.grade.kind;
   const options =
     question && (kind === "mcq" || kind === "tf")
@@ -681,11 +708,27 @@ export function QuizPage() {
       {showIntro ? (
         <QuizIntro
           eyebrow={plan.data?.title ?? t("quiz.title")}
-          title={diagnostic ? t("quiz.diagnostic") : (topic?.title ?? t("quiz.title"))}
-          sentence={t(diagnostic ? "quiz.introDiagnostic" : "quiz.introTopic")}
-          count={diagnostic ? preview.data?.count : QUIZ_MAX_QUESTIONS}
+          title={
+            past
+              ? t("pastPapers.practiceTitle")
+              : diagnostic
+                ? t("quiz.diagnostic")
+                : (topic?.title ?? t("quiz.title"))
+          }
+          sentence={t(
+            past
+              ? "pastPapers.practiceIntro"
+              : diagnostic
+                ? "quiz.introDiagnostic"
+                : "quiz.introTopic",
+          )}
+          count={past ? pastCount : diagnostic ? preview.data?.count : QUIZ_MAX_QUESTIONS}
           minutes={
-            diagnostic
+            past
+              ? pastCount
+                ? quizMinutes(Array.from({ length: pastCount }, () => "open"))
+                : undefined
+              : diagnostic
               ? preview.data?.minutes
               : types.length
                 ? quizMinutes(
@@ -698,11 +741,11 @@ export function QuizPage() {
           }
           answered={diagnostic ? preview.data?.answered : 0}
           starting={start.isPending}
-          disabled={!diagnostic && (!types.length || !pageReady || !timerReady)}
+          disabled={past ? !pastCount : !diagnostic && (!types.length || !pageReady || !timerReady)}
           onStart={() => start.mutate()}
           onClose={() => navigate(`/plans/${planId ?? ""}`)}
           options={
-            diagnostic ? undefined : (
+            diagnostic || past ? undefined : (
               <>
                 <fieldset className="px-quiz-types">
                   <legend className="body-strong">{t("quiz.scope")}</legend>
@@ -838,9 +881,7 @@ export function QuizPage() {
               size="large"
               onClick={() =>
                 navigate(
-                  diagnostic
-                    ? `/plans/${planId ?? ""}/diagnostic`
-                    : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`,
+                  redoPath,
                 )
               }
             >
@@ -906,11 +947,7 @@ export function QuizPage() {
                     size="large"
                     // A new quiz on the same topic (a drill's topic too), or a new diagnostic; this one stays as it is.
                     onClick={() =>
-                      navigate(
-                        diagnostic
-                          ? `/plans/${planId ?? ""}/diagnostic`
-                          : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`,
-                      )
+                      navigate(redoPath)
                     }
                   >
                     {t("quiz.redo")}

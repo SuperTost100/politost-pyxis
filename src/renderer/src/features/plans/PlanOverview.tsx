@@ -39,6 +39,7 @@ import { ExportButton } from "../share/ExportButton";
 import { PlanProgress } from "./PlanProgress";
 import { RebuildDialog } from "./RebuildDialog";
 import { PlanPath } from "./PlanPath";
+import { PastPapers } from "./PastPapers";
 import "./PlanPage.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -64,6 +65,11 @@ export function PlanPage() {
     queryKey: ["simulations", planId],
     enabled: !!planId,
     queryFn: () => invoke("plans.simulations", { planId }),
+  });
+  const pastPapers = useQuery({
+    queryKey: ["past-papers", planId],
+    enabled: !!planId,
+    queryFn: () => invoke("study.pastPapers", { planId }),
   });
   const series = useQuery({
     queryKey: ["series", planId],
@@ -509,6 +515,7 @@ export function PlanPage() {
           >
             {t("planOverview.addSources")}
           </Button>
+          <PastPapers planId={planId} />
         </section>
       )}
       <Modal
@@ -540,7 +547,10 @@ export function PlanPage() {
           loading={library.isPending}
           dataSource={(library.data ?? []).filter(
             (source) =>
-              !plan.data?.sources.some((attached) => attached.id === source.id),
+              !plan.data?.sources.some((attached) => attached.id === source.id) &&
+              !pastPapers.data?.papers.some((paper) =>
+                paper.sourceIds.includes(source.id),
+              ),
           )}
           rowSelection={{
             selectedRowKeys: selectedSources,
@@ -819,6 +829,17 @@ export function PlanPage() {
                         icon: "clock",
                         label: t("simulation.title"),
                       },
+                      ...(pastPapers.data?.papers.some(
+                        (paper) => paper.status === "ready",
+                      )
+                        ? [
+                            {
+                              kind: "past",
+                              icon: "file-pen",
+                              label: t("pastPapers.practiceTitle"),
+                            },
+                          ]
+                        : []),
                     ]
               ).map((tile) => (
                 <LessonTile

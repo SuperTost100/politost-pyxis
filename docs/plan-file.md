@@ -34,6 +34,8 @@ Each topic may carry `grounding` (`sources`, `mixed` or `general`) and `archived
 
 `educationLevel` is the plan's education level (`primary`, `lower-secondary`, `upper-secondary`, `technical`, `vocational`, `university` or `other`). The tutor answers at that level for chats scoped to the plan. A file without it takes the importing student's profile level at import time.
 
+Past exams (appelli) are not part of a plan file. They are the university's text and the student's own research, so neither the papers nor the practice quizzes made from them are exported, with or without progress or embedded sources. Questions that a simulation wrote after their style are model-written like any other and travel as usual.
+
 `items` stores the lesson or question body, its topic, passage references and reported provider/model. Lesson cache keys travel with the body. Numbered citations such as `[P1]` keep their order through `item_passages`. Older questions without an ID receive a deterministic ID scoped to their item and position before export or import. The app never supplies a missing answer. Question IDs, source exercise references and inline `:::exercise{id="..."}` markers receive new IDs on import. Smartbook chapter IDs and paragraph labels remain source locators, so they keep their original values.
 
 `maps` contains each topic's map collection. Every entry carries a title, graph and passage references. Graph layout, labels, positions, pinned nodes, colors, edges and the previous undo snapshot travel with it. Import assigns new graph node IDs and rewrites parents, edges and source references.
