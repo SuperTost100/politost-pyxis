@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { directPlanUrl, planFileReason, planFileSchema } from "./plan-file";
+import { MAX_SOURCE_BYTES } from "./source-types";
 
 const ID = "1aBcD3fGhIjKlMnOpQrStUvWxYz0123456";
 const drive = (id: string, extra = "") =>
@@ -98,7 +99,7 @@ describe("planFileReason", () => {
   });
 
   it("names a source over the size limit", () => {
-    const source = { title: "Libro", sha: null, bytes: 201 * 1024 * 1024 };
+    const source = { title: "Libro", sha: null, bytes: MAX_SOURCE_BYTES + 1 };
     expect(parse({ ...minimal, sources: [source] })).toBe("oversized-source");
     expect(parse({ ...minimal, sources: [{ ...source, bytes: 10, mime: 4 }] })).toBe("invalid-file");
   });
