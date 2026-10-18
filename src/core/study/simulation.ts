@@ -334,8 +334,12 @@ export function enqueueSimulation(
   if (!batches.length) throw new Error("simulation-empty");
   const running = buildJob(db, planId);
   if (running && ["queued", "running", "interrupted"].includes(running.state)) {
-    if (running.state === "interrupted") runner.resume(running.jobId);
-    return { jobId: running.jobId };
+    // A build in the other format is not what was asked for: it stops and a new build takes its place.
+    if (Boolean(running.params.style) === Boolean(style)) {
+      if (running.state === "interrupted") runner.resume(running.jobId);
+      return { jobId: running.jobId };
+    }
+    runner.cancel(running.jobId);
   }
   const params: BuildParams = {
     planId,

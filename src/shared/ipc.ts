@@ -10,6 +10,10 @@ import {
   mapSummarySchema,
 } from "./concept-map";
 
+/** The time limit of a simulation, in minutes. A past paper's duration is held within it. */
+export const SIMULATION_MIN_MINUTES = 10;
+export const SIMULATION_MAX_MINUTES = 240;
+
 /** Engines Pyxis offers. Each one runs in CLI Funnel's text-only mode. */
 export const engineProviders = [
   "claude",
@@ -805,7 +809,7 @@ export const requests = {
     input: z.object({
       planId: z.string(),
       // 30, 60, 90 and 120 are the presets; a past paper can give another length.
-      minutes: z.number().int().min(10).max(240).optional(),
+      minutes: z.number().int().min(SIMULATION_MIN_MINUTES).max(SIMULATION_MAX_MINUTES).optional(),
       source: z.enum(["exam", "mixed"]).optional(),
       // Follow the plan's past papers when it has any. Default: yes.
       matchPast: z.boolean().optional(),
@@ -820,7 +824,7 @@ export const requests = {
     input: z.object({
       planId: z.string(),
       // 30, 60, 90 and 120 are the presets; a past paper can give another length.
-      minutes: z.number().int().min(10).max(240).optional(),
+      minutes: z.number().int().min(SIMULATION_MIN_MINUTES).max(SIMULATION_MAX_MINUTES).optional(),
       source: z.enum(["exam", "mixed"]).optional(),
       // Follow the plan's past papers when it has any. Default: yes.
       matchPast: z.boolean().optional(),

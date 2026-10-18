@@ -2,7 +2,7 @@ import { setTimeout as wait } from "node:timers/promises";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
-import { IpcError } from "../../shared/ipc";
+import { IpcError, SIMULATION_MAX_MINUTES, SIMULATION_MIN_MINUTES } from "../../shared/ipc";
 import { generate, type GenerateInput } from "../engine/generate";
 import {
   languageName,
@@ -196,7 +196,7 @@ export type PastStyle = {
   papers: number;
   /** The usual number of questions in one paper, kept within what a simulation builds. */
   questions: number;
-  /** The usual duration, when papers give one. */
+  /** The usual duration, when papers give one, held within the time limits of a simulation. */
   minutes: number | null;
   totalPoints: number | null;
   types: Record<PaperType, number>;
@@ -217,7 +217,9 @@ export function pastStyle(db: Database.Database, planId: string): PastStyle | nu
       STYLE_MAX_QUESTIONS,
       Math.max(STYLE_MIN_QUESTIONS, Math.round(median(papers.map(({ paper }) => paper.questions.length)))),
     ),
-    minutes: minutes.length ? Math.round(median(minutes)) : null,
+    minutes: minutes.length
+      ? Math.min(SIMULATION_MAX_MINUTES, Math.max(SIMULATION_MIN_MINUTES, Math.round(median(minutes))))
+      : null,
     totalPoints: points.length ? Math.round(median(points)) : null,
     types: countBy(PAPER_TYPES, all.map((q) => q.type)),
     difficulty: countBy(PAPER_DIFFICULTIES, all.map((q) => q.difficulty)),

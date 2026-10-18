@@ -6,6 +6,7 @@ import { loadTemplate } from "../engine/prompts";
 import { readPlan } from "../plans/create";
 import { exportPlan } from "../plans/file";
 import { startRebuild } from "../plans/jobs";
+import { SIMULATION_MAX_MINUTES, SIMULATION_MIN_MINUTES } from "../../shared/ipc";
 import { attachPlanSources } from "../plans/views";
 import { removeSource } from "../sources/manage";
 import {
@@ -347,6 +348,12 @@ describe("past style", () => {
     expect(pastStyle(fixture(), "plan")).toBeNull();
   });
 
+  it("keeps the duration within what a simulation accepts", () => {
+    expect(pastStyle(withPapers({ ...exam, minutes: 480 }), "plan")!.minutes).toBe(SIMULATION_MAX_MINUTES);
+    expect(pastStyle(withPapers({ ...exam, minutes: 5 }), "plan")!.minutes).toBe(SIMULATION_MIN_MINUTES);
+    expect(pastStyle(withPapers({ ...exam, minutes: 90 }), "plan")!.minutes).toBe(90);
+  });
+
   it("spreads the types and levels over the slots in the papers' proportions, the same way every time", () => {
     const style: PastStyle = {
       papers: 1,
@@ -522,6 +529,27 @@ describe("simulations that follow past papers", () => {
     expect(second.jobId).not.toBe(first.jobId);
     await ready(db);
     expect(readSimulationBuild(db, "plan")).toMatchObject({ jobId: second.jobId, styled: true });
+    db.close();
+  });
+
+  it("replaces an interrupted build of the other format instead of resuming it", async () => {
+    const db = fixture();
+    const runner = createRunner(db, () => {});
+    registerPastPaperJobs(db, runner, reader(exam));
+    // The writer never answers, so the build stays unfinished until the test marks it interrupted.
+    registerSimulationJobs(db, runner, () => new Promise(() => {}));
+    addSource(db, "ap0", "Testo");
+    await settled(db, addPastPaper(db, runner, "plan", ["ap0"]).jobId);
+    const first = enqueueSimulation(db, "plan", 60, Date.now(), "exam", true) as { jobId: string };
+    db.prepare("UPDATE jobs SET state = 'interrupted' WHERE id = ?").run(first.jobId);
+    const second = enqueueSimulation(db, "plan", 60, Date.now(), "exam", false) as { jobId: string };
+    expect(second.jobId).not.toBe(first.jobId);
+    expect(readSimulationBuild(db, "plan")).toMatchObject({ jobId: second.jobId, styled: false });
+    // The same format still picks the interrupted build up where it stopped.
+    db.prepare("UPDATE jobs SET state = 'interrupted' WHERE id = ?").run(second.jobId);
+    expect(enqueueSimulation(db, "plan", 60, Date.now(), "exam", false)).toEqual(second);
+    // Let the runner pick the queued jobs up before the database closes.
+    await new Promise((r) => setTimeout(r, 20));
     db.close();
   });
 
