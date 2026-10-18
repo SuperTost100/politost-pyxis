@@ -83,6 +83,8 @@ export function SettingsPage() {
   const [restoreArmed, setRestoreArmed] = useState(false);
   const [moving, setMoving] = useState(false);
   const [archiving, setArchiving] = useState<"backup" | "restore" | null>(null);
+  const [freeing, setFreeing] = useState(false);
+  const [freeNote, setFreeNote] = useState<string | null>(null);
   const place = useQuery({
     queryKey: ["workspace-path"],
     queryFn: () => window.pyxis.workspacePath(),
@@ -403,6 +405,34 @@ export function SettingsPage() {
             </li>
           ))}
         </ul>
+        <div className="px-settings-actions">
+          <Button
+            shape="round"
+            loading={freeing}
+            disabled={moving || archiving !== null}
+            onClick={() => {
+              if (freeing) return;
+              setFreeing(true);
+              setFreeNote(null);
+              void invoke("plans.freeSpace", {})
+                .then(({ bytes }) => {
+                  void client.invalidateQueries({ queryKey: ["plan-usage"] });
+                  setFreeNote(
+                    bytes > 0
+                      ? t("settings.freeSpaceDone", { size: formatBytes(bytes, i18n.language) })
+                      : t("settings.freeSpaceNothing"),
+                  );
+                })
+                .catch(() => setFreeNote(t("settings.freeSpaceFailed")))
+                .finally(() => setFreeing(false));
+            }}
+          >
+            {t("settings.freeSpace")}
+          </Button>
+        </div>
+        <p className="small section-hint" role="status">
+          {freeNote ?? t("settings.freeSpaceHint")}
+        </p>
         <div className="px-settings-actions">
           <Button
             disabled={moving || (archiving !== null && archiving !== "backup")}

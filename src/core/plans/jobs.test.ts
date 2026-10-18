@@ -6,6 +6,7 @@ import {
   registerPlanJobs,
   planBuildState,
   diagnosticTopics,
+  samplePassages,
 } from "./jobs";
 import { importSmartbook } from "../sources/smartbook";
 import { strToU8, zipSync } from "fflate";
@@ -81,6 +82,15 @@ describe("PLAN-21 durable plan build", () => {
     expect(picked.at(-1)).toBe(29);
     expect(picked).not.toContain(1);
     expect(new Set(picked).size).toBe(10);
+  });
+  it("samples a segment named under two topics once (#94)", () => {
+    const row = (id: string) => ({ id, source_id: "s", text: id, section_path: null, locator_json: "{}" });
+    const topic = (passageIds: string[]) => ({ title: "t", summary: "", subtopics: [], passageIds });
+    const picked = samplePassages(
+      { tree: [topic(["a", "b"]), topic(["b", "c"])] },
+      ["a", "b", "c"].map(row),
+    );
+    expect(picked.map((p) => p.id).sort()).toEqual(["a", "b", "c"]);
   });
   it("retries only the failed generation and preserves the topic and introduction", async () => {
     const db = openDatabase(":memory:");

@@ -5,8 +5,16 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { uuidv7 } from "../../shared/ids";
 import { cardReviewSchema } from "../../shared/card-schedule";
-import { PLAN_TITLE_MAX, planFileSchema, type PlanFile } from "../../shared/plan-file";
-import { putBlob, readBlob } from "../blobs";
+import {
+  citationOrder,
+  MAX_EXAM_AT,
+  MAX_PLAN_FILE_BYTES,
+  PLAN_TITLE_MAX,
+  planFileSchema,
+  type PlanFile,
+} from "../../shared/plan-file";
+import { MAX_SOURCE_BYTES } from "../../shared/source-types";
+import { hasBlob, putBlob, readBlob, removeBlob } from "../blobs";
 import { validateGraph, type ConceptGraph } from "../maps/graph";
 
 export type { PlanFile };
@@ -43,6 +51,11 @@ function dropUnknownRefs(value: unknown, known: Set<string>): unknown {
       return [[key, item]];
     }),
   );
+}
+
+/** An exam date an older version stored or a file carried, within what the calendar can write. */
+function clampExamAt(value: number): number {
+  return Math.min(MAX_EXAM_AT, Math.max(0, Math.trunc(value)));
 }
 
 function clampTarget(value: number): number {
@@ -187,7 +200,7 @@ export function exportPlan(
           }
         : {}),
     })),
-    examAt: plan.exam_at,
+    examAt: plan.exam_at == null ? null : clampExamAt(plan.exam_at),
     target: clampTarget(plan.target),
     language:
       plan.content_language === "it" || plan.content_language === "en"
@@ -216,22 +229,14 @@ export function exportPlan(
         blob_sha: string | null;
         mime: string | null;
       }>
-    ).map((source) => {
-      const file = sourceFile(
-        options?.workspace ?? "",
-        source.blob_sha,
-        options?.embed === true,
-      );
-      return {
-        id: source.id,
-        kind: source.kind,
-        title: source.title,
-        sha: source.blob_sha,
-        bytes: file.bytes,
-        mime: source.mime,
-        ...(file.data !== undefined ? { data: file.data } : {}),
-      };
-    }),
+    ).map((source) => ({
+      id: source.id,
+      kind: source.kind,
+      title: source.title,
+      sha: source.blob_sha,
+      bytes: storedFile(options?.workspace ?? "", source.blob_sha)?.bytes ?? 0,
+      mime: source.mime,
+    })),
     ...(options?.progress
       ? {
           progress: (
@@ -300,7 +305,29 @@ export function exportPlan(
       payload: dropUnknownRefs(event.payload, known),
     }));
   }
+  if (options?.embed) embedSources(file, options.workspace ?? "");
   return file;
+}
+
+/**
+ * Adds the originals' bytes, in list order, while the saved file stays within MAX_PLAN_FILE_BYTES. An original that no
+ * longer fits travels without `data`, and the importing app asks for it as for any missing original. Sizes are those of
+ * the file the renderer saves, `JSON.stringify(file, null, 2)` in UTF-8.
+ */
+function embedSources(file: PlanFile, workspace: string): void {
+  if (!workspace) return;
+  let size = Buffer.byteLength(JSON.stringify(file, null, 2));
+  for (const source of file.sources ?? []) {
+    const stored = storedFile(workspace, source.sha);
+    if (!stored || stored.bytes !== source.bytes) continue;
+    // The base64 text plus its `"data": ` line at the source's indentation.
+    const added = Math.ceil(source.bytes / 3) * 4 + 32;
+    if (size + added > MAX_PLAN_FILE_BYTES) continue;
+    const bytes = readFileSync(stored.path);
+    if (bytes.length !== source.bytes) continue;
+    source.data = bytes.toString("base64");
+    size += added;
+  }
 }
 
 /**
@@ -494,23 +521,37 @@ function importedPayload(
   record.nodeId = id;
   return record;
 }
-function sourceFile(
-  workspace: string,
-  sha: string | null,
-  embed: boolean,
-): { bytes: number; data?: string } {
-  if (!workspace || !sha) return { bytes: 0 };
+/** The stored original, or null when it is not on this computer or larger than any import takes. */
+function storedFile(workspace: string, sha: string | null): { path: string; bytes: number } | null {
+  if (!workspace || !sha) return null;
   try {
-    const record = readBlob(workspace, sha);
-    const bytes = statSync(record.file).size;
-    if (!embed) return { bytes };
-    return {
-      bytes,
-      data: Buffer.from(readFileSync(record.file)).toString("base64"),
-    };
+    const path = readBlob(workspace, sha).file;
+    const bytes = statSync(path).size;
+    return bytes <= MAX_SOURCE_BYTES ? { path, bytes } : null;
   } catch {
-    return { bytes: 0 };
+    return null;
   }
+}
+
+/**
+ * Runs an import transaction that writes embedded files. Files cannot join the transaction, so when it fails the ones
+ * this import made new are removed again; a file that was already there may belong to a stored source and stays.
+ * Nothing else runs between the check and the writes, so no row can come to name a file being removed.
+ */
+function undoingNewBlobs<T>(workspace: string, shas: string[], run: () => T): T {
+  const fresh = workspace ? [...new Set(shas)].filter((sha) => !hasBlob(workspace, sha)) : [];
+  try {
+    return run();
+  } catch (error) {
+    for (const sha of fresh) removeBlob(workspace, sha);
+    throw error;
+  }
+}
+
+/** A passage list where one passage appears twice would fail on the database's key after the files were written. */
+function listedOnce(ids: readonly string[]): readonly string[] {
+  if (new Set(ids).size !== ids.length) throw new Error("plan-file");
+  return ids;
 }
 
 function decodeSource(data: string, bytes: number): Buffer {
@@ -560,7 +601,7 @@ export function importPlan(
       planId,
       parsed.title.slice(0, PLAN_TITLE_MAX),
       parsed.language ?? null,
-      parsed.examAt ?? null,
+      parsed.examAt == null ? null : clampExamAt(parsed.examAt),
       parsed.target ?? 0.75,
       parsed.style ?? "decide",
       now,
@@ -657,7 +698,7 @@ export function importPlan(
       ).run(planId, sourceId);
     });
   });
-  run();
+  undoingNewBlobs(workspace, embedded.map((source) => source.sha), run);
   return planId;
 }
 
@@ -759,12 +800,34 @@ function exportContent(
     .all(planId, progress ? 1 : 0, progress ? 1 : 0, planId) as { content: string }[])
     citations(JSON.parse(row.content));
   const citedExerciseIds = [...citedIds];
-  const exercisePassages = db
+  // A generated exercise travels with the plan whose topic it was written for, whichever passages it cites now. Another
+  // plan on the same book has its own, and their topic is not in this file. Book exercises go with the book.
+  const exerciseRows = db
     .prepare(
-      `SELECT e.passage_id AS id FROM exercises e LEFT JOIN smartbooks sb ON sb.id=e.smartbook_id WHERE e.passage_id IS NOT NULL AND (sb.source_id IN (SELECT source_id FROM plan_sources WHERE plan_id=?) OR json_extract(e.locator_json,'$.planId')=? OR e.id IN (${citedExerciseIds.map(() => "?").join(",") || "NULL"}))`,
+      `SELECT e.*,sb.source_id FROM exercises e LEFT JOIN smartbooks sb ON sb.id=e.smartbook_id
+       WHERE CASE WHEN e.smartbook_id IS NULL AND json_extract(e.locator_json,'$.kind')='generated'
+         THEN json_extract(e.locator_json,'$.topicId') IN (SELECT id FROM topics WHERE plan_id=?)
+         ELSE sb.source_id IN (SELECT source_id FROM plan_sources WHERE plan_id=?) OR e.passage_id IN (SELECT tp.passage_id FROM topic_passages tp JOIN topics t ON t.id=tp.topic_id WHERE t.plan_id=?) OR json_extract(e.locator_json,'$.planId')=? OR e.id IN (${citedExerciseIds.map(() => "?").join(",") || "NULL"})
+       END ORDER BY e.created_at,e.id`,
     )
-    .all(planId, planId, ...citedExerciseIds) as { id: string }[];
-  for (const passage of exercisePassages) citedIds.add(passage.id);
+    .all(planId, planId, planId, planId, ...citedExerciseIds) as {
+    id: string;
+    source_id: string | null;
+    passage_id: string | null;
+    prompt: string;
+    answer: string | null;
+    locator_json: string | null;
+    grounding: "sources" | "mixed" | "general" | null;
+  }[];
+  const locatorPassages = (locator: unknown): string[] => {
+    const ids = (locator as { passageIds?: unknown } | null)?.passageIds;
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+  };
+  // Every passage an exercise names travels with it, so the importer can resolve its locator.
+  for (const e of exerciseRows) {
+    if (e.passage_id) citedIds.add(e.passage_id);
+    for (const id of locatorPassages(e.locator_json ? JSON.parse(e.locator_json) : null)) citedIds.add(id);
+  }
   const knownPassages = new Set(passages.map((p) => p.id));
   for (const id of citedIds) {
     if (knownPassages.has(id)) continue;
@@ -821,14 +884,17 @@ function exportContent(
       row.id,
       cleanContent(JSON.parse(row.body_json)),
     );
-    // Carry legacy prose citation order before import assigns fresh passage IDs.
-    if (
-      (row.kind === "lesson" || row.kind === "intro") &&
-      body &&
-      typeof body === "object" &&
-      !Array.isArray((body as { passageIds?: unknown }).passageIds)
-    ) {
-      body = { ...body, passageIds };
+    // Write the prose citation order from the linked passages, before import assigns fresh passage IDs. An older body
+    // may have no order, an empty one or a repeated passage; the file always names each linked passage once.
+    if ((row.kind === "lesson" || row.kind === "intro") && body && typeof body === "object" && !Array.isArray(body)) {
+      const ordered = (body as { passageIds?: unknown }).passageIds;
+      body = {
+        ...body,
+        passageIds: citationOrder(
+          Array.isArray(ordered) ? ordered.filter((id): id is string => typeof id === "string") : undefined,
+          passageIds,
+        ),
+      };
     }
     return {
       id: row.id,
@@ -842,29 +908,23 @@ function exportContent(
       model: row.model_id,
     };
   });
-  const exercises = (
-    db
-      .prepare(
-        `SELECT e.*,sb.source_id FROM exercises e LEFT JOIN smartbooks sb ON sb.id=e.smartbook_id WHERE sb.source_id IN (SELECT source_id FROM plan_sources WHERE plan_id=?) OR e.passage_id IN (SELECT tp.passage_id FROM topic_passages tp JOIN topics t ON t.id=tp.topic_id WHERE t.plan_id=?) OR json_extract(e.locator_json,'$.planId')=? OR e.id IN (${[...citedIds].map(() => "?").join(",") || "NULL"}) ORDER BY e.created_at,e.id`,
-      )
-      .all(planId, planId, planId, ...citedIds) as {
-      id: string;
-      source_id: string | null;
-      passage_id: string | null;
-      prompt: string;
-      answer: string | null;
-      locator_json: string | null;
-      grounding: "sources" | "mixed" | "general" | null;
-    }[]
-  ).map((e) => ({
-    id: e.id,
-    sourceId: e.source_id,
-    passageId: e.passage_id,
-    prompt: e.prompt,
-    answer: e.answer,
-    locator: e.locator_json ? JSON.parse(e.locator_json) : null,
-    grounding: e.grounding,
-  }));
+  const exercises = exerciseRows.map((e) => {
+    const locator = e.locator_json ? (JSON.parse(e.locator_json) as unknown) : null;
+    const named = locatorPassages(locator);
+    return {
+      id: e.id,
+      sourceId: e.source_id,
+      passageId: e.passage_id,
+      prompt: e.prompt,
+      answer: e.answer,
+      // A passage deleted since (its hidden source went with a chat) cannot travel, so the locator stops naming it.
+      locator:
+        named.some((id) => !knownPassages.has(id)) && locator && typeof locator === "object"
+          ? { ...locator, passageIds: named.filter((id) => knownPassages.has(id)) }
+          : locator,
+      grounding: e.grounding,
+    };
+  });
   const maps = (
     db
       .prepare(
@@ -939,6 +999,22 @@ function importPortablePlan(
       body: portableQuestionIds(item.id, item.body),
     })),
   };
+  // Older exports could carry another plan's generated exercises, written for a topic the file does not have. One that
+  // the file names elsewhere stays, tied to this plan instead of the topic; the others are left out.
+  const topicKeys = new Set(file.topics.flatMap((t) => (t.id ? [t.id] : [])));
+  const strayed = (e: NonNullable<PlanFile["exercises"]>[number]) => {
+    const locator = e.locator as { kind?: unknown; topicId?: unknown } | null;
+    return (
+      e.sourceId == null &&
+      locator?.kind === "generated" &&
+      typeof locator.topicId === "string" &&
+      !topicKeys.has(locator.topicId)
+    );
+  };
+  if (file.exercises?.some(strayed)) {
+    const elsewhere = JSON.stringify([file.items, file.progress, file.maps, file.cards]);
+    file = { ...file, exercises: file.exercises.filter((e) => !strayed(e) || elsewhere.includes(e.id)) };
+  }
   const ids = new Map<string, string>();
   let sequence = 0;
   const allocate = (old: string | undefined) => {
@@ -1109,7 +1185,7 @@ function importPortablePlan(
   const topics = file.topics.map((t) => ({
     ...t,
     tree: t.tree ? remap(t.tree) : null,
-    passageIds: t.passageIds?.map((id) => checkedRef(id, passageKeys)!),
+    passageIds: t.passageIds && listedOnce(t.passageIds).map((id) => checkedRef(id, passageKeys)!),
   }));
   const documentVersions = new Set<string>();
   const documents = (file.documents ?? []).map((d) => {
@@ -1159,6 +1235,18 @@ function importPortablePlan(
       e.sourceId == null &&
       locator.kind !== "generated" &&
       typeof locator.chapter === "number";
+    if (strayed(e)) {
+      // Another plan's exercise the file still names: tied to this plan, so deleting it removes the exercise, and
+      // citing only the passages the file carries.
+      const { topicId: _other, passageIds: named, ...rest } = locator;
+      const known = Array.isArray(named) ? named.filter((id) => typeof id === "string" && passageKeys.has(id)) : [];
+      return {
+        ...e,
+        sourceId: null,
+        passageId: e.passageId != null && passageKeys.has(e.passageId) ? ref(e.passageId) : null,
+        locator: { ...(remap({ ...rest, passageIds: known }) as object), planId },
+      };
+    }
     return {
       ...e,
       sourceId: checkedRef(e.sourceId, sourceKeys),
@@ -1169,12 +1257,14 @@ function importPortablePlan(
       },
     };
   });
-  const items = (file.items ?? []).map((i) => ({
-    ...i,
-    topicId: topicRef(topicIds, i.topic),
-    body: remap(cleanContent(i.body)),
-    passageIds: i.passageIds.map((id) => checkedRef(id, passageKeys)!),
-  }));
+  const items = (file.items ?? []).map((i) => {
+    const passageIds = listedOnce(i.passageIds).map((id) => checkedRef(id, passageKeys)!);
+    let body = remap(cleanContent(i.body));
+    // An older file may carry an empty or repeated citation order; the order names each linked passage once.
+    if ((i.kind === "lesson" || i.kind === "intro") && Array.isArray((body as { passageIds?: unknown }).passageIds))
+      body = { ...(body as object), passageIds: citationOrder((body as { passageIds: string[] }).passageIds, passageIds) };
+    return { ...i, topicId: topicRef(topicIds, i.topic), body, passageIds };
+  });
   const cards = file.cards.map((c) => ({
     ...c,
     topicId: topicRef(topicIds, c.topic),
@@ -1306,7 +1396,8 @@ function importPortablePlan(
   // A file with gap rows carries exactly one opened event per gap and one closed event per closed gap.
   for (const g of gapRows)
     if (!opened.has(g.id) || (g.closedAt != null && !closed.has(g.id))) throw new Error("plan-file");
-  return db.transaction(() => {
+  const embeddedShas = [...embedded.values()].map((bytes) => createHash("sha256").update(bytes).digest("hex"));
+  return undoingNewBlobs(workspace, embeddedShas, db.transaction(() => {
     db.prepare(
       "INSERT INTO plans(id,title,status,content_language,exam_at,target,style,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
     ).run(
@@ -1318,7 +1409,7 @@ function importPortablePlan(
         ? "draft"
         : "ready",
       file.language ?? null,
-      file.examAt ?? null,
+      file.examAt == null ? null : clampExamAt(file.examAt),
       file.target ?? 0.75,
       file.style ?? "decide",
       now,
@@ -1582,5 +1673,5 @@ function importPortablePlan(
         ),
     );
     return planId;
-  })();
+  }));
 }

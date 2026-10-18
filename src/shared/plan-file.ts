@@ -2,6 +2,7 @@ import { z } from "zod";
 import { cardReviewSchema } from "./card-schedule";
 import { conceptGraphSchema } from "./concept-map";
 import { figureImagesSchema } from "./smart-text";
+import { MAX_SOURCE_BYTES } from "./source-types";
 const id = z.string().min(1).max(160);
 const index = z.number().int().nonnegative();
 const text = z.string().max(1000000);
@@ -103,14 +104,11 @@ const portableItem = z
           : questionsBody;
     const parsed = schema.safeParse(item.body);
     if (parsed.success && (item.kind === "lesson" || item.kind === "intro")) {
+      // Older exports wrote an empty or repeated order next to the linked passages, and import rebuilds it with
+      // `citationOrder`. A passage the item does not cite is still refused.
       const ordered = (parsed.data as z.infer<typeof proseBody>).passageIds;
       const cited = new Set(item.passageIds);
-      if (
-        ordered &&
-        (new Set(ordered).size !== ordered.length ||
-          ordered.length !== item.passageIds.length ||
-          ordered.some((id) => !cited.has(id)))
-      ) {
+      if (ordered?.some((id) => !cited.has(id))) {
         ctx.addIssue({
           code: "custom",
           path: ["body", "passageIds"],
@@ -127,12 +125,42 @@ const portableItem = z
         });
   });
 
+/** The longest author name a file carries. */
+export const AUTHOR_MAX = 200;
+
+/**
+ * The latest exam date. Before 10:00 UTC on 30 December 9999 it is still that day or earlier in every time zone
+ * (UTC-12 to UTC+14), so the exam day and the calendar's day after it keep four-digit years. Older plan files may
+ * carry a later date; import and export clamp it.
+ */
+export const MAX_EXAM_AT = Date.UTC(9999, 11, 30, 10) - 1;
+
+/** The most base64 the save bridge takes for one exported file (`src/main/artifacts.ts`). */
+export const MAX_ARTIFACT_BASE64 = 96 * 1024 * 1024;
+
+/**
+ * The largest plan file the app can save. A link import takes up to 320 MiB, so the save bridge is the tighter limit.
+ * The exporter leaves out any original that would make the file larger.
+ */
+export const MAX_PLAN_FILE_BYTES = (MAX_ARTIFACT_BASE64 / 4) * 3;
+
+/**
+ * A lesson's citation order as the app stores it: the body's order without repeats or passages the item does not cite,
+ * then the item's other passages in their listed order.
+ */
+export function citationOrder(ordered: readonly string[] | undefined, linked: readonly string[]): string[] {
+  const cited = new Set(linked);
+  const order = [...new Set((ordered ?? []).filter((id) => cited.has(id)))];
+  const placed = new Set(order);
+  return [...order, ...linked.filter((id) => !placed.has(id))];
+}
+
 export const planFileSchema = z.object({
   version: z.union([z.literal(1), z.literal(2)]),
   id: id.optional(),
   createdAt: z.number().finite().optional(),
   /** Exporter's profile display name, written only when they have one. Never inferred. */
-  author: z.string().min(1).max(200).optional(),
+  author: z.string().min(1).max(AUTHOR_MAX).optional(),
   title: z.string().max(500),
   topics: z
     .array(
@@ -346,13 +374,14 @@ export const planFileSchema = z.object({
           .string()
           .regex(/^[a-f0-9]{64}$/)
           .nullable(),
-        bytes: z
-          .number()
-          .int()
-          .nonnegative()
-          .max(200 * 1024 * 1024),
+        /** The original's size, up to the import limit. A larger original than a file embeds travels without `data`. */
+        bytes: z.number().int().nonnegative().max(MAX_SOURCE_BYTES),
         mime: z.string().nullable().optional(),
-        data: z.string().max(280000000).optional(),
+        /** Base64 of the original, up to the import limit: a library copy or a located file can stand in for a large one. */
+        data: z
+          .string()
+          .max(Math.ceil(MAX_SOURCE_BYTES / 3) * 4)
+          .optional(),
       }),
     )
     .max(10000)

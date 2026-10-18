@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { MAX_EXAM_AT } from "../../shared/plan-file";
 
 export type CalendarLanguage = "en" | "it";
 
@@ -8,7 +9,17 @@ export type CalendarExam = {
   subject: string | null;
   /** Local noon of the exam day in milliseconds, or null for "No date yet". */
   examAt: number | null;
+  /** When the plan last changed. It sets SEQUENCE and LAST-MODIFIED, so a calendar applies a moved exam. */
+  updatedAt: number;
 };
+
+/**
+ * SEQUENCE in seconds since 2026: RFC 5545 INTEGER is 32-bit, which seconds since 1970 outgrow in 2038. Ceiling: from
+ * 2094 it stays at the largest value, and a calendar may keep an older copy of an event edited after that.
+ */
+function sequence(updatedAt: number): number {
+  return Math.min(2 ** 31 - 1, Math.max(0, Math.floor((updatedAt - Date.UTC(2026, 0, 1)) / 1000)));
+}
 
 const words = {
   en: {
@@ -96,7 +107,10 @@ export function buildCalendar(
   const upcoming = exams
     .filter(
       (e): e is CalendarExam & { examAt: number } =>
-        e.examAt != null && new Date(e.examAt).setHours(0, 0, 0, 0) >= today,
+        e.examAt != null &&
+        // An older version could store a date after year 9999, which no calendar date can write.
+        e.examAt <= MAX_EXAM_AT &&
+        new Date(e.examAt).setHours(0, 0, 0, 0) >= today,
     )
     .sort((a, b) => a.examAt - b.examAt || a.planId.localeCompare(b.planId));
   if (upcoming.length === 0) return { ics: "", count: 0 };
@@ -121,6 +135,8 @@ export function buildCalendar(
       "BEGIN:VEVENT",
       `UID:${e.planId}@pyxis.politost.it`,
       `DTSTAMP:${stamp(now)}`,
+      `LAST-MODIFIED:${stamp(e.updatedAt)}`,
+      `SEQUENCE:${sequence(e.updatedAt)}`,
       `DTSTART;VALUE=DATE:${dateValue(year, month, day)}`,
       `DTEND;VALUE=DATE:${dateValue(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate())}`,
       `SUMMARY:${summary}`,
@@ -162,7 +178,7 @@ export function exportCalendar(
 ): { filename: string; base64: string; count: number } {
   const row = db
     .prepare(
-      `SELECT p.id AS planId, p.title, s.name AS subject, p.exam_at AS examAt
+      `SELECT p.id AS planId, p.title, s.name AS subject, p.exam_at AS examAt, p.updated_at AS updatedAt
        FROM plans p LEFT JOIN subjects s ON s.id = p.subject_id
        WHERE p.id = ?`,
     )

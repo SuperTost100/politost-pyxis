@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
-import { PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
+import { MAX_EXAM_AT, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { MAX_IMAGE_BASE64 } from "./source-types";
 import { installableProviders } from "./installers";
 
@@ -1262,6 +1262,11 @@ export const requests = {
       z.object({ id: z.string(), title: z.string(), bytes: z.number() }),
     ),
   },
+  /** Deletes files and hidden copies nothing uses any more; returns the bytes freed. */
+  "plans.freeSpace": {
+    input: z.object({}),
+    output: z.object({ bytes: z.number() }),
+  },
   "plans.read": {
     input: z.object({ planId: z.string() }),
     output: z
@@ -1357,7 +1362,7 @@ export const requests = {
       planId: z.string().min(1),
       title: z.string().trim().min(1).max(PLAN_TITLE_MAX),
       target: z.number().finite().min(0.5).max(1),
-      examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable(),
+      examAt: z.number().int().min(0).max(MAX_EXAM_AT).nullable(),
     }),
     output: z.object({ ok: z.boolean() }),
   },
@@ -1550,7 +1555,7 @@ export const requests = {
       title: z.string().trim().min(1).max(PLAN_TITLE_MAX),
       subject: z.string().optional(),
       sourceIds: z.array(z.string()),
-      examAt: z.number().nullable().optional(),
+      examAt: z.number().int().min(0).max(MAX_EXAM_AT).nullable().optional(),
       target: z.number().min(0.5).max(1).optional(),
       language: z.enum(["it", "en"]).optional(),
       style: z.enum(["read", "practice", "decide"]).optional(),
