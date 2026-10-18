@@ -298,8 +298,9 @@ async function turn(input: TurnInput): Promise<EngineResult> {
       input.onDelta?.(text);
     }
     const result = await stream.result;
-    // Live Codex ends a stopped turn with a cancelled result instead of an error. It is an abort either way.
-    if (result.finishReason === "cancelled")
+    // Live Codex ends a stopped turn with a cancelled result, and a CLI killed on Stop can report what it printed as a
+    // finished answer. Either way the student stopped it.
+    if (result.finishReason === "cancelled" || input.signal?.aborted)
       throw new DOMException("Engine turn cancelled", "AbortError");
     finished = true;
     if (talk && finished) {
