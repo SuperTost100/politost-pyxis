@@ -7,6 +7,7 @@ import { flagTarget } from "./flags";
 import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
 import { createRunner } from "../jobs/runner";
+import { receiveRuntimeReply, setRuntimeSender } from "../math/runtime-client";
 import type { GenerateInput } from "../engine/generate";
 import { promptProvenance, templateVersion } from "../engine/prompts";
 import { studyHandlers } from "./handlers";
@@ -775,6 +776,43 @@ describe("M11 model-graded simulations", () => {
       )
       .all() as { payload_json: string }[];
     expect(rows.map((r) => JSON.parse(r.payload_json).score)).toEqual([1, 0]);
+    db.close();
+  });
+});
+
+describe("SymPy in simulation grading", () => {
+  it("gives the grader SymPy's verdict on the answer, and grades without it when the runtime is missing", async () => {
+    setRuntimeSender((message) => {
+      const request = message as {
+        id: string;
+        payload: { answer: string; reference: string };
+      };
+      receiveRuntimeReply(
+        request.payload.answer === "10 m/s"
+          ? { id: request.id, result: { final: { state: "verified" }, steps: 1 } }
+          : { id: request.id, error: "runtime-missing" },
+      );
+    });
+    const { db, planId } = fixture();
+    const prompts: Array<Record<string, unknown>> = [];
+    const runner = createRunner(db, () => {});
+    registerSimulationJobs(db, runner, async (input) => {
+      prompts.push(JSON.parse(input.prompt) as Record<string, unknown>);
+      return response();
+    });
+    const opened = startSimulation(db, planId, 30, Date.now(), "exam");
+    const [first, second] = opened.questions;
+    submitSimulation(db, opened.attemptId, {
+      [first!.id]: "10 m/s",
+      [second!.id]: "10 newton",
+    });
+    await until(db, opened.attemptId, "succeeded");
+    expect(prompts[0]).toMatchObject({
+      reference: "10 m/s",
+      answer: "10 m/s",
+      mathCheck: { finalAnswer: "equivalent" },
+    });
+    expect(prompts[1]).not.toHaveProperty("mathCheck");
     db.close();
   });
 });

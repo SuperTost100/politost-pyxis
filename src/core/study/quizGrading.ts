@@ -18,6 +18,7 @@ import {
   type StoredQuestion,
 } from "./attempt";
 import { gradeAnswer } from "./grade";
+import { checkMath, completionScore } from "./mathGrade";
 import { recordTopicScores } from "./simulation";
 
 export type CheckedAnswer = {
@@ -111,6 +112,13 @@ async function gradeOpen(
   engine: Engine = {},
 ) {
   if (question.answer.kind !== "open" || !pick.trim()) return undefined;
+  // SymPy's verdict on the final answer and the first wrong step, when it could read them; the model still grades.
+  const mathCheck = await checkMath(
+    pick,
+    question.answer.reference,
+    engine.signal,
+  );
+  engine.signal?.throwIfAborted();
   const result = await generate({
     selection: engine.selection ?? selectionFor(db, "grading"),
     run,
@@ -129,6 +137,7 @@ async function gradeOpen(
         "Reasoning or mathematical working where requested",
       ],
       answer: pick,
+      ...(mathCheck ? { mathCheck } : {}),
     }),
   });
   const data = result.data as { score: number; explanation: string };
@@ -210,7 +219,12 @@ export async function gradeQuizQuestion(
     throw new Error("feedback-unavailable");
   const question = attempt.body.questions.find((row) => row.id === questionId);
   if (!question) throw new Error("question-missing");
-  let score = gradeAnswer(answerOf(question.answer, pick));
+  const given = answerOf(question.answer, pick);
+  let score = await completionScore(
+    given,
+    gradeAnswer(given),
+    engine.signal,
+  );
   let explanation = question.explanation ?? "";
   let provenance: Partial<CheckedAnswer> = {};
   if (question.answer.kind === "open" && !pick.trim()) score = 0;
@@ -418,6 +432,8 @@ function askedBefore(db: Database.Database, planId: string, attemptId: string) {
 
 type GradeParams = {
   attemptId: string;
+  /** Completion answers that SymPy found equal to an accepted answer, by question id. Older jobs have none. */
+  credits?: Record<string, number>;
   /** Answers frozen at submit; later edits cannot change what is graded. */
   picks: Record<string, string>;
   /** Running/resumed grading pins its engine; explicit retry refreshes it for unfinished answers. */
@@ -499,6 +515,11 @@ export function registerQuizGradingJobs(
             })();
           }
           ctx.signal.throwIfAborted();
+          if (!params.credits) {
+            params.credits = await completionCredits(db, params, ctx.signal);
+            ctx.signal.throwIfAborted();
+            ctx.setParams(params);
+          }
           finishGrading(db, params);
           enqueueGapInsights(db, runner, params.attemptId);
           return true;
@@ -535,6 +556,27 @@ export function registerQuizGradingJobs(
   });
 }
 
+/** Completion answers without a saved check that local matching missed and SymPy credits. */
+async function completionCredits(
+  db: Database.Database,
+  params: GradeParams,
+  signal: AbortSignal,
+) {
+  const credits: Record<string, number> = {};
+  for (const question of quizAttempt(db, params.attemptId).body.questions) {
+    const pick = params.picks[question.id];
+    if (question.answer.kind !== "completion" || !pick?.trim()) continue;
+    if (checkedAnswer(db, params.attemptId, question.id)?.pick === pick)
+      continue;
+    const given = answerOf(question.answer, pick);
+    const local = gradeAnswer(given);
+    const score = await completionScore(given, local, signal);
+    signal.throwIfAborted();
+    if (score > local) credits[question.id] = score;
+  }
+  return credits;
+}
+
 /** Builds the final grade set from saved checks, then closes the attempt once. */
 function finishGrading(db: Database.Database, params: GradeParams) {
   db.transaction(() => {
@@ -554,18 +596,19 @@ function finishGrading(db: Database.Database, params: GradeParams) {
         continue;
       }
       if (needsModel(question, pick)) throw new Error("grade-missing");
+      const credit = params.credits?.[question.id];
       const local: CheckedAnswer = {
         id: question.id,
         score:
           question.answer.kind === "open"
             ? 0
-            : gradeAnswer(answerOf(question.answer, pick)),
+            : (credit ?? gradeAnswer(answerOf(question.answer, pick))),
         expected: expectedText(question),
         explanation: question.explanation ?? "",
         pick: pick ?? "",
       };
       if (configured) replaceCheck(db, params.attemptId, local);
-      if (configured || question.answer.kind === "open")
+      if (configured || question.answer.kind === "open" || credit != null)
         graded.set(question.id, local);
     }
     finalizeAttempt(db, params.attemptId, params.picks, graded, params.submittedAt);

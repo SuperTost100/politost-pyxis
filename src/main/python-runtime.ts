@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BrowserWindow, session, type Session } from "electron";
-import { checkClaimSchema } from "../shared/math-check";
+import { checkClaimSchema, gradeCheckSchema } from "../shared/math-check";
 import {
   cancelRuntimeDownload,
   currentRuntimeStatus,
@@ -177,13 +177,14 @@ function execute(
   payload: unknown,
   timeoutMs?: number,
   deadline?: number,
+  method: "run" | "check" | "grade" = operation,
 ): Promise<unknown> {
   const epoch = generation;
   const turn = tails[operation].then(() => {
     if (epoch !== generation) throw new Error("runtime-disposed");
     if (deadline !== undefined && Date.now() >= deadline)
       throw new Error("runtime-expired");
-    return dispatch(operation, payload, timeoutMs);
+    return dispatch(operation, payload, timeoutMs, method);
   });
   tails[operation] = turn.catch(() => undefined);
   return turn;
@@ -193,7 +194,8 @@ const RUN_CEILING_MS = 90000;
 async function dispatch(
   operation: "run" | "check",
   payload: unknown,
-  timeoutMs?: number,
+  timeoutMs: number | undefined,
+  method: "run" | "check" | "grade",
 ): Promise<unknown> {
   const target = await sandbox();
   if (target.isDestroyed()) throw new Error("runtime-crashed");
@@ -202,7 +204,7 @@ async function dispatch(
   try {
     return await Promise.race([
       target.webContents.executeJavaScript(
-        `window.pyxisRuntime.${operation}(${JSON.stringify(payload)}${operation === "run" ? `, ${timeoutMs}` : ""})`,
+        `window.pyxisRuntime.${method}(${JSON.stringify(payload)}${operation === "run" ? `, ${timeoutMs}` : ""})`,
       ),
       new Promise((_, reject) => {
         timer = setTimeout(() => {
@@ -246,6 +248,20 @@ export async function handleRuntimeRequest(
         checkClaimSchema.parse(payload),
         undefined,
         deadline,
+      );
+    } catch {
+      return { state: "none", reason: "runtime-unavailable" };
+    }
+  }
+  // Grading shares the check lane: one SymPy worker, one request at a time.
+  if (operation === "grade") {
+    try {
+      return await execute(
+        "check",
+        gradeCheckSchema.parse(payload),
+        undefined,
+        deadline,
+        "grade",
       );
     } catch {
       return { state: "none", reason: "runtime-unavailable" };

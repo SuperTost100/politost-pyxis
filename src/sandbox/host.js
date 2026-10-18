@@ -72,5 +72,6 @@ async function execute(kind, payload, timeoutMs) {
 Object.defineProperty(window, "pyxisRuntime", { value: Object.freeze({
   run: (code, timeoutMs = 10000) => execute("python", code, timeoutMs),
   check: (claim) => execute("check", claim, 10000),
+  grade: (input) => execute("check", { grade: input }, 10000),
   stop: (kind) => { const current = lanes.get(kind); if (current) reset(kind, current); },
 }) });
