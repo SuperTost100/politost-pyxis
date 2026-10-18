@@ -227,6 +227,7 @@ export async function checkLocalModel(
   }
   tokensPerSecond = Math.round(tokensPerSecond * 10) / 10;
   let structured = false;
+  let structuredTimedOut = false;
   try {
     const reply = await run({
       selection,
@@ -243,13 +244,14 @@ export async function checkLocalModel(
   } catch (err) {
     if (options.signal?.aborted) throw err;
     if (!timedOut(err)) return result({ tokensPerSecond, failure: "error" });
+    structuredTimedOut = true;
   }
   const fast = tokensPerSecond >= localData.minTokensPerSecond;
   return result({
     tokensPerSecond,
     structured,
     passed: fast && structured,
-    ...(!fast
+    ...(!fast || structuredTimedOut
       ? { failure: "slow" as const }
       : !structured
         ? { failure: "structured" as const }

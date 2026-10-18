@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { planAuto, type AutoProvider } from "./auto";
 import { openDatabase } from "../db/connection";
 import { startFakeOllama, type FakeOllama } from "./fake-ollama";
-import { getFunnel } from "./funnel";
+import { getFunnel, type runTurn } from "./funnel";
 import {
   autoConfigureEngines,
   engineHandlers,
@@ -261,6 +261,27 @@ describe("local model check", () => {
     const check = await checkLocalModel("gemma3:4b");
     expect(check).toMatchObject({ passed: false, failure: "error" });
   });
+
+  it("fails as slow when the structured answer times out", async () => {
+    const times = [0, 1000];
+    const run = (async (request: Parameters<typeof runTurn>[0]) => {
+      if (request.responseSchema)
+        throw Object.assign(new Error("The operation timed out."), {
+          name: "TimeoutError",
+        });
+      request.onDelta?.("word");
+      return { text: words(60), outputTokens: 60 };
+    }) as unknown as typeof runTurn;
+    const check = await checkLocalModel("gemma3:4b", {
+      run,
+      now: () => times.shift() ?? 0,
+    });
+    expect(check).toMatchObject({
+      passed: false,
+      structured: false,
+      failure: "slow",
+    });
+  });
 });
 
 describe("local model download", () => {
@@ -481,6 +502,35 @@ describe("local model handlers", () => {
     expect(engines.features().plan).toBeUndefined();
     expect(engines.features().grading).toBeUndefined();
     expect(engines.features().chat?.provider).toBe("ollama");
+    // Plans and grading do not borrow the default engine when that is the local model.
+    expect(() => selectionFor(db, "plan")).toThrow();
+    expect(() => selectionFor(db, "grading")).toThrow();
+    expect(selectionFor(db, "lesson").provider).toBe("ollama");
+    db.close();
+  });
+
+  it("follows the current hardware advice until a model is downloaded or checked", async () => {
+    const db = openDatabase(":memory:");
+    // A cancelled pull saved the smaller model, then the computer got more free space.
+    writeLocal(db, { model: "gemma3:4b", enabled: false });
+    const engines = engineHandlers(db, () => undefined, {
+      hardware: async () => gpu16,
+    });
+    expect((await engines.local()).model?.id).toBe("gemma3:12b");
+    // Once the smaller model passed a check, it stays the student's model.
+    writeLocal(db, {
+      model: "gemma3:4b",
+      enabled: true,
+      check: {
+        version: 1,
+        model: "gemma3:4b",
+        tokensPerSecond: 30,
+        structured: true,
+        passed: true,
+        at: Date.now(),
+      },
+    });
+    expect((await engines.local()).model?.id).toBe("gemma3:4b");
     db.close();
   });
 

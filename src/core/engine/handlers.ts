@@ -398,7 +398,12 @@ export function engineHandlers(
       : [];
     const advice = adviseLocal(hw, downloaded);
     const saved = readLocal(db);
-    const id = saved?.model ?? advice.tier?.model;
+    // A model the student downloaded or checked stays theirs. One saved by a pull that never finished follows the advice
+    // for this computer as it is now, so more free space or a changed GPU is not hidden behind the old pick.
+    const keepsSaved =
+      !!saved &&
+      (saved.check?.model === saved.model || downloaded.includes(saved.model));
+    const id = keepsSaved ? saved.model : advice.tier?.model;
     const tier = id ? tierOf(id) : undefined;
     return {
       hardware: {
