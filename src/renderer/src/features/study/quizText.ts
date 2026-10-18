@@ -72,3 +72,11 @@ export function skipOrder<T extends { id: string }>(
     ...skipped.flatMap((id) => questions.filter((question) => question.id === id)),
   ];
 }
+
+/**
+ * The pick "Try again" sends after a failed check. The fields unlock on a failure, so an edited answer wins; an
+ * untouched one resends what failed, which keeps an "I don't know" (an empty pick) as it was.
+ */
+export function retryPick(failed: string, pickAtFailure: string, current: string): string {
+  return current === pickAtFailure ? failed : current;
+}

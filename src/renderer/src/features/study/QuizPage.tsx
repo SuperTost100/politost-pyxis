@@ -24,6 +24,7 @@ import { QuizResults } from "./QuizResults";
 import {
   blanks,
   pairs,
+  retryPick,
   skipOrder,
   stemText,
   verdict,
@@ -157,8 +158,10 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     Boolean(attemptId) &&
     !generationFailed &&
     session.data?.state !== "succeeded";
+  // Until the queue answers, a review does not know yet how many drill questions it still owes.
+  const queueLoading = review && reviewQueue.isLoading;
   const canFinish =
-    (diagnostic && owed === 0) ||
+    (diagnostic && !queueLoading && owed === 0) ||
     (!diagnostic && session.data?.state === "succeeded" && questions.length >= requestedCount);
   const retry = useMutation({
     mutationFn: async () => {
@@ -218,6 +221,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   }, [session.data, attemptId]);
   const ordered = skipOrder(questions, skipped);
   const question = ordered[index];
+  const pickAtFailure = useRef("");
   const check = useMutation({
     mutationFn: (input: { questionId: string; pick: string }) =>
       invoke("study.quizCheck", { attemptId, ...input }),
@@ -225,6 +229,10 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
       setChecked((current) => ({ ...current, [result.id]: result }));
       // The pick that was checked is the answer, an empty "I don't know" too.
       setPicks((current) => ({ ...current, [result.id]: input.pick }));
+    },
+    // The answer in the field when the check failed, so Try again can tell an edit from an untouched pick.
+    onError: (_, input) => {
+      pickAtFailure.current = picks[input.questionId] ?? "";
     },
   });
   // An open answer the student stopped checking goes back to editable, without an error.
@@ -415,7 +423,10 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   function retryCheck() {
     if (!check.variables) return;
     cancelledCheck.current = null;
-    check.mutate(check.variables);
+    check.mutate({
+      questionId: check.variables.questionId,
+      pick: retryPick(check.variables.pick, pickAtFailure.current, picks[check.variables.questionId] ?? ""),
+    });
   }
   function stopCheck() {
     if (!question) return;
