@@ -10,6 +10,10 @@ import {
   mapSummarySchema,
 } from "./concept-map";
 
+/** The time limit of a simulation, in minutes. A past paper's duration is held within it. */
+export const SIMULATION_MIN_MINUTES = 10;
+export const SIMULATION_MAX_MINUTES = 240;
+
 /** Engines Pyxis offers. Each one runs in CLI Funnel's text-only mode. */
 export const engineProviders = [
   "claude",
@@ -806,10 +810,11 @@ export const requests = {
   "study.simulationStart": {
     input: z.object({
       planId: z.string(),
-      minutes: z
-        .union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)])
-        .optional(),
+      // 30, 60, 90 and 120 are the presets; a past paper can give another length.
+      minutes: z.number().int().min(SIMULATION_MIN_MINUTES).max(SIMULATION_MAX_MINUTES).optional(),
       source: z.enum(["exam", "mixed"]).optional(),
+      // Follow the plan's past papers when it has any. Default: yes.
+      matchPast: z.boolean().optional(),
     }),
     output: z.object({
       attemptId: z.string(),
@@ -820,14 +825,92 @@ export const requests = {
   "study.simulationPrepare": {
     input: z.object({
       planId: z.string(),
-      minutes: z
-        .union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)])
-        .optional(),
+      // 30, 60, 90 and 120 are the presets; a past paper can give another length.
+      minutes: z.number().int().min(SIMULATION_MIN_MINUTES).max(SIMULATION_MAX_MINUTES).optional(),
       source: z.enum(["exam", "mixed"]).optional(),
+      // Follow the plan's past papers when it has any. Default: yes.
+      matchPast: z.boolean().optional(),
     }),
     output: z.object({
       attemptId: z.string().optional(),
       jobId: z.string().optional(),
+    }),
+  },
+  "study.pastPapers": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({
+      papers: z.array(
+        z.object({
+          sourceId: z.string(),
+          title: z.string(),
+          /** The files (photos or pages) that make up this paper. */
+          sourceIds: z.array(z.string()),
+          status: z.enum(["reading", "ready", "failed", "interrupted", "cancelled"]),
+          jobId: z.string().optional(),
+          error: z.string().optional(),
+          questions: z.number(),
+          minutes: z.number().nullable(),
+          points: z.number().nullable(),
+          types: z.object({
+            open: z.number(),
+            choice: z.number(),
+            numeric: z.number(),
+            proof: z.number(),
+          }),
+          provider: z.string().optional(),
+          model: z.string().optional(),
+        }),
+      ),
+      /** What a simulation would copy. Null until a paper has been read. */
+      style: z
+        .object({
+          papers: z.number(),
+          questions: z.number(),
+          minutes: z.number().nullable(),
+          totalPoints: z.number().nullable(),
+          types: z.object({
+            open: z.number(),
+            choice: z.number(),
+            numeric: z.number(),
+            proof: z.number(),
+          }),
+          difficulty: z.object({
+            easy: z.number(),
+            medium: z.number(),
+            hard: z.number(),
+          }),
+        })
+        .nullable(),
+    }),
+  },
+  // Attaches the files of one past paper (several photos are one paper) and queues the job that reads its questions.
+  "study.pastPaperAdd": {
+    input: z.object({
+      planId: z.string(),
+      sourceIds: z.array(z.string()).min(1).max(12),
+    }),
+    output: z.object({ jobId: z.string(), sourceId: z.string() }),
+  },
+  "study.pastPaperRemove": {
+    input: z.object({ planId: z.string(), sourceId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  // A quiz of past questions: one paper's, or a mix of the plan's papers. Same session shape as the diagnostic.
+  "study.pastPracticeStart": {
+    input: z.object({ planId: z.string(), sourceId: z.string().optional() }),
+    output: z.object({
+      attemptId: z.string(),
+      questions: z.array(
+        z.object({
+          id: z.string(),
+          sourceId: z.string().optional(),
+          stem: z.string(),
+          grade: z.object({ kind: z.string() }),
+          options: z.array(z.string()).optional(),
+          left: z.array(z.string()).optional(),
+          right: z.array(z.string()).optional(),
+        }),
+      ),
     }),
   },
   "study.simulationBuild": {
@@ -839,6 +922,7 @@ export const requests = {
         error: z.string().nullable(),
         progress: z.number(),
         minutes: z.number(),
+        styled: z.boolean(),
         provider: z.string().optional(),
         model: z.string().optional(),
       })
