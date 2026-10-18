@@ -455,13 +455,17 @@ export function AskPage() {
   useEffect(() => {
     const root = () => document.scrollingElement ?? document.documentElement;
     let last = root().scrollTop;
-    // Only scrolling up stops following. Content that grows below, like the chips after a reply, can fire a scroll
-    // event before Pyxis has caught up with it; that is not the student leaving the bottom.
+    let lastHeight = root().scrollHeight;
+    // Only scrolling up stops following. Layout also lowers the scroll position: a skipped message settles to its real
+    // height (content-visibility), a reply swaps the live text for the saved one. The page is then shorter than at the
+    // previous event, and chips that arrive right after make it look far from the bottom. A drop with the same page
+    // height is the student; a drop with a new height is layout, and the resize watcher below pins the end again.
     const onScroll = () => {
       const el = root();
       if (el.scrollHeight - el.scrollTop - el.clientHeight < 96) following.current = true;
-      else if (el.scrollTop < last) following.current = false;
+      else if (el.scrollTop < last && el.scrollHeight === lastHeight) following.current = false;
       last = el.scrollTop;
+      lastHeight = el.scrollHeight;
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
