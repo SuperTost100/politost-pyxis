@@ -5,7 +5,7 @@ import { useAutoBackups } from "./AutoBackups";
 import "./AutoBackups.css";
 
 /**
- * Settings > Data: the automatic backups in the folder that passed their check, each with Restore. A click arms the row
+ * Settings > Data: the automatic backups in the folder that did not fail their check, each with Restore. A copy the check could not reach is marked. A click arms the row
  * (the same confirmation as restoring from a file); the second click restores. The restore itself runs in the page,
  * which owns the busy state shared with Back up and Move.
  */
@@ -65,7 +65,12 @@ export function BackupList({
         </p>
       ) : (
         <>
-          <p className="small section-hint">{t("settings.autoBackup.list.hint")}</p>
+          <p className="small section-hint">
+            {t("settings.autoBackup.list.hint")}
+            {list.data.some((file) => !file.verified)
+              ? ` ${t("settings.autoBackup.list.hintUnverified")}`
+              : ""}
+          </p>
           <ul className="px-backup-items">
             {list.data.map((file) => {
               const isArmed = armed === file.name;
@@ -74,7 +79,12 @@ export function BackupList({
                 <li className="px-card px-backup-item" key={file.name}>
                   <span className="px-backup-item-text">
                     <span className="body-strong">{date}</span>
-                    <span className="small ink-muted">{formatSize(file.size)}</span>
+                    <span className="small ink-muted">
+                      {formatSize(file.size)}
+                      {file.verified
+                        ? ""
+                        : ` · ${t("settings.autoBackup.list.unverified")}`}
+                    </span>
                   </span>
                   <span className="px-backup-item-actions">
                     <Button

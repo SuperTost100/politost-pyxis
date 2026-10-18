@@ -588,7 +588,8 @@ export class AutoBackups {
   /**
    * The automatic backups in the folder that can be restored, newest first: files of any computer, since a reinstall
    * gets a new ID and its own older backups then look foreign. Each is unpacked and checked once (see `verify`); one
-   * that fails is left out. Only the newest MAX_LISTED are looked at.
+   * that fails is left out. One the check could not reach (`null`: drive unplugged, temporary folder full, worker down) is
+   * listed as not verified and checked again next time. Only the newest MAX_LISTED are looked at.
    */
   list(): Promise<AutoBackupFile[]> {
     // Settings asks twice while it mounts; one check serves both.
@@ -607,7 +608,7 @@ export class AutoBackups {
       // A folder that is not there (a drive that is not connected) has no backups to list.
       return [];
     }
-    const found: Array<AutoBackupFile & { key: string }> = [];
+    const found: Array<Omit<AutoBackupFile, "verified"> & { key: string }> = [];
     for (const name of names) {
       try {
         const info = statSync(join(folder, name));
@@ -644,9 +645,16 @@ export class AutoBackups {
         if (typeof answer === "boolean") this.verified.set(file.key, answer);
       });
     }
+    // Only a copy proven broken is left out. One the check could not reach stays, marked, and restoring it runs the
+    // full restore validation anyway.
     return found
-      .filter((file) => this.verified.get(file.key) === true)
-      .map(({ name, at, size }) => ({ name, at, size }));
+      .filter((file) => this.verified.get(file.key) !== false)
+      .map(({ name, at, size, key }) => ({
+        name,
+        at,
+        size,
+        verified: this.verified.get(key) === true,
+      }));
   }
 
   /**

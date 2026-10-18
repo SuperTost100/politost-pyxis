@@ -1413,6 +1413,8 @@
         "failed": "Pyxis non riesce a leggere la cartella delle copie.",
         "retry": "Riprova",
         "restore": "Ripristina",
+        "hintUnverified": "Una copia segnata come non controllata non si è potuta controllare adesso. Ripristina la controlla di nuovo prima di sostituire qualcosa.",
+        "unverified": "Non ancora controllata",
         "restoreOne": "Ripristina la copia del {{at}}"
       },
       "notice": "La copia automatica non è riuscita. {{reason}}",

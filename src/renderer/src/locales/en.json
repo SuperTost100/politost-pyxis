@@ -1413,6 +1413,8 @@
         "failed": "Pyxis could not read the backup folder.",
         "retry": "Try again",
         "restore": "Restore",
+        "hintUnverified": "A copy marked not checked could not be checked just now. Restore checks it again before it replaces anything.",
+        "unverified": "Not checked yet",
         "restoreOne": "Restore the copy of {{at}}"
       },
       "notice": "The automatic backup did not finish. {{reason}}",

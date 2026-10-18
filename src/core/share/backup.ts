@@ -1049,19 +1049,13 @@ export function commitWorkspaceRestore(workspace: string): boolean {
  * keys, schema version, the tables Pyxis needs). Blobs are not unpacked, so a damaged blob is only found by a restore.
  * Needs room for the database in the temporary folder.
  *
- * False means the archive is proven unusable (or not there). A failure of the machine, such as a full or unusable
- * temporary folder or a read error, proves nothing about the archive and is thrown instead, so a caller never takes
- * it for a broken file.
+ * False means the archive is proven unusable. A failure of the machine, such as a full or unusable temporary folder,
+ * a read error or a file that cannot be reached, proves nothing about the archive and is thrown instead, so a caller
+ * never takes it for a broken file.
  */
 export function verifyBackupArchive(zipPath: string): boolean {
-  let fd: number;
-  try {
-    fd = openSync(zipPath, "r");
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException)?.code;
-    if (code === "ENOENT" || code === "ENOTDIR") return false;
-    throw error;
-  }
+  // A path that is not there throws too: a drive that is unplugged may come back with the same file on it.
+  const fd = openSync(zipPath, "r");
   let staging: string | undefined;
   try {
     const info = fstatSync(fd);
@@ -1087,7 +1081,12 @@ export function verifyBackupArchive(zipPath: string): boolean {
  * If the check cannot run (see `verifyBackupArchive`), the error is thrown and the file stays: it may well be good.
  */
 export function verifyOrDiscardBackup(zipPath: string): void {
-  if (verifyBackupArchive(zipPath)) return;
+  try {
+    if (verifyBackupArchive(zipPath)) return;
+  } catch (error) {
+    // A file that is already gone leaves nothing to keep. Any other error says nothing about the file.
+    if (existsSync(zipPath)) throw error;
+  }
   rmSync(zipPath, { force: true });
   throw new Error("backup-unverified");
 }

@@ -749,10 +749,10 @@ describe("AutoBackups", () => {
       const { files, at } = folderWith(t);
       t.verifyFails.add(files.mine[1]!);
       expect(await t.backups.list()).toEqual([
-        { name: files.legacy, at: at(5).getTime(), size: 10 },
-        { name: files.theirs, at: at(4).getTime(), size: 10 },
-        { name: files.mine[2], at: at(3).getTime(), size: 10 },
-        { name: files.mine[0], at: at(1).getTime(), size: 10 },
+        { name: files.legacy, at: at(5).getTime(), size: 10, verified: true },
+        { name: files.theirs, at: at(4).getTime(), size: 10, verified: true },
+        { name: files.mine[2], at: at(3).getTime(), size: 10, verified: true },
+        { name: files.mine[0], at: at(1).getTime(), size: 10, verified: true },
       ]);
       // A backup that does not verify is left out of the list, not deleted.
       expect(
@@ -780,6 +780,7 @@ describe("AutoBackups", () => {
       expect(file).toMatchObject({
         name: autoBackupName(new Date(NOON), t.id()),
         size: 12,
+        verified: true,
       });
       expect(t.verifyCalls).toEqual([]);
     });
@@ -792,7 +793,7 @@ describe("AutoBackups", () => {
       expect(t.verifyCalls).toHaveLength(1);
     });
 
-    it("is empty when the folder is not there, and leaves out what could not be checked", async () => {
+    it("is empty when the folder is not there, and lists what could not be checked as not verified", async () => {
       const t = setup();
       expect(await t.backups.list()).toEqual([]);
       folderWith(t);
@@ -808,10 +809,13 @@ describe("AutoBackups", () => {
         },
         start: () => ({ done: Promise.resolve(), stop: async () => undefined }),
       });
-      expect(await failing.list()).toEqual([]);
+      // The worker failing says nothing about the files: they stay in the list, marked, and restore checks them.
+      const listed = await failing.list();
+      expect(listed).toHaveLength(5);
+      expect(listed.every((file) => file.verified === false)).toBe(true);
     });
 
-    it("does not remember a file the check could not answer for, and asks again", async () => {
+    it("lists a file the check could not answer for as not verified, and asks again", async () => {
       const t = setup();
       const { files } = folderWith(t);
       const unknown = new Set<string>([files.mine[0]!]);
@@ -825,17 +829,25 @@ describe("AutoBackups", () => {
         changed: () => undefined,
         verify: async (zips) => {
           calls.push(zips.map((zip) => basename(zip)));
-          return zips.map((zip) => (unknown.has(basename(zip)) ? null : true));
+          return zips.map((zip) =>
+            unknown.has(basename(zip))
+              ? null
+              : basename(zip) === files.mine[1]
+                ? false
+                : true,
+          );
         },
         start: () => ({ done: Promise.resolve(), stop: async () => undefined }),
       });
-      expect((await backups.list()).map((file) => file.name)).not.toContain(
-        files.mine[0],
-      );
+      const state = async () =>
+        Object.fromEntries(
+          (await backups.list()).map((file) => [file.name, file.verified]),
+        );
+      // Unknown stays listed, marked; proven broken stays hidden.
+      expect(await state()).toMatchObject({ [files.mine[0]!]: false });
+      expect(await state()).not.toHaveProperty(files.mine[1]!);
       unknown.clear();
-      expect((await backups.list()).map((file) => file.name)).toContain(
-        files.mine[0],
-      );
+      expect(await state()).toMatchObject({ [files.mine[0]!]: true });
       expect(calls.at(-1)).toEqual([files.mine[0]]);
     });
 

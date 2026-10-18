@@ -59,8 +59,17 @@ export type AutoBackupStatus = {
   notice: AutoBackupFailure | null;
 };
 
-/** An automatic backup in the folder that passed its check and can be restored. `at` is the time in its name. */
-export type AutoBackupFile = { name: string; at: number; size: number };
+/**
+ * An automatic backup in the folder that can be restored. `at` is the time in its name. `verified` is false when the
+ * check could not run for it (drive unplugged, temporary folder full); restoring it checks it again. A copy that
+ * failed its check is not listed.
+ */
+export type AutoBackupFile = {
+  name: string;
+  at: number;
+  size: number;
+  verified: boolean;
+};
 
 /** Study reminders: off by default; `time` is local, "HH:MM". */
 export type ReminderSettings = { enabled: boolean; time: string };

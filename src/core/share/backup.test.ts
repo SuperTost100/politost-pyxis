@@ -998,11 +998,14 @@ describe("verifyBackupArchive", { timeout: 30_000 }, () => {
     }
   });
 
-  it("rejects a missing file, a file that is not a zip and a truncated archive", () => {
+  it("cannot answer for a missing file, and rejects a file that is not a zip and a truncated archive", () => {
     const root = mkdtempSync(join(tmpdir(), "pyxis-verify-bad-"));
     try {
       const archive = backedUp(root);
-      expect(verifyBackupArchive(join(root, "absent.zip"))).toBe(false);
+      // Not there is not the same as broken: a drive that is unplugged may come back with the same file.
+      expect(() => verifyBackupArchive(join(root, "absent.zip"))).toThrow(
+        /ENOENT/,
+      );
       writeFileSync(join(root, "text.zip"), "not a zip");
       expect(verifyBackupArchive(join(root, "text.zip"))).toBe(false);
       const bytes = readFileSync(archive);
@@ -1065,6 +1068,8 @@ describe("verifyBackupArchive", { timeout: 30_000 }, () => {
       writeFileSync(archive, bytes);
       expect(() => verifyOrDiscardBackup(archive)).toThrow("backup-unverified");
       expect(existsSync(archive)).toBe(false);
+      // A file that is already gone leaves nothing to keep: the backup still fails.
+      expect(() => verifyOrDiscardBackup(archive)).toThrow("backup-unverified");
     } finally {
       if (saved === undefined) delete process.env.TMPDIR;
       else process.env.TMPDIR = saved;
