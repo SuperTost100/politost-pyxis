@@ -131,12 +131,70 @@ describe("automatic engine choice", () => {
       handlers.autoConfigure({}),
     );
     handlers.setFeature({ feature: "plan", provider: "codex", model: "gpt-x" });
+    // The first scan that finds nothing after a ready one may be a sign-in probe that timed out.
+    await withFunnel({ claude: false, codex: false }, () =>
+      handlers.autoConfigure({}),
+    );
+    expect(selectionFor(db, "chat").provider).toBe("claude");
     const none = await withFunnel({ claude: false, codex: false }, () =>
       handlers.autoConfigure({}),
     );
     expect(none.ready).toEqual([]);
     expect(Object.keys(none.features)).toEqual(["plan"]);
     expect(() => selectionFor(db, "chat")).toThrow();
+    db.close();
+  });
+
+  it("keeps the automatic choices through one sign-in probe that fails, and drops them when it fails twice", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    await withFunnel({ claude: true, codex: false }, () =>
+      handlers.autoConfigure({}),
+    );
+    const before = handlers.features();
+    await withFunnel({ claude: false, codex: false }, () =>
+      handlers.autoConfigure({}),
+    );
+    expect(handlers.features()).toEqual(before);
+    // The next probe succeeds: the failure was a blip, and a later one starts the count again.
+    await withFunnel({ claude: true, codex: false }, () =>
+      handlers.autoConfigure({}),
+    );
+    await withFunnel({ claude: false, codex: false }, () =>
+      handlers.autoConfigure({}),
+    );
+    expect(handlers.features()).toEqual(before);
+    await withFunnel({ claude: false, codex: false }, () =>
+      handlers.autoConfigure({}),
+    );
+    expect(Object.keys(handlers.features())).toEqual([]);
+    db.close();
+  });
+
+  it("drops the automatic choices at once when the student signs out in Pyxis", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined, { auto: true });
+    const state = { claude: true, codex: false };
+    await withFunnel(state, () => handlers.autoConfigure({}));
+    expect(selectionFor(db, "chat").provider).toBe("claude");
+    const funnel = fakeFunnel(state);
+    const original = vi.mocked(getFunnel).getMockImplementation();
+    vi.mocked(getFunnel).mockImplementation(
+      () =>
+        ({
+          ...funnel,
+          providers: { claude: { capabilities: { access: ["none"] } } },
+          logout: async () => {
+            state.claude = false;
+          },
+        }) as unknown as ReturnType<typeof getFunnel>,
+    );
+    try {
+      await handlers.logout({ provider: "claude" });
+    } finally {
+      if (original) vi.mocked(getFunnel).mockImplementation(original);
+    }
+    expect(Object.keys(handlers.features())).toEqual([]);
     db.close();
   });
 

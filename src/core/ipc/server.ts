@@ -221,12 +221,15 @@ async function dispatchValidated(
       );
     case "engines.test": {
       const parsed = requests["engines.test"].input.parse(input);
-      return engines?.test({
-        provider: parsed.provider as ProviderId,
-        model: parsed.model,
-        effort: parsed.effort,
-        fast: parsed.fast,
-      });
+      return engines?.test(
+        {
+          provider: parsed.provider as ProviderId,
+          model: parsed.model,
+          effort: parsed.effort,
+          fast: parsed.fast,
+        },
+        signal,
+      );
     }
     case "engines.clearFeature":
       return (

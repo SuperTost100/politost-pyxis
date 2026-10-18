@@ -76,6 +76,56 @@ describe("confirmed default engine", () => {
   });
 });
 
+describe("engine test deadline", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("gives up on a turn that never answers and reports a timeout", async () => {
+    vi.useFakeTimers();
+    const db = openDatabase(":memory:");
+    let seen: AbortSignal | undefined;
+    vi.mocked(runTurn).mockImplementationOnce(
+      (input) =>
+        new Promise((_, reject) => {
+          seen = input.signal;
+          input.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Engine turn cancelled", "AbortError")),
+          );
+        }),
+    );
+    const handlers = engineHandlers(db, () => undefined);
+    const result = handlers.test({ provider: "codex", model: "gpt-test" });
+    const failure = expect(result).rejects.toMatchObject({
+      code: "timeout",
+      messageKey: "engines.errors.timeout",
+    });
+    await vi.advanceTimersByTimeAsync(120_000);
+    await failure;
+    expect(seen?.aborted).toBe(true);
+    expect(handlers.features().default).toBeUndefined();
+    db.close();
+  });
+
+  it("stops the turn when the student closes the dialog, and says nothing about a timeout", async () => {
+    const db = openDatabase(":memory:");
+    vi.mocked(runTurn).mockImplementationOnce(
+      (input) =>
+        new Promise((_, reject) => {
+          input.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Engine turn cancelled", "AbortError")),
+          );
+        }),
+    );
+    const controller = new AbortController();
+    const result = engineHandlers(db, () => undefined).test(
+      { provider: "codex", model: "gpt-test" },
+      controller.signal,
+    );
+    controller.abort();
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
+    db.close();
+  });
+});
+
 describe("engine configuration removal", () => {
   it("removes the default and overrides pointing to a removed provider only", () => {
     const db = openDatabase(":memory:");

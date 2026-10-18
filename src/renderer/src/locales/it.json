@@ -1899,6 +1899,7 @@
       "aborted": "Annullato.",
       "refused": "La chiave è stata rifiutata. Controllala.",
       "quota": "Limite di utilizzo raggiunto. Riprova più tardi o scegli un altro motore.",
+      "timeout": "Il motore non ha risposto in tempo. Riprova o scegli un altro motore.",
       "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
       "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI."
     },
