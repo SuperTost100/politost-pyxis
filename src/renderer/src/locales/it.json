@@ -1890,6 +1890,10 @@
     "check": "Controlla",
     "code": "Codice di accesso",
     "sendCode": "Invia",
+    "fallback": {
+      "limit": "{{from}} ha raggiunto il limite di utilizzo, quindi ha risposto {{to}}.",
+      "signed-out": "{{from}} non ha più l'accesso, quindi ha risposto {{to}}."
+    },
     "errors": {
       "not-installed": "Il programma non è installato.",
       "not-logged-in": "Non hai più l'accesso a questo motore. Rifallo in Impostazioni, Motori AI.",

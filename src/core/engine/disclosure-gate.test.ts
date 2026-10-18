@@ -26,6 +26,16 @@ const row = (id: string, displayName: string) => ({
 });
 const funnel = {
   run,
+  // runTurn streams every turn. This stand-in answers with whatever `run` returns.
+  stream(request: unknown) {
+    const result = Promise.resolve().then(() => run(request));
+    return Object.assign(
+      (async function* () {
+        await result;
+      })(),
+      { result },
+    );
+  },
   providers: {
     claude: { capabilities: { effort: true, fast: false, access: ["none"] } },
     codex: { capabilities: { effort: true, fast: false, access: ["none"] } },

@@ -27,8 +27,8 @@ export function effortsOf(
 
 /**
  * The effort to send with a request the student asked for at `wanted`. Once the model's list has been read, the wanted
- * level when the model lists it, otherwise the nearest it lists, and none for a model that lists none (and for API
- * providers, which never get one). Before the list is read the request is left as asked.
+ * level when the model lists it, otherwise the nearest it lists, and none for a model that lists none. Before the list
+ * is read the request is left as asked.
  */
 export function resolveEffort(
   provider: string,
@@ -36,7 +36,6 @@ export function resolveEffort(
   wanted: string | undefined,
 ): string | undefined {
   if (!wanted) return undefined;
-  if (provider.endsWith("-api")) return undefined;
   const listed = effortsOf(provider, model);
   return listed ? nearestEffort(wanted, listed) : wanted;
 }

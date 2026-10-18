@@ -4,6 +4,7 @@ import { basename, extname, join } from "node:path";
 import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
+import { setFallbackListener } from "../engine/generate";
 import {
   IpcError,
   requests,
@@ -607,6 +608,8 @@ async function dispatchValidated(
       return chats?.read(requests["chats.read"].input.parse(input));
     case "chats.seed":
       return chats?.seed(requests["chats.seed"].input.parse(input));
+    case "chats.leave":
+      return chats?.leave(requests["chats.leave"].input.parse(input));
     case "chats.clearContext":
       return chats?.clearContext(
         requests["chats.clearContext"].input.parse(input),
@@ -741,6 +744,7 @@ export function bindEngines(
   installerFixture?: string,
 ): void {
   configureDisclosure(db);
+  setFallbackListener((event) => broadcast("engine.fallback", event));
   engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),

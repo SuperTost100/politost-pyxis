@@ -17,6 +17,7 @@ import {
 } from "../math/figures";
 import { isAbort, IpcError } from "../../shared/ipc";
 import { generate } from "../engine/generate";
+import { endConversation } from "../engine/funnel";
 import { engineSeesImages } from "../engine/capabilities";
 import { selectionFor } from "../engine/selection";
 import type { Embedder, PassageHit } from "../sources/retrieve";
@@ -681,8 +682,18 @@ async function answer(
     selected && !input.allowGeneral && !thisTurnFile && citations.length === 0
       ? "No passage matches this question.\n\n"
       : "";
-  const prompt = `${pinnedBlock}${attachedBlock}${passageBlock}${noPassages}\n\nEarlier turns:\n${historyText(db, chatId, [userMessageId, replacing?.assistantId ?? ""])}\n\nQuestion:\n${input.text}`;
+  // What is new for this question goes last, after the parts that stay the same from turn to turn, so a provider's
+  // prompt cache keeps the start of the prompt. A conversation the engine still holds gets only the new part.
+  const question = `${attachedBlock}${passageBlock}${noPassages}\n\nQuestion:\n${input.text}`;
+  const prompt = `${pinnedBlock}Earlier turns:\n${historyText(db, chatId, [userMessageId, replacing?.assistantId ?? ""])}\n\n${question}`;
+  const followUp = citations.length
+    ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
+    : question.trimStart();
+  // A regenerated reply replaces one the engine's conversation already holds, so the conversation starts over.
+  if (replacing) endConversation(chatId);
   const selection = selectionFor(db, "chat");
+  // The engine answering, which differs from the selection when an automatic one was out and another took over.
+  let answering: { provider: string; model: string } = selection;
   let streamed = "";
   let result;
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
@@ -707,6 +718,9 @@ async function answer(
               })),
       signal: input.signal,
       run: input.run,
+      conversation: { key: chatId, followUp },
+      cache: true,
+      onEngine: (engine) => (answering = engine),
       onDelta: (text) => {
         requireTutorAvailable(db);
         streamed = text;
@@ -721,8 +735,8 @@ async function answer(
     ) {
       return {
         ...finishReply(db, chatId, streamed, {
-          provider: selection.provider,
-          model: selection.model,
+          provider: answering.provider,
+          model: answering.model,
           selected,
           attached: thisTurnFile,
           mode,

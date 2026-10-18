@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { endConversation } from "../engine/funnel";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
 import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat } from "./turn";
@@ -59,6 +60,13 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
     },
     clearContext(input: { chatId: string }) {
       clearChatContext(db, input.chatId);
+      // The engine read the pinned context at the start of the conversation, so it starts over without it.
+      endConversation(input.chatId);
+      return { ok: true as const };
+    },
+    /** The student left the chat: its engine conversation, and a live CLI process with it, can stop. */
+    leave(input: { chatId: string }) {
+      endConversation(input.chatId);
       return { ok: true as const };
     },
     rate(input: { messageId: string; reaction: "up" | "down" }) {
@@ -69,6 +77,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       return { ok: true as const };
     },
     remove(input: { chatId: string }) {
+      endConversation(input.chatId);
       deleteChat(db, workspace, input.chatId);
       return { ok: true as const };
     },
