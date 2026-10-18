@@ -15,6 +15,15 @@ export function isPlanFileName(path: string): boolean {
  * `second-instance`. The first argument that is not a flag and has a plan file name wins. A relative path is read from
  * where the new process started. Nothing is read here.
  */
+/**
+ * Whether a plan file that arrives with no main window should open one. Not before startup has made its first window:
+ * startup may still be waiting on a dialog, and it creates that window itself, after the handlers the window calls on
+ * load are registered. The file waits and the window takes it then.
+ */
+export function needsWindowForPlan(startupDone: boolean, windowCount: number): boolean {
+  return startupDone && windowCount === 0;
+}
+
 export function planFileFromArgv(argv: readonly string[], workingDirectory = process.cwd()): string | null {
   const name = argv.find((arg) => arg.length > 0 && !arg.startsWith("-") && isPlanFileName(arg));
   return name === undefined ? null : resolve(workingDirectory, name);

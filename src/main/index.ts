@@ -8,7 +8,7 @@ import {
 } from "../core/ipc/file-grants";
 import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { fetchPlanText } from "./plan-fetch";
-import { isPlanFileName, planFileFromArgv, readOpenedPlan } from "./plan-open";
+import { isPlanFileName, needsWindowForPlan, planFileFromArgv, readOpenedPlan } from "./plan-open";
 import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
 import {
@@ -1419,6 +1419,9 @@ function registerProtocols(): void {
  */
 let waitingPlanPath: string | null = null;
 
+/** True once startup has created the first window. A plan file that arrives earlier only waits (see `openPlanFile`). */
+let startupWindowCreated = false;
+
 function showWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -1431,7 +1434,7 @@ function openPlanFile(path: string | null): void {
   waitingPlanPath = path;
   // The window may not exist yet (a launch from the file), or have been closed on macOS. It takes the file when it loads.
   if (!mainWindow || mainWindow.isDestroyed()) {
-    if (app.isReady() && BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (needsWindowForPlan(startupWindowCreated, BrowserWindow.getAllWindows().length)) createWindow();
     return;
   }
   showWindow();
@@ -1517,6 +1520,7 @@ app.whenReady().then(() => {
   nativeTheme.on("updated", broadcastAppearance);
   startCore();
   createWindow();
+  startupWindowCreated = true;
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

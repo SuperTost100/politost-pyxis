@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MAX_OPENED_PLAN_BYTES } from "../shared/bridge";
-import { isPlanFileName, planFileFromArgv, readOpenedPlan } from "./plan-open";
+import { isPlanFileName, needsWindowForPlan, planFileFromArgv, readOpenedPlan } from "./plan-open";
 
 describe("planFileFromArgv", () => {
   // Paths resolve the way the platform does: a POSIX path gets a drive letter on Windows.
@@ -75,5 +75,20 @@ describe("readOpenedPlan", () => {
     expect(await readOpenedPlan(big)).toEqual({ ok: false, reason: "too-big" });
     writeFileSync(join(dir, "binary.pyxis"), Buffer.from([0xff, 0xfe, 0x00, 0xc3]));
     expect(await readOpenedPlan(join(dir, "binary.pyxis"))).toEqual({ ok: false, reason: "unreadable" });
+  });
+});
+
+describe("needsWindowForPlan", () => {
+  it("leaves the first window to startup, which may still be showing a dialog", () => {
+    expect(needsWindowForPlan(false, 0)).toBe(false);
+  });
+
+  it("opens a window once startup is done and none is left (a closed window on macOS)", () => {
+    expect(needsWindowForPlan(true, 0)).toBe(true);
+  });
+
+  it("never adds a second window", () => {
+    expect(needsWindowForPlan(true, 1)).toBe(false);
+    expect(needsWindowForPlan(false, 1)).toBe(false);
   });
 });
