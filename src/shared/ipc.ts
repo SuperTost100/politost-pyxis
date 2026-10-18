@@ -529,12 +529,44 @@ export const requests = {
     output: z.object({ filename: z.string(), markdown: z.string() }),
   },
   "study.anki": {
-    input: z.object({ planId: z.string(), topicId: z.string().optional() }),
+    // history: also write each card's reviews and schedule, so Anki continues where Pyxis stopped.
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string().optional(),
+      history: z.boolean().optional(),
+    }),
     output: z.object({
       filename: z.string(),
       base64: z.string(),
       noteCount: z.number().int().nonnegative(),
       cardCount: z.number().int().nonnegative(),
+    }),
+  },
+  "study.ankiPreview": {
+    // Reads a picked .apkg and says what an import would do. `path` is a file the student picked.
+    input: z.object({ path: z.string() }),
+    output: z.object({
+      format: z.enum(["legacy", "modern"]),
+      cards: z.number().int().nonnegative(),
+      unsupported: z.number().int().nonnegative(),
+      empty: z.number().int().nonnegative(),
+      reviews: z.number().int().nonnegative(),
+    }),
+  },
+  "study.ankiImport": {
+    input: z.object({
+      path: z.string(),
+      planId: z.string(),
+      topicId: z.string(),
+      history: z.boolean(),
+    }),
+    output: z.object({
+      imported: z.number().int().nonnegative(),
+      duplicates: z.number().int().nonnegative(),
+      unsupported: z.number().int().nonnegative(),
+      empty: z.number().int().nonnegative(),
+      withHistory: z.number().int().nonnegative(),
+      reviews: z.number().int().nonnegative(),
     }),
   },
   "plans.calendar": {

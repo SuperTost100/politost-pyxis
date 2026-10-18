@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import {
@@ -54,6 +55,7 @@ import { diagnosticPreview, startDiagnostic } from "./topicQuiz";
 import { citedAnswers } from "./citations";
 import { markWrongQuestion, registerWrongQuestionJobs } from "./wrongQuestion";
 import { exportAnki } from "../share/anki";
+import { ankiRefusal, importApkg, readApkg } from "./ankiImport";
 import { exportCardsCsv, exportMarkdown } from "../share/markdown";
 
 import {
@@ -193,7 +195,7 @@ export function studyHandlers(
     csv(input: { planId: string; topicId?: string }) {
       return exportCardsCsv(db, input);
     },
-    anki(input: { planId: string; topicId?: string }) {
+    anki(input: { planId: string; topicId?: string; history?: boolean }) {
       const result = exportAnki(db, input.planId, input);
       return {
         filename: result.filename,
@@ -201,6 +203,27 @@ export function studyHandlers(
         noteCount: result.noteCount,
         cardCount: result.cardCount,
       };
+    },
+    ankiPreview(input: { path: string }) {
+      return ankiRefusal(() => {
+        const parsed = readApkg(readFileSync(input.path));
+        return {
+          format: parsed.format,
+          cards: parsed.cards.length,
+          ...parsed.skipped,
+          reviews: parsed.reviewCount,
+        };
+      });
+    },
+    ankiImport(input: {
+      path: string;
+      planId: string;
+      topicId: string;
+      history: boolean;
+    }) {
+      return ankiRefusal(() =>
+        importApkg(db, readFileSync(input.path), input),
+      );
     },
     flag(input: { targetKind: string; targetId: string; reason?: string }) {
       flagTarget(db, input.targetKind, input.targetId, input.reason ?? "");
