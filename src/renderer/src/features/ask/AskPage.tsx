@@ -668,7 +668,8 @@ export function AskPage() {
     setAnnouncement("");
     dropped.current = null;
     liveUpdates.current.cancel();
-    live.set("");
+    // Continue keeps the saved part on screen: the cut-off reply is hidden while it runs, and core adds to this text.
+    live.set(options.resume && lastTutor ? lastTutor.body : "");
     following.current = true;
     const handle = window.pyxis.stream(
       "chats.regenerate",

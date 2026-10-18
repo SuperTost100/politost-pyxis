@@ -38,6 +38,8 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
     PYXIS_USER_DATA: userData,
     PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: CONTINUATION,
+    // The recorded reply waits before its first piece, so the moments right after Continue can be checked.
+    PYXIS_E2E_REPLY_DELAY: "4000",
   };
   delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
@@ -60,6 +62,10 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
     await expect(page.locator(".ask-usage")).toContainText("20,5");
 
     await reply.getByRole("button", { name: "Continua" }).click();
+    // Before the engine sends anything, the saved part stays on screen instead of a thinking placeholder.
+    await expect(
+      page.locator(".px-msg:not(.px-msg-user) .px-msg-text"),
+    ).toHaveText("Il teorema dice che ogni funzione continua", { timeout: 1500 });
     await expect(
       page.getByText(
         "Il teorema dice che ogni funzione continua ha un massimo e un minimo su un intervallo chiuso.",
