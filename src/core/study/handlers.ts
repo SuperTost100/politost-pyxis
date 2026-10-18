@@ -50,6 +50,14 @@ import {
   registerSimulationJobs,
 } from "./simulation";
 import { flagTarget } from "./flags";
+import {
+  addPastPaper,
+  pastPaperViews,
+  pastStyle,
+  registerPastPaperJobs,
+  removePastPaper,
+  startPastPractice,
+} from "./pastPapers";
 import { discardReview, readReview, reviewWaiting, skipDrill, startReview } from "./review";
 import { diagnosticPreview, startDiagnostic } from "./topicQuiz";
 import { citedAnswers } from "./citations";
@@ -102,6 +110,7 @@ export function studyHandlers(
     registerExerciseJobs(db, runner, run);
     registerQuizGradingJobs(db, runner, run);
     registerSimulationJobs(db, runner, simulationRun);
+    registerPastPaperJobs(db, runner, run);
     registerCardJobs(db, runner, run);
     registerGapJobs(db, runner, run);
     registerGapInsightJobs(db, runner, run);
@@ -413,18 +422,38 @@ export function studyHandlers(
     simulationOpen(input: { planId: string }) {
       return openSimulation(db, input.planId);
     },
+    pastPapers(input: { planId: string }) {
+      const style = pastStyle(db, input.planId);
+      return {
+        papers: pastPaperViews(db, input.planId),
+        style: style && {
+          papers: style.papers,
+          questions: style.questions,
+          minutes: style.minutes,
+          totalPoints: style.totalPoints,
+          types: style.types,
+          difficulty: style.difficulty,
+        },
+      };
+    },
+    pastPaperAdd(input: { planId: string; sourceIds: string[] }) {
+      if (!runner) throw new Error("paper-read-unavailable");
+      return addPastPaper(db, runner, input.planId, input.sourceIds);
+    },
+    pastPaperRemove(input: { planId: string; sourceId: string }) {
+      removePastPaper(db, runner, input.planId, input.sourceId);
+      return { ok: true as const };
+    },
+    pastPracticeStart(input: { planId: string; sourceId?: string }) {
+      return startPastPractice(db, input.planId, input.sourceId);
+    },
     simulationStart(input: {
       planId: string;
       minutes?: number;
       source?: "exam" | "mixed";
     }) {
       // No length asked for leaves a prepared exam at the length it was prepared with.
-      const minutes =
-        input.minutes === undefined
-          ? undefined
-          : input.minutes === 60 || input.minutes === 90 || input.minutes === 120
-            ? input.minutes
-            : 30;
+      const minutes = input.minutes;
       return startSimulation(
         db,
         input.planId,
@@ -437,15 +466,15 @@ export function studyHandlers(
       planId: string;
       minutes?: number;
       source?: "exam" | "mixed";
+      matchPast?: boolean;
     }) {
       const result = enqueueSimulation(
         db,
         input.planId,
-        input.minutes === 60 || input.minutes === 90 || input.minutes === 120
-          ? input.minutes
-          : 30,
+        input.minutes ?? 30,
         Date.now(),
         input.source ?? "exam",
+        input.matchPast,
       );
       return "attemptId" in result
         ? { attemptId: result.attemptId }

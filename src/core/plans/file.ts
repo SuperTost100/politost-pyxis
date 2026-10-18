@@ -241,7 +241,7 @@ export function exportPlan(
         .prepare(
           `SELECT s.id,s.kind,s.title, COALESCE(s.blob_sha,(SELECT json_extract(sd.tree_json, '$.sourceSha') FROM source_documents sd WHERE sd.source_id=s.id ORDER BY sd.version DESC LIMIT 1)) AS blob_sha, s.mime
            FROM sources s
-           WHERE s.id IN (SELECT source_id FROM plan_sources WHERE plan_id = ?)
+           WHERE s.id IN (SELECT source_id FROM plan_sources WHERE plan_id = ? AND role = 'material')
            OR s.id IN (${referencedSources.map(() => "?").join(",") || "NULL"})
            ORDER BY s.title`,
         )
@@ -514,6 +514,7 @@ function exportedPayload(
  * Parameters: the progress flag twice.
  */
 const portableItems = `kind != 'review_session'
+  AND COALESCE(json_extract(body_json, '$.pastPaper'), 0) = 0
   AND (? OR id NOT IN (SELECT item_id FROM gap_items))
   AND (kind != 'review' OR (? AND EXISTS (SELECT 1 FROM attempts a WHERE a.item_id = items.id AND a.submitted_at IS NOT NULL)))`;
 

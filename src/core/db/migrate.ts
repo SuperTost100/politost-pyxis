@@ -137,11 +137,19 @@ END;`,
     version: 19,
     sql: `ALTER TABLE messages ADD COLUMN figures_json TEXT CHECK (figures_json IS NULL OR json_valid(figures_json));`,
   },
+  // Past exams: a source can be attached to a plan as one of its past papers. `role` says which, and `paper_json` holds
+  // what the model read from the paper (questions, types, points, duration). Everything that builds the plan from its
+  // sources reads `role = 'material'` only, so a past paper never becomes a topic, a lesson or a citation.
+  {
+    version: 20,
+    sql: `ALTER TABLE plan_sources ADD COLUMN role TEXT NOT NULL DEFAULT 'material' CHECK (role IN ('material', 'past_paper'));
+ALTER TABLE plan_sources ADD COLUMN paper_json TEXT CHECK (paper_json IS NULL OR json_valid(paper_json));`,
+  },
   // A plan holds several exam sessions (a written and an oral part). plans.exam_at stays as the derived next exam date,
   // so countdowns, scheduling and the path keep reading one column. A plan's existing exam_at becomes its first session,
   // with the plan's id as the session id so the calendar event keeps its UID. A date after year 9999, which an older version accepted, is cut to the latest a session can hold. archived_at sets a finished exam aside.
   {
-    version: 20,
+    version: 21,
     sql: `CREATE TABLE plan_sessions (
   id TEXT PRIMARY KEY,
   plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
