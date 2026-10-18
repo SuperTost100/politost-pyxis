@@ -40,6 +40,7 @@ import { PlanProgress } from "./PlanProgress";
 import { RebuildDialog } from "./RebuildDialog";
 import { PlanPath } from "./PlanPath";
 import { MistakesNotebook } from "../study/MistakesNotebook";
+import { SourceRow } from "../../components/SourceRow";
 import "./PlanPage.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -76,9 +77,10 @@ export function PlanPage() {
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [itemPreview, setItemPreview] =
     useState<RequestOutput<"plans.item"> | null>(null);
+  // The Sources tab reads the library too, for the file sizes its rows show.
   const library = useQuery({
     queryKey: ["sources"],
-    enabled: pickerOpen,
+    enabled: pickerOpen || view === "sources",
     refetchInterval: pickerOpen ? 1000 : false,
     queryFn: () => invoke("sources.list", {}),
   });
@@ -452,35 +454,27 @@ export function PlanPage() {
               {t("planOverview.rebuildSuggested")}
             </Notice>
           )}
-          <Table
-            tableLayout="fixed"
-            className="px-plan-source-table"
-            rowKey="id"
-            pagination={false}
-            dataSource={plan.data?.sources ?? []}
-            columns={[
-              { title: t("sources.nameColumn"), dataIndex: "title" },
-              {
-                title: t("sources.typeColumn"),
-                dataIndex: "kind",
-                render: (kind: string) =>
-                  t(`sources.kind.${kind}`, { defaultValue: kind }),
-              },
-              {
-                title: t("sources.statusColumn"),
-                dataIndex: "status",
-                render: (status: string) =>
-                  t(`sources.status.${status}`, { defaultValue: status }),
-              },
-              {
-                title: t("planOverview.sourceActions"),
-                key: "actions",
-                render: (_, source) => (
-                  <Button
-                    size="small"
-                    shape="round"
-                    disabled={busy}
-                    onClick={() =>
+          {plan.data?.sources.length ? (
+            <ul className="px-list-surface" aria-label={t("plans.tabSources")}>
+              {plan.data.sources.map((source) => (
+                <SourceRow
+                  key={source.id}
+                  source={{
+                    ...source,
+                    bytes: library.data?.find((item) => item.id === source.id)
+                      ?.bytes,
+                  }}
+                  onOpen={() => openSourceViewer({ sourceId: source.id })}
+                  actions={{
+                    disabled: busy,
+                    items: [
+                      {
+                        key: "remove",
+                        label: t("planOverview.removeSource"),
+                        danger: true,
+                      },
+                    ],
+                    onSelect: () =>
                       modal.confirm({
                         title: t("planOverview.removeSource"),
                         content: t("planOverview.removeSourceHelp", {
@@ -494,16 +488,16 @@ export function PlanPage() {
                             });
                             await refresh();
                           }),
-                      })
-                    }
-                  >
-                    {t("planOverview.removeSource")}
-                  </Button>
-                ),
-              },
-            ]}
-          />
+                      }),
+                  }}
+                />
+              ))}
+            </ul>
+          ) : plan.data ? (
+            <p className="body ink-muted">{t("planOverview.noSources")}</p>
+          ) : null}
           <Button
+            shape="round"
             onClick={() => {
               setSelectedSources([]);
               setPickerOpen(true);

@@ -3,8 +3,16 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Input, Modal, Pagination, Select, Skeleton } from "antd";
-import { Download, Search, Upload } from "lucide-react";
+import {
+  Button,
+  Dropdown,
+  Input,
+  Modal,
+  Pagination,
+  Select,
+  Skeleton,
+} from "antd";
+import { MoreHorizontal, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -13,6 +21,11 @@ import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
+import {
+  ListToolbar,
+  ToolbarMenu,
+  ToolbarSearch,
+} from "../../components/ListToolbar";
 import { clozeAnswer, isCloze } from "../../../../core/study/cloze";
 import { invoke } from "../../lib/ipc";
 import { i18n } from "../../locales/i18n";
@@ -117,24 +130,16 @@ export function CardBrowser() {
       ].map((key) => client.invalidateQueries({ queryKey: [key] })),
     );
 
-  /** Import and export sit with the list, and with the empty state when the student has exams but no cards yet. */
-  const ankiActions = (
-    <>
-      <Button
-        shape="round"
-        icon={<Upload size={16} aria-hidden />}
-        onClick={() => setAnki("import")}
-      >
-        {t("cardImport.open")}
-      </Button>
-      <Button
-        shape="round"
-        icon={<Download size={16} aria-hidden />}
-        onClick={() => setAnki("export")}
-      >
-        {t("cardExport.open")}
-      </Button>
-    </>
+  /** Import and export sit in the toolbar's More menu, and import alone in the empty state when the student has exams but no cards yet. */
+  const ankiMenu = (
+    <ToolbarMenu
+      label={t("listToolbar.more")}
+      items={[
+        { key: "import", label: t("cardImport.open") },
+        { key: "export", label: t("cardExport.open") },
+      ]}
+      onSelect={(key) => setAnki(key === "export" ? "export" : "import")}
+    />
   );
   const ankiModal = (
     <AnkiModal
@@ -269,27 +274,27 @@ export function CardBrowser() {
       <>
         {ankiModal}
         <EmptyState
-        title={t("cardBrowser.emptyTitle")}
-        body={t("cardBrowser.emptyBody")}
-        action={
-          <Button
-            type="primary"
-            shape="round"
-            onClick={() => navigate("/plans/new")}
-          >
-            {t("exams.newPlan")}
-          </Button>
-        }
-        secondary={
-          <Button
-            shape="round"
-            icon={<Upload size={16} aria-hidden />}
-            onClick={() => setAnki("import")}
-          >
-            {t("cardImport.open")}
-          </Button>
-        }
-      />
+          title={t("cardBrowser.emptyTitle")}
+          body={t("cardBrowser.emptyBody")}
+          action={
+            <Button
+              type="primary"
+              shape="round"
+              onClick={() => navigate("/plans/new")}
+            >
+              {t("exams.newPlan")}
+            </Button>
+          }
+          secondary={
+            <Button
+              shape="round"
+              icon={<Upload size={16} aria-hidden />}
+              onClick={() => setAnki("import")}
+            >
+              {t("cardImport.open")}
+            </Button>
+          }
+        />
       </>
     );
 
@@ -327,97 +332,111 @@ export function CardBrowser() {
     }
     run.cards.push(card);
   }
+  /** One compact row: the front, a line of the back, when it comes up next, Edit, and the rest in a menu. */
   function renderCard(card: Card) {
     const name = cardName(card);
     const label = (key: string) =>
       t("cardBrowser.action", { action: t(key), card: name });
     return (
-      <li key={card.id} className="px-cardbrowser-card">
+      <li key={card.id} className="px-cardbrowser-row">
         <div className="px-cardbrowser-text">
-          <span className="visually-hidden">{t("cardBrowser.frontText")}</span>
-          <MarkdownView variant="body">{frontText(card)}</MarkdownView>
+          <div className="px-cardbrowser-front">
+            <span className="visually-hidden">
+              {t("cardBrowser.frontText")}
+            </span>
+            <MarkdownView variant="body">{frontText(card)}</MarkdownView>
+          </div>
           <div className="px-cardbrowser-back">
             <span className="visually-hidden">{t("cardBrowser.backText")}</span>
             <MarkdownView variant="body">{card.back}</MarkdownView>
           </div>
         </div>
-        <div className="px-cardbrowser-foot">
-          <div className="px-cardbrowser-state">
-            <span className="small">
-              {card.state === "new"
-                ? t("cardBrowser.stateNew")
-                : card.state === "due"
-                  ? t("cardBrowser.stateDue")
-                  : t("cardBrowser.stateNext", {
-                      date: dateText(card.dueAt ?? 0),
-                    })}
-            </span>
-            {card.suspended ? <Tag>{t("cardBrowser.tagSuspended")}</Tag> : null}
-            {card.removed ? <Tag>{t("cardBrowser.tagRemoved")}</Tag> : null}
-          </div>
-          <div className="px-cardbrowser-actions">
-            {card.removed ? (
+        <div className="px-cardbrowser-state">
+          <span className="small">
+            {card.state === "new"
+              ? t("cardBrowser.stateNew")
+              : card.state === "due"
+                ? t("cardBrowser.stateDue")
+                : t("cardBrowser.stateNext", {
+                    date: dateText(card.dueAt ?? 0),
+                  })}
+          </span>
+          {card.suspended ? <Tag>{t("cardBrowser.tagSuspended")}</Tag> : null}
+          {card.removed ? <Tag>{t("cardBrowser.tagRemoved")}</Tag> : null}
+        </div>
+        <div className="px-cardbrowser-actions">
+          {card.removed ? (
+            <Button
+              size="small"
+              shape="round"
+              aria-label={label("cardBrowser.restore")}
+              onClick={() =>
+                void change(
+                  invoke("study.restore", { cardId: card.id }),
+                  t("cardBrowser.restored"),
+                )
+              }
+            >
+              {t("cardBrowser.restore")}
+            </Button>
+          ) : (
+            <>
               <Button
                 size="small"
                 shape="round"
-                aria-label={label("cardBrowser.restore")}
-                onClick={() =>
-                  void change(
-                    invoke("study.restore", { cardId: card.id }),
-                    t("cardBrowser.restored"),
-                  )
-                }
+                type="text"
+                aria-label={label("cards.edit")}
+                onClick={() => {
+                  setDraftFront(card.front);
+                  setDraftBack(card.back);
+                  setSaveFailed(false);
+                  setEditing(card);
+                }}
               >
-                {t("cardBrowser.restore")}
+                {t("cards.edit")}
               </Button>
-            ) : (
-              <>
+              <Dropdown
+                trigger={["click"]}
+                autoFocus
+                popupRender={(menu) => (
+                  <div role="region" aria-label={t("cardBrowser.moreActions")}>
+                    {menu}
+                  </div>
+                )}
+                menu={{
+                  items: [
+                    {
+                      key: "suspend",
+                      label: t(
+                        card.suspended ? "cards.resume" : "cards.suspend",
+                      ),
+                    },
+                    { type: "divider" },
+                    { key: "delete", label: t("cards.delete"), danger: true },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === "delete") ask(card);
+                    else
+                      void change(
+                        invoke("study.suspend", {
+                          cardId: card.id,
+                          suspended: !card.suspended,
+                        }),
+                        "",
+                      );
+                  },
+                }}
+              >
                 <Button
                   size="small"
-                  shape="round"
+                  shape="circle"
                   type="text"
-                  aria-label={label("cards.edit")}
-                  onClick={() => {
-                    setDraftFront(card.front);
-                    setDraftBack(card.back);
-                    setSaveFailed(false);
-                    setEditing(card);
-                  }}
-                >
-                  {t("cards.edit")}
-                </Button>
-                <Button
-                  size="small"
-                  shape="round"
-                  type="text"
-                  aria-label={label(
-                    card.suspended ? "cards.resume" : "cards.suspend",
-                  )}
-                  onClick={() =>
-                    void change(
-                      invoke("study.suspend", {
-                        cardId: card.id,
-                        suspended: !card.suspended,
-                      }),
-                      "",
-                    )
-                  }
-                >
-                  {t(card.suspended ? "cards.resume" : "cards.suspend")}
-                </Button>
-                <Button
-                  size="small"
-                  shape="round"
-                  type="text"
-                  danger
-                  aria-label={label("cards.delete")}
-                  onClick={() => ask(card)}
-                >
-                  {t("cards.delete")}
-                </Button>
-              </>
-            )}
-          </div>
+                  aria-label={label("cardBrowser.moreActions")}
+                  icon={<MoreHorizontal size={16} strokeWidth={1.75} />}
+                />
+              </Dropdown>
+            </>
+          )}
         </div>
       </li>
     );
@@ -431,69 +450,61 @@ export function CardBrowser() {
     <div className="px-cardbrowser">
       {modalContext}
       {ankiModal}
-      <div className="px-cardbrowser-toolbar">
-        <div className="px-form-field px-cardbrowser-search">
-          <label className="label" htmlFor="card-search">
-            {t("cardBrowser.search")}
-          </label>
-          <Input
+      <ListToolbar
+        search={
+          <ToolbarSearch
             id="card-search"
-            prefix={<Search size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("cardBrowser.search")}
             placeholder={t("cardBrowser.searchPlaceholder")}
-            allowClear
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={setText}
           />
-        </div>
-        <div className="px-form-field">
-          <label className="label" htmlFor="card-exam">
-            {t("cardBrowser.exam")}
-          </label>
-          <Select
-            id="card-exam"
-            value={planId}
-            onChange={(value) => {
-              filter(setPlanId)(value);
-              setTopicId("");
-            }}
-            options={[
-              { value: "", label: t("cardBrowser.allExams") },
-              ...planGroups,
-            ]}
-          />
-        </div>
-        <div className="px-form-field">
-          <label className="label" htmlFor="card-topic">
-            {t("cardBrowser.topic")}
-          </label>
-          <Select
-            id="card-topic"
-            value={topicId}
-            disabled={!planId}
-            onChange={filter(setTopicId)}
-            options={[
-              { value: "", label: t("cardBrowser.allTopics") },
-              ...topics.map((topic) => ({
-                value: topic.id,
-                label: topic.title,
-              })),
-            ]}
-          />
-        </div>
-        <div className="px-form-field">
-          <label className="label" htmlFor="card-status">
-            {t("cardBrowser.show")}
-          </label>
-          <Select<Status>
-            id="card-status"
-            value={status}
-            onChange={filter(setStatus)}
-            options={(["all", "due", "suspended", "removed"] as const).map(
-              (value) => ({ value, label: t(`cardBrowser.status.${value}`) }),
-            )}
-          />
-        </div>
-      </div>
+        }
+        filters={
+          <>
+            <Select
+              id="card-exam"
+              aria-label={t("cardBrowser.exam")}
+              value={planId}
+              popupMatchSelectWidth={false}
+              onChange={(value) => {
+                filter(setPlanId)(value);
+                setTopicId("");
+              }}
+              options={[
+                { value: "", label: t("cardBrowser.allExams") },
+                ...planGroups,
+              ]}
+            />
+            <Select
+              id="card-topic"
+              aria-label={t("cardBrowser.topic")}
+              value={topicId}
+              disabled={!planId}
+              popupMatchSelectWidth={false}
+              onChange={filter(setTopicId)}
+              options={[
+                { value: "", label: t("cardBrowser.allTopics") },
+                ...topics.map((topic) => ({
+                  value: topic.id,
+                  label: topic.title,
+                })),
+              ]}
+            />
+            <Select<Status>
+              id="card-status"
+              aria-label={t("cardBrowser.show")}
+              value={status}
+              popupMatchSelectWidth={false}
+              onChange={filter(setStatus)}
+              options={(["all", "due", "suspended", "removed"] as const).map(
+                (value) => ({ value, label: t(`cardBrowser.status.${value}`) }),
+              )}
+            />
+          </>
+        }
+        menu={ankiMenu}
+      />
 
       <div className="px-cardbrowser-summary">
         <p className="small" role="status" tabIndex={-1} ref={summary}>
@@ -507,29 +518,26 @@ export function CardBrowser() {
                 )
               : "\u00a0")}
         </p>
-        <div className="px-cardbrowser-tools">
-          {filtered ? (
-            <Button
-              type="text"
-              shape="round"
-              size="small"
-              className="linkish"
-              onClick={reset}
-            >
-              {t("cardBrowser.clear")}
-            </Button>
-          ) : null}
-          {ankiActions}
-        </div>
+        {filtered ? (
+          <Button
+            type="text"
+            shape="round"
+            size="small"
+            className="linkish"
+            onClick={reset}
+          >
+            {t("cardBrowser.clear")}
+          </Button>
+        ) : null}
       </div>
       {actionFailed ? (
         <Notice tone="danger">{t("cards.actionFailed")}</Notice>
       ) : null}
 
       {!data ? (
-        <ul className="px-cardbrowser-list" aria-hidden>
+        <ul className="px-list-surface" aria-hidden>
           {[0, 1, 2].map((key) => (
-            <li key={key} className="px-cardbrowser-card">
+            <li key={key} className="px-cardbrowser-row">
               <Skeleton active title={false} paragraph={{ rows: 2 }} />
             </li>
           ))}
@@ -558,16 +566,13 @@ export function CardBrowser() {
               {section.runs.map((run) => (
                 <div key={run.key} className="px-cardbrowser-run">
                   <h3
-                    className="body-strong px-cardbrowser-topic"
+                    className="small px-cardbrowser-topic"
                     id={`card-run-${run.key}`}
                   >
                     {run.planTitle} ·{" "}
                     {run.topicTitle ?? t("cardBrowser.noTopic")}
                   </h3>
-                  <ul
-                    className="px-cardbrowser-list"
-                    aria-labelledby={`card-run-${run.key}`}
-                  >
+                  <ul aria-labelledby={`card-run-${run.key}`}>
                     {run.cards.map((card) => renderCard(card))}
                   </ul>
                 </div>

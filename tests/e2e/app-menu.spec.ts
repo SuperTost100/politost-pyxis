@@ -270,7 +270,8 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
     );
     await page.reload();
     // An open dialog.
-    await page.getByRole("button", { name: "Gestisci materie" }).click();
+    await page.getByRole("button", { name: "Altro", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Gestisci materie" }).click();
     const manage = page.getByRole("dialog");
     await expect(manage).toBeVisible();
     await pick(app, "settings");

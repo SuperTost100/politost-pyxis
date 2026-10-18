@@ -1,8 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Button, Dropdown, Input, Modal, Segmented, Select } from "antd";
+import { Button, Modal, Segmented, Select } from "antd";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Search, Settings2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
@@ -11,6 +10,11 @@ import { LibraryPanel } from "./LibraryPanel";
 import { MistakesNotebook } from "../study/MistakesNotebook";
 import { PlanCard } from "../../components/PlanCard";
 import { Notice } from "../../components/Notice";
+import {
+  ListToolbar,
+  ToolbarMenu,
+  ToolbarSearch,
+} from "../../components/ListToolbar";
 import type { PlanFile } from "@shared/plan-file";
 import { SubjectManagerModal } from "../ask/SubjectPicker";
 import { ImportReview } from "../plans/ImportReview";
@@ -54,12 +58,25 @@ export function ExamsHome() {
     if (subject && plan.subject !== subject) return false;
     return true;
   });
-  const empty = (plans.data?.length ?? 0) === 0;
-  const importMenu = (
-    <ImportMenu
-      large={empty}
-      onFailed={setFailed}
-      onImported={() => void client.invalidateQueries({ queryKey: ["plans"] })}
+  const planImport = usePlanImport(
+    setFailed,
+    () => void client.invalidateQueries({ queryKey: ["plans"] }),
+  );
+  // Importing and the subject list sit in one secondary menu, the same with plans and without.
+  const moreMenu = (
+    <ToolbarMenu
+      label={t("listToolbar.more")}
+      disabled={planImport.busy}
+      items={[
+        { key: "file", label: t("exams.importFileItem") },
+        { key: "link", label: t("exams.importLinkItem") },
+        { type: "divider" },
+        { key: "subjects", label: t("ask.manageSubjects") },
+      ]}
+      onSelect={(key) => {
+        if (key === "subjects") setManaging(true);
+        else planImport.choose(key);
+      }}
     />
   );
   const importFailed = failed ? (
@@ -68,7 +85,7 @@ export function ExamsHome() {
   return (
     <div>
       <h1 className="title-1">{t("doors.exams")}</h1>
-      <div className="tabs-row tabs-row-split">
+      <div className="tabs-row">
         <Segmented
           shape="round"
           className="px-doors"
@@ -92,16 +109,6 @@ export function ExamsHome() {
             { value: "mistakes", label: t("mistakes.title") },
           ]}
         />
-        {tab === "plans" ? (
-          <Button
-            type="text"
-            shape="round"
-            icon={<Settings2 size={16} aria-hidden />}
-            onClick={() => setManaging(true)}
-          >
-            {t("ask.manageSubjects")}
-          </Button>
-        ) : null}
       </div>
       <SubjectManagerModal
         open={managing}
@@ -109,6 +116,7 @@ export function ExamsHome() {
         value=""
         onChange={() => undefined}
       />
+      {tab === "plans" ? planImport.element : null}
       {/* Plans show nothing until the list arrives, so "No plans yet" never flashes first. */}
       {tab === "sources" ? (
         <LibraryPanel />
@@ -117,39 +125,43 @@ export function ExamsHome() {
       ) : tab === "mistakes" ? (
         <MistakesNotebook />
       ) : plans.isPending ? null : (plans.data?.length ?? 0) > 0 ? (
-        <div>
-          <div className="px-exams-toolbar">
-            <Input
-              id="plan-search"
-              aria-label={t("exams.search")}
-              prefix={<Search size={16} strokeWidth={1.75} aria-hidden />}
-              placeholder={t("exams.searchPlaceholder")}
-              allowClear
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <Select
-              id="plan-subject-filter"
-              aria-label={t("exams.subject")}
-              value={subject}
-              onChange={setSubject}
-              options={[
-                { value: "", label: t("exams.allSubjects") },
-                ...subjects.map((name) => ({
-                  value: name ?? "",
-                  label: name ?? "",
-                })),
-              ]}
-            />
-            {importMenu}
-            <Button
-              type="primary"
-              shape="round"
-              onClick={() => navigate("/plans/new")}
-            >
-              {t("exams.newPlan")}
-            </Button>
-          </div>
+        <div className="px-exams-plans">
+          <ListToolbar
+            search={
+              <ToolbarSearch
+                id="plan-search"
+                label={t("exams.search")}
+                placeholder={t("exams.searchPlaceholder")}
+                value={query}
+                onChange={setQuery}
+              />
+            }
+            filters={
+              <Select
+                id="plan-subject-filter"
+                aria-label={t("exams.subject")}
+                value={subject}
+                onChange={setSubject}
+                options={[
+                  { value: "", label: t("exams.allSubjects") },
+                  ...subjects.map((name) => ({
+                    value: name ?? "",
+                    label: name ?? "",
+                  })),
+                ]}
+              />
+            }
+            menu={moreMenu}
+            primary={
+              <Button
+                type="primary"
+                shape="round"
+                onClick={() => navigate("/plans/new")}
+              >
+                {t("exams.newPlan")}
+              </Button>
+            }
+          />
           {importFailed}
           {shown.length === 0 ? (
             <p className="body">{t("exams.noMatch")}</p>
@@ -193,13 +205,12 @@ export function ExamsHome() {
               <Button
                 type="primary"
                 shape="round"
-                size="large"
                 onClick={() => navigate("/plans/new")}
               >
                 {t("exams.newPlan")}
               </Button>
             }
-            secondary={importMenu}
+            secondary={moreMenu}
           />
           {importFailed}
         </>
@@ -209,22 +220,19 @@ export function ExamsHome() {
 }
 
 /**
- * The secondary ways to add a plan, under one "Import" menu: a .pyxis file
- * picked here, or the shared-plan page for a link.
+ * The secondary ways to add a plan: a .pyxis file picked here and reviewed before it comes in, or the
+ * shared-plan page for a link. `element` holds the hidden file field and the review dialog.
  */
-function ImportMenu(props: {
-  large?: boolean;
-  onFailed: (failed: boolean) => void;
-  onImported: () => void;
-}) {
+function usePlanImport(
+  onFailed: (failed: boolean) => void,
+  onImported: () => void,
+) {
   const fileRef = useRef<HTMLInputElement>(null);
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState<PlanFile | null>(null);
-  const { onFailed } = props;
-  return (
+  const element = (
     <>
       <input
         ref={fileRef}
@@ -250,48 +258,6 @@ function ImportMenu(props: {
             .finally(() => setBusy(false));
         }}
       />
-      <Dropdown
-        trigger={["click"]}
-        open={open}
-        onOpenChange={setOpen}
-        disabled={busy}
-        autoFocus
-        // The menu opens outside the page's landmarks; a named region keeps it in one.
-        popupRender={(menu) => (
-          <div role="region" aria-label={t("exams.importMenu")}>
-            {menu}
-          </div>
-        )}
-        menu={{
-          items: [
-            { key: "file", label: t("exams.importFile") },
-            { key: "link", label: t("exams.importLink") },
-          ],
-          onClick: ({ key }) => {
-            setOpen(false);
-            if (key === "file") fileRef.current?.click();
-            else navigate("/exams/get");
-          },
-        }}
-      >
-        <Button
-          shape="round"
-          size={props.large ? "large" : "middle"}
-          disabled={busy}
-          aria-haspopup="menu"
-          aria-expanded={open}
-        >
-          <span className="px-exams-import">
-            {t("exams.importMenu")}
-            <ChevronDown
-              size={16}
-              strokeWidth={1.75}
-              aria-hidden
-              className={open ? "is-open" : ""}
-            />
-          </span>
-        </Button>
-      </Dropdown>
       <Modal
         open={review !== null}
         footer={null}
@@ -307,7 +273,7 @@ function ImportMenu(props: {
             onImport={async (request) => {
               await invoke("plans.import", request);
               setReview(null);
-              props.onImported();
+              onImported();
             }}
             onCancel={() => setReview(null)}
           />
@@ -315,4 +281,12 @@ function ImportMenu(props: {
       </Modal>
     </>
   );
+  return {
+    busy,
+    element,
+    choose: (key: string) => {
+      if (key === "file") fileRef.current?.click();
+      else navigate("/exams/get");
+    },
+  };
 }

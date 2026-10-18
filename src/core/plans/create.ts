@@ -304,7 +304,9 @@ export function readPlan(db: Database.Database, planId: string) {
     steps: readSteps(db, planId),
     sources: db
       .prepare(
-        `SELECT s.id, s.title, s.kind, s.status FROM sources s
+        `SELECT s.id, s.title, s.kind, s.status,
+         (SELECT count(*) FROM passages p WHERE p.source_id = s.id) AS sections
+       FROM sources s
        JOIN plan_sources ps ON ps.source_id = s.id
        WHERE ps.plan_id = ?
        ORDER BY s.title`,
@@ -314,6 +316,7 @@ export function readPlan(db: Database.Database, planId: string) {
       title: string;
       kind: string;
       status: string;
+      sections: number;
     }>,
   };
 }

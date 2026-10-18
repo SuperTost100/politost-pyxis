@@ -221,6 +221,28 @@ An engine in the Engine for AI settings (ENG-10…ENG-17): kind, name, versioned
 - Errors read as the fix: "Accesso richiesto" with an Accedi button, not a stack trace (NFR-05).
 - antd: `<List.Item>` with `avatar`, `title`, `description` and `extra`.
 
+## ListToolbar
+
+The toolbar above every list on the Exams page: Piani, Fonti and Flashcard (`components/ListToolbar.tsx`).
+
+**Consumer provides** `search` (a `ToolbarSearch`), `filters` (Selects), `menu` (a `ToolbarMenu`) and `primary`; each is optional.
+
+- Always this order: search with the search icon, filters, the secondary menu, the one primary action. No visible field labels; every control has an accessible name.
+- One row when everything fits. Otherwise the filters and actions move together under the search: filters left, actions right.
+- `ToolbarSearch` takes an optional `scope` Select joined to its end, as on Fonti (Titoli or Contenuto).
+- `ToolbarMenu` is a round button with a label and a turning chevron. It is "Altro" on every tab and its items carry the full verb ("Importa da un link").
+- Leave out the filters while the list is empty; the empty state carries the actions then.
+- A Select or DatePicker gets the Lucide chevron or calendar from the app's `ConfigProvider`; don't set `suffixIcon` per control.
+
+## SourceRow
+
+One source in the Library and in a plan's Fonti tab (`components/SourceRow.tsx`), inside a `px-list-surface` list.
+
+**Consumer provides** `source` (title, kind, status, and the sections, size and plan count when known), the menu `actions`, optional `onOpen`, `selected` and `notes`.
+
+- A flexible name column clamped to two lines, a meta line ("Smartbook · 3 sezioni · 0,9 KB"), the status with its icon, and an actions menu.
+- Status is an icon and a word; problems use `warning`.
+
 ## FocusBar
 
 The 56px bar of the Focus and Canvas layouts.

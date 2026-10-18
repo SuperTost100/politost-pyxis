@@ -1,16 +1,19 @@
 import { openSourceViewer } from "../../components/SourceViewer";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Modal, Progress, Select, Dropdown, Drawer } from "antd";
-import { ProTable, type ProColumns } from "@ant-design/pro-components";
 import {
-  BookMarked,
-  FileText,
-  MoreHorizontal,
-  CheckCircle2,
-  AlertCircle,
-  LoaderCircle,
-} from "lucide-react";
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { Button, Input, Modal, Progress, Select, Drawer, Skeleton } from "antd";
+import { FileText, CheckCircle2, LoaderCircle } from "lucide-react";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
+import {
+  ListToolbar,
+  ToolbarMenu,
+  ToolbarSearch,
+} from "../../components/ListToolbar";
+import { SourceRow, sizeText } from "../../components/SourceRow";
 import "./LibraryPanel.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -44,11 +47,6 @@ const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 /** The folder a file sits in, so two files with one name can be told apart in a checklist. */
 const parentName = (path: string) => path.split(/[\\/]/).slice(-2, -1)[0] ?? "";
-
-const sizeText = (bytes: number) =>
-  bytes >= 1024 * 1024
-    ? `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024)} MB`
-    : `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(bytes / 1024)} KB`;
 
 /** What an import run did, kept on screen until the student closes it or starts another run. */
 type ImportResult = {
@@ -100,7 +98,10 @@ export function LibraryPanel({
   const [addOpen, setAddOpen] = useState(importOnly);
   const [booksOpen, setBooksOpen] = useState(false);
   const [addTab, setAddTab] = useState("file");
-  const [filterText, setFilterText] = useState("");
+  // One field searches titles or, with the Content scope, the passages inside the sources.
+  const [searchText, setSearchText] = useState("");
+  const [scope, setScope] = useState<"titles" | "content">("titles");
+  const [searched, setSearched] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(() => {
@@ -113,10 +114,6 @@ export function LibraryPanel({
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [chapter, setChapter] = useState<number | null>(null);
   const [paragraph, setParagraph] = useState<string | undefined>();
-  const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<
-    Awaited<ReturnType<typeof invoke<"sources.search">>>
-  >([]);
   const [error, setError] = useState<string | null>(null);
   // The action local OCR data refused, kept so the student can run it again once the data is ready.
   const [again, setAgain] = useState<{ label: string; run: () => void } | null>(
@@ -477,7 +474,7 @@ export function LibraryPanel({
     queryFn: () => invoke("sources.embedState", {}),
   });
   const sources = list.data ?? [];
-  type SourceRow = (typeof sources)[number];
+  type LibrarySource = (typeof sources)[number];
   // New versions of free books are checked only while the Library is open, and only when it holds a smartbook.
   const freeBooks = useFreeBooks(
     !importOnly && sources.some((source) => source.kind === "smartbook"),
@@ -490,7 +487,7 @@ export function LibraryPanel({
     ),
   );
   const bookUpdate = useBookUpdate();
-  async function updateBook(source: SourceRow) {
+  async function updateBook(source: LibrarySource) {
     setInfo(null);
     setError(null);
     setAgain(null);
@@ -502,7 +499,7 @@ export function LibraryPanel({
       fail(err);
     }
   }
-  function select(source: SourceRow) {
+  function select(source: LibrarySource) {
     setPreferOpened(false);
     setSourceId(source.id);
     setRenameTo(source.title);
@@ -544,7 +541,7 @@ export function LibraryPanel({
     void client.invalidateQueries({ queryKey: ["sources"] });
   }
   /** SRC-12: read the stored file again as a new version. A source that plans use asks first, as removal does. */
-  async function reextract(source: SourceRow, confirmed = false) {
+  async function reextract(source: LibrarySource, confirmed = false) {
     setInfo(null);
     setError(null);
     setAgain(null);
@@ -570,7 +567,7 @@ export function LibraryPanel({
       setInfo(t("sources.reextractStarted", { title: source.title }));
     void client.invalidateQueries({ queryKey: ["sources"] });
   }
-  async function remove(source: SourceRow) {
+  async function remove(source: LibrarySource) {
     if (!window.confirm(`${t("sources.remove")} "${source.title}"?`)) return;
     const result = await invoke("sources.remove", {
       sourceId: source.id,
@@ -583,159 +580,87 @@ export function LibraryPanel({
     if (sourceId === source.id) setSourceId(null);
     void client.invalidateQueries({ queryKey: ["sources"] });
   }
-  const columns: ProColumns<SourceRow>[] = [
-    {
-      title: t("sources.nameColumn"),
-      dataIndex: "title",
-      width: 200,
-      fixed: "left",
-      render: (_, source) => (
-        <>
-          <Button
-            type="text"
-            className="px-library-name"
-            aria-label={source.title}
-            onClick={() => {
-              select(source);
-              setDetailsOpen(true);
-            }}
-            icon={
-              source.kind === "smartbook" ? (
-                <BookMarked size={18} />
-              ) : (
-                <FileText size={18} />
-              )
-            }
-          >
-            {source.title}
-          </Button>
-          {source.syllabusOff ? (
-            <p className="small px-library-flag">
-              {t("sources.offSyllabusListed", { count: source.syllabusOff })}
-            </p>
-          ) : null}
-          {source.error ? (
-            <p className="small px-library-flag">
-              {t(jobErrorKey(source.error))}
-            </p>
-          ) : null}
-          {newVersions.has(source.id) ? (
-            <p className="small px-library-update">
-              <span>
-                {t("books.newVersionNamed", {
-                  version: newVersions.get(source.id),
-                })}
-              </span>
-              <Button
-                shape="round"
-                size="small"
-                loading={bookUpdate.busy === source.id}
-                disabled={
-                  bookUpdate.busy !== null && bookUpdate.busy !== source.id
-                }
-                aria-label={t(
-                  bookUpdate.busy === source.id
-                    ? "books.updatingNamed"
-                    : "books.updateNamed",
-                  { title: source.title },
-                )}
-                onClick={() => void updateBook(source)}
-              >
-                {t("books.update")}
-              </Button>
-            </p>
-          ) : null}
-        </>
-      ),
-    },
-    {
-      title: t("sources.typeColumn"),
-      dataIndex: "kind",
-      width: 90,
-      render: (_, source) => (
-        <span className="meta px-library-kind">
-          {t(`sources.kind.${source.kind}`, { defaultValue: source.kind })}
-        </span>
-      ),
-    },
-    {
-      title: t("sources.sizeColumn"),
-      dataIndex: "bytes",
-      width: 90,
-      render: (_, source) => (
-        <span className="meta">
-          {source.bytes == null ? "—" : sizeText(source.bytes)}
-        </span>
-      ),
-    },
-    { title: t("sources.sectionsColumn"), dataIndex: "sections", width: 70 },
-    {
-      title: t("sources.statusColumn"),
-      dataIndex: "status",
-      width: 110,
-      render: (_, source) => (
-        <span className="px-library-status">
-          {source.status === "ready" ? (
-            <CheckCircle2 size={16} />
-          ) : ["failed", "needs-ocr", "interrupted", "cancelled"].includes(
-              source.status,
-            ) ? (
-            <AlertCircle size={16} />
-          ) : (
-            <LoaderCircle size={16} />
-          )}
-          <span className="small">
-            {t(`sources.status.${source.status}`, {
-              defaultValue: source.status,
-            })}
-          </span>
-        </span>
-      ),
-    },
-    { title: t("sources.plansColumn"), dataIndex: "planCount", width: 65 },
-    {
-      title: t("sources.actionsColumn"),
-      valueType: "option",
-      width: 65,
-      render: (_, source) => (
-        <Dropdown
-          popupRender={(menu) => (
-            <div role="region" aria-label={t("sources.actionsColumn")}>
-              {menu}
-            </div>
-          )}
-          trigger={["click"]}
-          menu={{
-            items: [
-              { key: "details", label: t("sources.details") },
-              { key: "rename", label: t("sources.rename") },
-              { key: "replace", label: t("sources.replace") },
-              {
-                key: "reextract",
-                label: t("sources.reextract"),
-                // A smartbook is read from its package and has no stored file to read again.
-                disabled: source.kind === "smartbook" || !source.blobSha,
-              },
-              { key: "remove", label: t("sources.remove"), danger: true },
-            ],
-            onClick: ({ key }) => {
-              select(source);
-              if (key === "replace") void replace(source.id).catch(fail);
-              else if (key === "reextract") void reextract(source).catch(fail);
-              else if (key === "remove") void remove(source).catch(fail);
-              else setDetailsOpen(true);
-            },
-          }}
-        >
-          <Button
-            type="text"
-            aria-label={t("sources.actionsFor", { title: source.title })}
-            icon={<MoreHorizontal size={18} />}
-          />
-        </Dropdown>
-      ),
-    },
-  ];
+  // The Content scope asks once typing pauses; Enter asks at once.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearched(searchText), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
+  const contentQuery = scope === "content" ? searched.trim() : "";
+  const passages = useQuery({
+    queryKey: ["source-search", contentQuery],
+    enabled: contentQuery.length > 0,
+    queryFn: () => invoke("sources.search", { query: contentQuery }),
+    placeholderData: keepPreviousData,
+  });
+  const kindOf = new Map(sources.map((source) => [source.id, source.kind]));
+  const titleNeedle =
+    scope === "titles" ? searchText.trim().toLocaleLowerCase() : "";
+  const shown = sources.filter(
+    (source) =>
+      (filterType === "all" || source.kind === filterType) &&
+      source.title.toLocaleLowerCase().includes(titleNeedle),
+  );
+  const hits = (passages.data ?? []).filter(
+    (hit) => filterType === "all" || kindOf.get(hit.sourceId) === filterType,
+  );
+  function openHit(hit: (typeof hits)[number]) {
+    openSourceViewer({ passageId: hit.id, sourceId: hit.sourceId });
+    setSearchPicked(true);
+    setSourceId(hit.sourceId);
+    if (hit.locator.chapter == null) {
+      setPreferOpened(true);
+      setPickedPassage(hit.id);
+      setChapter(null);
+      setParagraph(undefined);
+      return;
+    }
+    setPreferOpened(false);
+    setPickedPassage(null);
+    setChapter(hit.locator.chapter);
+    setParagraph(hit.locator.paragraph);
+  }
+  function rowNotes(source: LibrarySource) {
+    return (
+      <>
+        {source.syllabusOff ? (
+          <p className="small px-library-flag">
+            {t("sources.offSyllabusListed", { count: source.syllabusOff })}
+          </p>
+        ) : null}
+        {source.error ? (
+          <p className="small px-library-flag">
+            {t(jobErrorKey(source.error))}
+          </p>
+        ) : null}
+        {newVersions.has(source.id) ? (
+          <p className="small px-library-update">
+            <span>
+              {t("books.newVersionNamed", {
+                version: newVersions.get(source.id),
+              })}
+            </span>
+            <Button
+              shape="round"
+              size="small"
+              loading={bookUpdate.busy === source.id}
+              disabled={
+                bookUpdate.busy !== null && bookUpdate.busy !== source.id
+              }
+              aria-label={t(
+                bookUpdate.busy === source.id
+                  ? "books.updatingNamed"
+                  : "books.updateNamed",
+                { title: source.title },
+              )}
+              onClick={() => void updateBook(source)}
+            >
+              {t("books.update")}
+            </Button>
+          </p>
+        ) : null}
+      </>
+    );
+  }
   function closeAdd() {
     setAddOpen(false);
     setResult(null);
@@ -1124,67 +1049,174 @@ export function LibraryPanel({
     </Modal>
   );
   if (importOnly) return addModal;
+  const empty = !list.isPending && sources.length === 0;
+  const showHits = contentQuery.length > 0;
+  const actions = (source: LibrarySource) => ({
+    items: [
+      { key: "details", label: t("sources.details") },
+      { key: "rename", label: t("sources.rename") },
+      { key: "replace", label: t("sources.replace") },
+      {
+        key: "reextract",
+        label: t("sources.reextract"),
+        // A smartbook is read from its package and has no stored file to read again.
+        disabled: source.kind === "smartbook" || !source.blobSha,
+      },
+      { type: "divider" as const },
+      { key: "remove", label: t("sources.remove"), danger: true },
+    ],
+    onSelect: (key: string) => {
+      select(source);
+      if (key === "replace") void replace(source.id).catch(fail);
+      else if (key === "reextract") void reextract(source).catch(fail);
+      else if (key === "remove") void remove(source).catch(fail);
+      else setDetailsOpen(true);
+    },
+  });
   return (
     <div className="px-library">
       {addModal}
-      {sources.length === 0 ? (
+      <FreeBooks open={booksOpen} onClose={() => setBooksOpen(false)} />
+      {empty ? (
         <EmptyState
           title={t("exams.sourcesEmptyTitle")}
           body={t("exams.sourcesEmptyBody")}
-        />
-      ) : null}
-      <div className="px-library-toolbar">
-        <Input
-          allowClear
-          value={filterText}
-          aria-label={t("sources.filterTitle")}
-          placeholder={t("sources.filterTitle")}
-          onChange={(event) => setFilterText(event.target.value)}
-        />
-        <Select
-          value={filterType}
-          aria-label={t("sources.typeColumn")}
-          onChange={setFilterType}
-          options={[
-            { value: "all", label: t("sources.allTypes") },
-            ...Array.from(new Set(sources.map((source) => source.kind))).map(
-              (kind) => ({
-                value: kind,
-                label: t(`sources.kind.${kind}`, { defaultValue: kind }),
-              }),
-            ),
-          ]}
-        />
-        <Button shape="round" onClick={() => setBooksOpen(true)}>
-          {t("books.open")}
-        </Button>
-        <Button type="primary" shape="round" onClick={() => setAddOpen(true)}>
-          {t("exams.addSources")}
-        </Button>
-      </div>
-      <FreeBooks open={booksOpen} onClose={() => setBooksOpen(false)} />
-      {/* An empty table is a scroll area with nothing to focus, and the empty state above already says so. */}
-      {sources.length > 0 || list.isPending ? (
-        <ProTable<SourceRow>
-          rowKey="id"
-          columns={columns}
-          dataSource={sources.filter(
-            (source) =>
-              (filterType === "all" || source.kind === filterType) &&
-              source.title
-                .toLocaleLowerCase()
-                .includes(filterText.trim().toLocaleLowerCase()),
-          )}
-          loading={list.isPending}
-          search={false}
-          options={false}
-          pagination={false}
-          scroll={{ x: 700 }}
-          rowClassName={(source) =>
-            source.id === sourceId ? "px-library-selected" : ""
+          action={
+            <Button type="primary" shape="round" onClick={() => setAddOpen(true)}>
+              {t("exams.addSources")}
+            </Button>
+          }
+          secondary={
+            <Button shape="round" onClick={() => setBooksOpen(true)}>
+              {t("books.open")}
+            </Button>
           }
         />
+      ) : (
+        <ListToolbar
+          search={
+            <ToolbarSearch
+              id="source-search"
+              label={t(
+                scope === "titles" ? "sources.filterTitle" : "sources.search",
+              )}
+              placeholder={t(
+                scope === "titles" ? "sources.filterTitle" : "sources.search",
+              )}
+              value={searchText}
+              onChange={setSearchText}
+              onPressEnter={() => setSearched(searchText)}
+              scope={
+                <Select
+                  aria-label={t("sources.scope")}
+                  value={scope}
+                  onChange={setScope}
+                  options={[
+                    { value: "titles", label: t("sources.scopeTitles") },
+                    { value: "content", label: t("sources.scopeContent") },
+                  ]}
+                />
+              }
+            />
+          }
+          filters={
+            <Select
+              value={filterType}
+              aria-label={t("sources.typeColumn")}
+              onChange={setFilterType}
+              options={[
+                { value: "all", label: t("sources.allTypes") },
+                ...Array.from(new Set(sources.map((source) => source.kind))).map(
+                  (kind) => ({
+                    value: kind,
+                    label: t(`sources.kind.${kind}`, { defaultValue: kind }),
+                  }),
+                ),
+              ]}
+            />
+          }
+          menu={
+            <ToolbarMenu
+              label={t("listToolbar.more")}
+              items={[{ key: "books", label: t("books.open") }]}
+              onSelect={() => setBooksOpen(true)}
+            />
+          }
+          primary={
+            <Button type="primary" shape="round" onClick={() => setAddOpen(true)}>
+              {t("exams.addSources")}
+            </Button>
+          }
+        />
+      )}
+      {showHits ? (
+        <section aria-label={t("sources.searchPassages")}>
+          <p className="small ink-muted px-library-count" role="status">
+            {passages.isError
+              ? t("sources.searchFailed")
+              : passages.data
+                ? hits.length
+                  ? t("sources.hits", { count: hits.length })
+                  : t("sources.noHits")
+                : "\u00a0"}
+          </p>
+          {hits.length > 0 ? (
+            <ul className="px-list-surface px-library-hits">
+              {hits.map((hit) => (
+                <li key={hit.id}>
+                  <button
+                    type="button"
+                    className="px-library-hit"
+                    onClick={() => openHit(hit)}
+                  >
+                    <span className="body-strong">{hit.sectionPath}</span>
+                    <span className="small">{hit.text.slice(0, 140)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : list.isPending ? (
+        <div className="px-list-surface px-library-loading" aria-hidden>
+          <Skeleton active title={false} paragraph={{ rows: 2 }} />
+        </div>
+      ) : empty ? null : shown.length === 0 ? (
+        <p className="body">{t("sources.noMatch")}</p>
+      ) : (
+        <ul className="px-list-surface" aria-label={t("exams.sources")}>
+          {shown.map((source) => (
+            <SourceRow
+              key={source.id}
+              source={source}
+              selected={source.id === sourceId}
+              onOpen={() => {
+                select(source);
+                setDetailsOpen(true);
+              }}
+              notes={rowNotes(source)}
+              actions={actions(source)}
+            />
+          ))}
+        </ul>
+      )}
+      {/* Only the Content scope uses the model, so the offer waits there, under the results. */}
+      {scope === "content" && !empty && !embedding.data?.ready ? (
+        <div className="px-library-embed">
+          <p className="small">{t("sources.embedAsk")}</p>
+          <Button
+            shape="round"
+            onClick={() => {
+              void invoke("sources.embed", { consent: true })
+                .then(() => setWarning(t("sources.embedQueued")))
+                .catch(fail);
+            }}
+          >
+            {t("sources.embedDownload")}
+          </Button>
+        </div>
       ) : null}
+      {warning ? <Notice tone="warning">{warning}</Notice> : null}
       {errorView}
       {info ? <Notice tone="info">{info}</Notice> : null}
       {sources
@@ -1236,77 +1268,6 @@ export function LibraryPanel({
             )}
           </Notice>
         ))}
-      <h2 className="title-3 px-library-search-title">
-        {t("sources.searchPassages")}
-      </h2>
-      <form
-        className="px-form-inline"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void invoke("sources.search", { query }).then(setHits).catch(fail);
-        }}
-      >
-        <Input
-          value={query}
-          aria-label={t("sources.search")}
-          placeholder={t("sources.search")}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <Button htmlType="submit" shape="round">
-          {t("sources.searchGo")}
-        </Button>
-      </form>
-      {hits.length > 0 ? (
-        <ul className="choice-list">
-          {hits.map((hit) => (
-            <li key={hit.id}>
-              <button
-                type="button"
-                className="choice"
-                onClick={() => {
-                  openSourceViewer({
-                    passageId: hit.id,
-                    sourceId: hit.sourceId,
-                  });
-                  setSearchPicked(true);
-                  setSourceId(hit.sourceId);
-                  if (hit.locator.chapter == null) {
-                    setPreferOpened(true);
-                    setPickedPassage(hit.id);
-                    setChapter(null);
-                    setParagraph(undefined);
-                    return;
-                  }
-                  setPreferOpened(false);
-                  setPickedPassage(null);
-                  setChapter(hit.locator.chapter);
-                  setParagraph(hit.locator.paragraph);
-                }}
-              >
-                <span className="body-strong">{hit.sectionPath}</span>
-                <span className="small">{hit.text.slice(0, 140)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {embedding.data?.ready ? (
-        <p className="small px-library-embed">{t("sources.embedReady")}</p>
-      ) : (
-        <div className="px-library-embed">
-          <p className="small">{t("sources.embedAsk")}</p>
-          <Button
-            shape="round"
-            onClick={() => {
-              void invoke("sources.embed", { consent: true })
-                .then(() => setWarning(t("sources.embedQueued")))
-                .catch(fail);
-            }}
-          >
-            {t("sources.embedDownload")}
-          </Button>
-        </div>
-      )}
       <Drawer
         open={detailsOpen}
         onClose={() => setDetailsOpen(false)}

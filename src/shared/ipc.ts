@@ -1328,6 +1328,7 @@ export const requests = {
             title: z.string(),
             kind: z.string(),
             status: z.string(),
+            sections: z.number().int().nonnegative(),
           }),
         ),
       })
