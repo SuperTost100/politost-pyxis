@@ -106,6 +106,14 @@ const profile = (page: Page) =>
   } | null>;
 const button = (page: Page | Locator, name: string | RegExp) =>
   page.getByRole("button", { name, exact: typeof name === "string" });
+// The stepper says where the student is once, to screen readers; the same text is not printed again on screen.
+const stepper = (page: Page) => page.getByRole("list", { name: "Avanzamento" });
+const currentStep = (page: Page) => page.locator("[aria-current=step]");
+// Setup is closed: no section switch and no Settings button until it ends.
+async function noNavigation(page: Page) {
+  await expect(page.getByRole("radiogroup", { name: "Sezioni" })).toHaveCount(0);
+  await expect(button(page, "Impostazioni")).toHaveCount(0);
+}
 
 test("First setup: welcome, name, engines found, photos later, crash reports on by default, ready, then the switch in Settings", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
@@ -122,11 +130,14 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
       page.getByRole("heading", { name: "Ciao, sono Pyxis" }),
     ).toBeVisible();
     await expect(page.getByText(/Pyxis è gratis\./)).toBeVisible();
-    await expect(page.getByText("Passo 1 di 4")).toHaveCount(0);
+    await expect(stepper(page)).toHaveCount(0);
+    await noNavigation(page);
     await noAxeViolations(page);
     await button(page, "Inizia").click();
     await expect(page.getByRole("heading", { name: "Iniziamo" })).toBeVisible();
-    await expect(page.getByText("Passo 1 di 4")).toBeVisible();
+    await expect(currentStep(page)).toHaveText("Passo 1 di 4: Su di te");
+    await expect(page.getByText("Passo 1 di 4")).not.toBeInViewport();
+    await noNavigation(page);
     await page.getByLabel("Nome", { exact: true }).fill("Ada");
     await noAxeViolations(page);
     await button(page, "Continua").click();
@@ -135,7 +146,7 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
     await expect(
       page.getByRole("heading", { name: "Collega un motore AI" }),
     ).toBeVisible();
-    await expect(page.getByText("Passo 2 di 4")).toBeVisible();
+    await expect(currentStep(page)).toHaveText("Passo 2 di 4: Motori AI");
     await expect(page.getByText("Ho trovato Claude Code e Codex.")).toBeVisible(
       {
         timeout: 30000,
@@ -168,7 +179,7 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
     await noAxeViolations(page);
     await button(page, "Continua").click();
 
-    // Photos: the same OCR consent card as Settings > Data. Later moves on without downloading.
+    // Photos: the same OCR consent card as Settings > Data. The footer keeps Continue, which moves on without downloading.
     await expect(
       page.getByRole("heading", { name: "Foto e scansioni" }),
     ).toBeVisible();
@@ -177,8 +188,11 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
     ).toBeVisible();
     await expect(page.getByText(/raw\.githubusercontent\.com/)).toBeVisible();
     await expect(button(page, /^Scarica [\d.,]+ MB$/)).toBeVisible();
+    await expect(currentStep(page)).toHaveText("Passo 3 di 4: Foto e scansioni");
+    await expect(button(page, "Più tardi")).toHaveCount(0);
+    await expect(button(page, "Indietro")).toBeVisible();
     await noAxeViolations(page);
-    await button(page, "Più tardi").click();
+    await button(page, "Continua").click();
     expect(
       await page.evaluate(() =>
         window.pyxis.invoke("sources.ocrDataState", {}),
@@ -205,10 +219,20 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
       displayName: "Ada",
       crashReports: true,
     });
-    await expect(button(page, "Crea il primo esame")).toBeVisible();
+    await expect(button(page, "Parti da un libro PoliTost gratuito")).toBeVisible();
+    await expect(button(page, "Vai agli esami")).toBeVisible();
+    await noNavigation(page);
     await noAxeViolations(page);
-    await button(page, "Vai agli esami").click();
-    await expect(page).toHaveURL(/exams/);
+    // The primary action opens the plan wizard, and the navigation is back.
+    await button(page, "Crea il tuo primo piano").click();
+    await expect(page).toHaveURL(/#\/plans\/new$/);
+    await page.evaluate(() => {
+      location.hash = "/exams";
+    });
+    await expect(
+      page.getByRole("radiogroup", { name: "Sezioni" }),
+    ).toBeVisible();
+    await expect(button(page, "Impostazioni")).toBeVisible();
 
     // The Settings switch shows the stored choice, saves each change and matches the setup wording.
     await page.evaluate(() => {
@@ -300,7 +324,7 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
       page.getByRole("heading", { name: "Foto e scansioni" }),
     ).toBeVisible();
     await button(page, "Indietro").click();
-    await expect(page.getByText("Passo 2 di 4")).toBeVisible();
+    await expect(currentStep(page)).toHaveText("Passo 2 di 4: Motori AI");
     rmSync(none.bin, { recursive: true, force: true });
   } finally {
     await app.close();
@@ -330,10 +354,15 @@ test("First setup: cancelling a sign-in before its page opens is not a failure, 
     });
     await button(setup, "Accedi con Claude").click();
     await button(setup, "Annulla").click();
-    await expect(button(setup, "Accedi con Claude")).toBeVisible();
+    // Idle again means Cancel is gone. The button's name is matched loosely: antd keeps its spinner icon, and so the
+    // name "loading Accedi con Claude", until the icon's exit transition ends, which a hidden window on a slow macOS
+    // runner can delay for seconds.
+    await expect(button(setup, "Annulla")).toHaveCount(0);
+    const signIn = button(setup, /Accedi con Claude$/);
+    await expect(signIn).toBeVisible();
     await expect(setup.getByText("Accesso non completato.")).toHaveCount(0);
     // Starting again is not undone by the answer to the cancelled attempt.
-    await button(setup, "Accedi con Claude").click();
+    await signIn.click();
     await expect(button(setup, "Annulla")).toBeVisible();
     await page.waitForTimeout(500);
     await expect(button(setup, "Annulla")).toBeVisible();
@@ -453,7 +482,7 @@ test("First setup: skipping leaves crash reports off, and the OCR download shows
       await expect(
         second.getByText(/Il download è stato annullato/),
       ).toBeVisible();
-      await button(second, "Più tardi").click();
+      await button(second, "Continua").click();
       await expect(second.getByRole("switch")).toBeChecked();
     } finally {
       await app.close();
@@ -493,7 +522,7 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
       { timeout: 30000 },
     );
     await button(page, "Continua").click();
-    await button(page, "Più tardi").click();
+    await button(page, "Continua").click();
     await page
       .getByRole("switch", { name: "Invia segnalazioni di crash" })
       .click();
@@ -559,7 +588,7 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
     await button(page, "Continua").click();
-    await button(page, "Più tardi").click();
+    await button(page, "Continua").click();
 
     // Crash reports show the stored choice (off), not the first-run default.
     const crash = page.getByRole("switch", {
@@ -573,7 +602,8 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
       page.getByRole("heading", { name: "Configurazione aggiornata" }),
     ).toBeVisible();
     await expect(button(page, "Vai agli esami")).toHaveCount(0);
-    await expect(button(page, "Crea il primo esame")).toHaveCount(0);
+    await expect(button(page, "Crea il tuo primo piano")).toHaveCount(0);
+    await noNavigation(page);
     await noAxeViolations(page);
     await button(page, "Torna alle impostazioni").click();
     await expect(page).toHaveURL(/#\/settings\/profile$/);

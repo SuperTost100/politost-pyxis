@@ -62,6 +62,11 @@ export function Shell() {
     retryDelay: 300,
   });
 
+  // Setup is a closed flow: no section and no Settings until it ends. A profile-less launch is already on its way there.
+  const inSetup =
+    location.pathname.startsWith("/onboarding") ||
+    (profile.isSuccess && !profile.data);
+
   const activeSimulation = useQuery({
     queryKey: ["active-simulation"],
     queryFn: () => invoke("study.activeSimulation", {}),
@@ -123,6 +128,7 @@ export function Shell() {
   return (
     <ProLayout
       layout="top"
+      className={inSetup ? "px-in-setup" : undefined}
       contentWidth="Fluid"
       fixedHeader
       navTheme={mode === "dark" ? "realDark" : "light"}
@@ -136,7 +142,7 @@ export function Shell() {
         />
       }
       menuRender={false}
-      headerContentRender={() => (
+      headerContentRender={inSetup ? false : () => (
         <div
           className="px-doors-wrap"
           onClick={(event) => {
@@ -179,14 +185,16 @@ export function Shell() {
       )}
       actionsRender={() => [
         <JobsButton key="jobs" />,
-        <Button
-          key="settings"
-          shape="circle"
-          type="text"
-          aria-label={t("nav.settings")}
-          icon={<Settings size={18} strokeWidth={1.75} />}
-          onClick={() => navigate("/settings")}
-        />,
+        inSetup ? null : (
+          <Button
+            key="settings"
+            shape="circle"
+            type="text"
+            aria-label={t("nav.settings")}
+            icon={<Settings size={18} strokeWidth={1.75} />}
+            onClick={() => navigate("/settings")}
+          />
+        ),
       ]}
       footerRender={false}
     >

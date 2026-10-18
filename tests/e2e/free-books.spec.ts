@@ -94,7 +94,7 @@ test("Free books: from the end of setup a book goes into a new exam, and the Lib
     await page.getByLabel("Nome", { exact: true }).fill("Ada");
     await button(page, "Continua").click();
     await button(page, /^(Lo farò dopo|Continua)$/).click();
-    await button(page, "Più tardi").click();
+    await button(page, "Continua").click();
     await button(page, "Continua").click();
     await expect(page.getByRole("heading", { name: "Tutto pronto" })).toBeVisible();
 
