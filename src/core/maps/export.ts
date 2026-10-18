@@ -237,6 +237,7 @@ export function mapSvg(title: string, graph: ConceptGraph): string {
   const left =
     Math.min(
       ...all.map((box) => box.x),
+      ...curves.flatMap((curve) => curve.points.filter((_, i) => i % 2 === 0)),
       ...labelBoxes.map((label) => label.x - label.width / 2),
     ) - PAD;
   const top =

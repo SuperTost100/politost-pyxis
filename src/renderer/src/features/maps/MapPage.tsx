@@ -153,11 +153,10 @@ export function MapPage() {
   const { t } = useTranslation();
   const { planId = "", topicId = "" } = useParams();
   // The Maps section opens one map by id and expects its close button to lead back there.
-  const [search] = useSearchParams();
+  const [search, setSearch] = useSearchParams();
   const openMap = search.get("map") ?? undefined;
   const fromMaps = search.get("from") === "maps";
   const client = useQueryClient();
-  const [mapId, setMapId] = useState<string>();
   const [selected, setSelected] = useState<string>();
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
@@ -195,9 +194,22 @@ export function MapPage() {
         : false,
   });
   const activeId =
-    list.data?.find((m) => m.id === mapId)?.id ?? list.data?.[0]?.id;
+    list.data?.find((m) => m.id === openMap)?.id ?? list.data?.[0]?.id;
+  // The map id lives in the URL, so the first render already shows the map the Maps section opened.
+  const pickMap = useCallback(
+    (id: string) => {
+      setSearch(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.set("map", id);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearch],
+  );
   useEffect(() => {
-    setMapId(openMap);
     setJobId(undefined);
     setNotice("");
     setInstruction("");
@@ -534,7 +546,7 @@ export function MapPage() {
               value={activeId}
               disabled={disabled}
               options={list.data.map((m) => ({ label: m.title, value: m.id }))}
-              onChange={setMapId}
+              onChange={pickMap}
             />
           )}
           <span className="px-map-top-spacer" />

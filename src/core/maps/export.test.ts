@@ -144,6 +144,27 @@ describe("mapSvg", () => {
     expect(svg).toContain('<rect x="40" y="40" width="240"');
     expect(svg).toContain('<rect x="540" y="390" width="240"');
   });
+
+  it("keeps an edge that bows past the leftmost node inside the drawing", () => {
+    // The child sits almost over its parent and a little to the left, so the curve swings out to the left of both.
+    const bowed: ConceptGraph = {
+      layout: "radial",
+      undo: null,
+      nodes: [
+        node("a", "A", null, { x: 0, y: 0 }),
+        node("b", "B", "a", { x: -10, y: 300 }),
+      ],
+      edges: [{ from: "a", to: "b" }],
+    };
+    const svg = mapSvg("A", bowed);
+    const width = Number(/width="(\d+)"/.exec(svg)![1]);
+    const numbers = /<path d="([^"]+)"/.exec(svg)![1]!.match(/-?[\d.]+/g)!;
+    const xs = numbers.filter((_, i) => i % 2 === 0).map(Number);
+    for (const x of xs) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(width);
+    }
+  });
 });
 
 describe("wrapText", () => {
