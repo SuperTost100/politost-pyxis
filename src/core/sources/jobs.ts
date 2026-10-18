@@ -53,6 +53,8 @@ type ImportParams = {
    * is still this, `indexing` or `doneStatus`, so a scan read by OCR in the meantime keeps what OCR gave it.
    */
   passagesStatus?: string;
+  /** The step `runner.resumeLocal` resumed this job at after a restart, if it did. */
+  autoResumedAt?: string;
   /** Read the stored original again as a new version. The file, name and type stay, and old passages are kept. */
   reextract?: boolean;
   version: number;
@@ -316,7 +318,8 @@ export function registerSourceJobs(
         async run(ctx) {
           const input = ctx.params as ImportParams;
           if (embeddingConsent(db) && embeddingReady(modelDir)) {
-            if (!input.reextract) setStatusIfHeld(db, input, "indexing");
+            // Resumed after a restart, the source's text was already in use and stays so while the vectors are redone.
+            if (!input.reextract && input.autoResumedAt !== "vectors") setStatusIfHeld(db, input, "indexing");
             await indexModelVectors(db, modelDir, ctx.signal, input.sourceId);
             await compareToPlans(db, modelDir, input.sourceId, ctx.signal);
           }
@@ -539,20 +542,23 @@ export function markStoppedImport(db: Database.Database, job: JobView): void {
 /**
  * At startup the runner has turned running jobs into interrupted ones without telling anyone, so their sources still say
  * they are being read. Each gets the status `markStoppedImport` would give it. A source that reached ready stays ready.
+ * A job that had stored its passages leaves its source in their status (`doneStatus`) whether it waits for Resume or
+ * `runner.resumeLocal` queued it again, so a source cut off while indexing stays usable. A queued job that had not
+ * stored them keeps the working status its source has.
  */
 export function markInterruptedImports(db: Database.Database): void {
   const rows = db
     .prepare(
-      `SELECT params_json FROM jobs WHERE kind IN ('source-import', 'source-import-vision') AND state = 'interrupted'`,
+      `SELECT state, params_json FROM jobs WHERE kind IN ('source-import', 'source-import-vision') AND state IN ('interrupted', 'queued')`,
     )
-    .all() as Array<{ params_json: string }>;
+    .all() as Array<{ state: string; params_json: string }>;
   const update = db.prepare(
     `UPDATE sources SET status = ? WHERE id = ? AND status NOT IN ('removed', 'ready')`,
   );
   for (const row of rows) {
     const params = JSON.parse(row.params_json) as Partial<ImportParams>;
     if (params.doneStatus && params.sourceId) setStatusIfHeld(db, params, params.doneStatus);
-    else {
+    else if (row.state === "interrupted") {
       const status = stoppedStatus(params, "interrupted");
       if (status && params.sourceId) update.run(status, params.sourceId);
     }
