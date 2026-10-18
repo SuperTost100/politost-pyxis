@@ -459,9 +459,10 @@ export function addDocumentVersion(
   appendVersion(db, sourceId, sha, kind, kept, input.extracted.extractor, (now) => {
     db.prepare(
       // A free book replaced with a document is no longer that book, so it drops the catalog link. Otherwise the books
-      // list would offer an update for it that fails.
+      // list would offer an update for it that fails. The same goes for a link: a file has no address to check again.
       `UPDATE sources
-       SET title = ?, blob_sha = ?, mime = ?, kind = ?, status = ?, catalog_id = NULL, catalog_version = NULL, updated_at = ?
+       SET title = ?, blob_sha = ?, mime = ?, kind = ?, status = ?, catalog_id = NULL, catalog_version = NULL,
+           origin_url = NULL, fetched_at = NULL, updated_at = ?
        WHERE id = ?`,
     ).run(input.title, sha, input.mime, kind, status, now, sourceId);
   });

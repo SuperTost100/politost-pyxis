@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import { extractByExt, extractPlain, onePagePdf, storeExtracted } from "./docume
 import { sourceHandlers } from "./handlers";
 import { enqueueRefresh, markStoppedImport, registerSourceJobs } from "./jobs";
 import type { PageSnapshot } from "./link";
+import { replaceSourceFile } from "./manage";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -151,6 +152,24 @@ describe("check a link source for a new version", () => {
     db.prepare(`INSERT INTO sources (id, kind, title, status, blob_sha, mime, created_at, updated_at) VALUES ('file', 'text', 'File', 'ready', 'abc', 'text/plain', 1, 1)`).run();
     await expect(enqueueRefresh(db, workspace, runner, "file", true, undefined, page({}))).rejects.toThrow("refresh-unavailable");
     await expect(enqueueRefresh(db, workspace, runner, "missing", true, undefined, page({}))).rejects.toThrow("source-missing");
+    db.close();
+  });
+
+  it("forgets the address when the source is replaced with a file, so nothing is checked against it", async () => {
+    const { db, runner, workspace, sourceId, fetched, page } = setup();
+    const file = join(workspace, "Dispense.md");
+    writeFileSync(file, "# Secondo principio\n\nL'entropia di un sistema isolato non diminuisce.");
+    await replaceSourceFile(db, workspace, sourceId, file);
+    expect(sourceRow(db, sourceId)).toMatchObject({ url: null, fetchedAt: null, title: "Dispense" });
+    await expect(enqueueRefresh(db, workspace, runner, sourceId, true, undefined, page({ markdown: "x" }))).rejects.toThrow(
+      "refresh-unavailable",
+    );
+    // A replacement saved before the address was cleared still has one, but it is not a saved page.
+    db.prepare(`UPDATE sources SET origin_url = ?, fetched_at = 1000 WHERE id = ?`).run(URL_SAVED, sourceId);
+    await expect(enqueueRefresh(db, workspace, runner, sourceId, true, undefined, page({ markdown: "x" }))).rejects.toThrow(
+      "refresh-unavailable",
+    );
+    expect(fetched).toEqual([]);
     db.close();
   });
 

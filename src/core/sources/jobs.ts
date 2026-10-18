@@ -657,11 +657,12 @@ export async function enqueueRefresh(
 ): Promise<{ started: boolean; inUse: number; unchanged?: true; jobId?: string }> {
   const source = db
     .prepare(
-      `SELECT title, blob_sha AS sha, origin_url AS url FROM sources WHERE id = ? AND status != 'removed'`,
+      `SELECT title, kind, blob_sha AS sha, origin_url AS url FROM sources WHERE id = ? AND status != 'removed'`,
     )
-    .get(sourceId) as { title: string; sha: string | null; url: string | null } | undefined;
+    .get(sourceId) as { title: string; kind: string; sha: string | null; url: string | null } | undefined;
   if (!source) throw new Error("source-missing");
-  if (!source.url) throw new Error("refresh-unavailable");
+  // A saved page is a `link` or a `pdf`. A source replaced by a file before the address was cleared on replace is neither.
+  if (!source.url || (source.kind !== "link" && source.kind !== "pdf")) throw new Error("refresh-unavailable");
   if (hasUnfinishedJob(db, sourceId)) throw new Error("source-busy");
   const inUse = plansUsing(db, sourceId);
   if (inUse > 0 && !confirmed) return { started: false, inUse };
