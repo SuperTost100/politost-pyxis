@@ -14,7 +14,7 @@ const block = (kind: string, body: unknown) =>
 const lesson = [
   "## Che cos'è una forza",
   "",
-  "Una **forza** è ciò che cambia lo stato di moto di un corpo. Se spingi un carrello fermo, inizia a muoversi; se lo spingi mentre si muove, cambia velocità.",
+  "Una **forza** è ciò che cambia lo stato di moto di un corpo [P1]. Se spingi un carrello fermo, inizia a muoversi; se lo spingi mentre si muove, cambia velocità.",
   "",
   block("reveal", {
     style: "term",
@@ -231,7 +231,17 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     // Opening the lesson did not mark it done.
     expect(await done("lesson", learn.topicId)).toBe(false);
     await expect(page.getByText("Rispondi al ripasso finale per completare la lezione.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Segna come fatto" })).toBeVisible();
+    // The end offers a primary "Done, continue" and a quieter "Done".
+    await expect(page.getByRole("button", { name: "Fatto, continua" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Fatto", exact: true })).toBeVisible();
+    // Citation chips name the cited section, as in Ask, instead of "P1".
+    const chip = page.locator(".px-smart .px-cite").first();
+    await expect(chip).toBeVisible();
+    await expect(chip).not.toHaveText(/^\s*P\d+\s*$/);
+    // A display formula alone on its line is a centred block, not inline text.
+    const display = page.locator(".px-smart .katex-display");
+    await expect(display).toHaveCount(1);
+    expect(await display.evaluate((element) => getComputedStyle(element).textAlign)).toBe("center");
     await expect(page.getByText("pyxis-")).toHaveCount(0);
     expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
 
@@ -358,6 +368,8 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, copy.planId);
+    // Finished steps are folded into one line until opened.
+    await page.locator(".px-path-summary").click();
     await page
       .getByRole("list", { name: "Passi fatti" })
       .getByRole("button", { name: /^Testo smart/ })

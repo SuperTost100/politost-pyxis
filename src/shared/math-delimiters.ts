@@ -91,3 +91,16 @@ export function normalizeMathDelimiters(input: string): string {
     return out;
   });
 }
+
+/**
+ * Puts a `$$ … $$` that stands alone on its line on lines of its own. remark-math reads `$$x$$` on one line as inline
+ * math, so without this a model's display formula renders small and left-aligned like body text.
+ */
+export function displayMathLines(input: string): string {
+  return mapOutsideCode(input, (text) =>
+    text.replace(
+      /^([ \t]*)\$\$((?:(?!\$\$)[^\n])+)\$\$[ \t]*$/gm,
+      (_, indent: string, body: string) => `${indent}$$\n${indent}${body.trim()}\n${indent}$$`,
+    ),
+  );
+}

@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button, Input } from "antd";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -8,7 +8,7 @@ import { Icon, type IconName } from "../../components/Icon";
 import { MasteryBar } from "../../components/MasteryBar";
 import { PathNode } from "../../components/PathNode";
 import { Tag } from "../../components/Tag";
-import { reopenPath } from "./reopen";
+import { reopenPath, stepPath } from "./reopen";
 import "./PlanPath.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -28,14 +28,12 @@ export const activityIcons: Record<Activity, IconName> = {
 };
 const topicOptions = ["lesson", "practice", "quiz", "cards", "gaps"] as const;
 const planOptions = ["simulation", "diagnostic", "intro"] as const;
-/** Done steps shown before "Show all"; a long history would push the next step far down. */
-const recent = 8;
 /** Space left between a connector line and any box or label it joins. */
 const gap = 6;
 
 /**
- * The plan's path: what the student did, one suggested next step with every other activity next to it, and the
- * topics still to come in the plan's order. Nothing is locked.
+ * The plan's path: what the student did, folded into one line so the suggested next step sits under the plan's header,
+ * that step with every other activity next to it, and the topics still to come in the plan's order. Nothing is locked.
  */
 export function PlanPath({
   planId,
@@ -54,12 +52,11 @@ export function PlanPath({
   const moreButton = useRef<HTMLButtonElement>(null);
   const changeButton = useRef<HTMLButtonElement>(null);
   const firstOption = useRef<HTMLButtonElement>(null);
-  const scrolled = useRef("");
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [query, setQuery] = useState("");
-  const [showAll, setShowAll] = useState(false);
+  const [showDone, setShowDone] = useState(false);
   const [lines, setLines] = useState<Array<{ d: string; tone: "done" | "planned" }>>([]);
 
   const next = guide?.next ?? null;
@@ -78,8 +75,7 @@ export function PlanPath({
   // One "Suggested" mark: the path's pick, or what fits a topic the student chose instead.
   const marked: Activity | null =
     picked && picked !== next?.topicId ? (topic?.suggested ?? null) : (next?.activity ?? null);
-  const steps = showAll ? plan.steps : plan.steps.slice(-recent);
-  const hidden = plan.steps.length - steps.length;
+  const steps = plan.steps;
   const planned = topics.filter(
     (item) => !read.has(item.id) && !(next?.activity === "lesson" && next.topicId === item.id),
   );
@@ -92,13 +88,8 @@ export function PlanPath({
   }, [query, topics]);
 
   function go(activity: Activity, topic: string | null) {
-    if (activity === "intro") navigate(`/plans/${planId}/intro`);
-    else if (activity === "diagnostic" || activity === "simulation")
-      navigate(`/plans/${planId}/${activity}`);
-    else if (!topic) return;
-    else if (activity === "gaps")
-      navigate(`/plans/${planId}/progress?drill=${encodeURIComponent(topic)}`);
-    else navigate(`/plans/${planId}/${activity}/${topic}`);
+    const to = stepPath(planId, activity, topic);
+    if (to) navigate(to);
   }
   /**
    * Opens a finished step to look at again without recording anything: the lesson or introduction to reread, a quiz,
@@ -133,18 +124,6 @@ export function PlanPath({
       return t("plans.path.result.cards", { count: step.result.total });
     return `${step.result.correct}/${step.result.total}`;
   }
-
-  useEffect(() => {
-    if (!guide || scrolled.current === planId) return;
-    scrolled.current = planId;
-    // Centre the suggested step only when it is off screen; scrolling a visible one hides the plan's title.
-    const frameId = requestAnimationFrame(() => {
-      const box = card.current?.getBoundingClientRect();
-      if (!box || (box.top >= 0 && box.bottom <= window.innerHeight)) return;
-      card.current?.scrollIntoView({ block: "center", behavior: "instant" });
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [planId, guide]);
 
   // Lines join each box to the next one through the space between them, stopping short of every box and label.
   useLayoutEffect(() => {
@@ -184,7 +163,7 @@ export function PlanPath({
     observer.observe(root);
     measure();
     return () => observer.disconnect();
-  }, [plan, guide, open, picking, showAll, matches]);
+  }, [plan, guide, open, picking, showDone, matches]);
 
   const option = (activity: Activity, topic: string | null, index: number) => {
     const meta =
@@ -222,13 +201,25 @@ export function PlanPath({
 
   return (
     <div className="px-path" ref={frame}>
-      {hidden > 0 ? (
-        <Button type="text" className="px-path-all" onClick={() => setShowAll(true)}>
-          {t("plans.path.showAll", { count: plan.steps.length })}
-        </Button>
-      ) : null}
       {steps.length ? (
-        <ol className="px-path-list" aria-label={t("plans.path.done")}>
+        <button
+          type="button"
+          className="px-path-summary"
+          data-path-node="done"
+          aria-expanded={showDone}
+          aria-controls={showDone ? `${ids}-done` : undefined}
+          onClick={() => setShowDone(!showDone)}
+        >
+          <Icon name="circle-check" size={16} className="px-path-summary-icon" />
+          <span>{t("plans.path.doneCount", { count: steps.length })}</span>{" "}
+          <span aria-hidden>·</span>{" "}
+          <span className="px-path-summary-toggle">
+            {t(showDone ? "plans.path.hide" : "plans.path.show")}
+          </span>
+        </button>
+      ) : null}
+      {showDone && steps.length ? (
+        <ol id={`${ids}-done`} className="px-path-list" aria-label={t("plans.path.done")}>
           {steps.map((step, index) => (
             <li
               key={step.id}
@@ -402,7 +393,9 @@ export function PlanPath({
       </section>
       {planned.length || simulationPlanned ? (
         <>
-          <h2 className="label px-path-heading">{t("plans.path.planned")}</h2>
+          <h2 className="label px-path-heading" data-path-node="planned">
+            {t("plans.path.planned")}
+          </h2>
           <ol className="px-path-list" aria-label={t("plans.path.planned")}>
             {planned.map((item, index) => (
               <li
@@ -411,9 +404,10 @@ export function PlanPath({
                 data-path-node="planned"
               >
                 <PathNode
-                  icon="book-open"
+                  icon={activityIcons.lesson}
                   state="planned"
-                  label={item.title}
+                  label={name("lesson")}
+                  detail={item.title}
                   ariaLabel={t("plans.path.choose", { topic: item.title })}
                   onClick={() => choose(item.id)}
                 />

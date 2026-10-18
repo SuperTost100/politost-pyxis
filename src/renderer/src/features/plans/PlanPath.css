@@ -5,9 +5,40 @@
   margin: 0 auto;
   padding: var(--space-4) 0 var(--space-16);
 }
-.px-path-all.ant-btn {
-  display: block;
-  margin: 0 auto var(--space-6);
+/* Finished steps fold into one line on the path's axis, so the suggested step sits near the top. */
+.px-path-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  color: var(--ink-muted);
+  font: 400 calc(13px * var(--text-scale, 1)) / 18px var(--font-sans);
+  cursor: pointer;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+.px-path-summary:hover {
+  border-color: var(--border-control);
+  background: var(--surface-raised);
+}
+.px-path-summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-path-summary-icon {
+  color: var(--mastery-text);
+}
+.px-path-summary-toggle {
+  color: var(--primary-text);
+  font-weight: 500;
+}
+.px-path-summary + .px-path-list,
+.px-path-summary + .px-path-next {
+  margin-top: var(--space-8);
 }
 .px-path-list {
   display: grid;
@@ -237,11 +268,11 @@
   text-align: right;
 }
 
+/* "Planned" sits on the path's axis, between the suggested step and the first planned one. */
 .px-path-heading {
   width: fit-content;
-  margin: 0 0 var(--space-6);
-  padding: var(--space-1) var(--space-3) var(--space-1) 0;
-  background: var(--bg);
+  margin: 0 auto var(--space-8);
+  padding: var(--space-1) var(--space-3);
   color: var(--ink-muted);
 }
 .px-path-lines {
@@ -277,7 +308,8 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .px-path-more svg {
+  .px-path-more svg,
+  .px-path-summary {
     transition: none;
   }
 }

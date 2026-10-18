@@ -19,7 +19,7 @@ import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { useReviewSession } from "./ReviewProgress";
 import { useMenuLock } from "../../app/menu-state";
-import { QuizIntro } from "./QuizIntro";
+import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { QuizResults } from "./QuizResults";
 import {
   blanks,
@@ -589,6 +589,34 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const answered = questions.filter((row) => checked[row.id]).length;
   const topic = plan.data?.topics.find((row) => row.id === topicId);
   const showIntro = !start.data && !savedAttempt;
+  // The intro's facts: how many questions, about how long, how many topics a diagnostic covers, and when it corrects.
+  const introCount = diagnostic ? preview.data?.count : QUIZ_MAX_QUESTIONS;
+  const introMinutes = diagnostic
+    ? preview.data?.minutes
+    : types.length
+      ? quizMinutes(Array.from({ length: QUIZ_MAX_QUESTIONS }, (_, i) => types[i % types.length]!))
+      : undefined;
+  const answeredBefore = diagnostic ? (preview.data?.answered ?? 0) : 0;
+  const introTopics = diagnostic ? (plan.data?.topics.length ?? 0) : 0;
+  const introFacts: ActivityFact[] = [
+    ...(introCount
+      ? [
+          {
+            icon: "list-checks" as const,
+            label: answeredBefore
+              ? t("quiz.factAnswered", { answered: answeredBefore, total: introCount })
+              : t("quiz.factQuestions", { count: introCount }),
+          },
+        ]
+      : []),
+    ...(introMinutes
+      ? [{ icon: "clock" as const, label: t("quiz.factMinutes", { count: introMinutes }) }]
+      : []),
+    ...(introTopics
+      ? [{ icon: "book-open" as const, label: t("quiz.factTopics", { count: introTopics }) }]
+      : []),
+    { icon: "circle-check", label: t("quiz.factFeedback") },
+  ];
   const kind = question?.grade.kind;
   const options =
     question && (kind === "mcq" || kind === "tf")
@@ -690,50 +718,28 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         </div>
       ) : null}
       {showIntro ? (
-        <QuizIntro
+        <ActivityIntro
           eyebrow={plan.data?.title ?? t("quiz.title")}
           title={diagnostic ? t("quiz.diagnostic") : (topic?.title ?? t("quiz.title"))}
           sentence={t(diagnostic ? "quiz.introDiagnostic" : "quiz.introTopic")}
-          count={diagnostic ? preview.data?.count : QUIZ_MAX_QUESTIONS}
-          minutes={
-            diagnostic
-              ? preview.data?.minutes
-              : types.length
-                ? quizMinutes(
-                    Array.from(
-                      { length: QUIZ_MAX_QUESTIONS },
-                      (_, i) => types[i % types.length]!,
-                    ),
-                  )
-                : undefined
-          }
-          answered={diagnostic ? preview.data?.answered : 0}
+          facts={introFacts}
+          startLabel={t(answeredBefore ? "quiz.continueAttempt" : "quiz.start")}
           starting={start.isPending}
+          startingLabel={t("quiz.preparing")}
           disabled={!diagnostic && (!types.length || !pageReady || !timerReady)}
           onStart={() => start.mutate()}
-          onClose={() => navigate(`/plans/${planId ?? ""}`)}
+          onBack={() => navigate(`/plans/${planId ?? ""}`)}
+          folded
           options={
             diagnostic ? undefined : (
               <>
-                <fieldset className="px-quiz-types">
-                  <legend className="body-strong">{t("quiz.scope")}</legend>
-                  <div className="px-quiz-pills">
-                    {SCOPES.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        className={
-                          scope === item ? "choice is-selected" : "choice"
-                        }
-                        aria-pressed={scope === item}
-                        disabled={start.isPending}
-                        onClick={() => setScope(item)}
-                      >
-                        {t(`quiz.scopes.${item}`)}
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
+                <ActivityChoice
+                  label={t("quiz.scope")}
+                  value={scope}
+                  disabled={start.isPending}
+                  choices={SCOPES.map((item) => ({ value: item, label: t(`quiz.scopes.${item}`) }))}
+                  onChange={setScope}
+                />
                 {scope === "page" ? (
                   <div className="px-quiz-page">
                     <label className="px-quiz-field">
@@ -765,9 +771,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
                     </label>
                   </div>
                 ) : null}
-                <fieldset className="px-quiz-types">
+                <fieldset className="px-intro-field">
                   <legend className="body-strong">{t("quiz.types")}</legend>
-                  <div className="px-quiz-pills">
+                  <div className="px-intro-pills">
                     {KINDS.map((item) => (
                       <button
                         key={item}

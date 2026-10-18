@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeMathDelimiters } from "./normalizeMathDelimiters";
+import { displayMathLines, normalizeMathDelimiters } from "./normalizeMathDelimiters";
 
 describe("normalizeMathDelimiters", () => {
   it("converts inline \\( \\) to dollar math", () => {
@@ -41,5 +41,23 @@ describe("normalizeMathDelimiters", () => {
     const longerClose = "```\n[P1]\n````\n\\(x\\)";
     expect(normalizeMathDelimiters(longerClose)).toContain("$x$");
     expect(normalizeMathDelimiters(longerClose)).toContain("```\n[P1]\n````");
+  });
+});
+
+describe("displayMathLines", () => {
+  it("moves a lone $$ … $$ line onto lines of its own", () => {
+    expect(displayMathLines("Testo\n\n$$ F = ma $$\n\nAltro")).toBe("Testo\n\n$$\nF = ma\n$$\n\nAltro");
+    expect(displayMathLines("1. Passo\n   $$x^2$$")).toBe("1. Passo\n   $$\n   x^2\n   $$");
+  });
+
+  it("leaves inline, block and fenced math alone", () => {
+    const inline = "La legge $$F=ma$$ dice";
+    expect(displayMathLines(inline)).toBe(inline);
+    const block = "$$\nF = ma\n$$";
+    expect(displayMathLines(block)).toBe(block);
+    const two = "$$a$$ e $$b$$";
+    expect(displayMathLines(two)).toBe(two);
+    const fenced = "```\n$$x$$\n```";
+    expect(displayMathLines(fenced)).toBe(fenced);
   });
 });

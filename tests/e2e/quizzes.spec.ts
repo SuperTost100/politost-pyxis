@@ -296,9 +296,11 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     await expect(page.getByRole("heading", { name: "Diagnosi", level: 2 })).toBeVisible();
     await expect(page.getByText("10 domande", { exact: true })).toBeVisible();
     await expect(page.getByText(/alla fine/)).toHaveCount(0);
-    const close = page.locator(".px-quiz-intro-actions").getByRole("button", { name: "Chiudi" });
+    // Back and Start sit side by side; the focus bar's X is the only exit, so the intro has no Close of its own.
+    const back = page.locator(".px-intro-actions").getByRole("button", { name: "Indietro" });
     const begin = page.getByRole("button", { name: "Inizia", exact: true });
-    expect(Math.abs((await close.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
+    expect(Math.abs((await back.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
+    await expect(page.locator(".px-intro-actions").getByRole("button", { name: "Chiudi" })).toHaveCount(0);
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
     // The options are shown in a shuffled order, so each answer is picked by its text.
@@ -437,8 +439,9 @@ test("quiz screens in both languages and themes", async () => {
         }
       };
       await go(page, `/plans/${planId}/diagnostic`);
-      await expect(page.locator(".px-quiz-intro")).toBeVisible();
-      await expect(page.locator(".px-quiz-facts li")).toHaveCount(3);
+      await expect(page.locator(".px-intro")).toBeVisible();
+      // Questions, time, topics and when it corrects.
+      await expect(page.locator(".px-intro-facts li")).toHaveCount(4);
       await shoot("start");
       const started = await invoke<{
         attemptId: string;

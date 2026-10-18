@@ -301,7 +301,7 @@ async function dispatchValidated(
       return study?.lesson(requests["study.lesson"].input.parse(input), {
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
-        onPassages: (passageIds) => emit?.({ type: "sources", passageIds }),
+        onPassages: (passageIds, citations) => emit?.({ type: "sources", passageIds, citations }),
       });
     case "study.lessonSection":
       return study?.lessonSection(
