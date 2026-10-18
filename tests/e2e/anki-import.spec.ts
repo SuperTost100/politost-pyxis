@@ -116,7 +116,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     await page
       .locator(".ant-segmented-item-label", { hasText: "Flashcards" })
       .click();
-    await expect(page.getByRole("status")).toHaveText("1 card");
+    await expect(page.getByRole("status")).toHaveText("1 flashcard");
 
     // A file that is not a package says so.
     await page.getByRole("button", { name: "Import from Anki" }).click();
@@ -137,7 +137,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     await pick(app, archive);
     await dialog.getByRole("button", { name: "Choose file" }).click();
     await expect(dialog.getByRole("status")).toContainText(
-      "3 cards can be imported. 2 will be skipped.",
+      "3 flashcards can be imported. 2 will be skipped.",
     );
     await expect(dialog.getByRole("alert")).toHaveCount(0);
     await expect(
@@ -146,7 +146,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     // The exam of the browser filter is empty, so the first exam and its first topic are chosen.
     await expect(dialog.getByRole("combobox", { name: "Exam" })).toBeVisible();
     await expect(
-      dialog.getByRole("button", { name: "Import 3 cards" }),
+      dialog.getByRole("button", { name: "Import 3 flashcards" }),
     ).toBeEnabled();
     expect(
       (
@@ -163,16 +163,16 @@ test("an Anki package imports into a topic with its history, in both themes", as
       await page.evaluate(() => window.pyxis.setAppearance("light"));
     }
 
-    await dialog.getByRole("button", { name: "Import 3 cards" }).click();
-    await expect(dialog.getByRole("status")).toContainText("Imported 3 cards.");
+    await dialog.getByRole("button", { name: "Import 3 flashcards" }).click();
+    await expect(dialog.getByRole("status")).toContainText("Imported 3 flashcards.");
     await expect(dialog.getByRole("status")).toContainText(
-      "Review history kept for 1 card.",
+      "Review history kept for 1 flashcard.",
     );
     await expect(dialog.getByRole("status")).toContainText(
-      "1 card skipped: it is not a basic or cloze note",
+      "1 flashcard skipped: it is not a basic or cloze note",
     );
     await expect(dialog.getByRole("status")).toContainText(
-      "1 card skipped: it holds only pictures or sound.",
+      "1 flashcard skipped: it holds only pictures or sound.",
     );
     if (SHOTS) {
       for (const theme of ["light", "dark"] as const) {
@@ -189,7 +189,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
 
     await dialog.getByRole("button", { name: "Done" }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByRole("status")).toHaveText("4 cards");
+    await expect(page.getByRole("status")).toHaveText("4 flashcards");
     await expect(
       page.getByRole("listitem").filter({ hasText: "seconda legge" }),
     ).toContainText("Next review");
