@@ -128,7 +128,7 @@ const tokens = (value: string) =>
 function closestPassages(text: string, passages: Passage[]): Passage[] {
   if (passages.length <= PASSAGES_MAX) return passages;
   const wanted = tokens(text);
-  return passages
+  const scored = passages
     .map((passage, order) => {
       let score = 0;
       for (const word of tokens(passage.text)) if (wanted.has(word)) score += 1;
@@ -138,6 +138,8 @@ function closestPassages(text: string, passages: Passage[]): Passage[] {
     .sort((a, b) => b.score - a.score || a.order - b.order)
     .slice(0, PASSAGES_MAX)
     .map((row) => row.passage);
+  // A short or formula-only text shares no word with anything: keep the first cited passages rather than none.
+  return scored.length ? scored : passages.slice(0, PASSAGES_MAX);
 }
 
 function proposalSchema(passages: Passage[], text: string) {
@@ -250,8 +252,15 @@ export function saveProposedCards(
 ): { saved: number; skipped: number } {
   requireTopic(db, input.planId, input.topicId);
   return db.transaction(() => {
-    const has = db.prepare(
-      `SELECT 1 FROM cards WHERE plan_id = ? AND topic_id = ? AND removed = 0 AND TRIM(front) = ?`,
+    // Same comparison as the proposal check and seed_key: case and spacing do not make a new front.
+    const present = new Set(
+      (
+        db
+          .prepare(
+            `SELECT front FROM cards WHERE plan_id = ? AND topic_id = ? AND removed = 0`,
+          )
+          .all(input.planId, input.topicId) as Array<{ front: string }>
+      ).map((row) => norm(row.front)),
     );
     const passage = db.prepare("SELECT 1 FROM passages WHERE id = ?");
     const insert = db.prepare(
@@ -264,7 +273,8 @@ export function saveProposedCards(
       const front = row.front.trim();
       const back = row.back.trim();
       if (!front || !back) throw new Error("card-blank");
-      if (has.get(input.planId, input.topicId, front)) continue;
+      if (present.has(norm(front))) continue;
+      present.add(norm(front));
       const linked =
         row.passageId && passage.get(row.passageId) ? row.passageId : null;
       const now = Date.now();

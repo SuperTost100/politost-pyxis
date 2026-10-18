@@ -175,6 +175,35 @@ describe("cards proposed from a text", () => {
     db.close();
   });
 
+  it("falls back to the first cited passages when the text shares no word with any of them", async () => {
+    const db = fixture();
+    for (let i = 0; i < 6; i += 1)
+      db.prepare(
+        "INSERT INTO passages (id, source_id, document_id, text, created_at) VALUES (?, 'src', 'doc', ?, 9)",
+      ).run(`x${i}`, `Unrelated filler number ${i} about nothing`);
+    const { seen, run } = recorded([
+      { kind: "qa", front: "What is v?", back: "A rate.", passageId: "x1" },
+    ]);
+    const result = await proposeCards(
+      db,
+      {
+        planId: "mech",
+        topicId: "kin",
+        text: "v = d/t",
+        passageIds: ["x0", "x1", "x2", "x3", "x4", "x5", "p3", "p1"],
+      },
+      run,
+    );
+    expect(seen[0]!.request.passages.map((row) => row.id)).toEqual([
+      "x0",
+      "x1",
+      "x2",
+      "x3",
+    ]);
+    expect(result.cards[0]!.passageId).toBe("x1");
+    db.close();
+  });
+
   it.each([
     [
       "a card linked to a passage that was not sent",
@@ -329,6 +358,22 @@ describe("saving the reviewed cards", () => {
     ).toEqual({ saved: 0, skipped: 1 });
     expect(db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({
       n: 2,
+    });
+    db.close();
+  });
+
+  it("treats a front that differs only in case or spacing as already there", () => {
+    const db = fixture();
+    save(db);
+    expect(
+      save(db, [
+        { front: "WHAT IS  velocity?", back: "x", passageId: null },
+        { front: "Fresh fact", back: "y", passageId: null },
+        { front: "fresh   FACT", back: "z", passageId: null },
+      ]),
+    ).toEqual({ saved: 1, skipped: 2 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({
+      n: 3,
     });
     db.close();
   });
