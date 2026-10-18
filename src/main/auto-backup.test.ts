@@ -811,6 +811,34 @@ describe("AutoBackups", () => {
       expect(await failing.list()).toEqual([]);
     });
 
+    it("does not remember a file the check could not answer for, and asks again", async () => {
+      const t = setup();
+      const { files } = folderWith(t);
+      const unknown = new Set<string>([files.mine[0]!]);
+      const calls: string[][] = [];
+      const backups = new AutoBackups({
+        stateFile: t.stateFile,
+        defaultFolder: () => join(t.documents, "Pyxis backups"),
+        workspace: () => join(t.root, "userData", "workspace"),
+        userData: join(t.root, "userData"),
+        busy: () => false,
+        changed: () => undefined,
+        verify: async (zips) => {
+          calls.push(zips.map((zip) => basename(zip)));
+          return zips.map((zip) => (unknown.has(basename(zip)) ? null : true));
+        },
+        start: () => ({ done: Promise.resolve(), stop: async () => undefined }),
+      });
+      expect((await backups.list()).map((file) => file.name)).not.toContain(
+        files.mine[0],
+      );
+      unknown.clear();
+      expect((await backups.list()).map((file) => file.name)).toContain(
+        files.mine[0],
+      );
+      expect(calls.at(-1)).toEqual([files.mine[0]]);
+    });
+
     it("turns a listed name into a path in the backup folder and nothing else", () => {
       const t = setup();
       const { folder, files } = folderWith(t);

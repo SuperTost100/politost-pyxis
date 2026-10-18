@@ -517,7 +517,7 @@ export type AutoBackupDeps = {
     requireData: boolean,
   ) => LiveBackupRun;
   /** Checks archives in a worker (the database of each one passes integrity_check); one answer per path. */
-  verify: (zips: string[]) => Promise<boolean[]>;
+  verify: (zips: string[]) => Promise<Array<boolean | null>>;
   changed: (status: AutoBackupStatus) => void;
   now?: () => number;
   log?: (message: string) => void;
@@ -626,7 +626,7 @@ export class AutoBackups {
     found.sort((a, b) => b.at - a.at || (a.name < b.name ? 1 : -1));
     const unknown = found.filter((file) => !this.verified.has(file.key));
     if (unknown.length) {
-      let answers: boolean[];
+      let answers: Array<boolean | null>;
       try {
         answers = await this.deps.verify(
           unknown.map((file) => join(folder, file.name)),
@@ -639,8 +639,9 @@ export class AutoBackups {
         answers = [];
       }
       unknown.forEach((file, index) => {
-        if (answers[index] !== undefined)
-          this.verified.set(file.key, answers[index]!);
+        // null: the check could not run for this file, so it is neither listed nor remembered as broken.
+        const answer = answers[index];
+        if (typeof answer === "boolean") this.verified.set(file.key, answer);
       });
     }
     return found

@@ -74,6 +74,22 @@ describe("reminderDue", () => {
     ).toBe(true);
   });
 
+  it("keeps the grace hour past midnight, for the day the time belongs to", () => {
+    const late: ReminderState = { ...on, time: "23:30" };
+    expect(reminderDue(late, at(13, 23, 59))).toBe(true);
+    expect(reminderDue(late, at(14, 0, 0))).toBe(true);
+    expect(reminderDue(late, at(14, 0, 29))).toBe(true);
+    expect(reminderDue(late, at(14, 0, 30))).toBe(false);
+    // The 13th's reminder already ran, so 00:10 on the 14th has nothing left.
+    expect(
+      reminderDue({ ...late, lastDay: dayKey(at(13, 12)) }, at(14, 0, 10)),
+    ).toBe(false);
+    // Missed on the 13th: it is sent after midnight and still counts for the 13th.
+    expect(
+      reminderDue({ ...late, lastDay: dayKey(at(12, 12)) }, at(14, 0, 10)),
+    ).toBe(true);
+  });
+
   it("is never due while off", () => {
     expect(reminderDue({ ...on, enabled: false }, at(13, 18, 30))).toBe(false);
   });
@@ -157,6 +173,41 @@ describe("StudyReminders", () => {
     await minutes(24 * 60);
     expect(t.shown).toHaveLength(1);
     t.reminders.dispose();
+  });
+
+  it("sends a late reminder after midnight, and tomorrow's still comes", async () => {
+    const t = setup();
+    vi.setSystemTime(at(13, 23, 40));
+    t.reminders.set({ enabled: true, time: "23:30" });
+    // Switched on after 23:30: waits for the next evening, even across midnight.
+    t.reminders.start();
+    await minutes(30);
+    expect(t.shown).toEqual([]);
+    await minutes(24 * 60);
+    expect(t.shown).toHaveLength(1);
+    t.reminders.dispose();
+  });
+
+  it("does not send last evening's reminder when switched on just after midnight", async () => {
+    const t = setup();
+    vi.setSystemTime(at(14, 0, 10));
+    t.reminders.set({ enabled: true, time: "23:30" });
+    expect(await t.reminders.check()).toBe("not-due");
+    vi.setSystemTime(at(14, 23, 30));
+    expect(await t.reminders.check()).toBe("sent");
+  });
+
+  it("counts a reminder sent after midnight for the day it belongs to", async () => {
+    const t = setup();
+    vi.setSystemTime(at(13, 23, 20));
+    t.reminders.set({ enabled: true, time: "23:30" });
+    // The computer sleeps through 23:30 and wakes at 00:10.
+    vi.setSystemTime(at(14, 0, 10));
+    expect(await t.reminders.check()).toBe("sent");
+    expect(await t.reminders.check()).toBe("not-due");
+    // The 14th's own 23:30 is not used up.
+    vi.setSystemTime(at(14, 23, 31));
+    expect(await t.reminders.check()).toBe("sent");
   });
 
   it("does not repeat a day's reminder after a restart", async () => {

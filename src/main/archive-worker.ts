@@ -1,4 +1,3 @@
-import { rmSync } from "node:fs";
 import { parentPort, workerData } from "node:worker_threads";
 import {
   backupWorkspace,
@@ -8,6 +7,7 @@ import {
   commitWorkspaceRestore,
   recoverInterruptedRestore,
   verifyBackupArchive,
+  verifyOrDiscardBackup,
 } from "../core/share/backup";
 
 const data = workerData as {
@@ -28,7 +28,14 @@ try {
     // Reads archives only; no workspace is involved.
     parentPort?.postMessage({
       ok: true,
-      verified: (data.zips ?? []).map((zip) => verifyBackupArchive(zip)),
+      // null: the check could not run (full temporary folder, read error), which says nothing about the archive.
+      verified: (data.zips ?? []).map((zip) => {
+        try {
+          return verifyBackupArchive(zip);
+        } catch {
+          return null;
+        }
+      }),
     });
   } else if (!data.workspace) throw new Error("backup-failed");
   else if (data.op === "recover") {
@@ -55,11 +62,9 @@ try {
         stopped: () => (flag ? Atomics.load(flag, 0) === 1 : false),
         onTemporary: (temporary) => parentPort?.postMessage({ temporary }),
       });
-      // A broken archive must not stand among the backups worth keeping, so it is removed and the backup fails.
-      if (!verifyBackupArchive(data.zip)) {
-        rmSync(data.zip, { force: true });
-        throw new Error("backup-unverified");
-      }
+      // A broken archive must not stand among the backups worth keeping, so it is removed and the backup fails. A
+      // check that cannot run fails the backup too, but keeps the file.
+      verifyOrDiscardBackup(data.zip);
     } else if (data.op === "restore")
       restoreWorkspace(data.zip, data.workspace, { deferCommit: true });
     else throw new Error("backup-failed");

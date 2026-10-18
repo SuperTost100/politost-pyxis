@@ -54,13 +54,22 @@ function currentSchemaVersion(): number {
   return schemaVersion;
 }
 
-function isPyxisBackup(file: string): boolean {
-  let db: Database.Database;
-  try {
-    db = new Database(file, { readonly: true, fileMustExist: true });
-  } catch {
-    return false;
-  }
+/** SQLite's own verdict that the file's bytes are not a sound database, as opposed to a failure of the machine. */
+function isDamage(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return (
+    typeof code === "string" &&
+    (code === "SQLITE_NOTADB" || code.startsWith("SQLITE_CORRUPT"))
+  );
+}
+
+/**
+ * Whether `file` is a sound Pyxis database. False means the file is proven unfit: not a database, damaged, a schema
+ * version Pyxis does not know, or missing the tables it needs. Anything about the machine instead (the file cannot be
+ * opened or read, the vector extension does not load) is thrown, since it says nothing about the file.
+ */
+function checkPyxisBackup(file: string): boolean {
+  const db = new Database(file, { readonly: true, fileMustExist: true });
   try {
     const version = Number(db.pragma("user_version", { simple: true }));
     if (
@@ -91,10 +100,20 @@ function isPyxisBackup(file: string): boolean {
     return (
       names.has("plans") && names.has("profile") && names.has("path_nodes")
     );
-  } catch {
-    return false;
+  } catch (error) {
+    if (isDamage(error)) return false;
+    throw error;
   } finally {
     db.close();
+  }
+}
+
+/** A restore treats any failure to vouch for the staged database as an unusable backup. */
+function isPyxisBackup(file: string): boolean {
+  try {
+    return checkPyxisBackup(file);
+  } catch {
+    return false;
   }
 }
 
@@ -1029,13 +1048,19 @@ export function commitWorkspaceRestore(workspace: string): boolean {
  * with a matching CRC, and the database passes the checks a restore runs on its staging copy (`integrity_check`, foreign
  * keys, schema version, the tables Pyxis needs). Blobs are not unpacked, so a damaged blob is only found by a restore.
  * Needs room for the database in the temporary folder.
+ *
+ * False means the archive is proven unusable (or not there). A failure of the machine, such as a full or unusable
+ * temporary folder or a read error, proves nothing about the archive and is thrown instead, so a caller never takes
+ * it for a broken file.
  */
 export function verifyBackupArchive(zipPath: string): boolean {
   let fd: number;
   try {
     fd = openSync(zipPath, "r");
-  } catch {
-    return false;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
   }
   let staging: string | undefined;
   try {
@@ -1047,13 +1072,24 @@ export function verifyBackupArchive(zipPath: string): boolean {
     if (!entry) return false;
     staging = mkdtempSync(join(tmpdir(), "pyxis-verify-"));
     extractEntry(fd, entry, staging, { total: 0 });
-    return isPyxisBackup(join(staging, "pyxis.db"));
-  } catch {
-    return false;
+    return checkPyxisBackup(join(staging, "pyxis.db"));
+  } catch (error) {
+    if (error instanceof Error && error.message === CORRUPT) return false;
+    throw error;
   } finally {
     closeSync(fd);
     if (staging) removeTree(staging);
   }
+}
+
+/**
+ * The check after a live backup. An archive proven unusable is deleted and the backup fails as `backup-unverified`.
+ * If the check cannot run (see `verifyBackupArchive`), the error is thrown and the file stays: it may well be good.
+ */
+export function verifyOrDiscardBackup(zipPath: string): void {
+  if (verifyBackupArchive(zipPath)) return;
+  rmSync(zipPath, { force: true });
+  throw new Error("backup-unverified");
 }
 
 export function restoreWorkspace(

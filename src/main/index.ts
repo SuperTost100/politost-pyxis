@@ -925,19 +925,23 @@ function runArchive(
  * Unpacks the database of each archive in a worker and checks it (see `verifyBackupArchive`). Reads the archives only,
  * so it runs beside a backup or a restore.
  */
-function verifyArchives(zips: string[]): Promise<boolean[]> {
+function verifyArchives(zips: string[]): Promise<Array<boolean | null>> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
       workerData: { op: "verify", zips },
     });
     let settled = false;
-    const finish = (err?: Error, verified?: boolean[]) => {
+    const finish = (err?: Error, verified?: Array<boolean | null>) => {
       if (settled) return;
       settled = true;
       if (err) reject(err);
       else resolve(verified ?? []);
     };
-    worker.once("message", (message: { ok?: boolean; verified?: boolean[]; message?: string }) =>
+    worker.once("message", (message: {
+        ok?: boolean;
+        verified?: Array<boolean | null>;
+        message?: string;
+      }) =>
       message.ok && message.verified
         ? finish(undefined, message.verified)
         : finish(new Error(message.message || "backup-failed")),

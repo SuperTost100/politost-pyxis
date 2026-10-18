@@ -54,17 +54,42 @@ const two = (n: number) => String(n).padStart(2, "0");
 export const dayKey = (at: Date) =>
   `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}`;
 
-/** Minutes after midnight of an "HH:MM" time. */
-const minutes = (time: string) =>
-  Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
-const minutesOf = (at: Date) => at.getHours() * 60 + at.getMinutes();
+/** The moment `time` falls on the local date `daysBefore` days before `at`. */
+const occurrence = (time: string, at: Date, daysBefore: number) =>
+  new Date(
+    at.getFullYear(),
+    at.getMonth(),
+    at.getDate() - daysBefore,
+    Number(time.slice(0, 2)),
+    Number(time.slice(3)),
+  );
 
-/** On, not yet run today, past the chosen time, and no more than REMINDER_GRACE past it. */
-export function reminderDue(state: ReminderState, at: Date): boolean {
-  if (!state.enabled || state.lastDay === dayKey(at)) return false;
-  const late = minutesOf(at) - minutes(state.time);
-  return late >= 0 && late * MINUTE < REMINDER_GRACE;
+/** The date of the latest occurrence of `time` that has already started: today's, or yesterday's before it. */
+export function startedDay(time: string, at: Date): string {
+  return dayKey(occurrence(time, at, occurrence(time, at, 0) <= at ? 0 : 1));
 }
+
+const laterDay = (a: string | null, b: string) => (a !== null && a > b ? a : b);
+
+/**
+ * The date whose reminder is due at `at`, or null. On, not yet run for that date, past the chosen time, and no more
+ * than REMINDER_GRACE past it. The grace runs across midnight, so a 23:30 reminder is still due at 00:10, and counts
+ * for the day that began at 23:30.
+ */
+export function reminderDay(state: ReminderState, at: Date): string | null {
+  if (!state.enabled) return null;
+  for (const daysBefore of [0, 1]) {
+    const late =
+      at.getTime() - occurrence(state.time, at, daysBefore).getTime();
+    if (late < 0 || late >= REMINDER_GRACE) continue;
+    const day = dayKey(occurrence(state.time, at, daysBefore));
+    return state.lastDay !== null && state.lastDay >= day ? null : day;
+  }
+  return null;
+}
+
+export const reminderDue = (state: ReminderState, at: Date) =>
+  reminderDay(state, at) !== null;
 
 export type ReminderDeps = {
   stateFile: string;
@@ -114,10 +139,10 @@ export class StudyReminders {
     writeReminderState(this.deps.stateFile, {
       enabled: settings.enabled,
       time: settings.time,
-      lastDay:
-        changed && minutesOf(at) >= minutes(settings.time)
-          ? dayKey(at)
-          : state.lastDay,
+      // A changed switch or time skips every occurrence that has already started, even one before midnight.
+      lastDay: changed
+        ? laterDay(state.lastDay, startedDay(settings.time, at))
+        : state.lastDay,
     });
     return this.get();
   }
@@ -138,16 +163,17 @@ export class StudyReminders {
     const state = this.state();
     if (!state.enabled) return "off";
     const at = this.now();
-    if (!reminderDue(state, at)) return "not-due";
+    const day = reminderDay(state, at);
+    if (!day) return "not-due";
     if (this.deps.busy()) return "busy";
     this.checking = true;
     try {
       const answer = await this.deps.query();
       if (!answer) return "unknown";
-      // Today is done either way: with nothing due there is nothing to say, and asking again every minute would not change that.
+      // That day is done either way: with nothing due there is nothing to say, and asking again every minute would not change that.
       writeReminderState(this.deps.stateFile, {
         ...this.state(),
-        lastDay: dayKey(at),
+        lastDay: day,
       });
       if (!answer.summary) return "nothing";
       this.deps.show(answer.summary);
