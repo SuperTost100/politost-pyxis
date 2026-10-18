@@ -112,6 +112,34 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     expect(context.body).toContain("Seconda legge di Newton?");
     expect(context.body).toContain("$F=ma$.");
     expect(context.body).toContain("La forza è il prodotto di massa e accelerazione.");
+    // The chat page settles before the test leaves it.
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+
+    // Leaving for the tutor after rating records the card session on the path, like the X does.
+    const cardSteps = () =>
+      db
+        .prepare(
+          "SELECT payload_json FROM learning_events WHERE kind = 'lesson_completed' AND plan_id = 'p' AND payload_json LIKE '%\"cards\"%'",
+        )
+        .all() as Array<{ payload_json: string }>;
+    expect(cardSteps()).toHaveLength(0);
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/cards/t";
+    });
+    await expect(front).toHaveText("Seconda legge di Newton?");
+    await page.keyboard.press("Space");
+    await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
+    await page.keyboard.press("3");
+    await expect(front).toHaveText("Unità della forza?");
+    await page.keyboard.press("Space");
+    await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
+    await page.getByRole("button", { name: "Ask the tutor" }).click();
+    await expect(page).toHaveURL(/#\/ask\/[\w-]+$/);
+    await expect.poll(() => cardSteps().length).toBe(1);
+    expect(JSON.parse(cardSteps()[0].payload_json)).toMatchObject({
+      activity: "cards",
+      result: { correct: 1, total: 1 },
+    });
 
     // A hand-made card is deleted for good, so D asks first.
     db.exec("UPDATE cards SET suspended = 1 WHERE id IN ('c1','c2','c3')");

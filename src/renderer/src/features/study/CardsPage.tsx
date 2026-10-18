@@ -346,6 +346,8 @@ export function CardsPage() {
         planId: planId ?? undefined,
         subject: plan.data?.subject ?? undefined,
       });
+      // Leaving for the tutor ends the visit like the X does, so the ratings so far reach the path.
+      if (!reviewing && seen.length > 0 && !recorded && !(await finishSession())) return;
       navigate(`/ask/${seeded.chatId}`);
     } catch {
       setAskFailed(true);
