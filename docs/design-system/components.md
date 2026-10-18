@@ -174,6 +174,7 @@ The tutor chat input (ASK-01…05): subject pill, scoped sources, text, attach, 
 - `onFormula` handles the Σ button. Without it the button opens the graph tool.
 - No microphone and no voice button: voice is out of v1.
 - Enter sends, Shift+Enter breaks the line, Esc stops a stream.
+- `onPasteImages` takes images pasted without text, such as a screenshot; Ask stages them as attachments. `dropping` marks the card while files are dragged over the Ask page, which attaches what is dropped.
 - antd: `<Sender>` from `@ant-design/x` is the closest; otherwise `Input.TextArea autoSize` inside a styled container.
 
 ## ChatMessage

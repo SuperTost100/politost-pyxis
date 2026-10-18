@@ -317,6 +317,9 @@ describe("askTurn", () => {
     db.prepare("INSERT INTO chats (id, title, created_at, updated_at) VALUES ('newer', 'Altra', 5, 5)").run();
     renameChat(db, result.chatId, "Moti");
     expect(listChats(db).map((chat) => [chat.title, chat.updated_at])).toEqual([["Altra", 5], ["Moti", 1]]);
+    // The list carries each chat's subject, so the chat panel can filter by it.
+    db.prepare("UPDATE chats SET subject = 'Fisica' WHERE id = 'newer'").run();
+    expect(listChats(db).map((chat) => chat.subject)).toEqual(["Fisica", null]);
     db.prepare("DELETE FROM chats WHERE id = 'newer'").run();
     expect(() => renameChat(db, result.chatId, "  ")).toThrow(/chat-title/);
     deleteChat(db, "", result.chatId);

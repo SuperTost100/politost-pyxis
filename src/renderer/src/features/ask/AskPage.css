@@ -7,22 +7,49 @@
   min-height: 60vh;
 }
 
+/* The header bar: the chat list, the open chat's title and New chat, on the column's edges. */
 .ask-bar {
   position: sticky;
   top: var(--ask-header);
   z-index: 5;
   display: flex;
   align-items: center;
-  padding: var(--space-2) 0;
+  gap: var(--space-2);
+  min-height: var(--control-md);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
 
-/* The row keeps the column's width; its buttons hang left into the margin so they line up with the logo. */
-.ask-bar-tools {
+.ask-bar-title {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  margin-inline-start: calc(-1 * var(--ask-bar-shift, 0px));
+}
+
+.ask-bar-name {
+  max-width: 100%;
+  min-height: var(--control-sm);
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink);
+  font: 600 calc(15px * var(--text-scale)) / calc(22px * var(--text-scale)) var(--font-sans);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  transition: background-color 150ms ease-out;
+}
+
+.ask-bar-name:hover {
+  background: var(--surface-raised);
+}
+
+.ask-bar-title .ant-input {
+  max-width: 420px;
 }
 
 .ask-greeting {
@@ -39,6 +66,30 @@
 
 .ask-greeting p {
   margin: var(--space-3) 0 0;
+  color: var(--ink-muted);
+}
+
+/* Starter prompts: a few questions on the plans in progress, one per line so long topic names stay readable. */
+.ask-starters {
+  list-style: none;
+  margin: var(--space-6) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.ask-starters .ant-btn {
+  max-width: 100%;
+  height: auto;
+  min-height: var(--control-md);
+  white-space: normal;
+  text-align: left;
+}
+
+.ask-greeting .ask-attach-hint {
+  margin-top: var(--space-6);
   color: var(--ink-muted);
 }
 
@@ -101,6 +152,24 @@
   max-width: 120px;
   max-height: 48px;
   border-radius: var(--radius-sm);
+}
+
+/* A message out of view skips layout and paint until it scrolls near, so a growing reply does not lay out the rest. */
+.ask-thread > .px-msg {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+}
+
+/* Older messages of a long chat load when the student scrolls up to this button, or presses it. */
+.ask-earlier {
+  display: flex;
+  justify-content: center;
+}
+
+.ask-drop-hint {
+  margin: 0;
+  color: var(--primary-text);
+  text-align: center;
 }
 
 /* Try again sits under the question it would answer, on the student's side. */

@@ -245,7 +245,29 @@
     "subjectDragCancelled": "Reordering cancelled.",
     "retry": "Try again",
     "attachFilter": "Photos and documents",
-    "replied": "Pyxis replied."
+    "replied": "Pyxis replied.",
+    "renameTitle": "Click to rename",
+    "renameNamed": "Rename {{title}}",
+    "startersLabel": "Suggested questions",
+    "starter": {
+      "explain": "Explain the key ideas of {{topic}}",
+      "quiz": "Ask me 3 questions on {{topic}}",
+      "exercise": "Give me an exercise on {{topic}}"
+    },
+    "attachHint": "Attach notes, a PDF or a photo with the paperclip, paste a screenshot, or drop files here.",
+    "showEarlier_one": "Show {{count}} earlier message",
+    "showEarlier_other": "Show {{count}} earlier messages",
+    "pastedImage": "Pasted image",
+    "pasteFailed": "This image couldn't be attached. Save it as a file and attach it with the paperclip.",
+    "dropActive": "Drop to attach to your message.",
+    "dropTooMany": "You can drop up to {{max}} files at a time.",
+    "dropSkipped": "Some files were left out. A message can carry photos, PDF, Word, PowerPoint, text and Markdown files.",
+    "groupToday": "Today",
+    "groupWeek": "This week",
+    "groupOlder": "Older",
+    "subjectFilter": "Filter by subject",
+    "subjectAll": "All subjects",
+    "searchNoneSubject": "No chat in {{subject}} matches “{{query}}”."
   },
   "exams": {
     "view": "Show",

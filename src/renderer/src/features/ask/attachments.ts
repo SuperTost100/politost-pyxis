@@ -73,3 +73,25 @@ export function addPendingFiles(current: string[], chosen: string[]): string[] {
   for (const file of chosen) if (!next.includes(file)) next.push(file);
   return next;
 }
+
+/** What a chat message can carry, without the dot. The picker uses it, and a drop leaves out anything else. */
+export const ATTACH_EXTENSIONS = [
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "heic",
+  "heif",
+  "pdf",
+  "docx",
+  "pptx",
+  "txt",
+  "md",
+] as const;
+
+/** Splits granted paths into the ones a message can carry and a count of the rest (a smartbook, for example). */
+export function attachable(paths: string[]): { paths: string[]; skipped: number } {
+  const allowed = new Set<string>(ATTACH_EXTENSIONS);
+  const kept = paths.filter((path) => allowed.has(fileName(path).split(".").pop()?.toLowerCase() ?? ""));
+  return { paths: kept, skipped: paths.length - kept.length };
+}

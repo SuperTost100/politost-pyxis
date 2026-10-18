@@ -1886,6 +1886,7 @@ export const requests = {
       z.object({
         id: z.string(),
         title: z.string().nullable(),
+        subject: z.string().nullable(),
         updatedAt: z.number(),
       }),
     ),
