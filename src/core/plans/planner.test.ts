@@ -257,6 +257,15 @@ describe("Oggi", () => {
     expect(after.complete).toBe(true);
   });
 
+  it("does not tick off a plan whose minutes today are too small to matter", () => {
+    const db = openDatabase(":memory:");
+    for (const id of ["a", "b", "c", "d"]) addPlan(db, id, { examIn: 4 });
+    // 0.5 h a week split over four exams leaves each a couple of minutes today.
+    savePlannerHours(db, { hours: 0.5 }, now);
+    // Allocations under 2.5 minutes are left out, so none shows as done with no work.
+    expect(todayPlan(db, now).items).toEqual([]);
+  });
+
   it("is empty with no plans", () => {
     const db = openDatabase(":memory:");
     expect(todayPlan(db, now)).toEqual({ planned: false, behind: [], cards: null, items: [] });

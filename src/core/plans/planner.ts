@@ -344,8 +344,9 @@ function nextStep(state: PlanState) {
 /**
  * Today's study across every exam: due flashcards from all plans as one item, then each plan's next step, the closest
  * exam first and plans without a date after the dated ones. With hours set in the planner, a plan's item is done once
- * today's steps cover the minutes the planner gave it today, and a plan the planner gave nothing today is left out
- * unless it was studied today. Without hours, one step a day finishes a plan's item. Exams already past are left out.
+ * today's steps cover the minutes the planner gave it today (at least one step), and a plan the planner gave under
+ * 2.5 minutes today is left out unless it was studied today. Without hours, one step a day finishes a plan's item.
+ * Exams already past are left out.
  */
 export function todayPlan(db: Database.Database, now = Date.now()) {
   const plans = studyState(db, now);
@@ -370,10 +371,11 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
       const days = plan.state.daysToExam;
       const inPlan = result != null && days != null && days > 0;
       const minutes = inPlan ? (result.days[0]?.get(plan.row.id) ?? 0) : null;
-      if (minutes != null && minutes < 1 && plan.doneToday.length === 0) return [];
+      // An allocation under the 2.5 minute tolerance is too small to ask for and would tick off with no work done.
+      if (minutes != null && minutes < 2.5 && plan.doneToday.length === 0) return [];
       if (!next && plan.doneToday.length === 0) return [];
       const complete =
-        minutes != null ? plan.doneMinutes >= minutes - 2.5 : plan.doneToday.length > 0;
+        plan.doneToday.length > 0 && (minutes == null || plan.doneMinutes >= minutes - 2.5);
       return [
         {
           planId: plan.row.id,
