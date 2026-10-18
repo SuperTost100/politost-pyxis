@@ -840,7 +840,7 @@ export function startRebuild(
   const sourceIds = (
     db
       .prepare(
-        "SELECT source_id AS id FROM plan_sources WHERE plan_id = ? ORDER BY source_id",
+        "SELECT source_id AS id FROM plan_sources WHERE plan_id = ? AND role = 'material' ORDER BY source_id",
       )
       .all(planId) as Array<{ id: string }>
   ).map((row) => row.id);

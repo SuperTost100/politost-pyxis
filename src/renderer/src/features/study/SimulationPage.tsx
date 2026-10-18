@@ -26,7 +26,8 @@ export function SimulationPage() {
   const navigate = useNavigate();
   const client = useQueryClient();
   const [started, setStarted] = useState<string | null>(attemptId ?? null);
-  const [length, setLength] = useState<30 | 60 | 90 | 120>(30);
+  const [length, setLength] = useState(30);
+  const [format, setFormat] = useState<"past" | "generic">("past");
   const [source, setSource] = useState<"exam" | "mixed">("exam");
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [index, setIndex] = useState(0);
@@ -71,6 +72,14 @@ export function SimulationPage() {
     queryFn: () => invoke("study.simulationBuild", { planId }),
   });
   const building = build.data;
+  const papers = useQuery({
+    queryKey: ["past-papers", planId],
+    enabled: Boolean(planId) && !started,
+    queryFn: () => invoke("study.pastPapers", { planId }),
+  });
+  // The past papers' structure, when the plan has any; the setup offers to copy it.
+  const style = papers.data?.style ?? null;
+  const matchPast = style != null && format === "past";
   // A finished build is only prepared: no attempt exists and no clock runs until Start.
   const ready = building?.state === "succeeded";
   const buildStopped = ["failed", "cancelled", "interrupted"].includes(
@@ -111,8 +120,15 @@ export function SimulationPage() {
     await client.invalidateQueries({ queryKey: ["simulation-build", planId] });
   }
   useEffect(() => {
-    if (building) setLength(building.minutes as typeof length);
-  }, [building?.jobId, building?.minutes]);
+    if (building) {
+      setLength(building.minutes);
+      setFormat(building.styled ? "past" : "generic");
+    }
+  }, [building?.jobId, building?.minutes, building?.styled]);
+  // Past exams that state a duration set the time limit, until the student picks another.
+  useEffect(() => {
+    if (style?.minutes && !building) setLength(style.minutes);
+  }, [style?.minutes, building == null]);
   useEffect(() => {
     if (run && !started) {
       setStarted(run.attemptId);
@@ -207,7 +223,7 @@ export function SimulationPage() {
           void begin(
             invoke("study.simulationStart", {
               planId,
-              minutes: (building?.minutes ?? length) as typeof length,
+              minutes: building?.minutes ?? length,
               source,
             }),
           )
@@ -229,6 +245,7 @@ export function SimulationPage() {
             planId,
             minutes: length,
             source,
+            ...(style ? { matchPast } : {}),
           })
             .then(async (next) => {
               if (next.attemptId) {
@@ -332,12 +349,41 @@ export function SimulationPage() {
             disabled={
               busy || open.isPending || (Boolean(building) && !buildStopped)
             }
-            options={([30, 60, 90, 120] as const).map((value) => ({
-              value,
-              label: t("simulation.minutes", { count: value }),
-            }))}
-            onChange={(value) => setLength(value as typeof length)}
+            options={[
+              ...new Set([30, 60, 90, 120, ...(style?.minutes ? [style.minutes] : []), length]),
+            ]
+              .sort((a, b) => a - b)
+              .map((value) => ({
+                value,
+                label: t("simulation.minutes", { count: value }),
+              }))}
+            onChange={(value) => setLength(Number(value))}
           />
+          {style ? (
+            <>
+              <label className="body-strong">{t("simulation.format")}</label>
+              <Segmented
+                aria-label={t("simulation.format")}
+                value={format}
+                disabled={
+                  busy || open.isPending || (Boolean(building) && !buildStopped)
+                }
+                options={[
+                  { value: "past", label: t("simulation.formatPast") },
+                  { value: "generic", label: t("simulation.formatGeneric") },
+                ]}
+                onChange={(value) => setFormat(value as typeof format)}
+              />
+              {format === "past" ? (
+                <p className="small ink-muted px-sim-format-note">
+                  {t("simulation.formatPastInfo", {
+                    count: style.papers,
+                    questions: style.questions,
+                  })}
+                </p>
+              ) : null}
+            </>
+          ) : null}
           <label className="body-strong">{t("simulation.material")}</label>
           <Segmented
             aria-label={t("simulation.material")}

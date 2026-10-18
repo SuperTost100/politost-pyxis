@@ -66,6 +66,7 @@ export const router = createHashRouter([
   { path: "/plans/:planId/diagnostic", lazy: quiz },
   { path: "/plans/:planId/quiz/:topicId", lazy: quiz },
   { path: "/plans/:planId/redo", lazy: quizRedo },
+  { path: "/plans/:planId/past", lazy: quiz },
   { path: "/plans/:planId/cards/:topicId", lazy: cards },
   { path: "/plans/:planId/review", lazy: review },
   { path: "/plans/:planId/review/cards", lazy: cards },
