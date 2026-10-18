@@ -417,6 +417,8 @@ function installer(
   options: {
     ranges?: boolean;
     mac?: Parameters<typeof updateInstaller>[0]["mac"];
+    /** Puts a layer between the installer and the fake GitHub. */
+    wrap?: (inner: typeof fetch) => typeof fetch;
   } = {},
 ) {
   const { repo, fetcher, served } = fakeGithub(files, "v0.3.0", options);
@@ -430,7 +432,9 @@ function installer(
     current: "0.2.3",
     dir: join(root, "updates"),
     target,
-    fetch: fetcher as typeof fetch,
+    fetch: options.wrap
+      ? options.wrap(fetcher as typeof fetch)
+      : (fetcher as typeof fetch),
     emit: (view) => views.push(view),
     openPath: async (path) => {
       calls.push(`open ${path}`);
@@ -874,6 +878,157 @@ it("downloads the whole AppImage when the server ignores Range or the rebuilt fi
     expect(readdirSync(join(root, "updates"))).toEqual([]);
   }
 });
+
+/** The AppImage case for the idle limit: the running file, the new release and the first Range request's URL test. */
+function idleCase() {
+  const root = temp();
+  mkdirSync(join(root, "apps"));
+  const appImage = join(root, "apps", "PoliTost.Pyxis-0.2.3.AppImage");
+  const old = appImageOf([1, 2, 3, 4].map((seed) => block(seed)));
+  const next = appImageOf([1, 2, 9, 4].map((seed) => block(seed)));
+  writeFileSync(appImage, old.bytes);
+  const name = "PoliTost.Pyxis-0.3.0.AppImage";
+  const files = {
+    [name]: next.bytes,
+    SHA256SUMS: `${sha(next.bytes)}  ${name}\n`,
+  };
+  const isRange = (resource: string | URL | Request, init?: RequestInit) =>
+    String(resource).endsWith(`/fixture/${name}`) &&
+    new Headers(init?.headers).has("range");
+  return { root, appImage, next, files, isRange };
+}
+
+it("falls back to the whole AppImage when the differential path stalls for the idle limit", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const { root, appImage, next, files, isRange } = idleCase();
+    let stalled!: () => void;
+    const hung = new Promise<void>((resolve) => (stalled = resolve));
+    let first = true;
+    const { instance, logs } = installer(
+      root,
+      files,
+      { platform: "linux", arch: "x64", appImage },
+      {
+        ranges: true,
+        wrap: (inner) => (resource, init) => {
+          if (!isRange(resource, init) || !first) return inner(resource, init);
+          first = false;
+          stalled();
+          // The trailer request never answers, as on a connection that stopped.
+          return new Promise((_, reject) =>
+            init?.signal?.addEventListener("abort", () =>
+              reject(init.signal!.reason),
+            ),
+          );
+        },
+      },
+    );
+    const running = instance.start();
+    await hung;
+    await vi.advanceTimersByTimeAsync(30_000);
+    await running;
+    expect(instance.state()).toMatchObject({ handover: "appimage-replaced" });
+    expect(readFileSync(appImage)).toEqual(next.bytes);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatch(/^pyxis: downloading the whole update file/);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("ends the update, without the whole-file fallback, when the user cancels the differential path", async () => {
+  const { root, appImage, files, isRange } = idleCase();
+  let stalled!: () => void;
+  const hung = new Promise<void>((resolve) => (stalled = resolve));
+  let whole = 0;
+  const { instance, logs } = installer(
+    root,
+    files,
+    { platform: "linux", arch: "x64", appImage },
+    {
+      ranges: true,
+      wrap: (inner) => (resource, init) => {
+        if (!isRange(resource, init)) {
+          if (
+            String(resource).endsWith("/fixture/PoliTost.Pyxis-0.3.0.AppImage")
+          )
+            whole++;
+          return inner(resource, init);
+        }
+        stalled();
+        return new Promise((_, reject) =>
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal!.reason),
+          ),
+        );
+      },
+    },
+  );
+  const running = instance.start();
+  await hung;
+  instance.cancel();
+  await running;
+  expect(instance.state()).toEqual({ state: "idle" });
+  expect(whole).toBe(0);
+  expect(logs).toEqual([]);
+});
+
+it("keeps a slow differential download alive while bytes keep arriving", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const { root, appImage, next, files, isRange } = idleCase();
+    let waiting = 0;
+    const { instance, logs } = installer(
+      root,
+      files,
+      { platform: "linux", arch: "x64", appImage },
+      {
+        ranges: true,
+        // Every Range answer trickles in one byte per 20 s: longer than the idle limit in all, never silent for it.
+        wrap: (inner) => async (resource, init) => {
+          const response = await inner(resource, init);
+          if (!isRange(resource, init)) return response;
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          let at = 0;
+          return new Response(
+            new ReadableStream<Uint8Array>(
+              {
+                async pull(controller) {
+                  if (at >= bytes.length) return controller.close();
+                  waiting++;
+                  await new Promise((resolve) => setTimeout(resolve, 20_000));
+                  waiting--;
+                  controller.enqueue(bytes.subarray(at, ++at));
+                },
+              },
+              { highWaterMark: 0 },
+            ),
+            { status: response.status, headers: response.headers },
+          );
+        },
+      },
+    );
+    const running = instance.start();
+    let done = false;
+    void running.then(() => (done = true));
+    // The trailer, the blockmap and one changed block, a byte at a time. Time moves only while a read waits, so real
+    // file work never races the fake clock.
+    while (!done) {
+      await new Promise((resolve) => setImmediate(resolve));
+      if (waiting > 0) {
+        await vi.advanceTimersByTimeAsync(20_000);
+      }
+    }
+    await running;
+    expect(instance.state()).toMatchObject({ handover: "appimage-replaced" });
+    expect(readFileSync(appImage)).toEqual(next.bytes);
+    // Rebuilt from the changed block, not by the whole-file fallback.
+    expect(logs).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+}, 30_000);
 
 /** A stand-in for ditto: the unpacked folder gets the app bundle as one file holding the zip's bytes. */
 function fakeMac(root: string) {

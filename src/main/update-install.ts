@@ -422,9 +422,18 @@ export function updateInstaller(deps: {
     await cleared;
     await removeDir(deps.dir);
     await mkdir(deps.dir, { recursive: true });
-    const idle = new AbortController();
-    let timer = setTimeout(() => idle.abort(), IDLE_TIMEOUT);
-    const both = AbortSignal.any([signal, idle.signal]);
+    // The idle limit covers network reads only. Every response and every chunk of one restarts it; local file work
+    // keeps it from running. The differential attempt and the whole-file download each get their own controller, so an
+    // idle stop of the first still leaves the second a live signal.
+    let idle = new AbortController();
+    let both = AbortSignal.any([signal, idle.signal]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const touch = () => {
+      clearTimeout(timer);
+      const current = idle;
+      timer = setTimeout(() => current.abort(), IDLE_TIMEOUT);
+    };
+    touch();
     const dest = join(deps.dir, asset.name);
     // At most one progress update per interval, and the latest count always arrives, even when the bytes pause. The
     // total is the bytes this download fetches: the changed blocks, or the whole file.
@@ -439,8 +448,7 @@ export function updateInstaller(deps: {
       set({ state: "downloading", version: tag, received: latest, total });
     };
     const onProgress = (received: number) => {
-      clearTimeout(timer);
-      timer = setTimeout(() => idle.abort(), IDLE_TIMEOUT);
+      touch();
       latest = received;
       const wait = shown + PROGRESS_INTERVAL - Date.now();
       if (wait <= 0) show();
@@ -451,15 +459,41 @@ export function updateInstaller(deps: {
       latest = 0;
       show();
     };
-    const releaseFile = (name: string, range?: [number, number]) => {
+    // Restarts the idle limit when the response arrives and for every chunk of its body, however the caller reads it.
+    const alive = (response: Response): Response => {
+      touch();
+      if (!response.body) return response;
+      // Pulls one chunk at a time, so the limit runs only while a read waits for the network.
+      const reader = response.body.getReader();
+      const body = new ReadableStream<Uint8Array>(
+        {
+          async pull(controller) {
+            const { done, value } = await reader.read();
+            if (done) return controller.close();
+            touch();
+            controller.enqueue(value);
+          },
+          cancel: (reason) => reader.cancel(reason),
+        },
+        { highWaterMark: 0 },
+      );
+      return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    };
+    const releaseFile = async (name: string, range?: [number, number]) => {
       const file = assets.find((a) => a.name === name);
       if (!file) throw new DiffError("blockmap");
-      return fetchReleaseFile(file.url, name, {
-        repository,
-        fetch: fetcher,
-        signal: both,
-        ...(range ? { range } : {}),
-      });
+      return alive(
+        await fetchReleaseFile(file.url, name, {
+          repository,
+          fetch: fetcher,
+          signal: both,
+          ...(range ? { range } : {}),
+        }),
+      );
     };
     const fetchRange = (start: number, end: number) =>
       releaseFile(asset.name, [start, end]);
@@ -494,6 +528,7 @@ export function updateInstaller(deps: {
           fetchRange,
           signal: both,
           onProgress,
+          onActivity: touch,
         });
       }
       if (kind !== "zip") throw new DiffError("plan");
@@ -519,6 +554,7 @@ export function updateInstaller(deps: {
         fetchRange,
         signal: both,
         onProgress,
+        onActivity: touch,
       });
     }
 
@@ -529,7 +565,12 @@ export function updateInstaller(deps: {
           await differential();
           rebuilt = true;
         } catch (error) {
-          if (both.aborted) throw error;
+          // Only the user's cancel ends the update here. An idle stop of the differential path falls back to the
+          // whole file, which starts with a fresh idle signal and timer.
+          if (signal.aborted) throw error;
+          idle = new AbortController();
+          both = AbortSignal.any([signal, idle.signal]);
+          touch();
           const code = (error as { code?: unknown } | null)?.code;
           const reason =
             typeof code === "string"

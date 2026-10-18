@@ -232,7 +232,8 @@ export async function readRange(
  * Writes the new file to `<dest>.part` by following `operations`: copy steps read the old file, download steps fetch
  * their range with `fetchRange`. `tail` (an AppImage's embedded blockmap and its length) goes last. The file is renamed
  * to `dest` only if it has `size` bytes and SHA-256 `sha256`; otherwise, and on any failure, the partial file is
- * deleted. `onProgress` receives the downloaded byte count, never the copied bytes.
+ * deleted. `onProgress` receives the downloaded byte count, never the copied bytes. `onActivity` runs before each chunk
+ * copied from the old file, so a caller's network idle limit does not run while the disk works.
  */
 export async function assemble(input: {
   oldFile: string;
@@ -244,6 +245,7 @@ export async function assemble(input: {
   fetchRange: (start: number, end: number) => Promise<Response>;
   signal: AbortSignal;
   onProgress?: (received: number) => void;
+  onActivity?: () => void;
 }): Promise<void> {
   const part = `${input.dest}.part`;
   const planned =
@@ -270,6 +272,7 @@ export async function assemble(input: {
       if (op.kind === "copy") {
         if (op.end > oldSize) throw new DiffError("plan");
         for (let at = op.start; at < op.end;) {
+          input.onActivity?.();
           const want = Math.min(COPY_CHUNK, op.end - at);
           const { bytesRead } = await old.read(buffer, 0, want, at);
           if (bytesRead !== want) throw new DiffError("plan");

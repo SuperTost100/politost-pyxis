@@ -306,3 +306,27 @@ it("deletes the rebuilt file when its SHA-256 differs from the release's", async
     }),
   ).rejects.toThrow(DiffError);
 });
+
+it("reports activity before every chunk it copies from the old file", async () => {
+  const root = temp();
+  // Two blocks of 1.5 MB each: the copy step spans two 1 MiB chunks.
+  const unchanged = [block(1, 1_500_000), block(2, 1_500_000)];
+  const oldFile = join(root, "old.zip");
+  writeFileSync(oldFile, Buffer.concat(unchanged));
+  const operations = planDownload(blockMapOf(unchanged), blockMapOf(unchanged));
+  expect(operations).toEqual([{ kind: "copy", start: 0, end: 3_000_000 }]);
+  const next = Buffer.concat(unchanged);
+  const { fetchRange } = await serve(next, { ranges: true });
+  let activity = 0;
+  await assemble({
+    oldFile,
+    operations,
+    dest: join(root, "new.zip"),
+    size: next.length,
+    sha256: sha(next),
+    fetchRange,
+    signal: new AbortController().signal,
+    onActivity: () => activity++,
+  });
+  expect(activity).toBe(3);
+});
