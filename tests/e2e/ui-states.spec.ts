@@ -212,12 +212,28 @@ test("UI-03 the cards page announces the next card, names parked cards, and show
     await expect(page.getByRole("button", { name: "Riprendi la flashcard: Il lavoro meccanico" })).toBeVisible();
     await page.screenshot({ path: ".shots/ui-states-cards-parked-it.png", animations: "disabled", fullPage: true });
 
-    // Rating a card says which one comes next, since the buttons the focus was on are gone.
+    // Rating a card says which one comes next, since the buttons the focus was on are gone. Every announcement is
+    // recorded: the card just rated is never read out as the next one, not even until the queue updates.
+    const rated = (await page.getByText("Prima carta").isVisible()) ? "Prima carta" : "Seconda carta";
+    const next = rated === "Prima carta" ? "Seconda carta" : "Prima carta";
+    await page.evaluate(() => {
+      const said: string[] = [];
+      (window as unknown as { said: string[] }).said = said;
+      new MutationObserver(() => {
+        for (const node of document.querySelectorAll('[role="status"]')) {
+          const text = node.textContent ?? "";
+          if (text.startsWith("Flashcard successiva") && said.at(-1) !== text) said.push(text);
+        }
+      }).observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
     await page.getByRole("button", { name: /^Gira/ }).click();
     await page.getByRole("button", { name: "Bene", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Flashcard successiva:" })).toContainText(
-      /Flashcard successiva: (Prima|Seconda) carta/,
+    await expect(page.getByRole("status").filter({ hasText: "Flashcard successiva:" })).toHaveText(
+      `Flashcard successiva: ${next}`,
     );
+    expect(await page.evaluate(() => (window as unknown as { said: string[] }).said)).toEqual([
+      `Flashcard successiva: ${next}`,
+    ]);
 
     // The wizard's progress line is a progress bar.
     await goto(page, "/plans/new");

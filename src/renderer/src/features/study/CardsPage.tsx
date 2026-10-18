@@ -147,8 +147,9 @@ export function CardsPage() {
   const shown = everywhere ? dueEverywhere : reviewing ? reviewQueue : cards;
   const deckLoading = shown.isLoading || (!reviewing && build.isLoading);
   // Said aloud when a rating brings up the next card; the old card's buttons are gone and focus falls to the page.
+  // Until the rating's refresh has replaced the deck, the card shown is still the one just rated.
   const nextCardText =
-    seen.length > 0 && card
+    seen.length > 0 && !ratingPending && !ratingError && card
       ? plainText(isCloze(card.front) ? clozeQuestion(card.front) : card.front)
       : "";
   const [recorded, setRecorded] = useState(false);
