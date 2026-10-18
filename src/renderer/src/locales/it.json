@@ -376,6 +376,7 @@
     "embedDownload": "Scarica il modello (120 MB)",
     "embedReady": "Il modello di ricerca locale è pronto.",
     "embedHash": "Il file del modello di ricerca non corrisponde al checksum.",
+    "embedOffline": "Pyxis non è riuscito a scaricare il modello di ricerca. Controlla la connessione e riprova.",
     "embedOff": "La ricerca locale resta sulle parole finché non scarichi il modello.",
     "jobs": {
       "extract": "Leggo la fonte",

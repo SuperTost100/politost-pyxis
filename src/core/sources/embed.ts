@@ -26,6 +26,8 @@ export const EMBEDDING_SHA256 =
 
 const CONSENT_KEY = "embedding.consent";
 const MAX_BYTES = 200 * 1024 * 1024;
+/** A download that receives nothing for this long has stalled. The wait restarts with each part. */
+const IDLE_MS = 120_000;
 
 export function setEmbeddingConsent(db: Database.Database, accepted: boolean): void {
   db.prepare(
@@ -50,30 +52,49 @@ export async function downloadEmbedding(options: {
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
   fileName?: string;
+  idleMs?: number;
 }): Promise<"ready" | "declined"> {
   if (!options.consent) return "declined";
   if (!/^[a-f0-9]{64}$/.test(options.sha256) || /^0+$/.test(options.sha256)) {
     throw new Error("embed-unpinned");
   }
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(options.url ?? EMBEDDING_URL, { signal: options.signal });
-  if (!response.ok) throw new Error("embed-download");
+  // A stalled connection fails the job instead of holding a local slot until someone cancels it. A cancel stays a cancel.
+  const idle = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const restart = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => idle.abort(new DOMException("No data arrived in time", "TimeoutError")), options.idleMs ?? IDLE_MS);
+  };
+  const signal = options.signal ? AbortSignal.any([options.signal, idle.signal]) : idle.signal;
   const chunks: Uint8Array[] = [];
   let size = 0;
-  if (response.body) {
-    const reader = response.body.getReader();
-    try {
-      for (;;) {
-        options.signal?.throwIfAborted();
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > MAX_BYTES) throw new Error("embed-too-big");
-        chunks.push(value);
-      }
-    } finally { await reader.cancel(); }
-  } else {
-    chunks.push(new Uint8Array(await response.arrayBuffer()));
+  try {
+    restart();
+    const response = await fetchImpl(options.url ?? EMBEDDING_URL, { signal });
+    if (!response.ok) throw new Error("embed-download");
+    if (response.body) {
+      const reader = response.body.getReader();
+      try {
+        for (;;) {
+          signal.throwIfAborted();
+          const { done, value } = await reader.read();
+          if (done) break;
+          restart();
+          size += value.byteLength;
+          if (size > MAX_BYTES) throw new Error("embed-too-big");
+          chunks.push(value);
+        }
+      } finally { await reader.cancel().catch(() => undefined); }
+    } else {
+      chunks.push(new Uint8Array(await response.arrayBuffer()));
+    }
+  } catch (error) {
+    options.signal?.throwIfAborted();
+    if (error instanceof Error && error.message.startsWith("embed-")) throw error;
+    throw new Error("embed-download", { cause: error });
+  } finally {
+    clearTimeout(timer);
   }
   const bytes = Buffer.concat(chunks);
   if (bytes.byteLength > MAX_BYTES) throw new Error("embed-too-big");
@@ -99,8 +120,9 @@ export async function downloadModel(dir: string, signal: AbortSignal): Promise<v
   }
 }
 
-export async function embedTexts(dir: string, texts: string[], signal?: AbortSignal): Promise<Float32Array[]> {
-  const vectors = await runSourceWorker<number[][]>("embed-worker", { dir, texts }, signal);
+/** `urgent` is for a search the student waits on: it does not queue behind indexing for the shared worker. */
+export async function embedTexts(dir: string, texts: string[], signal?: AbortSignal, urgent = false): Promise<Float32Array[]> {
+  const vectors = await runSourceWorker<number[][]>("embed-worker", { dir, texts, ...(urgent ? { urgent } : {}) }, signal);
   return vectors.map((vector) => {
     if (vector.length !== 384 || vector.some((n) => !Number.isFinite(n))) throw new Error("embed-dim");
     return Float32Array.from(vector);
@@ -112,6 +134,8 @@ export async function indexModelVectors(db: Database.Database, dir: string, sign
   let count = 0;
   for (;;) {
     signal.throwIfAborted();
+    // Turning local search off stops indexing after the batch in progress.
+    if (!embeddingConsent(db)) return count;
     const rows = db.prepare(`SELECT p.rowid AS n, p.text FROM passages p
       LEFT JOIN sources s ON s.id = p.source_id
       WHERE (? IS NULL OR p.source_id = ?) AND (p.source_id IS NULL OR s.status != 'removed')

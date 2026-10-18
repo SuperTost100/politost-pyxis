@@ -102,7 +102,7 @@ export function sourceHandlers(
   stopOcr(db);
   setRetrievalModel(async (text, signal) => {
     if (!embeddingConsent(db) || !embeddingReady(modelDir)) return null;
-    return (await embedTexts(modelDir, [text], signal))[0] ?? null;
+    return (await embedTexts(modelDir, [text], signal, true))[0] ?? null;
   });
   if (runner) {
     markInterruptedImports(db);
@@ -167,8 +167,11 @@ export function sourceHandlers(
       ],
     });
   }
+  // A download cancelled because consent was withdrawn can still say running while its cancel unwinds. Agreeing again
+  // in that moment must start a new download instead of joining the one that is stopping.
+  const withdrawn = new Set<string>();
   const activeJob = (kind: string) =>
-    runner?.list().find((job) => job.kind === kind && ["queued", "running"].includes(job.state))?.id;
+    runner?.list().find((job) => job.kind === kind && ["queued", "running"].includes(job.state) && !withdrawn.has(job.id))?.id;
   const activeOcrDownload = () => activeJob("ocr-data-download");
   // The catalog read last, so the Library can check for new versions each time its list changes without asking
   // books.politost.it again. A download (add or update) always reads it fresh.
@@ -594,7 +597,10 @@ export function sourceHandlers(
       if (!input.consent) {
         // Withdrawing stops a download in progress: the abort reaches the fetch and the check before the file is kept.
         const running = activeOcrDownload();
-        if (running) runner?.cancel(running);
+        if (running) {
+          withdrawn.add(running);
+          runner?.cancel(running);
+        }
         return { state: "off" as const };
       }
       if ((await ocrDataStatus(tess)).state === "ready") return { state: "ready" as const };
@@ -606,7 +612,16 @@ export function sourceHandlers(
     },
     async embed(input: { consent: boolean }) {
       setEmbeddingConsent(db, input.consent);
-      if (!input.consent) return { state: "off" as const };
+      if (!input.consent) {
+        // Turning local search off stops the model download, as withdrawing OCR consent does. Indexing checks the
+        // answer before each batch.
+        const running = activeJob("embedding-download");
+        if (running) {
+          withdrawn.add(running);
+          runner?.cancel(running);
+        }
+        return { state: "off" as const };
+      }
       if (!runner) throw new IpcError("not-ready", "errors.notReady");
       // A second click joins the download already running instead of starting another.
       const jobId = activeJob("embedding-download") ?? runner.start("embedding-download");

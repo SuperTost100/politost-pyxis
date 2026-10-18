@@ -42,6 +42,16 @@ type ImportParams = {
   replace?: boolean;
   /** For a replacement, the status the source had before it. A replacement that stops goes back to it. */
   previousStatus?: string;
+  /**
+   * The status the source has once this version is read, saved with its passages. From then on the text is in use,
+   * so a job that stops while indexing leaves the source in this status instead of hiding it.
+   */
+  doneStatus?: "ready" | "needs-ocr" | "failed";
+  /**
+   * The status the source had right after the passages were stored. This job changes the status later only while it
+   * is still this, `indexing` or `doneStatus`, so a scan read by OCR in the meantime keeps what OCR gave it.
+   */
+  passagesStatus?: string;
   /** Read the stored original again as a new version. The file, name and type stay, and old passages are kept. */
   reextract?: boolean;
   version: number;
@@ -243,7 +253,8 @@ export function registerSourceJobs(
                 });
               else throw new Error("extraction-failed");
             }
-            ctx.setParams(input);
+            const stored = db.prepare(`SELECT status FROM sources WHERE id = ?`).get(input.sourceId) as { status: string };
+            ctx.setParams({ ...input, doneStatus: doneStatus(input, value), passagesStatus: stored.status });
           })();
           return { sourceId: input.sourceId };
         },
@@ -254,42 +265,33 @@ export function registerSourceJobs(
         async run(ctx) {
           const input = ctx.params as ImportParams;
           if (embeddingConsent(db) && embeddingReady(modelDir)) {
-            if (!input.reextract)
-              db.prepare(
-                `UPDATE sources SET status = 'indexing' WHERE id = ? AND status != 'removed'`,
-              ).run(input.sourceId);
+            if (!input.reextract) setStatusIfHeld(db, input, "indexing");
             await indexModelVectors(db, modelDir, ctx.signal, input.sourceId);
             await compareToPlans(db, modelDir, input.sourceId, ctx.signal);
           }
           ctx.signal.throwIfAborted();
-          const extracted = JSON.parse(
-            await readFile(
-              readBlob(workspace, input.extractedSha!).file,
-              "utf8",
-            ),
-          ) as Extraction;
-          const emptyImage =
-            IMAGE_EXTS.includes(input.ext) &&
-            !db
-              .prepare(
-                "SELECT 1 FROM passages WHERE source_id = ? AND version = ? LIMIT 1",
-              )
-              .get(input.sourceId, input.version);
-          db.prepare(
-            `UPDATE sources SET status = ? WHERE id = ? AND status != 'removed'`,
-          ).run(
-            emptyImage
-              ? "failed"
-              : extracted.document?.scanned
-                ? "needs-ocr"
-                : "ready",
-            input.sourceId,
-          );
+          // A job whose passages were stored before 0.3.2 has no saved status, so it is worked out here.
+          const status =
+            input.doneStatus ??
+            doneStatus(
+              input,
+              JSON.parse(await readFile(readBlob(workspace, input.extractedSha!).file, "utf8")) as Extraction,
+            );
+          setStatusIfHeld(db, input, status);
           return { sourceId: input.sourceId };
         },
       },
     ],
   };
+  /** A photo with no text read fails; a scan waits for OCR; anything else is ready. Its passages are already stored. */
+  function doneStatus(input: ImportParams, extracted: Extraction): NonNullable<ImportParams["doneStatus"]> {
+    const emptyImage =
+      IMAGE_EXTS.includes(input.ext) &&
+      !db
+        .prepare("SELECT 1 FROM passages WHERE source_id = ? AND version = ? LIMIT 1")
+        .get(input.sourceId, input.version);
+    return emptyImage ? "failed" : extracted.document?.scanned ? "needs-ocr" : "ready";
+  }
   runner.register("source-import", base);
   runner.register("source-import-vision", {
     ...base,
@@ -429,6 +431,24 @@ export function registerSourceJobs(
 const IMPORT_KINDS = ["source-import", "source-import-vision"];
 
 /**
+ * Sets the status of a source whose passages this job stored, but only while the source still has a status the job
+ * left there. OCR started on the scan meanwhile moves it on (`ocr-queued`, then `ready` or `failed`), and that wins
+ * over a stopped import that is retried or resumed later. A job from before 0.3.2 has no record and always sets it.
+ */
+function setStatusIfHeld(db: Database.Database, params: Partial<ImportParams>, status: string, touch = false): void {
+  const now = touch ? Date.now() : null;
+  if (!params.passagesStatus) {
+    db.prepare(
+      `UPDATE sources SET status = ?, updated_at = COALESCE(?, updated_at) WHERE id = ? AND status != 'removed'`,
+    ).run(status, now, params.sourceId);
+    return;
+  }
+  db.prepare(
+    `UPDATE sources SET status = ?, updated_at = COALESCE(?, updated_at) WHERE id = ? AND status IN (?, 'indexing', ?)`,
+  ).run(status, now, params.sourceId, params.passagesStatus, params.doneStatus ?? params.passagesStatus);
+}
+
+/**
  * The status a source shows once its import job stopped, or null to leave it as it is. A source read again keeps its
  * earlier reading, so its status never changed. A replacement keeps using the version it was replacing, so it goes
  * back to the status it had before (a replacement queued before 0.2.3 has none saved; its source had text, so `ready`).
@@ -442,7 +462,9 @@ function stoppedStatus(params: Partial<ImportParams>, state: string): string | n
 /**
  * A source whose import job stopped (failed, cancelled, interrupted) shows that state instead of "extracting". Photos
  * read by the vision engine (`source-import-vision`) count like any import. A source read again or replaced keeps
- * its earlier version in use when the job stops, so it keeps the status that version had.
+ * its earlier version in use when the job stops, so it keeps the status that version had. A job that stopped after
+ * storing its passages leaves the source as those passages made it (`doneStatus`): its text is in use, only vectors
+ * are missing, and Retry or Resume adds them.
  */
 export function markStoppedImport(db: Database.Database, job: JobView): void {
   if (
@@ -455,6 +477,7 @@ export function markStoppedImport(db: Database.Database, job: JobView): void {
     .get(job.id) as { params_json: string } | undefined;
   if (!row) return;
   const params = JSON.parse(row.params_json) as Partial<ImportParams>;
+  if (params.doneStatus && params.sourceId) return setStatusIfHeld(db, params, params.doneStatus, true);
   const status = stoppedStatus(params, job.state);
   if (!status || !params.sourceId) return;
   db.prepare(
@@ -477,8 +500,11 @@ export function markInterruptedImports(db: Database.Database): void {
   );
   for (const row of rows) {
     const params = JSON.parse(row.params_json) as Partial<ImportParams>;
-    const status = stoppedStatus(params, "interrupted");
-    if (status && params.sourceId) update.run(status, params.sourceId);
+    if (params.doneStatus && params.sourceId) setStatusIfHeld(db, params, params.doneStatus);
+    else {
+      const status = stoppedStatus(params, "interrupted");
+      if (status && params.sourceId) update.run(status, params.sourceId);
+    }
   }
 }
 

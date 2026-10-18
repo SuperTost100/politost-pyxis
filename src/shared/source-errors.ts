@@ -34,6 +34,8 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "ocr-data-too-big": "sources.ocrDataIntegrity",
   "ocr-data-declined": "sources.ocrDataMissing",
   "embed-hash": "sources.embedHash",
+  "embed-download": "sources.embedOffline",
+  "embed-too-big": "sources.embedHash",
   "embed-unpinned": "sources.embedHash",
   "source-missing": "sources.importFailed",
   "source-file-missing": "sources.fileMissing",
