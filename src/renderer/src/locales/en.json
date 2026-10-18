@@ -440,8 +440,8 @@
     "refresh": "Check for a new version",
     "refreshStarted": "{{title}} has changed online. The new version is being read. Follow it in the background tasks.",
     "refreshUnchanged": "{{title}} has not changed since you saved it.",
-    "refreshInUse_one": "{{count}} plan uses this source. If the page has changed, the new version keeps the old text for the citations in that plan, and marks lessons, quizzes and cards made from it as out of date until you regenerate them. Check it?",
-    "refreshInUse_other": "{{count}} plans use this source. If the page has changed, the new version keeps the old text for the citations in those plans, and marks lessons, quizzes and cards made from it as out of date until you regenerate them. Check it?",
+    "refreshInUse_one": "{{count}} plan uses this source. If the page has changed, the new version keeps the old text for the citations in that plan, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them. Check it?",
+    "refreshInUse_other": "{{count}} plans use this source. If the page has changed, the new version keeps the old text for the citations in those plans, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them. Check it?",
     "refreshUnavailable": "This source didn't come from a link, so there is no page to check.",
     "savedFrom": "Saved from {{host}} on {{date}}.",
     "pdfPassword": {
