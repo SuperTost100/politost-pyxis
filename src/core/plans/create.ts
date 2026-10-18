@@ -306,7 +306,7 @@ export function readPlan(db: Database.Database, planId: string) {
       .prepare(
         `SELECT s.id, s.title, s.kind, s.status FROM sources s
        JOIN plan_sources ps ON ps.source_id = s.id
-       WHERE ps.plan_id = ?
+       WHERE ps.plan_id = ? AND ps.role = 'material'
        ORDER BY s.title`,
       )
       .all(planId) as Array<{
