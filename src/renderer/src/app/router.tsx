@@ -71,6 +71,7 @@ export const router = createHashRouter([
   { path: "/plans/:planId/diagnostic", element: <QuizPage /> },
   { path: "/plans/:planId/quiz/:topicId", element: <QuizPage /> },
   { path: "/plans/:planId/redo", element: <QuizPage redo /> },
+  { path: "/plans/:planId/past", element: <QuizPage /> },
   { path: "/plans/:planId/cards/:topicId", element: <CardsPage /> },
   { path: "/plans/:planId/review", element: <ReviewPage /> },
   { path: "/plans/:planId/review/cards", element: <CardsPage /> },

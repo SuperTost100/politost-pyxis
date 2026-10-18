@@ -137,12 +137,20 @@ END;`,
     version: 19,
     sql: `ALTER TABLE messages ADD COLUMN figures_json TEXT CHECK (figures_json IS NULL OR json_valid(figures_json));`,
   },
+  // Past exams: a source can be attached to a plan as one of its past papers. `role` says which, and `paper_json` holds
+  // what the model read from the paper (questions, types, points, duration). Everything that builds the plan from its
+  // sources reads `role = 'material'` only, so a past paper never becomes a topic, a lesson or a citation.
+  {
+    version: 20,
+    sql: `ALTER TABLE plan_sources ADD COLUMN role TEXT NOT NULL DEFAULT 'material' CHECK (role IN ('material', 'past_paper'));
+ALTER TABLE plan_sources ADD COLUMN paper_json TEXT CHECK (paper_json IS NULL OR json_valid(paper_json));`,
+  },
   // `messages.error` is the message key of the engine failure that cut a reply short, and `messages.passages_json` the
   // passages a stopped reply was written with, for Continue. `engine_usage` is one row per model
   // call with its tokens and the chat message or job it was for. The ids are plain text, so a deleted chat's or a
   // replaced reply's tokens still count in the week they were used.
   {
-    version: 20,
+    version: 21,
     sql: `ALTER TABLE messages ADD COLUMN error TEXT;
 ALTER TABLE messages ADD COLUMN passages_json TEXT CHECK (passages_json IS NULL OR json_valid(passages_json));
 CREATE TABLE engine_usage (

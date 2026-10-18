@@ -15,12 +15,13 @@ function tempDb() {
   return db;
 }
 
-/** Removes what migrations 17 to 20 add, so a test can rewind the version past them. */
+/** Removes what migrations 17 to 21 add, so a test can rewind the version past them. */
 function undoAfter16(db: Database.Database) {
   db.exec(
     "DROP TRIGGER cards_search_stale; DROP INDEX cards_search_pending; ALTER TABLE cards DROP COLUMN search_text; ALTER TABLE messages DROP COLUMN figures_json;",
   );
   undoUsage(db);
+  db.exec("ALTER TABLE plan_sources DROP COLUMN role; ALTER TABLE plan_sources DROP COLUMN paper_json;");
   const before = ["jobs_state", "messages_chat", "passages_source", "learning_events_plan", "job_steps_job", "gap_answers_attempt"];
   const added = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL")
@@ -29,7 +30,7 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migration 20 adds. */
+/** Removes what migration 21 adds. */
 function undoUsage(db: Database.Database) {
   db.exec(
     "DROP TABLE engine_usage; ALTER TABLE messages DROP COLUMN error; ALTER TABLE messages DROP COLUMN passages_json;",
@@ -103,7 +104,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(20);
+    expect(db.pragma("user_version", { simple: true })).toBe(21);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -118,7 +119,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(20);
+    expect(again.pragma("user_version", { simple: true })).toBe(21);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -135,7 +136,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(20);
+    expect(again.pragma("user_version", { simple: true })).toBe(21);
     expect(
       again
         .prepare(
@@ -152,7 +153,9 @@ describe("migrate", () => {
     const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
     const db = openDatabase(file);
     db.pragma("user_version = 18");
-    db.exec("ALTER TABLE messages DROP COLUMN figures_json;");
+    db.exec(
+      "ALTER TABLE messages DROP COLUMN figures_json; ALTER TABLE plan_sources DROP COLUMN role; ALTER TABLE plan_sources DROP COLUMN paper_json;",
+    );
     undoUsage(db);
     db.prepare(
       `INSERT INTO chats (id, title, created_at, updated_at) VALUES ('chat', 'Fisica', 1, 1)`,
@@ -163,7 +166,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(20);
+    expect(again.pragma("user_version", { simple: true })).toBe(21);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });
@@ -179,7 +182,7 @@ describe("migrate", () => {
   it("adds the failure key to messages and the token usage table, keeping messages that already exist", () => {
     const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
     const db = openDatabase(file);
-    db.pragma("user_version = 19");
+    db.pragma("user_version = 20");
     undoUsage(db);
     db.prepare(
       `INSERT INTO chats (id, title, created_at, updated_at) VALUES ('chat', 'Fisica', 1, 1)`,
@@ -190,7 +193,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(20);
+    expect(again.pragma("user_version", { simple: true })).toBe(21);
     expect(
       again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ error: null, passages_json: null });
@@ -224,5 +227,35 @@ describe("migrate", () => {
       .get(bytes) as { n: number; distance: number };
     expect(found.n).toBe(row.n);
     expect(found.distance).toBe(0);
+  });
+});
+
+describe("past paper role", () => {
+  it("keeps every existing plan source as study material", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
+    const db = openDatabase(file);
+    db.exec(
+      "ALTER TABLE plan_sources DROP COLUMN role; ALTER TABLE plan_sources DROP COLUMN paper_json;",
+    );
+    undoUsage(db);
+    db.pragma("user_version = 19");
+    db.prepare(
+      "INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Fisica', 'ready', 1, 1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('s', 'pdf', 'Dispense', 'ready', 1, 1)",
+    ).run();
+    db.prepare("INSERT INTO plan_sources (plan_id, source_id) VALUES ('p', 's')").run();
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(21);
+    expect(again.prepare("SELECT role, paper_json FROM plan_sources").get()).toEqual({
+      role: "material",
+      paper_json: null,
+    });
+    expect(() =>
+      again.prepare("UPDATE plan_sources SET role = 'exam'").run(),
+    ).toThrow();
   });
 });

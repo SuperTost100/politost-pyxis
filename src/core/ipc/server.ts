@@ -397,6 +397,20 @@ async function dispatchValidated(
       return study?.simulationPrepare(
         requests["study.simulationPrepare"].input.parse(input),
       );
+    case "study.pastPapers":
+      return study?.pastPapers(requests["study.pastPapers"].input.parse(input));
+    case "study.pastPaperAdd":
+      return study?.pastPaperAdd(
+        requests["study.pastPaperAdd"].input.parse(input),
+      );
+    case "study.pastPaperRemove":
+      return study?.pastPaperRemove(
+        requests["study.pastPaperRemove"].input.parse(input),
+      );
+    case "study.pastPracticeStart":
+      return study?.pastPracticeStart(
+        requests["study.pastPracticeStart"].input.parse(input),
+      );
     case "study.simulationBuild":
       return study?.simulationBuild(
         requests["study.simulationBuild"].input.parse(input),

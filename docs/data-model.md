@@ -26,7 +26,8 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 17             | Indexes for hot lookups and for every foreign-key child column                          |
 | 18             | `cards.search_text`, the folded text the card browser searches                          |
 | 19             | `messages.figures_json`, the images of the figures an answer drew                       |
-| 20             | `messages.error`, `messages.passages_json` and the `engine_usage` table                 |
+| 20             | `plan_sources.role` (`material` or `past_paper`) and `plan_sources.paper_json`          |
+| 21             | `messages.error`, `messages.passages_json` and the `engine_usage` table                 |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -38,9 +39,13 @@ Migration 18 adds `cards.search_text`: the card's front (a cloze as its text) an
 
 Migration 19 stores the figures of an Ask answer. A model can ask for a figure as a fenced `pyxis-figure` block with a caption and matplotlib code. Core runs the code once in the Pyodide sandbox and keeps the PNG as a data URL in `messages.figures_json`, keyed by a hash of the code. The block stays in `body`; a block whose code failed is removed before the message is saved. A lesson keeps its figures the same way, in `figures` inside the item's `body_json`, so they are cached with the lesson and its rewrites.
 
-Migration 20 adds `messages.error`, the message key of the engine failure that cut a reply short (a stopped reply without it was stopped by the student), `messages.passages_json`, the passages a stopped reply was given as `{ passageId, index }` in P-number order, which Continue sends again unchanged, and `engine_usage`, one row per model call: time, provider, model, input and output tokens, prompt-cache reads and writes, and the chat and message or the job (with its kind) it was for. Those ids are plain text, not foreign keys, so the tokens of a deleted chat or a replaced reply still count in the week they were used.
+Migration 20 lets a source be attached to a plan as a past exam (appello). `plan_sources.role` is `material` for everything that existed before and for every source the plan studies from, and `past_paper` for an old exam. A past paper is a role on the link, not a source kind, because the same PDF or photo goes through the same import, OCR and vision steps as any source, and because one file can be a past paper in one plan and study material in another. Every query that builds a plan from its sources (topics, rebuilds, syllabus checks, the tutor's scope, the plan view and plan file export) reads `role = 'material'` only, so a past paper never becomes a topic, a lesson or a citation. `paper_json` holds what the `paper.read` prompt read from the paper: its title, printed duration and total points, and per question the text, type (`open`, `choice`, `numeric` or `proof`), printed points, time in minutes, difficulty and a reference answer (the printed solution, or one the model wrote), plus the provider, model and prompt version of the reading. It is NULL while the paper has not been read; the `paper-read` job and its error say why. Photos of one exam are several sources: the first file's row holds the result, and each other file's row holds `{"partOf": <first source id>}` instead. Removing a paper, or removing its first file from the Library, removes all of its rows.
 
-Current version is 20. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+The past papers of a plan feed two things. The simulation builder summarises them (usual question count, duration, type and difficulty mix, a few example questions) and has the model write the exam after that summary. A practice quiz of the past questions is an ordinary `quiz` item with open answers whose body carries `pastPaper: 1`. Neither is part of a plan file: the exam text is the university's, so papers, and quizzes made from them, stay on this computer. Mastery gets no evidence from practising past questions, because their questions are not tied to a topic.
+
+Migration 21 adds `messages.error`, the message key of the engine failure that cut a reply short (a stopped reply without it was stopped by the student), `messages.passages_json`, the passages a stopped reply was given as `{ passageId, index }` in P-number order, which Continue sends again unchanged, and `engine_usage`, one row per model call: time, provider, model, input and output tokens, prompt-cache reads and writes, and the chat and message or the job (with its kind) it was for. Those ids are plain text, not foreign keys, so the tokens of a deleted chat or a replaced reply still count in the week they were used.
+
+Current version is 21. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table            | A row is                                                                                |
 | ---------------- | --------------------------------------------------------------------------------------- |
@@ -57,7 +62,7 @@ Current version is 20. A restored backup is migrated on a staging copy before it
 | smartbooks       | Metadata for a PoliTost smartbook source.                                               |
 | exercises        | An exercise from a smartbook or a model.                                                |
 | plans            | A study plan. `exam_at`, `target`, `content_language` and `style` come from the wizard. |
-| plan_sources     | A source attached to a plan.                                                            |
+| plan_sources     | A source attached to a plan, as study material or as a past exam.                       |
 | topics           | A node in a plan's topic tree.                                                          |
 | topic_passages   | Passages that support a topic.                                                          |
 | path_nodes       | One step on a plan's path.                                                              |
