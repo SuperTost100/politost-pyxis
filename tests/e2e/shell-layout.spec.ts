@@ -54,6 +54,11 @@ test("doors navigate from settings and every shell page uses the full column", a
       }, hash);
       const container = page.locator(".px-shell-container");
       await expect(container).toBeVisible();
+      // The column changes width with the route, a moment after the hash: measure once the new page has laid out.
+      await expect(page).toHaveURL(new RegExp(`${hash.replaceAll("/", "\\/")}$`));
+      await expect
+        .poll(async () => Math.round((await container.boundingBox())!.width))
+        .toBe(hash.startsWith("#/settings") ? 960 : 768);
       (hash.startsWith("#/settings") ? settingsWidths : widths).push(
         Math.round((await container.boundingBox())!.width),
       );
