@@ -60,4 +60,14 @@ describe("displayMathLines", () => {
     const fenced = "```\n$$x$$\n```";
     expect(displayMathLines(fenced)).toBe(fenced);
   });
+
+  it("leaves a formula that shares its line with inline code", () => {
+    const after = "`code` $$x^2$$";
+    expect(displayMathLines(after)).toBe(after);
+    const before = "$$x^2$$ `code`";
+    expect(displayMathLines(before)).toBe(before);
+    const both = "`a` $$x^2$$ `b`";
+    expect(displayMathLines(both)).toBe(both);
+    expect(displayMathLines("`code`\n$$x^2$$")).toBe("`code`\n$$\nx^2\n$$");
+  });
 });

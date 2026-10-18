@@ -30,16 +30,19 @@ function inlineClose(input: string, from: number, width: number): number {
   return -1;
 }
 
-/** Applies `map` to Markdown outside fenced blocks and inline code. */
+/**
+ * Applies `map` to Markdown outside fenced blocks and inline code. `map` also gets the chunk's `start` and `end`
+ * offsets in `input`, for callers that must know whether a chunk edge is a real line edge.
+ */
 export function mapOutsideCode(
   input: string,
-  map: (text: string) => string,
+  map: (text: string, start: number, end: number) => string,
 ): string {
   let out = "";
   let i = 0;
   let prose = 0;
   const flush = (end: number) => {
-    if (end > prose) out += map(input.slice(prose, end));
+    if (end > prose) out += map(input.slice(prose, end), prose, end);
     prose = end;
   };
   while (i < input.length) {
@@ -97,10 +100,16 @@ export function normalizeMathDelimiters(input: string): string {
  * math, so without this a model's display formula renders small and left-aligned like body text.
  */
 export function displayMathLines(input: string): string {
-  return mapOutsideCode(input, (text) =>
-    text.replace(
+  return mapOutsideCode(input, (text, start, end) => {
+    // A chunk edge beside inline code is not a line edge: `code` $$x$$ keeps its formula inline.
+    const openMid = start > 0 && input[start - 1] !== "\n";
+    const closeMid = end < input.length && input[end] !== "\n";
+    return text.replace(
       /^([ \t]*)\$\$((?:(?!\$\$)[^\n])+)\$\$[ \t]*$/gm,
-      (_, indent: string, body: string) => `${indent}$$\n${indent}${body.trim()}\n${indent}$$`,
-    ),
-  );
+      (match, indent: string, body: string, at: number) =>
+        (openMid && at === 0) || (closeMid && at + match.length === text.length)
+          ? match
+          : `${indent}$$\n${indent}${body.trim()}\n${indent}$$`,
+    );
+  });
 }

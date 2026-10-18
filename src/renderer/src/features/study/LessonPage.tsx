@@ -35,6 +35,7 @@ import {
   SourcesFooter,
   useOpenNext,
 } from "./Reader";
+import { showsLiveText } from "./lessonLive";
 
 type Wording = "simple" | "balanced" | "technical";
 type Lesson = RequestOutput<"study.lesson">;
@@ -148,6 +149,7 @@ export function LessonPage() {
     (lesson.error as Error | null)?.name === "AbortError";
   const writing = lesson.isFetching;
   const data = lesson.data;
+  const fromLive = showsLiveText({ writing, live, saved: data?.markdown, cancelled });
   const markdown = writing
     ? live || data?.markdown || ""
     : (data?.markdown ?? (cancelled ? live : ""));
@@ -171,7 +173,8 @@ export function LessonPage() {
   );
   const busy = writing || rewritePart.isPending;
   // Chips read the section they cite, as in Ask. Kept stable so a render that changes nothing else reuses the parse.
-  const labels = writing || cancelled ? liveCitations : data?.citations;
+  // They follow the text on screen: a regenerate that has not streamed yet, or was stopped, still shows the saved lesson.
+  const labels = fromLive ? liveCitations : data?.citations;
   const citationLabel = useCallback((number: number) => labels?.[number - 1], [labels]);
 
   async function save(itemId: string, blockId: string, pick: number) {
@@ -364,7 +367,7 @@ export function LessonPage() {
             writing ? (live ? answer : undefined) : model && data?.itemId ? answer : undefined
           }
           onCitationClick={(number) => {
-            const passageId = (writing || cancelled ? livePassages : data?.passageIds)?.[
+            const passageId = (fromLive ? livePassages : data?.passageIds)?.[
               number - 1
             ];
             if (passageId) openSourceViewer({ passageId });
