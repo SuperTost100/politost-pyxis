@@ -1,11 +1,22 @@
+/** How many chunks long a math or code block may be and still stay whole. */
+const PROTECTED_CHUNKS = 4;
+
 /**
  * SRC-20: section-local chunks with one-sentence overlap and intact math/code. Inline $…$ math stays within one
  * paragraph and 400 characters, so dollar amounts far apart ("costs $5" … "$7") do not join into one unsplittable span.
+ * A block longer than PROTECTED_CHUNKS chunks (a long code listing) would become one passage that the embedder reads
+ * only in part and that can fill a prompt, so it is split like text, but only at line breaks.
  */
 export function chunkText(text: string, maxChars = 1400): Array<{ text: string; start: number; end: number }> {
   const protectedRanges = [...text.matchAll(/```[\s\S]*?```|~~~[\s\S]*?~~~|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|(?<!\\)\$(?!\$)(?:[^$\n]|\n(?!\n)){1,400}?(?<!\\)\$/g)]
     .map((match) => ({ start: match.index, end: match.index + match[0].length }));
-  const inside = (n: number) => protectedRanges.some((range) => n > range.start && n < range.end);
+  const inside = (n: number) =>
+    protectedRanges.some(
+      (range) =>
+        n > range.start &&
+        n < range.end &&
+        !(range.end - range.start > maxChars * PROTECTED_CHUNKS && text[n] === "\n"),
+    );
   const ends = [...text.matchAll(/(?<=[.!?])\s+|\n{2,}/g)]
     .map((match) => match.index + match[0].length).filter((n) => !inside(n));
   ends.push(text.length);

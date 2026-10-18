@@ -433,6 +433,7 @@ export function sourceHandlers(
         })),
         cappedFiles: listing.cappedFiles,
         cappedDepth: listing.cappedDepth,
+        cappedEntries: listing.cappedEntries,
         unreadable: listing.unreadable,
         limit: MAX_FOLDER_FILES,
       };

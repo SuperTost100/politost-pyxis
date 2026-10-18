@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
-import { putBlob, readBlob } from "../blobs";
+import { hasBlob, putBlob, readBlob } from "../blobs";
 import type { JobSpec, Runner } from "../jobs/runner";
 import {
   addDocumentVersion,
@@ -200,12 +200,9 @@ export function registerSourceJobs(
             ),
           ) as Extraction;
           ctx.signal.throwIfAborted();
-          // Only a new file is stored from these bytes. A smartbook, or a source read again, never reads the original into core.
-          const bytes =
-            input.reextract || value.book
-              ? new Uint8Array()
-              : new Uint8Array(await readFile(readBlob(workspace, input.sha).file));
-          ctx.signal.throwIfAborted();
+          // The original was stored under `input.sha` when the job was queued, so it is not read back into core.
+          if (!value.book && !input.reextract && !hasBlob(workspace, input.sha))
+            throw new Error("source-file-missing");
           db.transaction(() => {
             const source = db
               .prepare(`SELECT status FROM sources WHERE id = ?`)
@@ -234,7 +231,7 @@ export function registerSourceJobs(
                   title: input.title,
                   mime: mimeFor(input.ext),
                   ext: input.ext,
-                  bytes,
+                  sha: input.sha,
                   extracted: value.document,
                 });
               else if (value.document)
@@ -248,7 +245,7 @@ export function registerSourceJobs(
                     ? imageMime(input.ext)
                     : mimeFor(input.ext),
                   ext: input.ext,
-                  bytes,
+                  sha: input.sha,
                   extracted: value.document,
                 });
               else throw new Error("extraction-failed");

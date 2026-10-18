@@ -3,7 +3,7 @@ import { basename, extname } from "node:path";
 import type Database from "better-sqlite3";
 import { extractPdf, extractPlain, storeExtracted, type StoredSource } from "./documents";
 import { fetchSnapshot } from "./link";
-import { advanceOcr, applyOcrPage, currentOcrRun, finishOcr, hasOcrPage, nextOcrPage, ownsOcrRun, requestOcr, runOcr, stopOcr } from "./ocr";
+import { advanceOcr, applyOcrPage, canStartOcr, currentOcrRun, finishOcr, hasOcrPage, nextOcrPage, ownsOcrRun, requestOcr, runOcr, stopOcr } from "./ocr";
 import { imageMime, isHeicExt, MAX_HEIC_BYTES } from "./heic";
 import { readBoundedSync } from "./bounded-read";
 import { ocrBytes, runSourceWorker } from "./worker-client";
@@ -108,7 +108,7 @@ export async function ocrPngPage(
     | { status: string }
     | undefined;
   if (!row) throw new Error("source-missing");
-  if (row.status === "needs-ocr") {
+  if (row.status !== "ocr-queued" && canStartOcr(db, sourceId, row.status)) {
     if (page !== 1) throw new Error("ocr-out-of-order");
     requestOcr(db, sourceId);
   } else if (row.status !== "ocr-queued") throw new Error("ocr-not-active");

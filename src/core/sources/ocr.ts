@@ -48,13 +48,30 @@ function touchSource(db: Database.Database, sourceId: string, status: string, no
 }
 
 /**
- * Queue OCR on this machine. Only sources still marked `needs-ocr` may enter the queue. A new run starts at page 1 and gets
+ * Whether OCR may start on this source: a scan still marked `needs-ocr`, or one marked `failed` because an earlier run
+ * found no text. The latter has a document but no passages in it, and without this it could only be removed, which
+ * drops it from its plans. A failed import, which stored no document, cannot.
+ */
+export function canStartOcr(db: Database.Database, sourceId: string, status: string): boolean {
+  if (status === "needs-ocr") return true;
+  if (status !== "failed") return false;
+  return !!db
+    .prepare(
+      `SELECT 1 FROM source_documents d WHERE d.source_id = ? AND d.version = (
+         SELECT MAX(version) FROM source_documents WHERE source_id = d.source_id)
+       AND NOT EXISTS (SELECT 1 FROM passages p WHERE p.document_id = d.id)`,
+    )
+    .get(sourceId);
+}
+
+/**
+ * Queue OCR on this machine. Only a source `canStartOcr` allows may enter the queue. A new run starts at page 1 and gets
  * its own token, so a page still being read for an earlier run (a reloaded window) can tell it no longer owns the row.
  */
 export function requestOcr(db: Database.Database, sourceId: string): void {
   const row = sourceStatus(db, sourceId);
   if (!row) throw new Error("source-missing");
-  if (row.status !== "needs-ocr") throw new Error("invalid-ocr-state");
+  if (!canStartOcr(db, sourceId, row.status)) throw new Error("invalid-ocr-state");
   db.transaction(() => {
     touchSource(db, sourceId, "ocr-queued", Date.now());
     setNextPage(db, sourceId, 1);

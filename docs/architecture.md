@@ -39,7 +39,7 @@ Long extraction and embedding work runs in workers, so IPC stays responsive. The
 
 ### Import limits
 
-Core checks a file's size before it allocates a buffer for it.
+Core checks a file's size before it allocates a buffer for it. An import job reads its file in the extract worker, two at a time across all jobs; the next step stores the passages under the hash the file was queued with, without reading the file into core again.
 
 | Input                     | Limit                                                     |
 | ------------------------- | --------------------------------------------------------- |
@@ -49,7 +49,7 @@ Core checks a file's size before it allocates a buffer for it.
 | One ZIP entry             | 64 MiB inflated                                           |
 | `.docx` or `.pptx`, total | 128 MiB inflated                                          |
 | Smartbook, total          | 256 MiB inflated                                          |
-| Folder scan               | 2,000 files                                               |
+| Folder scan               | 2,000 files, 12 levels deep, 20,000 entries read          |
 | Extract worker heap       | 2 GiB of V8 heap                                          |
 
 The IPC server reads the size from `fstat` and refuses a file that grows past its cap during the read. A chat document is read in the extract worker (`mode: "extract"`, behind the same two-at-a-time gate as photo decodes, and cancellable) from the bytes core already read, and core stores it in one transaction as a chat-only source.

@@ -82,7 +82,13 @@ export class Gate {
   }
 }
 
-/** Decoding a photo, or reading a chat attachment, can take hundreds of MB, so two at a time. Job extraction is bounded by the job runner instead. */
+/**
+ * Reading an imported file holds a worker with up to 2 GiB of heap, and the job runner allows one local job per core,
+ * so a drop of many large PDFs could start one per core. Two at a time, apart from the decode gate, so a chat photo
+ * does not wait behind an import.
+ */
+const importGate = new Gate(2);
+/** Decoding a photo, or reading a chat attachment, can take hundreds of MB, so two at a time. */
 const decodeGate = new Gate(2);
 /**
  * The one embedding thread. It keeps the model loaded between calls and serves them one at a time, in order. It
@@ -108,6 +114,8 @@ export function runSourceWorker<T>(name: "extract-worker" | "embed-worker", inpu
   const mode = (input as { mode?: string }).mode;
   if (name === "extract-worker" && (mode === "vision" || mode === "pixels" || mode === "quality" || mode === "ocr" || mode === "extract"))
     return decodeGate.hold(() => oneShot<T>(name, input, signal), signal);
+  // A folder hash streams each file, so only the read of a whole file waits for the import gate.
+  if (name === "extract-worker" && mode !== "hash") return importGate.hold(() => oneShot<T>(name, input, signal), signal);
   return oneShot<T>(name, input, signal);
 }
 

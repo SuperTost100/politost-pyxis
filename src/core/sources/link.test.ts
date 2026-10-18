@@ -275,6 +275,43 @@ describe("link details", () => {
     expect(page.title).toBe("Appunti di Fisica è");
   });
 
+  /** A PDF that arrives in `parts` pieces, `gapMs` apart, and stops sending after `stallAfter` of them. */
+  const slowPdf = (parts: number, gapMs: number, stallAfter = parts) =>
+    (async (_url: string, init: RequestInit) => {
+      let sent = 0;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          init.signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            controller.error(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        },
+        pull(controller) {
+          if (sent === parts) return controller.close();
+          if (sent === stallAfter) return new Promise<void>(() => {});
+          return new Promise<void>((resolve) => {
+            timer = setTimeout(() => {
+              sent += 1;
+              controller.enqueue(new Uint8Array(1024).fill(37));
+              resolve();
+            }, gapMs);
+          });
+        },
+      });
+      return new Response(body, { headers: { "content-type": "application/pdf" } });
+    }) as unknown as typeof fetch;
+
+  it("waits for a slow download as long as data keeps arriving, and gives up when it stops", async () => {
+    const page = await fetchSnapshot("https://example.com/slow.pdf", slowPdf(8, 40), publicHost, undefined, 120);
+    expect(page.pdf?.byteLength).toBe(8 * 1024);
+    const started = Date.now();
+    await expect(
+      fetchSnapshot("https://example.com/stalled.pdf", slowPdf(8, 10, 2), publicHost, undefined, 120),
+    ).rejects.toThrow("link-timeout");
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   it("reads a page in the charset its header names", async () => {
     const page = await fetchSnapshot(
       "https://example.com/latin",

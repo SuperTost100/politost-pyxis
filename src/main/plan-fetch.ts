@@ -1,15 +1,33 @@
-import { blockedAddress, fetchPublicResponse } from "../core/sources/link";
+import { blockedAddress, fetchPublicResponse, idleTimeout } from "../core/sources/link";
 import { httpPlanUrl } from "../shared/plan-file";
 
 // Room for one embedded 200 MiB original as base64 plus the plan. A file this app saves is smaller (MAX_PLAN_FILE_BYTES).
 export const MAX_LINKED_PLAN_BYTES = 320 * 1024 * 1024;
 
+/**
+ * Downloads a shared plan. It gives up with a TimeoutError when no response or part of the body arrives for `idleMs`,
+ * so a large plan on a slow connection can take as long as it needs.
+ */
 export async function fetchPlanText(
   raw: string,
   request = fetchPublicResponse,
+  idleMs = 30_000,
+): Promise<string> {
+  const idle = idleTimeout(idleMs, new DOMException("No data arrived in time", "TimeoutError"));
+  try {
+    return await readPlan(raw, request, idle);
+  } finally {
+    idle.clear();
+  }
+}
+
+async function readPlan(
+  raw: string,
+  request: typeof fetchPublicResponse,
+  idle: ReturnType<typeof idleTimeout>,
 ): Promise<string> {
   let current = httpPlanUrl(raw);
-  const signal = AbortSignal.timeout(30_000);
+  const signal = idle.signal;
   for (let hop = 0; hop <= 5; hop++) {
     if (blockedAddress(new URL(current).hostname)) throw new Error("plan-url");
     // The production transport validates every resolved address and pins the socket.
@@ -17,6 +35,7 @@ export async function fetchPlanText(
       redirect: "manual",
       signal,
     });
+    idle.touch();
     try {
       if (response.status >= 300 && response.status < 400) {
         const target = response.headers.get("location");
@@ -41,6 +60,7 @@ export async function fetchPlanText(
       for (;;) {
         const part = await reader.read();
         if (part.done) break;
+        idle.touch();
         size += part.value.byteLength;
         if (size > MAX_LINKED_PLAN_BYTES) {
           await reader.cancel();

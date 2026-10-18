@@ -88,7 +88,11 @@ export const OFFICE_ZIP_LIMITS: ZipLimits = {
 /**
  * mammoth reads the archive with its own unbounded inflater, so it is never given the original. Only the XML parts
  * (and relationship files) are read through the bounded reader, with their real output counted, and handed on as a
- * stored archive of this app's own making. Pictures and embedded files are not read, since raw text has none.
+ * stored archive of this app's own making. Pictures and embedded files are not read: every image becomes an empty
+ * element, so mammoth never asks for the missing media.
+ *
+ * mammoth's HTML keeps Word's Heading 1 to 3 as h1 to h3, which become `#` lines, so each passage names its section
+ * as a Markdown file's passages do. Other tags only end a paragraph or are dropped.
  */
 export async function extractDocx(
   bytes: Uint8Array,
@@ -97,10 +101,19 @@ export async function extractDocx(
   const parts: Record<string, Uint8Array> = {};
   for (const name of zip.names)
     if (/\.(xml|rels)$/i.test(name)) parts[name] = zip.read(name)!;
-  const result = await mammoth.extractRawText({
-    buffer: Buffer.from(zipSync(parts, { level: 0 })),
-  });
-  return textSections(result.value, "heading");
+  const result = await mammoth.convertToHtml(
+    { buffer: Buffer.from(zipSync(parts, { level: 0 })) },
+    { convertImage: mammoth.images.imgElement(async () => ({ src: "" })) },
+  );
+  const untag = (html: string) => html.replace(/<[^>]*>/g, "");
+  const text = result.value
+    .replace(/<h([1-3])\b[^>]*>([\s\S]*?)<\/h\1>/gi, (_, level: string, inner: string) => {
+      const heading = untag(inner).replace(/\s+/g, " ").trim();
+      return heading ? `\n\n${"#".repeat(Number(level))} ${heading}\n\n` : "\n\n";
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|h[4-6]|li|td|th|tr|table|ul|ol|blockquote)>/gi, "\n\n");
+  return textSections(decodeXml(untag(text)).replace(/\n{3,}/g, "\n\n"), "heading");
 }
 
 function decodeXml(text: string): string {
@@ -175,6 +188,18 @@ function textSections(
   return { pages, scanned: false };
 }
 
+/**
+ * The original file of a document being stored: its bytes, or the hash it is already stored under. A job passes the
+ * hash, so a large file is not read back into core and hashed again.
+ */
+type Original = { bytes: Uint8Array; sha?: undefined } | { sha: string; bytes?: undefined };
+
+function storeOriginal(workspace: string, original: Original, mime: string, ext: string): string {
+  return original.sha !== undefined
+    ? original.sha
+    : putBlob(workspace, original.bytes, mime, ext.replace(/^\./, ""));
+}
+
 export type StoredSource = {
   sourceId: string;
   title: string;
@@ -192,21 +217,15 @@ export function storeExtracted(
     kind: string;
     mime: string;
     ext: string;
-    bytes: Uint8Array;
     extracted: ExtractedDocument;
     originUrl?: string;
     fetchedAt?: number;
-  },
+  } & Original,
 ): StoredSource {
   const now = Date.now();
   const sourceId = input.sourceId ?? uuidv7(now);
   const documentId = uuidv7(now + 1);
-  const sha = putBlob(
-    workspace,
-    input.bytes,
-    input.mime,
-    input.ext.replace(/^\./, ""),
-  );
+  const sha = storeOriginal(workspace, input, input.mime, input.ext);
   const status = input.extracted.scanned ? "needs-ocr" : "ready";
   const kept = keptPages(input.extracted);
   db.transaction(() => {
@@ -355,9 +374,8 @@ export function addDocumentVersion(
     title: string;
     mime: string;
     ext: string;
-    bytes: Uint8Array;
     extracted: ExtractedDocument;
-  },
+  } & Original,
 ): StoredSource {
   const existing = db
     .prepare(`SELECT id FROM sources WHERE id = ? AND status != 'removed'`)
@@ -365,18 +383,15 @@ export function addDocumentVersion(
   if (!existing) throw new Error("source-missing");
   const kept = keptPages(input.extracted);
   if (kept.length === 0) throw new Error("replace-no-text");
-  const sha = putBlob(
-    workspace,
-    input.bytes,
-    input.mime,
-    input.ext.replace(/^\./, ""),
-  );
+  const sha = storeOriginal(workspace, input, input.mime, input.ext);
   const status = input.extracted.scanned ? "needs-ocr" : "ready";
   const kind = kindFor(input.ext);
   appendVersion(db, sourceId, sha, kind, kept, input.extracted.extractor, (now) => {
     db.prepare(
+      // A free book replaced with a document is no longer that book, so it drops the catalog link. Otherwise the books
+      // list would offer an update for it that fails.
       `UPDATE sources
-       SET title = ?, blob_sha = ?, mime = ?, kind = ?, status = ?, updated_at = ?
+       SET title = ?, blob_sha = ?, mime = ?, kind = ?, status = ?, catalog_id = NULL, catalog_version = NULL, updated_at = ?
        WHERE id = ?`,
     ).run(input.title, sha, input.mime, kind, status, now, sourceId);
   });

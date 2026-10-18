@@ -58,3 +58,34 @@ it("bounds redirects and rejects private targets and oversized responses", async
     })),
   ).rejects.toThrow("plan-too-big");
 });
+
+it("waits for a slow plan as long as data keeps arriving, and gives up when it stops", async () => {
+  const text = JSON.stringify({ content: "x".repeat(4096) });
+  const bytes = new TextEncoder().encode(text);
+  // The body arrives in eight parts 40 ms apart; `stallAfter` parts in, it stops sending.
+  const slow = (stallAfter = 8) => async (_url: string, init: RequestInit) => {
+    let sent = 0;
+    const part = Math.ceil(bytes.length / 8);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        init.signal?.addEventListener("abort", () => {
+          if (sent < 8) controller.error(init.signal?.reason);
+        });
+      },
+      pull(controller) {
+        if (sent === 8) return controller.close();
+        if (sent === stallAfter) return new Promise<void>(() => {});
+        return new Promise<void>((resolve) =>
+          setTimeout(() => {
+            controller.enqueue(bytes.subarray(sent * part, (sent + 1) * part));
+            sent += 1;
+            resolve();
+          }, 40),
+        );
+      },
+    });
+    return { response: new Response(body), agent: { close: async () => {} } };
+  };
+  expect(await fetchPlanText("https://example.org/plan", slow(), 120)).toBe(text);
+  await expect(fetchPlanText("https://example.org/plan", slow(2), 120)).rejects.toMatchObject({ name: "TimeoutError" });
+});

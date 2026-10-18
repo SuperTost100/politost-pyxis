@@ -89,6 +89,34 @@ it("SRC-12 replacement preserves the original document format and blob for citat
   db.close();
 });
 
+it("stores a new or replacing file under the hash it was queued with, without reading the original back into core", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pyxis-import-sha-"));
+  dirs.push(workspace);
+  const db = openDatabase(":memory:");
+  const runner = createRunner(db, () => {});
+  registerSourceJobs(db, workspace, runner, async (input) => {
+    const text = await readFile(input.path, "utf8");
+    // Whatever the stored file holds after extraction is not read again: the passages step uses the queued hash.
+    writeFileSync(input.path, "changed after extraction");
+    return { document: extractPlain(text, false) };
+  });
+  const queuedSha = (jobId: string) =>
+    (JSON.parse((db.prepare(`SELECT params_json FROM jobs WHERE id = ?`).get(jobId) as { params_json: string }).params_json) as { sha: string }).sha;
+  const blobSha = (sourceId: string) =>
+    (db.prepare(`SELECT blob_sha FROM sources WHERE id = ?`).get(sourceId) as { blob_sha: string }).blob_sha;
+  const path = join(workspace, "notes.txt");
+  writeFileSync(path, "Energia e lavoro");
+  const first = await enqueueSourceFile(db, workspace, runner, path);
+  await expect.poll(() => db.prepare(`SELECT state FROM jobs WHERE id = ?`).get(first.jobId)).toEqual({ state: "succeeded" });
+  expect(blobSha(first.sourceId)).toBe(queuedSha(first.jobId));
+  writeFileSync(path, "Calore e temperatura");
+  const next = await enqueueSourceFile(db, workspace, runner, path, first.sourceId);
+  await expect.poll(() => db.prepare(`SELECT state FROM jobs WHERE id = ?`).get(next.jobId)).toEqual({ state: "succeeded" });
+  expect(blobSha(first.sourceId)).toBe(queuedSha(next.jobId));
+  expect(queuedSha(next.jobId)).not.toBe(queuedSha(first.jobId));
+  db.close();
+});
+
 it("SRC-04 marks a photo with empty OCR as failed instead of ready", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "pyxis-empty-photo-")); dirs.push(workspace);
   const db = openDatabase(":memory:"); const runner = createRunner(db, () => {});

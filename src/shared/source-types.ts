@@ -20,6 +20,8 @@ export const REPLACE_EXTENSIONS = ["pdf", "docx", "pptx", "txt", "md"] as const;
 /** A folder scan lists this many files, and does not open folders nested deeper. It says so when either cuts the list. */
 export const MAX_FOLDER_FILES = 2000;
 export const MAX_FOLDER_DEPTH = 12;
+/** A folder scan stops after reading this many entries, files and folders alike, importable or not. */
+export const MAX_FOLDER_ENTRIES = 20_000;
 
 /** The most files one drop can hand to main. */
 export const MAX_DROPPED_FILES = 20;

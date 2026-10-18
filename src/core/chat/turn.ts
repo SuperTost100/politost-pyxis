@@ -23,6 +23,7 @@ import { selectionFor } from "../engine/selection";
 import type { Embedder, PassageHit } from "../sources/retrieve";
 import { contentWords, retrieveWithModel } from "../sources/retrieve";
 import { sha256 } from "../sources/quality";
+import { readingOrder } from "../sources/smartbook";
 import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
 import { deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 import { contentLanguage, planLanguage } from "../engine/prompts";
@@ -190,7 +191,7 @@ async function attachedPassages(
      WHERE p.source_id = ? AND p.document_id = (
        SELECT id FROM source_documents WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1
      )
-     ORDER BY p.rowid LIMIT ?`,
+     ORDER BY ${readingOrder("p")} LIMIT ?`,
   );
   const taken = new Set(found.map((hit) => hit.id));
   const added: PassageHit[] = [];

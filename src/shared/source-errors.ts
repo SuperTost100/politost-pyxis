@@ -42,6 +42,7 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "ocr-out-of-order": "sources.ocrInterrupted",
   "ocr-not-active": "sources.ocrInterrupted",
   "ocr-stale": "sources.ocrInterrupted",
+  "invalid-ocr-state": "sources.ocrNotScan",
   "source-busy": "sources.busy",
   "reextract-unavailable": "sources.reextractUnavailable",
   "reextract-no-text": "sources.reextractNoText",

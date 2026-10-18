@@ -120,6 +120,29 @@ describe("office extraction under the zip bound", { timeout: 30_000 }, () => {
     );
   });
 
+  it("keeps a .docx's headings, so each passage names its section", async () => {
+    const w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const para = (text: string, style?: string) =>
+      `<w:p>${style ? `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>` : ""}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+    const style = (id: string, name: string) =>
+      `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/></w:style>`;
+    const extracted = await extractDocx(
+      docx({
+        "word/styles.xml": strToU8(`<?xml version="1.0"?><w:styles ${w}>${style("Heading1", "heading 1")}${style("Heading2", "heading 2")}</w:styles>`),
+        "word/_rels/document.xml.rels": strToU8(
+          '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+        ),
+        "word/document.xml": strToU8(
+          `<?xml version="1.0"?><w:document ${w}><w:body>${para("Introduzione")}${para("Termodinamica", "Heading1")}${para("L'energia interna &amp; il calore")}${para("Primo principio", "Heading2")}${para("Il lavoro compiuto dal gas")}</w:body></w:document>`,
+        ),
+      }),
+    );
+    expect(extracted.pages.map((page) => page.section)).toEqual(["text", "Termodinamica", "Primo principio"]);
+    expect(extracted.pages[1]).toMatchObject({ locator: { heading: "Termodinamica" } });
+    expect(extracted.pages[1]?.text).toContain("L'energia interna & il calore");
+    expect(extracted.pages[2]?.text).toContain("Il lavoro compiuto dal gas");
+  });
+
   it("never inflates a picture, so a bomb in the media folder costs nothing", async () => {
     // A media member that would blow every limit, with a header that claims 10 bytes.
     const bombed = lieAboutSizes(docx({ "word/media/bomb.bin": zeros(70) }));

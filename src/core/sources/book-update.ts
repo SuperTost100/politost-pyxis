@@ -52,7 +52,8 @@ export function linkCatalogBooks(
 /**
  * The library source a catalog book already is, and whether a newer version can replace it in place. The exact
  * package counts first. Otherwise the newest usable library source linked to the book: `available` when it is ready
- * and older than the catalog, `running` while an update (or its first import) is being read.
+ * and older than the catalog, `running` while an update (or its first import) is being read. A linked source that is no
+ * longer a smartbook is not the book: before 0.3.2, replacing a book with a document kept its catalog link.
  */
 export function bookState(
   db: Database.Database,
@@ -63,7 +64,7 @@ export function bookState(
   const linked = db
     .prepare(
       `SELECT id, status, blob_sha AS sha, catalog_version AS version FROM sources
-       WHERE catalog_id = ? AND library = 1 AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+       WHERE catalog_id = ? AND kind = 'smartbook' AND library = 1 AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(book.id) as
@@ -86,7 +87,7 @@ export function linkedBookSource(
 ): string | null {
   const row = db
     .prepare(
-      `SELECT id FROM sources WHERE catalog_id = ? AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+      `SELECT id FROM sources WHERE catalog_id = ? AND kind = 'smartbook' AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
        ORDER BY library DESC, created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(catalogId) as { id: string } | undefined;

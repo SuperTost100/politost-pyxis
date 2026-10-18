@@ -18,6 +18,7 @@ import { folderTransport } from "./books";
 import { sourceHandlers } from "./handlers";
 import { markStoppedImport, registerSourceJobs, type Extraction } from "./jobs";
 import { parseSmartbook, smartbookChapters } from "./smartbook";
+import { extractPlain } from "./documents";
 
 type Db = ReturnType<typeof openDatabase>;
 const dirs: string[] = [];
@@ -289,6 +290,44 @@ describe("free book catalog link", () => {
       catalog_id: "fisica-demo",
       catalog_version: "1.0.0",
     });
+    ctx.db.close();
+  });
+
+  it("drops the catalog link when a free book is replaced with a document, so no update that fails is offered", async () => {
+    const ctx = setup(async (input) =>
+      input.ext === ".ptsb"
+        ? readBook(input, new AbortController().signal)
+        : { document: extractPlain(readFileSync(input.path, "utf8"), false) },
+    );
+    const { sourceId } = await importedV1(ctx);
+    const cited = one<{ id: string }>(ctx.db, "SELECT id FROM passages WHERE source_id = ? AND text = ?", sourceId, SPEED).id;
+    const path = join(temp("pyxis-book-replace-"), "Appunti.txt");
+    writeFileSync(path, "Il calore cambia l'energia interna del sistema.");
+    const replaced = await ctx.handlers.replace({ sourceId, path });
+    const jobId = "jobId" in replaced ? String(replaced.jobId) : "";
+    await expect.poll(jobState(ctx.db, jobId), { timeout: 15_000 }).toBe("succeeded");
+    expect(one(ctx.db, "SELECT kind, catalog_id, catalog_version FROM sources WHERE id = ?", sourceId)).toEqual({
+      kind: "text",
+      catalog_id: null,
+      catalog_version: null,
+    });
+    // The book's passages stay for what cites them.
+    expect(one(ctx.db, "SELECT text FROM passages WHERE id = ?", cited)).toEqual({ text: SPEED });
+    release(ctx, "1.1.0", pack("1.1.0", 2));
+    expect(await ctx.handlers.books()).toEqual([
+      expect.objectContaining({ id: "fisica-demo", sourceId: null, update: null }),
+    ]);
+    ctx.db.close();
+  });
+
+  it("offers no update on a book an earlier version turned into a document and left linked", async () => {
+    const ctx = setup();
+    const { sourceId } = await importedV1(ctx);
+    ctx.db.prepare("UPDATE sources SET kind = 'pdf', mime = 'application/pdf' WHERE id = ?").run(sourceId);
+    release(ctx, "1.1.0", pack("1.1.0", 2));
+    expect(await ctx.handlers.books()).toEqual([
+      expect.objectContaining({ id: "fisica-demo", sourceId: null, update: null }),
+    ]);
     ctx.db.close();
   });
 

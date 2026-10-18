@@ -2096,6 +2096,8 @@ export const requests = {
       cappedFiles: z.boolean(),
       /** Subfolders nested too deep were not read. */
       cappedDepth: z.boolean(),
+      /** The scan stopped after reading MAX_FOLDER_ENTRIES files and folders, so part of the folder was not read. */
+      cappedEntries: z.boolean(),
       /** Subfolders that could not be read were skipped. */
       unreadable: z.boolean(),
       limit: z.number(),
