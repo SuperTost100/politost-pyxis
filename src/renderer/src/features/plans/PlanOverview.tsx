@@ -352,7 +352,7 @@ export function PlanPage() {
                         })}{" "}
                         ·{" "}
                         {t("planOverview.topicLessons", {
-                          count: topic.itemCount,
+                          count: topic.lessons,
                         })}
                         {topic.chapter !== null
                           ? ` · ${t("planOverview.chapter", { number: topic.chapter })}`

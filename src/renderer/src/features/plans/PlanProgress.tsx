@@ -463,7 +463,9 @@ export function PlanProgress({
                     </th>
                   ))}
                   <th scope="col">
-                    <span className="visually-hidden">{t("progress.open")}</span>
+                    <span className="visually-hidden">
+                      {t("progress.open")}
+                    </span>
                   </th>
                 </tr>
               </thead>
@@ -511,51 +513,64 @@ export function PlanProgress({
         <h2 id="px-progress-pace" className="title-3">
           {t("progress.paceTitle")}
         </h2>
-        <div className="px-progress-chart">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={progress.pace.bars.map((point) => ({
-                ...point,
-                minutes: Math.round(point.seconds / 60),
-              }))}
-              margin={{ top: 16, right: 16, bottom: 8, left: 0 }}
-              accessibilityLayer
-              aria-label={t("progress.timeChart")}
-            >
-              <CartesianGrid vertical={false} stroke="var(--border)" />
-              <XAxis
-                dataKey="day"
-                tickFormatter={(at) => date(Number(at))}
-                tick={tick}
-                axisLine={false}
-                tickLine={false}
-                minTickGap={32}
-              />
-              <YAxis tick={tick} axisLine={false} tickLine={false} width={44} />
-              <Tooltip
-                labelFormatter={(at) => date(Number(at))}
-                formatter={(value) => [
-                  t("progress.minutesValue", { count: Number(value) }),
-                  t("progress.studyTime"),
-                ]}
-                contentStyle={tooltip}
-              />
-              <Bar
-                dataKey="minutes"
-                fill="var(--primary)"
-                radius={[4, 4, 0, 0]}
-                isAnimationActive={false}
+        {progress.pace.bars.every((bar) => bar.seconds === 0) ? (
+          <p className="body px-progress-empty">
+            {t("progress.noWeekActivity")}
+          </p>
+        ) : (
+          <div className="px-progress-chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={progress.pace.bars.map((point) => ({
+                  ...point,
+                  minutes: Math.round(point.seconds / 60),
+                }))}
+                margin={{ top: 16, right: 16, bottom: 8, left: 0 }}
+                accessibilityLayer
+                aria-label={t("progress.timeChart")}
               >
-                {progress.pace.bars.map((point, i) => (
-                  <Cell
-                    key={point.day}
-                    fillOpacity={i === progress.pace.bars.length - 1 ? 1 : 0.6}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+                <CartesianGrid vertical={false} stroke="var(--border)" />
+                <XAxis
+                  dataKey="day"
+                  tickFormatter={(at) => date(Number(at))}
+                  tick={tick}
+                  axisLine={false}
+                  tickLine={false}
+                  minTickGap={32}
+                />
+                <YAxis
+                  tick={tick}
+                  axisLine={false}
+                  tickLine={false}
+                  width={44}
+                />
+                <Tooltip
+                  labelFormatter={(at) => date(Number(at))}
+                  formatter={(value) => [
+                    t("progress.minutesValue", { count: Number(value) }),
+                    t("progress.studyTime"),
+                  ]}
+                  contentStyle={tooltip}
+                />
+                <Bar
+                  dataKey="minutes"
+                  fill="var(--primary)"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={false}
+                >
+                  {progress.pace.bars.map((point, i) => (
+                    <Cell
+                      key={point.day}
+                      fillOpacity={
+                        i === progress.pace.bars.length - 1 ? 1 : 0.6
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
         <dl className="px-progress-pace-facts">
           <div>
             <dt>{t("progress.thisWeek")}</dt>
@@ -566,7 +581,7 @@ export function PlanProgress({
             </dd>
           </div>
           <div>
-            <dt>{t("progress.lessonsDone")}</dt>
+            <dt>{t("progress.weekLessons")}</dt>
             <dd>{progress.pace.weekLessons}</dd>
           </div>
           <div>

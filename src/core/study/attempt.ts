@@ -37,6 +37,8 @@ export type StoredQuestion = {
 };
 
 type Stored = {
+  /** Every question exists; a quiz that is still being written says so with `complete: false`. */
+  complete: true;
   questions: StoredQuestion[];
 };
 
@@ -48,6 +50,7 @@ export function saveQuiz(
 ): string {
   const id = uuidv7(now);
   const body: Stored = {
+    complete: true,
     questions: questions.map((question) => ({
       id: question.id,
       sourceId: question.sourceId,

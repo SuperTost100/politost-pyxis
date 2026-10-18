@@ -203,6 +203,17 @@ export function recordStep(
 }
 
 /**
+ * The lessons the student finished, with their topic and time. Progress, the topic list and the path all count lessons
+ * here, so one finished lesson is one everywhere: a step recorded only by its path node counts, and one on an archived
+ * topic does not.
+ */
+export function finishedLessons(db: Database.Database, planId: string): Array<{ topicId: string; at: number }> {
+  return readSteps(db, planId).flatMap((step) =>
+    step.activity === "lesson" && step.topicId ? [{ topicId: step.topicId, at: step.at }] : [],
+  );
+}
+
+/**
  * How many graded activities the student did on a topic after `since` (the time its lesson was recorded as read).
  * Each submitted attempt with answers on the topic is one (a quiz, a gap drill, and the topic's share of a diagnostic,
  * review or simulation); so is each run of self-ratings of exercises, each run of card ratings and each run of quick

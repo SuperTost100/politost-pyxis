@@ -1105,6 +1105,8 @@
     "thisWeek": "Questa settimana",
     "mostActive": "Giorno più attivo",
     "noActivity": "Nessun tempo di studio registrato",
+    "noWeekActivity": "Ancora nessuna attività questa settimana",
+    "weekLessons": "Lezioni questa settimana",
     "weekdays": {
       "0": "Domenica",
       "1": "Lunedì",

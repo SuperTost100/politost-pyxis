@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
-import { listPlans, planGuide } from "./create";
+import { listPlans, planGuide, readPlan } from "./create";
 import { recordStep } from "./steps";
 import { planMastery, planSeries, syncGaps } from "./progress";
 import { assignAnswers, insertGap } from "../study/gapRows";
@@ -194,6 +194,28 @@ describe("planMastery", () => {
     });
   });
 
+  it("counts one finished lesson the same in the tile, the week, the topic's skills and the topic list", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Fisica', 'ready', 1, 1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','Moti',0,1),('u','p','Forze',1,1);
+      INSERT INTO path_nodes (id,plan_id,topic_id,kind,position,title,created_at) VALUES ('n','p','t','learn',0,'Moti',1);
+    `);
+    const now = Date.UTC(2026, 0, 14, 12);
+    // Recorded the way older plans did: only the path node, no activity and no topic on the event.
+    db.prepare(
+      `INSERT INTO learning_events (id,kind,plan_id,topic_id,payload_json,created_at)
+       VALUES ('legacy','lesson_completed','p',NULL,?,?)`,
+    ).run(JSON.stringify({ nodeId: "n" }), now - 1);
+    const series = planSeries(db, "p", now);
+    expect(series.preparation.lessons).toBe(1);
+    expect(series.lessons).toBe(1);
+    expect(series.pace.weekLessons).toBe(1);
+    expect(series.topics.map((topic) => topic.lessons)).toEqual([1, 0]);
+    expect(readPlan(db, "p")?.topics.map((topic) => topic.lessons)).toEqual([1, 0]);
+    db.close();
+  });
+
   it("keeps steps other than lessons out of lessons and activity counts", () => {
     const db = openDatabase(":memory:");
     db.exec(`
@@ -342,7 +364,7 @@ describe("M12 preparation data", () => {
     const now = new Date(2026, 0, 14, 12).getTime();
     const { db, event } = fixture(now);
     event("lesson_opened", "a", {});
-    event("lesson_completed", "a", {});
+    event("lesson_completed", "a", { activity: "lesson" });
     event("lesson_completed", null, { nodeId: "intro" });
     event("answer_given", "a", { score: 0.5, scores: [1, 0, 0.5] });
     const series = planSeries(db, "p", now);
@@ -373,8 +395,8 @@ describe("M12 preparation data", () => {
     event("active_time", null, { seconds: 60 }, monday - 7 * 86400000);
     event("active_time", null, { seconds: 120 }, monday);
     event("active_time", null, { seconds: 150 }, monday + 86400000);
-    event("lesson_completed", "a", {}, monday);
-    event("lesson_completed", "b", {}, monday - 7 * 86400000);
+    event("lesson_completed", "a", { activity: "lesson" }, monday);
+    event("lesson_completed", "b", { activity: "lesson" }, monday - 7 * 86400000);
     const series = planSeries(db, "p", now);
     expect(series.pace.bars).toHaveLength(14);
     expect(series.pace.bars.reduce((n, b) => n + b.seconds, 0)).toBe(330);
@@ -386,7 +408,7 @@ describe("M12 preparation data", () => {
   it("uses 21 days and below-target mastery for idle warnings, including untouched old topics", () => {
     const now = new Date(2026, 0, 30, 12).getTime();
     const { db, event } = fixture(now);
-    event("lesson_completed", "a", {}, now - 22 * 86400000);
+    event("lesson_completed", "a", { activity: "lesson" }, now - 22 * 86400000);
     expect(planSeries(db, "p", now).topics.map((t) => t.idle)).toEqual([
       true,
       true,

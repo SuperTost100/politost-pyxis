@@ -136,7 +136,9 @@ function modelContext(
 
 /**
  * The newest model lesson written by an earlier lesson prompt for the same passages and variant. It keeps its own
- * provenance and is shown as it is (Markdown with citations) until the student rewrites it.
+ * provenance and is shown as it is (Markdown with citations) until the student rewrites it. When no variant matches,
+ * the newest imported lesson for the same passages stands in: a classmate's profile (wording, school, course) rarely
+ * equals the author's, and the lessons that came with a shared plan should still open.
  */
 function earlierLesson(
   db: Database.Database,
@@ -146,27 +148,30 @@ function earlierLesson(
 ) {
   const rows = db
     .prepare(
-      `SELECT json_extract(body_json, '$.cacheKey') AS key FROM items
+      `SELECT json_extract(body_json, '$.cacheKey') AS key, prompt_template AS template FROM items
        WHERE plan_id = ? AND topic_id = ? AND kind = 'lesson' AND engine_provider IS NOT NULL
          AND (prompt_template IS NULL OR prompt_template = 'lesson.write') AND prompt_version IS NOT ?
        ORDER BY created_at DESC, rowid DESC`,
     )
-    .all(planId, topicId, MODEL_VERSION) as Array<{ key: string | null }>;
+    .all(planId, topicId, MODEL_VERSION) as Array<{ key: string | null; template: string | null }>;
   const passages = JSON.stringify([...context.passageIds].sort());
+  let imported: string | null = null;
   for (const row of rows) {
     if (!row.key) continue;
     const parsed = JSON.parse(row.key) as {
       promptVersion?: string;
       passageIds?: string[];
     };
+    if (JSON.stringify(parsed.passageIds) !== passages) continue;
     if (
       JSON.stringify(parsed.promptVersion?.split("|").slice(1)) ===
-        JSON.stringify(context.variant) &&
-      JSON.stringify(parsed.passageIds) === passages
+      JSON.stringify(context.variant)
     )
       return loadLesson(db, { planId, kind: "lesson", key: row.key });
+    // Import keeps the author's key and records no prompt template, which a lesson written here always has.
+    if (imported == null && row.template == null) imported = row.key;
   }
-  return null;
+  return imported ? loadLesson(db, { planId, kind: "lesson", key: imported }) : null;
 }
 
 /** School and course only steer vocabulary and depth; they are reader data, never instructions. */

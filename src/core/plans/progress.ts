@@ -15,6 +15,7 @@ import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { masteryFor, type MasteryEvent } from "../study/mastery";
 import { cachedEvidence } from "./evidenceCache";
+import { finishedLessons } from "./steps";
 import {
   activeMinutes,
   chartPoints,
@@ -412,12 +413,7 @@ export function planSeries(
     end.setHours(0, 0, 0, 0);
     return historicalAverage(Math.min(now, end.getTime() - 1));
   });
-  const completed = db
-    .prepare(
-      `SELECT topic_id,created_at FROM learning_events WHERE plan_id=? AND kind='lesson_completed' AND topic_id IS NOT NULL
-       AND coalesce(json_extract(payload_json, '$.activity'), 'lesson') = 'lesson'`,
-    )
-    .all(planId) as { topic_id: string | null; created_at: number }[];
+  const completed = finishedLessons(db, planId);
   const topicDates = new Map(
     (
       db
@@ -444,7 +440,7 @@ export function planSeries(
           0,
         ),
       lessons: completed.filter(
-        (row) => row.topic_id === topic.id && row.created_at <= now,
+        (row) => row.topicId === topic.id && row.at <= now,
       ).length,
       lastStudied,
       idle:
@@ -535,7 +531,7 @@ export function planSeries(
         ),
       onTrack: topics.filter((topic) => topic.mastery >= reached).length,
       totalTopics: topics.length,
-      lessons: completed.filter((row) => row.created_at <= now).length,
+      lessons: completed.filter((row) => row.at <= now).length,
     },
     weeks: weeks.weeks,
     counts: weeks.counts,
@@ -546,12 +542,12 @@ export function planSeries(
       bars: activity.bars,
       weekMinutes: Math.round(activity.weekSeconds / 60),
       weekLessons: completed.filter(
-        (row) => row.created_at >= start.getTime() && row.created_at <= now,
+        (row) => row.at >= start.getTime() && row.at <= now,
       ).length,
       mostActiveWeekday: peak > 0 ? weekdaySeconds.indexOf(peak) : null,
     },
     minutes: Math.round(activity.weekSeconds / 60),
-    lessons: completed.filter((row) => row.created_at <= now).length,
+    lessons: completed.filter((row) => row.at <= now).length,
     topics: skillTopics,
   };
 }

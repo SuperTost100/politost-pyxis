@@ -1290,7 +1290,7 @@ export const requests = {
             summary: z.string(),
             sourceIds: z.array(z.string()),
             passageCount: z.number().int().nonnegative(),
-            itemCount: z.number().int().nonnegative(),
+            lessons: z.number().int().nonnegative(),
             firstPassageId: z.string().nullable(),
             chapter: z.number().nullable(),
             grounding: z.enum(["sources", "mixed", "general"]).nullable(),
