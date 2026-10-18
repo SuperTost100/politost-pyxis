@@ -1033,34 +1033,35 @@ describe("verifyBackupArchive", { timeout: 30_000 }, () => {
     }
   });
 
+  /** os.tmpdir() reads TMPDIR on Linux and macOS, TEMP or TMP on Windows. */
+  function breakTemp(dir: string) {
+    for (const name of ["TMPDIR", "TEMP", "TMP"]) vi.stubEnv(name, dir);
+  }
+
   it("does not call a good archive broken when the temporary folder is unusable", () => {
     const root = mkdtempSync(join(tmpdir(), "pyxis-verify-env-"));
-    const saved = process.env.TMPDIR;
     try {
       const archive = backedUp(root);
-      process.env.TMPDIR = join(root, "no-such-folder");
+      breakTemp(join(root, "no-such-folder"));
       // The environment is at fault, not the file: the check cannot answer.
       expect(() => verifyBackupArchive(archive)).toThrow(/ENOENT/);
       // A file that is broken before the database is reached is still proven broken.
       writeFileSync(join(root, "text.zip"), "not a zip");
       expect(verifyBackupArchive(join(root, "text.zip"))).toBe(false);
     } finally {
-      if (saved === undefined) delete process.env.TMPDIR;
-      else process.env.TMPDIR = saved;
+      vi.unstubAllEnvs();
       rmSync(root, { recursive: true, force: true });
     }
   });
 
   it("keeps a good archive when the check cannot run, and deletes one proven broken", () => {
     const root = mkdtempSync(join(tmpdir(), "pyxis-verify-discard-"));
-    const saved = process.env.TMPDIR;
     try {
       const archive = backedUp(root);
-      process.env.TMPDIR = join(root, "no-such-folder");
+      breakTemp(join(root, "no-such-folder"));
       expect(() => verifyOrDiscardBackup(archive)).toThrow(/ENOENT/);
       expect(existsSync(archive)).toBe(true);
-      if (saved === undefined) delete process.env.TMPDIR;
-      else process.env.TMPDIR = saved;
+      vi.unstubAllEnvs();
       verifyOrDiscardBackup(archive);
       expect(existsSync(archive)).toBe(true);
       const bytes = Uint8Array.from(readFileSync(archive));
@@ -1071,8 +1072,7 @@ describe("verifyBackupArchive", { timeout: 30_000 }, () => {
       // A file that is already gone leaves nothing to keep: the backup still fails.
       expect(() => verifyOrDiscardBackup(archive)).toThrow("backup-unverified");
     } finally {
-      if (saved === undefined) delete process.env.TMPDIR;
-      else process.env.TMPDIR = saved;
+      vi.unstubAllEnvs();
       rmSync(root, { recursive: true, force: true });
     }
   });
