@@ -215,7 +215,7 @@ test("UI-03 the cards page announces the next card, names parked cards, and show
     // Rating a card says which one comes next, since the buttons the focus was on are gone.
     await page.getByRole("button", { name: /^Gira/ }).click();
     await page.getByRole("button", { name: "Bene", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Scheda successiva:" })).toContainText(
+    await expect(page.getByRole("status").filter({ hasText: "Flashcard successiva:" })).toContainText(
       /Flashcard successiva: (Prima|Seconda) carta/,
     );
 
