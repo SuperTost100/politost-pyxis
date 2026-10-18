@@ -12,6 +12,8 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.test.ts"],
+    // Gives the run its own TMPDIR and deletes it afterwards, so a test that forgets to clean up leaves nothing in /tmp.
+    globalSetup: ["scripts/vitest-global-setup.ts"],
     // Windows runners are slow to start jobs and to finish polling on them.
     testTimeout: process.env.CI ? 20_000 : 5_000,
     expect: { poll: { timeout: 10_000 } },

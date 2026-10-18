@@ -1,9 +1,8 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { appendEvent } from "./events";
 import { openDatabase } from "./db/connection";
+import { tempDir } from "./test-temp";
 
 const opened: Array<{ close: () => void }> = [];
 
@@ -15,7 +14,7 @@ afterEach(() => {
 describe("learning events", () => {
   it("appends a row and does not offer an update", () => {
     const db = openDatabase(
-      join(mkdtempSync(join(tmpdir(), "pyxis-ev-")), "pyxis.db"),
+      join(tempDir("pyxis-ev-"), "pyxis.db"),
     );
     opened.push(db);
     const id = appendEvent(db, {

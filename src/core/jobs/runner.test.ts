@@ -1,17 +1,16 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
 import { openDatabase } from "../db/connection";
 import { createRunner, type JobSpec } from "./runner";
+import { tempDir } from "../test-temp";
 
 const opened: Array<{ close: () => void }> = [];
 
 function db() {
   const database = openDatabase(
-    join(mkdtempSync(join(tmpdir(), "pyxis-job-")), "pyxis.db"),
+    join(tempDir("pyxis-job-"), "pyxis.db"),
   );
   opened.push(database);
   return database;

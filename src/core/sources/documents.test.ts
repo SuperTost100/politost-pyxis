@@ -17,6 +17,7 @@ import {
   type ExtractedDocument,
 } from "./documents";
 import { listSources } from "./smartbook";
+import { tempDir } from "../test-temp";
 
 describe("document extract", () => {
   it("reads the text layer of a PDF", async () => {
@@ -94,7 +95,7 @@ describe("document extract", () => {
   });
 
   it("stores a scanned PDF as needing OCR and keeps its text out", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-pdf-"));
+    const dir = tempDir("pyxis-pdf-");
     const file = join(dir, "scan.pdf");
     writeFileSync(file, blankPdf());
     const db = openDatabase(":memory:");
