@@ -198,7 +198,7 @@ describe("migrate", () => {
 
 describe("past paper role", () => {
   it("keeps every existing plan source as study material", () => {
-    const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
+    const file = join(tempDir("pyxis-db-"), "pyxis.db");
     const db = openDatabase(file);
     db.exec(
       "ALTER TABLE plan_sources DROP COLUMN role; ALTER TABLE plan_sources DROP COLUMN paper_json;",
