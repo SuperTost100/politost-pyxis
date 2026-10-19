@@ -15,7 +15,7 @@ These pages are for people who change Pyxis or want to know exactly what it does
 
 ## Files Pyxis reads and writes
 
-- [Plan file](plan-file.md). The `.pyxis.json` format for shared plans, what it carries with and without progress, and the import checks. The JSON Schema is [plan-file.schema.json](plan-file.schema.json).
+- [Plan file](plan-file.md). The `.pyxis` format for shared plans, what it carries with and without progress, and the import checks. The JSON Schema is [plan-file.schema.json](plan-file.schema.json).
 - [Security](../SECURITY.md). Where each file is stored, every network request, and how to report a problem.
 
 ## Interface

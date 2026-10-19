@@ -7,7 +7,7 @@ import { Button, Input, Modal, Slider } from "antd";
 import dayjs from "dayjs";
 import { WizardSources } from "./WizardSources";
 import "./PlanWizard.css";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
@@ -18,7 +18,8 @@ import { FreeBooks } from "../../components/FreeBooks";
 import { PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
 import { useMenuLock } from "../../app/menu-state";
 import { ImportReview } from "./ImportReview";
-import { parsePlanText, type ImportRequest } from "./importPreview";
+import { readPlanText, type ImportRequest } from "./importPreview";
+import { takePlanText } from "./openedPlan";
 import {
   examChosen,
   examFromChoice,
@@ -650,10 +651,20 @@ export function SharedPlanPage() {
 
   // The file is only validated here; nothing is written until the person confirms the summary.
   function openText(text: string) {
-    const parsed = parsePlanText(text);
-    setReview(parsed);
-    setNote(parsed ? null : t("shared.bad"));
+    const read = readPlanText(text);
+    setReview("file" in read ? read.file : null);
+    setNote("file" in read ? null : t(`shared.reason.${read.reason}`));
   }
+
+  // A file opened from the system or dropped on the window waits in the store. It is taken when this page mounts, and
+  // again whenever the page is entered again (a new location key), so a page that is on its way out never claims it.
+  const location = useLocation();
+  const openWaiting = useRef((text: string) => openText(text));
+  openWaiting.current = openText;
+  useEffect(() => {
+    const text = takePlanText();
+    if (text !== null) openWaiting.current(text);
+  }, [location.key]);
 
   async function importReviewed(request: ImportRequest) {
     const result = await invoke("plans.import", request);

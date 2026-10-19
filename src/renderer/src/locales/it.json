@@ -1499,6 +1499,43 @@
     "open": "Apri",
     "bad": "Questo non è un piano.",
     "importFailed": "Il piano non è stato importato. Scegli un file di piano .pyxis valido e riprova.",
+    "reason": {
+      "not-a-plan": "Questo file non è un piano di Pyxis.",
+      "unknown-version": "Questo piano è stato salvato da una versione più recente di Pyxis. Aggiorna Pyxis e aprilo di nuovo.",
+      "oversized-source": "Un file originale nel piano è più grande di quanto Pyxis possa importare.",
+      "invalid-file": "Il file è danneggiato o incompleto, quindi Pyxis non riesce a leggerlo.",
+      "missing-topic": "Una lezione, una flashcard o un passo del percorso rimanda a un argomento che non c'è nel file.",
+      "missing-passage": "Nel file manca un brano citato dal piano.",
+      "missing-source": "Un brano indica una fonte che non c'è nel file.",
+      "missing-document": "Un brano rimanda a una versione del documento che non c'è nel file.",
+      "bad-reference": "Qualcosa nel piano rimanda a contenuti che il file non contiene.",
+      "duplicate-id": "Due elementi nel file hanno lo stesso ID.",
+      "passage-text": "Un brano citato è cambiato dopo il salvataggio del piano, quindi il suo checksum non corrisponde più.",
+      "source-mismatch": "Un file originale non corrisponde a quello da cui è nato il piano.",
+      "source-data": "Un file originale nel piano è danneggiato o ha la dimensione sbagliata.",
+      "document-mismatch": "Un brano non corrisponde alla versione del suo documento.",
+      "bad-body": "Una lezione o un quiz nel file è danneggiato.",
+      "bad-exercise": "Alcuni esercizi nel file sono danneggiati.",
+      "bad-map": "Alcune mappe concettuali nel file sono danneggiate.",
+      "bad-progress": "I progressi salvati nel file non sono coerenti.",
+      "library-mismatch": "La copia nella tua libreria non è il file che il piano si aspetta. Scegli un'altra opzione per quella fonte.",
+      "no-workspace": "Pyxis non ha dove salvare i file originali in questo momento. Riavvia Pyxis e riprova."
+    },
+    "fail": {
+      "failed": "Il piano non è stato importato. {{reason}}",
+      "offer": "Il problema è solo {{where}}. Il resto del piano si può importare lo stesso.",
+      "in": {
+        "exercises": "negli esercizi",
+        "maps": "nelle mappe concettuali",
+        "both": "negli esercizi e nelle mappe concettuali"
+      },
+      "rest": "Importa il resto"
+    },
+    "openFailed": {
+      "not-a-plan-file": "Quel file non è un piano di Pyxis.",
+      "too-big": "Quel file di piano supera 320 MB.",
+      "unreadable": "Pyxis non è riuscito a leggere quel file."
+    },
     "review": {
       "title": "Importa un piano",
       "created": "Creato il {{date}}",
@@ -1532,6 +1569,8 @@
       "verified": "Il file corrisponde.",
       "mismatch": "Questo file non è quello atteso dal piano. Scegline un altro o tieni gli estratti.",
       "import": "Importa",
+      "importCopy": "Importa una copia lo stesso",
+      "duplicate": "Già importato il {{date}}. Importandolo di nuovo aggiungi una seconda copia.",
       "cancel": "Annulla",
       "skip": "Salta la fonte",
       "skipHelp": "Saltando una fonte, questa non viene aggiunta all’elenco. I brani citati nelle lezioni, nelle flashcard e nelle domande restano leggibili."

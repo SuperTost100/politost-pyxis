@@ -421,3 +421,84 @@ export function httpPlanUrl(raw: string): string {
   }
   return parsed.toString();
 }
+
+const DRIVE_ID = /^[\w-]{10,}$/;
+
+/**
+ * The address a shared link downloads from. Google Drive, Dropbox and OneDrive share links open a web page, so a plan
+ * fetched from one would be HTML. Each is rewritten to the service's direct-download form. Any other address, and a
+ * link that is already direct, comes back unchanged. The caller still checks the result and every redirect after it.
+ */
+export function directPlanUrl(raw: string): string {
+  const url = new URL(raw);
+  const host = url.hostname.toLowerCase();
+  if (host === "drive.google.com") {
+    // /file/d/<id>/view, /file/u/0/d/<id>/view and /open?id=<id>; a /uc link is direct already.
+    const id =
+      /^\/(?:file\/(?:u\/\d+\/)?d\/|u\/\d+\/file\/d\/)([^/]+)/.exec(url.pathname)?.[1] ??
+      (/^\/(?:u\/\d+\/)?open$/.test(url.pathname) ? url.searchParams.get("id") : null);
+    if (!id || !DRIVE_ID.test(id)) return url.toString();
+    const direct = new URL("https://drive.usercontent.google.com/download");
+    direct.searchParams.set("id", id);
+    direct.searchParams.set("export", "download");
+    // Without it, a file Google cannot scan for viruses answers with a warning page.
+    direct.searchParams.set("confirm", "t");
+    const key = url.searchParams.get("resourcekey");
+    if (key) direct.searchParams.set("resourcekey", key);
+    return direct.toString();
+  }
+  if (host === "dropbox.com" || host === "www.dropbox.com") {
+    if (!/^\/(?:s|scl\/fi)\//.test(url.pathname)) return url.toString();
+    url.searchParams.delete("raw");
+    url.searchParams.set("dl", "1");
+    return url.toString();
+  }
+  if (host === "1drv.ms" || (host === "onedrive.live.com" && !/^\/(?:download|embed)\b/.test(url.pathname))) {
+    // The shares API takes the link itself as a base64url token and answers with the file.
+    const token = btoa(url.toString()).replace(/=+$/, "").replace(/\//g, "_").replace(/\+/g, "-");
+    return `https://api.onedrive.com/v1.0/shares/u!${token}/root/content`;
+  }
+  // OneDrive for work or school lives on SharePoint; its share links start with /:u:/ or /:b:/.
+  if (host.endsWith(".sharepoint.com") && /^\/:\w:\//.test(url.pathname)) {
+    url.searchParams.set("download", "1");
+    return url.toString();
+  }
+  return url.toString();
+}
+
+/** Why a plan file cannot be imported, as a code the person gets a sentence for. */
+export const PLAN_FILE_REASONS = [
+  "not-a-plan",
+  "unknown-version",
+  "oversized-source",
+  "invalid-file",
+  "missing-topic",
+  "missing-passage",
+  "missing-source",
+  "missing-document",
+  "bad-reference",
+  "duplicate-id",
+  "passage-text",
+  "source-mismatch",
+  "source-data",
+  "document-mismatch",
+  "bad-body",
+  "bad-exercise",
+  "bad-map",
+  "bad-progress",
+  "library-mismatch",
+  "no-workspace",
+] as const;
+export type PlanFileReason = (typeof PLAN_FILE_REASONS)[number];
+
+/** The parts of a plan the student can import without, because nothing else in the file refers to them. */
+export const PLAN_FILE_PARTS = ["exercises", "maps"] as const;
+export type PlanFilePart = (typeof PLAN_FILE_PARTS)[number];
+
+/** The reason for a file that failed the schema: a version this app does not know, a source over the limit, or any other shape error. */
+export function planFileReason(issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey> }>): PlanFileReason {
+  if (issues.some((issue) => issue.path[0] === "version")) return "unknown-version";
+  if (issues.some((issue) => issue.path[0] === "sources" && (issue.path[2] === "bytes" || issue.path[2] === "data")))
+    return "oversized-source";
+  return "invalid-file";
+}

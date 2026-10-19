@@ -8,6 +8,7 @@ import {
 } from "../core/ipc/file-grants";
 import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { fetchPlanText } from "./plan-fetch";
+import { isPlanFileName, needsWindowForPlan, planFileFromArgv, readOpenedPlan } from "./plan-open";
 import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
 import {
@@ -17,6 +18,7 @@ import {
   startLiveBackupWorker,
 } from "./auto-backup";
 import { commitRestore, RestoreRecoveryRequired } from "./restore-commit";
+import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
@@ -253,7 +255,6 @@ function installPermissionHandlers(): void {
 let mainWindow: BrowserWindow | null = null;
 let coreChild: UtilityProcess | null = null;
 let coreRestartFailures = 0;
-const exitedCores = new WeakSet<UtilityProcess>();
 let holdCore = false;
 let workspaceBusy = false;
 let archiveSettled = Promise.resolve();
@@ -317,7 +318,7 @@ function setUpAutoBackups(): void {
       workspaceBusy ||
       !coreChild ||
       keysReadyFor !== coreChild ||
-      exitedCores.has(coreChild),
+      coreExited(coreChild),
     start: (zip, waitForJobs, requireData) =>
       startLiveBackupWorker(
         join(import.meta.dirname, "archive-worker.js"),
@@ -490,7 +491,7 @@ async function grantPickedPaths(paths: string[]): Promise<void> {
 async function grantFiles(grants: FileGrant[]): Promise<void> {
   for (const grant of grants) pickedGrants.set(grant.path, grant);
   const child = coreChild;
-  if (!child || exitedCores.has(child)) throw new Error("core-busy");
+  if (!child || coreExited(child)) throw new Error("core-busy");
   const id = randomUUID();
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -577,10 +578,10 @@ function startCore(strict = false): Promise<void> {
   }
   coreChild = child;
   configurePythonRuntime(workspacePath);
+  watchCoreExit(child);
   let childExited = false;
   child.once("exit", () => {
     childExited = true;
-    exitedCores.add(child);
   });
   function runtimeReply(message: unknown): void {
     if (childExited || coreChild !== child || quitting || holdCore) return;
@@ -667,16 +668,16 @@ function startCore(strict = false): Promise<void> {
         }
       }
       if (err instanceof Error && err.message === "core-ready-timeout") {
-        // Terminate the unhealthy core; it must not restart on its own.
+        // Terminate the unhealthy core; it must not restart on its own. It counts as exited only once it has, so a
+        // backup, restore, move or wipe that comes next waits for this stop instead of touching files it holds.
         timedOut = true;
-        exitedCores.add(child);
-        child.kill();
+        killCore(child);
         if (coreChild === child && !quitting)
           mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
       }
       // A reported bootstrap failure exits on its own; kill covers a hang. The
       // exit handler then applies the bounded restart policy.
-      else if (!exitedCores.has(child)) child.kill();
+      else killCore(child);
       throw err;
     })
     .then(() => {
@@ -687,8 +688,7 @@ function startCore(strict = false): Promise<void> {
       startupFailed = true;
       if (deliveringKeys) {
         timedOut = true;
-        exitedCores.add(child);
-        child.kill();
+        killCore(child);
         if (coreChild === child && !quitting)
           mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
       }
@@ -699,13 +699,13 @@ function startCore(strict = false): Promise<void> {
       );
     })
     .finally(() => {
-      if (coreChild !== child || startupFailed || exitedCores.has(child))
+      if (coreChild !== child || startupFailed || coreExited(child))
         return;
       if (!startupFailed) {
         // Only a core that stays up counts as recovered. A crash that comes back right after each restart (a replayed
         // request that crashes it again) must still reach the 5-failure stop instead of looping forever.
         const stable = setTimeout(() => {
-          if (coreChild === child && !exitedCores.has(child))
+          if (coreChild === child && !coreExited(child))
             coreRestartFailures = 0;
         }, 30_000);
         child.once("exit", () => clearTimeout(stable));
@@ -764,32 +764,23 @@ async function showNewerWorkspace(): Promise<void> {
     );
 }
 
+/** Ends a core whose start failed at once, through the same stop a later pauseCore joins. */
+function killCore(child: UtilityProcess): void {
+  stopCoreProcess(child, 0).catch((error: unknown) =>
+    console.error("pyxis-core: could not be ended", (error as Error).message),
+  );
+}
+
 function pauseCore(): Promise<void> {
   holdCore = true;
   disposePythonRuntime();
   const child = coreChild;
   const stopped =
-    !child || exitedCores.has(child)
+    !child || coreExited(child)
       ? Promise.resolve()
-      : new Promise<void>((resolve, reject) => {
-          let settled = false;
-          const timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            holdCore = false;
-            reject(new Error("core-busy"));
-          }, 3000);
-          // Core checkpoints and closes the database before it exits, so the files copied next are complete.
-          // One that does not exit in time is killed.
-          const kill = setTimeout(() => child.kill(), 1500);
-          child.once("exit", () => {
-            clearTimeout(kill);
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve();
-          });
-          child.postMessage({ type: "shutdown" });
+      : stopCoreProcess(child).catch((error: unknown) => {
+          holdCore = false;
+          throw error;
         });
   return Promise.allSettled([stopped, invalidateRuntime(workspacePath)]).then(
     (results) => {
@@ -853,7 +844,7 @@ function holdForRestoreRecovery(): void {
   restoreRecoveryRequired = true;
   holdCore = true;
   const child = coreChild;
-  if (child?.pid && !exitedCores.has(child)) {
+  if (child?.pid && !coreExited(child)) {
     try {
       process.kill(child.pid, "SIGKILL");
     } catch (error) {
@@ -885,7 +876,7 @@ function registerIpc(): void {
     // open the workspace mid-swap, and the operation's own start would then leave two cores on one database. A wipe
     // that could not put the data back keeps core stopped too.
     if (workspaceBusy || holdCore) return;
-    if (coreChild && !exitedCores.has(coreChild)) return;
+    if (coreChild && !coreExited(coreChild)) return;
     coreRestartFailures = 0;
     await startCore();
   });
@@ -1141,6 +1132,12 @@ function registerIpc(): void {
     requireMainSender(event, "plan-untrusted-sender");
     return fetchPlanText(raw);
   });
+  ipcMain.handle(mainChannels.planFileTake, async (event) => {
+    requireMainSender(event, "plan-untrusted-sender");
+    const path = waitingPlanPath;
+    waitingPlanPath = null;
+    return path ? readOpenedPlan(path) : null;
+  });
   ipcMain.handle(mainChannels.workspaceBackup, async (event) => {
     requireMainSender(event, "workspace-untrusted-sender");
     const release = await takeWorkspace();
@@ -1259,7 +1256,7 @@ function registerIpc(): void {
         await pauseCore();
       } catch (error) {
         holdCore = false;
-        if (!coreChild || exitedCores.has(coreChild)) await resumeCore();
+        if (!coreChild || coreExited(coreChild)) await resumeCore();
         throw error;
       }
       let move: Awaited<ReturnType<typeof stageWorkspaceMove>> | undefined;
@@ -1406,11 +1403,46 @@ function registerProtocols(): void {
   registerRuntimeProtocol(session.defaultSession, () => workspacePath);
 }
 
-app.on("second-instance", () => {
-  if (!mainWindow) return;
+/**
+ * The plan file the system asked Pyxis to open, until the window has taken it. Only a path that main checked for a plan
+ * file name is kept, and the renderer cannot set it: it asks for the file, and main reads it (see `plan-open.ts`).
+ */
+let waitingPlanPath: string | null = null;
+
+/** True once startup has created the first window. A plan file that arrives earlier only waits (see `openPlanFile`). */
+let startupWindowCreated = false;
+
+function showWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+}
+
+function openPlanFile(path: string | null): void {
+  if (!path) return;
+  waitingPlanPath = path;
+  // The window may not exist yet (a launch from the file), or have been closed on macOS. It takes the file when it loads.
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (needsWindowForPlan(startupWindowCreated, BrowserWindow.getAllWindows().length)) createWindow();
+    return;
+  }
+  showWindow();
+  mainWindow.webContents.send(mainChannels.planFileWaiting);
+}
+
+// Windows and Linux hand the file to the first launch as an argument; a launch that finds Pyxis running hands it over
+// as the second instance's arguments.
+if (primaryInstance) waitingPlanPath = planFileFromArgv(process.argv.slice(1));
+app.on("second-instance", (_event, argv, workingDirectory) => {
+  const path = planFileFromArgv(argv.slice(1), workingDirectory);
+  if (path) openPlanFile(path);
+  else showWindow();
+});
+// macOS sends open-file for a double-click, a drop on the Dock icon and Open With, also before the app is ready.
+app.on("open-file", (event, path) => {
+  event.preventDefault();
+  if (isPlanFileName(path)) openPlanFile(path);
 });
 
 app.whenReady().then(() => {
@@ -1478,6 +1510,7 @@ app.whenReady().then(() => {
   nativeTheme.on("updated", broadcastAppearance);
   startCore();
   createWindow();
+  startupWindowCreated = true;
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

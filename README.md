@@ -181,7 +181,7 @@ npm run dist -- --publish never       # installers land in dist/
 | [Engines](docs/engines.md)                     | How model calls are routed, validated and repaired  |
 | [Mastery and recommendations](docs/mastery.md) | The formulas behind mastery, gaps and the next step |
 | [Card scheduler](docs/scheduler.md)            | How FSRS is configured                              |
-| [Plan file](docs/plan-file.md)                 | The portable `.pyxis.json` format and its schema    |
+| [Plan file](docs/plan-file.md)                 | The portable `.pyxis` format and its schema         |
 | [Design system](docs/design-system/README.md)  | Colours, type, components and the logo              |
 | [Release checks](docs/releasing.md)            | CI targets, provenance and the manual release loop  |
 

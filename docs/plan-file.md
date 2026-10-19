@@ -1,6 +1,6 @@
 # Plan file
 
-Pyxis exports a UTF-8 JSON document named `<title>.pyxis.json`. New exports use version 2. The importer still accepts version 1. The runtime definition is `src/shared/plan-file.ts`; regenerate the public JSON Schema with `npx tsx scripts/gen-plan-schema.ts`.
+Pyxis exports a UTF-8 JSON document named `<title>.pyxis`. It also opens a file named `<title>.pyxis.json`, the name earlier documentation gave. New exports use version 2. The importer still accepts version 1. The runtime definition is `src/shared/plan-file.ts`; regenerate the public JSON Schema with `npx tsx scripts/gen-plan-schema.ts`.
 
 A version 2 file contains the plan settings, ordered topics and path nodes, cards, lessons, questions, exercises, map collections and the passages those objects cite. `topic` is an index into `topics`, or null for content that belongs to the whole plan. Topics also carry their summary tree and `passageIds`. A minimal file is:
 
@@ -78,3 +78,17 @@ The schema bounds titles, IDs, quoted text, collection sizes and embedded files.
 The shared-plan screen accepts a local file or an HTTP/HTTPS URL. The main process fetches links with a 30-second timeout and a 320 MiB response limit. It follows at most five redirects, validates each public destination and pins the connection to the checked address. Whole-workspace backup and restore use a separate ZIP format and staged database validation; see `src/core/share/backup.ts`.
 
 Before writing a shared plan, the import review shows its content counts and missing originals. Each missing original can use a matching library copy, a verified local file, retained excerpts or Skip. Skip removes the original from the source list and keeps its cited quotes readable. Generated quiz questions retain their own provider and model attribution, including quizzes completed with several engines after retries.
+
+## Opening and importing
+
+A plan file reaches the import review in four ways: the shared-plan screen's file picker, a link, a double-click or Open With in the system, and a drop on the window. Installers register the `.pyxis` extension (`fileAssociations` in `electron-builder.yml`). Main receives the file as macOS `open-file` (also before the window exists), as an argument of the first launch on Windows and Linux, or as the arguments of a second launch (`second-instance`). Main keeps only a path whose name ends in `.pyxis` or `.pyxis.json`. When the renderer asks, main follows symbolic links, checks the target again for the name and for a regular file, refuses more than 320 MiB, reads it as UTF-8 and hands over the text. The renderer never names a path. A dropped file is read in the renderer under the same cap. If the student is in onboarding, on a locked page, or has a dialog or unsaved text open, the file waits until they are done.
+
+A link to Google Drive (`/file/d/<id>/view`, `/open?id=<id>`), Dropbox (`/s/` and `/scl/fi/` links) or OneDrive (`1drv.ms`, `onedrive.live.com`, and SharePoint `/:u:/` links) is rewritten once, before the first request, to the service's direct-download form (`directPlanUrl` in `src/shared/plan-file.ts`). The rewritten address and every redirect then pass the same public-address checks as any other link.
+
+Import records the file's `id` and `createdAt` with the imported plan (the `plan-import:<planId>` setting). The review shows "Already imported on" with the date when a plan still in the workspace came from a file with the same `id` and `createdAt`, and the button reads "Import a copy anyway". A later export of the same plan has a new `createdAt` and does not match. Deleting the imported plan removes the record.
+
+## Why an import fails
+
+Every refusal is a `PlanFileError` with message `plan-file` and a `reason`; the review shows a sentence for it in both languages (`shared.reason.<reason>`). Reasons: `not-a-plan`, `unknown-version`, `oversized-source`, `invalid-file`, `missing-topic`, `missing-passage`, `missing-source`, `missing-document`, `bad-reference`, `duplicate-id`, `passage-text`, `source-mismatch`, `source-data`, `document-mismatch`, `bad-body`, `bad-exercise`, `bad-map`, `bad-progress`, `library-mismatch` and `no-workspace`. The first three come from the schema or the renderer's own parse; the rest come from the importer.
+
+Exercises and maps are the two parts that nothing else in the file refers to. When a refusal comes from one of them, the importer runs every check again with that part removed and writes nothing. If the rest passes, the error carries `params.without` (`exercises`, `maps` or both), and the review offers "Import the rest". The student's choice goes back as `without` on `plans.import`. Importing without exercises also leaves out the self-ratings in the progress that name them. Lessons keep any `:::exercise` markers in their text; they no longer point at an exercise. A refusal anywhere else, or one that survives removing both parts, offers nothing.

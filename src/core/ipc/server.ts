@@ -595,6 +595,8 @@ async function dispatchValidated(
       return plans?.export(requests["plans.export"].input.parse(input));
     case "plans.import":
       return plans?.import(requests["plans.import"].input.parse(input));
+    case "plans.importedFile":
+      return plans?.importedFile(requests["plans.importedFile"].input.parse(input)) ?? null;
     case "plans.mastery":
       return plans?.mastery(requests["plans.mastery"].input.parse(input)) ?? [];
     case "plans.masteryBreakdown":

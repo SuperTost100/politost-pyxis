@@ -301,6 +301,14 @@ const bridge: PyxisBridge = {
     },
   },
   fetchPlan: (url: string) => ipcRenderer.invoke(mainChannels.planFetch, url),
+  openedPlan: {
+    take: () => ipcRenderer.invoke(mainChannels.planFileTake),
+    onWaiting: (cb) => {
+      const listener = () => cb();
+      ipcRenderer.on(mainChannels.planFileWaiting, listener);
+      return () => ipcRenderer.removeListener(mainChannels.planFileWaiting, listener);
+    },
+  },
   saveArtifact: (input) => ipcRenderer.invoke(mainChannels.artifactSave, input),
   exportPdf: (input) => ipcRenderer.invoke(mainChannels.pdfExport, input),
   printData: () => ipcRenderer.invoke(mainChannels.printData),
