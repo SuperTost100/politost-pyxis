@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { animationsSettled } from "./settled";
 
 const MAIN = join(
   process.cwd(),
@@ -148,6 +149,8 @@ test("an Anki package imports into a topic with its history, in both themes", as
     await expect(
       dialog.getByRole("button", { name: "Import 3 flashcards" }),
     ).toBeEnabled();
+    // The buttons that just changed state are still fading to their new colours; axe would measure a colour halfway.
+    await animationsSettled(page);
     expect(
       (
         await new AxeBuilder({ page }).setLegacyMode(true).analyze()

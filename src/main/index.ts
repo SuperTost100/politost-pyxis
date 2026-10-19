@@ -17,6 +17,7 @@ import {
   startLiveBackupWorker,
 } from "./auto-backup";
 import { commitRestore, RestoreRecoveryRequired } from "./restore-commit";
+import { stopCoreProcess } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
@@ -771,25 +772,9 @@ function pauseCore(): Promise<void> {
   const stopped =
     !child || exitedCores.has(child)
       ? Promise.resolve()
-      : new Promise<void>((resolve, reject) => {
-          let settled = false;
-          const timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            holdCore = false;
-            reject(new Error("core-busy"));
-          }, 3000);
-          // Core checkpoints and closes the database before it exits, so the files copied next are complete.
-          // One that does not exit in time is killed.
-          const kill = setTimeout(() => child.kill(), 1500);
-          child.once("exit", () => {
-            clearTimeout(kill);
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve();
-          });
-          child.postMessage({ type: "shutdown" });
+      : stopCoreProcess(child).catch((error: unknown) => {
+          holdCore = false;
+          throw error;
         });
   return Promise.allSettled([stopped, invalidateRuntime(workspacePath)]).then(
     (results) => {
