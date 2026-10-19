@@ -1,0 +1,128 @@
+/* Oggi sits above the plan grid: a heading row, then one list of today's steps. */
+.px-oggi {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+}
+
+.px-oggi-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.px-oggi-head h2 {
+  margin: 0;
+}
+
+.px-oggi-planner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--primary-text);
+  font: 500 calc(14px * var(--text-scale, 1)) / calc(20px * var(--text-scale, 1)) var(--font-sans);
+  text-decoration: none;
+  border-radius: var(--radius-pill);
+}
+
+.px-oggi-planner:hover {
+  text-decoration: underline;
+}
+
+.px-oggi-planner:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.px-oggi-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.px-oggi-list > li + li {
+  border-top: 1px solid var(--border);
+}
+
+.px-oggi-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 60px;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.px-oggi-item:hover {
+  background: var(--surface-raised);
+}
+
+.px-oggi-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.px-oggi-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+}
+
+.px-oggi-item.is-next .px-oggi-icon {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+
+.px-oggi-item.is-done .px-oggi-icon {
+  background: var(--mastery-soft);
+  color: var(--mastery-text);
+}
+
+.px-oggi-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.px-oggi-item.is-done .body-strong {
+  color: var(--ink-muted);
+}
+
+.px-oggi-done {
+  color: var(--mastery-text);
+  white-space: nowrap;
+}
+
+.px-oggi-item .px-tag {
+  flex: none;
+  margin: 0;
+}
+
+.px-oggi-chevron {
+  flex: none;
+  color: var(--ink-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-oggi-item {
+    transition: none;
+  }
+}

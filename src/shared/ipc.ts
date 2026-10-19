@@ -35,6 +35,21 @@ export const JobState = z.enum([
   "interrupted",
 ]);
 
+/** A dated exam in the session planner; `behind` is set when work is left on its exam day at this pace. */
+const plannerExam = z.object({
+  planId: z.string(),
+  title: z.string(),
+  subject: z.string().nullable(),
+  examDate: z.string(),
+  daysToExam: z.number().int(),
+  mastery: z.number(),
+  target: z.number(),
+  remainingMinutes: z.number(),
+  behind: z
+    .object({ daysLate: z.number().int().nullable(), masteryAtExam: z.number() })
+    .nullable(),
+});
+
 const dueCardSchema = z.object({
   id: z.string(),
   front: z.string(),
@@ -1594,6 +1609,85 @@ export const requests = {
         ),
       })
       .nullable(),
+  },
+  "plans.today": {
+    // Oggi: due flashcards from every plan as one item, then each plan's next step, closest exam first.
+    input: z.object({}),
+    output: z.object({
+      planned: z.boolean(),
+      // Dated exams the session planner says fall behind at this pace.
+      behind: z.array(plannerExam),
+      cards: z
+        .object({ due: z.number().int(), plans: z.number().int(), ratedToday: z.number().int() })
+        .nullable(),
+      items: z.array(
+        z.object({
+          planId: z.string(),
+          title: z.string(),
+          subject: z.string().nullable(),
+          daysToExam: z.number().nullable(),
+          next: z
+            .object({
+              activity: PathActivity,
+              topicId: z.string().nullable(),
+              topicTitle: z.string().nullable(),
+              reason: z.string(),
+            })
+            .nullable(),
+          done: z.array(
+            z.object({
+              activity: PathActivity,
+              topicId: z.string().nullable(),
+              topicTitle: z.string().nullable(),
+            }),
+          ),
+          // Null when the planner has no share for this plan today (no hours set, no date, or the exam is today).
+          minutesToday: z.number().nullable(),
+          minutesLeft: z.number().nullable(),
+          complete: z.boolean(),
+        }),
+      ),
+    }),
+  },
+  "plans.planner": {
+    input: z.object({}),
+    output: z.object({
+      weeklyHours: z.number().nullable(),
+      neededHours: z.number().nullable(),
+      exams: z.array(plannerExam),
+      weeks: z.array(
+        z.object({
+          start: z.string(),
+          hours: z.number(),
+          custom: z.boolean(),
+          plans: z.array(z.object({ planId: z.string(), minutes: z.number() })),
+          exams: z.array(z.string()),
+        }),
+      ),
+      days: z.array(
+        z.object({
+          date: z.string(),
+          plans: z.array(z.object({ planId: z.string(), minutes: z.number() })),
+          exams: z.array(z.string()),
+        }),
+      ),
+    }),
+  },
+  "plans.plannerHours": {
+    // The usual hours a week, or with `week` (its Monday) the hours of that week; null clears that week's own value.
+    input: z.object({
+      week: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
+      hours: z.number().min(0).max(100).nullable(),
+    }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "study.dueEverywhere": {
+    // Due cards from every plan, for Oggi's flashcards item.
+    input: z.object({}),
+    output: z.array(dueCardSchema.extend({ planId: z.string(), planTitle: z.string() })),
   },
   "plans.simulations": {
     input: z.object({ planId: z.string() }),
