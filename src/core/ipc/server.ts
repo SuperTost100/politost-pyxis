@@ -730,6 +730,10 @@ async function dispatchValidated(
       return sources?.syllabus(requests["sources.syllabus"].input.parse(input), signal);
     case "sources.reextract":
       return sources?.reextract(requests["sources.reextract"].input.parse(input));
+    case "sources.refresh":
+      return sources?.refresh(requests["sources.refresh"].input.parse(input), signal);
+    case "sources.unlockPdf":
+      return sources?.unlockPdf(requests["sources.unlockPdf"].input.parse(input));
     case "sources.remove":
       return sources?.remove(requests["sources.remove"].input.parse(input));
     case "sources.promote":

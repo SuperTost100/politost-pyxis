@@ -1,9 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { App, Button, Popover, Progress } from "antd";
 import { ListChecks, LoaderCircle } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { JobView } from "@shared/ipc";
+import { isPdfPasswordError } from "@shared/source-errors";
 import { Notice } from "../../components/Notice";
+import { PdfPasswordDialog } from "../../components/PdfPassword";
 import { invoke } from "../../lib/ipc";
 import { jobErrorKey } from "./jobErrors";
 import { useJobs } from "./queries";
@@ -12,7 +15,14 @@ function stepText(label: string, t: (key: string) => string): string {
   return t(label);
 }
 
-function JobList({ jobs }: { jobs: JobView[] }) {
+function JobList({
+  jobs,
+  onUnlock,
+}: {
+  jobs: JobView[];
+  /** Asks for the password of a locked PDF whose import stopped. */
+  onUnlock: (job: JobView) => void;
+}) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const client = useQueryClient();
@@ -49,13 +59,31 @@ function JobList({ jobs }: { jobs: JobView[] }) {
             ) : null}
             {job.state === "failed" || job.state === "cancelled" ? (
               <span className="job-actions">
-                <Button
-                  type="text"
-                  size="small"
-                  onClick={() => act("jobs.retry", job.id)}
-                >
-                  {t("jobs.retry")}
-                </Button>
+                {/* Running a locked PDF again without its password would stop the same way. */}
+                {job.state === "failed" && isPdfPasswordError(job.error) ? (
+                  <Button
+                    type="text"
+                    size="small"
+                    aria-label={
+                      job.title
+                        ? t("sources.pdfPassword.enterNamed", {
+                            title: job.title,
+                          })
+                        : undefined
+                    }
+                    onClick={() => onUnlock(job)}
+                  >
+                    {t("sources.pdfPassword.enter")}
+                  </Button>
+                ) : (
+                  <Button
+                    type="text"
+                    size="small"
+                    onClick={() => act("jobs.retry", job.id)}
+                  >
+                    {t("jobs.retry")}
+                  </Button>
+                )}
                 <Button
                   type="text"
                   size="small"
@@ -109,36 +137,52 @@ function JobList({ jobs }: { jobs: JobView[] }) {
 export function JobsButton() {
   const { t } = useTranslation();
   const { data: jobs = [] } = useJobs();
-  if (jobs.length === 0) return null;
+  const [unlocking, setUnlocking] = useState<{
+    jobId: string;
+    title: string;
+  } | null>(null);
+  // The dialog sits outside the popover, so it stays open when a click inside it closes the popover.
+  const dialog = (
+    <PdfPasswordDialog target={unlocking} onClose={() => setUnlocking(null)} />
+  );
+  if (jobs.length === 0) return dialog;
   const spinning = jobs.some(
     (job) => job.state === "running" || job.state === "queued",
   );
   return (
-    <Popover
-      trigger="click"
-      content={
-        <section
-          role="region"
+    <>
+      {dialog}
+      <Popover
+        trigger="click"
+        content={
+          <section
+            role="region"
+            aria-label={t("jobs.label", { count: jobs.length })}
+          >
+            <JobList
+              jobs={jobs}
+              onUnlock={(job) =>
+                setUnlocking({ jobId: job.id, title: job.title ?? "" })
+              }
+            />
+          </section>
+        }
+      >
+        <Button
+          type="text"
+          shape="round"
           aria-label={t("jobs.label", { count: jobs.length })}
         >
-          <JobList jobs={jobs} />
-        </section>
-      }
-    >
-      <Button
-        type="text"
-        shape="round"
-        aria-label={t("jobs.label", { count: jobs.length })}
-      >
-        <span className="jobs-trigger">
-          {spinning ? (
-            <LoaderCircle className="px-spin" size={16} strokeWidth={1.75} />
-          ) : (
-            <ListChecks size={16} strokeWidth={1.75} />
-          )}
-          <span className="meta jobs-count">{jobs.length}</span>
-        </span>
-      </Button>
-    </Popover>
+          <span className="jobs-trigger">
+            {spinning ? (
+              <LoaderCircle className="px-spin" size={16} strokeWidth={1.75} />
+            ) : (
+              <ListChecks size={16} strokeWidth={1.75} />
+            )}
+            <span className="meta jobs-count">{jobs.length}</span>
+          </span>
+        </Button>
+      </Popover>
+    </>
   );
 }

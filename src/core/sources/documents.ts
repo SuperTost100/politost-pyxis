@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import type Database from "better-sqlite3";
@@ -42,18 +43,32 @@ export type ExtractedDocument = {
 
 const emptyPage = 30;
 
+/**
+ * Reads a PDF's text layer. A PDF locked with a password stops as `pdf-password-required`, or `pdf-password-wrong` when
+ * `password` does not open it. The password is only handed to pdf.js for this read.
+ */
 export async function extractPdf(
   bytes: Uint8Array,
+  password?: string,
 ): Promise<ExtractedDocument> {
   // The modern build loads canvas only for page rendering. Text-only workers must avoid the legacy build's
   // eager native addon load: on Windows its Tokio thread can outlive the DLL when the worker stops.
-  const { getDocument } = await import("pdfjs-dist");
+  const { getDocument, PasswordResponses } = await import("pdfjs-dist");
   const doc = await getDocument({
     data: bytes,
     disableWorker: true,
     isEvalSupported: false,
     useSystemFonts: true,
-  } as Parameters<typeof getDocument>[0]).promise;
+    ...(password ? { password } : {}),
+  } as Parameters<typeof getDocument>[0]).promise.catch((error: unknown) => {
+    if (error instanceof Error && error.name === "PasswordException")
+      throw new Error(
+        (error as Error & { code?: number }).code === PasswordResponses.INCORRECT_PASSWORD
+          ? "pdf-password-wrong"
+          : "pdf-password-required",
+      );
+    throw error;
+  });
   const pages: ExtractedPage[] = [];
   for (let number = 1; number <= doc.numPages; number += 1) {
     const page = await doc.getPage(number);
@@ -131,6 +146,60 @@ function decodeXml(text: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/** The text runs of a slide or notes part, in order. */
+function runsOf(xml: string): string {
+  return [...xml.matchAll(/<a:t[^<>]*>([^<]*)<\/a:t>/g)]
+    .map((part) => decodeXml(part[1] ?? ""))
+    .join(" ")
+    .trim();
+}
+
+/** Where a relationship target points, as a path inside the archive. `dir` is the folder of the part that names it. */
+function partPath(dir: string, target: string): string {
+  if (target.startsWith("/")) return target.slice(1);
+  const parts = dir.split("/").filter(Boolean);
+  for (const segment of target.split("/")) {
+    if (segment === "..") parts.pop();
+    else if (segment && segment !== ".") parts.push(segment);
+  }
+  return parts.join("/");
+}
+
+/** Placeholders on a notes page that are not the speaker's notes: the slide picture, its number, header, footer, date. */
+const NOTES_FURNITURE = /<p:ph\b[^<>]*\btype="(?:sldImg|sldNum|hdr|ftr|dt)"/;
+
+/** Marks the speaker notes inside a slide's passage. Section labels in stored passages are English, as `slide 3` is. */
+export const SPEAKER_NOTES_LABEL = "Speaker notes:";
+
+/**
+ * The speaker notes of the slide stored at `slidePath`, found through the slide's own relationships, or "" when it has
+ * none. Only the notes body is read: the slide picture, page number, header, footer and date are skipped.
+ */
+function slideNotes(entries: BoundedZip, slidePath: string): string {
+  const slash = slidePath.lastIndexOf("/");
+  const dir = slidePath.slice(0, slash);
+  const rels = textOf(entries, `${dir}/_rels/${slidePath.slice(slash + 1)}.rels`);
+  for (const tag of rels.matchAll(/<Relationship\b[^<>]*>/g)) {
+    if (!/\bType="[^"]*\/notesSlide"/.test(tag[0])) continue;
+    const target = /\bTarget="([^"]+)"/.exec(tag[0])?.[1];
+    if (!target) continue;
+    // Each shape ends at `</p:sp>` and starts at the last `<p:sp` before it. Splitting finds them in one pass, where a
+    // lazy pattern would rescan the rest of a hostile part from every unclosed start.
+    return textOf(entries, partPath(dir, target))
+      .split("</p:sp>")
+      .slice(0, -1)
+      .map((part) => {
+        const start = Math.max(part.lastIndexOf("<p:sp>"), part.lastIndexOf("<p:sp "));
+        return start < 0 ? "" : part.slice(start);
+      })
+      .filter((shape) => shape && !NOTES_FURNITURE.test(shape))
+      .map(runsOf)
+      .filter(Boolean)
+      .join(" ");
+  }
+  return "";
+}
+
 export function extractPptx(bytes: Uint8Array): ExtractedDocument {
   const entries = openZip(bytes, OFFICE_ZIP_LIMITS);
   const presentation = textOf(entries, "ppt/presentation.xml");
@@ -151,11 +220,12 @@ export function extractPptx(bytes: Uint8Array): ExtractedDocument {
     const key = target.replace(/^\//, "").startsWith("ppt/")
       ? target.replace(/^\//, "")
       : `ppt/${target.replace(/^\.\//, "")}`;
-    const xml = textOf(entries, key);
-    const text = [...xml.matchAll(/<a:t[^<>]*>([^<]*)<\/a:t>/g)]
-      .map((part) => decodeXml(part[1] ?? ""))
-      .join(" ")
-      .trim();
+    const shown = runsOf(textOf(entries, key));
+    // Lecturers often put the explanation in the notes, so they belong to the slide's passage, marked as notes.
+    const notes = slideNotes(entries, key);
+    const text = notes
+      ? `${shown}${shown ? "\n\n" : ""}${SPEAKER_NOTES_LABEL} ${notes}`
+      : shown;
     pages.push({ text, locator: { slide }, section: `slide ${slide}` });
   }
   return { pages, scanned: false };
@@ -389,9 +459,10 @@ export function addDocumentVersion(
   appendVersion(db, sourceId, sha, kind, kept, input.extracted.extractor, (now) => {
     db.prepare(
       // A free book replaced with a document is no longer that book, so it drops the catalog link. Otherwise the books
-      // list would offer an update for it that fails.
+      // list would offer an update for it that fails. The same goes for a link: a file has no address to check again.
       `UPDATE sources
-       SET title = ?, blob_sha = ?, mime = ?, kind = ?, status = ?, catalog_id = NULL, catalog_version = NULL, updated_at = ?
+       SET title = ?, blob_sha = ?, mime = ?, kind = ?, status = ?, catalog_id = NULL, catalog_version = NULL,
+           origin_url = NULL, fetched_at = NULL, updated_at = ?
        WHERE id = ?`,
     ).run(input.title, sha, input.mime, kind, status, now, sourceId);
   });
@@ -409,11 +480,15 @@ export function addDocumentVersion(
  * as they are, and only the passages are new, so items that cite the old text keep it (marked stale) until they
  * are regenerated. A run that finds no text is refused rather than published: it would leave the source empty
  * where the old reading had text. Errors: `source-missing`, `reextract-unavailable` (no stored file), `reextract-no-text`.
+ *
+ * `snapshot` is a link fetched again: its new copy becomes the source's file in the same transaction, and the old
+ * version keeps its own copy, so a citation of the old text still opens the page as it was. The title stays.
  */
 export function addExtractionVersion(
   db: Database.Database,
   sourceId: string,
   extracted: ExtractedDocument,
+  snapshot?: { sha: string; ext: string; url: string; fetchedAt: number },
 ): StoredSource {
   const source = db
     .prepare(
@@ -424,10 +499,23 @@ export function addExtractionVersion(
   if (!source.sha) throw new Error("reextract-unavailable");
   const kept = keptPages(extracted);
   if (kept.length === 0) throw new Error("reextract-no-text");
-  appendVersion(db, sourceId, source.sha, source.kind, kept, extracted.extractor, (now) => {
+  // A link import records its snapshot's kind as a document of that type, so a fetched-again one does the same.
+  const kind = snapshot ? kindFor(snapshot.ext) : source.kind;
+  appendVersion(db, sourceId, snapshot?.sha ?? source.sha, kind, kept, extracted.extractor, (now) => {
     db.prepare(
       `UPDATE sources SET status = 'ready', updated_at = ? WHERE id = ?`,
     ).run(now, sourceId);
+    if (snapshot)
+      db.prepare(
+        `UPDATE sources SET blob_sha = ?, mime = ?, kind = ?, origin_url = ?, fetched_at = ? WHERE id = ?`,
+      ).run(
+        snapshot.sha,
+        mimeFor(snapshot.ext),
+        snapshot.ext === ".pdf" ? "pdf" : "link",
+        snapshot.url,
+        snapshot.fetchedAt,
+        sourceId,
+      );
   });
   return {
     sourceId,
@@ -459,8 +547,10 @@ export async function importDocumentFile(
 export async function extractByExt(
   bytes: Uint8Array,
   ext: string,
+  /** Opens a locked PDF. Other files ignore it. */
+  password?: string,
 ): Promise<ExtractedDocument> {
-  if (ext === ".pdf") return extractPdf(bytes);
+  if (ext === ".pdf") return extractPdf(bytes, password);
   if (ext === ".docx") return extractDocx(bytes);
   if (ext === ".pptx") return extractPptx(bytes);
   if (ext === ".md") return extractPlain(new TextDecoder().decode(bytes), true);
@@ -532,6 +622,57 @@ export function manyPagePdf(count: number, label: string): Uint8Array {
   return pdfBytes(objects);
 }
 
+/** The padding string of the PDF standard security handler. */
+const PDF_PAD = Buffer.from(
+  "28bf4e5e4e758a4164004e56fffa01082e2e00b6d0683e802f0ca9fe6453697a",
+  "hex",
+);
+
+function rc4(key: Uint8Array, data: Uint8Array): Buffer {
+  const box = Array.from({ length: 256 }, (_, index) => index);
+  for (let i = 0, j = 0; i < 256; i += 1) {
+    j = (j + box[i]! + key[i % key.length]!) & 255;
+    [box[i], box[j]] = [box[j]!, box[i]!];
+  }
+  const out = Buffer.alloc(data.length);
+  for (let n = 0, i = 0, j = 0; n < data.length; n += 1) {
+    i = (i + 1) & 255;
+    j = (j + box[i]!) & 255;
+    [box[i], box[j]] = [box[j]!, box[i]!];
+    out[n] = data[n]! ^ box[(box[i]! + box[j]!) & 255]!;
+  }
+  return out;
+}
+
+/**
+ * A one-page PDF whose only text is `label`, locked with `password` by the standard 40-bit RC4 handler (revision 2),
+ * the oldest scheme pdf.js reads. Opening it asks for the password.
+ */
+export function lockedPdf(label: string, password: string): Uint8Array {
+  const md5 = (...parts: Uint8Array[]) => createHash("md5").update(Buffer.concat(parts)).digest();
+  const padded = (text: string) => Buffer.concat([Buffer.from(text, "latin1"), PDF_PAD]).subarray(0, 32);
+  const id = Buffer.from("7079786973206c6f636b656420706466", "hex");
+  const owner = rc4(md5(padded(`${password}-owner`)).subarray(0, 5), padded(password));
+  const permissions = Buffer.from([0xfc, 0xff, 0xff, 0xff]);
+  const key = md5(padded(password), owner, permissions, id).subarray(0, 5);
+  const user = rc4(key, PDF_PAD);
+  const safe = label.replace(/[()\\]/g, "");
+  // Only the page's content stream holds a string to hide. Its key also mixes in its object number, 4.
+  const stream = rc4(
+    md5(key, Buffer.from([4, 0, 0, 0, 0])).subarray(0, 10),
+    Buffer.from(`BT /F1 12 Tf 20 100 Td (${safe}) Tj ET`, "latin1"),
+  ).toString("latin1");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Filter /Standard /V 1 /R 2 /O <${owner.toString("hex")}> /U <${user.toString("hex")}> /P -4 >>`,
+  ];
+  return pdfBytes(objects, `/Encrypt 6 0 R /ID [<${id.toString("hex")}> <${id.toString("hex")}>]`);
+}
+
 export function blankPdf(): Uint8Array {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
@@ -541,7 +682,8 @@ export function blankPdf(): Uint8Array {
   return pdfBytes(objects);
 }
 
-function pdfBytes(objects: string[]): Uint8Array {
+/** Builds the file from objects written as Latin-1 text, so binary stream bytes keep their values and offsets. */
+function pdfBytes(objects: string[], trailer = ""): Uint8Array {
   let body = "%PDF-1.4\n";
   const offsets: number[] = [];
   objects.forEach((object, index) => {
@@ -554,6 +696,6 @@ function pdfBytes(objects: string[]): Uint8Array {
     table += `${String(offset).padStart(10, "0")} 00000 n \n`;
   }
   body += table;
-  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  return new TextEncoder().encode(body);
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R${trailer ? ` ${trailer}` : ""} >>\nstartxref\n${xref}\n%%EOF`;
+  return new Uint8Array(Buffer.from(body, "latin1"));
 }

@@ -51,7 +51,7 @@ Current version is 20. A restored backup is migrated on a staging copy before it
 | engines          | A configured model provider.                                                            |
 | feature_engines  | Which engine a feature uses.                                                            |
 | subjects         | A school subject.                                                                       |
-| sources          | An imported file or link.                                                               |
+| sources          | An imported file or link. A link keeps `origin_url` and `fetched_at` of its saved copy. |
 | source_documents | One extraction version of a source.                                                     |
 | passages         | An immutable chunk of a document.                                                       |
 | passages_fts     | The full-text index of passages.                                                        |
