@@ -48,6 +48,8 @@ function groups(mac: boolean): Group[] {
       rows: [
         { id: "pick", keys: ["1–4"] },
         { id: "next", keys: ["enter"] },
+        { id: "dontKnow", keys: ["0"] },
+        { id: "skip", keys: ["S"] },
         { id: "checkText", keys: ["mod", "enter"] },
       ],
     },
