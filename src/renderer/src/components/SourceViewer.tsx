@@ -56,7 +56,7 @@ export function SourceViewer() {
           {t("sources.viewerFailed")}
         </LoadError>
       ) : null}
-      <SelectionMenu sourceIds={sourceId ? [sourceId] : []} onAsk={(chatId) => { close(); window.location.hash = `/ask/${chatId}`; }}>
+      <SelectionMenu sourceIds={sourceId ? [sourceId] : []} passageIds={rows.map((row) => row.id)} onAsk={(chatId) => { close(); window.location.hash = `/ask/${chatId}`; }}>
       <div ref={body} className="source-viewer-chapter">
         {source.data?.kind === "pdf" && source.data.blobSha ?
           <Suspense fallback={<Skeleton active />}><PdfSourcePage sha={source.data.blobSha} initialPage={current?.locator.page ?? 1} excerpt={source.data.excerpt ?? current?.text ?? ""} /></Suspense>

@@ -1739,7 +1739,8 @@
       "you": "You",
       "pyxis": "Pyxis",
       "copied": "Copied",
-      "copyFailed": "Couldn't copy. Try again."
+      "copyFailed": "Couldn't copy. Try again.",
+      "makeCards": "Make flashcards"
     },
     "quiz": {
       "correct": "Correct",
@@ -2475,6 +2476,38 @@
     "updateInUse_one": "{{count}} plan uses this book. Updating keeps the old text for that plan's citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in the plan to pick up new chapters. Update it?",
     "updateInUse_other": "{{count}} plans use this book. Updating keeps the old text for those plans' citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in each plan to pick up new chapters. Update it?",
     "retry": "Try again"
+  },
+  "makeCards": {
+    "title": "Make flashcards",
+    "action": "Make flashcards",
+    "fromReply": "From the answer",
+    "fromSelection": "From your selection",
+    "plan": "Plan",
+    "topic": "Topic",
+    "planPlaceholder": "Choose a plan",
+    "topicPlaceholder": "Choose a topic",
+    "noPlans": "Flashcards belong to a topic of a plan. Create a plan first.",
+    "hint": "Pyxis writes short flashcards from this text. You check them before they are saved.",
+    "make": "Make flashcards",
+    "again": "Make again",
+    "cancel": "Cancel",
+    "working": "Writing flashcards…",
+    "failed": "The flashcards could not be written. Check the selected engine, then try again.",
+    "saveFailed": "The flashcards could not be saved. Try again.",
+    "listLabel": "Proposed flashcards",
+    "cardN": "Flashcard {{n}}",
+    "drop": "Drop flashcard {{n}}",
+    "front": "Front",
+    "back": "Back",
+    "source": "Source",
+    "cloze": "Cloze: the words inside {{markup}} are hidden when you study.",
+    "allDropped": "You dropped every flashcard. Make again to get new ones.",
+    "save_one": "Save {{count}} flashcard",
+    "save_other": "Save {{count}} flashcards",
+    "saved_one": "Saved {{count}} flashcard to {{topic}}.",
+    "saved_other": "Saved {{count}} flashcards to {{topic}}.",
+    "skipped_one": "{{count}} was already there.",
+    "skipped_other": "{{count}} were already there."
   },
   "oggi": {
     "title": "Today",

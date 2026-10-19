@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { ChatMessage, ThinkingMessage } from "../../components/ChatMessage";
 import { Composer } from "../../components/Composer";
+import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
 import { ContextBlock } from "../../components/ContextBlock";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -101,6 +102,7 @@ const Reply = memo(function Reply({
   onRegenerate,
   onSuggest,
   onReact,
+  onMakeCards,
 }: {
   row: ChatRow;
   /** The reply that ends the chat: it carries Regenerate and the suggestions. */
@@ -109,6 +111,7 @@ const Reply = memo(function Reply({
   onRegenerate?: () => void;
   onSuggest: (text: string) => void;
   onReact: (messageId: string, reaction: "up" | "down") => void;
+  onMakeCards: (row: ChatRow) => void;
 }) {
   const citationResolver = useCallback(
     (index: number) => row.citations.find((cite) => cite.index === index)?.label,
@@ -125,6 +128,7 @@ const Reply = memo(function Reply({
     },
     [row.citations],
   );
+  const makeCards = useCallback(() => onMakeCards(row), [onMakeCards, row]);
   return (
     <ChatMessage
       engine={
@@ -135,6 +139,7 @@ const Reply = memo(function Reply({
       general={row.grounding === "general"}
       stopped={row.stopped}
       text={replyPlainText(row.body)}
+      onMakeCards={makeCards}
       reaction={row.reaction}
       regenerateDisabled={busy}
       onRegenerate={last ? onRegenerate : undefined}
@@ -739,6 +744,15 @@ export function AskPage() {
 
   const lastTutorId = lastTutor?.id;
   const regenerateNow = useStable(regenerate);
+  const makeCards = useStable((row: ChatRow) =>
+    openMakeCards({
+      text: replyPlainText(row.body),
+      origin: "reply",
+      planId: planId ?? undefined,
+      subject: subject || undefined,
+      passageIds: row.citations.map((cite) => cite.passageId),
+    }),
+  );
   const suggest = useStable((text: string) => void send(text, { textOnly: true }));
   const react = useStable((messageId: string, reaction: "up" | "down") => {
     void invoke("chats.rate", { messageId, reaction }).then(
@@ -930,6 +944,7 @@ export function AskPage() {
                 onRegenerate={chatId ? regenerateNow : undefined}
                 onSuggest={suggest}
                 onReact={react}
+                onMakeCards={makeCards}
               />
             ),
           )}

@@ -77,6 +77,13 @@ const dueCardSchema = z.object({
   }),
 });
 
+/** A card proposed from a text, before the student keeps it. `passageId` names the source passage its fact comes from. */
+const proposedCardSchema = z.object({
+  front: z.string().max(2000),
+  back: z.string().max(2000),
+  passageId: z.string().nullable(),
+});
+
 /** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
 const citationSchema = z.object({ passageId: z.string(), label: z.string() });
 // One kind of evidence in a topic's mastery: how many observations, their summed weight and weighted score, their average.
@@ -1074,6 +1081,51 @@ export const requests = {
   "study.cardsBuild": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.object({ jobId: z.string(), state: z.string() }).nullable(),
+  },
+  "study.cardsPlaces": {
+    // The plans and topics a card can go under, with a first guess from the chat's plan or subject, the lesson's topic, or the passages the text cites.
+    input: z.object({
+      planId: z.string().optional(),
+      topicId: z.string().optional(),
+      subject: z.string().optional(),
+      passageIds: z.array(z.string()).max(1000).optional(),
+    }),
+    output: z.object({
+      plans: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          subject: z.string().nullable(),
+          topics: z.array(z.object({ id: z.string(), title: z.string() })),
+        }),
+      ),
+      planId: z.string().nullable(),
+      topicId: z.string().nullable(),
+    }),
+  },
+  "study.cardsPropose": {
+    // Asks the model for cards from a text and stores nothing: the student reviews them, then saves with cardsSaveProposed.
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      text: z.string().trim().min(1).max(50_000),
+      passageIds: z.array(z.string()).max(1000),
+    }),
+    output: z.object({
+      cards: z.array(proposedCardSchema),
+      provider: z.string(),
+      model: z.string(),
+    }),
+  },
+  "study.cardsSaveProposed": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      cards: z.array(proposedCardSchema).min(1).max(20),
+      provider: z.string(),
+      model: z.string(),
+    }),
+    output: z.object({ saved: z.number().int(), skipped: z.number().int() }),
   },
   "study.gapDrillStart": {
     // `gapId` names one of the topic's gaps; without it the topic's top gap is drilled.
