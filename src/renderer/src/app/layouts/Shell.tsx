@@ -95,7 +95,7 @@ export function Shell() {
     queryKey: ["active-simulation"],
     queryFn: () => invoke("study.activeSimulation", {}),
     enabled: profile.isSuccess && Boolean(profile.data),
-    refetchInterval: 1000,
+    // No polling: the exam page invalidates this when an exam starts, runs out of time or is handed in.
   });
   // The menu leaves a running simulation alone, like the redirect below.
   useMenuLock(Boolean(activeSimulation.data));

@@ -54,8 +54,8 @@ export function mapHandlers(
       topicId: string;
       mapId?: string;
       instruction: string;
-    }) {
-      return editMap(db, input, run);
+    }, signal?: AbortSignal) {
+      return editMap(db, input, run, signal);
     },
     open(input: { planId: string; topicId: string; mapId?: string }) {
       return openTopicMap(

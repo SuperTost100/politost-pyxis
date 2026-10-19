@@ -78,6 +78,7 @@ export function ReviewPage() {
   return (
     <FocusLayout
       title={t("cards.reviewTitle")}
+      onClose={() => navigate(`/plans/${planId}`)}
       secondary={
         <Button
           type="text"

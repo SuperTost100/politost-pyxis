@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { foldText } from "../../shared/fold-text";
 import { clozeAnswer } from "./cloze";
 import type { ScheduleState } from "./schedule";
 
@@ -71,14 +72,7 @@ type Row = {
   state_json: string | null;
 };
 
-/** Lower case, no accents, one kind of apostrophe: "perche" finds "Perché" and "dell'energia" finds "dell’energia". */
-export function foldText(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .replace(/[‘’ʼ]/g, "'")
-    .toLocaleLowerCase();
-}
+export { foldText };
 
 /** What a student can read on the card, without cloze markup or emphasis marks. */
 function searchable(front: string, back: string): string {

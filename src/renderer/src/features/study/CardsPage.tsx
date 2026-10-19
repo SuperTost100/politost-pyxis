@@ -17,6 +17,7 @@ import { nextLearningDue, trackLearning, type LearningCards } from "./learningCa
 
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
 import { Notice } from "../../components/Notice";
+import { LoadError } from "../../components/LoadError";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
 type RatingName = (typeof RATINGS)[number];
@@ -28,6 +29,9 @@ type Undoable =
 
 /** Keys for the card's menu, listed in the shortcuts dialog. Space, 1 to 4 and U work on the card itself. */
 const MENU_KEYS = { edit: "e", suspend: "s", delete: "d" } as const;
+
+/** A card's text without its Markdown emphasis, for a screen reader's label. */
+const plainText = (markdown: string) => markdown.replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
 
 export function CardsPage() {
   const { t } = useTranslation();
@@ -143,8 +147,8 @@ export function CardsPage() {
   const card =
     deckCards?.find((item) => item.id === pinned) ?? deckCards?.[0];
   // Oggi's cards come from several plans; the card on screen says which one it belongs to.
-  const shown = everywhere ? dueEverywhere.data?.find((item) => item.id === card?.id) : undefined;
-  const cardPlanId = everywhere ? shown?.planId : planId;
+  const shownCard = everywhere ? dueEverywhere.data?.find((item) => item.id === card?.id) : undefined;
+  const cardPlanId = everywhere ? shownCard?.planId : planId;
   useActiveTime(cardPlanId, topicId ?? (everywhere ? (card?.topicId ?? null) : null));
   // The plan and topic of each card rated here, so each plan's path gets its own cards step.
   const [ratedIn, setRatedIn] = useState<
@@ -155,6 +159,15 @@ export function CardsPage() {
     enabled: Boolean(cardPlanId),
     queryFn: () => invoke("plans.read", { planId: cardPlanId ?? "" }),
   });
+  // Until the deck arrives (and the topic's build is known) "No cards are due." would be a guess.
+  const shown = everywhere ? dueEverywhere : reviewing ? reviewQueue : cards;
+  const deckLoading = shown.isLoading || (!reviewing && build.isLoading);
+  // Said aloud when a rating brings up the next card; the old card's buttons are gone and focus falls to the page.
+  // Until the rating's refresh has replaced the deck, the card shown is still the one just rated.
+  const nextCardText =
+    seen.length > 0 && !ratingPending && !ratingError && card
+      ? plainText(isCloze(card.front) ? clozeQuestion(card.front) : card.front)
+      : "";
   const [recorded, setRecorded] = useState(false);
   const [finishFailed, setFinishFailed] = useState(false);
   /** Records this topic's card session on the path: when its last due card is rated, or when the student closes it. */
@@ -494,10 +507,10 @@ export function CardsPage() {
       title={t(everywhere ? "oggi.cardsTitle" : reviewing ? "cards.reviewTitle" : "cards.title")}
       meta={
         sessionTotal > 0
-          ? [shown?.planTitle, t("cards.sessionProgress", { done: sessionDone, total: sessionTotal })]
+          ? [shownCard?.planTitle, t("cards.sessionProgress", { done: sessionDone, total: sessionTotal })]
               .filter(Boolean)
               .join(" \u00b7 ")
-          : shown?.planTitle
+          : shownCard?.planTitle
       }
       onClose={close}
     >
@@ -565,8 +578,17 @@ export function CardsPage() {
         {finishFailed ? (
           <Notice tone="danger">{t("planOverview.failed")}</Notice>
         ) : null}
+        <div className="visually-hidden" role="status" aria-live="polite">
+          {nextCardText ? t("cards.nextCard", { front: nextCardText }) : ""}
+        </div>
         {!card ? (
-          building ? null : waiting && learningDue != null ? (
+          building || deckLoading ? null : shown.isError ? (
+            <LoadError
+              onRetry={() => void shown.refetch()}
+            >
+              {t("cards.loadFailed")}
+            </LoadError>
+          ) : waiting && learningDue != null ? (
             <p className="body" role="status">
               {t("cards.learningWait", {
                 count: Math.max(1, Math.ceil((learningDue - clock) / 60_000)),
@@ -763,10 +785,17 @@ export function CardsPage() {
           </div>
         ) : null}
         {(parked.data ?? []).map((item) => (
-          <p key={item.id} className="small">
-            {item.front}{" "}
+          <div key={item.id} className="px-cards-parked">
+            <MarkdownView variant="body">
+              {isCloze(item.front) ? clozeAnswer(item.front) : item.front}
+            </MarkdownView>
             <Button
               shape="round"
+              aria-label={t("cards.resumeCard", {
+                front: plainText(
+                  isCloze(item.front) ? clozeAnswer(item.front) : item.front,
+                ),
+              })}
               onClick={() => {
                 act(
                   invoke("study.suspend", {
@@ -779,7 +808,7 @@ export function CardsPage() {
             >
               {t("cards.resume")}
             </Button>
-          </p>
+          </div>
         ))}
         {reviewing && reviewQueue.data?.next === "questions" && !card ? (
           <Button
@@ -806,7 +835,7 @@ export function CardsPage() {
           </Notice>
         ) : null}
         {seen.length > 0 && !card ? (
-          <p className="body">
+          <p className="body" role="status">
             {t("cards.summary", {
               seen: seen.length,
               again: counts.again,
