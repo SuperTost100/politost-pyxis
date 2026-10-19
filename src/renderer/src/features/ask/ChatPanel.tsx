@@ -53,12 +53,6 @@ export function ChatPanel({
     return () => clearTimeout(timer);
   }, [query]);
   const searching = query.trim() !== "";
-  const found = useQuery({
-    queryKey: ["chats", "search", asked],
-    queryFn: () => invoke("chats.search", { query: asked }),
-    enabled: asked !== "",
-    placeholderData: keepPreviousData,
-  });
   const [renaming, setRenamingState] = useState<{ id: string; title: string } | null>(
     null,
   );
@@ -75,10 +69,17 @@ export function ChatPanel({
   // Esc unmounts the field, so the blur that follows must not save what Esc just cancelled.
   const cancelled = useRef(false);
   const chats = history.data ?? [];
-  const hits = searching ? (found.data?.hits ?? []) : null;
   const filed = chatSubjects(chats, subjects.data ?? []);
   // A filter for a subject no chat uses any more (its last chat was deleted) shows everything again.
   const filter = filed.includes(subject) ? subject : "";
+  // Core searches within the filter, so its cap on results counts only the subject's chats.
+  const found = useQuery({
+    queryKey: ["chats", "search", asked, filter],
+    queryFn: () => invoke("chats.search", { query: asked, subject: filter || undefined }),
+    enabled: asked !== "",
+    placeholderData: keepPreviousData,
+  });
+  const hits = searching ? (found.data?.hits ?? []) : null;
   const rows = filterBySubject<{
     id: string;
     title: string | null;

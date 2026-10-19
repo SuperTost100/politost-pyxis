@@ -182,3 +182,29 @@ test("Ask: the chat list groups by date and filters by subject with the search; 
     await finish(app, userData, db);
   }
 });
+
+test("Ask: a capped chat search still finds older chats in the subject the list is filtered to", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData, db } = await launch();
+  try {
+    db.exec(`INSERT INTO subjects(id,name,position,created_at) VALUES('s-an','Analisi',0,1),('s-fis','Fisica',1,1);`);
+    const chat = db.prepare("INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES(?,?,?,?,?)");
+    // Two old Fisica chats, then more recent Analisi ones than one search shows.
+    chat.run("c-fis-1", "Derivata della velocità", "Fisica", 1, 1);
+    chat.run("c-fis-2", "Derivata dello spazio", "Fisica", 2, 2);
+    for (let i = 0; i < 55; i += 1) chat.run(`c-an-${i}`, `Derivata ${i}`, "Analisi", 100 + i, 100 + i);
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Apri le chat" }).click();
+    await page.getByRole("combobox", { name: "Filtra per materia" }).click();
+    await page.getByRole("option", { name: "Fisica" }).click();
+    await page.getByRole("textbox", { name: "Cerca nelle chat" }).fill("derivata");
+    const results = page.getByRole("list", { name: "Risultati della ricerca" }).getByRole("listitem");
+    await expect(results).toHaveCount(2);
+    await expect(page.getByText(/Aggiungi una parola per restringere la ricerca/)).toHaveCount(0);
+  } finally {
+    await finish(app, userData, db);
+  }
+});

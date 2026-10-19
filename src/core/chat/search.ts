@@ -105,7 +105,8 @@ function foldedMessage(
 
 /**
  * Chats whose title or message text contains every word of the query, ignoring case and accents ("perche" finds
- * "perché"). Newest chats first, at most MAX_HITS; `capped` says there were more. Only the text a student sees is
+ * "perché"). Newest chats first, at most MAX_HITS; `capped` says there were more. With a subject, only its chats are
+ * searched, so the cap does not hide them behind newer chats of other subjects. Only the text a student sees is
  * searched, not the stored followups, checks or citation markers. A title match shows no snippet; otherwise the
  * snippet comes from the first message that matches. Each message is folded once and kept, so only the first search
  * after start pays for reading every chat; a later keystroke only looks for the words in text already folded.
@@ -113,12 +114,15 @@ function foldedMessage(
 export function searchChats(
   db: Database.Database,
   query: string,
+  subject?: string,
 ): ChatSearchResult {
   const terms = foldText(query).split(/\s+/).filter(Boolean);
   if (terms.length === 0) return { hits: [], capped: false };
   const chats = db
-    .prepare(`SELECT id, title, updated_at FROM chats ORDER BY updated_at DESC`)
-    .all() as Array<{ id: string; title: string | null; updated_at: number }>;
+    .prepare(
+      `SELECT id, title, updated_at FROM chats WHERE ? IS NULL OR subject = ? ORDER BY updated_at DESC`,
+    )
+    .all(subject ?? null, subject ?? null) as Array<{ id: string; title: string | null; updated_at: number }>;
   const messages = db.prepare(
     `SELECT id, role, body FROM messages WHERE chat_id = ? AND role IN ('user', 'assistant') ORDER BY created_at`,
   );

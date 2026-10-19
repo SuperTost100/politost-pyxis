@@ -2305,7 +2305,7 @@ export const requests = {
     output: z.object({ ok: z.literal(true) }),
   },
   "chats.search": {
-    input: z.object({ query: z.string().max(200) }),
+    input: z.object({ query: z.string().max(200), subject: z.string().max(200).optional() }),
     output: z.object({
       hits: z.array(
         z.object({

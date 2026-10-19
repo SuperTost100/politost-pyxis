@@ -150,4 +150,21 @@ describe("searchChats limits", () => {
     expect(cut.capped).toBe(true);
     expect(search(db, "   ")).toEqual({ hits: [], capped: false });
   });
+
+  it("caps within the subject asked for, so older chats in it are not cut by newer ones elsewhere", () => {
+    const { db, chat, message } = setup();
+    for (let i = 0; i < MAX_HITS + 5; i += 1) {
+      chat(`an${i}`, null, 100 + i);
+      message(`an${i}`, "user", "derivata");
+    }
+    chat("fis", null, 1);
+    message("fis", "user", "derivata");
+    db.prepare(`UPDATE chats SET subject = 'Analisi' WHERE id LIKE 'an%'`).run();
+    db.prepare(`UPDATE chats SET subject = 'Fisica' WHERE id = 'fis'`).run();
+    expect(search(db, "derivata").capped).toBe(true);
+    expect(search(db, "derivata", "Fisica")).toEqual({
+      hits: [expect.objectContaining({ id: "fis" })],
+      capped: false,
+    });
+  });
 });
