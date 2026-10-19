@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,13 +8,12 @@ import { downloadEmbedding, embeddingConsent, indexVectors, setEmbeddingConsent 
 import { sourceHandlers } from "./handlers";
 import { sha256 } from "./quality";
 import { retrieve } from "./retrieve";
+import { tempDir } from "../test-temp";
 
 const HASH = "ab".repeat(32);
 
-const dirs: string[] = [];
 afterEach(() => {
   vi.unstubAllGlobals();
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 /** A response that sends `chunks`, `gapMs` apart, then either ends or, with `stall`, sends nothing more until aborted. */
@@ -86,8 +85,7 @@ describe("embedding download", () => {
   });
 
   it("gives up on a download that stops sending, and lets a slow one that keeps sending finish", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-embed-"));
-    dirs.push(dir);
+    const dir = tempDir("pyxis-embed-");
     await expect(
       downloadEmbedding({ dir, sha256: HASH, consent: true, idleMs: 60, fetchImpl: trickle(2, 10, true) }),
     ).rejects.toThrow("embed-download");
@@ -116,8 +114,7 @@ describe("embedding download", () => {
   });
 
   it("turning local search off cancels the model download", async () => {
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-embed-consent-"));
-    dirs.push(workspace);
+    const workspace = tempDir("pyxis-embed-consent-");
     const db = openDatabase(":memory:");
     const runner = createRunner(db, () => {});
     const handlers = sourceHandlers(db, workspace, runner);
@@ -132,8 +129,7 @@ describe("embedding download", () => {
   });
 
   it("turning local search on again while the cancelled download is still stopping starts a new one", async () => {
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-embed-consent-"));
-    dirs.push(workspace);
+    const workspace = tempDir("pyxis-embed-consent-");
     const db = openDatabase(":memory:");
     const runner = createRunner(db, () => {});
     const handlers = sourceHandlers(db, workspace, runner);
@@ -165,7 +161,7 @@ describe("embedding download", () => {
 
   it("writes the file when the hash matches and indexes passages", async () => {
     const body = "model-bytes";
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-embed-"));
+    const dir = tempDir("pyxis-embed-");
     const status = await downloadEmbedding({
       dir,
       sha256: sha256(new TextEncoder().encode(body)),

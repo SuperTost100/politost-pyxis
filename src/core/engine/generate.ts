@@ -56,7 +56,8 @@ export function setFallbackListener(
   onFallback = listener;
 }
 
-function jsonSchema(schema: z.ZodType): Record<string, unknown> {
+/** The JSON Schema sent with a structured request: unknown object properties are not allowed. */
+export function jsonSchema(schema: z.ZodType): Record<string, unknown> {
   const json = z.toJSONSchema(schema, { target: "draft-7" }) as Record<
     string,
     unknown

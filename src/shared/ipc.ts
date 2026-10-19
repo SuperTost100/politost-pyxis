@@ -27,6 +27,17 @@ export const engineProviders = [
 ] as const;
 export type EngineProvider = (typeof engineProviders)[number];
 
+/** The short check of a local model after its download: speed and one structured answer. */
+const localCheckSchema = z.object({
+  version: z.number(),
+  model: z.string(),
+  tokensPerSecond: z.number(),
+  structured: z.boolean(),
+  passed: z.boolean(),
+  at: z.number(),
+  failure: z.enum(["slow", "structured", "error"]).optional(),
+});
+
 export const JobState = z.enum([
   "queued",
   "running",
@@ -65,6 +76,13 @@ const dueCardSchema = z.object({
     ease: z.number(),
     dueAt: z.number(),
   }),
+});
+
+/** A card proposed from a text, before the student keeps it. `passageId` names the source passage its fact comes from. */
+const proposedCardSchema = z.object({
+  front: z.string().max(2000),
+  back: z.string().max(2000),
+  passageId: z.string().nullable(),
 });
 
 /** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
@@ -509,6 +527,76 @@ export const requests = {
   "engines.sendCode": {
     input: z.object({ provider: z.string(), code: z.string() }),
     output: z.object({}),
+  },
+  /**
+   * Running a model on this computer through Ollama. `reason` is null when the hardware check suggests `model`; else it
+   * says why not (`disk` with the model it would need space for). The GPU query runs once per launch.
+   */
+  "engines.local": {
+    input: z.object({}),
+    output: z.object({
+      hardware: z.object({
+        ramBytes: z.number(),
+        freeDiskBytes: z.number().nullable(),
+        gpu: z
+          .object({
+            vendor: z.enum(["apple", "nvidia", "amd", "intel", "other"]),
+            name: z.string(),
+            vramBytes: z.number().nullable(),
+            unified: z.boolean(),
+          })
+          .nullable(),
+      }),
+      reason: z.enum(["no-gpu", "vram", "ram", "disk", "unknown"]).nullable(),
+      model: z
+        .object({ id: z.string(), name: z.string(), downloadBytes: z.number() })
+        .nullable(),
+      ollama: z.object({ running: z.boolean(), version: z.string() }),
+      downloaded: z.boolean(),
+      /** A download or check in progress. */
+      task: z
+        .object({
+          phase: z.enum(["pull", "check"]),
+          completed: z.number(),
+          total: z.number(),
+        })
+        .nullable(),
+      /** How the last download or check ended when it did not finish, until the next one starts. */
+      last: z
+        .object({
+          outcome: z.enum(["failed", "cancelled"]),
+          detail: z.string(),
+        })
+        .nullable(),
+      check: localCheckSchema.nullable(),
+      /** The local model takes tasks: the student has it on and its check passed. */
+      enabled: z.boolean(),
+      installUrl: z.string(),
+      minTokensPerSecond: z.number(),
+      minimum: z.object({
+        ramGb: z.number(),
+        vramGb: z.number(),
+        unifiedGb: z.number(),
+        diskMarginGb: z.number(),
+      }),
+    }),
+  },
+  /** The student agreed: download the suggested model, then check it. Progress arrives as `engine.local`. */
+  "engines.localPull": {
+    input: z.object({ consent: z.literal(true) }),
+    output: localCheckSchema,
+  },
+  "engines.localCancel": {
+    input: z.object({}),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "engines.localCheck": {
+    input: z.object({}),
+    output: localCheckSchema,
+  },
+  "engines.localEnable": {
+    input: z.object({ enabled: z.boolean() }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "study.lesson": {
     input: z.object({
@@ -994,6 +1082,51 @@ export const requests = {
   "study.cardsBuild": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.object({ jobId: z.string(), state: z.string() }).nullable(),
+  },
+  "study.cardsPlaces": {
+    // The plans and topics a card can go under, with a first guess from the chat's plan or subject, the lesson's topic, or the passages the text cites.
+    input: z.object({
+      planId: z.string().optional(),
+      topicId: z.string().optional(),
+      subject: z.string().optional(),
+      passageIds: z.array(z.string()).max(1000).optional(),
+    }),
+    output: z.object({
+      plans: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          subject: z.string().nullable(),
+          topics: z.array(z.object({ id: z.string(), title: z.string() })),
+        }),
+      ),
+      planId: z.string().nullable(),
+      topicId: z.string().nullable(),
+    }),
+  },
+  "study.cardsPropose": {
+    // Asks the model for cards from a text and stores nothing: the student reviews them, then saves with cardsSaveProposed.
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      text: z.string().trim().min(1).max(50_000),
+      passageIds: z.array(z.string()).max(1000),
+    }),
+    output: z.object({
+      cards: z.array(proposedCardSchema),
+      provider: z.string(),
+      model: z.string(),
+    }),
+  },
+  "study.cardsSaveProposed": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      cards: z.array(proposedCardSchema).min(1).max(20),
+      provider: z.string(),
+      model: z.string(),
+    }),
+    output: z.object({ saved: z.number().int(), skipped: z.number().int() }),
   },
   "study.gapDrillStart": {
     // `gapId` names one of the topic's gaps; without it the topic's top gap is drilled.
@@ -2553,6 +2686,13 @@ export const broadcasts = {
     from: z.string(),
     to: z.string(),
     reason: z.enum(["limit", "signed-out"]),
+  }),
+  // Download and check progress of the local model.
+  "engine.local": z.object({
+    phase: z.enum(["pull", "check", "done", "failed", "cancelled"]),
+    status: z.string().optional(),
+    completed: z.number().optional(),
+    total: z.number().optional(),
   }),
   // A chunk of installer output while `engines.install` runs.
   "engine.install": z.object({ provider: z.string(), text: z.string() }),

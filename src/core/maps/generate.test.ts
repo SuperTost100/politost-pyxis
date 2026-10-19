@@ -18,6 +18,7 @@ import {
   listTopicMaps,
   moveTopicNode,
   openTopicMap,
+  patchTopicMap,
   readStoredMap,
   undoTopicMap,
 } from "./store";
@@ -213,7 +214,7 @@ describe("M10 model maps", () => {
     expect(systems[1]).not.toMatch(/\{\{[A-Za-z]/);
     db.close();
   });
-  it("does not overwrite a manual move made during model editing", async () => {
+  it("applies a model edit on top of a move made while it was writing", async () => {
     const { db, input } = fixture(1);
     await generateMaps(db, input, run);
     const id = listTopicMaps(db, input.planId, input.topicId)[0]!.id;
@@ -228,12 +229,66 @@ describe("M10 model maps", () => {
     );
     moveTopicNode(db, input.planId, input.topicId, "n1", 42, 45, id);
     release(response({ ops: [{ op: "rename", id: "n1", label: "No" }] }));
-    await expect(pending).rejects.toThrow("map-changed");
-    expect(
-      readStoredMap(db, input.planId, input.topicId, id)!.graph.nodes.find(
-        (n) => n.id === "n1",
-      )!.x,
-    ).toBe(42);
+    const edited = await pending;
+    const node = edited.nodes.find((n) => n.id === "n1")!;
+    expect([node.label, node.x, node.y]).toEqual(["No", 42, 45]);
+    const stored = readStoredMap(db, input.planId, input.topicId, id)!.graph;
+    expect(stored.nodes.find((n) => n.id === "n1")!.label).toBe("No");
+    // Undo returns to the map as the student had left it, move included.
+    const undone = undoTopicMap(db, input.planId, input.topicId, id);
+    const before = undone.nodes.find((n) => n.id === "n1")!;
+    expect([before.label === "No", before.x]).toEqual([false, 42]);
+    db.close();
+  });
+  it("names the error when the edit no longer fits the map", async () => {
+    const { db, input } = fixture(1);
+    await generateMaps(db, input, run);
+    const id = listTopicMaps(db, input.planId, input.topicId)[0]!.id;
+    const leaf = readStoredMap(db, input.planId, input.topicId, id)!.graph.nodes
+      .filter((n) => n.parent !== null)
+      .at(-1)!;
+    let release!: (value: ReturnType<typeof response>) => void;
+    const pending = editMap(
+      db,
+      { ...input, mapId: id, instruction: "Rename" },
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    patchTopicMap(
+      db,
+      input.planId,
+      input.topicId,
+      [{ op: "delete", id: leaf.id }],
+      id,
+    );
+    release(response({ ops: [{ op: "rename", id: leaf.id, label: "No" }] }));
+    await expect(pending).rejects.toMatchObject({
+      code: "map-edit-conflict",
+      messageKey: "map.editConflict",
+    });
+    db.close();
+  });
+  it("passes the caller's signal to the model and leaves the undo history out of the prompt", async () => {
+    const { db, input } = fixture(1);
+    await generateMaps(db, input, run);
+    const id = listTopicMaps(db, input.planId, input.topicId)[0]!.id;
+    moveTopicNode(db, input.planId, input.topicId, "n1", 42, 45, id);
+    const controller = new AbortController();
+    const seen: Array<{ signal?: AbortSignal; prompt: string }> = [];
+    await editMap(
+      db,
+      { ...input, mapId: id, instruction: "Rename" },
+      async (call) => {
+        seen.push({ signal: call.signal, prompt: call.prompt });
+        return response({ ops: [{ op: "rename", id: "n1", label: "Nuovo" }] });
+      },
+      controller.signal,
+    );
+    expect(seen[0]!.signal).toBe(controller.signal);
+    const graph = JSON.parse(seen[0]!.prompt).graph;
+    expect([graph.undo, graph.redo]).toEqual([null, null]);
     db.close();
   });
   it("resumes a failed part with stable IDs and retains completed checkpoints", async () => {

@@ -19,7 +19,10 @@ export type AutoModel = { id: string; efforts: Array<{ id: string }> };
 /** A provider that is ready to run a turn, with the models it lists. */
 export type AutoProvider = {
   id: string;
-  kind: "cli" | "api";
+  /** Subscription CLIs, then a local model, then per-token API keys. */
+  kind: "cli" | "api" | "local";
+  /** A local model: true when it passed the structured-output check. Plans and grading need it. */
+  structured?: boolean;
   /** True when the provider accepts an effort level. */
   effort: boolean;
   /** False when the provider refuses image attachments. Absent means it takes them. */
@@ -38,6 +41,7 @@ type TierData = {
   providerOrder: Record<Tier, string[]>;
   family: Record<string, string>;
   patterns: Record<string, Record<Tier, string[]>>;
+  local: { strictFeatures: string[] };
 };
 const data = tiers as unknown as TierData;
 
@@ -131,9 +135,19 @@ function canServe(provider: AutoProvider, feature: string): boolean {
   return usableModels(provider, feature).length > 0;
 }
 
+/** A local model never builds plans or grades unless it passed the structured-output check. */
+function allowed(provider: AutoProvider, feature: string): boolean {
+  return (
+    provider.kind !== "local" ||
+    provider.structured === true ||
+    !data.local.strictFeatures.includes(feature)
+  );
+}
+
 /**
  * Chooses a provider, model and effort for each feature without calling a
- * model. Subscription CLIs win over per-token API providers. Each tier has a
+ * model. Subscription CLIs win, then a local model the student turned on, then
+ * per-token API providers. Each tier has a
  * preferred provider; when two or more providers are ready, features move from
  * the busiest to the idlest provider while that evens out the load, so no
  * single subscription carries most of the usage.
@@ -146,13 +160,16 @@ export function planAuto(
     (provider) => provider.models.length > 0 && data.family[provider.id],
   );
   const clis = usable.filter((provider) => provider.kind === "cli");
-  const pool = clis.length ? clis : usable;
+  const local = usable.filter((provider) => provider.kind === "local");
+  const pool = clis.length ? clis : local.length ? local : usable;
   if (!pool.length) return {};
 
   const assigned = new Map<string, AutoProvider>();
   for (const feature of features) {
-    const capable = pool.filter((provider) => canServe(provider, feature));
-    const candidates = capable.length ? capable : pool;
+    const permitted = pool.filter((provider) => allowed(provider, feature));
+    if (!permitted.length) continue;
+    const capable = permitted.filter((provider) => canServe(provider, feature));
+    const candidates = capable.length ? capable : permitted;
     const order = data.providerOrder[featureTier(feature)];
     const preferred = [...candidates].sort(
       (a, b) =>
@@ -176,7 +193,12 @@ export function planAuto(
       const gap = load.get(busy.id)! - load.get(idle.id)!;
       let best: { feature: string; remaining: number } | undefined;
       for (const [feature, provider] of assigned) {
-        if (provider !== busy || !canServe(idle, feature)) continue;
+        if (
+          provider !== busy ||
+          !canServe(idle, feature) ||
+          !allowed(idle, feature)
+        )
+          continue;
         const remaining = Math.abs(gap - 2 * loadOf(feature));
         if (remaining >= gap) continue;
         const better =
@@ -196,7 +218,9 @@ export function planAuto(
 
   const plan: AutoPlan = {};
   for (const feature of features) {
-    const choice = choiceFor(assigned.get(feature)!, feature);
+    const provider = assigned.get(feature);
+    if (!provider) continue;
+    const choice = choiceFor(provider, feature);
     if (choice) plan[feature as AutoFeature] = choice;
   }
   return plan;

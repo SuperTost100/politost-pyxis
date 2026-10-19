@@ -1,6 +1,5 @@
 import { strToU8, zipSync } from "fflate";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
@@ -32,6 +31,7 @@ import {
   importRequest,
   previewPlan,
 } from "../../renderer/src/features/plans/importPreview";
+import { tempDir } from "../test-temp";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -207,7 +207,7 @@ describe("plan file", () => {
 
   it("names a source by hash and embeds the file only when asked", () => {
     const db = openDatabase(":memory:");
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-"));
+    const workspace = tempDir("pyxis-");
     const imported = importSmartbook(
       db,
       pack({
@@ -1587,7 +1587,7 @@ describe("progress keeps gap state (PRO-02, PRO-08)", () => {
 describe("import lookups stay linear in a large file", () => {
   it("rejects duplicate document versions before writing embedded sources", () => {
     const db = openDatabase(":memory:");
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-document-version-"));
+    const workspace = tempDir("pyxis-document-version-");
     const bytes = Buffer.from("Source");
     const file = planFileSchema.parse({
       version: 2, title: "Duplicate", topics: [], nodes: [], cards: [],
@@ -1686,7 +1686,7 @@ describe("an imported document keeps its original file's identity (PLAN-13)", ()
   const original = createHash("sha256").update(body).digest("hex");
 
   function pdfPlan() {
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-identity-"));
+    const workspace = tempDir("pyxis-identity-");
     const db = openDatabase(":memory:");
     putBlob(workspace, body, "application/pdf", "pdf");
     db.exec(`
@@ -1719,7 +1719,7 @@ describe("an imported document keeps its original file's identity (PLAN-13)", ()
       // A forged hash inside the document is not carried over.
       (file.documents![0]!.tree as Record<string, unknown>).blobSha = "f".repeat(64);
       const fresh = openDatabase(":memory:");
-      const copy = importPlan(fresh, file, 10, mkdtempSync(join(tmpdir(), "pyxis-identity-")));
+      const copy = importPlan(fresh, file, 10, tempDir("pyxis-identity-"));
       const sourceId = (fresh.prepare("SELECT source_id AS id FROM plan_sources WHERE plan_id = ?").get(copy) as { id: string }).id;
       const imported = fresh.prepare("SELECT tree_json FROM source_documents WHERE source_id = ?").get(sourceId) as { tree_json: string };
       expect(JSON.parse(imported.tree_json)).toMatchObject({ sourceSha: original });

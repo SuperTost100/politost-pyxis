@@ -83,15 +83,25 @@ export function WizardFrame() {
   );
   const [style, setStyle] = useState<"read" | "practice" | "decide">("decide");
   const [starting, setStarting] = useState(false);
-  // Answers given so far live only on this page, so the menu leaves it alone until it has some.
-  useMenuLock(wizardStep > 0 || starting || title.trim() !== "" || picked.length > 0);
   const [params, setParams] = useSearchParams();
   const buildPlanId = params.get("build");
+  // Answers given so far live only on this page, so the menu leaves it alone until it has some. Once the plan is
+  // created they are saved, and the build screen must not trap the student.
+  useMenuLock(
+    !buildPlanId &&
+      (wizardStep > 0 || starting || title.trim() !== "" || picked.length > 0),
+  );
   const build = useQuery({
     queryKey: ["plan-build", buildPlanId],
     queryFn: () => invoke("plans.build", { planId: buildPlanId! }),
     enabled: Boolean(buildPlanId),
-    refetchInterval: 500,
+    // Follows the job until it settles; Retry and Resume refetch by hand and bring the interval back.
+    refetchInterval: (query) =>
+      ["succeeded", "failed", "cancelled", "interrupted"].includes(
+        query.state.data?.state ?? "",
+      )
+        ? false
+        : 500,
   });
   const buildingPlan = useQuery({
     queryKey: ["plan", buildPlanId],
@@ -114,10 +124,16 @@ export function WizardFrame() {
   );
   const [topicTitles, setTopicTitles] = useState<Record<string, string>>({});
   const [startError, setStartError] = useState<string | null>(null);
+  // An error belongs to the step and the attempt that raised it.
+  function goTo(step: number) {
+    setStartError(null);
+    setWizardStep(step);
+  }
 
   async function create() {
     const name = title.trim();
     if (!name || busy) return;
+    setStartError(null);
     setStarting(true);
     try {
       const result = await invoke("plans.create", {
@@ -295,7 +311,7 @@ export function WizardFrame() {
           onClick={() =>
             wizardStep === 0
               ? navigate("/exams")
-              : setWizardStep(wizardStep - 1)
+              : goTo(wizardStep - 1)
           }
         >
           {t("nav.back")}
@@ -313,7 +329,7 @@ export function WizardFrame() {
             onClick={() =>
               wizardStep === 3 && picked.length === 0
                 ? startGuided()
-                : setWizardStep(wizardStep + 1)
+                : goTo(wizardStep + 1)
             }
           >
             {t("wizard.continue")}
@@ -402,6 +418,7 @@ export function WizardFrame() {
                 )
               }
               onClick={() => {
+                setStartError(null);
                 void invoke("subjects.add", { name: subject.trim() })
                   .then(() =>
                     client.invalidateQueries({ queryKey: ["subjects"] }),
