@@ -52,6 +52,13 @@
   max-width: 420px;
 }
 
+/* The chat's token count, quiet beside New chat. */
+.ask-usage {
+  color: var(--ink-subtle);
+  font: 400 calc(12px * var(--text-scale)) / calc(16px * var(--text-scale)) var(--font-mono);
+  white-space: nowrap;
+}
+
 .ask-greeting {
   flex: 1;
   display: flex;

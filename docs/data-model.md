@@ -27,6 +27,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 18             | `cards.search_text`, the folded text the card browser searches                          |
 | 19             | `messages.figures_json`, the images of the figures an answer drew                       |
 | 20             | `plan_sources.role` (`material` or `past_paper`) and `plan_sources.paper_json`          |
+| 21             | `messages.error`, `messages.passages_json` and the `engine_usage` table                 |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -42,7 +43,9 @@ Migration 20 lets a source be attached to a plan as a past exam (appello). `plan
 
 The past papers of a plan feed two things. The simulation builder summarises them (usual question count, duration, type and difficulty mix, a few example questions) and has the model write the exam after that summary. A practice quiz of the past questions is an ordinary `quiz` item with open answers whose body carries `pastPaper: 1`. Neither is part of a plan file: the exam text is the university's, so papers, and quizzes made from them, stay on this computer. Mastery gets no evidence from practising past questions, because their questions are not tied to a topic.
 
-Current version is 20. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 21 adds `messages.error`, the message key of the engine failure that cut a reply short (a stopped reply without it was stopped by the student), `messages.passages_json`, the passages a stopped reply was given as `{ passageId, index }` in P-number order, which Continue sends again unchanged, and `engine_usage`, one row per model call: time, provider, model, input and output tokens, prompt-cache reads and writes, and the chat and message or the job (with its kind) it was for. Those ids are plain text, not foreign keys, so the tokens of a deleted chat or a replaced reply still count in the week they were used.
+
+Current version is 21. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table            | A row is                                                                                |
 | ---------------- | --------------------------------------------------------------------------------------- |
@@ -82,6 +85,7 @@ Current version is 20. A restored backup is migrated on a staging copy before it
 | learning_events  | An append-only study event. Mastery is computed from these, not stored.                 |
 | jobs             | A long task: extraction, plan build, download.                                          |
 | job_steps        | One named step of a job. A retry skips steps that already stored output.                |
+| engine_usage     | The tokens of one model call, with the chat message or job it was for.                  |
 
 ## Saved content and history
 

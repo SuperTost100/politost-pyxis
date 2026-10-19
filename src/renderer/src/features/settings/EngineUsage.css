@@ -1,0 +1,39 @@
+.engines-usage {
+  display: grid;
+  gap: var(--space-2);
+}
+.engines-usage-empty {
+  color: var(--ink-muted);
+}
+.engines-usage-scroll {
+  overflow-x: auto;
+  margin-top: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.engines-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 14px/20px var(--font-sans);
+}
+.engines-usage-table th,
+.engines-usage-table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.engines-usage-table th:first-child {
+  text-align: left;
+  font-weight: 500;
+}
+.engines-usage-table thead th {
+  padding-block: var(--space-2);
+  color: var(--ink-muted);
+  background: var(--surface-raised);
+  font: 400 13px/18px var(--font-sans);
+  border-bottom: 1px solid var(--border);
+}
+.engines-usage-table tbody tr + tr > * {
+  border-top: 1px solid var(--border);
+}
