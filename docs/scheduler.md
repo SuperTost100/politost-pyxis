@@ -1,6 +1,8 @@
 # Card scheduler
 
-`src/core/study/schedule.ts` uses `ts-fsrs` with default parameters, target retention `0.9` and fuzz disabled. A new card is immediately due. Each review revives the stored FSRS card, calculates the selected next state and persists the complete result.
+`src/core/study/schedule.ts` uses `ts-fsrs` with default parameters, target retention `0.9` and fuzz disabled. A new card is due at once, within the daily limit below. Each review revives the stored FSRS card, calculates the selected next state and persists the complete result.
+
+A plan with an exam date caps the interval at the whole local days from today to the exam day, at least 1, so no card's next review lands after the exam. `ts-fsrs` keeps Hard, Good and Easy at least a day apart even above its `maximum_interval`, so `review()` applies the cap to the chosen card: `scheduled_days` and `due` shrink, stability and difficulty stay. A plan without a date, or whose exam is past, keeps the default maximum. `plans.exam_at` is the date read.
 
 | Button (English) | Button (Italian) | Key | Rating in code | FSRS rating |
 | ---------------- | ---------------- | --- | -------------- | ----------- |
@@ -15,11 +17,25 @@ The labels follow the FSRS names. Bene (Good) is the primary button, the everyda
 
 The JSON card state stores due date, stability, difficulty, elapsed/scheduled days, learning steps, repetitions, lapses, state and last review. `ease` remains as a compatibility field and holds the current difficulty after an FSRS review. A legacy row without full FSRS state starts from an empty FSRS card on its next review. Suspended and removed cards stay out of the due queue.
 
+## New cards per day
+
+Each exam introduces at most `cards.newPerDay` never-reviewed cards a day (a `settings` row, 20 when absent, 0 to 999, changed under Settings > Flashcards). A card counts as introduced on the day of its first review, from local midnight. `dueCards` and `countDueCards` let through the oldest new cards up to what is left of that allowance; reviewed cards are not limited. With a topic, the topic's own new cards fill the allowance, so a topic built after another still shows its cards. A stored Review queue was picked within the limit and is not limited again. The card session says when the limit hid the topic's remaining new cards.
+
+## Undo
+
+After a rating, the review screen offers Undo (button, or U). `study.undoRate` deletes that `card_reviews` row and the `card_rated` event written with it, so the card's state is the previous review again (or new) and the card is due and shown next. Only the card's latest review can go. The evidence cache triggers fire on DELETE as on INSERT, so mastery is read again. Undo also takes back a suspend, and a delete of a card Pyxis wrote (it restores it from Removed). A hand-made card is deleted for good, so the screen asks first.
+
+## Review screen
+
+The card fills the screen. Its foot holds Flip, then the four ratings and nothing else. Edit (E), Suspend (S) and Delete (D) are in the card's "…" menu. Adding a card is a disclosure under the card, closed by default. The X in the focus bar is the only exit; it records the session on the path when the student rated a card. The bar shows the session progress: ratings so far of ratings so far plus cards due. After the flip, Ask the tutor opens a chat seeded with the front, the back and the source passage. The back fades in, without motion when the system asks for reduced motion.
+
 Changing retention or scheduler parameters changes future scheduling. Keep persisted state readable and update `schedule.test.ts` when making that change.
 
 ## Card browser
 
 The Flashcards tab (`/exams/cards`) reads the same stored state. A card with no review is new, one whose latest review has `dueAt` at or before now is due, and any other card shows its next review date. Editing a card changes only its front and back, so its `card_reviews` rows and schedule stay as they were. Deleting a card Pyxis wrote sets `removed`, and Restore clears it. A hand-made card is deleted for good, so the browser asks first. Cards of an archived topic are not listed.
+
+A card with 6 or more FSRS lapses is a leech: the browser tags it "Often forgotten", the Show filter lists leeches, and the card offers Rewrite (the edit dialog), Open source (its passage) and Suspend.
 
 ## Anki packages
 

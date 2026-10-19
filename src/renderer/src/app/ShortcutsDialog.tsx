@@ -41,6 +41,10 @@ function groups(mac: boolean): Group[] {
       rows: [
         { id: "flip", keys: ["space"] },
         { id: "rate", keys: ["1–4"] },
+        { id: "undoCard", keys: ["U"] },
+        { id: "editCard", keys: ["E"] },
+        { id: "suspendCard", keys: ["S"] },
+        { id: "deleteCard", keys: ["D"] },
       ],
     },
     {

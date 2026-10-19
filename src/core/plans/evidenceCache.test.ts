@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { rateCard } from "../study/cards";
+import { rateCard, undoRating } from "../study/cards";
 import { onEvidenceChanged } from "./evidenceCache";
 import { planMastery, planSeries } from "./progress";
 
@@ -36,6 +36,20 @@ describe("cached plan mastery", () => {
     expect(planSeries(db, "p", now).chart).toEqual(
       planSeries(fresh, "p", now).chart,
     );
+    fresh.close();
+    db.close();
+  });
+
+  it("matches a fresh read after a rating is taken back", () => {
+    const { file, db } = seeded();
+    const before = planMastery(db, "p", now);
+    const { reviewId } = rateCard(db, "c", "easy", now);
+    const rated = planMastery(db, "p", now);
+    undoRating(db, reviewId);
+    const fresh = openDatabase(file);
+    expect(planMastery(db, "p", now)).toEqual(planMastery(fresh, "p", now));
+    expect(planMastery(db, "p", now)).toEqual(before);
+    expect(rated).not.toEqual(before);
     fresh.close();
     db.close();
   });

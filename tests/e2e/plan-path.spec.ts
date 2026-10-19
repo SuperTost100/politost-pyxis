@@ -564,7 +564,8 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
     expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
     await shoot(page, `${shots}/cards-review-it-light.png`);
-    await page.getByRole("button", { name: "Torna al percorso" }).first().click();
+    // The focus bar's X is the only way out of a card session.
+    await page.getByRole("button", { name: "Chiudi", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
     expect(cardJobs()).toBe(0);
     expect((await read()).steps).toEqual(withCards);
