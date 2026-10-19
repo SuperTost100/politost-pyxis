@@ -194,3 +194,28 @@
   padding: var(--space-3) var(--space-3) 0;
 }
 
+/* What the map belongs to, under its title. */
+.px-map-origin {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.px-map-origin a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border-control);
+  text-underline-offset: 3px;
+}
+.px-map-origin a:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+.px-map-export {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}

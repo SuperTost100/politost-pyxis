@@ -93,3 +93,11 @@ html:has(.px-print-body) {
 .px-print-document .katex {
   font-size: 1.08em;
 }
+.px-print-map {
+  page: map;
+  break-after: page;
+  margin: 0;
+}
+.px-print-map img {
+  display: block;
+}

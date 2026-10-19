@@ -149,6 +149,11 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await expect(page).toHaveURL(/#\/settings$/);
     await pick(app, "ask");
     await expect(page).toHaveURL(/#\/ask$/);
+    await pick(app, "maps");
+    await expect(page).toHaveURL(/#\/maps$/);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Mappe" }),
+    ).toBeVisible();
     await pick(app, "library");
     await expect(page).toHaveURL(/#\/exams\/library$/);
     await pick(app, "flashcards");

@@ -491,6 +491,10 @@ async function dispatchValidated(
     }
     case "maps.list":
       return maps?.list(requests["maps.list"].input.parse(input));
+    case "maps.all":
+      return maps?.all(requests["maps.all"].input.parse(input)) ?? [];
+    case "maps.export":
+      return maps?.export(requests["maps.export"].input.parse(input));
     case "maps.build":
       return maps?.build(requests["maps.build"].input.parse(input));
     case "maps.generate":

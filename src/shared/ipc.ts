@@ -8,6 +8,7 @@ import {
   conceptGraphSchema as conceptGraph,
   mapOpSchema as mapOp,
   mapSummarySchema,
+  mapEntrySchema,
 } from "./concept-map";
 
 /** The time limit of a simulation, in minutes. A past paper's duration is held within it. */
@@ -1218,6 +1219,23 @@ export const requests = {
   "maps.list": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.array(mapSummarySchema),
+  },
+  "maps.all": {
+    input: z.object({ query: z.string().max(200).optional() }),
+    output: z.array(mapEntrySchema),
+  },
+  "maps.export": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      mapId: z.string().optional(),
+      language: z.enum(["en", "it"]),
+    }),
+    output: z.object({
+      filename: z.string(),
+      markdown: z.string(),
+      svg: z.string(),
+    }),
   },
   "maps.build": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
