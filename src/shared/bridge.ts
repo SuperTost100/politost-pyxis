@@ -110,6 +110,16 @@ export interface PyxisBridge {
     onStatus(cb: (status: AutoBackupStatus) => void): () => void;
   };
   fetchPlan(url: string): Promise<string>;
+  /**
+   * Plan files the system opened with Pyxis (double-click, Open with, a second launch). Main keeps the path, so the
+   * renderer cannot name one; it only asks for the file that is waiting.
+   */
+  openedPlan: {
+    /** The waiting plan file's text, once; null when none is waiting. */
+    take(): Promise<OpenedPlan | null>;
+    /** A plan file is waiting. Runs whenever one is opened while the window is up. */
+    onWaiting(cb: () => void): () => void;
+  };
   saveArtifact(input: {
     filename: string;
     base64: string;
@@ -170,6 +180,8 @@ export const mainChannels = {
   autoBackupDismiss: "auto-backup:dismiss",
   autoBackupChanged: "auto-backup:changed",
   planFetch: "plan:fetch",
+  planFileTake: "plan-file:take",
+  planFileWaiting: "plan-file:waiting",
   artifactSave: "artifact:save",
   pdfExport: "artifact:pdf",
   printData: "print:data",
@@ -184,3 +196,11 @@ export const mainChannels = {
   updatesReveal: "updates:reveal",
   updatesFinish: "updates:finish",
 } as const;
+
+/** The most a plan file opened from disk or dropped on the window may hold: as much as a linked plan (`MAX_LINKED_PLAN_BYTES`). */
+export const MAX_OPENED_PLAN_BYTES = 320 * 1024 * 1024;
+
+/** A plan file the system opened with Pyxis, read in main. */
+export type OpenedPlan =
+  | { ok: true; text: string }
+  | { ok: false; reason: "not-a-plan-file" | "too-big" | "unreadable" };

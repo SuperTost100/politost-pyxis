@@ -8,6 +8,7 @@ import {
 } from "../core/ipc/file-grants";
 import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { fetchPlanText } from "./plan-fetch";
+import { isPlanFileName, needsWindowForPlan, planFileFromArgv, readOpenedPlan } from "./plan-open";
 import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
 import {
@@ -1131,6 +1132,12 @@ function registerIpc(): void {
     requireMainSender(event, "plan-untrusted-sender");
     return fetchPlanText(raw);
   });
+  ipcMain.handle(mainChannels.planFileTake, async (event) => {
+    requireMainSender(event, "plan-untrusted-sender");
+    const path = waitingPlanPath;
+    waitingPlanPath = null;
+    return path ? readOpenedPlan(path) : null;
+  });
   ipcMain.handle(mainChannels.workspaceBackup, async (event) => {
     requireMainSender(event, "workspace-untrusted-sender");
     const release = await takeWorkspace();
@@ -1396,11 +1403,46 @@ function registerProtocols(): void {
   registerRuntimeProtocol(session.defaultSession, () => workspacePath);
 }
 
-app.on("second-instance", () => {
-  if (!mainWindow) return;
+/**
+ * The plan file the system asked Pyxis to open, until the window has taken it. Only a path that main checked for a plan
+ * file name is kept, and the renderer cannot set it: it asks for the file, and main reads it (see `plan-open.ts`).
+ */
+let waitingPlanPath: string | null = null;
+
+/** True once startup has created the first window. A plan file that arrives earlier only waits (see `openPlanFile`). */
+let startupWindowCreated = false;
+
+function showWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+}
+
+function openPlanFile(path: string | null): void {
+  if (!path) return;
+  waitingPlanPath = path;
+  // The window may not exist yet (a launch from the file), or have been closed on macOS. It takes the file when it loads.
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (needsWindowForPlan(startupWindowCreated, BrowserWindow.getAllWindows().length)) createWindow();
+    return;
+  }
+  showWindow();
+  mainWindow.webContents.send(mainChannels.planFileWaiting);
+}
+
+// Windows and Linux hand the file to the first launch as an argument; a launch that finds Pyxis running hands it over
+// as the second instance's arguments.
+if (primaryInstance) waitingPlanPath = planFileFromArgv(process.argv.slice(1));
+app.on("second-instance", (_event, argv, workingDirectory) => {
+  const path = planFileFromArgv(argv.slice(1), workingDirectory);
+  if (path) openPlanFile(path);
+  else showWindow();
+});
+// macOS sends open-file for a double-click, a drop on the Dock icon and Open With, also before the app is ready.
+app.on("open-file", (event, path) => {
+  event.preventDefault();
+  if (isPlanFileName(path)) openPlanFile(path);
 });
 
 app.whenReady().then(() => {
@@ -1468,6 +1510,7 @@ app.whenReady().then(() => {
   nativeTheme.on("updated", broadcastAppearance);
   startCore();
   createWindow();
+  startupWindowCreated = true;
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
