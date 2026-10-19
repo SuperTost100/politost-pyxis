@@ -448,6 +448,7 @@ export function pathState(
     ),
     target: reachableTarget(meta.target),
     daysToExam: meta.exam_at == null ? null : daysUntil(meta.exam_at, now),
+    archived: meta.archived_at != null,
   };
 }
 
@@ -465,7 +466,7 @@ export function planGuide(
   const { topics, steps, gaps, read, hasIntro } = state;
   return {
     // An archived plan recommends nothing; restoring it brings the suggestions back.
-    next: meta.archived_at != null ? null : suggestStep({
+    next: state.archived ? null : suggestStep({
       topics,
       steps,
       hasIntro,
