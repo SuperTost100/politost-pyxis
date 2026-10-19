@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
 import {
   dueEverywhere,
@@ -296,5 +297,17 @@ describe("Oggi", () => {
       ["c-near", "near"],
       ["c-far", "far"],
     ]);
+  });
+
+  it("applies the daily limit of new cards to each plan on its own", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    addPlan(db, "b", { examIn: 9 });
+    for (const id of ["a1", "a2", "a3"]) dueCard(db, id, "a", "a-t0");
+    for (const id of ["b1", "b2", "b3"]) dueCard(db, id, "b", "b-t0");
+    setNewCardsPerDay(db, 2, now);
+    const cards = dueEverywhere(db, now);
+    expect(cards.map((card) => card.planId)).toEqual(["a", "a", "b", "b"]);
+    expect(todayPlan(db, now).cards?.due).toBe(4);
   });
 });
