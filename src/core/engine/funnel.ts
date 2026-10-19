@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import tiers from "../../../resources/model-tiers.json";
 import { createDisclosure } from "./disclosure";
 import {
   createApiProviders,
@@ -126,6 +127,8 @@ export function getFunnel(): Funnel {
       // Claude Code and Codex keep a chat's process between questions. Other runs close theirs when they end.
       sessions: { keepAlive: true, idleMs: CONVERSATION_IDLE_MS },
       history,
+      // A local model stays loaded as long as a chat's conversation lasts, so a follow-up question does not reload it.
+      ollama: { keepAlive: `${CONVERSATION_IDLE_MS / 60_000}m` },
     });
   return funnel;
 }
@@ -150,12 +153,13 @@ type Conversation = {
 const conversations = new Map<string, Conversation>();
 
 /**
- * Providers that keep a conversation between turns: Claude Code and Codex in a live process, the API providers as
- * history in this process. Cursor Agent and Antigravity start a new process for every turn and get the whole prompt.
+ * Providers that keep a conversation between turns: Claude Code and Codex in a live process, the API providers and
+ * Ollama as history in this process. Cursor Agent and Antigravity start a new process for every turn and get the whole prompt.
  */
 function keepsConversation(provider: ProviderId): boolean {
   return (
     provider.endsWith("-api") ||
+    provider === "ollama" ||
     Boolean(getFunnel().providers[provider]?.openSession)
   );
 }
@@ -260,10 +264,25 @@ export async function runTurn(input: TurnInput): Promise<EngineResult> {
   }
 }
 
+/** Ollama's own default context is a few thousand tokens and it drops the start of a longer prompt without a word. */
+function localContextWindow(model: string): number | undefined {
+  return (
+    tiers as unknown as {
+      local: { tiers: Array<{ model: string; contextWindow: number }> };
+    }
+  ).local.tiers.find((tier) => tier.model === model)?.contextWindow;
+}
+
 async function turn(input: TurnInput): Promise<EngineResult> {
   await shellPathReady();
+  const contextWindow =
+    input.selection.provider === "ollama"
+      ? (input.selection.contextWindow ??
+        localContextWindow(input.selection.model))
+      : input.selection.contextWindow;
   const selection = {
     ...input.selection,
+    ...(contextWindow ? { contextWindow } : {}),
     cwd: input.selection.cwd || scratch,
     access: "none" as const,
   };

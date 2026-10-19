@@ -2015,6 +2015,9 @@
     "title": "Engines",
     "terms": "A test sends one short sentence to the provider you pick.",
     "disclosure": "The text, the retrieved passages and the attachments leave this computer and go to that engine's vendor.",
+    "disclosureLocal": "Every task uses the model on this computer, so nothing leaves it.",
+    "disclosureMixed_one": "{{local}} runs on this computer, so nothing leaves it for that. For {{cloud}}, the text, the retrieved passages and the attachments go to that engine's vendor.",
+    "disclosureMixed_other": "{{local}} run on this computer, so nothing leaves it for them. For {{cloud}}, the text, the retrieved passages and the attachments go to that engine's vendor.",
     "acknowledge": "I understand",
     "notice": {
       "title": "What leaves this computer",
@@ -2098,7 +2101,57 @@
       "vision": "photos",
       "grading": "grading"
     },
-    "allCliAdded": "All supported CLI engines are already listed in Settings. Use their details to connect or configure them."
+    "allCliAdded": "All supported CLI engines are already listed in Settings. Use their details to connect or configure them.",
+    "local": {
+      "suggestTitle": "This computer can run a model by itself",
+      "suggestBody": "Pyxis suggests {{model}}. It runs here through Ollama, a free program, so it works offline, costs nothing and your material stays on this computer.",
+      "hardware": "This computer has {{parts}}.",
+      "gpuUnified": "an {{name}} with {{memory}} of shared memory",
+      "gpuCard": "{{name}} with {{memory}} of graphics memory",
+      "vendorCard": "an {{vendor}} graphics card",
+      "ramPart": "{{size}} of RAM",
+      "diskPart": "{{size}} free on disk",
+      "ollamaMissing": "Pyxis runs the model through Ollama. Install it and open it, then press Check again.",
+      "ollamaClosed": "Ollama is not running. Open it to use the model or run the check.",
+      "getOllama": "Get Ollama",
+      "checkAgain": "Check again",
+      "consent": "The download is {{size}} and comes from ollama.com through Ollama. Then Pyxis runs a short check: how fast {{model}} writes, and whether it answers in the format plans, grading and quizzes need.",
+      "consentHave": "Ollama already has {{model}}. Pyxis runs a short check before using it: how fast it writes, and whether it answers in the format plans, grading and quizzes need.",
+      "download": "Download {{size}}",
+      "checkNow": "Check the model",
+      "downloading": "Downloading {{model}}",
+      "progress": "{{done}} of {{total}}, {{percent}}%",
+      "checking": "Checking how {{model}} runs here",
+      "checkingBody": "Pyxis asks for one written answer and one quiz question. The first answer can take a minute while the model loads.",
+      "cancel": "Cancel",
+      "readyTitle": "{{model}} runs on this computer",
+      "offTitle": "{{model}} is off",
+      "result": "It writes {{speed}} tokens per second and answers in the format Pyxis needs.",
+      "use": "Use the local model",
+      "useHint": "Claude Code, Codex and the other subscription engines come first when one is ready. The local model comes before API keys, which cost money per use.",
+      "runCheck": "Run the check again",
+      "failed": {
+        "slow": "{{model}} wrote {{speed}} tokens per second here. Pyxis needs at least {{min}} to keep up with you, so the model stays off.",
+        "structured": "{{model}} did not answer in the format Pyxis needs for plans, grading and quizzes, so the model stays off.",
+        "error": "The check could not run. Make sure Ollama is open, then run the check again."
+      },
+      "stoppedFailed": "The download or check stopped. Make sure Ollama is open and the computer is online, then try again.",
+      "stoppedCancelled": "Cancelled. Ollama keeps what it already downloaded, so the next try continues from there.",
+      "cannotTitle": "Run a model on this computer",
+      "cannot": {
+        "no-gpu": "Pyxis does not suggest a local model here. A model good enough for studying needs an NVIDIA or AMD graphics card with at least {{vram}} GB of memory, or a Mac with Apple Silicon. On the processor alone it is too slow.",
+        "vram": "The graphics memory is too small for a model good enough for studying. It needs at least {{vram}} GB on an NVIDIA or AMD card, or {{unified}} GB of memory on a Mac with Apple Silicon.",
+        "ram": "This computer has less than {{min}} GB of RAM, too little to run a model next to Pyxis.",
+        "disk": "{{model}} needs {{size}} of free disk space. Free some space, then come back.",
+        "unknown": "Pyxis could not read this computer's graphics card, so it does not suggest a local model."
+      },
+      "cannotRun": "This computer cannot run a local model at a usable speed.",
+      "busy": "A download or check is already running.",
+      "cancelled": "Cancelled.",
+      "pullFailed": "The download or check stopped. Make sure Ollama is open, then try again.",
+      "checkFirst": "Run the check first. The local model turns on once it passes.",
+      "noStructured": "This model did not pass the format check, so it cannot build plans or grade."
+    }
   },
   "graph": {
     "title": "Graph",
