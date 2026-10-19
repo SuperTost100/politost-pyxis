@@ -4,7 +4,14 @@ import { openDatabase } from "./connection";
 import { listPlans, planGuide } from "../plans/create";
 import { planMastery, planSeries } from "../plans/progress";
 import { browseCards } from "../study/cardBrowser";
-import { countDueCards, dueCards, queueCounts, rateCard } from "../study/cards";
+import {
+  countDueCards,
+  dueCards,
+  newCardsLeftToday,
+  queueCounts,
+  rateCard,
+  undoRating,
+} from "../study/cards";
 import { currentSelfRatings } from "../study/selfRating";
 import { smartAnswers } from "../study/smartText";
 
@@ -96,7 +103,10 @@ describe("hot queries", () => {
       currentSelfRatings(db, "t", now);
       smartAnswers(db, "lesson");
       browseCards(db, { query: "velocita" }, now);
-      rateCard(db, "c2", "good", now);
+      newCardsLeftToday(db, "p", now);
+      const { reviewId } = rateCard(db, "c2", "good", now);
+      undoRating(db, reviewId);
+      browseCards(db, { status: "leech" }, now);
     });
     const scans = [...sql].flatMap((text) =>
       fullScans(db, text).map(

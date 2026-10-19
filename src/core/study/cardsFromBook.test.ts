@@ -183,6 +183,8 @@ describe("generated topic cards", () => {
       fresh: 0,
       learning: 0,
       mastered: 0,
+      due: 0,
+      newToday: { limit: 20, left: 20 },
     });
     expect(db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({
       n: 0,

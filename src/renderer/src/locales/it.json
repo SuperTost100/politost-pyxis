@@ -60,6 +60,10 @@
       "pen": "Penna",
       "eraser": "Gomma",
       "runCode": "Esegui il codice",
+      "undoCard": "Annulla l'ultima valutazione, sospensione o eliminazione",
+      "editCard": "Modifica la flashcard",
+      "suspendCard": "Sospendi la flashcard",
+      "deleteCard": "Elimina la flashcard",
       "goMaps": "Vai alle Mappe"
     },
     "keys": {
@@ -273,7 +277,10 @@
     "groupOlder": "Meno recenti",
     "subjectFilter": "Filtra per materia",
     "subjectAll": "Tutte le materie",
-    "searchNoneSubject": "Nessuna chat di {{subject}} contiene “{{query}}”."
+    "searchNoneSubject": "Nessuna chat di {{subject}} contiene “{{query}}”.",
+    "usage_one": "{{tokens}} token",
+    "usage_other": "{{tokens}} token",
+    "usageDetail": "Questa chat ha usato {{input}} token inviati, di cui {{cached}} dalla cache, e {{output}} ricevuti."
   },
   "exams": {
     "view": "Mostra",
@@ -571,6 +578,12 @@
     "reviewFailed": "Non sono riuscito a far partire il ripasso. Riprova.",
     "reviewQuestions": "Vai alle domande",
     "reviewCount": "Flashcard in questo ripasso",
+    "factDue_one": "1 flashcard in scadenza",
+    "factDue_other": "{{count}} flashcard in scadenza",
+    "factGaps_one": "1 argomento con lacune",
+    "factGaps_other": "{{count}} argomenti con lacune",
+    "factCards_one": "1 flashcard",
+    "factCards_other": "{{count}} flashcard",
     "reviewResume": "Hai un ripasso in corso. Mantiene le stesse flashcard e domande finché non lo finisci.",
     "reviewContinue": "Continua il ripasso",
     "reviewProgress": "{{done}} di {{total}} fatti · {{cards}} flashcard, {{questions}} domande",
@@ -591,7 +604,19 @@
     "reviewDrillCancelled": "Hai saltato le domande su {{topic}}. Puoi finire il ripasso senza.",
     "reviewDrillCancelledAction": "Riprova",
     "reviewDrillSkipped": "Hai saltato le domande su {{topic}}. Puoi finire il ripasso senza.",
-    "reviewDrillSkip": "Salta"
+    "reviewDrillSkip": "Salta",
+    "rated": "Hai scelto {{rating}}.",
+    "suspended": "Flashcard sospesa.",
+    "deleted": "Flashcard rimossa.",
+    "undo": "Annulla",
+    "more": "Azioni sulla flashcard",
+    "card": "Flashcard",
+    "askTutor": "Chiedi al tutor",
+    "askSource": "Fonte: {{section}}",
+    "askFailed": "Non sono riuscito ad aprire la chat con il tutor. Riprova.",
+    "sessionProgress": "{{done}} di {{total}}",
+    "dailyLimit_one": "Hai visto la {{count}} flashcard nuova di oggi per questo esame. Le altre arrivano domani. Puoi cambiare il limite nelle Impostazioni.",
+    "dailyLimit_other": "Hai visto le {{count}} flashcard nuove di oggi per questo esame. Le altre arrivano domani. Puoi cambiare il limite nelle Impostazioni."
   },
   "cardImport": {
     "open": "Importa da Anki",
@@ -650,7 +675,8 @@
       "all": "Tutte le flashcard",
       "due": "In scadenza",
       "suspended": "Sospese",
-      "removed": "Rimosse"
+      "removed": "Rimosse",
+      "leech": "Dimenticate spesso"
     },
     "noSubject": "Nessuna materia",
     "noTopic": "Nessun argomento",
@@ -680,7 +706,14 @@
     "deleted": "Flashcard rimossa. Puoi ripristinarla da Rimosse.",
     "deletedForever": "Flashcard eliminata.",
     "restored": "Flashcard ripristinata.",
-    "pages": "Pagine"
+    "pages": "Pagine",
+    "tagLeech": "Dimenticata spesso",
+    "leechHint_one": "Dimenticata {{count}} volta. Riscrivila, controlla la fonte o sospendila.",
+    "leechHint_other": "Dimenticata {{count}} volte. Riscrivila, controlla la fonte o sospendila.",
+    "rewrite": "Riscrivi",
+    "openSource": "Apri la fonte",
+    "leechHintNoSource_one": "Dimenticata {{count}} volta. Riscrivila o sospendila.",
+    "leechHintNoSource_other": "Dimenticata {{count}} volte. Riscrivila o sospendila."
   },
   "mistakes": {
     "title": "Quaderno degli errori",
@@ -830,10 +863,13 @@
     "rewritePartFailed": "Non è stato possibile riscrivere questa parte. La lezione non è cambiata. Riprova.",
     "rewritingPart": "Sto riscrivendo «{{title}}»…",
     "markDone": "Segna come fatto",
+    "done": "Fatto",
+    "doneContinue": "Fatto, continua",
     "finishPrompt": "Hai finito di leggere?",
     "recapPrompt": "Rispondi al ripasso finale per completare la lezione.",
     "doneTitle": "Lezione completata",
     "backToPath": "Torna al percorso",
+    "continue": "Continua",
     "sources": "Fonti usate",
     "page": "p. {{n}}",
     "slide": "slide {{n}}",
@@ -940,10 +976,10 @@
     "empty": "Questo piano non contiene domande d’esame o brani utilizzabili.",
     "localGrade": "Voto calcolato in locale, senza un modello.",
     "byTopic": "Per argomento",
-    "setup": "Prepara un esame scritto",
     "duration": "Tempo a disposizione",
     "material": "Domande",
     "tutorLocked": "Il tutor non è disponibile durante la prova. Le risposte si salvano mentre scrivi.",
+    "factGrading": "Correzione alla consegna",
     "timeLeft": "Tempo rimanente",
     "outOf100": "su 100",
     "modelGrade": "Valutazione stimata da {{model}}.",
@@ -1079,6 +1115,8 @@
     "factMinutes_one": "circa {{count}} minuto",
     "factMinutes_other": "circa {{count}} minuti",
     "factAnswered": "{{answered}} di {{total}} già risposte",
+    "factTopics_one": "1 argomento",
+    "factTopics_other": "{{count}} argomenti",
     "factFeedback": "Correzione dopo ogni risposta",
     "options": "Personalizza",
     "continueAttempt": "Riprendi",
@@ -1172,9 +1210,12 @@
       "gaps_one": "1 lacuna aperta",
       "gaps_other": "{{count}} lacune aperte",
       "done": "Passi fatti",
+      "doneCount_one": "1 attività fatta",
+      "doneCount_other": "{{count}} attività fatte",
+      "show": "Mostra",
+      "hide": "Nascondi",
       "planned": "In programma",
       "choose": "{{topic}}: scegli un'attività",
-      "showAll": "Mostra tutti i passi ({{count}})",
       "activity": {
         "intro": "Introduzione",
         "diagnostic": "Test diagnostico",
@@ -1614,7 +1655,10 @@
     },
     "crashOn": "Acceso: se Pyxis si chiude per errore, potrà usare un rapporto tecnico per correggerlo. Per ora Pyxis non invia nessun rapporto: la scelta resta su questo computer.",
     "crashOff": "Spento: nessun rapporto lascia questo computer.",
-    "crashContents": "Un rapporto di crash descrive lo stato tecnico del programma al momento dell'errore: versione, sistema e alcune porzioni di memoria. Pyxis non ci aggiunge i tuoi file né le tue chat, ma la memoria può contenere frammenti di ciò che stavi usando."
+    "crashContents": "Un rapporto di crash descrive lo stato tecnico del programma al momento dell'errore: versione, sistema e alcune porzioni di memoria. Pyxis non ci aggiunge i tuoi file né le tue chat, ma la memoria può contenere frammenti di ciò che stavi usando.",
+    "flashcards": "Flashcard",
+    "newPerDay": "Flashcard nuove al giorno",
+    "newPerDayHint": "Per ogni esame. Le flashcard già iniziate tornano quando scadono, qualunque sia il limite. Con 0 non ne partono di nuove."
   },
   "jobs": {
     "label_one": "{{count}} attività",
@@ -1749,6 +1793,11 @@
       "pyxis": "Pyxis",
       "copied": "Copiato",
       "copyFailed": "Non sono riuscito a copiare. Riprova.",
+      "cutOff": "Interrotta",
+      "continue": "Continua",
+      "checking": "Controllo i calcoli…",
+      "more": "Altre azioni",
+      "answerStronger": "Rispondi di nuovo con il modello più potente",
       "makeCards": "Crea flashcard"
     },
     "quiz": {
@@ -2029,6 +2078,17 @@
     "terminalInstructions": "Esegui questo comando nel terminale per completare l'accesso.",
     "termsLink": "Condizioni del fornitore",
     "termsDetail": "Le condizioni, i limiti d'uso e l'informativa sulla privacy del fornitore si applicano a ogni chiamata. Pyxis non include un abbonamento AI.",
+    "usage": {
+      "title": "Questa settimana",
+      "hint": "I token che Pyxis ha inviato a ogni motore e ricevuto da lunedì, per chat, lezioni, piani e correzioni. I motori in abbonamento li contano nei limiti del tuo piano. Le chiavi API li fanno pagare.",
+      "empty": "Nessun uso dell'AI da lunedì.",
+      "engine": "Motore",
+      "sent": "Inviati",
+      "received": "Ricevuti",
+      "cached": "Dalla cache",
+      "cachedValue": "{{count}} ({{percent}}%)",
+      "cacheSaving": "Questa settimana la cache dei prompt ha servito il {{percent}}% dei token inviati. Le chiavi API li fanno pagare meno."
+    },
     "chooseEngine": "Scegli un motore e un modello",
     "cancel": "Annulla",
     "keyRemoved": "Chiave API rimossa. Scegli un altro motore predefinito se necessario.",
@@ -2085,7 +2145,8 @@
       "quota": "Limite di utilizzo raggiunto. Riprova più tardi o scegli un altro motore.",
       "timeout": "Il motore non ha risposto in tempo. Riprova o scegli un altro motore.",
       "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
-      "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI."
+      "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI.",
+      "stream-truncated": "Il motore si è fermato prima di finire la risposta."
     },
     "feature": {
       "default": "Motore predefinito",

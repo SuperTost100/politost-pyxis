@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FunnelError } from "./funnel";
-import { translateEngineError } from "./errors";
+import { IpcError } from "../../shared/ipc";
+import { engineIpcError, translateEngineError } from "./errors";
 
 describe("translateEngineError", () => {
   it("keeps funnel codes as message keys", () => {
@@ -16,6 +17,19 @@ describe("translateEngineError", () => {
       code: "not-logged-in",
     });
     expect(translateEngineError(err, "agent").code).toBe("not-logged-in");
+  });
+
+  it("names a stream that closed before the answer finished", () => {
+    const err = Object.assign(
+      new Error("Anthropic API closed the stream before the answer finished."),
+      { code: "stream-truncated" },
+    );
+    const surfaced = engineIpcError(err, "anthropic-api");
+    expect(surfaced).toBeInstanceOf(IpcError);
+    expect(surfaced).toMatchObject({
+      code: "stream-truncated",
+      messageKey: "engines.errors.stream-truncated",
+    });
   });
 
   it("treats a refused login on a CLI engine as a lapsed sign-in, not a bad key", () => {

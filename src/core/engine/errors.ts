@@ -14,6 +14,8 @@ const funnelCodes = new Set([
   "unsupported",
   "invalid-selection",
   "aborted",
+  // The connection closed before the answer finished (CLI Funnel 0.5.0 reports it instead of a short answer).
+  "stream-truncated",
 ]);
 
 /** True when CLI Funnel attached a rate or quota `limit` to the failure. */

@@ -8,7 +8,7 @@ import { parseSmartText, smartQuestions, finalRecap } from "../../shared/smart-t
 import { MASTERY_WEIGHTS, masteryFor } from "./mastery";
 import { rewriteLessonSection, writeLesson } from "./openLesson";
 import { cacheKey, saveLesson } from "./lesson";
-import { answerSmartCheck, smartAnswers, smartSources } from "./smartText";
+import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
 import { studyHandlers } from "./handlers";
 import { planHandlers } from "../plans/handlers";
 import { exportMarkdown } from "../share/markdown";
@@ -467,6 +467,27 @@ describe("smart lessons", () => {
     expect(exported).toContain("### Ripasso finale");
     expect(exported).not.toContain("pyxis-");
     expect(smartSources(db, lesson.passageIds)[0]?.places).toHaveLength(1);
+    db.close();
+  });
+  it("labels lesson citations by section path, then paragraph, then Pn, in passage order", async () => {
+    const { db, planId, topicId, run } = setup();
+    const lesson = await writeLesson(db, planId, topicId, run);
+    const first = db
+      .prepare("SELECT source_id, section_path FROM passages WHERE id = ?")
+      .get(lesson.passageIds[0]) as { source_id: string; section_path: string };
+    expect(first.section_path).toBeTruthy();
+    const insert = db.prepare(
+      "INSERT INTO passages (id, source_id, text, locator_json, section_path, created_at) VALUES (?, ?, 'Testo', ?, NULL, 1)",
+    );
+    insert.run("paragraph-only", first.source_id, JSON.stringify({ chapter: 1, paragraph: "p9" }));
+    insert.run("bare", first.source_id, null);
+    expect(smartCitations(db, [lesson.passageIds[0]!, "paragraph-only", "bare", "missing"])).toEqual([
+      first.section_path,
+      "p9",
+      "P3",
+      "P4",
+    ]);
+    expect(smartCitations(db, [])).toEqual([]);
     db.close();
   });
   it("keeps quick checks answered through an export and import, and accepts a file without the item", async () => {

@@ -60,6 +60,10 @@
       "pen": "Pen",
       "eraser": "Eraser",
       "runCode": "Run the code",
+      "undoCard": "Undo the last rating, suspend or delete",
+      "editCard": "Edit the flashcard",
+      "suspendCard": "Suspend the flashcard",
+      "deleteCard": "Delete the flashcard",
       "goMaps": "Go to Maps"
     },
     "keys": {
@@ -273,7 +277,10 @@
     "groupOlder": "Older",
     "subjectFilter": "Filter by subject",
     "subjectAll": "All subjects",
-    "searchNoneSubject": "No chat in {{subject}} matches “{{query}}”."
+    "searchNoneSubject": "No chat in {{subject}} matches “{{query}}”.",
+    "usage_one": "{{tokens}} token",
+    "usage_other": "{{tokens}} tokens",
+    "usageDetail": "This chat used {{input}} tokens sent, {{cached}} of them from the cache, and {{output}} received."
   },
   "exams": {
     "view": "Show",
@@ -571,6 +578,12 @@
     "reviewFailed": "The review could not start. Try again.",
     "reviewQuestions": "Continue to questions",
     "reviewCount": "Flashcards in this review",
+    "factDue_one": "1 flashcard due",
+    "factDue_other": "{{count}} flashcards due",
+    "factGaps_one": "1 topic with gaps",
+    "factGaps_other": "{{count}} topics with gaps",
+    "factCards_one": "1 flashcard",
+    "factCards_other": "{{count}} flashcards",
     "reviewResume": "You have a review in progress. It keeps the same flashcards and questions until you finish it.",
     "reviewContinue": "Continue review",
     "reviewProgress": "{{done}} of {{total}} done · {{cards}} flashcards, {{questions}} questions",
@@ -591,7 +604,19 @@
     "reviewDrillCancelled": "Skipped the questions on {{topic}}. You can still finish without them.",
     "reviewDrillCancelledAction": "Try again",
     "reviewDrillSkipped": "Skipped the questions on {{topic}}. You can still finish without them.",
-    "reviewDrillSkip": "Skip"
+    "reviewDrillSkip": "Skip",
+    "rated": "Rated {{rating}}.",
+    "suspended": "Flashcard suspended.",
+    "deleted": "Flashcard removed.",
+    "undo": "Undo",
+    "more": "Flashcard actions",
+    "card": "Flashcard",
+    "askTutor": "Ask the tutor",
+    "askSource": "Source: {{section}}",
+    "askFailed": "The tutor chat could not open. Try again.",
+    "sessionProgress": "{{done}} of {{total}}",
+    "dailyLimit_one": "That's today's {{count}} new flashcard for this exam. The rest start tomorrow. You can change the limit in Settings.",
+    "dailyLimit_other": "That's today's {{count}} new flashcards for this exam. The rest start tomorrow. You can change the limit in Settings."
   },
   "cardImport": {
     "open": "Import from Anki",
@@ -650,7 +675,8 @@
       "all": "All flashcards",
       "due": "Due now",
       "suspended": "Suspended",
-      "removed": "Removed"
+      "removed": "Removed",
+      "leech": "Often forgotten"
     },
     "noSubject": "No subject",
     "noTopic": "No topic",
@@ -680,7 +706,14 @@
     "deleted": "Flashcard removed. You can restore it under Removed.",
     "deletedForever": "Flashcard deleted.",
     "restored": "Flashcard restored.",
-    "pages": "Pages"
+    "pages": "Pages",
+    "tagLeech": "Often forgotten",
+    "leechHint_one": "Forgotten {{count}} time. Rewrite it, check the source, or suspend it.",
+    "leechHint_other": "Forgotten {{count}} times. Rewrite it, check the source, or suspend it.",
+    "rewrite": "Rewrite",
+    "openSource": "Open source",
+    "leechHintNoSource_one": "Forgotten {{count}} time. Rewrite it or suspend it.",
+    "leechHintNoSource_other": "Forgotten {{count}} times. Rewrite it or suspend it."
   },
   "mistakes": {
     "title": "Mistakes notebook",
@@ -830,10 +863,13 @@
     "rewritePartFailed": "This part could not be rewritten. The lesson is unchanged. Try again.",
     "rewritingPart": "Rewriting “{{title}}”…",
     "markDone": "Mark as done",
+    "done": "Done",
+    "doneContinue": "Done, continue",
     "finishPrompt": "Finished reading?",
     "recapPrompt": "Answer the recap to complete the lesson.",
     "doneTitle": "Lesson complete",
     "backToPath": "Back to the path",
+    "continue": "Continue",
     "sources": "Sources used",
     "page": "p. {{n}}",
     "slide": "slide {{n}}",
@@ -940,10 +976,10 @@
     "empty": "No usable exam questions or source passages are available in this plan.",
     "localGrade": "Scored on this computer, without a model.",
     "byTopic": "By topic",
-    "setup": "Set up a written exam",
     "duration": "Time limit",
     "material": "Questions",
     "tutorLocked": "The tutor is unavailable during the attempt. Your answers save as you write.",
+    "factGrading": "Graded when you hand it in",
     "timeLeft": "Time remaining",
     "outOf100": "out of 100",
     "modelGrade": "Estimated grade by {{model}}.",
@@ -1079,6 +1115,8 @@
     "factMinutes_one": "about {{count}} minute",
     "factMinutes_other": "about {{count}} minutes",
     "factAnswered": "{{answered}} of {{total}} answered",
+    "factTopics_one": "1 topic",
+    "factTopics_other": "{{count}} topics",
     "factFeedback": "Feedback after each answer",
     "options": "Customize",
     "continueAttempt": "Resume",
@@ -1172,9 +1210,12 @@
       "gaps_one": "1 open gap",
       "gaps_other": "{{count}} open gaps",
       "done": "Steps done",
+      "doneCount_one": "1 activity done",
+      "doneCount_other": "{{count}} activities done",
+      "show": "Show",
+      "hide": "Hide",
       "planned": "Coming up",
       "choose": "{{topic}}: choose an activity",
-      "showAll": "Show all steps ({{count}})",
       "activity": {
         "intro": "Introduction",
         "diagnostic": "Diagnostic test",
@@ -1614,7 +1655,10 @@
     },
     "crashOn": "On: if Pyxis closes by mistake, it can use a technical report to fix it. For now Pyxis sends no report: this choice stays on this computer.",
     "crashOff": "Off: no report leaves this computer.",
-    "crashContents": "A crash report describes the technical state of the app when the error happened: version, system and some portions of memory. Pyxis adds none of your files or chats to it, but memory can hold fragments of what you were using."
+    "crashContents": "A crash report describes the technical state of the app when the error happened: version, system and some portions of memory. Pyxis adds none of your files or chats to it, but memory can hold fragments of what you were using.",
+    "flashcards": "Flashcards",
+    "newPerDay": "New flashcards per day",
+    "newPerDayHint": "For each exam. Flashcards you have started come back when they are due, whatever the limit. With 0 no new ones start."
   },
   "jobs": {
     "label_one": "{{count}} background task",
@@ -1749,6 +1793,11 @@
       "pyxis": "Pyxis",
       "copied": "Copied",
       "copyFailed": "Couldn't copy. Try again.",
+      "cutOff": "Cut off",
+      "continue": "Continue",
+      "checking": "Checking the math…",
+      "more": "More actions",
+      "answerStronger": "Answer again with the strongest model",
       "makeCards": "Make flashcards"
     },
     "quiz": {
@@ -2029,6 +2078,17 @@
     "terminalInstructions": "Run this command in your terminal to finish sign-in.",
     "termsLink": "Provider terms",
     "termsDetail": "Your provider's terms, usage limits and privacy policy apply to every call. Pyxis does not include an AI subscription.",
+    "usage": {
+      "title": "This week",
+      "hint": "Tokens Pyxis sent to each engine and received since Monday, for chats, lessons, plans and grading. Engines on a subscription count them against your plan's limits. API keys are billed for them.",
+      "empty": "No AI use counted since Monday.",
+      "engine": "Engine",
+      "sent": "Sent",
+      "received": "Received",
+      "cached": "From the cache",
+      "cachedValue": "{{count}} ({{percent}}%)",
+      "cacheSaving": "The prompt cache served {{percent}}% of the tokens sent this week. API keys bill those at a lower rate."
+    },
     "chooseEngine": "Choose an engine and model",
     "cancel": "Cancel",
     "keyRemoved": "API key removed. Choose another default engine if needed.",
@@ -2085,7 +2145,8 @@
       "quota": "Usage limit reached. Try again later or pick another engine.",
       "timeout": "The engine did not answer in time. Try again, or pick another engine.",
       "engine-missing": "Choose and test an engine in Settings before continuing.",
-      "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines."
+      "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines.",
+      "stream-truncated": "The engine stopped before the answer was finished."
     },
     "feature": {
       "default": "Default engine",

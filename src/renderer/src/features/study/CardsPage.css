@@ -37,39 +37,126 @@
   gap: var(--space-2);
   margin-left: auto;
 }
+/* The card fills the screen below the toolbar: the text in the middle, the ratings at its foot. */
 .px-cards .px-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-6);
+  gap: var(--space-4);
+  min-height: max(360px, calc(100vh - 300px));
+  padding: var(--space-4) var(--space-6) var(--space-6);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background: var(--surface);
 }
-.px-cards .px-card > .ant-btn,
-.px-cards .px-card > .px-citation-chip {
-  align-self: flex-start;
+.px-card-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-right: calc(var(--space-3) * -1);
+}
+/* The front keeps its place when the back appears below it, so the flip does not move the question. */
+.px-card-face {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-top: clamp(var(--space-4), 10vh, var(--space-16));
+  overflow-wrap: anywhere;
+}
+.px-card-front .px-markdown {
+  font-size: calc(20px * var(--text-scale, 1));
+  line-height: calc(30px * var(--text-scale, 1));
+  font-weight: 500;
+}
+.px-card-back {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .px-card-back {
+    animation: px-card-reveal 180ms ease-out;
+  }
+}
+@keyframes px-card-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 .px-cards .px-card .px-markdown > :last-child {
   margin-bottom: 0;
 }
-.px-cards .px-cards-actions {
+.px-card-links {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
+}
+.px-card-foot {
+  display: flex;
+  justify-content: center;
+}
+.px-card-foot > .ant-btn {
+  min-width: 160px;
+}
+.px-cards .px-cards-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  width: 100%;
 }
 .px-cards .px-cards-actions .ant-btn {
   white-space: nowrap;
 }
-.px-cards .px-cards-add {
+@media (max-width: 560px) {
+  .px-cards .px-card {
+    padding-inline: var(--space-4);
+  }
+  .px-cards .px-cards-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.px-card-edit {
+  flex: 1;
   display: grid;
+  align-content: start;
   gap: var(--space-2);
-  padding-top: var(--space-5);
+}
+.px-card-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin-top: var(--space-2);
+}
+.px-cards-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
+}
+.px-cards-undo > p {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-cards .px-cards-add {
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
-.px-cards .px-cards-add h2 {
-  margin: 0 0 var(--space-2);
+.px-cards .px-cards-add[open] {
+  display: grid;
+  gap: var(--space-2);
+}
+.px-cards .px-cards-add summary {
+  cursor: pointer;
+  width: fit-content;
+  border-radius: var(--radius-sm);
+}
+.px-cards .px-cards-add[open] summary {
+  margin-bottom: var(--space-2);
 }
 .px-cards .px-cards-add > .ant-btn {
   justify-self: start;
@@ -86,10 +173,6 @@
 .px-cards button kbd {
   color: inherit;
 }
-.px-cards .px-cards-manage {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
 .px-review-progress {
   display: flex;
   flex-direction: column;
@@ -98,15 +181,15 @@
 .px-review-progress > p {
   margin: 0;
 }
-.px-review-count {
-  margin: var(--space-5) 0;
-}
-.px-review-count .label {
-  margin: 0 0 var(--space-2);
-}
-.px-review-actions {
+/* A review in progress, on the review's intro: where it stands, and a quiet way to drop it. */
+.px-review-resume {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.px-review-resume > p {
+  margin: 0;
+}
+.px-review-discard.ant-btn {
+  align-self: flex-start;
 }

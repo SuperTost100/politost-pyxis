@@ -5,6 +5,7 @@ import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
 import { setFallbackListener } from "../engine/generate";
+import { setUsageRecorder, storeUsage } from "../engine/usage";
 import {
   IpcError,
   requests,
@@ -13,6 +14,7 @@ import {
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
+import { setChecksListener } from "../chat/turn";
 import { registerRuntimeJob, toolHandlers } from "../math/handlers";
 import { mapHandlers } from "../maps/handlers";
 import { planHandlers } from "../plans/handlers";
@@ -254,6 +256,8 @@ async function dispatchValidated(
     case "engines.features":
       requests["engines.features"].input.parse(input);
       return engines?.features();
+    case "engines.usage":
+      return engines?.usage(requests["engines.usage"].input.parse(input));
     case "engines.autoConfigure":
       return engines?.autoConfigure(
         requests["engines.autoConfigure"].input.parse(input),
@@ -317,7 +321,7 @@ async function dispatchValidated(
       return study?.lesson(requests["study.lesson"].input.parse(input), {
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
-        onPassages: (passageIds) => emit?.({ type: "sources", passageIds }),
+        onPassages: (passageIds, citations) => emit?.({ type: "sources", passageIds, citations }),
       });
     case "study.lessonSection":
       return study?.lessonSection(
@@ -470,6 +474,13 @@ async function dispatchValidated(
       );
     case "study.queue":
       return study?.queue(requests["study.queue"].input.parse(input));
+    case "study.cardSettings":
+      requests["study.cardSettings"].input.parse(input);
+      return study?.cardSettings();
+    case "study.saveCardSettings":
+      return study?.saveCardSettings(
+        requests["study.saveCardSettings"].input.parse(input),
+      );
     case "study.save":
       return study?.save(requests["study.save"].input.parse(input));
     case "study.remove":
@@ -492,6 +503,8 @@ async function dispatchValidated(
       );
     case "study.rate":
       return study?.rate(requests["study.rate"].input.parse(input));
+    case "study.undoRate":
+      return study?.undoRate(requests["study.undoRate"].input.parse(input));
     case "study.active":
       return study?.active(requests["study.active"].input.parse(input));
     case "study.exercises":
@@ -816,6 +829,14 @@ export function bindEngines(
 ): void {
   configureDisclosure(db);
   setFallbackListener((event) => broadcast("engine.fallback", event));
+  setUsageRecorder((usage, where) => {
+    // Counting is bookkeeping: a write that fails must not fail the answer it counts.
+    try {
+      storeUsage(db, usage, where);
+    } catch (err) {
+      console.error("pyxis: token usage not stored", err);
+    }
+  });
   engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
@@ -867,6 +888,7 @@ export function bindChat(
   replyDelayMs = 0,
 ): void {
   chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs);
+  setChecksListener((event) => broadcast("chats.checks", event));
 }
 
 export function bindSources(

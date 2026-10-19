@@ -382,6 +382,8 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
           { timeout: 120000 },
         )
         .toBe("succeeded");
+    // Adding a card sits in a disclosure, closed by default.
+    await page.getByText("Aggiungi una flashcard", { exact: true }).click();
     await page
       .getByRole("textbox", { name: "Davanti", exact: true })
       .fill("What is velocity?");

@@ -1,8 +1,12 @@
 import type Database from "better-sqlite3";
 import { foldText } from "../../shared/fold-text";
 import { clozeAnswer } from "./cloze";
+import type { ScheduleState } from "./schedule";
 
-export type CardStatus = "all" | "due" | "suspended" | "removed";
+export type CardStatus = "all" | "due" | "suspended" | "removed" | "leech";
+
+/** A card forgotten this many times (FSRS lapses) is a leech: the browser marks it and offers to rewrite or suspend it. */
+export const leechLapses = 6;
 
 export type BrowsedCard = {
   id: string;
@@ -21,6 +25,12 @@ export type BrowsedCard = {
   /** `new` has never been rated; `due` is ready now; `scheduled` waits for `dueAt`. */
   state: "new" | "due" | "scheduled";
   dueAt: number | null;
+  /** Times the student forgot the card after learning it (FSRS lapses). */
+  lapses: number;
+  leech: boolean;
+  /** The source passage the card was written from, to open it. */
+  passageId: string | null;
+  sourceId: string | null;
 };
 
 export type BrowseResult = {
@@ -57,7 +67,9 @@ type Row = {
   suspended: number;
   removed: number;
   seed_key: string | null;
-  due_at: number | null;
+  passage_id: string | null;
+  source_id: string | null;
+  state_json: string | null;
 };
 
 export { foldText };
@@ -108,9 +120,10 @@ export function browseCards(
     .prepare(
       `SELECT c.id, c.front, c.back, c.plan_id, p.title AS plan_title,
         c.topic_id, t.title AS topic_title, s.id AS subject_id, s.name AS subject_name,
-        c.suspended, c.removed, c.seed_key,
-        (SELECT CAST(json_extract(cr.state_json, '$.dueAt') AS INTEGER) FROM card_reviews cr
-         WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS due_at
+        c.suspended, c.removed, c.seed_key, c.passage_id,
+        (SELECT ps.source_id FROM passages ps WHERE ps.id = c.passage_id) AS source_id,
+        (SELECT cr.state_json FROM card_reviews cr
+         WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS state_json
        FROM cards c
        JOIN plans p ON p.id = c.plan_id
        LEFT JOIN topics t ON t.id = c.topic_id
@@ -136,9 +149,15 @@ export function browseCards(
   for (const row of rows) {
     if (status === "removed" ? !row.removed : row.removed) continue;
     if (status === "suspended" && !row.suspended) continue;
-    const dueAt = row.due_at;
+    const saved = row.state_json
+      ? (JSON.parse(row.state_json) as ScheduleState)
+      : null;
+    const dueAt = saved ? Number(saved.dueAt) : null;
     const state = dueAt == null ? "new" : dueAt <= now ? "due" : "scheduled";
     if (status === "due" && (row.suspended || state === "scheduled")) continue;
+    const lapses = saved?.fsrs?.lapses ?? 0;
+    const leech = lapses >= leechLapses;
+    if (status === "leech" && !leech) continue;
     matches.push({
       id: row.id,
       front: row.front,
@@ -154,6 +173,10 @@ export function browseCards(
       handMade: row.seed_key == null,
       state,
       dueAt,
+      lapses,
+      leech,
+      passageId: row.passage_id,
+      sourceId: row.source_id,
     });
   }
 

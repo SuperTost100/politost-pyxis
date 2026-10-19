@@ -2,14 +2,19 @@ import { readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import {
+  countDueCards,
   deleteCard,
   dueCards,
+  newCardsLeftToday,
+  newCardsPerDay,
   queueCounts,
   rateCard,
   restoreCard,
   saveCard,
+  setNewCardsPerDay,
   setSuspended,
   suspendedCards,
+  undoRating,
 } from "./cards";
 import { browseCards } from "./cardBrowser";
 import { mistakesNotebook, startRedo } from "./notebook";
@@ -35,7 +40,7 @@ import {
   writeLesson,
   type Wording,
 } from "./openLesson";
-import { answerSmartCheck, smartAnswers, smartSources } from "./smartText";
+import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
 import { currentSelfRatings, rateExercise, type SelfRating } from "./selfRating";
 import type { Rating } from "./schedule";
 import { runTurn } from "../engine/funnel";
@@ -97,6 +102,7 @@ function readingFor(db: Database.Database) {
     ...lesson,
     answers: lesson.itemId && !lesson.fallback ? smartAnswers(db, lesson.itemId) : {},
     sources: smartSources(db, lesson.passageIds),
+    citations: smartCitations(db, lesson.passageIds),
   });
 }
 
@@ -154,9 +160,11 @@ export function studyHandlers(
       options?: {
         signal?: AbortSignal;
         onDelta?: (text: string) => void;
-        onPassages?: (passageIds: string[]) => void;
+        /** The passages the lesson is written from, with their chip labels, before the text streams. */
+        onPassages?: (passageIds: string[], citations: string[]) => void;
       },
     ) {
+      const onPassages = options?.onPassages;
       const saved =
         input.itemId && !input.regenerate
           ? readLessonItem(db, input.planId, input.topicId, input.itemId)
@@ -164,6 +172,7 @@ export function studyHandlers(
       if (saved) return Promise.resolve(withReading(saved));
       return writeLesson(db, input.planId, input.topicId, run ?? runTurn, {
         ...options,
+        onPassages: onPassages && ((ids) => onPassages(ids, smartCitations(db, ids))),
         wording: input.wording,
         regenerate: input.regenerate,
       }).then((lesson) => withReading(lesson));
@@ -368,7 +377,18 @@ export function studyHandlers(
       return dueCards(db, input.planId, Date.now(), input.topicId);
     },
     queue(input: { planId: string; topicId: string }) {
-      return queueCounts(db, input.planId, input.topicId);
+      const now = Date.now();
+      return {
+        ...queueCounts(db, input.planId, input.topicId),
+        due: countDueCards(db, input.planId, now, input.topicId),
+        newToday: newCardsLeftToday(db, input.planId, now),
+      };
+    },
+    cardSettings() {
+      return { newPerDay: newCardsPerDay(db) };
+    },
+    saveCardSettings(input: { newPerDay: number }) {
+      return { newPerDay: setNewCardsPerDay(db, input.newPerDay) };
     },
     async cardsGenerate(input: { planId: string; topicId: string }) {
       if (runner) return enqueueTopicCards(db, runner, input);
@@ -516,6 +536,9 @@ export function studyHandlers(
     },
     rate(input: { cardId: string; rating: Rating }) {
       return rateCard(db, input.cardId, input.rating, Date.now());
+    },
+    undoRate(input: { reviewId: string }) {
+      return undoRating(db, input.reviewId);
     },
     active(input: { planId: string; topicId: string | null; seconds: number }) {
       const now = Date.now();

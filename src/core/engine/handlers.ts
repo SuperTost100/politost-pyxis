@@ -13,6 +13,7 @@ import {
   endConversations,
   getFunnel,
   isProviderAcknowledged,
+  providerName,
   runTurn,
   shellPathReady,
   type ProviderId,
@@ -35,6 +36,7 @@ import {
   type LocalCheck,
   type LocalSettings,
 } from "./local";
+import { usageSince } from "./usage";
 
 const features = [
   "default",
@@ -827,6 +829,12 @@ export function engineHandlers(
     },
     capability(input: { model: string; need: Need }) {
       return { warning: capabilityWarning(input.model, input.need) };
+    },
+    usage(input: { since: number }) {
+      return usageSince(db, input.since).map((row) => ({
+        ...row,
+        name: providerName(row.provider),
+      }));
     },
     features() {
       return readFeatures(db);
