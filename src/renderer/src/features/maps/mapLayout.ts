@@ -1,10 +1,11 @@
-import { hierarchy, tree } from "d3-hierarchy";
+export {
+  COLUMN_GAP,
+  NODE_MIN_HEIGHT,
+  NODE_WIDTH,
+  SIBLING_GAP,
+  layoutTree,
+} from "../../../../shared/map-layout";
 
-export const NODE_WIDTH = 240;
-export const NODE_MIN_HEIGHT = 64;
-// Free space between depth columns and between siblings, on top of the node boxes.
-export const COLUMN_GAP = 140;
-export const SIBLING_GAP = 28;
 // Maps larger than this open with everything below depth 2 folded.
 export const LARGE_MAP = 25;
 export const OPEN_DEPTH = 2;
@@ -65,36 +66,6 @@ export function visibleNodes<T extends Item>(
   };
   if (root) walk(root);
   return { shown, hidden };
-}
-
-/**
- * Left-to-right tidy tree. Returns the top-left corner of every node: the root sits at
- * x 0 and each depth column starts NODE_WIDTH + COLUMN_GAP further right. Siblings keep
- * at least SIBLING_GAP between their real boxes, so tall nodes never touch.
- */
-export function layoutTree(
-  nodes: Item[],
-  heights: ReadonlyMap<string, number>,
-): Map<string, { x: number; y: number }> {
-  const placed = new Map<string, { x: number; y: number }>();
-  const root = nodes.find((node) => node.parent === null);
-  if (!root) return placed;
-  const children = childrenOf(nodes);
-  const height = (id: string) => heights.get(id) ?? NODE_MIN_HEIGHT;
-  const layout = tree<Item>()
-    .nodeSize([1, NODE_WIDTH + COLUMN_GAP])
-    .separation(
-      (a, b) => (height(a.data.id) + height(b.data.id)) / 2 + SIBLING_GAP,
-    );
-  layout(hierarchy<Item>(root, (node) => children.get(node.id) ?? [])).each(
-    (point) => {
-      placed.set(point.data.id, {
-        x: point.y,
-        y: Math.round(point.x - height(point.data.id) / 2),
-      });
-    },
-  );
-  return placed;
 }
 
 type Box = { x: number; y: number; width: number; height: number };

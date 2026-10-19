@@ -2,7 +2,7 @@ import { createHashRouter, Link, Navigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { ComponentType } from "react";
 import { ExamsHome } from "../features/home/HomePages";
-import { Shell } from "./layouts/Shell";
+import { rememberDoorPath, Shell } from "./layouts/Shell";
 
 function RouteError() {
   const { t } = useTranslation();
@@ -38,6 +38,7 @@ const review = page(() => import("../features/study/ReviewPage"), "ReviewPage");
 export const router = createHashRouter([
   { path: "/print", lazy: page(() => import("../features/share/PrintPage"), "PrintPage") },
   {
+    id: "shell",
     path: "/",
     element: <Shell />,
     children: [
@@ -50,6 +51,7 @@ export const router = createHashRouter([
       { path: "exams/cards", element: <ExamsHome /> },
       { path: "exams/mistakes", element: <ExamsHome /> },
       { path: "exams/get", lazy: page(plans, "SharedPlanPage") },
+      { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },
       { path: "plans/:planId", lazy: plan },
       { path: "plans/:planId/:view", lazy: plan },
       { path: "settings", lazy: settings },
@@ -77,3 +79,12 @@ export const router = createHashRouter([
   { path: "/tools/graph", lazy: page(() => import("../features/tools/GraphPage"), "GraphPage") },
   { path: "/tools/python", lazy: page(() => import("../features/tools/PythonPage"), "PythonPage") },
 ].map((route) => ({ ...route, errorElement: <RouteError /> })));
+
+// The page the window opens on, then every page the router reaches, in order. Full-screen pages outside the shell,
+// such as a lesson or a map, are not where a door was left.
+function remember(state: typeof router.state) {
+  if (state.matches.some((match) => match.route.id === "shell"))
+    rememberDoorPath(state.location.pathname);
+}
+remember(router.state);
+router.subscribe(remember);

@@ -8,6 +8,7 @@ import {
   conceptGraphSchema as conceptGraph,
   mapOpSchema as mapOp,
   mapSummarySchema,
+  mapEntrySchema,
 } from "./concept-map";
 
 /** The time limit of a simulation, in minutes. A past paper's duration is held within it. */
@@ -52,6 +53,13 @@ const dueCardSchema = z.object({
 
 /** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
 const citationSchema = z.object({ passageId: z.string(), label: z.string() });
+// One kind of evidence in a topic's mastery: how many observations, their summed weight and weighted score, their average.
+const masteryPartSchema = z.object({
+  count: z.number().int(),
+  weight: z.number(),
+  points: z.number(),
+  mean: z.number(),
+});
 const quizResultSchema = z.object({
   score: z.number(),
   picks: z.record(z.string(), z.string()),
@@ -654,6 +662,8 @@ export const requests = {
       planId: z.string().optional(),
       picks: z.record(z.string(), z.string().max(20000)),
       index: z.number().int().min(0).max(99),
+      // Skipped questions in the order they were skipped; the quiz asks them again after the others.
+      skipped: z.array(z.string()).max(100).optional(),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
@@ -663,7 +673,11 @@ export const requests = {
       // LES-03: a gap drill's short explanation, shown above its questions.
       explanation: z.string().optional(),
       draft: z
-        .object({ picks: z.record(z.string(), z.string()), index: z.number() })
+        .object({
+          picks: z.record(z.string(), z.string()),
+          index: z.number(),
+          skipped: z.array(z.string()).optional(),
+        })
         .optional(),
       submittedAt: z.number().optional(),
       result: quizResultSchema.optional(),
@@ -1219,6 +1233,23 @@ export const requests = {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.array(mapSummarySchema),
   },
+  "maps.all": {
+    input: z.object({ query: z.string().max(200).optional() }),
+    output: z.array(mapEntrySchema),
+  },
+  "maps.export": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      mapId: z.string().optional(),
+      language: z.enum(["en", "it"]),
+    }),
+    output: z.object({
+      filename: z.string(),
+      markdown: z.string(),
+      svg: z.string(),
+    }),
+  },
   "maps.build": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z
@@ -1475,6 +1506,28 @@ export const requests = {
     input: z.object({ planId: z.string() }),
     output: z.array(
       z.object({ id: z.string(), title: z.string(), mastery: z.number() }),
+    ),
+  },
+  // What each topic's mastery is made of, from the evidence `plans.mastery` uses:
+  // mastery = sum(parts.points) / (priorWeight + sum(parts.weight)).
+  "plans.masteryBreakdown": {
+    input: z.object({ planId: z.string() }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        mastery: z.number(),
+        priorWeight: z.number(),
+        // Mastery minus the mastery the same evidence would give without decay; negative when age costs points.
+        decay: z.number(),
+        parts: z.object({
+          quiz: masteryPartSchema,
+          simulation: masteryPartSchema,
+          check: masteryPartSchema,
+          self: masteryPartSchema,
+          card: masteryPartSchema,
+        }),
+      }),
     ),
   },
   "plans.recommend": {

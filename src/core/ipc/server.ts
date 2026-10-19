@@ -491,6 +491,10 @@ async function dispatchValidated(
     }
     case "maps.list":
       return maps?.list(requests["maps.list"].input.parse(input));
+    case "maps.all":
+      return maps?.all(requests["maps.all"].input.parse(input)) ?? [];
+    case "maps.export":
+      return maps?.export(requests["maps.export"].input.parse(input));
     case "maps.build":
       return maps?.build(requests["maps.build"].input.parse(input));
     case "maps.generate":
@@ -549,6 +553,12 @@ async function dispatchValidated(
       return plans?.import(requests["plans.import"].input.parse(input));
     case "plans.mastery":
       return plans?.mastery(requests["plans.mastery"].input.parse(input)) ?? [];
+    case "plans.masteryBreakdown":
+      return (
+        plans?.masteryBreakdown(
+          requests["plans.masteryBreakdown"].input.parse(input),
+        ) ?? []
+      );
     case "plans.series":
       return plans?.series(requests["plans.series"].input.parse(input));
     case "plans.simulations":
