@@ -516,7 +516,7 @@ async function dispatchValidated(
     case "maps.generate":
       return maps?.generate(requests["maps.generate"].input.parse(input));
     case "maps.edit":
-      return maps?.edit(requests["maps.edit"].input.parse(input));
+      return maps?.edit(requests["maps.edit"].input.parse(input), signal);
     case "maps.open":
       return maps?.open(requests["maps.open"].input.parse(input));
     case "maps.layout":

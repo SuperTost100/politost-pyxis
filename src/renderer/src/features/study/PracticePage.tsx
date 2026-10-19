@@ -224,6 +224,7 @@ export function PracticePage() {
   return (
     <FocusLayout
       title={t("practice.title")}
+      onClose={() => navigate(`/plans/${planId ?? ""}`)}
       headerRight={
         <Button
           shape="round"
