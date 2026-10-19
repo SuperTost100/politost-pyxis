@@ -451,6 +451,19 @@ async function dispatchValidated(
       );
     case "study.cardsBuild":
       return study?.cardsBuild(requests["study.cardsBuild"].input.parse(input));
+    case "study.cardsPlaces":
+      return study?.cardsPlaces(
+        requests["study.cardsPlaces"].input.parse(input),
+      );
+    case "study.cardsPropose":
+      return study?.cardsPropose(
+        requests["study.cardsPropose"].input.parse(input),
+        signal,
+      );
+    case "study.cardsSaveProposed":
+      return study?.cardsSaveProposed(
+        requests["study.cardsSaveProposed"].input.parse(input),
+      );
     case "study.gapDrillStart":
       return study?.gapDrillStart(
         requests["study.gapDrillStart"].input.parse(input),
@@ -520,7 +533,7 @@ async function dispatchValidated(
     case "maps.generate":
       return maps?.generate(requests["maps.generate"].input.parse(input));
     case "maps.edit":
-      return maps?.edit(requests["maps.edit"].input.parse(input));
+      return maps?.edit(requests["maps.edit"].input.parse(input), signal);
     case "maps.open":
       return maps?.open(requests["maps.open"].input.parse(input));
     case "maps.layout":

@@ -1,0 +1,101 @@
+.px-mc-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+  max-height: min(64vh, 640px);
+  overflow-y: auto;
+}
+.px-mc-source {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--border-control);
+  background: var(--surface-raised);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+.px-mc-source figcaption {
+  color: var(--ink-muted);
+  margin-bottom: var(--space-1);
+}
+.px-mc-source p {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.px-mc-where {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.px-mc-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.px-mc-field .label {
+  color: var(--ink-muted);
+}
+.px-mc-hint {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-mc-working {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  color: var(--ink-muted);
+}
+.px-mc-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-mc-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.px-mc-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+}
+.px-mc-card-head .label {
+  color: var(--ink-muted);
+}
+.px-mc-spacer {
+  flex: 1;
+}
+/* Several lines of text: the rounded rectangle of the design system, not the pill of single-line fields. */
+.px-mc-card textarea.ant-input {
+  border-radius: var(--radius-md);
+}
+.px-mc-face {
+  margin-top: var(--space-2);
+  color: var(--ink-muted);
+}
+.px-mc-cloze {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-makecards .ant-modal-footer .ant-btn {
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .px-mc-where {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

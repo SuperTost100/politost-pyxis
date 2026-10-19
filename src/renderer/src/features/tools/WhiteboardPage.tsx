@@ -32,6 +32,8 @@ export function WhiteboardPage() {
   const baseline = useRef(strokes);
   const dirty = useRef(false);
   const current = useRef<Stroke | null>(null);
+  // While the eraser is held down: the strokes left so far. One drag is one undo step.
+  const erasing = useRef<Stroke[] | null>(null);
   const past = useRef<Stroke[][]>([]);
   const future = useRef<Stroke[][]>([]);
   const board = useRef<HTMLCanvasElement>(null);
@@ -87,14 +89,14 @@ export function WhiteboardPage() {
     apply(next);
   }
   function undo() {
-    if (busy || current.current) return;
+    if (busy || current.current || erasing.current) return;
     const prev = past.current.pop();
     if (!prev) return;
     future.current.push(strokes);
     apply(prev);
   }
   function redo() {
-    if (busy || current.current) return;
+    if (busy || current.current || erasing.current) return;
     const next = future.current.pop();
     if (!next) return;
     past.current.push(strokes);
@@ -130,7 +132,8 @@ export function WhiteboardPage() {
   }, [strokes, busy]);
 
   async function keep(attach: boolean) {
-    if (busy || current.current) return;
+    if (busy || current.current || erasing.current || strokes.length === 0)
+      return;
     const url = board.current?.toDataURL("image/png");
     if (!url) return;
     setBusy(true);
@@ -219,11 +222,18 @@ export function WhiteboardPage() {
           >
             {t("tools.redo")}
           </Button>
+          <Button
+            shape="round"
+            disabled={busy || strokes.length === 0}
+            onClick={() => remember([])}
+          >
+            {t("tools.clear")}
+          </Button>
           <span className="px-whiteboard-divider" aria-hidden="true" />
           <Button
             shape="round"
             loading={busy}
-            disabled={busy}
+            disabled={busy || strokes.length === 0}
             onClick={() => void keep(false)}
           >
             {t("tools.save")}
@@ -231,7 +241,7 @@ export function WhiteboardPage() {
           <Button
             type="primary"
             shape="round"
-            disabled={busy}
+            disabled={busy || strokes.length === 0}
             onClick={() => void keep(true)}
           >
             {t("tools.attach")}
@@ -245,19 +255,39 @@ export function WhiteboardPage() {
           onPointerDown={(event) => {
             if (busy) return;
             const at = point(event);
+            event.currentTarget.setPointerCapture(event.pointerId);
             if (tool === "erase") {
-              remember(strokes.filter((stroke) => !strokeHits(stroke, at)));
+              erasing.current = strokes.filter(
+                (stroke) => !strokeHits(stroke, at),
+              );
+              paint(erasing.current);
               return;
             }
-            event.currentTarget.setPointerCapture(event.pointerId);
             current.current = { width, points: [at] };
           }}
           onPointerMove={(event) => {
+            if (erasing.current) {
+              const at = point(event);
+              const left = erasing.current.filter(
+                (stroke) => !strokeHits(stroke, at),
+              );
+              if (left.length !== erasing.current.length) {
+                erasing.current = left;
+                paint(left);
+              }
+              return;
+            }
             if (!current.current) return;
             current.current.points.push(point(event));
             paint([...strokes, current.current]);
           }}
           onPointerUp={() => {
+            if (erasing.current) {
+              const left = erasing.current;
+              erasing.current = null;
+              remember(left);
+              return;
+            }
             if (!current.current) return;
             const next = [...strokes, current.current];
             current.current = null;
@@ -265,6 +295,7 @@ export function WhiteboardPage() {
           }}
           onPointerCancel={() => {
             current.current = null;
+            erasing.current = null;
             paint(strokes);
           }}
         />

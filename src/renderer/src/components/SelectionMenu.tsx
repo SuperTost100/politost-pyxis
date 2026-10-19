@@ -2,13 +2,18 @@ import { Button } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../lib/ipc";
+import { openMakeCards } from "./MakeCardsDialog";
 import "./SelectionMenu.css";
 
 /** Selection actions shared by lessons and source chapters. */
-export function SelectionMenu({ children, sourceIds = [], planId, onAsk }: {
+export function SelectionMenu({ children, sourceIds = [], planId, topicId, passageIds, onAsk }: {
   children: ReactNode;
   sourceIds?: string[];
   planId?: string;
+  /** The lesson's topic: flashcards made from a selection go there. */
+  topicId?: string;
+  /** The passages the shown text comes from; the flashcards link to them. */
+  passageIds?: string[];
   onAsk: (chatId: string) => void;
 }) {
   const { t } = useTranslation();
@@ -29,7 +34,7 @@ export function SelectionMenu({ children, sourceIds = [], planId, onAsk }: {
       if (!root.current.contains(range.startContainer) || !root.current.contains(range.endContainer)) return setSelection(null);
       const rect = range.getBoundingClientRect();
       setFailed(false);
-      setSelection({ text, x: Math.max(12, Math.min(rect.left, window.innerWidth - 292)), y: Math.max(12, Math.min(rect.top - 48, window.innerHeight - 60)) });
+      setSelection({ text, x: Math.max(12, Math.min(rect.left, window.innerWidth - 392)), y: Math.max(12, Math.min(rect.top - 48, window.innerHeight - 60)) });
     };
     const hide = () => setSelection(null);
     const escape = (event: KeyboardEvent) => {
@@ -50,12 +55,13 @@ export function SelectionMenu({ children, sourceIds = [], planId, onAsk }: {
       window.removeEventListener("scroll", hide, true);
     };
   }, []);
-  async function act(action: "ask" | "copy") {
+  async function act(action: "ask" | "copy" | "cards") {
     if (!selection || busy) return;
     setBusy(true);
     setFailed(false);
     try {
       if (action === "copy") await navigator.clipboard.writeText(selection.text);
+      else if (action === "cards") openMakeCards({ text: selection.text, origin: "selection", planId, topicId, passageIds });
       else {
         const { chatId } = await invoke("chats.seed", { kind: "passage", title: selection.text.slice(0, 80), body: selection.text, sourceIds, planId });
         onAsk(chatId);
@@ -68,6 +74,7 @@ export function SelectionMenu({ children, sourceIds = [], planId, onAsk }: {
     {children}
     {selection ? <div ref={menu} className="px-selection-menu" style={{ left: selection.x, top: selection.y }} role="group" aria-label={t("ask.askTutor")} onMouseDown={(event) => event.preventDefault()}>
       <Button type="text" disabled={busy} onClick={() => void act("ask")}>{t("ask.askTutor")}</Button>
+      <Button type="text" disabled={busy} onClick={() => void act("cards")}>{t("makeCards.action")}</Button>
       <Button type="text" disabled={busy} onClick={() => void act("copy")}>{t("sources.copySelection")}</Button>
       {failed ? <span className="small" role="alert">{t("quiz.actionFailed")}</span> : null}
     </div> : null}

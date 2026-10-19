@@ -36,6 +36,7 @@ import {
 } from "@xyflow/react";
 import { toPng, toSvg } from "html-to-image";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
+import { LoadError } from "../../components/LoadError";
 import { MarkdownView } from "../../components/MarkdownView";
 import { invoke } from "../../lib/ipc";
 import { mapColors as fills, type MapOp } from "@shared/concept-map";
@@ -391,8 +392,13 @@ export function MapPage() {
       await moves.current.catch(() => undefined);
       const result = await action();
       client.setQueryData(mapKey, result);
-    } catch {
-      setNotice(t("map.editFailed"));
+    } catch (err) {
+      setNotice(
+        (err as { messageKey?: unknown } | null)?.messageKey ===
+          "map.editConflict"
+          ? t("map.editConflict")
+          : t("map.editFailed"),
+      );
     } finally {
       setBusy(false);
     }
@@ -610,10 +616,20 @@ export function MapPage() {
             {t("map.building")}
           </p>
         )}
-        {(notice || map.isError || list.isError) && (
+        {notice && (
           <p className="small px-map-notice" role="status">
-            {notice || t("map.editFailed")}
+            {notice}
           </p>
+        )}
+        {(map.isError || list.isError) && (
+          <LoadError
+            onRetry={() => {
+              if (list.isError) void list.refetch();
+              if (map.isError) void map.refetch();
+            }}
+          >
+            {t("map.loadFailed")}
+          </LoadError>
         )}
         {list.data?.find((m) => m.id === activeId)?.grounding === "general" && (
           <p className="meta px-map-notice">{t("map.general")}</p>
@@ -688,6 +704,8 @@ export function MapPage() {
                     event.target instanceof HTMLTextAreaElement ||
                     (event.target instanceof HTMLElement &&
                       (event.target.isContentEditable ||
+                        // A fold button keeps its own Enter and Delete; the node's shortcuts are for the node.
+                        event.target.closest("button") ||
                         event.target.closest("math-field"))) ||
                     disabled
                   )

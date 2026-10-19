@@ -17,6 +17,7 @@ export function ChatMessage({
   onSuggest,
   general,
   text,
+  onMakeCards,
   reaction,
   onReact,
   onRegenerate,
@@ -35,6 +36,8 @@ export function ChatMessage({
   onSuggest?: (text: string) => void;
   general?: boolean;
   text?: string;
+  /** Opens the flashcard dialog for this reply. */
+  onMakeCards?: () => void;
   reaction?: "up" | "down" | null;
   onRegenerate?: () => void;
   /** Answer the question again with the strongest model, from the reply's menu. */
@@ -150,6 +153,15 @@ export function ChatMessage({
               pressed={reaction === "down"}
               onClick={() => onReact?.("down")}
             />
+            {onMakeCards ? (
+              <IconButton
+                icon="layers"
+                label={t("components.chat.makeCards")}
+                variant="ghost"
+                size="sm"
+                onClick={onMakeCards}
+              />
+            ) : null}
             {onRegenerate ? (
               <IconButton
                 icon="refresh-cw"
