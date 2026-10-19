@@ -290,6 +290,22 @@ async function dispatchValidated(
       const parsed = requests["engines.cancelLogin"].input.parse(input);
       return engines?.cancelLogin({ provider: parsed.provider as ProviderId });
     }
+    case "engines.local":
+      requests["engines.local"].input.parse(input);
+      return engines?.local();
+    case "engines.localPull":
+      requests["engines.localPull"].input.parse(input);
+      return engines?.localPull();
+    case "engines.localCancel":
+      requests["engines.localCancel"].input.parse(input);
+      return engines?.localCancel();
+    case "engines.localCheck":
+      requests["engines.localCheck"].input.parse(input);
+      return engines?.localCheck();
+    case "engines.localEnable":
+      return engines?.localEnable(
+        requests["engines.localEnable"].input.parse(input),
+      );
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({
@@ -393,6 +409,20 @@ async function dispatchValidated(
       return study?.simulationPrepare(
         requests["study.simulationPrepare"].input.parse(input),
       );
+    case "study.pastPapers":
+      return study?.pastPapers(requests["study.pastPapers"].input.parse(input));
+    case "study.pastPaperAdd":
+      return study?.pastPaperAdd(
+        requests["study.pastPaperAdd"].input.parse(input),
+      );
+    case "study.pastPaperRemove":
+      return study?.pastPaperRemove(
+        requests["study.pastPaperRemove"].input.parse(input),
+      );
+    case "study.pastPracticeStart":
+      return study?.pastPracticeStart(
+        requests["study.pastPracticeStart"].input.parse(input),
+      );
     case "study.simulationBuild":
       return study?.simulationBuild(
         requests["study.simulationBuild"].input.parse(input),
@@ -417,6 +447,19 @@ async function dispatchValidated(
       );
     case "study.cardsBuild":
       return study?.cardsBuild(requests["study.cardsBuild"].input.parse(input));
+    case "study.cardsPlaces":
+      return study?.cardsPlaces(
+        requests["study.cardsPlaces"].input.parse(input),
+      );
+    case "study.cardsPropose":
+      return study?.cardsPropose(
+        requests["study.cardsPropose"].input.parse(input),
+        signal,
+      );
+    case "study.cardsSaveProposed":
+      return study?.cardsSaveProposed(
+        requests["study.cardsSaveProposed"].input.parse(input),
+      );
     case "study.gapDrillStart":
       return study?.gapDrillStart(
         requests["study.gapDrillStart"].input.parse(input),
@@ -477,12 +520,16 @@ async function dispatchValidated(
     }
     case "maps.list":
       return maps?.list(requests["maps.list"].input.parse(input));
+    case "maps.all":
+      return maps?.all(requests["maps.all"].input.parse(input)) ?? [];
+    case "maps.export":
+      return maps?.export(requests["maps.export"].input.parse(input));
     case "maps.build":
       return maps?.build(requests["maps.build"].input.parse(input));
     case "maps.generate":
       return maps?.generate(requests["maps.generate"].input.parse(input));
     case "maps.edit":
-      return maps?.edit(requests["maps.edit"].input.parse(input));
+      return maps?.edit(requests["maps.edit"].input.parse(input), signal);
     case "maps.open":
       return maps?.open(requests["maps.open"].input.parse(input));
     case "maps.layout":
@@ -537,6 +584,12 @@ async function dispatchValidated(
       return plans?.importedFile(requests["plans.importedFile"].input.parse(input)) ?? null;
     case "plans.mastery":
       return plans?.mastery(requests["plans.mastery"].input.parse(input)) ?? [];
+    case "plans.masteryBreakdown":
+      return (
+        plans?.masteryBreakdown(
+          requests["plans.masteryBreakdown"].input.parse(input),
+        ) ?? []
+      );
     case "plans.series":
       return plans?.series(requests["plans.series"].input.parse(input));
     case "plans.simulations":
@@ -548,6 +601,17 @@ async function dispatchValidated(
       return (
         plans?.recommend(requests["plans.recommend"].input.parse(input)) ?? null
       );
+    case "plans.today":
+      requests["plans.today"].input.parse(input);
+      return plans?.today() ?? { planned: false, behind: [], cards: null, items: [] };
+    case "plans.planner":
+      requests["plans.planner"].input.parse(input);
+      return plans?.planner();
+    case "plans.plannerHours":
+      return plans?.plannerHours(requests["plans.plannerHours"].input.parse(input));
+    case "study.dueEverywhere":
+      requests["study.dueEverywhere"].input.parse(input);
+      return plans?.dueEverywhere() ?? [];
     case "plans.complete":
       return plans?.complete(requests["plans.complete"].input.parse(input));
     case "plans.attachSources":
@@ -697,6 +761,10 @@ async function dispatchValidated(
       return sources?.syllabus(requests["sources.syllabus"].input.parse(input), signal);
     case "sources.reextract":
       return sources?.reextract(requests["sources.reextract"].input.parse(input));
+    case "sources.refresh":
+      return sources?.refresh(requests["sources.refresh"].input.parse(input), signal);
+    case "sources.unlockPdf":
+      return sources?.unlockPdf(requests["sources.unlockPdf"].input.parse(input));
     case "sources.remove":
       return sources?.remove(requests["sources.remove"].input.parse(input));
     case "sources.promote":
@@ -754,6 +822,7 @@ export function bindEngines(
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
     onInstallLog: (event) => broadcast("engine.install", event),
+    onLocal: (event) => broadcast("engine.local", event),
     installerFixture,
   });
 }

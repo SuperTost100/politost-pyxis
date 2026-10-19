@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
@@ -110,6 +110,34 @@ describe("a stopped photo import does not stay extracting", () => {
     sourceHandlers(db, workspace, runner);
     expect(sourceStatus(db, "fresh")).toBe("interrupted");
     expect(sourceStatus(db, "again")).toBe("failed");
+  });
+
+  it("startup resumes an import a quit cut off, and leaves a photo waiting for its vision engine", async () => {
+    const { workspace, db, runner, path } = setup();
+    // The first process starts a text import and a photo import, and both are cut off while reading.
+    registerSourceJobs(db, workspace, runner, () => new Promise(() => undefined), {
+      vision: () => new Promise(() => undefined),
+    });
+    const text = join(workspace, "energia.txt");
+    writeFileSync(text, "La conservazione dell'energia meccanica vale senza attrito.");
+    const imported = await enqueueSourceFile(db, workspace, runner, text);
+    const photo = await enqueueSourceFile(db, workspace, runner, path);
+    await expect.poll(jobState(db, imported.jobId)).toBe("running");
+    await expect.poll(jobState(db, photo.jobId)).toBe("running");
+    // The next start: running jobs become interrupted, then the source handlers sweep them.
+    const next = createRunner(db, (job) => markStoppedImport(db, job), undefined, true);
+    sourceHandlers(db, workspace, next);
+    expect(jobState(db, imported.jobId)()).toBe("queued");
+    expect(sourceStatus(db, imported.sourceId)).toBe("extracting");
+    expect(jobState(db, photo.jobId)()).toBe("interrupted");
+    expect(sourceStatus(db, photo.sourceId)).toBe("interrupted");
+    registerSourceJobs(db, workspace, next, async (input) => ({
+      document: extractPlain(readFileSync(input.path, "utf8"), false),
+    }));
+    next.activate();
+    await expect.poll(jobState(db, imported.jobId)).toBe("succeeded");
+    expect(sourceStatus(db, imported.sourceId)).toBe("ready");
+    expect(jobState(db, photo.jobId)()).toBe("interrupted");
   });
 
   describe("a stopped replacement keeps the earlier version in use", () => {

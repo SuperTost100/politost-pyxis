@@ -345,3 +345,83 @@ test("Ask: content that grows after a reply, such as the suggestion chips, stays
     await finish(app, userData);
   }
 });
+
+test("Ask: a layout shift above the end of the chat is not the student scrolling up", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  try {
+    seed(userData);
+    await page.setViewportSize({ width: 960, height: 640 });
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await page.reload();
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    for (const text of ["Come si risolve un integrale per parti?", "Una seconda domanda"]) {
+      await box.fill(text);
+      await box.press("Enter");
+      await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
+    }
+    const gap = () =>
+      page.evaluate(() => {
+        const root = document.scrollingElement!;
+        return root.scrollHeight - root.scrollTop - root.clientHeight;
+      });
+    await expect.poll(gap).toBeLessThan(4);
+    // Let the scroll events for the last move arrive, so the page remembers where the student was.
+    await page.evaluate(() => new Promise((done) => setTimeout(done, 300)));
+    // Rows above shrink (a skipped row settles to its real height), which lowers the scroll position without the
+    // student touching anything, and the chips grow below before the next frame. That is not scrolling up.
+    await page.evaluate(() => {
+      const root = document.scrollingElement!;
+      const rows = document.querySelectorAll<HTMLElement>(".ask-thread > .px-msg");
+      for (const row of Array.from(rows).slice(0, -1)) row.style.display = "none";
+      void root.scrollTop;
+      const late = document.createElement("div");
+      late.style.height = "300px";
+      document.querySelector(".ask-page")!.append(late);
+      window.dispatchEvent(new Event("scroll"));
+    });
+    await expect.poll(gap).toBeLessThan(4);
+  } finally {
+    await finish(app, userData);
+  }
+});
+
+test("Ask: a student who scrolled up is not pulled back down by new content", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  try {
+    seed(userData);
+    await page.setViewportSize({ width: 960, height: 640 });
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await page.reload();
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    for (const text of ["Come si risolve un integrale per parti?", "Una seconda domanda"]) {
+      await box.fill(text);
+      await box.press("Enter");
+      await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
+    }
+    const gap = () =>
+      page.evaluate(() => {
+        const root = document.scrollingElement!;
+        return root.scrollHeight - root.scrollTop - root.clientHeight;
+      });
+    await expect.poll(gap).toBeLessThan(4);
+    await page.mouse.move(480, 200);
+    await page.mouse.wheel(0, -300);
+    await expect.poll(gap).toBeGreaterThan(200);
+    const before = await gap();
+    await page.evaluate(() => {
+      const late = document.createElement("div");
+      late.style.height = "300px";
+      document.querySelector(".ask-page")!.append(late);
+    });
+    await page.waitForTimeout(500);
+    expect(await gap()).toBe(before + 300);
+  } finally {
+    await finish(app, userData);
+  }
+});

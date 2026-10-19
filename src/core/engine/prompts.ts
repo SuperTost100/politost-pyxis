@@ -1,6 +1,7 @@
 import sourceTranscribe from "../../../resources/prompts/source.transcribe.md?raw";
 import exerciseGenerate from "../../../resources/prompts/exercise.generate.md?raw";
 import cardsGenerate from "../../../resources/prompts/cards.generate.md?raw";
+import cardsText from "../../../resources/prompts/cards.text.md?raw";
 import gapDrill from "../../../resources/prompts/gap.drill.md?raw";
 import gapExplain from "../../../resources/prompts/gap.explain.md?raw";
 import gapInsight from "../../../resources/prompts/gap.insight.md?raw";
@@ -11,6 +12,7 @@ import chatSolver from "../../../resources/prompts/chat.solver.md?raw";
 import lessonWrite from "../../../resources/prompts/lesson.write.md?raw";
 import mapEdit from "../../../resources/prompts/map.edit.md?raw";
 import mapGenerate from "../../../resources/prompts/map.generate.md?raw";
+import paperRead from "../../../resources/prompts/paper.read.md?raw";
 import planDiagnostic from "../../../resources/prompts/plan.diagnostic.md?raw";
 import planModules from "../../../resources/prompts/plan.modules.md?raw";
 import planTree from "../../../resources/prompts/plan.tree.md?raw";
@@ -35,6 +37,7 @@ export const TEMPLATE_SOURCES = {
   "source.transcribe": sourceTranscribe,
   "exercise.generate": exerciseGenerate,
   "cards.generate": cardsGenerate,
+  "cards.text": cardsText,
   "gap.drill": gapDrill,
   "gap.explain": gapExplain,
   "gap.insight": gapInsight,
@@ -45,6 +48,7 @@ export const TEMPLATE_SOURCES = {
   "lesson.write": lessonWrite,
   "map.edit": mapEdit,
   "map.generate": mapGenerate,
+  "paper.read": paperRead,
   "plan.diagnostic": planDiagnostic,
   "plan.intro": planIntro,
   "plan.synopsis": planSynopsis,

@@ -29,3 +29,13 @@ export function reopenPath(planId: string, step: ReopenStep): string | null {
     return `${base}/lesson/${topic}?item=${encodeURIComponent(step.itemId)}`;
   return `${base}/lesson/${topic}`;
 }
+
+/** Where a step to do opens: the plan-wide pages, a topic's page, or a gap drill from Progress. */
+export function stepPath(planId: string, activity: string, topicId: string | null): string | null {
+  const base = `/plans/${planId}`;
+  if (activity === "intro") return `${base}/intro`;
+  if (activity === "diagnostic" || activity === "simulation") return `${base}/${activity}`;
+  if (!topicId) return null;
+  if (activity === "gaps") return `${base}/progress?drill=${encodeURIComponent(topicId)}`;
+  return `${base}/${activity}/${topicId}`;
+}

@@ -1,8 +1,8 @@
 import { Button, Segmented } from "antd";
 import { PageContainer, ProLayout } from "@ant-design/pro-components";
-import { GraduationCap, MessageCircle, Settings } from "lucide-react";
+import { GraduationCap, MessageCircle, Network, Settings } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import logoDark from "../../design-system/logo/pyxis-lockup-dark.svg";
@@ -14,7 +14,13 @@ import { useAppState } from "../app-state";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
 import { useMenuLock } from "../menu-state";
 
-type Door = "ask" | "exams";
+type Door = "ask" | "exams" | "maps";
+
+const doorRoots: Record<Door, string> = {
+  ask: "/ask",
+  exams: "/exams",
+  maps: "/maps",
+};
 
 const LAST_KEY = "pyxis.lastDoorPath";
 
@@ -23,9 +29,13 @@ function readLast(): Record<Door, string> {
     const raw = JSON.parse(sessionStorage.getItem(LAST_KEY) ?? "") as Partial<
       Record<Door, string>
     >;
-    return { ask: raw.ask || "/ask", exams: raw.exams || "/exams" };
+    return {
+      ask: raw.ask || doorRoots.ask,
+      exams: raw.exams || doorRoots.exams,
+      maps: raw.maps || doorRoots.maps,
+    };
   } catch {
-    return { ask: "/ask", exams: "/exams" };
+    return { ...doorRoots };
   }
 }
 
@@ -34,12 +44,27 @@ function doorForPath(pathname: string): Door | null {
   if (pathname.startsWith("/ask")) return "ask";
   if (pathname.startsWith("/exams") || pathname.startsWith("/plans"))
     return "exams";
+  if (pathname.startsWith("/maps")) return "maps";
   return null;
+}
+
+/**
+ * Records `pathname` as where its door was left. The router calls it on every navigation it finishes, not a render
+ * effect: React can skip the render of a page the student passed through quickly, and the door would then remember a
+ * page left earlier.
+ */
+export function rememberDoorPath(pathname: string): void {
+  const door = doorForPath(pathname);
+  if (!door) return;
+  sessionStorage.setItem(
+    LAST_KEY,
+    JSON.stringify({ ...readLast(), [door]: pathname }),
+  );
 }
 
 /** Where a door leads from `pathname`: back to where it was left, or to its root when it is already open. */
 export function doorTarget(door: Door, pathname: string): string {
-  if (doorForPath(pathname) === door) return door === "ask" ? "/ask" : "/exams";
+  if (doorForPath(pathname) === door) return doorRoots[door];
   return readLast()[door];
 }
 
@@ -53,7 +78,6 @@ export function Shell() {
   const client = useQueryClient();
   const { appearance } = useAppState();
   const mode = appearance.resolved;
-  const [last, setLast] = useState(readLast);
   const activeDoor = doorForPath(location.pathname);
   const profile = useQuery({
     queryKey: ["profile"],
@@ -71,7 +95,7 @@ export function Shell() {
     queryKey: ["active-simulation"],
     queryFn: () => invoke("study.activeSimulation", {}),
     enabled: profile.isSuccess && Boolean(profile.data),
-    refetchInterval: 1000,
+    // No polling: the exam page invalidates this when an exam starts, runs out of time or is handed in.
   });
   // The menu leaves a running simulation alone, like the redirect below.
   useMenuLock(Boolean(activeSimulation.data));
@@ -117,14 +141,6 @@ export function Shell() {
       .catch(() => undefined);
   }, [storedLanguage, interfaceLanguage, client]);
 
-  useEffect(() => {
-    const door = doorForPath(location.pathname);
-    if (!door) return;
-    const next = { ...readLast(), [door]: location.pathname };
-    sessionStorage.setItem(LAST_KEY, JSON.stringify(next));
-    setLast(next);
-  }, [location.pathname]);
-
   return (
     <ProLayout
       layout="top"
@@ -153,7 +169,7 @@ export function Shell() {
                 .closest("label")
                 ?.classList.contains("ant-segmented-item-selected")
             )
-              navigate(activeDoor === "ask" ? "/ask" : "/exams");
+              navigate(doorRoots[activeDoor]);
           }}
         >
           <Segmented<Door>
@@ -161,9 +177,7 @@ export function Shell() {
             className="px-doors"
             aria-label={t("doors.label")}
             value={activeSimulation.data ? "exams" : (activeDoor ?? NO_DOOR)}
-            onChange={(value) =>
-              navigate(value === "ask" ? last.ask : last.exams)
-            }
+            onChange={(value) => navigate(readLast()[value])}
             options={[
               ...(!activeSimulation.data
                 ? [
@@ -178,6 +192,11 @@ export function Shell() {
                 value: "exams",
                 label: t("doors.exams"),
                 icon: <GraduationCap size={16} strokeWidth={1.75} />,
+              },
+              {
+                value: "maps",
+                label: t("doors.maps"),
+                icon: <Network size={16} strokeWidth={1.75} />,
               },
             ]}
           />

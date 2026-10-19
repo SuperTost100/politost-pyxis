@@ -11,7 +11,7 @@ npm run test:e2e
 npm run dist -- --publish never
 ```
 
-`npm test` runs Vitest under Electron's Node because `better-sqlite3` is built for Electron's ABI. Pass a file to narrow the run, for example `npm test -- src/core/maps/graph.test.ts`. Avoid rebuilding native modules for ordinary Node while running Electron tests.
+`npm test` runs Vitest under Electron's Node because `better-sqlite3` is built for Electron's ABI. Pass a file to narrow the run, for example `npm test -- src/core/maps/graph.test.ts`. Avoid rebuilding native modules for ordinary Node while running Electron tests. Vitest and Playwright each point `TMPDIR` at a fresh `pyxis-run-*` folder and delete it afterwards. In a unit test, create temp folders with `tempDir(prefix)` from `src/core/test-temp.ts`, which removes the folder when the test ends (`sharedTempDir` for one shared by a `describe`).
 
 `npm run build` creates `out/` and regenerates dependency notices. `npm run notices` refreshes license inventory without a build. `npm run shoot` creates development screenshots in `.shots/`. `npm run shoot:readme` regenerates the README images in `docs/screenshots/` from invented fixture data, in both themes; the exhaustive theme, language and width audit is `npx playwright test tests/e2e/ui-audit.spec.ts` after building.
 

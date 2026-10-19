@@ -10,10 +10,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { putBlob, readBlob } from "./blobs";
+import { tempDir } from "./test-temp";
 
 describe("blobs", () => {
   it("stores one file for the same bytes", () => {
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-blob-"));
+    const workspace = tempDir("pyxis-blob-");
     const bytes = new TextEncoder().encode("same-notes");
     const first = putBlob(workspace, bytes, "text/plain", "txt");
     const second = putBlob(workspace, bytes, "text/plain", "txt");
@@ -32,7 +33,7 @@ describe("blobs", () => {
   });
 
   it("rejects a hash that is not 64 hex characters", () => {
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-blob-"));
+    const workspace = tempDir("pyxis-blob-");
     expect(() => readBlob(workspace, "../etc/passwd")).toThrow(/bad-hash/);
   });
 });

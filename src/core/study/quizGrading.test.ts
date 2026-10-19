@@ -365,6 +365,54 @@ describe("quiz grading job", () => {
     db.close();
   });
 
+  it("takes an empty pick as an explicit 'I don't know': scored 0, answer shown, kept as wrong evidence", async () => {
+    const closed: QuizQuestion[] = [
+      mcq,
+      { id: "tf", stem: "True?", grade: { kind: "tf", picked: true, correct: true } },
+      {
+        id: "fill",
+        stem: "Fill {{0}}",
+        // Even a question that accepts a blank answer scores 0 when the student said they do not know.
+        grade: { kind: "completion", answers: [], accepted: [["x", ""]] },
+      },
+      {
+        id: "pairs",
+        stem: "Match",
+        left: ["a"],
+        right: ["b"],
+        grade: { kind: "matching", pairs: [], correct: [["a", "b"]] },
+      },
+      open("free"),
+    ];
+    const { db, attemptId } = fixture(closed, "quiz");
+    db.prepare(
+      "UPDATE items SET topic_id = 'topic' WHERE id = (SELECT item_id FROM attempts WHERE id = ?)",
+    ).run(attemptId);
+    const runner = createRunner(db, () => {});
+    const run: GenerateInput["run"] = async () => {
+      throw new Error("An empty answer needs no model");
+    };
+    registerQuizGradingJobs(db, runner, run);
+    for (const question of closed) {
+      const checked = await checkQuestion(db, runner, run, attemptId, question.id, "");
+      expect(checked).toMatchObject({ id: question.id, score: 0, pick: "" });
+      expect(checked.expected).not.toBe("");
+      expect(checkedAnswer(db, attemptId, question.id)).toMatchObject({ score: 0, pick: "" });
+    }
+    // The same empty pick checked again is the same answer, not a locked one.
+    await expect(checkQuestion(db, runner, run, attemptId, "m", "")).resolves.toMatchObject({ score: 0 });
+    submitQuiz(db, runner, attemptId, Object.fromEntries(closed.map((question) => [question.id, ""])));
+    const done = await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(done.result!.results.map((row) => row.score)).toEqual([0, 0, 0, 0, 0]);
+    const event = db
+      .prepare("SELECT payload_json FROM learning_events WHERE kind = 'answer_given'")
+      .get() as { payload_json: string };
+    expect(
+      (JSON.parse(event.payload_json) as { questionScores: Array<{ id: string; score: number }> }).questionScores,
+    ).toMatchObject(closed.map((question) => ({ id: question.id, score: 0 })));
+    db.close();
+  });
+
   it("starts one job for a double submit and never closes the attempt twice", async () => {
     const { db, attemptId } = fixture([open("a")], "diagnostic");
     let calls = 0;

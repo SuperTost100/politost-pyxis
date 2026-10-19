@@ -1,5 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
@@ -8,10 +7,11 @@ import { uuidv7 } from "../../shared/ids";
 import { importDocumentFile } from "./documents";
 import { removeSource, renameSource, replaceSourceFile } from "./manage";
 import { importSmartbook, smartbookChapters, smartbookMeta, searchPassages } from "./smartbook";
+import { tempDir } from "../test-temp";
 
 describe("rename and replace", () => {
   it("hides old smartbook chapters after a document replacement", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-book-replace-"));
+    const dir = tempDir("pyxis-book-replace-");
     const db = openDatabase(":memory:");
     const source = importSmartbook(db, zipSync({
       "smartbook.json": strToU8(JSON.stringify({ id: "book", title: "Book", access: "public", chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }] })),
@@ -27,7 +27,7 @@ describe("rename and replace", () => {
   });
 
   it("renames a source and keeps the old passage after a replacement", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-replace-"));
+    const dir = tempDir("pyxis-replace-");
     const first = join(dir, "one.txt");
     const second = join(dir, "two.txt");
     writeFileSync(first, "la velocita e la derivata dello spazio rispetto al tempo");
@@ -51,7 +51,7 @@ describe("rename and replace", () => {
   });
 
   it("asks before removing a source that a plan still uses", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-remove-"));
+    const dir = tempDir("pyxis-remove-");
     const file = join(dir, "note.txt");
     writeFileSync(file, "la velocita e la derivata dello spazio rispetto al tempo");
     const db = openDatabase(":memory:");

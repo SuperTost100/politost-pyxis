@@ -57,13 +57,18 @@ export function FocusLayout(props: {
           ) : null}
         </div>
         <div className="focus-header-right">{props.headerRight}</div>
+        {props.progress != null ? (
+          <div
+            className="focus-progress"
+            role="progressbar"
+            aria-label={props.title}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(props.progress * 100)}
+            style={{ width: `${Math.round(props.progress * 100)}%` }}
+          />
+        ) : null}
       </header>
-      {props.progress != null ? (
-        <div
-          className="focus-progress"
-          style={{ width: `${Math.round(props.progress * 100)}%` }}
-        />
-      ) : null}
       <main className="focus-main">
         <div className="column">
           {props.children}
@@ -79,6 +84,8 @@ export function FocusLayout(props: {
 
 export function CanvasLayout(props: {
   title: string;
+  /** A line under the title, such as what the page belongs to. */
+  meta?: ReactNode;
   children: ReactNode;
   closeTo?: string;
 }) {
@@ -94,7 +101,14 @@ export function CanvasLayout(props: {
           icon={<X size={18} strokeWidth={1.75} />}
           onClick={() => navigate(props.closeTo ?? "/ask")}
         />
-        <h1 className="title-3 focus-title">{props.title}</h1>
+        {props.meta ? (
+          <div>
+            <h1 className="title-3 focus-title">{props.title}</h1>
+            <div className="meta focus-meta">{props.meta}</div>
+          </div>
+        ) : (
+          <h1 className="title-3 focus-title">{props.title}</h1>
+        )}
         <span />
       </header>
       <main className="canvas-stage">{props.children}</main>

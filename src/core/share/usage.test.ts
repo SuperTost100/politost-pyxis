@@ -1,15 +1,15 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { putBlob } from "../blobs";
 import { openDatabase } from "../db/connection";
 import { planDiskUsage } from "./usage";
 import { recoverInterruptedWipe, wipeWorkspace } from "./wipe";
+import { tempDir } from "../test-temp";
 
 describe("plan disk usage", () => {
   it("counts each source file on the plans that use it", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-use-"));
+    const dir = tempDir("pyxis-use-");
     const db = openDatabase(join(dir, "pyxis.db"));
     const sha = putBlob(dir, new Uint8Array([1, 2, 3, 4]), "text/plain", "txt");
     db.prepare(
@@ -31,7 +31,7 @@ describe("plan disk usage", () => {
   });
 
   it("removes the database and source files, then recreates the folders", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-wipe-"));
+    const dir = tempDir("pyxis-wipe-");
     writeFileSync(join(dir, "pyxis.db"), "x");
     wipeWorkspace(dir);
     expect(existsSync(join(dir, "pyxis.db"))).toBe(false);
@@ -40,7 +40,7 @@ describe("plan disk usage", () => {
   });
 
   it("restores a wipe that stopped before the files were removed", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-hold-"));
+    const dir = tempDir("pyxis-hold-");
     const holding = join(dir, ".wipe");
     mkdirSync(holding);
     writeFileSync(join(holding, "INCOMPLETE"), "1");
@@ -51,7 +51,7 @@ describe("plan disk usage", () => {
   });
 
   it("puts files back into a folder that was recreated empty", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-merge-"));
+    const dir = tempDir("pyxis-merge-");
     const holding = join(dir, ".wipe");
     mkdirSync(join(holding, "blobs"), { recursive: true });
     writeFileSync(join(holding, "INCOMPLETE"), "1");
@@ -63,7 +63,7 @@ describe("plan disk usage", () => {
   });
 
   it("keeps a live file when an older wipe left a shorter copy", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-keep-"));
+    const dir = tempDir("pyxis-keep-");
     const holding = join(dir, ".wipe");
     mkdirSync(holding);
     writeFileSync(join(holding, "INCOMPLETE"), "1");
@@ -77,7 +77,7 @@ describe("plan disk usage", () => {
   });
 
   it("restores the database and its wal together", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-wal-"));
+    const dir = tempDir("pyxis-wal-");
     const holding = join(dir, ".wipe");
     mkdirSync(holding);
     writeFileSync(join(holding, "INCOMPLETE"), "1");

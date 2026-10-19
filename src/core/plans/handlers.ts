@@ -37,7 +37,7 @@ import { withLibraryOriginals } from "./libraryOriginals";
 import { exportPlan, importableWithout, importPlan, PlanFileError } from "./file";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { readProfile } from "../profile/profile";
-import { planMastery, planSeries } from "./progress";
+import { planMastery, planMasteryBreakdown, planSeries } from "./progress";
 import { freeUpSpace, planDiskUsage } from "../share/usage";
 import {
   chatListedSources,
@@ -45,6 +45,7 @@ import {
   deleteLoosePassages,
   removeUnreferencedBlobs,
 } from "../chat/delete";
+import { dueEverywhere, savePlannerHours, sessionPlan, todayPlan } from "./planner";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
 import { AUTHOR_MAX, type PlanFile, type PlanFilePart } from "../../shared/plan-file";
@@ -284,6 +285,9 @@ export function planHandlers(
     mastery(input: { planId: string }) {
       return planMastery(db, input.planId);
     },
+    masteryBreakdown(input: { planId: string }) {
+      return planMasteryBreakdown(db, input.planId);
+    },
     series(input: { planId: string }) {
       return planSeries(db, input.planId);
     },
@@ -292,6 +296,18 @@ export function planHandlers(
     },
     recommend(input: { planId: string }) {
       return planGuide(db, input.planId);
+    },
+    today() {
+      return todayPlan(db);
+    },
+    planner() {
+      return sessionPlan(db);
+    },
+    plannerHours(input: { week?: string; hours: number | null }) {
+      return savePlannerHours(db, input);
+    },
+    dueEverywhere() {
+      return dueEverywhere(db);
     },
     complete(input: {
       planId: string;

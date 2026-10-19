@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
@@ -26,6 +27,8 @@ import {
   useFreeBooks,
 } from "../../components/FreeBooks";
 import { jobErrorKey } from "../jobs/jobErrors";
+import { PdfPasswordDialog } from "../../components/PdfPassword";
+import { isPdfPasswordError } from "@shared/source-errors";
 import {
   MAX_DROPPED_FILES,
   MAX_FOLDER_DEPTH,
@@ -117,6 +120,8 @@ export function LibraryPanel({
   const [hits, setHits] = useState<
     Awaited<ReturnType<typeof invoke<"sources.search">>>
   >([]);
+  // The query the shown hits answer, so an empty answer can say so; null before the first search.
+  const [searched, setSearched] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The action local OCR data refused, kept so the student can run it again once the data is ready.
   const [again, setAgain] = useState<{ label: string; run: () => void } | null>(
@@ -124,6 +129,12 @@ export function LibraryPanel({
   );
   const [warning, setWarning] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // The locked PDF whose password is being asked for, and the link source being checked for a new version.
+  const [unlocking, setUnlocking] = useState<{
+    jobId: string;
+    title: string;
+  } | null>(null);
+  const [refreshing, setRefreshing] = useState<string | null>(null);
   // The scan being read page by page, and whether the student has asked it to stop.
   const [ocrFor, setOcrFor] = useState<{
     id: string;
@@ -477,6 +488,10 @@ export function LibraryPanel({
     queryFn: () => invoke("sources.embedState", {}),
   });
   const sources = list.data ?? [];
+  // A hit whose source was removed since the search would open nothing.
+  const shownHits = hits.filter((hit) =>
+    sources.some((source) => source.id === hit.sourceId),
+  );
   type SourceRow = (typeof sources)[number];
   // New versions of free books are checked only while the Library is open, and only when it holds a smartbook.
   const freeBooks = useFreeBooks(
@@ -570,6 +585,33 @@ export function LibraryPanel({
       setInfo(t("sources.reextractStarted", { title: source.title }));
     void client.invalidateQueries({ queryKey: ["sources"] });
   }
+  /** Fetches a link source again. A changed page is read as a new version; a source that plans use asks first. */
+  async function refresh(source: SourceRow, confirmed = false) {
+    setInfo(null);
+    setError(null);
+    setAgain(null);
+    setRefreshing(source.id);
+    let result;
+    try {
+      result = await invoke("sources.refresh", {
+        sourceId: source.id,
+        confirmed,
+      });
+    } finally {
+      setRefreshing(null);
+    }
+    if (!result.started && result.inUse > 0 && !result.unchanged) {
+      if (!window.confirm(t("sources.refreshInUse", { count: result.inUse })))
+        return;
+      return refresh(source, true);
+    }
+    setInfo(
+      t(result.unchanged ? "sources.refreshUnchanged" : "sources.refreshStarted", {
+        title: source.title,
+      }),
+    );
+    void client.invalidateQueries({ queryKey: ["sources"] });
+  }
   async function remove(source: SourceRow) {
     if (!window.confirm(`${t("sources.remove")} "${source.title}"?`)) return;
     const result = await invoke("sources.remove", {
@@ -617,6 +659,25 @@ export function LibraryPanel({
           {source.error ? (
             <p className="small px-library-flag">
               {t(jobErrorKey(source.error))}
+            </p>
+          ) : null}
+          {source.errorJobId && isPdfPasswordError(source.error) ? (
+            <p className="small px-library-unlock">
+              <Button
+                shape="round"
+                size="small"
+                aria-label={t("sources.pdfPassword.enterNamed", {
+                  title: source.title,
+                })}
+                onClick={() =>
+                  setUnlocking({
+                    jobId: source.errorJobId!,
+                    title: source.title,
+                  })
+                }
+              >
+                {t("sources.pdfPassword.enter")}
+              </Button>
             </p>
           ) : null}
           {newVersions.has(source.id) ? (
@@ -716,12 +777,23 @@ export function LibraryPanel({
                 // A smartbook is read from its package and has no stored file to read again.
                 disabled: source.kind === "smartbook" || !source.blobSha,
               },
+              // Only a source saved from a link has a page to fetch again.
+              ...(source.originUrl
+                ? [
+                    {
+                      key: "refresh",
+                      label: t("sources.refresh"),
+                      disabled: refreshing !== null,
+                    },
+                  ]
+                : []),
               { key: "remove", label: t("sources.remove"), danger: true },
             ],
             onClick: ({ key }) => {
               select(source);
               if (key === "replace") void replace(source.id).catch(fail);
               else if (key === "reextract") void reextract(source).catch(fail);
+              else if (key === "refresh") void refresh(source).catch(fail);
               else if (key === "remove") void remove(source).catch(fail);
               else setDetailsOpen(true);
             },
@@ -1127,7 +1199,11 @@ export function LibraryPanel({
   return (
     <div className="px-library">
       {addModal}
-      {sources.length === 0 ? (
+      {list.isError && !list.data ? (
+        <LoadError onRetry={() => void list.refetch()}>
+          {t("sources.loadFailed")}
+        </LoadError>
+      ) : list.isSuccess && sources.length === 0 ? (
         <EmptyState
           title={t("exams.sourcesEmptyTitle")}
           body={t("exams.sourcesEmptyBody")}
@@ -1163,6 +1239,13 @@ export function LibraryPanel({
         </Button>
       </div>
       <FreeBooks open={booksOpen} onClose={() => setBooksOpen(false)} />
+      <PdfPasswordDialog
+        target={unlocking}
+        onClose={() => {
+          setUnlocking(null);
+          void client.invalidateQueries({ queryKey: ["sources"] });
+        }}
+      />
       {/* An empty table is a scroll area with nothing to focus, and the empty state above already says so. */}
       {sources.length > 0 || list.isPending ? (
         <ProTable<SourceRow>
@@ -1243,7 +1326,14 @@ export function LibraryPanel({
         className="px-form-inline"
         onSubmit={(event) => {
           event.preventDefault();
-          void invoke("sources.search", { query }).then(setHits).catch(fail);
+          const asked = query.trim();
+          if (!asked) return;
+          void invoke("sources.search", { query: asked })
+            .then((found) => {
+              setHits(found);
+              setSearched(asked);
+            })
+            .catch(fail);
         }}
       >
         <Input
@@ -1252,13 +1342,18 @@ export function LibraryPanel({
           placeholder={t("sources.search")}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <Button htmlType="submit" shape="round">
+        <Button htmlType="submit" shape="round" disabled={!query.trim()}>
           {t("sources.searchGo")}
         </Button>
       </form>
-      {hits.length > 0 ? (
+      {searched != null && shownHits.length === 0 ? (
+        <p className="small" role="status">
+          {t("sources.searchNone", { query: searched })}
+        </p>
+      ) : null}
+      {shownHits.length > 0 ? (
         <ul className="choice-list">
-          {hits.map((hit) => (
+          {shownHits.map((hit) => (
             <li key={hit.id}>
               <button
                 type="button"
@@ -1419,6 +1514,24 @@ export function LibraryPanel({
             {t("sources.syllabusUnavailable")}
           </p>
         ) : null}
+        {detailSource?.originUrl ? (
+          <p className="small section-hint">
+            {t("sources.savedFrom", {
+              host: (() => {
+                try {
+                  return new URL(detailSource.originUrl).hostname;
+                } catch {
+                  return detailSource.originUrl;
+                }
+              })(),
+              date: detailSource.fetchedAt
+                ? new Intl.DateTimeFormat(i18n.language, {
+                    dateStyle: "medium",
+                  }).format(detailSource.fetchedAt)
+                : "—",
+            })}
+          </p>
+        ) : null}
         {meta.data && !meta.data.knownSpec ? (
           <Notice tone="warning">{t("sources.specUnknown")}</Notice>
         ) : null}
@@ -1457,6 +1570,16 @@ export function LibraryPanel({
             >
               {t("sources.reextract")}
             </Button>
+            {detailSource?.originUrl ? (
+              <Button
+                shape="round"
+                loading={refreshing === detailSource.id}
+                disabled={refreshing !== null && refreshing !== detailSource.id}
+                onClick={() => void refresh(detailSource).catch(fail)}
+              >
+                {t("sources.refresh")}
+              </Button>
+            ) : null}
             <Button
               shape="round"
               danger
