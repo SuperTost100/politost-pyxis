@@ -59,7 +59,8 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
     await expect(page).toHaveURL(/#\/cards\/due$/);
     await expect(page.getByText("Unità della forza?")).toBeVisible();
     for (const front of ["Unità della forza?", "Numero atomico?"]) {
-      await expect(page.getByText(front)).toBeVisible();
+      // The card itself: after a rating its front is also in the "Next flashcard" announcement.
+      await expect(page.getByText(front, { exact: true })).toBeVisible();
       await page.getByRole("button", { name: /Flip/ }).click();
       // Easy moves a new card out of today's learning steps, so the session ends.
       await page.getByRole("button", { name: "Easy", exact: true }).click();
