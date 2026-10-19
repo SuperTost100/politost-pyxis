@@ -52,6 +52,18 @@ export function scopeItems(input: {
  * Whether a reply may rest on the model's own knowledge. It may when nothing narrows the chat to sources, or when the
  * student chose "Answer generally" for the question, which a retry of that question must keep.
  */
+/**
+ * Whether the chat's latest question was asked with "Answer generally", which Try again and Regenerate keep. The choice
+ * made in this session wins; a chat reopened later has none, so its last reply's grounding says it.
+ */
+export function choseGeneral(
+  session: boolean | undefined,
+  messages: ReadonlyArray<{ role: string; grounding?: string | null }>,
+): boolean {
+  if (session !== undefined) return session;
+  return messages.findLast((row) => row.role === "assistant")?.grounding === "general";
+}
+
 export function allowsGeneral(input: {
   chosen: boolean;
   planId: string | null | undefined;

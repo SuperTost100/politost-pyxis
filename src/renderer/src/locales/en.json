@@ -256,6 +256,8 @@
     "retry": "Try again",
     "attachFilter": "Photos and documents",
     "replied": "Pyxis replied.",
+    "loadingChat": "Opening the chat…",
+    "loadFailed": "This chat couldn't be opened.",
     "renameTitle": "Click to rename",
     "renameNamed": "Rename {{title}}",
     "startersLabel": "Suggested questions",
@@ -1700,7 +1702,8 @@
     "invalidSubject": "Enter a subject name of 1 to 120 characters.",
     "subjectExists": "A subject with that name already exists.",
     "coreUnavailable": "The internal engine could not start. Retry, or open Settings to restore a backup.",
-    "attachScanned": "{{name}} is a scan, so I find no text in it to read here. Add it to the library and choose Read the scan."
+    "attachScanned": "{{name}} is a scan, so I find no text in it to read here. Add it to the library and choose Read the scan.",
+    "chatBusy": "Pyxis is still answering in this chat. Wait for the reply or stop it, then ask again."
   },
   "dev": {
     "kicker": "Gallery",

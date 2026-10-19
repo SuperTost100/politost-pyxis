@@ -709,12 +709,15 @@ async function dispatchValidated(
         ...requests["chats.ask"].input.parse(input),
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onPassages: (passages) => emit?.({ type: "passages", passages }),
+        onQuestion: (id) => emit?.({ type: "question", id }),
       });
     case "chats.regenerate":
       return chats?.regenerate({
         ...requests["chats.regenerate"].input.parse(input),
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onPassages: (passages) => emit?.({ type: "passages", passages }),
       });
     case "sources.list":
       requests["sources.list"].input.parse(input);
