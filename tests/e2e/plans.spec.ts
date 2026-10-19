@@ -147,7 +147,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     expect(
       (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
     ).toEqual([]);
-    await page.getByRole("button", { name: "Segna come fatto", exact: true }).click();
+    await page.getByRole("button", { name: "Fatto", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${created.planId}$`));
     const diagnostic = (await page.evaluate(
       (planId) => window.pyxis.invoke("study.diagnosticStart", { planId }),

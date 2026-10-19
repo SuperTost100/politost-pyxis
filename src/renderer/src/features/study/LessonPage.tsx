@@ -8,7 +8,7 @@ import {
   PencilLine,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
@@ -33,7 +33,9 @@ import {
   ReaderLayout,
   ReaderProgress,
   SourcesFooter,
+  useOpenNext,
 } from "./Reader";
+import { showsLiveText } from "./lessonLive";
 
 type Wording = "simple" | "balanced" | "technical";
 type Lesson = RequestOutput<"study.lesson">;
@@ -48,6 +50,7 @@ export function LessonPage() {
   const [modal, modalContext] = Modal.useModal();
   const [live, setLive] = useState("");
   const [livePassages, setLivePassages] = useState<string[]>([]);
+  const [liveCitations, setLiveCitations] = useState<string[]>([]);
   const [chosen, setChosen] = useState<Wording | undefined>();
   const [exportOpen, setExportOpen] = useState(false);
   const [partOpen, setPartOpen] = useState(false);
@@ -70,6 +73,7 @@ export function LessonPage() {
     queryFn: async ({ signal }) => {
       setLive("");
       setLivePassages([]);
+      setLiveCitations([]);
       queued.drop();
       const again = regenerate.current;
       regenerate.current = false;
@@ -84,8 +88,9 @@ export function LessonPage() {
           ...(reopened && reading.current ? { itemId: reopened } : {}),
         },
         (event) => {
-          const data = event as { text?: string; passageIds?: string[] };
+          const data = event as { text?: string; passageIds?: string[]; citations?: string[] };
           if (Array.isArray(data.passageIds)) setLivePassages(data.passageIds);
+          if (Array.isArray(data.citations)) setLiveCitations(data.citations);
           if (typeof data.text === "string") setLive(data.text);
         },
       );
@@ -125,11 +130,17 @@ export function LessonPage() {
       setNote("");
     },
   });
+  const openNext = useOpenNext(planId);
+  // "Done" goes back to the plan; "Done, continue" opens the next step. A page already done only moves on.
   const markDone = useMutation({
-    mutationFn: () => invoke("plans.complete", { planId, activity: "lesson", topicId }),
-    onSuccess: async () => {
+    mutationFn: async (then: "done" | "continue") => {
+      if (!read) await invoke("plans.complete", { planId, activity: "lesson", topicId });
+      return then;
+    },
+    onSuccess: async (then) => {
       await refreshPlan();
-      navigate(`/plans/${planId}`);
+      if (then === "continue") await openNext();
+      else navigate(`/plans/${planId}`);
     },
   });
 
@@ -138,6 +149,7 @@ export function LessonPage() {
     (lesson.error as Error | null)?.name === "AbortError";
   const writing = lesson.isFetching;
   const data = lesson.data;
+  const fromLive = showsLiveText({ writing, live, saved: data?.markdown, cancelled });
   const markdown = writing
     ? live || data?.markdown || ""
     : (data?.markdown ?? (cancelled ? live : ""));
@@ -160,6 +172,10 @@ export function LessonPage() {
     (question) => data?.answers[question.id] === undefined,
   );
   const busy = writing || rewritePart.isPending;
+  // Chips read the section they cite, as in Ask. Kept stable so a render that changes nothing else reuses the parse.
+  // They follow the text on screen: a regenerate that has not streamed yet, or was stopped, still shows the saved lesson.
+  const labels = fromLive ? liveCitations : data?.citations;
+  const citationLabel = useCallback((number: number) => labels?.[number - 1], [labels]);
 
   async function save(itemId: string, blockId: string, pick: number) {
     const result = await invoke("study.lessonAnswer", {
@@ -351,11 +367,12 @@ export function LessonPage() {
             writing ? (live ? answer : undefined) : model && data?.itemId ? answer : undefined
           }
           onCitationClick={(number) => {
-            const passageId = (writing || cancelled ? livePassages : data?.passageIds)?.[
+            const passageId = (fromLive ? livePassages : data?.passageIds)?.[
               number - 1
             ];
             if (passageId) openSourceViewer({ passageId });
           }}
+          citationResolver={citationLabel}
         >
           {markdown}
         </SmartText>
@@ -366,9 +383,10 @@ export function LessonPage() {
             state={!plan.data || !topic ? "other" : read ? "done" : "current"}
             doneLabel={t("lesson.doneTitle")}
             pendingHint={recapOpen ? t("lesson.recapPrompt") : undefined}
-            busy={markDone.isPending}
+            busy={markDone.isPending ? markDone.variables : undefined}
             failed={markDone.isError}
-            onMarkDone={() => markDone.mutate()}
+            onDone={() => markDone.mutate("done")}
+            onContinue={() => markDone.mutate("continue")}
             onBack={() => navigate(`/plans/${planId}`)}
           />
           <SourcesFooter sources={data.sources} />

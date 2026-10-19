@@ -362,6 +362,8 @@ const LessonOutput = z.object({
   answers: SmartAnswers,
   /** The sources and places the lesson was given, for its "Sources used" footer. */
   sources: LessonSources,
+  /** The label of each [Pn] chip, by passage order, as Ask labels its citations. */
+  citations: z.array(z.string()),
 });
 
 export const requests = {

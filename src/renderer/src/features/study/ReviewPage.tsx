@@ -1,11 +1,12 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Segmented } from "antd";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
+import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
 
 const COUNTS = [5, 10, 20];
@@ -42,6 +43,16 @@ export function ReviewPage() {
   const client = useQueryClient();
   const [count, setCount] = useState(20);
   const saved = useReviewSession(planId);
+  const plan = useQuery({
+    queryKey: ["plan", planId],
+    enabled: Boolean(planId),
+    queryFn: () => invoke("plans.read", { planId }),
+  });
+  const guide = useQuery({
+    queryKey: ["recommend", planId],
+    enabled: Boolean(planId),
+    queryFn: () => invoke("plans.recommend", { planId }),
+  });
   const start = useMutation({
     mutationFn: () => invoke("study.review", { planId, count }),
     onSuccess: (session) => {
@@ -75,94 +86,99 @@ export function ReviewPage() {
   const shown = active ?? start.data;
   const empty =
     start.isSuccess && start.data.next === "done" && !start.data.drills.length;
+  // What a new review draws on: the flashcards due and the topics with open gaps. A review in progress counts its own.
+  const due = guide.data?.topics.reduce((sum, topic) => sum + topic.dueCards, 0) ?? 0;
+  const gapTopics = guide.data?.topics.filter((topic) => topic.gaps > 0).length ?? 0;
+  const questions = active ? active.progress.questionsTotal + active.progress.questionsPending : 0;
+  const facts: ActivityFact[] = active
+    ? [
+        ...(active.progress.cardsTotal
+          ? [
+              {
+                icon: "layers" as const,
+                label: t("cards.factCards", { count: active.progress.cardsTotal }),
+              },
+            ]
+          : []),
+        ...(questions
+          ? [{ icon: "list-checks" as const, label: t("quiz.factQuestions", { count: questions }) }]
+          : []),
+      ]
+    : [
+        ...(due ? [{ icon: "layers" as const, label: t("cards.factDue", { count: due }) }] : []),
+        ...(gapTopics
+          ? [{ icon: "target" as const, label: t("cards.factGaps", { count: gapTopics }) }]
+          : []),
+      ];
   return (
-    <FocusLayout
-      title={t("cards.reviewTitle")}
-      onClose={() => navigate(`/plans/${planId}`)}
-      secondary={
-        <Button
-          type="text"
-          shape="round"
-          onClick={() => navigate(`/plans/${planId}`)}
-        >
-          {t("nav.back")}
-        </Button>
-      }
-      // Start sits in the action bar opposite Back, as on the quiz intro.
-      primary={
-        <div className="px-review-actions">
-          {active ? (
+    <FocusLayout title={t("cards.reviewTitle")} onClose={() => navigate(`/plans/${planId}`)}>
+      <ActivityIntro
+        eyebrow={plan.data?.title ?? t("cards.reviewTitle")}
+        title={t("cards.reviewTitle")}
+        sentence={t("cards.reviewIntro")}
+        facts={facts}
+        options={
+          active ? undefined : (
+            <ActivityChoice
+              label={t("cards.reviewCount")}
+              value={count}
+              choices={COUNTS.map((value) => ({ value, label: String(value) }))}
+              disabled={start.isPending}
+              onChange={setCount}
+            />
+          )
+        }
+        startLabel={t(active ? "cards.reviewContinue" : "cards.reviewStart")}
+        starting={start.isPending}
+        disabled={active?.next === "waiting"}
+        onStart={() => (active ? go(active) : start.mutate())}
+        onBack={() => navigate(`/plans/${planId}`)}
+      >
+        {start.isError ? <Notice tone="danger">{t("cards.reviewFailed")}</Notice> : null}
+        {empty ? <Notice tone="info">{t("cards.reviewEmpty")}</Notice> : null}
+        {active ? (
+          <div className="px-review-resume">
+            <p className="body">{t("cards.reviewResume")}</p>
+            <ReviewProgress progress={active.progress} />
             <Button
-              type="text"
+              size="small"
               shape="round"
+              className="px-review-discard"
               loading={discard.isPending}
               onClick={() => discard.mutate()}
             >
               {t("cards.reviewDiscard")}
             </Button>
-          ) : null}
-          <Button
-            type="primary"
-            shape="round"
-            loading={start.isPending}
-            disabled={active?.next === "waiting"}
-            onClick={() => (active ? go(active) : start.mutate())}
-          >
-            {t(active ? "cards.reviewContinue" : "cards.reviewStart")}
-          </Button>
-        </div>
-      }
-    >
-      <p className="body">{t("cards.reviewIntro")}</p>
-      {start.isError ? (
-        <Notice tone="danger">{t("cards.reviewFailed")}</Notice>
-      ) : null}
-      {empty ? <Notice tone="info">{t("cards.reviewEmpty")}</Notice> : null}
-      {active ? (
-        <>
-          <p className="body">{t("cards.reviewResume")}</p>
-          <ReviewProgress progress={active.progress} />
-        </>
-      ) : (
-        <div className="px-review-count">
-          <p className="label" id="review-count">
-            {t("cards.reviewCount")}
-          </p>
-          <Segmented
-            aria-labelledby="review-count"
-            options={COUNTS}
-            value={count}
-            onChange={(value) => setCount(Number(value))}
-          />
-        </div>
-      )}
-      {(shown?.drills ?? []).map((drill) => {
-        const recovery = DRILL_STATES[drill.state] ?? DRILL_STATES.failed!;
-        return (
-          <Notice
-            key={drill.jobId}
-            tone={recovery.tone}
-            action={
-              recovery.action
-                ? {
-                    label: t(`cards.reviewDrill${recovery.key}Action`),
-                    onClick: () => control.mutate({ action: recovery.action!, jobId: drill.jobId }),
-                  }
-                : undefined
-            }
-            secondary={
-              recovery.skip
-                ? {
-                    label: t("cards.reviewDrillSkip"),
-                    onClick: () => control.mutate({ action: "skip", jobId: drill.jobId }),
-                  }
-                : undefined
-            }
-          >
-            {t(`cards.reviewDrill${recovery.key}`, { topic: drill.title, count: drill.want })}
-          </Notice>
-        );
-      })}
+          </div>
+        ) : null}
+        {(shown?.drills ?? []).map((drill) => {
+          const recovery = DRILL_STATES[drill.state] ?? DRILL_STATES.failed!;
+          return (
+            <Notice
+              key={drill.jobId}
+              tone={recovery.tone}
+              action={
+                recovery.action
+                  ? {
+                      label: t(`cards.reviewDrill${recovery.key}Action`),
+                      onClick: () => control.mutate({ action: recovery.action!, jobId: drill.jobId }),
+                    }
+                  : undefined
+              }
+              secondary={
+                recovery.skip
+                  ? {
+                      label: t("cards.reviewDrillSkip"),
+                      onClick: () => control.mutate({ action: "skip", jobId: drill.jobId }),
+                    }
+                  : undefined
+              }
+            >
+              {t(`cards.reviewDrill${recovery.key}`, { topic: drill.title, count: drill.want })}
+            </Notice>
+          );
+        })}
+      </ActivityIntro>
     </FocusLayout>
   );
 }

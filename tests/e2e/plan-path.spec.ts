@@ -57,6 +57,14 @@ async function language(page: Page, value: "it" | "en", theme: "light" | "dark")
   await expect(page.locator(".px-path-next")).toBeVisible();
 }
 
+/** Finished steps fold into one line above the suggested step; open it to reach them. */
+async function showDone(page: Page) {
+  const summary = page.locator(".px-path-summary");
+  await expect(summary).toBeVisible();
+  if ((await summary.getAttribute("aria-expanded")) === "false") await summary.click();
+  await expect(summary).toHaveAttribute("aria-expanded", "true");
+}
+
 /** A full-page shot from the top, so the sticky app bar stays at the top of the image. */
 async function shoot(page: Page, path: string) {
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -67,7 +75,9 @@ async function shoot(page: Page, path: string) {
 async function linesClear(page: Page) {
   return page.evaluate(() => {
     const boxes = Array.from(
-      document.querySelectorAll<HTMLElement>(".px-path .px-node, .px-path .px-node-label, .px-path-next, .px-path-heading"),
+      document.querySelectorAll<HTMLElement>(
+        ".px-path .px-node, .px-path .px-node-label, .px-path-next, .px-path-heading, .px-path-summary",
+      ),
     ).map((element) => element.getBoundingClientRect());
     const hits: string[] = [];
     for (const path of document.querySelectorAll<SVGPathElement>(".px-path-lines path")) {
@@ -234,6 +244,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expect(next.getByRole("heading")).toHaveText(`Esercizio assistito su ${topics[0]!.title}`);
     await expect(next.getByText("Fissa quello che hai appena letto.")).toBeVisible();
     const done = page.getByRole("list", { name: "Passi fatti" });
+    await showDone(page);
     await expect(done.getByRole("button", { name: new RegExp(`^Testo smart, ${topics[0]!.title}, letto`) })).toBeVisible();
     await next.getByRole("button", { name: "Altre attività" }).click();
     for (const name of ["Testo smart", "Quiz", "Flashcard"])
@@ -279,7 +290,22 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
       ["lesson", topics[0]!.id],
       ["lesson", topics[2]!.id],
     ]);
-    await page.getByRole("button", { name: "Torna al percorso" }).click();
+    // "Continue" on a finished lesson opens the path's next suggestion, not the plan.
+    const guide = (await page.evaluate(
+      (planId) => window.pyxis.invoke("plans.recommend", { planId }),
+      planId,
+    )) as { next: { activity: string; topicId: string | null } };
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`#/plans/${planId}/${guide.next.activity}${guide.next.topicId ? `/${guide.next.topicId}` : ""}`),
+    );
+    await page.evaluate((planId) => {
+      location.hash = `/plans/${planId}`;
+    }, planId);
+    // Finished steps fold into one line above the suggestion until the student opens them.
+    await expect(page.locator(".px-path-summary")).toHaveText("2 attività fatte · Mostra");
+    await expect(done).toHaveCount(0);
+    await showDone(page);
     await expect(done.getByRole("listitem")).toHaveCount(2);
     // Only the unread topic and the simulation are still to come; still nothing is locked.
     await expect(planned.getByRole("listitem")).toHaveCount(2);
@@ -441,6 +467,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       location.hash = `/plans/${planId}`;
     }, planId);
     const done = page.getByRole("list", { name: "Passi fatti" });
+    await showDone(page);
     await expect(done.getByRole("listitem")).toHaveCount(3);
     // The path stays on the topic: after exercises, a quiz to check them.
     await expect(page.locator(".px-path-next").getByRole("heading")).toHaveText(`Quiz su ${topic.title}`);
@@ -473,6 +500,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.goBack();
 
     // The quiz opens read-only on its own attempt, with the score and Redo.
+    await showDone(page);
     await done.getByRole("button", { name: new RegExp(`^Quiz, ${topic.title}, 6/10`) }).click();
     await expect(page).toHaveURL(new RegExp(`quiz/${topic.id}\\?attempt=${quiz.attemptId}$`));
     await expect(page.locator(".px-quiz-score")).toHaveText(/^6\s*su 10$/);
@@ -530,6 +558,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.getByRole("button", { name: "Continua" }).click();
 
     // Finished exercises open without "Mark as done"; going back records nothing.
+    await showDone(page);
     await expect(done.getByRole("listitem")).toHaveCount(4);
     await done.getByRole("button", { name: new RegExp(`^Esercizio assistito, ${topic.title}`) }).click();
     await expect(page).toHaveURL(new RegExp(`practice/${topic.id}\\?review=1$`));
@@ -556,6 +585,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     };
     expect(cardJobs()).toBe(0);
     await page.reload();
+    await showDone(page);
     await expect(done.getByRole("listitem")).toHaveCount(withCards.length);
     await done.getByRole("button", { name: new RegExp(`^Flashcard, ${topic.title}`) }).click();
     await expect(page).toHaveURL(new RegExp(`cards/${topic.id}\\?review=1$`));
@@ -581,6 +611,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, copy.planId);
+    await showDone(page);
     await done.getByRole("button", { name: new RegExp(`^Quiz, ${topic.title}, 6/10`) }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/quiz/[^/?]+\\?attempt=`));
     await expect(page.getByText("Le risposte di questo tentativo non erano incluse nel piano condiviso.")).toBeVisible();
