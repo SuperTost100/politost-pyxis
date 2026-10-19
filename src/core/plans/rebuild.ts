@@ -125,7 +125,7 @@ function fingerprintOf(db: Database.Database, planId: string): string {
         `SELECT s.id, s.title, s.blob_sha, s.status,
             (SELECT MAX(version) FROM source_documents WHERE source_id = s.id) AS version
            FROM plan_sources ps JOIN sources s ON s.id = ps.source_id
-           WHERE ps.plan_id = ? ORDER BY s.id`,
+           WHERE ps.plan_id = ? AND ps.role = 'material' ORDER BY s.id`,
       )
       .all(planId),
   });
@@ -420,7 +420,7 @@ export function applyRebuild(
       planId,
       (
         db
-          .prepare("SELECT source_id AS id FROM plan_sources WHERE plan_id = ?")
+          .prepare("SELECT source_id AS id FROM plan_sources WHERE plan_id = ? AND role = 'material'")
           .all(planId) as Array<{ id: string }>
       ).map((row) => row.id),
     );

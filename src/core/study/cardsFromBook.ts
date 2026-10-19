@@ -22,35 +22,38 @@ const BACK_MAX = 300;
 const CLOZE_MAX = 240;
 
 const text = (max: number) => z.string().trim().min(1).max(max);
-const card = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("qa"),
-    front: text(FRONT_MAX),
-    back: text(BACK_MAX),
-    passageId: z.string(),
-  }),
-  z.object({
-    kind: z.literal("concept"),
-    term: text(FRONT_MAX),
-    definition: text(BACK_MAX),
-    passageId: z.string(),
-  }),
-  z.object({
-    kind: z.literal("cloze"),
-    text: text(CLOZE_MAX),
-    extra: text(BACK_MAX),
-    passageId: z.string(),
-  }),
-]);
+/** The three card forms, with the shape of the passage link left to the caller (cards made from pasted text may have none). */
+export const cardOf = <P extends z.ZodType>(passageId: P) =>
+  z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("qa"),
+      front: text(FRONT_MAX),
+      back: text(BACK_MAX),
+      passageId,
+    }),
+    z.object({
+      kind: z.literal("concept"),
+      term: text(FRONT_MAX),
+      definition: text(BACK_MAX),
+      passageId,
+    }),
+    z.object({
+      kind: z.literal("cloze"),
+      text: text(CLOZE_MAX),
+      extra: text(BACK_MAX),
+      passageId,
+    }),
+  ]);
+const card = cardOf(z.string());
 type GeneratedCard = z.infer<typeof card>;
 
-const norm = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
+export const norm = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
 
 const DISPLAY_MATH = /\$\$|\\\[|\\begin\{/;
 const LIST_LINE = /^\s*(?:\d+[.)]|[-*\u2022])\s/;
 
 /** Why a face is a worked solution rather than one fact, or null when it is fine. */
-function solutionLike(face: string): string | null {
+export function solutionLike(face: string): string | null {
   if (DISPLAY_MATH.test(face)) return "A card holds no display-math derivation";
   if (/\n\s*\n/.test(face)) return "A card holds one paragraph";
   const lines = face.split("\n").filter((line) => line.trim());
@@ -59,7 +62,12 @@ function solutionLike(face: string): string | null {
   return null;
 }
 
-function faces(row: GeneratedCard): { front: string; back: string } {
+type CardFaces =
+  | { kind: "qa"; front: string; back: string }
+  | { kind: "concept"; term: string; definition: string }
+  | { kind: "cloze"; text: string; extra: string };
+
+export function faces(row: CardFaces): { front: string; back: string } {
   if (row.kind === "qa") return { front: row.front, back: row.back };
   if (row.kind === "concept") return { front: row.term, back: row.definition };
   return { front: row.text, back: row.extra };

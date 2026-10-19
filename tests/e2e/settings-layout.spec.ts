@@ -47,6 +47,27 @@ test("settings show a sidebar from 960px and drill down below it", async () => {
     const restore = (await page.getByRole("button", { name: "Ripristina", exact: true }).boundingBox())!;
     expect(Math.round(restore.x - (backup.x + backup.width))).toBe(12);
 
+    // Crossing 960px re-lays the page out without remounting the open section, so an open drawer stays open.
+    await page.evaluate(() =>
+      window.pyxis.invoke("engines.acknowledge", {
+        providers: ["claude", "codex", "agent", "antigravity"],
+      }),
+    );
+    await sidebar.getByRole("button", { name: "Motori AI" }).click();
+    await page.getByRole("switch", { name: "Opzioni avanzate" }).click();
+    await page.getByRole("button", { name: "Dettagli di Claude Code" }).click();
+    const drawer = page.getByRole("dialog", { name: "Claude Code", exact: true });
+    await expect(drawer).toBeVisible();
+    await page.setViewportSize({ width: 800, height: 800 });
+    await expect(sidebar).toHaveCount(0);
+    await expect(drawer).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(sidebar).toBeVisible();
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole("button", { name: /^(Close|Chiudi)$/ }).click();
+    await expect(drawer).toHaveCount(0);
+    await sidebar.getByRole("button", { name: "Dati" }).click();
+
     // Below 960px the sections are pages again, with a way back to the list.
     await page.setViewportSize({ width: 800, height: 800 });
     await expect(sidebar).toHaveCount(0);

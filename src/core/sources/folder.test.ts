@@ -1,12 +1,12 @@
-import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listImportable, MAX_FOLDER_DEPTH, MAX_FOLDER_FILES } from "./folder";
+import { tempDir } from "../test-temp";
 
 describe("folder import", () => {
   it("lists supported files and skips hidden ones", () => {
-    const root = mkdtempSync(join(tmpdir(), "pyxis-folder-"));
+    const root = tempDir("pyxis-folder-");
     mkdirSync(join(root, "notes"));
     writeFileSync(join(root, "notes", "chapter.txt"), "testo");
     writeFileSync(join(root, "slide.pptx"), "x");
@@ -24,7 +24,7 @@ describe("folder import", () => {
 
   // Writing a cap's worth of files took over 5 s on the hosted Windows runner.
   it("says when the file cap cut the list, and not when the folder holds exactly the cap", { timeout: 30_000 }, () => {
-    const root = mkdtempSync(join(tmpdir(), "pyxis-folder-cap-"));
+    const root = tempDir("pyxis-folder-cap-");
     for (let index = 0; index < MAX_FOLDER_FILES; index += 1) writeFileSync(join(root, `n${index}.txt`), "");
     expect(listImportable(root)).toMatchObject({ cappedFiles: false });
     writeFileSync(join(root, "one-more.txt"), "");
@@ -34,7 +34,7 @@ describe("folder import", () => {
   });
 
   it("stops after a number of entries, however few of them it could import, and says so", () => {
-    const root = mkdtempSync(join(tmpdir(), "pyxis-folder-entries-"));
+    const root = tempDir("pyxis-folder-entries-");
     writeFileSync(join(root, "notes.txt"), "");
     // A dependency folder holds thousands of files, none of them importable.
     mkdirSync(join(root, "node_modules"));
@@ -45,7 +45,7 @@ describe("folder import", () => {
   });
 
   it("says when folders nested past the depth cap were not read", () => {
-    const root = mkdtempSync(join(tmpdir(), "pyxis-folder-depth-"));
+    const root = tempDir("pyxis-folder-depth-");
     let dir = root;
     // Files sit at depth 0 up to MAX_FOLDER_DEPTH. The next folder down is never opened.
     for (let depth = 0; depth <= MAX_FOLDER_DEPTH; depth += 1) {
@@ -64,7 +64,7 @@ describe("folder import", () => {
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "skips a subfolder it cannot open and says so",
     () => {
-      const root = mkdtempSync(join(tmpdir(), "pyxis-folder-locked-"));
+      const root = tempDir("pyxis-folder-locked-");
       writeFileSync(join(root, "notes.txt"), "");
       const locked = join(root, "locked");
       mkdirSync(locked);

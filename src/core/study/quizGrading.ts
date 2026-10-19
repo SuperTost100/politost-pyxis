@@ -227,7 +227,8 @@ export async function gradeQuizQuestion(
   );
   let explanation = question.explanation ?? "";
   let provenance: Partial<CheckedAnswer> = {};
-  if (question.answer.kind === "open" && !pick.trim()) score = 0;
+  // An empty pick is the student's "I don't know": 0 for every kind, whatever the question would accept as blank.
+  if (!pick.trim()) score = 0;
   engine.signal?.throwIfAborted();
   const modelGrade = await gradeOpen(db, question, pick, run, engine);
   engine.signal?.throwIfAborted();

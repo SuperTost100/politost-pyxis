@@ -16,20 +16,25 @@ import { nextLearningDue, trackLearning, type LearningCards } from "./learningCa
 
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
 import { Notice } from "../../components/Notice";
+import { LoadError } from "../../components/LoadError";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
+
+/** A card's text without its Markdown emphasis, for a screen reader's label. */
+const plainText = (markdown: string) => markdown.replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
 
 export function CardsPage() {
   const { t } = useTranslation();
   const { planId, topicId } = useParams();
+  // Without a plan these are Oggi's due cards from every plan, closest exam first.
+  const everywhere = !planId;
   // Without a topic this is the Review session: its stored cards, then its questions.
-  const reviewing = !topicId;
+  const reviewing = !topicId && !everywhere;
   // Opened from a finished step on the path: looking again starts no card generation and records no step, unless the
   // student rates a card.
   const [searchParams] = useSearchParams();
   const looking = Boolean(topicId) && searchParams.get("review") === "1";
   const reviewQueue = useReviewSession(planId, reviewing);
-  useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
   const client = useQueryClient();
   const ratingLock = useRef(false);
@@ -59,6 +64,12 @@ export function CardsPage() {
     queryFn: () =>
       invoke("study.cards", { planId: planId ?? "", topicId }),
   });
+  const dueEverywhere = useQuery({
+    queryKey: ["cards-everywhere"],
+    enabled: everywhere,
+    queryFn: () => invoke("study.dueEverywhere", {}),
+  });
+  const deck = everywhere ? dueEverywhere : cards;
   const parked = useQuery({
     queryKey: ["card-suspended", planId, topicId],
     enabled: Boolean(planId && topicId),
@@ -121,11 +132,31 @@ export function CardsPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
-  const card = reviewing ? reviewQueue.data?.cards[0] : cards.data?.[0];
+  const card = everywhere
+    ? dueEverywhere.data?.[0]
+    : reviewing
+      ? reviewQueue.data?.cards[0]
+      : cards.data?.[0];
+  const cardPlanId = everywhere ? dueEverywhere.data?.[0]?.planId : planId;
+  useActiveTime(cardPlanId, topicId ?? (everywhere ? (card?.topicId ?? null) : null));
+  // The plan and topic of each card rated here, so each plan's path gets its own cards step.
+  const [ratedIn, setRatedIn] = useState<
+    Array<{ planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
+  >([]);
+  // Until the deck arrives (and the topic's build is known) "No cards are due." would be a guess.
+  const shown = everywhere ? dueEverywhere : reviewing ? reviewQueue : cards;
+  const deckLoading = shown.isLoading || (!reviewing && build.isLoading);
+  // Said aloud when a rating brings up the next card; the old card's buttons are gone and focus falls to the page.
+  // Until the rating's refresh has replaced the deck, the card shown is still the one just rated.
+  const nextCardText =
+    seen.length > 0 && !ratingPending && !ratingError && card
+      ? plainText(isCloze(card.front) ? clozeQuestion(card.front) : card.front)
+      : "";
   const [recorded, setRecorded] = useState(false);
   const [finishFailed, setFinishFailed] = useState(false);
   /** Records this topic's card session on the path: when its last due card is rated, or with "Mark as done". */
   async function finishSession(): Promise<boolean> {
+    if (everywhere) return finishEverywhere();
     if (!planId || !topicId) return false;
     if (recorded) return true;
     setFinishFailed(false);
@@ -155,14 +186,47 @@ export function CardsPage() {
       return false;
     }
   }
+  /** Oggi's session records a cards step on each topic it rated, in each plan. */
+  async function finishEverywhere(): Promise<boolean> {
+    if (recorded || ratedIn.length === 0) return true;
+    setFinishFailed(false);
+    const groups = new Map<string, typeof ratedIn>();
+    for (const entry of ratedIn) {
+      const key = `${entry.planId}\n${entry.topicId}`;
+      groups.set(key, [...(groups.get(key) ?? []), entry]);
+    }
+    try {
+      for (const entries of groups.values())
+        await invoke("plans.complete", {
+          planId: entries[0]!.planId,
+          activity: "cards",
+          topicId: entries[0]!.topicId,
+          result: {
+            correct: entries.filter((entry) => entry.rating === "good" || entry.rating === "easy")
+              .length,
+            total: entries.length,
+          },
+        });
+      setRecorded(true);
+      await Promise.all(
+        [["plans"], ["plan"], ["recommend"]].map((queryKey) =>
+          client.invalidateQueries({ queryKey }),
+        ),
+      );
+      return true;
+    } catch {
+      setFinishFailed(true);
+      return false;
+    }
+  }
   const learningDue = reviewing ? null : nextLearningDue(learning);
-  const waiting = !card && cards.isSuccess && learningDue != null;
+  const waiting = !card && deck.isSuccess && learningDue != null;
   useEffect(() => {
     if (!waiting || learningDue == null) return;
     const tick = window.setInterval(() => setClock(Date.now()), 15_000);
     const due = window.setTimeout(
       () => {
-        void cards.refetch().then(() => {
+        void deck.refetch().then(() => {
           // A card that is still due shows up now; one deleted or suspended meanwhile stops the wait.
           const now = Date.now();
           setLearning((current) =>
@@ -178,7 +242,7 @@ export function CardsPage() {
     };
   }, [waiting, learningDue]);
   const sessionOver =
-    !reviewing && seen.length > 0 && cards.isSuccess && !card && learningDue == null;
+    !reviewing && seen.length > 0 && deck.isSuccess && !card && learningDue == null;
   useEffect(() => {
     if (sessionOver) void finishSession();
   }, [sessionOver]);
@@ -195,6 +259,7 @@ export function CardsPage() {
   async function refresh() {
     await Promise.all([
       client.invalidateQueries({ queryKey: ["cards", planId, topicId] }),
+      client.invalidateQueries({ queryKey: ["cards-everywhere"] }),
       client.invalidateQueries({ queryKey: ["review-session", planId] }),
       client.invalidateQueries({ queryKey: ["card-queue", planId, topicId] }),
       client.invalidateQueries({
@@ -213,6 +278,11 @@ export function CardsPage() {
       setIntervalDays(state.intervalDays);
       setShowBack(false);
       setSeen((current) => [...current, rating]);
+      if (everywhere && cardPlanId && card.topicId)
+        setRatedIn((current) => [
+          ...current,
+          { planId: cardPlanId, topicId: card.topicId!, rating },
+        ]);
       const now = Date.now();
       setClock(now);
       setLearning((current) => trackLearning(current, card.id, state.dueAt, now));
@@ -258,12 +328,22 @@ export function CardsPage() {
 
   return (
     <FocusLayout
-      title={t(reviewing ? "cards.reviewTitle" : "cards.title")}
+      title={t(everywhere ? "oggi.cardsTitle" : reviewing ? "cards.reviewTitle" : "cards.title")}
+      meta={everywhere ? dueEverywhere.data?.[0]?.planTitle : undefined}
+      onClose={
+        everywhere
+          ? () => void finishEverywhere().then((ok) => ok && navigate("/exams"))
+          : () => navigate(`/plans/${planId ?? ""}`)
+      }
       secondary={
         <Button
           type="text"
           shape="round"
-          onClick={() => navigate(`/plans/${planId ?? ""}`)}
+          onClick={() =>
+            everywhere
+              ? void finishEverywhere().then((ok) => ok && navigate("/exams"))
+              : navigate(`/plans/${planId ?? ""}`)
+          }
         >
           {t("nav.back")}
         </Button>
@@ -316,7 +396,7 @@ export function CardsPage() {
               {t("cards.mastered", { count: queue.data.mastered })}
             </p>
           ) : null}
-          {reviewing ? null : (
+          {reviewing || everywhere ? null : (
             <div className="px-cards-toolbar-actions">
               <ExportButton
                 planId={planId ?? ""}
@@ -348,8 +428,17 @@ export function CardsPage() {
         {finishFailed ? (
           <Notice tone="danger">{t("planOverview.failed")}</Notice>
         ) : null}
+        <div className="visually-hidden" role="status" aria-live="polite">
+          {nextCardText ? t("cards.nextCard", { front: nextCardText }) : ""}
+        </div>
         {!card ? (
-          building ? null : waiting && learningDue != null ? (
+          building || deckLoading ? null : shown.isError ? (
+            <LoadError
+              onRetry={() => void shown.refetch()}
+            >
+              {t("cards.loadFailed")}
+            </LoadError>
+          ) : waiting && learningDue != null ? (
             <p className="body" role="status">
               {t("cards.learningWait", {
                 count: Math.max(1, Math.ceil((learningDue - clock) / 60_000)),
@@ -384,10 +473,10 @@ export function CardsPage() {
                   type="primary"
                   shape="round"
                   onClick={() => {
-                    if (!planId || !cardTopicId) return;
+                    if (!cardPlanId || !cardTopicId) return;
                     act(
                       invoke("study.save", {
-                        planId,
+                        planId: cardPlanId,
                         topicId: cardTopicId,
                         cardId: card.id,
                         front: draftFront,
@@ -521,10 +610,17 @@ export function CardsPage() {
           </article>
         )}
         {(parked.data ?? []).map((item) => (
-          <p key={item.id} className="small">
-            {item.front}{" "}
+          <div key={item.id} className="px-cards-parked">
+            <MarkdownView variant="body">
+              {isCloze(item.front) ? clozeAnswer(item.front) : item.front}
+            </MarkdownView>
             <Button
               shape="round"
+              aria-label={t("cards.resumeCard", {
+                front: plainText(
+                  isCloze(item.front) ? clozeAnswer(item.front) : item.front,
+                ),
+              })}
               onClick={() => {
                 act(
                   invoke("study.suspend", {
@@ -537,7 +633,7 @@ export function CardsPage() {
             >
               {t("cards.resume")}
             </Button>
-          </p>
+          </div>
         ))}
         {reviewing && reviewQueue.data?.next === "questions" && !card ? (
           <Button
@@ -564,7 +660,7 @@ export function CardsPage() {
           </Notice>
         ) : null}
         {seen.length > 0 && !card ? (
-          <p className="body">
+          <p className="body" role="status">
             {t("cards.summary", {
               seen: seen.length,
               again: counts.again,
@@ -574,7 +670,7 @@ export function CardsPage() {
             })}
           </p>
         ) : null}
-        {reviewing ? null : (
+        {reviewing || everywhere ? null : (
         <section className="px-cards-add" aria-label={t("cards.add")}>
           <h2 className="body-strong">{t("cards.add")}</h2>
           <label className="small" htmlFor="new-front">
