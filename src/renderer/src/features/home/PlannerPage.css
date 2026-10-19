@@ -1,0 +1,190 @@
+.px-planner {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.px-planner h1,
+.px-planner h2,
+.px-planner h3 {
+  margin: 0;
+}
+
+.px-planner-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--ink-muted);
+  font: 500 calc(14px * var(--text-scale, 1)) / calc(20px * var(--text-scale, 1)) var(--font-sans);
+  text-decoration: none;
+}
+
+.px-planner-back:hover {
+  color: var(--ink);
+}
+
+.px-planner-intro {
+  margin: 0;
+  max-width: 68ch;
+}
+
+.px-planner-hours {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.px-planner-hours p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.px-planner-hours-input {
+  width: 110px;
+}
+
+.px-planner-hours-input.is-small {
+  width: 92px;
+}
+
+.px-planner-section {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.px-planner-exams,
+.px-planner-weeks,
+.px-planner-day-list,
+.px-planner-lines {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.px-planner-exams,
+.px-planner-weeks {
+  gap: var(--space-3);
+}
+
+.px-planner-exam,
+.px-planner-week {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.px-planner-exam p,
+.px-planner-week p {
+  margin: 0;
+}
+
+.px-planner-exam-head,
+.px-planner-week-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+.px-planner-exam-head a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.px-planner-exam-head a:hover {
+  text-decoration: underline;
+}
+
+.px-planner-week-hours {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.px-planner-lines {
+  gap: var(--space-1);
+}
+
+.px-planner-lines li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.px-planner-exam-mark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--star-text);
+}
+
+.px-planner-days {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.px-planner-days-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.px-planner-day-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.px-planner-day {
+  display: grid;
+  grid-template-columns: minmax(150px, 200px) 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+}
+
+.px-planner-day + .px-planner-day {
+  border-top: 1px solid var(--border);
+}
+
+.px-planner-day-date {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.px-planner-day-date .px-tag {
+  margin: 0;
+}
+
+.px-planner-day-work {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.px-planner-day-work p {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .px-planner-day {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+}

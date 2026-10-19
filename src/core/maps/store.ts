@@ -36,6 +36,14 @@ function collection(
     .get(planId, topicId) as
     { id: string; graph_json: string; grounding: string } | undefined;
   if (!row) return { version: 1, maps: [] };
+  return parseCollection(row);
+}
+/** The maps one topic's row holds. Rows saved before collections hold one bare graph. */
+export function parseCollection(row: {
+  id: string;
+  graph_json: string;
+  grounding: string | null;
+}): Collection {
   const parsed = JSON.parse(row.graph_json) as Collection | ConceptGraph;
   if ("version" in parsed && parsed.version === 1) return parsed;
   const graph = parsed as ConceptGraph;

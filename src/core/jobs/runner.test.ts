@@ -395,6 +395,64 @@ describe("job runner", () => {
     expect(view?.steps[0]?.state).toBe("pending");
   });
 
+  it("resumes interrupted local work by itself, once per step, and leaves model work waiting", async () => {
+    const database = db();
+    // A job cut off in `step`, with `done` steps finished before it, as a quit leaves it.
+    const cutOff = (kind: string, done: string[], step: string, params: object = {}) => {
+      const jobId = uuidv7();
+      database
+        .prepare(
+          `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at)
+           VALUES (?, ?, ?, 'running', 0, ?, ?)`,
+        )
+        .run(jobId, kind, JSON.stringify(params), Date.now(), Date.now());
+      [...done, step].forEach((name, position) =>
+        database
+          .prepare(
+            `INSERT INTO job_steps (id, job_id, name, position, label, state, output_json)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(uuidv7(), jobId, name, position, name, name === step ? "running" : "succeeded", name === step ? null : "{}"),
+      );
+      return jobId;
+    };
+    const local = cutOff("import", ["read"], "index", { file: "a" });
+    const notListed = cutOff("other-local", [], "read");
+    const modelFirst = cutOff("photo", [], "read");
+    const modelDone = cutOff("photo", ["read"], "index");
+    const again = cutOff("import", [], "read", { autoResumedAt: "read" });
+    const ran: string[] = [];
+    const runner = createRunner(database, () => {}, undefined, true);
+    const step = (name: string, jobClass?: "local") => ({
+      name,
+      label: name,
+      ...(jobClass ? { jobClass } : {}),
+      run: async (ctx: { params: unknown }) => {
+        ran.push(`${name}:${JSON.stringify(ctx.params)}`);
+        return {};
+      },
+    });
+    runner.register("import", { jobClass: "local", steps: [step("read"), step("index")] });
+    runner.register("other-local", { jobClass: "local", steps: [step("read")] });
+    // A photo is read by a model first, then indexed locally.
+    runner.register("photo", { jobClass: "model-cli", steps: [step("read"), step("index", "local")] });
+    expect(runner.resumeLocal(["import", "photo"])).toEqual([local, modelDone]);
+    expect(stateOf(database, local)).toBe("queued");
+    expect(stateOf(database, modelDone)).toBe("queued");
+    // A model step waits for the student, as does a kind not asked for, and a job already resumed at this step.
+    expect(stateOf(database, modelFirst)).toBe("interrupted");
+    expect(stateOf(database, notListed)).toBe("interrupted");
+    expect(stateOf(database, again)).toBe("interrupted");
+    runner.activate();
+    expect(await until(database, local, ["succeeded"])).toBe("succeeded");
+    expect(await until(database, modelDone, ["succeeded"])).toBe("succeeded");
+    // Only the unfinished step runs, with the input it had and the step it was resumed at.
+    expect(ran.sort()).toEqual([
+      'index:{"autoResumedAt":"index"}',
+      'index:{"file":"a","autoResumedAt":"index"}',
+    ]);
+  });
+
   it("drops a dismissed job from listeners", () => {
     const database = db();
     const seen: string[] = [];

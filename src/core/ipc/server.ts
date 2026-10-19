@@ -491,6 +491,10 @@ async function dispatchValidated(
     }
     case "maps.list":
       return maps?.list(requests["maps.list"].input.parse(input));
+    case "maps.all":
+      return maps?.all(requests["maps.all"].input.parse(input)) ?? [];
+    case "maps.export":
+      return maps?.export(requests["maps.export"].input.parse(input));
     case "maps.build":
       return maps?.build(requests["maps.build"].input.parse(input));
     case "maps.generate":
@@ -551,6 +555,12 @@ async function dispatchValidated(
       return plans?.import(requests["plans.import"].input.parse(input));
     case "plans.mastery":
       return plans?.mastery(requests["plans.mastery"].input.parse(input)) ?? [];
+    case "plans.masteryBreakdown":
+      return (
+        plans?.masteryBreakdown(
+          requests["plans.masteryBreakdown"].input.parse(input),
+        ) ?? []
+      );
     case "plans.series":
       return plans?.series(requests["plans.series"].input.parse(input));
     case "plans.simulations":
@@ -562,6 +572,17 @@ async function dispatchValidated(
       return (
         plans?.recommend(requests["plans.recommend"].input.parse(input)) ?? null
       );
+    case "plans.today":
+      requests["plans.today"].input.parse(input);
+      return plans?.today() ?? { planned: false, behind: [], cards: null, items: [] };
+    case "plans.planner":
+      requests["plans.planner"].input.parse(input);
+      return plans?.planner();
+    case "plans.plannerHours":
+      return plans?.plannerHours(requests["plans.plannerHours"].input.parse(input));
+    case "study.dueEverywhere":
+      requests["study.dueEverywhere"].input.parse(input);
+      return plans?.dueEverywhere() ?? [];
     case "plans.complete":
       return plans?.complete(requests["plans.complete"].input.parse(input));
     case "plans.attachSources":
@@ -711,6 +732,10 @@ async function dispatchValidated(
       return sources?.syllabus(requests["sources.syllabus"].input.parse(input), signal);
     case "sources.reextract":
       return sources?.reextract(requests["sources.reextract"].input.parse(input));
+    case "sources.refresh":
+      return sources?.refresh(requests["sources.refresh"].input.parse(input), signal);
+    case "sources.unlockPdf":
+      return sources?.unlockPdf(requests["sources.unlockPdf"].input.parse(input));
     case "sources.remove":
       return sources?.remove(requests["sources.remove"].input.parse(input));
     case "sources.promote":

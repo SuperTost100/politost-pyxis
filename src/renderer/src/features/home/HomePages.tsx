@@ -16,6 +16,7 @@ import { SubjectManagerModal } from "../ask/SubjectPicker";
 import { ImportReview } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
 import { examDaysLabel } from "../plans/examDays";
+import { OggiBlock } from "./OggiBlock";
 import "./HomePages.css";
 
 export function ExamsHome() {
@@ -138,6 +139,7 @@ export function ExamsHome() {
         <MistakesNotebook />
       ) : plans.isPending ? null : (plans.data?.length ?? 0) > 0 ? (
         <div>
+          <OggiBlock />
           <div className="px-exams-toolbar">
             <Input
               id="plan-search"

@@ -353,6 +353,26 @@ describe("configured quizzes", () => {
     );
     db.close();
   });
+  it("keeps the skipped questions and their order in the draft, and refuses unknown ones", async () => {
+    const db = fixture();
+    const started = await startConfiguredQuiz(
+      db,
+      { planId: "plan", topicId: "topic", count: 10, types: ["tf"] },
+      tfRun,
+    );
+    const [first, second] = started.questions.map((question) => question.id);
+    saveQuizDraft(db, started.attemptId, {}, 1, "plan", undefined, [second!, first!]);
+    expect(readQuiz(db, started.attemptId).draft).toMatchObject({
+      index: 1,
+      skipped: [second, first],
+    });
+    expect(() =>
+      saveQuizDraft(db, started.attemptId, {}, 1, "plan", undefined, ["nope"]),
+    ).toThrow("question-missing");
+    saveQuizDraft(db, started.attemptId, {}, 1, "plan");
+    expect(readQuiz(db, started.attemptId).draft?.skipped).toBeUndefined();
+    db.close();
+  });
   it("rejects unsupported counts and invented grounding without saving a partial attempt", async () => {
     const db = fixture();
     await expect(

@@ -61,6 +61,58 @@
   margin: var(--space-1) 0 0;
   color: var(--ink-muted);
 }
+.px-skill-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 0 calc(-1 * var(--space-2));
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.px-skill-toggle:hover {
+  background: var(--surface-raised);
+}
+.px-skill-chevron {
+  flex: none;
+  color: var(--ink-subtle);
+  transition: transform 150ms ease-out;
+}
+.px-skill-toggle[aria-expanded="true"] .px-skill-chevron {
+  transform: rotate(90deg);
+}
+.px-evidence {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.px-evidence p {
+  margin: 0;
+}
+.px-evidence-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+}
+.px-evidence-list > div {
+  display: contents;
+}
+.px-evidence-list dt {
+  color: var(--ink-muted);
+}
+.px-evidence-list dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
 .px-progress-flags li {
   display: flex;
   align-items: center;
@@ -166,6 +218,13 @@
   .px-progress-skills li {
     grid-template-columns: 1fr;
     gap: var(--space-3);
+  }
+  .px-evidence-list {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+  .px-evidence-list dd {
+    margin-bottom: var(--space-2);
   }
   .px-progress-pace-facts {
     grid-template-columns: 1fr;
