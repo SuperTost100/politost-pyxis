@@ -421,6 +421,11 @@ test("Ask: a student who scrolled up is not pulled back down by new content", as
         const root = document.scrollingElement!;
         return root.scrollHeight - root.scrollTop - root.clientHeight;
       });
+    // A page shorter than the window is also "at the end": wait for the second reply to be laid out in full first.
+    await expect(page.getByText(/^Passo 24:/).last()).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => document.scrollingElement!.scrollHeight - document.scrollingElement!.clientHeight))
+      .toBeGreaterThan(3 * 300);
     await expect.poll(gap).toBeLessThan(4);
     const top = () => page.evaluate(() => document.scrollingElement!.scrollTop);
     const end = await top();
