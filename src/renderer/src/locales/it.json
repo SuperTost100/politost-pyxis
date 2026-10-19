@@ -1753,7 +1753,8 @@
       "you": "Tu",
       "pyxis": "Pyxis",
       "copied": "Copiato",
-      "copyFailed": "Non sono riuscito a copiare. Riprova."
+      "copyFailed": "Non sono riuscito a copiare. Riprova.",
+      "makeCards": "Crea flashcard"
     },
     "quiz": {
       "correct": "Corretta",
@@ -2489,6 +2490,38 @@
     "updateInUse_one": "{{count}} piano usa questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quel piano e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti nel piano per aggiungere i nuovi capitoli. Vuoi aggiornarlo?",
     "updateInUse_other": "{{count}} piani usano questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quei piani e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti in ogni piano per aggiungere i nuovi capitoli. Vuoi aggiornarlo?",
     "retry": "Riprova"
+  },
+  "makeCards": {
+    "title": "Crea flashcard",
+    "action": "Crea flashcard",
+    "fromReply": "Dalla risposta",
+    "fromSelection": "Dalla tua selezione",
+    "plan": "Piano",
+    "topic": "Argomento",
+    "planPlaceholder": "Scegli un piano",
+    "topicPlaceholder": "Scegli un argomento",
+    "noPlans": "Le flashcard stanno in un argomento di un piano. Crea prima un piano.",
+    "hint": "Pyxis scrive flashcard brevi a partire da questo testo. Le controlli tu prima di salvarle.",
+    "make": "Crea flashcard",
+    "again": "Crea di nuovo",
+    "cancel": "Annulla",
+    "working": "Sto scrivendo le flashcard…",
+    "failed": "Pyxis non è riuscito a scrivere le flashcard. Controlla il motore scelto e riprova.",
+    "saveFailed": "Pyxis non è riuscito a salvare le flashcard. Riprova.",
+    "listLabel": "Flashcard proposte",
+    "cardN": "Flashcard {{n}}",
+    "drop": "Scarta la flashcard {{n}}",
+    "front": "Davanti",
+    "back": "Dietro",
+    "source": "Fonte",
+    "cloze": "Cloze: le parole dentro {{markup}} restano nascoste mentre studi.",
+    "allDropped": "Hai scartato tutte le flashcard. Crea di nuovo per averne altre.",
+    "save_one": "Salva {{count}} flashcard",
+    "save_other": "Salva {{count}} flashcard",
+    "saved_one": "{{count}} flashcard salvata in {{topic}}.",
+    "saved_other": "{{count}} flashcard salvate in {{topic}}.",
+    "skipped_one": "{{count}} c’era già.",
+    "skipped_other": "{{count}} c’erano già."
   },
   "oggi": {
     "title": "Oggi",

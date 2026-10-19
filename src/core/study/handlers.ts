@@ -19,6 +19,7 @@ import {
   readCardsBuild,
   registerCardJobs,
 } from "./cardsFromBook";
+import { cardPlaces, proposeCards, saveProposedCards } from "./cardsFromText";
 import { enqueueGapDrill, readGapDrill, registerGapJobs } from "./gapDrill";
 import { registerGapInsightJobs } from "./gapInsight";
 import { exerciseView, topicExercises } from "./exercises";
@@ -382,6 +383,18 @@ export function studyHandlers(
     },
     cardsBuild(input: { planId: string; topicId: string }) {
       return readCardsBuild(db, input);
+    },
+    cardsPlaces(input: Parameters<typeof cardPlaces>[1]) {
+      return cardPlaces(db, input);
+    },
+    cardsPropose(
+      input: Parameters<typeof proposeCards>[1],
+      signal?: AbortSignal,
+    ) {
+      return proposeCards(db, input, run, signal);
+    },
+    cardsSaveProposed(input: Parameters<typeof saveProposedCards>[1]) {
+      return saveProposedCards(db, input);
     },
     gapDrillStart(input: { planId: string; topicId: string; gapId?: string }) {
       if (!runner) throw new Error("jobs-unavailable");
