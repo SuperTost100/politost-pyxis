@@ -570,6 +570,17 @@ async function dispatchValidated(
       return (
         plans?.recommend(requests["plans.recommend"].input.parse(input)) ?? null
       );
+    case "plans.today":
+      requests["plans.today"].input.parse(input);
+      return plans?.today() ?? { planned: false, behind: [], cards: null, items: [] };
+    case "plans.planner":
+      requests["plans.planner"].input.parse(input);
+      return plans?.planner();
+    case "plans.plannerHours":
+      return plans?.plannerHours(requests["plans.plannerHours"].input.parse(input));
+    case "study.dueEverywhere":
+      requests["study.dueEverywhere"].input.parse(input);
+      return plans?.dueEverywhere() ?? [];
     case "plans.complete":
       return plans?.complete(requests["plans.complete"].input.parse(input));
     case "plans.attachSources":

@@ -318,7 +318,7 @@ export function readPlan(db: Database.Database, planId: string) {
   };
 }
 
-function daysUntil(examAt: number, now: number): number {
+export function daysUntil(examAt: number, now: number): number {
   const exam = new Date(examAt);
   exam.setHours(0, 0, 0, 0);
   const today = new Date(now);
@@ -376,10 +376,11 @@ export function listPlans(db: Database.Database, now = Date.now()) {
 }
 
 /**
- * What the path suggests next, and for each topic what fits it now. Every activity stays open; this only picks
- * the first offer. Gap rows follow the answers only when synced; Progress syncs before it reads them, and so does this.
+ * What the path reads for one plan: each topic's mastery, due cards, severe gaps and idle days, the steps, and whether
+ * it has an introduction. Gap rows follow the answers only when synced; Progress syncs before it reads them, and so does
+ * this. Null while the plan is building.
  */
-export function planGuide(
+export function pathState(
   db: Database.Database,
   planId: string,
   now = Date.now(),
@@ -421,19 +422,40 @@ export function planGuide(
       graded: since == null ? 0 : gradedActivities(db, planId, topic.id, since),
     };
   });
-  const read = new Set(
-    steps.filter((step) => step.activity === "lesson").map((step) => step.topicId),
-  );
-  const hasIntro = Boolean(
-    db.prepare("SELECT 1 FROM items WHERE plan_id = ? AND kind = 'intro'").get(planId),
-  );
+  return {
+    topics,
+    steps,
+    gaps,
+    read: new Set(
+      steps.filter((step) => step.activity === "lesson").map((step) => step.topicId),
+    ),
+    hasIntro: Boolean(
+      db.prepare("SELECT 1 FROM items WHERE plan_id = ? AND kind = 'intro'").get(planId),
+    ),
+    target: reachableTarget(meta.target),
+    daysToExam: meta.exam_at == null ? null : daysUntil(meta.exam_at, now),
+  };
+}
+
+/**
+ * What the path suggests next, and for each topic what fits it now. Every activity stays open; this only picks
+ * the first offer.
+ */
+export function planGuide(
+  db: Database.Database,
+  planId: string,
+  now = Date.now(),
+) {
+  const state = pathState(db, planId, now);
+  if (!state) return null;
+  const { topics, steps, gaps, read, hasIntro } = state;
   return {
     next: suggestStep({
       topics,
       steps,
       hasIntro,
-      target: reachableTarget(meta.target),
-      daysToExam: meta.exam_at == null ? null : daysUntil(meta.exam_at, now),
+      target: state.target,
+      daysToExam: state.daysToExam,
     }),
     hasIntro,
     topics: topics.map((topic) => ({
