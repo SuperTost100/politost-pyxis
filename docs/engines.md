@@ -161,6 +161,18 @@ The conversation ends, and a live process with it, when:
 
 The next question then starts a new conversation with the whole context. Runs outside a chat, such as lessons and plans, close their CLI process as soon as they end.
 
+## Replies in Ask
+
+- **Answer again with the strongest model.** The reply's menu sends `chats.regenerate` with `engine: "strong"`. That turn runs on the plan task's engine, which uses the strong tier, at `high` effort or the nearest level its model lists (`strongestSelection()` in `src/core/engine/selection.ts`). The new reply replaces the old one only once it is saved.
+- **A reply cut short.** When the engine fails mid-answer (a dropped connection, a usage limit, a stream that closed early, which CLI Funnel 0.5.0 reports as `stream-truncated`), the text that arrived is saved as a stopped reply with the failure's message key in `messages.error`. A stopped reply also records every passage it was given, with its P-number, in `messages.passages_json`. Continue sends `chats.regenerate` with `resume: true`: the prompt carries those same passages in the same numbering, without a new retrieval, and the saved text, and asks the model to go on from where it stops. The new reply is the saved text plus what it adds, so the citations in the saved part still point to the passages they named. If Continue fails again, the longer text is kept the same way. If it adds nothing, the reply stays as it was. A regenerated reply that fails keeps the earlier reply.
+- **The math check runs after the reply is saved.** The reply is saved once its figures are drawn (they change the stored text) and returns with `checking: true`. The `chat.checks` call then runs in core on that text, tied to the message, and appends its claims to the stored body. Core broadcasts `chats.checks` when it ends, with or without badges. Stop in that chat stops a running check, Regenerate and Continue drop the check of the reply they replace, and deleting the chat stops it. A check that fails or times out (20 s) leaves the reply without badges, as before.
+
+## Token usage
+
+`generate()` reports the tokens of every call that returns, schema repairs included, and core writes one `engine_usage` row per call. The row names the chat and message for a chat turn and its math check, and the job and its kind for a call inside a job step (an `AsyncLocalStorage` scope in `src/core/engine/usage.ts`). Calls that report no tokens are not stored. `inputTokens` includes the tokens read from and written to the prompt cache.
+
+Settings, AI engines shows the tokens each engine sent and received since Monday (`engines.usage`), with the share of input tokens the prompt cache served. Ask shows the chat's total in its top bar (`usage` in `chats.read`), with the breakdown for screen readers and on hover.
+
 ## Startup and provider detection
 
 Core posts `core-ready` before it looks for any engine. The student's login-shell PATH, where nvm or Homebrew put the CLIs, is read in the background with `$SHELL -ilc` once per launch (`src/core/engine/shell-path.ts`), and CLI Funnel's own blocking lookup is turned off with `CLI_FUNNEL_NO_SHELL_PATH=1`. Detection waits for that PATH; nothing else does.

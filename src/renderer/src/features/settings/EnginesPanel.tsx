@@ -36,6 +36,7 @@ import {
 } from "@shared/installers";
 import { invoke, onBroadcast } from "../../lib/ipc";
 import { disclosureText } from "./disclosure";
+import { EngineUsage } from "./EngineUsage";
 import "./EnginesPanel.css";
 
 const featureNames = [
@@ -663,6 +664,7 @@ export function EnginesPanel() {
         </Notice>
       ) : null}
       <LocalModelCard place="settings" />
+      <EngineUsage />
       {advanced ? (
         <>
           <div className="engines-heading">

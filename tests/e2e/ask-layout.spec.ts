@@ -24,6 +24,18 @@ const REPLY = [
   "</followups>",
 ].join("\n");
 
+/** A reply many screens tall, so the chat scrolls far more than one wheel turn whatever fonts the platform has. */
+const LONG_REPLY = [
+  ...Array.from(
+    { length: 24 },
+    (_, i) =>
+      `Passo ${i + 1}: si sceglie $u$ come la parte che si semplifica derivando e $dv$ come quella che si integra senza fatica, poi si applica la formula e si controlla il risultato derivandolo.`,
+  ).flatMap((line) => [line, ""]),
+  "<followups>",
+  "Fammi un altro esempio",
+  "</followups>",
+].join("\n");
+
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-layout-"));
   const env = {
@@ -390,7 +402,7 @@ test("Ask: a layout shift above the end of the chat is not the student scrolling
 
 test("Ask: a student who scrolled up is not pulled back down by new content", async () => {
   test.setTimeout(120000);
-  const { app, page, userData } = await launch();
+  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY: LONG_REPLY });
   try {
     seed(userData);
     await page.setViewportSize({ width: 960, height: 640 });
@@ -410,16 +422,33 @@ test("Ask: a student who scrolled up is not pulled back down by new content", as
         return root.scrollHeight - root.scrollTop - root.clientHeight;
       });
     await expect.poll(gap).toBeLessThan(4);
+    const top = () => page.evaluate(() => document.scrollingElement!.scrollTop);
+    const end = await top();
+    // The chat is several wheel turns tall, so one turn up cannot reach the top and stops early.
+    expect(end).toBeGreaterThan(3 * 300);
     await page.mouse.move(480, 200);
     await page.mouse.wheel(0, -300);
-    await expect.poll(gap).toBeGreaterThan(200);
+    // The wheel scrolls smoothly over several frames. Wait until the page has moved up and stopped there.
+    let last = end;
+    await expect
+      .poll(async () => {
+        const now = await top();
+        const stopped = now < end && now === last;
+        last = now;
+        return stopped;
+      })
+      .toBe(true);
+    const scrolled = last;
     const before = await gap();
+    // Out of the 96 px near the end where Ask follows the chat again (AskPage.tsx).
+    expect(before).toBeGreaterThan(96);
     await page.evaluate(() => {
       const late = document.createElement("div");
       late.style.height = "300px";
       document.querySelector(".ask-page")!.append(late);
     });
     await page.waitForTimeout(500);
+    expect(await top()).toBe(scrolled);
     expect(await gap()).toBe(before + 300);
   } finally {
     await finish(app, userData);

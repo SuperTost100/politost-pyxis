@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import { strToU8, unzipSync, zipSync } from "fflate";
-import { zstdCompressSync } from "node:zlib";
+import { constants, crc32, deflateRawSync, zstdCompressSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { IpcError } from "../../shared/ipc";
 import { openDatabase } from "../db/connection";
@@ -21,6 +21,43 @@ type Fixture = {
   cards: Array<{ id: number; nid: number; ord: number; queue?: number }>;
   revlog?: Array<{ cid: number; id: number; ease: number; type?: number }>;
 };
+
+/**
+ * A ZIP whose one deflated entry inflates to `mib` MiB of zeros. One compressed MiB is repeated (each copy ends on a
+ * full flush, so they chain), which builds the bomb in milliseconds instead of deflating hundreds of MiB in the test.
+ */
+function zeroBomb(name: string, mib: number): Uint8Array {
+  const zeros = new Uint8Array(1024 * 1024);
+  const block = deflateRawSync(zeros, { finishFlush: constants.Z_FULL_FLUSH });
+  // An empty final block ends the stream.
+  const data = Buffer.concat([...Array<Buffer>(mib).fill(block), Buffer.from([0x03, 0x00])]);
+  let crc = 0;
+  for (let i = 0; i < mib; i++) crc = crc32(zeros, crc);
+  const file = Buffer.from(name);
+  const sizes = (header: Buffer, at: number) => {
+    header.writeUInt16LE(8, at); // deflate
+    header.writeUInt32LE(crc, at + 6);
+    header.writeUInt32LE(data.length, at + 10);
+    header.writeUInt32LE(mib * zeros.length, at + 14);
+    header.writeUInt16LE(file.length, at + 18);
+  };
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  sizes(local, 8);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  sizes(central, 10);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length + file.length, 12);
+  end.writeUInt32LE(local.length + file.length + data.length, 16);
+  return Buffer.concat([local, file, data, central, file, end]);
+}
 
 const TABLES = `
 CREATE TABLE col (id integer PRIMARY KEY, crt integer, mod integer, scm integer, ver integer, dty integer, usn integer,
@@ -292,7 +329,9 @@ describe("Anki import", () => {
   });
 
   it("refuses an archive that inflates past the limit", () => {
-    const bomb = zipSync({ "collection.anki2": new Uint8Array(200 * 1024 * 1024) });
+    // One MiB past the 192 MiB the importer accepts. The importer stops counting there, so the refusal costs one
+    // inflate to the limit and no more.
+    const bomb = zeroBomb("collection.anki2", 193);
     expect(bomb.length).toBeLessThan(1024 * 1024);
     expect(() => readApkg(bomb)).toThrow("anki-too-large");
   });

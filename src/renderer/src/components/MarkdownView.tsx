@@ -16,7 +16,7 @@ import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import "katex/contrib/mhchem";
 import { linkCitations, type CitationResolver } from "../markdown/citations";
-import { normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
+import { displayMathLines, normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
 import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
 import { PythonBlock, RunnablePython } from "./PythonBlock";
@@ -151,7 +151,7 @@ export const MarkdownView = memo(function MarkdownView({
     for (const [at, markers] of [...inserts].sort((a, b) => b[0] - a[0])) {
       body = `${body.slice(0, at)}\n\n${markers.join(" ")}\n\n${body.slice(at)}`;
     }
-    return normalizeMathDelimiters(linkCitations(body, citationResolver));
+    return displayMathLines(normalizeMathDelimiters(linkCitations(body, citationResolver)));
   }, [children, citationResolver, claims]);
   const scope = useMemo(
     () => ({ claims, canRun, onCitationClick, figures, drawing }),
