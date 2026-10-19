@@ -45,6 +45,7 @@ test("doors navigate from settings and every shell page uses the full column", a
     for (const hash of [
       "#/exams",
       "#/ask",
+      "#/maps",
       "#/settings",
       "#/settings/appearance",
       "#/exams/get",
@@ -59,6 +60,13 @@ test("doors navigate from settings and every shell page uses the full column", a
       await expect
         .poll(async () => Math.round((await container.boundingBox())!.width))
         .toBe(hash.startsWith("#/settings") ? 960 : 768);
+      // Maps loads its page on first visit; measure once it is there, so a late chunk can't hide a page of another width.
+      if (hash === "#/maps") {
+        await expect(page.getByRole("heading", { level: 1, name: "Mappe" })).toBeVisible();
+        expect(Math.round((await page.locator(".px-maps").boundingBox())!.width)).toBe(
+          Math.round((await page.locator(".shell-page").boundingBox())!.width),
+        );
+      }
       (hash.startsWith("#/settings") ? settingsWidths : widths).push(
         Math.round((await container.boundingBox())!.width),
       );

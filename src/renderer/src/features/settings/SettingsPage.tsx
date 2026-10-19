@@ -745,8 +745,10 @@ export function SettingsPage() {
       {saveError ? (
         <Notice tone="danger">{t("settings.saveFailed")}</Notice>
       ) : null}
-      {twoPane ? (
-        <div className="px-settings-panes">
+      {/* Both layouts share this wrapper and keep the open section in the same slot. Crossing 960 px then re-lays the
+          page out without remounting the section, so an open drawer or a half-typed field survives. */}
+      <div className={twoPane ? "px-settings-panes" : undefined}>
+        {twoPane ? (
           <nav className="px-settings-nav" aria-label={t("settings.title")}>
             {groups.map((group) => (
               <div className="px-settings-nav-group" key={group.name}>
@@ -766,32 +768,31 @@ export function SettingsPage() {
               </div>
             ))}
           </nav>
-          {subpage}
-        </div>
-      ) : subpage ? (
-        subpage
-      ) : (
-        <div className="px-settings-groups">
-          {groups.map((group) => (
-            <section className="px-settings-group" key={group.name}>
-              <h2 className="label">{group.name}</h2>
-              {group.rows.map((row) => (
-                <button
-                  type="button"
-                  className="px-settings-row"
-                  key={row.key}
-                  onClick={() => navigate(`/settings/${row.key}`)}
-                >
-                  <row.icon size={20} aria-hidden="true" />
-                  <span className="body-strong">{labels[row.key]}</span>
-                  <span className="meta px-settings-current">{row.value}</span>
-                  <ChevronRight size={18} aria-hidden="true" />
-                </button>
+        ) : null}
+        {subpage ??
+          (twoPane ? null : (
+            <div className="px-settings-groups">
+              {groups.map((group) => (
+                <section className="px-settings-group" key={group.name}>
+                  <h2 className="label">{group.name}</h2>
+                  {group.rows.map((row) => (
+                    <button
+                      type="button"
+                      className="px-settings-row"
+                      key={row.key}
+                      onClick={() => navigate(`/settings/${row.key}`)}
+                    >
+                      <row.icon size={20} aria-hidden="true" />
+                      <span className="body-strong">{labels[row.key]}</span>
+                      <span className="meta px-settings-current">{row.value}</span>
+                      <ChevronRight size={18} aria-hidden="true" />
+                    </button>
+                  ))}
+                </section>
               ))}
-            </section>
+            </div>
           ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

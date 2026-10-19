@@ -137,6 +137,14 @@ END;`,
     version: 19,
     sql: `ALTER TABLE messages ADD COLUMN figures_json TEXT CHECK (figures_json IS NULL OR json_valid(figures_json));`,
   },
+  // Past exams: a source can be attached to a plan as one of its past papers. `role` says which, and `paper_json` holds
+  // what the model read from the paper (questions, types, points, duration). Everything that builds the plan from its
+  // sources reads `role = 'material'` only, so a past paper never becomes a topic, a lesson or a citation.
+  {
+    version: 20,
+    sql: `ALTER TABLE plan_sources ADD COLUMN role TEXT NOT NULL DEFAULT 'material' CHECK (role IN ('material', 'past_paper'));
+ALTER TABLE plan_sources ADD COLUMN paper_json TEXT CHECK (paper_json IS NULL OR json_valid(paper_json));`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

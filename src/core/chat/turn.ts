@@ -269,7 +269,7 @@ function readScope(db: Database.Database, chatId: string): Scope {
 function planSourceIds(db: Database.Database, planId: string): string[] {
   return (
     db
-      .prepare(`SELECT source_id FROM plan_sources WHERE plan_id = ?`)
+      .prepare(`SELECT source_id FROM plan_sources WHERE plan_id = ? AND role = 'material'`)
       .all(planId) as Array<{ source_id: string }>
   ).map((row) => row.source_id);
 }

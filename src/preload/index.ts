@@ -60,6 +60,7 @@ const replayable = new Set([
   "plans.read",
   "plans.export",
   "plans.mastery",
+  "plans.masteryBreakdown",
   "plans.series",
   "plans.simulations",
   "plans.recommend",

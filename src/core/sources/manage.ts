@@ -72,7 +72,9 @@ export function removeSource(
   if (inUse && !confirmed) return { removed: false, inUse: true };
   const now = Date.now();
   db.transaction(() => {
-    db.prepare(`DELETE FROM plan_sources WHERE source_id = ?`).run(sourceId);
+    db.prepare(
+      `DELETE FROM plan_sources WHERE source_id = ? OR json_extract(paper_json, '$.partOf') = ?`,
+    ).run(sourceId, sourceId);
     db.prepare(`DELETE FROM settings WHERE key = ?`).run(`syllabus.${sourceId}`);
     db.prepare(`UPDATE sources SET status = 'removed', updated_at = ? WHERE id = ?`).run(
       now,

@@ -12,10 +12,11 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
+  GraduationCap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router";
+import { Link as RouterLink, useParams, useSearchParams } from "react-router";
 import {
   ReactFlow,
   Background,
@@ -47,6 +48,7 @@ import {
   startViewport,
   visibleNodes,
 } from "./mapLayout";
+import { MapExport } from "./MapExport";
 import "./MapPage.css";
 
 type FlowNode = Node<
@@ -150,8 +152,11 @@ const edgeTypes = { cross: CrossEdge };
 export function MapPage() {
   const { t } = useTranslation();
   const { planId = "", topicId = "" } = useParams();
+  // The Maps section opens one map by id and expects its close button to lead back there.
+  const [search, setSearch] = useSearchParams();
+  const openMap = search.get("map") ?? undefined;
+  const fromMaps = search.get("from") === "maps";
   const client = useQueryClient();
-  const [mapId, setMapId] = useState<string>();
   const [selected, setSelected] = useState<string>();
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
@@ -189,13 +194,31 @@ export function MapPage() {
         : false,
   });
   const activeId =
-    list.data?.find((m) => m.id === mapId)?.id ?? list.data?.[0]?.id;
+    list.data?.find((m) => m.id === openMap)?.id ?? list.data?.[0]?.id;
+  // The map id lives in the URL, so the first render already shows the map the Maps section opened.
+  const pickMap = useCallback(
+    (id: string) => {
+      setSearch(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.set("map", id);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearch],
+  );
   useEffect(() => {
-    setMapId(undefined);
     setJobId(undefined);
     setNotice("");
     setInstruction("");
-  }, [planId, topicId]);
+  }, [planId, topicId, openMap]);
+  const plan = useQuery({
+    queryKey: ["plan", planId],
+    queryFn: () => invoke("plans.read", { planId }),
+  });
+  const topic = plan.data?.topics.find((item) => item.id === topicId);
   const mapKey = ["map", planId, topicId, activeId];
   const map = useQuery({
     queryKey: mapKey,
@@ -473,7 +496,25 @@ export function MapPage() {
   return (
     <CanvasLayout
       title={list.data?.find((m) => m.id === activeId)?.title ?? t("map.title")}
-      closeTo={`/plans/${planId}`}
+      meta={
+        plan.data && topic ? (
+          <span className="px-map-origin">
+            <RouterLink
+              to={`/plans/${planId}`}
+              aria-label={t("map.openExam", { title: plan.data.title })}
+            >
+              <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
+              <span>{plan.data.title}</span>
+            </RouterLink>
+            {/* The dot stays with the topic when the line wraps. */}
+            <span>
+              <span aria-hidden>· </span>
+              {topic.title}
+            </span>
+          </span>
+        ) : undefined
+      }
+      closeTo={fromMaps ? "/maps" : `/plans/${planId}`}
     >
       <div className="px-map-editor">
         <div className="px-map-topbar">
@@ -505,7 +546,7 @@ export function MapPage() {
               value={activeId}
               disabled={disabled}
               options={list.data.map((m) => ({ label: m.title, value: m.id }))}
-              onChange={setMapId}
+              onChange={pickMap}
             />
           )}
           <span className="px-map-top-spacer" />
@@ -546,13 +587,13 @@ export function MapPage() {
                   )
                 }
               />
-              <Button
-                shape="round"
+              <MapExport
+                planId={planId}
+                topicId={topicId}
+                mapId={activeId}
                 disabled={disabled}
-                onClick={() => void exportMap("svg")}
-              >
-                {t("map.svg")}
-              </Button>
+                settle={() => moves.current.catch(() => undefined)}
+              />
               <Button
                 shape="round"
                 disabled={disabled}

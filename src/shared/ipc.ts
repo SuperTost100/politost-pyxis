@@ -8,7 +8,12 @@ import {
   conceptGraphSchema as conceptGraph,
   mapOpSchema as mapOp,
   mapSummarySchema,
+  mapEntrySchema,
 } from "./concept-map";
+
+/** The time limit of a simulation, in minutes. A past paper's duration is held within it. */
+export const SIMULATION_MIN_MINUTES = 10;
+export const SIMULATION_MAX_MINUTES = 240;
 
 /** Engines Pyxis offers. Each one runs in CLI Funnel's text-only mode. */
 export const engineProviders = [
@@ -49,6 +54,13 @@ const dueCardSchema = z.object({
 
 /** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
 const citationSchema = z.object({ passageId: z.string(), label: z.string() });
+// One kind of evidence in a topic's mastery: how many observations, their summed weight and weighted score, their average.
+const masteryPartSchema = z.object({
+  count: z.number().int(),
+  weight: z.number(),
+  points: z.number(),
+  mean: z.number(),
+});
 const quizResultSchema = z.object({
   score: z.number(),
   picks: z.record(z.string(), z.string()),
@@ -651,6 +663,8 @@ export const requests = {
       planId: z.string().optional(),
       picks: z.record(z.string(), z.string().max(20000)),
       index: z.number().int().min(0).max(99),
+      // Skipped questions in the order they were skipped; the quiz asks them again after the others.
+      skipped: z.array(z.string()).max(100).optional(),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
@@ -660,7 +674,11 @@ export const requests = {
       // LES-03: a gap drill's short explanation, shown above its questions.
       explanation: z.string().optional(),
       draft: z
-        .object({ picks: z.record(z.string(), z.string()), index: z.number() })
+        .object({
+          picks: z.record(z.string(), z.string()),
+          index: z.number(),
+          skipped: z.array(z.string()).optional(),
+        })
         .optional(),
       submittedAt: z.number().optional(),
       result: quizResultSchema.optional(),
@@ -805,10 +823,11 @@ export const requests = {
   "study.simulationStart": {
     input: z.object({
       planId: z.string(),
-      minutes: z
-        .union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)])
-        .optional(),
+      // 30, 60, 90 and 120 are the presets; a past paper can give another length.
+      minutes: z.number().int().min(SIMULATION_MIN_MINUTES).max(SIMULATION_MAX_MINUTES).optional(),
       source: z.enum(["exam", "mixed"]).optional(),
+      // Follow the plan's past papers when it has any. Default: yes.
+      matchPast: z.boolean().optional(),
     }),
     output: z.object({
       attemptId: z.string(),
@@ -819,14 +838,92 @@ export const requests = {
   "study.simulationPrepare": {
     input: z.object({
       planId: z.string(),
-      minutes: z
-        .union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)])
-        .optional(),
+      // 30, 60, 90 and 120 are the presets; a past paper can give another length.
+      minutes: z.number().int().min(SIMULATION_MIN_MINUTES).max(SIMULATION_MAX_MINUTES).optional(),
       source: z.enum(["exam", "mixed"]).optional(),
+      // Follow the plan's past papers when it has any. Default: yes.
+      matchPast: z.boolean().optional(),
     }),
     output: z.object({
       attemptId: z.string().optional(),
       jobId: z.string().optional(),
+    }),
+  },
+  "study.pastPapers": {
+    input: z.object({ planId: z.string() }),
+    output: z.object({
+      papers: z.array(
+        z.object({
+          sourceId: z.string(),
+          title: z.string(),
+          /** The files (photos or pages) that make up this paper. */
+          sourceIds: z.array(z.string()),
+          status: z.enum(["reading", "ready", "failed", "interrupted", "cancelled"]),
+          jobId: z.string().optional(),
+          error: z.string().optional(),
+          questions: z.number(),
+          minutes: z.number().nullable(),
+          points: z.number().nullable(),
+          types: z.object({
+            open: z.number(),
+            choice: z.number(),
+            numeric: z.number(),
+            proof: z.number(),
+          }),
+          provider: z.string().optional(),
+          model: z.string().optional(),
+        }),
+      ),
+      /** What a simulation would copy. Null until a paper has been read. */
+      style: z
+        .object({
+          papers: z.number(),
+          questions: z.number(),
+          minutes: z.number().nullable(),
+          totalPoints: z.number().nullable(),
+          types: z.object({
+            open: z.number(),
+            choice: z.number(),
+            numeric: z.number(),
+            proof: z.number(),
+          }),
+          difficulty: z.object({
+            easy: z.number(),
+            medium: z.number(),
+            hard: z.number(),
+          }),
+        })
+        .nullable(),
+    }),
+  },
+  // Attaches the files of one past paper (several photos are one paper) and queues the job that reads its questions.
+  "study.pastPaperAdd": {
+    input: z.object({
+      planId: z.string(),
+      sourceIds: z.array(z.string()).min(1).max(12),
+    }),
+    output: z.object({ jobId: z.string(), sourceId: z.string() }),
+  },
+  "study.pastPaperRemove": {
+    input: z.object({ planId: z.string(), sourceId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  // A quiz of past questions: one paper's, or a mix of the plan's papers. Same session shape as the diagnostic.
+  "study.pastPracticeStart": {
+    input: z.object({ planId: z.string(), sourceId: z.string().optional() }),
+    output: z.object({
+      attemptId: z.string(),
+      questions: z.array(
+        z.object({
+          id: z.string(),
+          sourceId: z.string().optional(),
+          stem: z.string(),
+          grade: z.object({ kind: z.string() }),
+          options: z.array(z.string()).optional(),
+          left: z.array(z.string()).optional(),
+          right: z.array(z.string()).optional(),
+        }),
+      ),
     }),
   },
   "study.simulationBuild": {
@@ -838,6 +935,7 @@ export const requests = {
         error: z.string().nullable(),
         progress: z.number(),
         minutes: z.number(),
+        styled: z.boolean(),
         provider: z.string().optional(),
         model: z.string().optional(),
       })
@@ -1160,6 +1258,23 @@ export const requests = {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.array(mapSummarySchema),
   },
+  "maps.all": {
+    input: z.object({ query: z.string().max(200).optional() }),
+    output: z.array(mapEntrySchema),
+  },
+  "maps.export": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      mapId: z.string().optional(),
+      language: z.enum(["en", "it"]),
+    }),
+    output: z.object({
+      filename: z.string(),
+      markdown: z.string(),
+      svg: z.string(),
+    }),
+  },
   "maps.build": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z
@@ -1416,6 +1531,28 @@ export const requests = {
     input: z.object({ planId: z.string() }),
     output: z.array(
       z.object({ id: z.string(), title: z.string(), mastery: z.number() }),
+    ),
+  },
+  // What each topic's mastery is made of, from the evidence `plans.mastery` uses:
+  // mastery = sum(parts.points) / (priorWeight + sum(parts.weight)).
+  "plans.masteryBreakdown": {
+    input: z.object({ planId: z.string() }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        mastery: z.number(),
+        priorWeight: z.number(),
+        // Mastery minus the mastery the same evidence would give without decay; negative when age costs points.
+        decay: z.number(),
+        parts: z.object({
+          quiz: masteryPartSchema,
+          simulation: masteryPartSchema,
+          check: masteryPartSchema,
+          self: masteryPartSchema,
+          card: masteryPartSchema,
+        }),
+      }),
     ),
   },
   "plans.recommend": {
