@@ -355,7 +355,7 @@ export function LessonPage() {
           empty={false}
         />
       ) : null}
-      <SelectionMenu planId={planId} onAsk={(chatId) => navigate(`/ask/${chatId}`)}>
+      <SelectionMenu planId={planId} topicId={topicId} passageIds={data?.passageIds} onAsk={(chatId) => navigate(`/ask/${chatId}`)}>
         <SmartText
           streaming={writing}
           figures={data?.figures}
