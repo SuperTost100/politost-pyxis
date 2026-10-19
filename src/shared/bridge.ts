@@ -114,11 +114,13 @@ export interface PyxisBridge {
     filename: string;
     base64: string;
   }): Promise<"saved" | "cancelled">;
+  /** `svg` is a concept map's drawing, printed on its own page before the Markdown. */
   exportPdf(input: {
     filename: string;
     markdown: string;
+    svg?: string;
   }): Promise<"saved" | "cancelled">;
-  printData(): Promise<{ markdown: string } | null>;
+  printData(): Promise<{ markdown: string; svg?: string } | null>;
   printReady(): Promise<void>;
   /** `force` is for a student asking again: it skips the cache, though main still waits a minute between requests. */
   checkUpdates(force?: boolean): Promise<UpdateView>;

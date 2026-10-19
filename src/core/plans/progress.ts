@@ -13,7 +13,14 @@ import { retrievability, type ScheduleState } from "../study/schedule";
 import { questionPlaces } from "../study/smartText";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
-import { masteryFor, type MasteryEvent } from "../study/mastery";
+import {
+  MASTERY_GROUPS,
+  MASTERY_PRIOR_COUNT,
+  masteryDetail,
+  masteryFor,
+  type MasteryEvent,
+  type TopicMastery,
+} from "../study/mastery";
 import { cachedEvidence } from "./evidenceCache";
 import { finishedLessons } from "./steps";
 import {
@@ -33,18 +40,45 @@ export function planMastery(
   planId: string,
   now = Date.now(),
 ) {
+  return planMasteryBreakdown(db, planId, now).map(
+    ({ id, title, mastery }) => ({ id, title, mastery }),
+  );
+}
+
+const NO_EVIDENCE: TopicMastery["parts"] = Object.fromEntries(
+  MASTERY_GROUPS.map((group) => [
+    group,
+    { count: 0, weight: 0, points: 0, mean: 0 },
+  ]),
+) as TopicMastery["parts"];
+
+/**
+ * Each topic's mastery with the evidence it is made of. It reads the same cached evidence as `planMastery`, which
+ * returns these `mastery` values, so the parts always add up to the number shown on Progress.
+ */
+export function planMasteryBreakdown(
+  db: Database.Database,
+  planId: string,
+  now = Date.now(),
+) {
   const topics = db
     .prepare(
       `SELECT id, title FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position`,
     )
     .all(planId) as Array<{ id: string; title: string }>;
   const evidence = masteryEvidence(planEvidence(db, planId), now);
-  const scores = masteryFor(evidence, now);
-  return topics.map((topic) => ({
-    id: topic.id,
-    title: topic.title,
-    mastery: scores[topic.id] ?? 0,
-  }));
+  const details = masteryDetail(evidence, now);
+  return topics.map((topic) => {
+    const detail = details[topic.id];
+    return {
+      id: topic.id,
+      title: topic.title,
+      mastery: detail?.mastery ?? 0,
+      parts: detail?.parts ?? NO_EVIDENCE,
+      priorWeight: detail?.priorWeight ?? MASTERY_PRIOR_COUNT,
+      decay: detail?.decay ?? 0,
+    };
+  });
 }
 
 /** A plan's events and card reviews, for any date. Read once and cached until a write changes them. */

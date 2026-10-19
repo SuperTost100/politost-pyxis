@@ -12,6 +12,7 @@ import chatSolver from "../../../resources/prompts/chat.solver.md?raw";
 import lessonWrite from "../../../resources/prompts/lesson.write.md?raw";
 import mapEdit from "../../../resources/prompts/map.edit.md?raw";
 import mapGenerate from "../../../resources/prompts/map.generate.md?raw";
+import paperRead from "../../../resources/prompts/paper.read.md?raw";
 import planDiagnostic from "../../../resources/prompts/plan.diagnostic.md?raw";
 import planModules from "../../../resources/prompts/plan.modules.md?raw";
 import planTree from "../../../resources/prompts/plan.tree.md?raw";
@@ -47,6 +48,7 @@ export const TEMPLATE_SOURCES = {
   "lesson.write": lessonWrite,
   "map.edit": mapEdit,
   "map.generate": mapGenerate,
+  "paper.read": paperRead,
   "plan.diagnostic": planDiagnostic,
   "plan.intro": planIntro,
   "plan.synopsis": planSynopsis,

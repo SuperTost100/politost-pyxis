@@ -8,7 +8,7 @@ import { Icon, type IconName } from "../../components/Icon";
 import { MasteryBar } from "../../components/MasteryBar";
 import { PathNode } from "../../components/PathNode";
 import { Tag } from "../../components/Tag";
-import { reopenPath } from "./reopen";
+import { reopenPath, stepPath } from "./reopen";
 import "./PlanPath.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -92,13 +92,8 @@ export function PlanPath({
   }, [query, topics]);
 
   function go(activity: Activity, topic: string | null) {
-    if (activity === "intro") navigate(`/plans/${planId}/intro`);
-    else if (activity === "diagnostic" || activity === "simulation")
-      navigate(`/plans/${planId}/${activity}`);
-    else if (!topic) return;
-    else if (activity === "gaps")
-      navigate(`/plans/${planId}/progress?drill=${encodeURIComponent(topic)}`);
-    else navigate(`/plans/${planId}/${activity}/${topic}`);
+    const to = stepPath(planId, activity, topic);
+    if (to) navigate(to);
   }
   /**
    * Opens a finished step to look at again without recording anything: the lesson or introduction to reread, a quiz,
