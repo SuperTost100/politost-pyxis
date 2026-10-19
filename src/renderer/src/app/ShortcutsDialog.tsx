@@ -20,6 +20,7 @@ function groups(mac: boolean): Group[] {
         { id: "goExams", keys: ["mod", "2"] },
         { id: "goLibrary", keys: ["mod", "3"] },
         { id: "goFlashcards", keys: ["mod", "4"] },
+        { id: "goMaps", keys: ["mod", "5"] },
         { id: "back", keys: mac ? ["mod", "bracket"] : ["alt", "left"] },
         { id: "shortcuts", keys: ["mod", "slash"] },
         { id: "zoomIn", keys: ["mod", "plus"] },
@@ -47,6 +48,8 @@ function groups(mac: boolean): Group[] {
       rows: [
         { id: "pick", keys: ["1–4"] },
         { id: "next", keys: ["enter"] },
+        { id: "dontKnow", keys: ["0"] },
+        { id: "skip", keys: ["S"] },
         { id: "checkText", keys: ["mod", "enter"] },
       ],
     },

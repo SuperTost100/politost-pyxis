@@ -24,6 +24,8 @@ import { QuizResults } from "./QuizResults";
 import {
   blanks,
   pairs,
+  retryPick,
+  skipOrder,
   stemText,
   verdict,
   type QuizAnswer,
@@ -67,6 +69,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     planId?: string;
     picks: Record<string, string>;
     index: number;
+    skipped: string[];
   } | null>(null);
   const [types, setTypes] = useState<Kind[]>([...KINDS]);
   const [scope, setScope] = useState<Scope>("topic");
@@ -101,6 +104,8 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<Record<string, QuizAnswer>>({});
   const [wrongMarks, setWrongMarks] = useState<Record<string, boolean>>({});
+  // Questions the student skipped, in the order they did; they come back once, after all the others.
+  const [skipped, setSkipped] = useState<string[]>([]);
   const [actionError, setActionError] = useState(false);
   const heading = useRef<HTMLDivElement>(null);
   const start = useMutation({
@@ -166,8 +171,10 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     Boolean(attemptId) &&
     !generationFailed &&
     session.data?.state !== "succeeded";
+  // Until the queue answers, a review does not know yet how many drill questions it still owes.
+  const queueLoading = review && reviewQueue.isLoading;
   const canFinish =
-    (diagnostic && owed === 0) ||
+    (diagnostic && !queueLoading && owed === 0) ||
     (!diagnostic && session.data?.state === "succeeded" && questions.length >= requestedCount);
   const retry = useMutation({
     mutationFn: async () => {
@@ -202,7 +209,12 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     });
     if (restoring) {
       restoredAttempt.current = attemptId;
-      const firstUnchecked = session.data.questions.findIndex(
+      const restoredSkips = session.data.draft?.skipped ?? [];
+      setSkipped(restoredSkips);
+      const firstUnchecked = skipOrder(
+        session.data.questions,
+        restoredSkips,
+      ).findIndex(
         (row) => !session.data.checked.some((answer) => answer.id === row.id),
       );
       setIndex(
@@ -220,12 +232,21 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
       setHydratedAttempt(attemptId);
     }
   }, [session.data, attemptId]);
-  const question = questions[index];
+  const ordered = skipOrder(questions, skipped);
+  const question = ordered[index];
+  const pickAtFailure = useRef("");
   const check = useMutation({
     mutationFn: (input: { questionId: string; pick: string }) =>
       invoke("study.quizCheck", { attemptId, ...input }),
-    onSuccess: (result) =>
-      setChecked((current) => ({ ...current, [result.id]: result })),
+    onSuccess: (result, input) => {
+      setChecked((current) => ({ ...current, [result.id]: result }));
+      // The pick that was checked is the answer, an empty "I don't know" too.
+      setPicks((current) => ({ ...current, [result.id]: input.pick }));
+    },
+    // The answer in the field when the check failed, so Try again can tell an edit from an untouched pick.
+    onError: (_, input) => {
+      pickAtFailure.current = picks[input.questionId] ?? "";
+    },
   });
   // An open answer the student stopped checking goes back to editable, without an error.
   const cancelledCheck = useRef<string | null>(null);
@@ -314,7 +335,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
       !gradingStarted &&
       !expired &&
       session.data?.submittedAt == null
-        ? { attemptId, planId, picks, index }
+        ? { attemptId, planId, picks, index, skipped }
         : null;
     if (!draftToSave.current) return;
     const timer = window.setTimeout(() => {
@@ -326,6 +347,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     hydratedAttempt,
     picks,
     index,
+    skipped,
     finalResult,
     gradingStarted,
     expired,
@@ -394,6 +416,30 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     if (!question || !hasAnswer || locked) return;
     cancelledCheck.current = null;
     check.mutate({ questionId: question.id, pick: picks[question.id] ?? "" });
+  }
+  // "I don't know" checks an empty pick: scored 0, wrong evidence, answer shown.
+  function dontKnow() {
+    if (!question || locked) return;
+    cancelledCheck.current = null;
+    check.mutate({ questionId: question.id, pick: "" });
+  }
+  // A question can be skipped once: it moves behind the others, and when it comes back it can only be answered.
+  const skippable =
+    Boolean(question) &&
+    !skipped.includes(question?.id ?? "") &&
+    ordered.slice(index + 1).some((row) => !checked[row.id]);
+  function skip() {
+    if (!question || !skippable || locked || !canFinish) return;
+    check.reset();
+    setSkipped((current) => [...current, question.id]);
+  }
+  function retryCheck() {
+    if (!check.variables) return;
+    cancelledCheck.current = null;
+    check.mutate({
+      questionId: check.variables.questionId,
+      pick: retryPick(check.variables.pick, pickAtFailure.current, picks[check.variables.questionId] ?? ""),
+    });
   }
   function stopCheck() {
     if (!question) return;
@@ -537,9 +583,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
               disabled: true,
               loading: false,
             };
-  // Keys: 1–4 pick an option, Enter checks or moves on. Typing in a field and real buttons keep their own keys.
-  const keys = useRef({ primary, pick, question, locked });
-  keys.current = { primary, pick, question, locked };
+  // Keys: 1–4 pick an option, 0 says "I don't know", S skips, Enter checks or moves on. Typing in a field and real buttons keep their own keys.
+  const keys = useRef({ primary, pick, question, locked, dontKnow, skip });
+  keys.current = { primary, pick, question, locked, dontKnow, skip };
   const answering = Boolean(question) && !finalResult && !gradingStarted && !noAnswers;
   // The menu leaves a quiz alone until it is finished.
   useMenuLock(answering);
@@ -567,6 +613,16 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         return;
       }
       if (event.ctrlKey || event.metaKey || field || current.locked) return;
+      if (event.key === "0") {
+        event.preventDefault();
+        current.dontKnow();
+        return;
+      }
+      if (event.key === "s" || event.key === "S") {
+        event.preventDefault();
+        current.skip();
+        return;
+      }
       if (!/^[1-4]$/.test(event.key)) return;
       const option = Number(event.key) - 1;
       const kind = current.question.grade.kind;
@@ -1092,6 +1148,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             {session.data?.general ? (
               <Tag tone="general">{t("components.tags.general")}</Tag>
             ) : null}
+            {skipped.includes(question.id) && !result ? (
+              <span className="meta">{t("quiz.skippedNote")}</span>
+            ) : null}
           </div>
           <div
             ref={heading}
@@ -1207,14 +1266,47 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
           {checkFailed ? (
             <Notice
               tone="danger"
-              action={{ label: t("quiz.checkRetry"), onClick: runCheck }}
+              action={{ label: t("quiz.checkRetry"), onClick: retryCheck }}
             >
               {t("quiz.checkFailed")}
             </Notice>
           ) : null}
+          {!result ? (
+            <div className="px-quiz-pass">
+              <Button
+                type="text"
+                shape="round"
+                size="small"
+                disabled={locked}
+                aria-keyshortcuts="0"
+                onClick={dontKnow}
+              >
+                {t("quiz.dontKnow")}
+                <kbd className="px-quiz-keycap" aria-hidden>
+                  0
+                </kbd>
+              </Button>
+              {skippable ? (
+                <Button
+                  type="text"
+                  shape="round"
+                  size="small"
+                  disabled={locked || !canFinish}
+                  aria-keyshortcuts="S"
+                  onClick={skip}
+                >
+                  {t("quiz.skip")}
+                  <kbd className="px-quiz-keycap" aria-hidden>
+                    S
+                  </kbd>
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {result ? (
             <Feedback
               result={result}
+              dontKnow={rawPick === ""}
               kind={kind ?? "open"}
               expected={expectedText(result)}
               wrong={wrongMarked}
@@ -1267,6 +1359,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
 /** The correction shown right after Check: verdict, the right answer when it is not on screen, and why. */
 function Feedback({
   result,
+  dontKnow,
   kind,
   expected,
   wrong,
@@ -1275,6 +1368,8 @@ function Feedback({
   onWrong,
 }: {
   result: QuizAnswer;
+  /** The student said "I don't know": scored 0, with the answer shown. */
+  dontKnow: boolean;
   kind: string;
   expected: string;
   wrong: boolean;
@@ -1301,17 +1396,20 @@ function Feedback({
         />
         <span className="title-3">
           {t(
-            state === "correct"
-              ? "quiz.correct"
-              : state === "partial"
-                ? "quiz.partial"
-                : "quiz.incorrect",
+            dontKnow
+              ? "quiz.dontKnowVerdict"
+              : state === "correct"
+                ? "quiz.correct"
+                : state === "partial"
+                  ? "quiz.partial"
+                  : "quiz.incorrect",
           )}
         </span>
         {state === "partial" ? (
           <span className="meta">{Math.round(result.score * 100)}%</span>
         ) : null}
       </p>
+      {dontKnow ? <p className="small px-quiz-dont-know">{t("quiz.dontKnowNote")}</p> : null}
       {!closed && result.score < 1 && expected ? (
         <div className="px-quiz-answer is-expected">
           <p className="label">

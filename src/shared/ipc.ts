@@ -8,6 +8,7 @@ import {
   conceptGraphSchema as conceptGraph,
   mapOpSchema as mapOp,
   mapSummarySchema,
+  mapEntrySchema,
 } from "./concept-map";
 
 /** The time limit of a simulation, in minutes. A past paper's duration is held within it. */
@@ -25,6 +26,17 @@ export const engineProviders = [
 ] as const;
 export type EngineProvider = (typeof engineProviders)[number];
 
+/** The short check of a local model after its download: speed and one structured answer. */
+const localCheckSchema = z.object({
+  version: z.number(),
+  model: z.string(),
+  tokensPerSecond: z.number(),
+  structured: z.boolean(),
+  passed: z.boolean(),
+  at: z.number(),
+  failure: z.enum(["slow", "structured", "error"]).optional(),
+});
+
 export const JobState = z.enum([
   "queued",
   "running",
@@ -33,6 +45,21 @@ export const JobState = z.enum([
   "cancelled",
   "interrupted",
 ]);
+
+/** A dated exam in the session planner; `behind` is set when work is left on its exam day at this pace. */
+const plannerExam = z.object({
+  planId: z.string(),
+  title: z.string(),
+  subject: z.string().nullable(),
+  examDate: z.string(),
+  daysToExam: z.number().int(),
+  mastery: z.number(),
+  target: z.number(),
+  remainingMinutes: z.number(),
+  behind: z
+    .object({ daysLate: z.number().int().nullable(), masteryAtExam: z.number() })
+    .nullable(),
+});
 
 const dueCardSchema = z.object({
   id: z.string(),
@@ -52,6 +79,13 @@ const dueCardSchema = z.object({
 
 /** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
 const citationSchema = z.object({ passageId: z.string(), label: z.string() });
+// One kind of evidence in a topic's mastery: how many observations, their summed weight and weighted score, their average.
+const masteryPartSchema = z.object({
+  count: z.number().int(),
+  weight: z.number(),
+  points: z.number(),
+  mean: z.number(),
+});
 const quizResultSchema = z.object({
   score: z.number(),
   picks: z.record(z.string(), z.string()),
@@ -488,6 +522,76 @@ export const requests = {
     input: z.object({ provider: z.string(), code: z.string() }),
     output: z.object({}),
   },
+  /**
+   * Running a model on this computer through Ollama. `reason` is null when the hardware check suggests `model`; else it
+   * says why not (`disk` with the model it would need space for). The GPU query runs once per launch.
+   */
+  "engines.local": {
+    input: z.object({}),
+    output: z.object({
+      hardware: z.object({
+        ramBytes: z.number(),
+        freeDiskBytes: z.number().nullable(),
+        gpu: z
+          .object({
+            vendor: z.enum(["apple", "nvidia", "amd", "intel", "other"]),
+            name: z.string(),
+            vramBytes: z.number().nullable(),
+            unified: z.boolean(),
+          })
+          .nullable(),
+      }),
+      reason: z.enum(["no-gpu", "vram", "ram", "disk", "unknown"]).nullable(),
+      model: z
+        .object({ id: z.string(), name: z.string(), downloadBytes: z.number() })
+        .nullable(),
+      ollama: z.object({ running: z.boolean(), version: z.string() }),
+      downloaded: z.boolean(),
+      /** A download or check in progress. */
+      task: z
+        .object({
+          phase: z.enum(["pull", "check"]),
+          completed: z.number(),
+          total: z.number(),
+        })
+        .nullable(),
+      /** How the last download or check ended when it did not finish, until the next one starts. */
+      last: z
+        .object({
+          outcome: z.enum(["failed", "cancelled"]),
+          detail: z.string(),
+        })
+        .nullable(),
+      check: localCheckSchema.nullable(),
+      /** The local model takes tasks: the student has it on and its check passed. */
+      enabled: z.boolean(),
+      installUrl: z.string(),
+      minTokensPerSecond: z.number(),
+      minimum: z.object({
+        ramGb: z.number(),
+        vramGb: z.number(),
+        unifiedGb: z.number(),
+        diskMarginGb: z.number(),
+      }),
+    }),
+  },
+  /** The student agreed: download the suggested model, then check it. Progress arrives as `engine.local`. */
+  "engines.localPull": {
+    input: z.object({ consent: z.literal(true) }),
+    output: localCheckSchema,
+  },
+  "engines.localCancel": {
+    input: z.object({}),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "engines.localCheck": {
+    input: z.object({}),
+    output: localCheckSchema,
+  },
+  "engines.localEnable": {
+    input: z.object({ enabled: z.boolean() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "study.lesson": {
     input: z.object({
       planId: z.string(),
@@ -656,6 +760,8 @@ export const requests = {
       planId: z.string().optional(),
       picks: z.record(z.string(), z.string().max(20000)),
       index: z.number().int().min(0).max(99),
+      // Skipped questions in the order they were skipped; the quiz asks them again after the others.
+      skipped: z.array(z.string()).max(100).optional(),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
@@ -665,7 +771,11 @@ export const requests = {
       // LES-03: a gap drill's short explanation, shown above its questions.
       explanation: z.string().optional(),
       draft: z
-        .object({ picks: z.record(z.string(), z.string()), index: z.number() })
+        .object({
+          picks: z.record(z.string(), z.string()),
+          index: z.number(),
+          skipped: z.array(z.string()).optional(),
+        })
         .optional(),
       submittedAt: z.number().optional(),
       result: quizResultSchema.optional(),
@@ -1221,6 +1331,23 @@ export const requests = {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z.array(mapSummarySchema),
   },
+  "maps.all": {
+    input: z.object({ query: z.string().max(200).optional() }),
+    output: z.array(mapEntrySchema),
+  },
+  "maps.export": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      mapId: z.string().optional(),
+      language: z.enum(["en", "it"]),
+    }),
+    output: z.object({
+      filename: z.string(),
+      markdown: z.string(),
+      svg: z.string(),
+    }),
+  },
   "maps.build": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
     output: z
@@ -1479,6 +1606,28 @@ export const requests = {
       z.object({ id: z.string(), title: z.string(), mastery: z.number() }),
     ),
   },
+  // What each topic's mastery is made of, from the evidence `plans.mastery` uses:
+  // mastery = sum(parts.points) / (priorWeight + sum(parts.weight)).
+  "plans.masteryBreakdown": {
+    input: z.object({ planId: z.string() }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        mastery: z.number(),
+        priorWeight: z.number(),
+        // Mastery minus the mastery the same evidence would give without decay; negative when age costs points.
+        decay: z.number(),
+        parts: z.object({
+          quiz: masteryPartSchema,
+          simulation: masteryPartSchema,
+          check: masteryPartSchema,
+          self: masteryPartSchema,
+          card: masteryPartSchema,
+        }),
+      }),
+    ),
+  },
   "plans.recommend": {
     input: z.object({ planId: z.string() }),
     output: z
@@ -1518,6 +1667,85 @@ export const requests = {
         ),
       })
       .nullable(),
+  },
+  "plans.today": {
+    // Oggi: due flashcards from every plan as one item, then each plan's next step, closest exam first.
+    input: z.object({}),
+    output: z.object({
+      planned: z.boolean(),
+      // Dated exams the session planner says fall behind at this pace.
+      behind: z.array(plannerExam),
+      cards: z
+        .object({ due: z.number().int(), plans: z.number().int(), ratedToday: z.number().int() })
+        .nullable(),
+      items: z.array(
+        z.object({
+          planId: z.string(),
+          title: z.string(),
+          subject: z.string().nullable(),
+          daysToExam: z.number().nullable(),
+          next: z
+            .object({
+              activity: PathActivity,
+              topicId: z.string().nullable(),
+              topicTitle: z.string().nullable(),
+              reason: z.string(),
+            })
+            .nullable(),
+          done: z.array(
+            z.object({
+              activity: PathActivity,
+              topicId: z.string().nullable(),
+              topicTitle: z.string().nullable(),
+            }),
+          ),
+          // Null when the planner has no share for this plan today (no hours set, no date, or the exam is today).
+          minutesToday: z.number().nullable(),
+          minutesLeft: z.number().nullable(),
+          complete: z.boolean(),
+        }),
+      ),
+    }),
+  },
+  "plans.planner": {
+    input: z.object({}),
+    output: z.object({
+      weeklyHours: z.number().nullable(),
+      neededHours: z.number().nullable(),
+      exams: z.array(plannerExam),
+      weeks: z.array(
+        z.object({
+          start: z.string(),
+          hours: z.number(),
+          custom: z.boolean(),
+          plans: z.array(z.object({ planId: z.string(), minutes: z.number() })),
+          exams: z.array(z.string()),
+        }),
+      ),
+      days: z.array(
+        z.object({
+          date: z.string(),
+          plans: z.array(z.object({ planId: z.string(), minutes: z.number() })),
+          exams: z.array(z.string()),
+        }),
+      ),
+    }),
+  },
+  "plans.plannerHours": {
+    // The usual hours a week, or with `week` (its Monday) the hours of that week; null clears that week's own value.
+    input: z.object({
+      week: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
+      hours: z.number().min(0).max(100).nullable(),
+    }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "study.dueEverywhere": {
+    // Due cards from every plan, for Oggi's flashcards item.
+    input: z.object({}),
+    output: z.array(dueCardSchema.extend({ planId: z.string(), planTitle: z.string() })),
   },
   "plans.simulations": {
     input: z.object({ planId: z.string() }),
@@ -1845,6 +2073,11 @@ export const requests = {
         syllabusOff: z.number().int().positive().optional(),
         /** The error code a failed import stopped with, while its job is still listed. */
         error: z.string().optional(),
+        /** The job that stopped with `error`, so the row can answer it (a locked PDF's password). */
+        errorJobId: z.string().optional(),
+        /** The address a source imported from a link came from, and when its saved copy was fetched. */
+        originUrl: z.string().nullable(),
+        fetchedAt: z.number().nullable(),
       }),
     ),
   },
@@ -2238,6 +2471,22 @@ export const requests = {
       jobId: z.string().optional(),
     }),
   },
+  /** Fetches a link source again. A changed page is read as its next version; a source that plans use asks first. */
+  "sources.refresh": {
+    input: z.object({ sourceId: z.string(), confirmed: z.boolean() }),
+    output: z.object({
+      started: z.boolean(),
+      inUse: z.number(),
+      /** The page is the copy already saved. Nothing started. */
+      unchanged: z.literal(true).optional(),
+      jobId: z.string().optional(),
+    }),
+  },
+  /** Runs again an import that stopped on a locked PDF, with the password for that read only. It is never stored. */
+  "sources.unlockPdf": {
+    input: z.object({ jobId: z.string(), password: z.string().min(1).max(1024) }),
+    output: z.object({ jobId: z.string() }),
+  },
   "sources.remove": {
     input: z.object({ sourceId: z.string(), confirmed: z.boolean() }),
     output: z.object({ removed: z.boolean(), inUse: z.boolean() }),
@@ -2367,6 +2616,13 @@ export const broadcasts = {
     from: z.string(),
     to: z.string(),
     reason: z.enum(["limit", "signed-out"]),
+  }),
+  // Download and check progress of the local model.
+  "engine.local": z.object({
+    phase: z.enum(["pull", "check", "done", "failed", "cancelled"]),
+    status: z.string().optional(),
+    completed: z.number().optional(),
+    total: z.number().optional(),
   }),
   // A chunk of installer output while `engines.install` runs.
   "engine.install": z.object({ provider: z.string(), text: z.string() }),

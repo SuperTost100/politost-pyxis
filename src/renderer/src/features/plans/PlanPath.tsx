@@ -8,6 +8,7 @@ import { Icon, type IconName } from "../../components/Icon";
 import { MasteryBar } from "../../components/MasteryBar";
 import { PathNode } from "../../components/PathNode";
 import { Tag } from "../../components/Tag";
+import { foldText } from "@shared/fold-text";
 import { reopenPath, stepPath } from "./reopen";
 import "./PlanPath.css";
 
@@ -81,9 +82,9 @@ export function PlanPath({
   );
   const simulationPlanned = next?.activity !== "simulation" && topics.length > 0;
   const matches = useMemo(() => {
-    const words = query.trim().toLocaleLowerCase();
+    const words = foldText(query.trim());
     return words
-      ? topics.filter((item) => item.title.toLocaleLowerCase().includes(words))
+      ? topics.filter((item) => foldText(item.title).includes(words))
       : topics;
   }, [query, topics]);
 

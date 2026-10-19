@@ -111,7 +111,7 @@ export function ReviewPage() {
           : []),
       ];
   return (
-    <FocusLayout title={t("cards.reviewTitle")}>
+    <FocusLayout title={t("cards.reviewTitle")} onClose={() => navigate(`/plans/${planId}`)}>
       <ActivityIntro
         eyebrow={plan.data?.title ?? t("cards.reviewTitle")}
         title={t("cards.reviewTitle")}

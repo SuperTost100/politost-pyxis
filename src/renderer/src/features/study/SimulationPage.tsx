@@ -60,7 +60,18 @@ export function SimulationPage() {
   const open = useQuery({
     queryKey: ["simulation", planId, started],
     enabled: Boolean(planId),
-    refetchInterval: 1000,
+    // The clock runs here, so a running exam is read every second for the time-up freeze and the grading job. Once
+    // handed in, or when grading has stopped (Retry invalidates this query), there is nothing left to watch.
+    refetchInterval: (query) => {
+      const read = query.state.data;
+      if (read?.submitted) return false;
+      if (
+        read?.grading &&
+        ["failed", "cancelled", "interrupted"].includes(read.grading.state)
+      )
+        return false;
+      return 1000;
+    },
     queryFn: () =>
       started
         ? invoke("study.simulationRead", { attemptId: started })
@@ -69,7 +80,13 @@ export function SimulationPage() {
   const build = useQuery({
     queryKey: ["simulation-build", planId],
     enabled: Boolean(planId) && !started,
-    refetchInterval: 1000,
+    // Follows the build until it settles; Retry and Resume invalidate it and bring the interval back.
+    refetchInterval: (query) =>
+      ["succeeded", "failed", "cancelled", "interrupted"].includes(
+        query.state.data?.state ?? "",
+      )
+        ? false
+        : 1000,
     queryFn: () => invoke("study.simulationBuild", { planId }),
   });
   const building = build.data;
@@ -161,6 +178,10 @@ export function SimulationPage() {
   useEffect(() => {
     if (locked) void flushDraft();
   }, [locked]);
+  // The shell asks core whether an exam is running when it opens and when told; starting, time-up and handing in tell it.
+  useEffect(() => {
+    void client.invalidateQueries({ queryKey: ["active-simulation"] });
+  }, [run?.attemptId, run?.submitted, Boolean(run?.grading), locked]);
   const shown = locked
     ? (run?.picks ?? {})
     : { ...(run?.picks ?? {}), ...picks };

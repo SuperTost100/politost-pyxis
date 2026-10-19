@@ -9,6 +9,17 @@
 .px-cards > p {
   margin: 0;
 }
+.px-cards-parked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.px-cards-parked .px-markdown {
+  flex: 1;
+  min-width: 0;
+}
 .px-cards-toolbar {
   display: flex;
   flex-wrap: wrap;

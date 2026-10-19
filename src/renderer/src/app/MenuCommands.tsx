@@ -40,9 +40,9 @@ export function MenuCommands() {
           void router.navigate(-1);
           return;
         }
-        // Ask and Exams are the two doors in the header, so they return to where that door was left.
+        // Ask, Exams and Maps are the doors in the header, so they return to where that door was left.
         const path =
-          command === "ask" || command === "exams"
+          command === "ask" || command === "exams" || command === "maps"
             ? doorTarget(command, pathname)
             : (goPages.find((page) => page.command === command)?.path ??
               pageCommands[command as keyof typeof pageCommands]);
