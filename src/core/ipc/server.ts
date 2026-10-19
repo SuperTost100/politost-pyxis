@@ -710,7 +710,7 @@ async function dispatchValidated(
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
         onPassages: (passages) => emit?.({ type: "passages", passages }),
-        onQuestion: (id) => emit?.({ type: "question", id }),
+        onQuestion: (id, chatId) => emit?.({ type: "question", id, chatId }),
       });
     case "chats.regenerate":
       return chats?.regenerate({

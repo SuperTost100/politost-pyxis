@@ -44,7 +44,7 @@ import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { activePlans, starterPrompts, type Starter } from "./starters";
 import { formatTokens } from "../../lib/tokens";
-import { questionStored, turns, type Turn } from "./turns";
+import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
 
 function errorKey(err: unknown): string {
@@ -94,9 +94,11 @@ type Screen = {
   fail: (err: unknown) => void;
 };
 let screen: { current: Screen } | null = null;
-/** The page on screen, if it shows the chat a turn was sent from. */
-const showing = (from: string) =>
-  screen && screen.current.chat() === from ? screen.current : null;
+/** The page on screen, if it shows the turn's chat. */
+const showing = (turn: Turn) =>
+  screen && runsIn(turn, screen.current.chat()) ? screen.current : null;
+/** Stands in for a turn's chat while none runs. */
+const noChat = { subscribe: () => () => undefined, get: () => "" };
 
 /** A chat opens with this many recent messages; older ones join as the student scrolls up to them. */
 const RECENT = 8;
@@ -258,7 +260,9 @@ export function AskPage() {
   // the chat it was sent from, and the page follows it to its new chat only if the student is still there.
   const turn = useSyncExternalStore(turns.subscribe, turns.get);
   const busy = turn !== null;
-  const streamHere = turn !== null && turn.from === (chatId ?? "");
+  // A new chat's reply shows on its own page too, once core has named the chat it created.
+  const turnChat = useSyncExternalStore((turn?.chat ?? noChat).subscribe, (turn?.chat ?? noChat).get);
+  const streamHere = turn !== null && (turn.from === (chatId ?? "") || turnChat === chatId);
   // The question just sent, shown at once: the stored message only arrives with the reply.
   const pendingQuestion = turn?.question ?? null;
   const regenerating = turn?.regenerating ?? false;
@@ -639,7 +643,7 @@ export function AskPage() {
         })
         .catch(() => undefined);
       void client.invalidateQueries({ queryKey: ["chats"] });
-      showing(startedIn)?.replied(
+      showing(turn)?.replied(
         result.chatId,
         result.covered ? null : trimmed,
         result.skippedImages ?? [],
@@ -650,7 +654,7 @@ export function AskPage() {
       // An existing chat keeps the question it stored, so the thread shows it with Try again.
       if (startedIn && !turn.dropped)
         void client.invalidateQueries({ queryKey: ["chat", startedIn] });
-      if (errorKey(err) !== "errors.aborted" && !turn.dropped) showing(startedIn)?.fail(err);
+      if (errorKey(err) !== "errors.aborted" && !turn.dropped) showing(turn)?.fail(err);
     } finally {
       turns.end(turn);
     }
@@ -745,7 +749,7 @@ export function AskPage() {
         const last = client
           .getQueryData<Awaited<ReturnType<typeof invoke<"chats.read">>>>(["chat", chatId])
           ?.messages.at(-1);
-        showing(chatId)?.replied(
+        showing(turn)?.replied(
           chatId,
           reply.covered ? null : question,
           reply.skippedImages ?? [],
@@ -753,7 +757,7 @@ export function AskPage() {
         );
       })
       .catch((err: unknown) => {
-        if (errorKey(err) !== "errors.aborted" && !turn.dropped) showing(chatId)?.fail(err);
+        if (errorKey(err) !== "errors.aborted" && !turn.dropped) showing(turn)?.fail(err);
       })
       .finally(() => turns.end(turn));
   }
@@ -907,7 +911,7 @@ export function AskPage() {
     sessionStorage.removeItem(draftKey(id));
     writePendingFiles(sessionStorage, id, []);
     const running = turns.get();
-    if (running?.from === id) {
+    if (running && runsIn(running, id)) {
       running.dropped = true;
       running.stop();
     }

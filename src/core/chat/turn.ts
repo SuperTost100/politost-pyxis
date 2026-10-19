@@ -97,8 +97,8 @@ type AskInput = {
   onDelta?: (text: string) => void;
   /** The passages this turn's reply may cite, by number, before it streams. A stored reply labels them the same way. */
   onPassages?: (passages: Array<{ index: number; label: string }>) => void;
-  /** The stored message that is this turn's question, new or reused, before the reply streams. */
-  onQuestion?: (messageId: string) => void;
+  /** The stored message that is this turn's question, new or reused, and its chat (new for a first question), before the reply streams. */
+  onQuestion?: (messageId: string, chatId: string) => void;
   run?: Parameters<typeof generate>[0]["run"];
   /** Runs figure code; null turns figures off. Defaults to the Pyodide sandbox when its runtime is downloaded. */
   python?: FigureRunner | null;
@@ -749,7 +749,7 @@ async function answer(
   const { sourceIds, subject, userMessageId, attachedIds } = staged
     ? commitStaged(db, input.workspace!, staged, (ids) => persist([...new Set([...reused, ...ids])])).value
     : db.transaction(() => persist([]))();
-  input.onQuestion?.(userMessageId);
+  input.onQuestion?.(userMessageId, chatId);
 
   const selection =
     input.engine === "strong" ? strongestSelection(db) : selectionFor(db, "chat");

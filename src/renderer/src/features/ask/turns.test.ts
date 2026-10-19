@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { questionStored, turns } from "./turns";
+import { questionStored, runsIn, turns } from "./turns";
 
 describe("the Ask page's turn", () => {
   beforeEach(() => {
@@ -58,5 +58,18 @@ describe("the Ask page's turn", () => {
     again.onEvent({ type: "question", id: "m1" });
     expect(named).toHaveBeenCalledOnce();
     expect(questionStored(again, older)).toBe(true);
+  });
+
+  it("runs in the chat core created for a first question, once core names it", () => {
+    const turn = turns.start("", "Prima domanda")!;
+    expect(runsIn(turn, "")).toBe(true);
+    expect(runsIn(turn, "chat-new")).toBe(false);
+    const moved = vi.fn();
+    turn.chat.subscribe(moved);
+    turn.onEvent({ type: "question", id: "m1", chatId: "chat-new" });
+    expect(moved).toHaveBeenCalledOnce();
+    expect(runsIn(turn, "chat-new")).toBe(true);
+    expect(runsIn(turn, "")).toBe(true);
+    expect(runsIn(turn, "chat-other")).toBe(false);
   });
 });

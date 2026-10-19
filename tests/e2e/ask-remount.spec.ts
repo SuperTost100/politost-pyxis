@@ -150,3 +150,30 @@ test("a question sent again after Stop shows once while its reply is written", a
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test("a first question's chat opened from the list while its reply is written shows that reply", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  try {
+    await go(page, "/ask");
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Che cos'è un integrale?");
+    await box.press("Enter");
+    await expect(page.getByText("Sto pensando…")).toBeVisible();
+    // Core created the chat with the question, so the list already holds it: the student opens it there.
+    const chats = () =>
+      page.evaluate(async () => (await window.pyxis.invoke("chats.list", {})) as Array<{ id: string }>);
+    await expect.poll(async () => (await chats()).length).toBe(1);
+    const [chat] = await chats();
+    await go(page, `/ask/${chat!.id}`);
+    await expect(page).toHaveURL(new RegExp(`#/ask/${chat!.id}$`));
+    await expect(page.locator(".px-msg-bubble", { hasText: "Che cos'è un integrale?" })).toHaveCount(1);
+    await expect(page.getByText("Sto pensando…").or(page.getByText("Ecco la risposta."))).toBeVisible();
+    await expect(page.getByRole("button", { name: "Interrompi", exact: true })).toBeVisible();
+    await expect(page.getByText("Un esempio?")).toBeVisible({ timeout: 20000 });
+    await expect(page.locator(".px-msg-bubble", { hasText: "Che cos'è un integrale?" })).toHaveCount(1);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});

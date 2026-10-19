@@ -127,7 +127,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       signal?: AbortSignal;
       onDelta?: (text: string) => void;
       onPassages?: (passages: Array<{ index: number; label: string }>) => void;
-      onQuestion?: (messageId: string) => void;
+      onQuestion?: (messageId: string, chatId: string) => void;
       subject?: string;
       files?: string[];
     }) {

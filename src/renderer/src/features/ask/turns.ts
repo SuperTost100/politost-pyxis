@@ -10,6 +10,8 @@ export type TurnPassage = { index: number; label: string };
 export type Turn = {
   /** The chat it was sent from: "" for a new chat. */
   readonly from: string;
+  /** The chat it runs in: `from`, or for a new chat the one core created for it, once core names it. */
+  readonly chat: ReturnType<typeof liveValue<string>>;
   /** The question shown until the stored one arrives; null when the last question is answered again. */
   readonly question: string | null;
   readonly regenerating: boolean;
@@ -56,19 +58,24 @@ export const turns = {
     const live = liveValue("");
     const passages = liveValue<TurnPassage[]>([]);
     const questionId = liveValue<string | null>(null);
+    const chat = liveValue(from);
     // Each delta carries the whole reply so far. Rendering it at most every 100 ms keeps long answers with math responsive.
     const text = latestEvery<string>(100, live.set);
     const turn: Turn = {
       from,
+      chat,
       question,
       regenerating,
       after,
       live,
       passages,
       onEvent(event) {
-        const data = event as { type?: string; text?: unknown; passages?: unknown; id?: unknown };
+        const data = event as { type?: string; text?: unknown; passages?: unknown; id?: unknown; chatId?: unknown };
         if (typeof data.text === "string") text.push(data.text);
-        else if (data.type === "question" && typeof data.id === "string") questionId.set(data.id);
+        else if (data.type === "question" && typeof data.id === "string") {
+          questionId.set(data.id);
+          if (typeof data.chatId === "string") chat.set(data.chatId);
+        }
         else if (data.type === "passages" && Array.isArray(data.passages))
           passages.set(data.passages as TurnPassage[]);
       },
@@ -98,4 +105,9 @@ export function questionStored(
   last: { id: string; role: string; body: string } | undefined,
 ): boolean {
   return last?.role === "user" && (last.id !== turn.after || last.id === turn.questionId.get());
+}
+
+/** Whether the page for `chatId` ("" for a new chat) shows the turn: the chat it was sent from, or the one it created. */
+export function runsIn(turn: Turn, chatId: string): boolean {
+  return turn.from === chatId || turn.chat.get() === chatId;
 }
