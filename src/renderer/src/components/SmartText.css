@@ -27,6 +27,12 @@
   margin-bottom: var(--space-4);
 }
 
+/* In a lesson a display formula gets a reading line's worth of air on each side. */
+.px-smart .px-markdown.is-reading .katex-display {
+  margin: var(--space-6) 0;
+  text-align: center;
+}
+
 .px-sb {
   display: grid;
   gap: var(--space-3);

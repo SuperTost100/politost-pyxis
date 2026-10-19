@@ -1,6 +1,6 @@
 import { IpcError } from "../../shared/ipc";
 import type Database from "better-sqlite3";
-import { automaticEffort, studentEffort } from "../../shared/effort";
+import { automaticEffort, nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
 import { isBenched } from "./bench";
 import { effortsOf } from "./efforts";
@@ -70,6 +70,22 @@ export function selectionFor(
       : automaticEffort(feature, listed);
   const chosen = { ...selection, ...(effort ? { effort } : {}) };
   if (auto) automatic.set(chosen, feature);
+  return chosen;
+}
+
+/**
+ * The engine for "Answer again with the strongest model": the plan task's engine, which runs on the strong tier, at
+ * high effort or the nearest level its model lists. A model whose list is not read yet keeps the plan task's effort.
+ * An automatic plan engine stays automatic, so a usage limit still moves the answer to another engine.
+ */
+export function strongestSelection(db: Database.Database): StoredSelection {
+  const plan = selectionFor(db, "plan");
+  const listed = effortsOf(plan.provider, plan.model);
+  const { effort: planEffort, ...rest } = plan;
+  const effort = listed ? nearestEffort("high", listed) : planEffort;
+  const chosen = { ...rest, ...(effort ? { effort } : {}) };
+  const feature = automatic.get(plan);
+  if (feature) automatic.set(chosen, feature);
   return chosen;
 }
 

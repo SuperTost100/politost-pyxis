@@ -7,7 +7,7 @@ import { parseSmartText, smartQuestions } from "@shared/smart-text";
 import { invoke } from "../../lib/ipc";
 import { Notice } from "../../components/Notice";
 import { SmartText } from "../../components/SmartText";
-import { ReaderEnd, ReaderLayout, ReaderProgress } from "./Reader";
+import { ReaderEnd, ReaderLayout, ReaderProgress, useOpenNext } from "./Reader";
 
 type Intro = RequestOutput<"plans.intro">;
 
@@ -35,11 +35,17 @@ export function IntroPage() {
         client.invalidateQueries({ queryKey }),
       ),
     );
+  const openNext = useOpenNext(planId);
+  // "Done" goes back to the plan; "Done, continue" opens the next step. A page already done only moves on.
   const markDone = useMutation({
-    mutationFn: () => invoke("plans.complete", { planId, activity: "intro", topicId: null }),
-    onSuccess: async () => {
+    mutationFn: async (then: "done" | "continue") => {
+      if (!done) await invoke("plans.complete", { planId, activity: "intro", topicId: null });
+      return then;
+    },
+    onSuccess: async (then) => {
       await refreshPlan();
-      navigate(`/plans/${planId}`);
+      if (then === "continue") await openNext();
+      else navigate(`/plans/${planId}`);
     },
   });
   const unanswered = useMemo(() => {
@@ -95,9 +101,10 @@ export function IntroPage() {
           }
           doneLabel={t("lesson.introDone")}
           pendingHint={unanswered ? t("lesson.introPrompt") : undefined}
-          busy={markDone.isPending}
+          busy={markDone.isPending ? markDone.variables : undefined}
           failed={markDone.isError}
-          onMarkDone={() => markDone.mutate()}
+          onDone={() => markDone.mutate("done")}
+          onContinue={() => markDone.mutate("continue")}
           onBack={() => navigate(`/plans/${planId}`)}
         />
       ) : null}

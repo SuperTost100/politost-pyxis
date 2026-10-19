@@ -181,15 +181,15 @@
 .px-review-progress > p {
   margin: 0;
 }
-.px-review-count {
-  margin: var(--space-5) 0;
-}
-.px-review-count .label {
-  margin: 0 0 var(--space-2);
-}
-.px-review-actions {
+/* A review in progress, on the review's intro: where it stands, and a quiet way to drop it. */
+.px-review-resume {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.px-review-resume > p {
+  margin: 0;
+}
+.px-review-discard.ant-btn {
+  align-self: flex-start;
 }

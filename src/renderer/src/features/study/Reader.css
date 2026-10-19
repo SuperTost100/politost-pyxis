@@ -157,6 +157,14 @@
   margin: 0;
 }
 
+/* The two actions stay together and wrap as one row under the sentence on a narrow page. */
+.px-reader-end-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
 .px-reader-end.is-done {
   color: var(--mastery-text);
 }

@@ -40,7 +40,7 @@ import {
   writeLesson,
   type Wording,
 } from "./openLesson";
-import { answerSmartCheck, smartAnswers, smartSources } from "./smartText";
+import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
 import { currentSelfRatings, rateExercise, type SelfRating } from "./selfRating";
 import type { Rating } from "./schedule";
 import { runTurn } from "../engine/funnel";
@@ -102,6 +102,7 @@ function readingFor(db: Database.Database) {
     ...lesson,
     answers: lesson.itemId && !lesson.fallback ? smartAnswers(db, lesson.itemId) : {},
     sources: smartSources(db, lesson.passageIds),
+    citations: smartCitations(db, lesson.passageIds),
   });
 }
 
@@ -159,9 +160,11 @@ export function studyHandlers(
       options?: {
         signal?: AbortSignal;
         onDelta?: (text: string) => void;
-        onPassages?: (passageIds: string[]) => void;
+        /** The passages the lesson is written from, with their chip labels, before the text streams. */
+        onPassages?: (passageIds: string[], citations: string[]) => void;
       },
     ) {
+      const onPassages = options?.onPassages;
       const saved =
         input.itemId && !input.regenerate
           ? readLessonItem(db, input.planId, input.topicId, input.itemId)
@@ -169,6 +172,7 @@ export function studyHandlers(
       if (saved) return Promise.resolve(withReading(saved));
       return writeLesson(db, input.planId, input.topicId, run ?? runTurn, {
         ...options,
+        onPassages: onPassages && ((ids) => onPassages(ids, smartCitations(db, ids))),
         wording: input.wording,
         regenerate: input.regenerate,
       }).then((lesson) => withReading(lesson));
