@@ -335,6 +335,18 @@ describe("the plan file an import came from", () => {
     expect(planImportedFrom(db, {})).toBeNull();
   });
 
+  it("picks the import written last when two share a millisecond", () => {
+    const db = openDatabase(":memory:");
+    const record = JSON.stringify({ fileId: "plan-a", exportedAt: 5_000 });
+    for (const id of ["zz-first", "aa-second"]) {
+      db.prepare(
+        "INSERT INTO plans (id, title, status, target, created_at, updated_at) VALUES (?, 'Piano', 'ready', 0.75, 1, 1)",
+      ).run(id);
+      db.prepare("INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, 2000)").run(`plan-import:${id}`, record);
+    }
+    expect(planImportedFrom(db, { id: "plan-a", createdAt: 5_000 })?.planId).toBe("aa-second");
+  });
+
   it("stops matching once the imported plan is deleted", () => {
     const db = openDatabase(":memory:");
     const handlers = planHandlers(db);

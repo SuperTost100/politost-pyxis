@@ -57,13 +57,14 @@ export function markPlanImported(
  * The newest plan still in the workspace that was imported from this same file: same exporting plan and same export
  * time. A file without either, or one from a later export of the same plan, matches nothing.
  */
+/** The latest plan imported from this file. Two imports in the same millisecond are told apart by which was written last. */
 export function planImportedFrom(db: Database.Database, file: PlanFileIdentity) {
   if (!file.id || file.createdAt == null) return null;
   const row = db
     .prepare(
       `SELECT p.id AS planId, s.updated_at AS importedAt FROM settings s JOIN plans p ON s.key = 'plan-import:' || p.id
        WHERE json_extract(s.value_json, '$.fileId') = ? AND json_extract(s.value_json, '$.exportedAt') = ?
-       ORDER BY s.updated_at DESC, p.id DESC LIMIT 1`,
+       ORDER BY s.updated_at DESC, s.rowid DESC LIMIT 1`,
     )
     .get(file.id, file.createdAt) as { planId: string; importedAt: number } | undefined;
   return row ?? null;
