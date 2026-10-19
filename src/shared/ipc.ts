@@ -70,6 +70,7 @@ const dueCardSchema = z.object({
   passageId: z.string().nullable(),
   sourceId: z.string().nullable(),
   chapter: z.number().nullable(),
+  handMade: z.boolean(),
   state: z.object({
     intervalDays: z.number(),
     ease: z.number(),
@@ -1148,7 +1149,20 @@ export const requests = {
       fresh: z.number(),
       learning: z.number(),
       mastered: z.number(),
+      /** Cards due in the topic now, new cards within today's limit included. */
+      due: z.number(),
+      /** The plan's daily limit of new cards and how many it can still introduce today. */
+      newToday: z.object({ limit: z.number(), left: z.number() }),
     }),
+  },
+  "study.cardSettings": {
+    input: z.object({}),
+    output: z.object({ newPerDay: z.number().int() }),
+  },
+  "study.saveCardSettings": {
+    // New cards each exam introduces per day; 0 introduces none.
+    input: z.object({ newPerDay: z.number().int().min(0).max(999) }),
+    output: z.object({ newPerDay: z.number().int() }),
   },
   "study.save": {
     input: z.object({
@@ -1174,7 +1188,7 @@ export const requests = {
       query: z.string().max(200).optional(),
       planId: z.string().optional(),
       topicId: z.string().optional(),
-      status: z.enum(["all", "due", "suspended", "removed"]).optional(),
+      status: z.enum(["all", "due", "suspended", "removed", "leech"]).optional(),
       offset: z.number().int().min(0).optional(),
       limit: z.number().int().min(1).max(100).optional(),
     }),
@@ -1196,6 +1210,10 @@ export const requests = {
           handMade: z.boolean(),
           state: z.enum(["new", "due", "scheduled"]),
           dueAt: z.number().nullable(),
+          lapses: z.number().int(),
+          leech: z.boolean(),
+          passageId: z.string().nullable(),
+          sourceId: z.string().nullable(),
         }),
       ),
       groups: z.array(
@@ -1284,7 +1302,14 @@ export const requests = {
       intervalDays: z.number(),
       ease: z.number(),
       dueAt: z.number(),
+      /** Names this rating for study.undoRate. */
+      reviewId: z.string(),
     }),
+  },
+  "study.undoRate": {
+    // Takes back a rating: the card returns to its earlier schedule and is due again. Only its latest rating can go.
+    input: z.object({ reviewId: z.string() }),
+    output: z.object({ cardId: z.string() }),
   },
   "study.exercises": {
     input: z.object({

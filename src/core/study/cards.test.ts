@@ -2,13 +2,18 @@ import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../../shared/ids";
 import { openDatabase } from "../db/connection";
 import {
+  countDueCards,
   deleteCard,
   dueCards,
+  newCardsLeftToday,
+  newCardsPerDay,
   queueCounts,
   rateCard,
   saveCard,
   seedCards,
+  setNewCardsPerDay,
   setSuspended,
+  undoRating,
 } from "./cards";
 import { planGuide } from "../plans/create";
 
@@ -78,6 +83,8 @@ describe("cards", () => {
   it("counts every due card for the suggestion, not just one session's worth", () => {
     const db = openDatabase(":memory:");
     const { planId, topicId } = planWithTopic(db);
+    // Above the 25 cards, so the daily limit of new cards does not hide any.
+    setNewCardsPerDay(db, 30);
     seedCards(db, {
       planId,
       topicId,
@@ -332,6 +339,148 @@ describe("cards", () => {
       n: 0,
     });
     expect(dueCards(db, planId, T0)).toHaveLength(1);
+    db.close();
+  });
+});
+
+function seedMany(
+  db: ReturnType<typeof openDatabase>,
+  planId: string,
+  topicId: string,
+  count: number,
+  from = 0,
+) {
+  return seedCards(db, {
+    planId,
+    topicId,
+    pairs: Array.from({ length: count }, (_, index) => ({
+      front: `Domanda ${from + index}`,
+      back: `Risposta ${from + index}`,
+    })),
+  });
+}
+
+describe("daily limit of new cards", () => {
+  it("introduces 20 new cards a day by default and counts the ones rated today", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const ids = seedMany(db, planId, topicId, 30);
+    expect(newCardsPerDay(db)).toBe(20);
+    expect(countDueCards(db, planId, T0)).toBe(20);
+    expect(countDueCards(db, planId, T0, topicId)).toBe(20);
+    // The oldest new cards come first.
+    expect(dueCards(db, planId, T0).map((card) => card.id)).toEqual(
+      ids.slice(0, 20),
+    );
+    for (const id of ids.slice(0, 5)) rateCard(db, id, "good", T0);
+    // Five introduced today: 15 more new cards, and the rated ones wait for their learning step.
+    expect(newCardsLeftToday(db, planId, T0)).toEqual({ limit: 20, left: 15 });
+    expect(countDueCards(db, planId, T0)).toBe(15);
+    // A rated card that comes back is not new, so it does not use the allowance.
+    expect(countDueCards(db, planId, T0 + 3_600_000)).toBe(20);
+    // The next day the allowance is whole again.
+    const tomorrow = T0 + 86_400_000;
+    expect(newCardsLeftToday(db, planId, tomorrow).left).toBe(20);
+    db.close();
+  });
+
+  it("follows the setting, and 0 introduces no new card", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    seedMany(db, planId, topicId, 10);
+    expect(setNewCardsPerDay(db, 3)).toBe(3);
+    expect(dueCards(db, planId, T0)).toHaveLength(3);
+    setNewCardsPerDay(db, 0);
+    expect(countDueCards(db, planId, T0)).toBe(0);
+    expect(setNewCardsPerDay(db, 5000)).toBe(999);
+    db.close();
+  });
+
+  it("gives a topic its own new cards within the plan's allowance", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const other = uuidv7();
+    db.prepare(
+      `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES (?, ?, 'Forze', 1, 1)`,
+    ).run(other, planId);
+    setNewCardsPerDay(db, 4);
+    seedMany(db, planId, topicId, 6);
+    const later = seedMany(db, planId, other, 3, 100);
+    // The older topic fills the plan-wide queue; the newer topic still shows its own cards.
+    expect(countDueCards(db, planId, T0)).toBe(4);
+    expect(dueCards(db, planId, T0, other).map((card) => card.id)).toEqual(
+      later,
+    );
+    rateCard(db, later[0]!, "good", T0);
+    rateCard(db, later[1]!, "good", T0);
+    expect(countDueCards(db, planId, T0, topicId)).toBe(2);
+    db.close();
+  });
+
+  it("does not shorten a stored review queue", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    setNewCardsPerDay(db, 2);
+    const ids = seedMany(db, planId, topicId, 4);
+    expect(dueCards(db, planId, T0, undefined, ids)).toHaveLength(4);
+    db.close();
+  });
+});
+
+describe("undo a rating", () => {
+  const events = (db: ReturnType<typeof openDatabase>) =>
+    (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'card_rated'",
+        )
+        .get() as { n: number }
+    ).n;
+
+  it("puts a new card back as new and due, without its review or event", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const { id } = saveCard(db, { planId, topicId, front: "Q", back: "A" }, T0);
+    const rated = rateCard(db, id, "again", T0);
+    expect(dueCards(db, planId, T0)).toHaveLength(0);
+    expect(undoRating(db, rated.reviewId)).toEqual({ cardId: id });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM card_reviews").get()).toEqual({
+      n: 0,
+    });
+    expect(events(db)).toBe(0);
+    const due = dueCards(db, planId, T0);
+    expect(due.map((card) => card.id)).toEqual([id]);
+    expect(due[0]!.state.fsrs).toBeUndefined();
+    expect(newCardsLeftToday(db, planId, T0).left).toBe(20);
+    db.close();
+  });
+
+  it("restores the state of the rating before, and the card can be rated again", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const { id } = saveCard(db, { planId, topicId, front: "Q", back: "A" }, T0);
+    const first = rateCard(db, id, "good", T0);
+    const second = rateCard(db, id, "again", first.dueAt);
+    undoRating(db, second.reviewId);
+    expect(events(db)).toBe(1);
+    const due = dueCards(db, planId, first.dueAt);
+    expect(due[0]!.state).toMatchObject({ dueAt: first.dueAt, fsrs: first.fsrs });
+    expect(rateCard(db, id, "easy", first.dueAt).dueAt).toBeGreaterThan(
+      second.dueAt,
+    );
+    db.close();
+  });
+
+  it("only takes back the card's latest rating, and only once", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const { id } = saveCard(db, { planId, topicId, front: "Q", back: "A" }, T0);
+    const first = rateCard(db, id, "good", T0);
+    const second = rateCard(db, id, "good", first.dueAt);
+    expect(() => undoRating(db, first.reviewId)).toThrow("review-not-latest");
+    undoRating(db, second.reviewId);
+    expect(() => undoRating(db, second.reviewId)).toThrow("review-missing");
+    expect(events(db)).toBe(1);
     db.close();
   });
 });

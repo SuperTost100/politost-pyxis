@@ -24,7 +24,7 @@ test("settings show a sidebar from 960px and drill down below it", async () => {
       window.location.hash = "#/settings";
     });
     // Two panes: every section is in the sidebar, and one is already open beside it.
-    await expect(sidebar.getByRole("button")).toHaveCount(12);
+    await expect(sidebar.getByRole("button")).toHaveCount(13);
     await expect(sidebar.getByRole("button", { name: "Profilo e interessi" })).toHaveAttribute(
       "aria-current",
       "page",

@@ -60,6 +60,10 @@
       "pen": "Pen",
       "eraser": "Eraser",
       "runCode": "Run the code",
+      "undoCard": "Undo the last rating, suspend or delete",
+      "editCard": "Edit the flashcard",
+      "suspendCard": "Suspend the flashcard",
+      "deleteCard": "Delete the flashcard",
       "goMaps": "Go to Maps"
     },
     "keys": {
@@ -591,7 +595,19 @@
     "reviewDrillCancelled": "Skipped the questions on {{topic}}. You can still finish without them.",
     "reviewDrillCancelledAction": "Try again",
     "reviewDrillSkipped": "Skipped the questions on {{topic}}. You can still finish without them.",
-    "reviewDrillSkip": "Skip"
+    "reviewDrillSkip": "Skip",
+    "rated": "Rated {{rating}}.",
+    "suspended": "Flashcard suspended.",
+    "deleted": "Flashcard removed.",
+    "undo": "Undo",
+    "more": "Flashcard actions",
+    "card": "Flashcard",
+    "askTutor": "Ask the tutor",
+    "askSource": "Source: {{section}}",
+    "askFailed": "The tutor chat could not open. Try again.",
+    "sessionProgress": "{{done}} of {{total}}",
+    "dailyLimit_one": "That's today's {{count}} new flashcard for this exam. The rest start tomorrow. You can change the limit in Settings.",
+    "dailyLimit_other": "That's today's {{count}} new flashcards for this exam. The rest start tomorrow. You can change the limit in Settings."
   },
   "cardImport": {
     "open": "Import from Anki",
@@ -650,7 +666,8 @@
       "all": "All flashcards",
       "due": "Due now",
       "suspended": "Suspended",
-      "removed": "Removed"
+      "removed": "Removed",
+      "leech": "Often forgotten"
     },
     "noSubject": "No subject",
     "noTopic": "No topic",
@@ -680,7 +697,14 @@
     "deleted": "Flashcard removed. You can restore it under Removed.",
     "deletedForever": "Flashcard deleted.",
     "restored": "Flashcard restored.",
-    "pages": "Pages"
+    "pages": "Pages",
+    "tagLeech": "Often forgotten",
+    "leechHint_one": "Forgotten {{count}} time. Rewrite it, check the source, or suspend it.",
+    "leechHint_other": "Forgotten {{count}} times. Rewrite it, check the source, or suspend it.",
+    "rewrite": "Rewrite",
+    "openSource": "Open source",
+    "leechHintNoSource_one": "Forgotten {{count}} time. Rewrite it or suspend it.",
+    "leechHintNoSource_other": "Forgotten {{count}} times. Rewrite it or suspend it."
   },
   "mistakes": {
     "title": "Mistakes notebook",
@@ -1630,7 +1654,10 @@
     },
     "crashOn": "On: if Pyxis closes by mistake, it can use a technical report to fix it. For now Pyxis sends no report: this choice stays on this computer.",
     "crashOff": "Off: no report leaves this computer.",
-    "crashContents": "A crash report describes the technical state of the app when the error happened: version, system and some portions of memory. Pyxis adds none of your files or chats to it, but memory can hold fragments of what you were using."
+    "crashContents": "A crash report describes the technical state of the app when the error happened: version, system and some portions of memory. Pyxis adds none of your files or chats to it, but memory can hold fragments of what you were using.",
+    "flashcards": "Flashcards",
+    "newPerDay": "New flashcards per day",
+    "newPerDayHint": "For each exam. Flashcards you have started come back when they are due, whatever the limit. With 0 no new ones start."
   },
   "jobs": {
     "label_one": "{{count}} background task",

@@ -1,6 +1,7 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "antd";
+import { Button, Dropdown, Input, Modal } from "antd";
+import { Ellipsis, MessageCircleQuestion } from "lucide-react";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,6 +20,15 @@ import { Notice } from "../../components/Notice";
 import { LoadError } from "../../components/LoadError";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
+type RatingName = (typeof RATINGS)[number];
+
+/** The last change the student can take back from the review: a rating, a suspend, or deleting a card Pyxis wrote. */
+type Undoable =
+  | { kind: "rate"; cardId: string; reviewId: string; rating: RatingName; intervalDays: number }
+  | { kind: "suspend" | "delete"; cardId: string };
+
+/** Keys for the card's menu, listed in the shortcuts dialog. Space, 1 to 4 and U work on the card itself. */
+const MENU_KEYS = { edit: "e", suspend: "s", delete: "d" } as const;
 
 /** A card's text without its Markdown emphasis, for a screen reader's label. */
 const plainText = (markdown: string) => markdown.replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
@@ -47,7 +57,10 @@ export function CardsPage() {
     request.then(then, () => setActionFailed(true));
   };
   const [showBack, setShowBack] = useState(false);
-  const [intervalDays, setIntervalDays] = useState<number | null>(null);
+  const [lastAction, setLastAction] = useState<Undoable | null>(null);
+  // A card brought back by Undo shows next, wherever the deck would sort it.
+  const [pinned, setPinned] = useState<string | null>(null);
+  const [modal, modalContext] = Modal.useModal();
   const [seen, setSeen] = useState<Array<(typeof RATINGS)[number]>>([]);
   // Cards rated into a short learning step come back in this session instead of ending it.
   const [learning, setLearning] = useState<LearningCards>({});
@@ -57,7 +70,6 @@ export function CardsPage() {
   const [draftBack, setDraftBack] = useState("");
   const [addingFront, setAddingFront] = useState("");
   const [addingBack, setAddingBack] = useState("");
-  const [armedDelete, setArmedDelete] = useState(false);
   const cards = useQuery({
     queryKey: ["cards", planId, topicId],
     enabled: Boolean(planId) && !reviewing,
@@ -127,22 +139,26 @@ export function CardsPage() {
   useEffect(() => {
     if (buildState === "succeeded") void refresh();
   }, [buildState]);
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
-  });
-  const card = everywhere
-    ? dueEverywhere.data?.[0]
+  const deckCards = everywhere
+    ? dueEverywhere.data
     : reviewing
-      ? reviewQueue.data?.cards[0]
-      : cards.data?.[0];
-  const cardPlanId = everywhere ? dueEverywhere.data?.[0]?.planId : planId;
+      ? reviewQueue.data?.cards
+      : cards.data;
+  const card =
+    deckCards?.find((item) => item.id === pinned) ?? deckCards?.[0];
+  // Oggi's cards come from several plans; the card on screen says which one it belongs to.
+  const shownCard = everywhere ? dueEverywhere.data?.find((item) => item.id === card?.id) : undefined;
+  const cardPlanId = everywhere ? shownCard?.planId : planId;
   useActiveTime(cardPlanId, topicId ?? (everywhere ? (card?.topicId ?? null) : null));
   // The plan and topic of each card rated here, so each plan's path gets its own cards step.
   const [ratedIn, setRatedIn] = useState<
     Array<{ planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
   >([]);
+  const plan = useQuery({
+    queryKey: ["plan", cardPlanId],
+    enabled: Boolean(cardPlanId),
+    queryFn: () => invoke("plans.read", { planId: cardPlanId ?? "" }),
+  });
   // Until the deck arrives (and the topic's build is known) "No cards are due." would be a guess.
   const shown = everywhere ? dueEverywhere : reviewing ? reviewQueue : cards;
   const deckLoading = shown.isLoading || (!reviewing && build.isLoading);
@@ -154,7 +170,7 @@ export function CardsPage() {
       : "";
   const [recorded, setRecorded] = useState(false);
   const [finishFailed, setFinishFailed] = useState(false);
-  /** Records this topic's card session on the path: when its last due card is rated, or with "Mark as done". */
+  /** Records this topic's card session on the path: when its last due card is rated, or when the student closes it. */
   async function finishSession(): Promise<boolean> {
     if (everywhere) return finishEverywhere();
     if (!planId || !topicId) return false;
@@ -249,7 +265,6 @@ export function CardsPage() {
   // Editing needs a topic; a review card brings its own.
   const cardTopicId = topicId ?? card?.topicId ?? undefined;
   useEffect(() => {
-    setArmedDelete(false);
     setEditing(false);
     setShowBack(false);
   }, [card?.id]);
@@ -275,7 +290,14 @@ export function CardsPage() {
     setRatingError(false);
     try {
       const state = await invoke("study.rate", { cardId: card.id, rating });
-      setIntervalDays(state.intervalDays);
+      setLastAction({
+        kind: "rate",
+        cardId: card.id,
+        reviewId: state.reviewId,
+        rating,
+        intervalDays: state.intervalDays,
+      });
+      setPinned(null);
       setShowBack(false);
       setSeen((current) => [...current, rating]);
       if (everywhere && cardPlanId && card.topicId)
@@ -295,10 +317,127 @@ export function CardsPage() {
     }
   }
 
+  /** Takes back the last rating, suspend or delete, and shows that card again. */
+  async function undo() {
+    if (!lastAction || ratingLock.current) return;
+    ratingLock.current = true;
+    setRatingPending(true);
+    setActionFailed(false);
+    const action = lastAction;
+    try {
+      if (action.kind === "rate") {
+        await invoke("study.undoRate", { reviewId: action.reviewId });
+        setSeen((current) => current.slice(0, -1));
+        setRatedIn((current) => current.slice(0, -1));
+        setLearning((current) =>
+          Object.fromEntries(
+            Object.entries(current).filter(([id]) => id !== action.cardId),
+          ),
+        );
+      } else if (action.kind === "suspend")
+        await invoke("study.suspend", { cardId: action.cardId, suspended: false });
+      else await invoke("study.restore", { cardId: action.cardId });
+      setLastAction(null);
+      setPinned(action.cardId);
+      await refresh();
+    } catch {
+      setActionFailed(true);
+    } finally {
+      ratingLock.current = false;
+      setRatingPending(false);
+    }
+  }
+
+  function startEdit() {
+    if (!card || !cardTopicId) return;
+    setDraftFront(card.front);
+    setDraftBack(card.back);
+    setEditing(true);
+  }
+
+  function suspend() {
+    if (!card) return;
+    const cardId = card.id;
+    act(invoke("study.suspend", { cardId, suspended: true }), () => {
+      setLastAction({ kind: "suspend", cardId });
+      setPinned(null);
+      setShowBack(false);
+      void refresh();
+    });
+  }
+
+  /** A card Pyxis wrote goes to Removed and Undo brings it back; a hand-made card is gone for good, so it asks first. */
+  function remove() {
+    if (!card) return;
+    const cardId = card.id;
+    const run = () =>
+      act(invoke("study.remove", { cardId }), () => {
+        setLastAction(card.handMade ? null : { kind: "delete", cardId });
+        setPinned(null);
+        setShowBack(false);
+        void refresh();
+      });
+    if (!card.handMade) return run();
+    void modal.confirm({
+      title: t("cardBrowser.deleteTitle"),
+      content: t("cardBrowser.deleteHandMade"),
+      okText: t("cards.deleteConfirm"),
+      // The filled danger button fails contrast in the dark theme, so the destructive choice is outlined.
+      okType: "default",
+      okButtonProps: { danger: true },
+      cancelText: t("cardBrowser.cancel"),
+      onOk: run,
+    });
+  }
+
+  const [askFailed, setAskFailed] = useState(false);
+  /** Opens a tutor chat about this card: its front, its back and the passage it came from. */
+  async function askTutor() {
+    if (!card) return;
+    setAskFailed(false);
+    try {
+      const passage = card.passageId
+        ? (await invoke("sources.passage", { passageId: card.passageId })).find(
+            (item) => item.id === card.passageId,
+          )
+        : undefined;
+      const front = isCloze(card.front) ? clozeAnswer(card.front) : card.front;
+      const body = [
+        `${t("cards.front")}: ${front}`,
+        `${t("cards.back")}: ${card.back}`,
+        passage
+          ? `${t("cards.askSource", { section: passage.sectionPath ?? "" }).trim()}\n${passage.text}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const seeded = await invoke("chats.seed", {
+        kind: "answer",
+        title: front.slice(0, 80),
+        body,
+        sourceIds: card.sourceId ? [card.sourceId] : undefined,
+        planId: cardPlanId,
+        subject: plan.data?.subject ?? undefined,
+      });
+      // Leaving for the tutor ends the visit like the X does, so the ratings so far reach the path.
+      if (!reviewing && seen.length > 0 && !recorded && !(await finishSession())) return;
+      navigate(`/ask/${seeded.chatId}`);
+    } catch {
+      setAskFailed(true);
+    }
+  }
+
+  /** The only way out: a session with ratings is recorded on the path first. */
+  function close() {
+    // Oggi's session has no plan to go back to; it ends on the exams list.
+    const home = everywhere ? "/exams" : `/plans/${planId ?? ""}`;
+    if (reviewing || seen.length === 0 || recorded) return navigate(home);
+    void finishSession().then((ok) => ok && navigate(home));
+  }
+
   useEffect(() => {
     function key(event: KeyboardEvent) {
       if (
-        !card ||
         editing ||
         ratingLock.current ||
         event.ctrlKey ||
@@ -314,41 +453,68 @@ export function CardsPage() {
         )
       )
         return;
+      const letter = event.key.toLowerCase();
+      if (letter === "u" && lastAction) {
+        event.preventDefault();
+        void undo();
+        return;
+      }
+      if (!card) return;
       if (event.code === "Space") {
         event.preventDefault();
         setShowBack((current) => !current);
       } else if (showBack && /^[1-4]$/.test(event.key)) {
         event.preventDefault();
         void rate(RATINGS[Number(event.key) - 1]!);
+      } else if (letter === MENU_KEYS.edit && cardTopicId) {
+        event.preventDefault();
+        startEdit();
+      } else if (letter === MENU_KEYS.suspend) {
+        event.preventDefault();
+        suspend();
+      } else if (letter === MENU_KEYS.delete) {
+        event.preventDefault();
+        remove();
       }
     }
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [card, editing, showBack]);
+  }, [card, editing, showBack, lastAction, cardTopicId]);
+
+  // Oggi has no per-topic count: what is rated plus what is still queued, at most 20 queued at a time.
+  const sessionTotal = reviewing
+    ? (reviewQueue.data?.progress.total ?? 0)
+    : seen.length + (everywhere ? (dueEverywhere.data?.length ?? 0) : (queue.data?.due ?? 0));
+  const sessionDone = reviewing ? (reviewQueue.data?.progress.done ?? 0) : seen.length;
+  // Today's new cards are used up and the topic still has new ones: say why the deck stops.
+  const capped =
+    !reviewing &&
+    queue.data != null &&
+    queue.data.newToday.left === 0 &&
+    queue.data.fresh > 0;
+  const undoText = !lastAction
+    ? ""
+    : lastAction.kind === "rate"
+      ? `${t("cards.rated", { rating: t(`cards.${lastAction.rating}`) })} ${
+          lastAction.intervalDays === 0
+            ? t("cards.nextLearning")
+            : t("cards.next", { count: lastAction.intervalDays })
+        }.`
+      : t(lastAction.kind === "suspend" ? "cards.suspended" : "cards.deleted");
 
   return (
     <FocusLayout
       title={t(everywhere ? "oggi.cardsTitle" : reviewing ? "cards.reviewTitle" : "cards.title")}
-      meta={everywhere ? dueEverywhere.data?.[0]?.planTitle : undefined}
-      onClose={
-        everywhere
-          ? () => void finishEverywhere().then((ok) => ok && navigate("/exams"))
-          : () => navigate(`/plans/${planId ?? ""}`)
+      meta={
+        sessionTotal > 0
+          ? [shownCard?.planTitle, t("cards.sessionProgress", { done: sessionDone, total: sessionTotal })]
+              .filter(Boolean)
+              .join(" \u00b7 ")
+          : shownCard?.planTitle
       }
-      secondary={
-        <Button
-          type="text"
-          shape="round"
-          onClick={() =>
-            everywhere
-              ? void finishEverywhere().then((ok) => ok && navigate("/exams"))
-              : navigate(`/plans/${planId ?? ""}`)
-          }
-        >
-          {t("nav.back")}
-        </Button>
-      }
+      onClose={close}
     >
+      {modalContext}
       <section className="px-cards">
         {looking && !recorded ? <Notice tone="info">{t("cards.reviewing")}</Notice> : null}
         {ratingError ? (
@@ -356,6 +522,9 @@ export function CardsPage() {
         ) : null}
         {actionFailed ? (
           <Notice tone="danger">{t("cards.actionFailed")}</Notice>
+        ) : null}
+        {askFailed ? (
+          <Notice tone="danger">{t("cards.askFailed")}</Notice>
         ) : null}
         {building ? (
           <Notice
@@ -403,25 +572,6 @@ export function CardsPage() {
                 topicId={topicId}
                 kind="cards"
               />
-              {plan.data ? (
-                <Button
-                  shape="round"
-                  onClick={() =>
-                    // Only rated cards make a step; otherwise a look just goes back.
-                    looking && seen.length === 0
-                      ? navigate(`/plans/${planId ?? ""}`)
-                      : void finishSession().then(
-                          (ok) => ok && navigate(`/plans/${planId ?? ""}`),
-                        )
-                  }
-                >
-                  {t(
-                    recorded || (looking && seen.length === 0)
-                      ? "lesson.backToPath"
-                      : "lesson.markDone",
-                  )}
-                </Button>
-              ) : null}
             </div>
           )}
         </div>
@@ -444,13 +594,57 @@ export function CardsPage() {
                 count: Math.max(1, Math.ceil((learningDue - clock) / 60_000)),
               })}
             </p>
+          ) : capped ? (
+            <p className="body">
+              {t("cards.dailyLimit", { count: queue.data?.newToday.limit ?? 0 })}
+            </p>
           ) : (
             <p className="body">{t("cards.empty")}</p>
           )
         ) : (
-          <article className="passage px-card">
+          <article className="px-card" aria-label={t("cards.card")}>
+            <div className="px-card-top">
+              <Dropdown
+                trigger={["click"]}
+                disabled={ratingPending || editing}
+                menu={{
+                  items: [
+                    {
+                      key: "edit",
+                      label: t("cards.edit"),
+                      disabled: !cardTopicId,
+                      extra: <kbd>{MENU_KEYS.edit.toUpperCase()}</kbd>,
+                    },
+                    {
+                      key: "suspend",
+                      label: t("cards.suspend"),
+                      extra: <kbd>{MENU_KEYS.suspend.toUpperCase()}</kbd>,
+                    },
+                    {
+                      key: "delete",
+                      label: t("cards.delete"),
+                      danger: true,
+                      extra: <kbd>{MENU_KEYS.delete.toUpperCase()}</kbd>,
+                    },
+                  ],
+                  onClick: ({ key }) =>
+                    key === "edit"
+                      ? startEdit()
+                      : key === "suspend"
+                        ? suspend()
+                        : remove(),
+                }}
+              >
+                <Button
+                  type="text"
+                  shape="circle"
+                  aria-label={t("cards.more")}
+                  icon={<Ellipsis size={18} strokeWidth={1.75} aria-hidden />}
+                />
+              </Dropdown>
+            </div>
             {editing ? (
-              <>
+              <div className="px-card-edit">
                 <label className="label" htmlFor="card-front">
                   {t("cards.front")}
                 </label>
@@ -469,146 +663,127 @@ export function CardsPage() {
                   value={draftBack}
                   onChange={(event) => setDraftBack(event.target.value)}
                 />
-                <Button
-                  type="primary"
-                  shape="round"
-                  onClick={() => {
-                    if (!cardPlanId || !cardTopicId) return;
-                    act(
-                      invoke("study.save", {
-                        planId: cardPlanId,
-                        topicId: cardTopicId,
-                        cardId: card.id,
-                        front: draftFront,
-                        back: draftBack,
-                      }),
-                      () => {
-                        setEditing(false);
-                        refresh();
-                      },
-                    );
-                  }}
-                  disabled={!draftFront.trim() || !draftBack.trim()}
-                >
-                  {t("cards.save")}
-                </Button>
-              </>
-            ) : (
-              <MarkdownView>
-                {isCloze(card.front)
-                  ? (showBack ? clozeAnswer : clozeQuestion)(card.front)
-                  : card.front}
-              </MarkdownView>
-            )}
-            {showBack && !editing ? (
-              <MarkdownView>{card.back}</MarkdownView>
-            ) : null}
-            {showBack &&
-            !editing &&
-            card.sectionPath &&
-            card.passageId &&
-            card.sourceId ? (
-              <CitationChip
-                onClick={() => {
-                  const params = new URLSearchParams({
-                    source: card.sourceId ?? "",
-                    passage: card.passageId ?? "",
-                  });
-                  if (card.chapter != null)
-                    params.set("chapter", String(card.chapter));
-                  openSourceViewer({
-                    passageId: params.get("passage") ?? undefined,
-                    sourceId: params.get("source") ?? undefined,
-                  });
-                }}
-              >
-                {card.sectionPath}
-              </CitationChip>
-            ) : null}
-            {intervalDays != null ? (
-              <p className="small">
-                {intervalDays === 0
-                  ? t("cards.nextLearning")
-                  : t("cards.next", { count: intervalDays })}
-              </p>
-            ) : null}
-            {!showBack && !editing ? (
-              <Button
-                type="primary"
-                shape="round"
-                onClick={() => setShowBack(true)}
-              >
-                {t("cards.flip")} <kbd>{t("cards.spaceKey")}</kbd>
-              </Button>
-            ) : null}
-            {showBack && !editing ? (
-              <>
-                <div className="px-cards-actions">
-                  {RATINGS.map((rating, index) => (
-                    <Button
-                      key={rating}
-                      shape="round"
-                      type={rating === "good" ? "primary" : "default"}
-                      disabled={ratingPending}
-                      aria-keyshortcuts={String(index + 1)}
-                      onClick={() => void rate(rating)}
-                    >
-                      {t(`cards.${rating}`)}
-                    </Button>
-                  ))}
-                </div>
-                <div className="px-cards-actions px-cards-manage">
+                <div className="px-card-edit-actions">
                   <Button
-                    disabled={ratingPending || !cardTopicId}
+                    type="primary"
                     shape="round"
                     onClick={() => {
-                      setDraftFront(card.front);
-                      setDraftBack(card.back);
-                      setEditing(true);
-                    }}
-                  >
-                    {t("cards.edit")}
-                  </Button>
-                  <Button
-                    disabled={ratingPending}
-                    shape="round"
-                    onClick={() => {
+                      if (!cardPlanId || !cardTopicId) return;
                       act(
-                        invoke("study.suspend", {
+                        invoke("study.save", {
+                          planId: cardPlanId,
+                          topicId: cardTopicId,
                           cardId: card.id,
-                          suspended: true,
+                          front: draftFront,
+                          back: draftBack,
                         }),
                         () => {
-                          setShowBack(false);
+                          setEditing(false);
                           refresh();
                         },
                       );
                     }}
+                    disabled={!draftFront.trim() || !draftBack.trim()}
                   >
-                    {t("cards.suspend")}
+                    {t("cards.save")}
                   </Button>
-                  <Button
-                    disabled={ratingPending}
-                    shape="round"
-                    onClick={() => {
-                      if (!armedDelete) {
-                        setArmedDelete(true);
-                        return;
-                      }
-                      act(invoke("study.remove", { cardId: card.id }), () => {
-                        setArmedDelete(false);
-                        setShowBack(false);
-                        refresh();
-                      });
-                    }}
-                  >
-                    {armedDelete ? t("cards.deleteConfirm") : t("cards.delete")}
+                  <Button shape="round" onClick={() => setEditing(false)}>
+                    {t("cardBrowser.cancel")}
                   </Button>
                 </div>
-              </>
-            ) : null}
+              </div>
+            ) : (
+              <div className="px-card-face">
+                <div className="px-card-front">
+                  <MarkdownView>
+                    {isCloze(card.front)
+                      ? (showBack ? clozeAnswer : clozeQuestion)(card.front)
+                      : card.front}
+                  </MarkdownView>
+                </div>
+                {showBack ? (
+                  <div className="px-card-back">
+                    <MarkdownView>{card.back}</MarkdownView>
+                    <div className="px-card-links">
+                      {card.sectionPath && card.passageId && card.sourceId ? (
+                        <CitationChip
+                          onClick={() =>
+                            openSourceViewer({
+                              passageId: card.passageId ?? undefined,
+                              sourceId: card.sourceId ?? undefined,
+                            })
+                          }
+                        >
+                          {card.sectionPath}
+                        </CitationChip>
+                      ) : null}
+                      <Button
+                        type="text"
+                        shape="round"
+                        size="small"
+                        icon={
+                          <MessageCircleQuestion
+                            size={16}
+                            strokeWidth={1.75}
+                            aria-hidden
+                          />
+                        }
+                        onClick={() => void askTutor()}
+                      >
+                        {t("cards.askTutor")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+            {editing ? null : (
+              <div className="px-card-foot">
+                {showBack ? (
+                  <div className="px-cards-actions">
+                    {RATINGS.map((rating, index) => (
+                      <Button
+                        key={rating}
+                        shape="round"
+                        type={rating === "good" ? "primary" : "default"}
+                        disabled={ratingPending}
+                        aria-keyshortcuts={String(index + 1)}
+                        onClick={() => void rate(rating)}
+                      >
+                        {t(`cards.${rating}`)}
+                      </Button>
+                    ))}
+                  </div>
+                ) : (
+                  <Button
+                    type="primary"
+                    shape="round"
+                    onClick={() => setShowBack(true)}
+                  >
+                    {t("cards.flip")} <kbd>{t("cards.spaceKey")}</kbd>
+                  </Button>
+                )}
+              </div>
+            )}
           </article>
         )}
+        {lastAction ? (
+          <div className="px-cards-undo">
+            <p className="small" role="status">
+              {undoText}
+            </p>
+            <Button
+              type="text"
+              shape="round"
+              size="small"
+              disabled={ratingPending}
+              aria-keyshortcuts="U"
+              onClick={() => void undo()}
+            >
+              {t("cards.undo")}
+            </Button>
+          </div>
+        ) : null}
         {(parked.data ?? []).map((item) => (
           <div key={item.id} className="px-cards-parked">
             <MarkdownView variant="body">
@@ -671,8 +846,8 @@ export function CardsPage() {
           </p>
         ) : null}
         {reviewing || everywhere ? null : (
-        <section className="px-cards-add" aria-label={t("cards.add")}>
-          <h2 className="body-strong">{t("cards.add")}</h2>
+        <details className="px-cards-add">
+          <summary className="body-strong">{t("cards.add")}</summary>
           <label className="small" htmlFor="new-front">
             {t("cards.front")}
           </label>
@@ -716,7 +891,7 @@ export function CardsPage() {
           >
             {t("cards.save")}
           </Button>
-        </section>
+        </details>
         )}
       </section>
     </FocusLayout>

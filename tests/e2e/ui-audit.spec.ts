@@ -55,6 +55,7 @@ const routes = [
     "engines",
     "tutor",
     "reading",
+    "flashcards",
     "reminders",
     "appearance",
     "language",

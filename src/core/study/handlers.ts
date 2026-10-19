@@ -2,14 +2,19 @@ import { readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import {
+  countDueCards,
   deleteCard,
   dueCards,
+  newCardsLeftToday,
+  newCardsPerDay,
   queueCounts,
   rateCard,
   restoreCard,
   saveCard,
+  setNewCardsPerDay,
   setSuspended,
   suspendedCards,
+  undoRating,
 } from "./cards";
 import { browseCards } from "./cardBrowser";
 import { mistakesNotebook, startRedo } from "./notebook";
@@ -368,7 +373,18 @@ export function studyHandlers(
       return dueCards(db, input.planId, Date.now(), input.topicId);
     },
     queue(input: { planId: string; topicId: string }) {
-      return queueCounts(db, input.planId, input.topicId);
+      const now = Date.now();
+      return {
+        ...queueCounts(db, input.planId, input.topicId),
+        due: countDueCards(db, input.planId, now, input.topicId),
+        newToday: newCardsLeftToday(db, input.planId, now),
+      };
+    },
+    cardSettings() {
+      return { newPerDay: newCardsPerDay(db) };
+    },
+    saveCardSettings(input: { newPerDay: number }) {
+      return { newPerDay: setNewCardsPerDay(db, input.newPerDay) };
     },
     async cardsGenerate(input: { planId: string; topicId: string }) {
       if (runner) return enqueueTopicCards(db, runner, input);
@@ -516,6 +532,9 @@ export function studyHandlers(
     },
     rate(input: { cardId: string; rating: Rating }) {
       return rateCard(db, input.cardId, input.rating, Date.now());
+    },
+    undoRate(input: { reviewId: string }) {
+      return undoRating(db, input.reviewId);
     },
     active(input: { planId: string; topicId: string | null; seconds: number }) {
       const now = Date.now();
