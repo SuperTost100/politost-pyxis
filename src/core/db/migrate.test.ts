@@ -1,15 +1,14 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import { openDatabase } from "./connection";
 import { uuidv7 } from "../../shared/ids";
+import { tempDir } from "../test-temp";
 
 const opened: Array<{ close: () => void }> = [];
 
 function tempDb() {
-  const dir = mkdtempSync(join(tmpdir(), "pyxis-db-"));
+  const dir = tempDir("pyxis-db-");
   const db = openDatabase(join(dir, "pyxis.db"));
   opened.push(db);
   return db;
@@ -36,7 +35,7 @@ afterEach(() => {
 
 describe("migrate", () => {
   it("refuses a workspace written by a newer version", () => {
-    const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
+    const file = join(tempDir("pyxis-db-"), "pyxis.db");
     const db = openDatabase(file);
     db.pragma("user_version = 1000");
     db.close();
@@ -44,7 +43,7 @@ describe("migrate", () => {
   });
 
   it("creates every table once and keeps rows on a second open", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-db-"));
+    const dir = tempDir("pyxis-db-");
     const file = join(dir, "pyxis.db");
     const db = openDatabase(file);
     opened.push(db);
@@ -114,7 +113,7 @@ describe("migrate", () => {
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
-    const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
+    const file = join(tempDir("pyxis-db-"), "pyxis.db");
     const db = openDatabase(file);
     db.pragma("user_version = 15");
     undoAfter16(db);
@@ -141,7 +140,7 @@ describe("migrate", () => {
   });
 
   it("adds figure images to messages, empty for messages that already exist, and only as JSON", () => {
-    const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
+    const file = join(tempDir("pyxis-db-"), "pyxis.db");
     const db = openDatabase(file);
     db.pragma("user_version = 18");
     db.exec(
@@ -199,7 +198,7 @@ describe("migrate", () => {
 
 describe("past paper role", () => {
   it("keeps every existing plan source as study material", () => {
-    const file = join(mkdtempSync(join(tmpdir(), "pyxis-db-")), "pyxis.db");
+    const file = join(tempDir("pyxis-db-"), "pyxis.db");
     const db = openDatabase(file);
     db.exec(
       "ALTER TABLE plan_sources DROP COLUMN role; ALTER TABLE plan_sources DROP COLUMN paper_json;",

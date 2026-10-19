@@ -57,13 +57,18 @@ export function FocusLayout(props: {
           ) : null}
         </div>
         <div className="focus-header-right">{props.headerRight}</div>
+        {props.progress != null ? (
+          <div
+            className="focus-progress"
+            role="progressbar"
+            aria-label={props.title}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(props.progress * 100)}
+            style={{ width: `${Math.round(props.progress * 100)}%` }}
+          />
+        ) : null}
       </header>
-      {props.progress != null ? (
-        <div
-          className="focus-progress"
-          style={{ width: `${Math.round(props.progress * 100)}%` }}
-        />
-      ) : null}
       <main className="focus-main">
         <div className="column">
           {props.children}

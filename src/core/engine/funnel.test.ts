@@ -307,6 +307,21 @@ describe("chat conversations", () => {
     expect(isAbort(oneShot)).toBe(true);
   });
 
+  it("reports a turn stopped by its signal as an abort, even when the provider ends it normally", async () => {
+    // A CLI killed on Stop can still report what it printed as a finished answer.
+    const stop = new AbortController();
+    run.mockImplementationOnce(async () => {
+      stop.abort();
+      return { text: "part", finishReason: "stop" };
+    });
+    const error = await runTurn({
+      selection: { provider: "claude", model: "m" },
+      prompt: "hi",
+      signal: stop.signal,
+    }).catch((err: unknown) => err);
+    expect(isAbort(error)).toBe(true);
+  });
+
   it("starts over after a turn ran beside the chat's session, so the next question sees that exchange", async () => {
     run.mockResolvedValueOnce({ text: "answer" });
     await runTurn(chat("first"));

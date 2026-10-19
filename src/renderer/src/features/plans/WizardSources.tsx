@@ -2,6 +2,7 @@ import { Button, Input, Modal } from "antd";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { foldText } from "@shared/fold-text";
 import { LibraryPanel } from "../home/LibraryPanel";
 
 export type WizardSource = {
@@ -12,9 +13,9 @@ export type WizardSource = {
 };
 
 /** Smartbooks first, then by title, so the books a student studies from lead the picker. */
-const byKindThenTitle = (a: WizardSource, b: WizardSource) =>
+const byKindThenTitle = (language: string) => (a: WizardSource, b: WizardSource) =>
   Number(b.kind === "smartbook") - Number(a.kind === "smartbook") ||
-  a.title.localeCompare(b.title);
+  a.title.localeCompare(b.title, language);
 
 function SourceMeta({ source }: { source: WizardSource }) {
   const { t } = useTranslation();
@@ -145,14 +146,14 @@ function LibraryPicker({
   onClose: () => void;
   onAdd: (sourceIds: string[]) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<string[]>([]);
   const free = library.filter((source) => !picked.includes(source.id));
-  const needle = query.trim().toLocaleLowerCase();
+  const needle = foldText(query.trim());
   const shown = free
-    .filter((source) => source.title.toLocaleLowerCase().includes(needle))
-    .sort(byKindThenTitle);
+    .filter((source) => foldText(source.title).includes(needle))
+    .sort(byKindThenTitle(i18n.language));
   const count = chosen.filter((id) => free.some((s) => s.id === id)).length;
   const reset = () => {
     setQuery("");

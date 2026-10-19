@@ -290,6 +290,22 @@ async function dispatchValidated(
       const parsed = requests["engines.cancelLogin"].input.parse(input);
       return engines?.cancelLogin({ provider: parsed.provider as ProviderId });
     }
+    case "engines.local":
+      requests["engines.local"].input.parse(input);
+      return engines?.local();
+    case "engines.localPull":
+      requests["engines.localPull"].input.parse(input);
+      return engines?.localPull();
+    case "engines.localCancel":
+      requests["engines.localCancel"].input.parse(input);
+      return engines?.localCancel();
+    case "engines.localCheck":
+      requests["engines.localCheck"].input.parse(input);
+      return engines?.localCheck();
+    case "engines.localEnable":
+      return engines?.localEnable(
+        requests["engines.localEnable"].input.parse(input),
+      );
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({
@@ -513,7 +529,7 @@ async function dispatchValidated(
     case "maps.generate":
       return maps?.generate(requests["maps.generate"].input.parse(input));
     case "maps.edit":
-      return maps?.edit(requests["maps.edit"].input.parse(input));
+      return maps?.edit(requests["maps.edit"].input.parse(input), signal);
     case "maps.open":
       return maps?.open(requests["maps.open"].input.parse(input));
     case "maps.layout":
@@ -743,6 +759,10 @@ async function dispatchValidated(
       return sources?.syllabus(requests["sources.syllabus"].input.parse(input), signal);
     case "sources.reextract":
       return sources?.reextract(requests["sources.reextract"].input.parse(input));
+    case "sources.refresh":
+      return sources?.refresh(requests["sources.refresh"].input.parse(input), signal);
+    case "sources.unlockPdf":
+      return sources?.unlockPdf(requests["sources.unlockPdf"].input.parse(input));
     case "sources.remove":
       return sources?.remove(requests["sources.remove"].input.parse(input));
     case "sources.promote":
@@ -800,6 +820,7 @@ export function bindEngines(
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
     onInstallLog: (event) => broadcast("engine.install", event),
+    onLocal: (event) => broadcast("engine.local", event),
     installerFixture,
   });
 }

@@ -40,7 +40,7 @@ export function PlanProgress({
 }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedDrill = searchParams.get("drill");
   const startedDrill = useRef<string | null>(null);
   const date = (
@@ -104,6 +104,15 @@ export function PlanProgress({
   useEffect(() => {
     if (!requestedDrill || startedDrill.current === requestedDrill) return;
     startedDrill.current = requestedDrill;
+    // The request is spent once read: left in the address, Back from the drill's quiz would start another drill.
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("drill");
+        return next;
+      },
+      { replace: true },
+    );
     void fill(requestedDrill);
   }, [requestedDrill]);
   const target = Math.round(summary.target * 100);
