@@ -248,6 +248,18 @@ An inline message with an icon, a sentence, an optional action and optional deta
 
 - `warning` uses star text on star-soft. `danger` uses danger on danger-soft. Each tone has its own icon.
 - Details stay collapsed until the student opens them.
+- An optional `title` adds a heading above the sentence, for a message that stands for the whole page.
+
+## ErrorState
+
+A failed load, build or quiz. One danger Notice, used on every screen that can fail, so a failure looks and behaves the same everywhere.
+
+**Consumer provides** the sentence that says what failed, the action that fixes it (Try again, Back to Exams), an optional second action, an optional `title`, and the technical message as `details`.
+
+- Always inside the page column: the shell's column, or a full-screen page's `FocusLayout` column. The route fallback brings its own column when it replaces a full-screen page.
+- The sentence says what failed in plain words. The technical message only goes behind Details.
+- A progress list that failed tells the failed step in the past tense ("I couldn't read the sources"), and a screen that was "Preparing…" changes its title to say it failed.
+- `LoadError` is this component with Try again as the action.
 
 ## StepLines
 

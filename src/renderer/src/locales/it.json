@@ -1,8 +1,7 @@
 {
   "routeError": {
     "title": "Non è stato possibile aprire questa pagina",
-    "body": "Torna ai tuoi esami e prova ad aprirla di nuovo.",
-    "home": "Vai agli esami"
+    "body": "Torna a Esami e aprila di nuovo."
   },
   "doors": {
     "ask": "Chiedi",
@@ -14,7 +13,8 @@
     "settings": "Impostazioni",
     "close": "Chiudi",
     "back": "Indietro",
-    "exams": "Esami"
+    "exams": "Esami",
+    "toExams": "Torna a Esami"
   },
   "stepper": {
     "label": "Avanzamento",
@@ -996,6 +996,7 @@
     "tfOnly": "Solo vero o falso",
     "diagnostic": "Diagnosi",
     "preparing": "Preparo le domande…",
+    "preparingFailed": "Non sono riuscito a preparare le domande",
     "position": "Domanda {{current}} di {{total}}",
     "question": "Domanda",
     "yourAnswer": "La tua risposta",
@@ -1023,7 +1024,7 @@
     "drillOwed_other": "Mancano ancora {{count}} domande in preparazione. Potrai concludere quando saranno aggiunte.",
     "drillOwedOpen": "Vedi lo stato",
     "waitingBatch": "In attesa delle prossime domande",
-    "buildFailed": "La preparazione delle domande si è fermata. Riprova per continuare questa sessione.",
+    "buildFailed": "La scrittura si è fermata prima che le domande fossero pronte. Riprova per riprendere questa sessione.",
     "buildCancelled": "La preparazione delle domande è stata annullata. Riprova per continuare questa sessione.",
     "retry": "Riprova la preparazione",
     "resume": "Riprendi la preparazione",
@@ -1323,7 +1324,15 @@
     "create": "Crea il piano",
     "preparing": "Sto preparando {{title}}",
     "open": "Apri il piano",
+    "preparingFailed": "Non sono riuscito a preparare il piano",
+    "cancelledTitle": "Creazione annullata",
+    "buildFailed": "Un passaggio si è fermato prima che il piano fosse pronto. Riprova per continuare dall’ultimo passaggio salvato.",
     "stepSources": "Leggo le fonti",
+    "stepSourcesFailed": "Non sono riuscito a leggere le fonti",
+    "stepTopicsFailed": "Non sono riuscito a creare gli argomenti",
+    "stepPathFailed": "Non sono riuscito a costruire il percorso",
+    "stepIntroFailed": "Non sono riuscito a scrivere l’introduzione",
+    "stepDiagnosticFailed": "Non sono riuscito a preparare il test iniziale",
     "stepTopics": "Creo gli argomenti",
     "stepPath": "Costruisco il percorso",
     "failed": "Non riesco a preparare il piano.",
@@ -1379,7 +1388,7 @@
     "practice": "Esercitarsi",
     "decide": "Decidi tu",
     "stepIntro": "Scrivo l’introduzione",
-    "stepDiagnostic": "Preparazione del test iniziale",
+    "stepDiagnostic": "Preparo il test iniziale",
     "stepReady": "Piano pronto",
     "sourceNotReady": "Una fonte richiede attenzione. Completa l’importazione o l’OCR, poi riprova a costruire il piano.",
     "cancelled": "Creazione annullata. Riprova per riprendere dal passaggio salvato.",
@@ -2318,7 +2327,8 @@
     "settings": "Impostazioni del piano",
     "create": "Crea lezione",
     "failed": "Non è stato possibile completare questa azione. Riprova.",
-    "unavailable": "Non è stato possibile aprire il piano. Torna a Esami e riprova.",
+    "unavailable": "Non è stato possibile aprire il piano.",
+    "gone": "Questo piano non esiste più.",
     "start": "Inizia",
     "save": "Salva modifiche",
     "language": "Lingua dei contenuti",

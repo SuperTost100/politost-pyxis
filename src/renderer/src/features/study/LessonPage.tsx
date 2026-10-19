@@ -19,9 +19,11 @@ import {
   smartSections,
 } from "@shared/smart-text";
 import { ExportButton } from "../share/ExportButton";
+import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { createAnswerQueue } from "./answerQueue";
+import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -136,6 +138,7 @@ export function LessonPage() {
   const cancelled =
     (lesson.error as { code?: string } | null)?.code === "aborted" ||
     (lesson.error as Error | null)?.name === "AbortError";
+  const failedToOpen = lesson.isError && !cancelled && !lesson.data?.fallback;
   const writing = lesson.isFetching;
   const data = lesson.data;
   const markdown = writing
@@ -311,7 +314,17 @@ export function LessonPage() {
           <span className="meta ink-muted">{t("lesson.generalNote")}</span>
         </div>
       ) : null}
-      {lesson.isError || data?.fallback ? (
+      {failedToOpen ? (
+        <div className="px-reader-note">
+          <ErrorState
+            action={{ label: t("lesson.retry"), onClick: () => void lesson.refetch() }}
+            secondary={{ label: t("engines.title"), onClick: () => navigate("/settings/engines") }}
+            details={errorDetails(lesson.error)}
+          >
+            {t("lesson.failed")}
+          </ErrorState>
+        </div>
+      ) : lesson.isError || data?.fallback ? (
         <div className="px-reader-note">
           <Notice
             tone={cancelled ? "info" : "warning"}

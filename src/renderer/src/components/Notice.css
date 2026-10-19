@@ -26,6 +26,11 @@
   min-width: 0;
 }
 
+.px-notice-title {
+  margin: 0 0 var(--space-1);
+  font: 600 15px/22px var(--font-sans);
+}
+
 .px-notice-text {
   margin: 0;
 }
