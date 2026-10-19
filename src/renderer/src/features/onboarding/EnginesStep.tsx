@@ -13,6 +13,7 @@ import {
   unacknowledged,
 } from "../../components/EngineNotice";
 import { EngineRow } from "../../components/EngineRow";
+import { LocalModelCard, useLocalModel } from "../../components/LocalModel";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { ProviderSetup } from "../../components/ProviderSetup";
@@ -64,6 +65,8 @@ export function EnginesStep({
   const [picked, setPicked] = useState<InstallableProvider | null>(null);
   const [adding, setAdding] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const local = useLocalModel();
+  const localOn = local.data?.enabled === true;
   const rows = (overview.data ?? []).filter((row) => !row.disabled);
   const readyRows = rows.filter((row) => row.installed && row.loggedIn);
   const nothingReady = overview.isSuccess && readyRows.length === 0;
@@ -86,8 +89,8 @@ export function EnginesStep({
 
   useEffect(() => {
     if (overview.isSuccess)
-      onReady(readyKey !== "" && toAcknowledge.length === 0);
-  }, [overview.isSuccess, readyKey, toAcknowledge.length, onReady]);
+      onReady((readyKey !== "" || localOn) && toAcknowledge.length === 0);
+  }, [overview.isSuccess, readyKey, localOn, toAcknowledge.length, onReady]);
 
   const openedWith = useRef<string | null>(null);
   // Let core choose the models once the set of ready engines is known, and again when it changes.
@@ -269,6 +272,10 @@ export function EnginesStep({
               </Button>
             </div>
           )}
+          {/* Free and private, offered only when the hardware check says this computer runs a model well enough. */}
+          {(plan === "none" && picked === null) || localOn ? (
+            <LocalModelCard place="onboarding" />
+          ) : null}
           {engine ? (
             <ProviderSetup
               key={engine}

@@ -1,18 +1,18 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import jpeg from "jpeg-js";
 import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";
 import { ocrDataDir } from "./ocr-data";
 import { imageVariance, recognizeImage } from "./recognize";
+import { tempDir } from "../test-temp";
 
 // The pinned language files, from the git-ignored dev download (`.tmp/tessdata-fast`, see ocr-data.test.ts). Without
 // them the tests that read pixels are skipped by name, and the no-data cases below still run.
 const pinned = process.env.PYXIS_TEST_TESSDATA ?? join(import.meta.dirname, "../../../.tmp/tessdata-fast");
 const haveData = existsSync(join(pinned, "eng.traineddata")) && existsSync(join(pinned, "ita.traineddata"));
 function stagedData(): string {
-  const tess = mkdtempSync(join(tmpdir(), "pyxis-tess-"));
+  const tess = tempDir("pyxis-tess-");
   mkdirSync(ocrDataDir(tess), { recursive: true });
   for (const lang of ["eng", "ita"]) copyFileSync(join(pinned, `${lang}.traineddata`), join(ocrDataDir(tess), `${lang}.traineddata`));
   return tess;
@@ -104,7 +104,7 @@ describe("ocr pixels", () => {
   }, 120_000);
 
   it("needs the downloaded language data: with none it fails by name and starts no worker", async () => {
-    const empty = mkdtempSync(join(tmpdir(), "pyxis-tess-"));
+    const empty = tempDir("pyxis-tess-");
     await expect(recognizeImage(new Uint8Array(textPng("HELLO")), empty, undefined, "eng")).rejects.toThrow("ocr-data-missing");
     // A file the old tesseract.js cache would have left beside the pinned folder is not data.
     writeFileSync(join(empty, "eng.traineddata"), "cached by an earlier build");
@@ -112,7 +112,7 @@ describe("ocr pixels", () => {
   });
 
   it("refuses a language file that is not the pinned one", async () => {
-    const tess = mkdtempSync(join(tmpdir(), "pyxis-tess-"));
+    const tess = tempDir("pyxis-tess-");
     mkdirSync(ocrDataDir(tess), { recursive: true });
     writeFileSync(join(ocrDataDir(tess), "eng.traineddata"), "not the pinned file");
     await expect(recognizeImage(new Uint8Array(textPng("HELLO")), tess, undefined, "eng")).rejects.toThrow("ocr-data-integrity");

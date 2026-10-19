@@ -5,6 +5,7 @@ import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
 import { isBenched } from "./bench";
 import { effortsOf } from "./efforts";
 import type { ProviderId } from "./funnel";
+import { LOCAL_PROVIDER, localData, readLocal } from "./local";
 
 export type StoredSelection = {
   provider: ProviderId;
@@ -42,6 +43,15 @@ export function selectionFor(
   const own = readRow(db, feature);
   const row = own ?? readRow(db, "default");
   if (!row)
+    throw new IpcError("engine-missing", "engines.errors.engine-missing");
+  // The automatic choice leaves plans and grading without an engine for a local model that never passed the structured
+  // check. They must not borrow the default engine when that is this model.
+  if (
+    !own &&
+    row.provider === LOCAL_PROVIDER &&
+    localData.strictFeatures.includes(feature) &&
+    !readLocal(db)?.check?.structured
+  )
     throw new IpcError("engine-missing", "engines.errors.engine-missing");
   // `auto` and `effortChoice` are bookkeeping for the engine screen, not part of a model turn.
   const { auto, effortChoice, effort: stored, ...selection } = row;

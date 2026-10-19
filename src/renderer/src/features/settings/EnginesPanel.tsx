@@ -25,6 +25,7 @@ import {
   type NoticeEngine,
 } from "../../components/EngineNotice";
 import { EngineRow } from "../../components/EngineRow";
+import { LocalModelCard, localQueryKey } from "../../components/LocalModel";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { ProviderSetup } from "../../components/ProviderSetup";
@@ -34,6 +35,7 @@ import {
   type InstallableProvider,
 } from "@shared/installers";
 import { invoke, onBroadcast } from "../../lib/ipc";
+import { disclosureText } from "./disclosure";
 import { EngineUsage } from "./EngineUsage";
 import "./EnginesPanel.css";
 
@@ -86,7 +88,8 @@ function summaryParts(input: SummaryInput) {
     { style: "long", type: "conjunction" },
   );
   const engineName = (id: string) =>
-    overview?.find((row) => row.id === id)?.name ?? id;
+    overview?.find((row) => row.id === id)?.name ??
+    (id === "ollama" ? "Ollama" : id);
   return { tasksByEngine, listFormat, engineName };
 }
 
@@ -203,12 +206,27 @@ export function EnginesPanel() {
       modelQueries[index]?.data ?? [],
     ]),
   ) as Record<string, Model[]>;
-  const choices = providers.flatMap((provider) =>
-    modelsByProvider[provider]!.map((model) => ({
-      value: JSON.stringify([provider, model.id]),
-      label: `${provider} · ${model.name}`,
-    })),
-  );
+  const local = useQuery({
+    queryKey: localQueryKey,
+    queryFn: () => invoke("engines.local", {}),
+  });
+  const choices = [
+    ...providers.flatMap((provider) =>
+      modelsByProvider[provider]!.map((model) => ({
+        value: JSON.stringify([provider, model.id]),
+        label: `${provider} · ${model.name}`,
+      })),
+    ),
+    // The local model can be pinned to a task once its check passed and the student turned it on.
+    ...(local.data?.enabled && local.data.model
+      ? [
+          {
+            value: JSON.stringify(["ollama", local.data.model.id]),
+            label: `ollama · ${local.data.model.id}`,
+          },
+        ]
+      : []),
+  ];
   const [result, setResult] = useState<string | null>(null);
   const visionModel =
     features.data?.vision?.model ?? features.data?.default?.model;
@@ -446,7 +464,9 @@ export function EnginesPanel() {
       setNotice({ engines: toAcknowledge });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noticeLater, notice, toAcknowledgeKey, overview.isFetching]);
-  const nothingReady = overview.isSuccess && readyRows.length === 0;
+  // A local model the student turned on is an engine too.
+  const nothingReady =
+    overview.isSuccess && readyRows.length === 0 && !local.data?.enabled;
   // Simple view: engines that can work, or can with one sign-in. When none is
   // ready the installable CLIs are listed so there is something to act on.
   const simpleRows = (overview.data ?? []).filter(
@@ -552,7 +572,11 @@ export function EnginesPanel() {
   return (
     <section className="engines-panel">
       <Notice tone="info">
-        {t("engines.disclosure")}{" "}
+        {disclosureText({
+          t,
+          language: i18n.language,
+          features: features.data,
+        })}{" "}
         <a
           href="#engine-terms"
           onClick={(event) => {
@@ -639,6 +663,7 @@ export function EnginesPanel() {
           {t("engines.installHelp")}
         </Notice>
       ) : null}
+      <LocalModelCard place="settings" />
       <EngineUsage />
       {advanced ? (
         <>

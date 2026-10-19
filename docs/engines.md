@@ -23,7 +23,7 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 - Each feature needs a tier: `chat` and `map` fast, `lesson`, `vision` and `default` mid, `grading` and `plan` strong. Vision only considers models that read images (`capabilities.ts`). A feature key missing from the file counts as mid.
 - Model patterns are regular expressions per tier, cheapest sufficient first. Claude: haiku fast, sonnet mid, opus then fable strong. Codex and OpenAI: luna, mini and nano fast, terra mid, sol then astra strong. Antigravity: Gemini Flash fast, Gemini Pro mid and strong (Claude sonnet and opus as fallbacks). Cursor Agent: Gemini Flash, luna, Composer, then mini/nano fast; Claude sonnet, terra, then Gemini Pro mid; Claude opus then sol strong. Cursor's `-thinking` variants and Fable (listed there without zero data retention) never match. Within a pattern the highest version the provider lists wins. A tier with no match steps to the neighbouring tier, and the last resort is the first model the provider lists.
 - Effort follows the tier, see [Reasoning effort](#reasoning-effort).
-- A provider is ready when it is installed, signed in and not disabled. API providers count only with a stored key that the provider accepts. CLIs win: API providers are used only when no CLI is ready, because they bill per token.
+- A provider is ready when it is installed, signed in and not disabled. API providers count only with a stored key that the provider accepts. CLIs win. A local model the student turned on comes next, and API providers are used only when neither is ready, because they bill per token.
 - With two or more ready providers each tier has a preference order (fast: Antigravity, Codex, Cursor, Claude Code; mid: Claude Code, Cursor, Antigravity, Codex; strong: Claude Code, Codex, Cursor, Antigravity). Features then move from the busiest provider to the idlest while that narrows the gap. A feature's load is its weight times its tier cost, so frequent chat on a cheap model and rare plans on a strong model each weigh what they cost. Every ready CLI gets at least one feature.
 
 Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.4 model lists:
@@ -43,7 +43,57 @@ CLI Funnel has no sign-out for Antigravity, so `engines.overview` reports `capab
 
 `engines.autoConfigure` (`{ reset?, features? }` returning `{ ready, features }`) recomputes on demand. Core also runs it at startup, after sign-in, sign-out, update and removal, when a key is added or removed, and when `engines.overview` sees a changed engine set (at most every 30 seconds). `selectionFor` drops the `auto` flag, so callers see the same shape as before.
 
-Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`. Providers are `claude`, `codex`, Cursor `agent`, `antigravity`, `anthropic-api` and `openai-api`. A CLI provider is disabled unless its CLI Funnel adapter lists `none` in `capabilities.access`. CLI Funnel 0.4 runs Cursor Agent in ask mode from its own workspace, whose `.cursor/cli.json` denies shell, file reads and writes, web fetches and MCP tools. It runs Antigravity with a pre-tool hook that denies every tool. Cursor's grep and glob tools still run, but only inside that empty workspace. Other CLI Funnel providers, such as `gemini-api` and `ollama`, are not offered. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
+Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map` and `vision`. Providers are `claude`, `codex`, Cursor `agent`, `antigravity`, `anthropic-api` and `openai-api`. A CLI provider is disabled unless its CLI Funnel adapter lists `none` in `capabilities.access`. CLI Funnel 0.4 runs Cursor Agent in ask mode from its own workspace, whose `.cursor/cli.json` denies shell, file reads and writes, web fetches and MCP tools. It runs Antigravity with a pre-tool hook that denies every tool. Cursor's grep and glob tools still run, but only inside that empty workspace. Ollama is offered only as the local model, see [Local models](#local-models). Other CLI Funnel providers, such as `gemini-api`, are not offered. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
+
+## Local models
+
+A student without a subscription can run a model on their own computer through [Ollama](https://ollama.com). Pyxis does not bundle Ollama; it links to its installer. It offers a local model only after a hardware check says the computer runs one well enough for Pyxis's tasks at a usable speed.
+
+### Hardware check
+
+`src/core/engine/hardware.ts` reads RAM, GPUs with their memory, and free disk space. It needs no administrator rights and gives every command a time limit. The GPU query runs once per launch, the first time Settings or setup asks (`engines.local`), never at startup. Free space is read again each time.
+
+| System  | GPU and memory                                                                                                                                               |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| All     | `nvidia-smi --query-gpu=name,memory.total` when the NVIDIA driver is there (not on macOS). RAM from `os.totalmem()`                                          |
+| macOS   | `sysctl -n machdep.cpu.brand_string`. Apple Silicon shares the whole RAM with the GPU. Intel Macs fall back to `system_profiler SPDisplaysDataType -json`    |
+| Windows | PowerShell, `Get-CimInstance Win32_VideoController` plus the driver's `HardwareInformation.qwMemorySize` in the registry, because `AdapterRAM` stops at 4 GB |
+| Linux   | `/sys/class/drm/cardN/device`: the PCI vendor, and `mem_info_vram_total` from the amdgpu driver                                                              |
+
+Free space is measured where Ollama keeps models: `OLLAMA_MODELS`, else `~/.ollama/models`, or the nearest folder above it that exists.
+
+### Model per hardware class
+
+`adviseLocal()` in `src/core/engine/local.ts` picks the largest model from the `local` section of `resources/model-tiers.json` that fits. A model runs on an NVIDIA or AMD card's own memory, or on Apple Silicon's unified memory. Intel graphics, any GPU in an Intel Mac and computers without a GPU get no suggestion, because the model would run on the processor and be too slow. Memory counts as a size when it reports at least 90% of it, since the system reserves some.
+
+| Model        | Download | NVIDIA or AMD card | Apple Silicon memory |
+| ------------ | -------- | ------------------ | -------------------- |
+| `gemma3:27b` | 17 GB    | 20 GB              | 32 GB                |
+| `gemma3:12b` | 8.1 GB   | 12 GB              | 16 GB                |
+| `gemma3:4b`  | 3.3 GB   | 6 GB               | 8 GB                 |
+
+The computer also needs 8 GB of RAM, and the disk needs the download plus 2 GB. With too little free space a smaller model that fits is suggested; when none fits, Settings says how much space the suggested one needs. A model Ollama already has needs no space. Gemma 3 was chosen because it has no thinking phase that slows each answer, reads images and writes Italian well. Every turn on Ollama sets the context to the table's `contextWindow` (16,384 tokens) through `num_ctx`, because Ollama's default of a few thousand tokens silently cuts the start of a long lesson prompt. Ollama keeps the model loaded for 10 minutes after a turn, as long as a chat's conversation.
+
+When the check finds no fitting model, setup shows nothing, and Settings, Engines has a closed section that says why: no usable GPU, too little graphics memory, too little RAM, too little disk space, or a GPU that could not be read.
+
+### Download and check
+
+1. The suggestion card says which model, its size and that it runs on this computer. With Ollama missing (no server answers at `OLLAMA_HOST` or `127.0.0.1:11434`) it links to the installer and offers Check again.
+2. Download asks Ollama to pull the model (`engines.localPull`, which also records the student's acknowledgement for Ollama). Progress arrives as the `engine.local` broadcast: Ollama's per-layer bytes summed against at least the size in the table. Cancel (`engines.localCancel`) stops it; Ollama keeps the finished part and resumes it next time.
+3. Pyxis then checks the model (`checkLocalModel()`, prompt version `LOCAL_CHECK_VERSION`). One written answer is timed from its first token, so loading the model does not count, and must reach 10 tokens per second. One quiz question must match its schema on the first try, without the repair turns `generate()` allows. The first answer may take 3 minutes to start, the structured one 2.
+4. When both pass, the local model is on. Otherwise it stays off and Settings shows the speed or the failed format. Run the check again (`engines.localCheck`) repeats it, for example after closing other programs.
+
+The settings row `local-model` stores the model, whether the student has it on (`engines.localEnable`) and the last check. Turning it off, or a failed check, removes every task choice that uses Ollama.
+
+### Gating
+
+- The automatic choice takes the checked model only, while it is on, its check passed with the current `LOCAL_CHECK_VERSION` and Ollama lists it. Other models in the student's Ollama are never chosen. Without a ready CLI the local model takes every task, photos included.
+- A local model never builds plans or grades unless it passed the structured-output check: `planAuto()` leaves `plan` and `grading` without it, and `engines.setFeature` refuses to pin it there (`engines.local.noStructured`).
+- In Advanced, a task can be pinned to the local model once it is on.
+- Ollama keeps a chat's conversation as history in core, like the API providers.
+- The line at the top of Settings, Engines says what leaves the computer (`disclosureText()` in `src/renderer/src/features/settings/disclosure.ts`). With only the local model it says nothing leaves; with a mix it names the tasks that stay on the computer and those that go to a vendor. The launch notice lists only cloud engines the student has not confirmed, so Ollama never appears in it: the download consent covers it.
+
+The unit tests run every hardware parser on captured command output and the check and download against a fake Ollama server (`src/core/engine/fake-ollama.ts`). No test talks to a real Ollama or the network.
 
 ## Reasoning effort
 

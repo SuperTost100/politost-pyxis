@@ -26,6 +26,8 @@ type Input = {
   bytes?: Uint8Array;
   /** The folder this run's OCR language files go in. The caller names it and removes it when the worker ends. */
   scratch?: string;
+  /** Opens a locked PDF for this read only. It is never written anywhere. */
+  password?: string;
 };
 const input = workerData as Input;
 const ocr = (pixels: Uint8Array) => recognizeImage(pixels, input.tess, undefined, undefined, input.scratch);
@@ -60,7 +62,7 @@ try {
           ? { document: { pages: [{ text: await ocr((await heicToPng(bytes)).png), locator: { page: 1 }, section: "text" }], scanned: false, extractor: { path: "ocr" as const } } }
         : [".png", ".jpg", ".jpeg", ".webp"].includes(input.ext)
           ? { document: { pages: [{ text: await ocr(bytes), locator: { page: 1 }, section: "text" }], scanned: false, extractor: { path: "ocr" as const } } }
-          : { document: await extractByExt(bytes, input.ext) };
+          : { document: await extractByExt(bytes, input.ext, input.password) };
       parentPort?.postMessage({ value });
     }
   }

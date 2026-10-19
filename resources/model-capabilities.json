@@ -12,6 +12,12 @@
     "contextTokens": 128000
   },
   {
+    "pattern": "^gemma3:(?:4b|12b|27b)",
+    "vision": true,
+    "structured": true,
+    "contextTokens": 128000
+  },
+  {
     "pattern": "^text-only",
     "vision": false,
     "structured": true,

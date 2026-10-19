@@ -199,6 +199,7 @@ An answer option in quizzes and true/false (LES-11, LES-12).
 - The pick can change until Verifica/Check; then the options lock. `correct`, `wrong` and `answer` (the right option not picked) always show an icon and a word, so they work without colour.
 - After the check, the explanation with source chips goes below the options, with "Chiedi al tutor" (LES-14) and "Domanda sbagliata?".
 - Keys 1–4 select options; Enter checks, then moves on.
+- Under the answer, two quiet text buttons: "Non lo so" (key 0) checks an empty answer, scored 0 with the answer shown; "Salta" (key S) moves the question behind the others. A question is skipped once; when it comes back it shows a note and offers only "Non lo so".
 - antd: `Radio.Group` with `optionType="button"` restyled, or custom as here.
 
 ## Flashcard

@@ -10,6 +10,7 @@ import { createRunner } from "../jobs/runner";
 import { enqueueSourceData, registerSourceJobs } from "./jobs";
 import { extractPlain } from "./documents";
 import { sourceHandlers } from "./handlers";
+import { tempDir } from "../test-temp";
 
 type PinnedRequest = {
   dispatcher: {
@@ -102,7 +103,7 @@ describe("link import", () => {
 
   it("follows a few redirects and stores the snapshot", async () => {
     const db = openDatabase(":memory:");
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-link-"));
+    const dir = tempDir("pyxis-link-");
     let calls = 0;
     const fetchImpl = (async (url: string) => {
       calls += 1;

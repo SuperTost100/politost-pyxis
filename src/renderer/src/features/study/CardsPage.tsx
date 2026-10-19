@@ -22,14 +22,15 @@ const RATINGS = ["again", "hard", "good", "easy"] as const;
 export function CardsPage() {
   const { t } = useTranslation();
   const { planId, topicId } = useParams();
+  // Without a plan these are Oggi's due cards from every plan, closest exam first.
+  const everywhere = !planId;
   // Without a topic this is the Review session: its stored cards, then its questions.
-  const reviewing = !topicId;
+  const reviewing = !topicId && !everywhere;
   // Opened from a finished step on the path: looking again starts no card generation and records no step, unless the
   // student rates a card.
   const [searchParams] = useSearchParams();
   const looking = Boolean(topicId) && searchParams.get("review") === "1";
   const reviewQueue = useReviewSession(planId, reviewing);
-  useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
   const client = useQueryClient();
   const ratingLock = useRef(false);
@@ -59,6 +60,12 @@ export function CardsPage() {
     queryFn: () =>
       invoke("study.cards", { planId: planId ?? "", topicId }),
   });
+  const dueEverywhere = useQuery({
+    queryKey: ["cards-everywhere"],
+    enabled: everywhere,
+    queryFn: () => invoke("study.dueEverywhere", {}),
+  });
+  const deck = everywhere ? dueEverywhere : cards;
   const parked = useQuery({
     queryKey: ["card-suspended", planId, topicId],
     enabled: Boolean(planId && topicId),
@@ -121,11 +128,22 @@ export function CardsPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
   });
-  const card = reviewing ? reviewQueue.data?.cards[0] : cards.data?.[0];
+  const card = everywhere
+    ? dueEverywhere.data?.[0]
+    : reviewing
+      ? reviewQueue.data?.cards[0]
+      : cards.data?.[0];
+  const cardPlanId = everywhere ? dueEverywhere.data?.[0]?.planId : planId;
+  useActiveTime(cardPlanId, topicId ?? (everywhere ? (card?.topicId ?? null) : null));
+  // The plan and topic of each card rated here, so each plan's path gets its own cards step.
+  const [ratedIn, setRatedIn] = useState<
+    Array<{ planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
+  >([]);
   const [recorded, setRecorded] = useState(false);
   const [finishFailed, setFinishFailed] = useState(false);
   /** Records this topic's card session on the path: when its last due card is rated, or with "Mark as done". */
   async function finishSession(): Promise<boolean> {
+    if (everywhere) return finishEverywhere();
     if (!planId || !topicId) return false;
     if (recorded) return true;
     setFinishFailed(false);
@@ -155,14 +173,47 @@ export function CardsPage() {
       return false;
     }
   }
+  /** Oggi's session records a cards step on each topic it rated, in each plan. */
+  async function finishEverywhere(): Promise<boolean> {
+    if (recorded || ratedIn.length === 0) return true;
+    setFinishFailed(false);
+    const groups = new Map<string, typeof ratedIn>();
+    for (const entry of ratedIn) {
+      const key = `${entry.planId}\n${entry.topicId}`;
+      groups.set(key, [...(groups.get(key) ?? []), entry]);
+    }
+    try {
+      for (const entries of groups.values())
+        await invoke("plans.complete", {
+          planId: entries[0]!.planId,
+          activity: "cards",
+          topicId: entries[0]!.topicId,
+          result: {
+            correct: entries.filter((entry) => entry.rating === "good" || entry.rating === "easy")
+              .length,
+            total: entries.length,
+          },
+        });
+      setRecorded(true);
+      await Promise.all(
+        [["plans"], ["plan"], ["recommend"]].map((queryKey) =>
+          client.invalidateQueries({ queryKey }),
+        ),
+      );
+      return true;
+    } catch {
+      setFinishFailed(true);
+      return false;
+    }
+  }
   const learningDue = reviewing ? null : nextLearningDue(learning);
-  const waiting = !card && cards.isSuccess && learningDue != null;
+  const waiting = !card && deck.isSuccess && learningDue != null;
   useEffect(() => {
     if (!waiting || learningDue == null) return;
     const tick = window.setInterval(() => setClock(Date.now()), 15_000);
     const due = window.setTimeout(
       () => {
-        void cards.refetch().then(() => {
+        void deck.refetch().then(() => {
           // A card that is still due shows up now; one deleted or suspended meanwhile stops the wait.
           const now = Date.now();
           setLearning((current) =>
@@ -178,7 +229,7 @@ export function CardsPage() {
     };
   }, [waiting, learningDue]);
   const sessionOver =
-    !reviewing && seen.length > 0 && cards.isSuccess && !card && learningDue == null;
+    !reviewing && seen.length > 0 && deck.isSuccess && !card && learningDue == null;
   useEffect(() => {
     if (sessionOver) void finishSession();
   }, [sessionOver]);
@@ -195,6 +246,7 @@ export function CardsPage() {
   async function refresh() {
     await Promise.all([
       client.invalidateQueries({ queryKey: ["cards", planId, topicId] }),
+      client.invalidateQueries({ queryKey: ["cards-everywhere"] }),
       client.invalidateQueries({ queryKey: ["review-session", planId] }),
       client.invalidateQueries({ queryKey: ["card-queue", planId, topicId] }),
       client.invalidateQueries({
@@ -213,6 +265,11 @@ export function CardsPage() {
       setIntervalDays(state.intervalDays);
       setShowBack(false);
       setSeen((current) => [...current, rating]);
+      if (everywhere && cardPlanId && card.topicId)
+        setRatedIn((current) => [
+          ...current,
+          { planId: cardPlanId, topicId: card.topicId!, rating },
+        ]);
       const now = Date.now();
       setClock(now);
       setLearning((current) => trackLearning(current, card.id, state.dueAt, now));
@@ -258,12 +315,22 @@ export function CardsPage() {
 
   return (
     <FocusLayout
-      title={t(reviewing ? "cards.reviewTitle" : "cards.title")}
+      title={t(everywhere ? "oggi.cardsTitle" : reviewing ? "cards.reviewTitle" : "cards.title")}
+      meta={everywhere ? dueEverywhere.data?.[0]?.planTitle : undefined}
+      onClose={
+        everywhere
+          ? () => void finishEverywhere().then((ok) => ok && navigate("/exams"))
+          : undefined
+      }
       secondary={
         <Button
           type="text"
           shape="round"
-          onClick={() => navigate(`/plans/${planId ?? ""}`)}
+          onClick={() =>
+            everywhere
+              ? void finishEverywhere().then((ok) => ok && navigate("/exams"))
+              : navigate(`/plans/${planId ?? ""}`)
+          }
         >
           {t("nav.back")}
         </Button>
@@ -316,7 +383,7 @@ export function CardsPage() {
               {t("cards.mastered", { count: queue.data.mastered })}
             </p>
           ) : null}
-          {reviewing ? null : (
+          {reviewing || everywhere ? null : (
             <div className="px-cards-toolbar-actions">
               <ExportButton
                 planId={planId ?? ""}
@@ -384,10 +451,10 @@ export function CardsPage() {
                   type="primary"
                   shape="round"
                   onClick={() => {
-                    if (!planId || !cardTopicId) return;
+                    if (!cardPlanId || !cardTopicId) return;
                     act(
                       invoke("study.save", {
-                        planId,
+                        planId: cardPlanId,
                         topicId: cardTopicId,
                         cardId: card.id,
                         front: draftFront,
@@ -574,7 +641,7 @@ export function CardsPage() {
             })}
           </p>
         ) : null}
-        {reviewing ? null : (
+        {reviewing || everywhere ? null : (
         <section className="px-cards-add" aria-label={t("cards.add")}>
           <h2 className="body-strong">{t("cards.add")}</h2>
           <label className="small" htmlFor="new-front">

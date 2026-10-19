@@ -246,6 +246,45 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
         (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
           .violations,
       ).toEqual([]);
+      // A topic row opens to the evidence behind its bar, and the parts add up to the bar's number.
+      const breakdown = (await page.evaluate(
+        (planId) => window.pyxis.invoke("plans.masteryBreakdown", { planId }),
+        created.planId,
+      )) as Array<{
+        id: string;
+        priorWeight: number;
+        parts: Record<string, { count: number; weight: number; points: number }>;
+      }>;
+      const row = page.locator(".px-progress-skills li").first();
+      const toggle = row.getByRole("button", {
+        name: /Mostra da cosa è fatto|Show what/,
+      });
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      const panel = row.locator(".px-evidence");
+      await expect(panel).toContainText(
+        language === "it" ? "Risposte ai quiz" : "Quiz answers",
+      );
+      const first = breakdown.find((topic) => topic.id === plan.topics[0]!.id)!;
+      await expect(panel).toContainText(String(first.parts.quiz!.count));
+      await expect(panel).toContainText(/per il tempo passato|from age/);
+      const parts = Object.values(first.parts);
+      const total = parts.reduce((sum, part) => sum + part.points, 0);
+      const weight = parts.reduce((sum, part) => sum + part.weight, 0);
+      expect(
+        Number(await row.getByRole("meter").getAttribute("aria-valuenow")),
+      ).toBe(Math.round((100 * total) / (first.priorWeight + weight)));
+      await page.screenshot({
+        path: `.shots/quiz-mastery-evidence-${language}-${theme}-${width}.png`,
+        fullPage: true,
+      });
+      expect(
+        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
+          .violations,
+      ).toEqual([]);
+      await toggle.click();
+      await expect(panel).toHaveCount(0);
     }
     await page.locator(".px-progress-chart .recharts-surface").first().focus();
     await page.keyboard.press("ArrowRight");
