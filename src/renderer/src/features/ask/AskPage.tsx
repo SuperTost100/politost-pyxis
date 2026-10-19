@@ -709,8 +709,12 @@ export function AskPage() {
     if (!turn) return;
     setError(null);
     setAnnouncement("");
-    // Continue keeps the saved part on screen: the cut-off reply is hidden while it runs, and core adds to this text.
-    if (options.resume && lastTutor) turn.live.set(lastTutor.body);
+    // Continue keeps the saved part on screen, with its citation chips: the cut-off reply is hidden while it runs, core
+    // adds to this text, and it answers from the same passages in the same numbering.
+    if (options.resume && lastTutor) {
+      turn.live.set(lastTutor.body);
+      turn.passages.set(lastTutor.citations.map(({ index, label }) => ({ index, label })));
+    }
     following.current = true;
     const question = messages.filter((message) => message.role === "user").at(-1)?.body ?? "";
     const handle = window.pyxis.stream(
