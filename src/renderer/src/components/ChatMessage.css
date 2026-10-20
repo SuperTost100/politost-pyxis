@@ -10,6 +10,8 @@
 .px-msg-engine { margin-left: auto; font: 400 calc(12px * var(--text-scale))/calc(16px * var(--text-scale)) var(--font-mono); color: var(--ink-subtle); }
 .px-msg-chips { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
 .px-msg-thinking { align-items: center; }
+.px-msg-cut { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-top: var(--space-3); }
+.px-msg-checking { margin-top: var(--space-2); font-size: calc(13px * var(--text-scale)); line-height: calc(18px * var(--text-scale)); }
 .px-msg-status { margin: 0; color: var(--ink-muted); font: 400 calc(15px * var(--text-scale))/calc(22px * var(--text-scale)) var(--font-sans); }
 @keyframes px-msg-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: no-preference) {

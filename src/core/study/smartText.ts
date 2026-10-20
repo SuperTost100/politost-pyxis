@@ -169,6 +169,32 @@ export function answerSmartCheck(
   })();
 }
 
+/**
+ * The label of each [Pn] chip in a lesson, by passage order: the section path, else the paragraph, else "Pn", as Ask
+ * labels its citations.
+ */
+export function smartCitations(db: Database.Database, passageIds: string[]): string[] {
+  if (!passageIds.length) return [];
+  const rows = db
+    .prepare(
+      `SELECT id, locator_json, section_path FROM passages
+       WHERE id IN (SELECT value FROM json_each(?))`,
+    )
+    .all(JSON.stringify(passageIds)) as Array<{
+    id: string;
+    locator_json: string | null;
+    section_path: string | null;
+  }>;
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return passageIds.map((id, index) => {
+    const row = byId.get(id);
+    const paragraph = row?.locator_json
+      ? (JSON.parse(row.locator_json) as { paragraph?: string }).paragraph
+      : undefined;
+    return row?.section_path || paragraph || `P${index + 1}`;
+  });
+}
+
 /** The sources and places a lesson was given, for its "Sources used" footer: each place opens the source viewer. */
 export function smartSources(db: Database.Database, passageIds: string[]) {
   if (!passageIds.length) return [];

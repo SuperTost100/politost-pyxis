@@ -1,8 +1,7 @@
 {
   "routeError": {
     "title": "This page could not be opened",
-    "body": "Return to your exams and try opening it again.",
-    "home": "Go to exams"
+    "body": "Go back to Exams and open it again."
   },
   "doors": {
     "ask": "Ask",
@@ -14,7 +13,8 @@
     "settings": "Settings",
     "close": "Close",
     "back": "Back",
-    "exams": "Exams"
+    "exams": "Exams",
+    "toExams": "Back to Exams"
   },
   "stepper": {
     "label": "Progress",
@@ -28,7 +28,7 @@
       "general": "Anywhere",
       "ask": "Ask",
       "cards": "Flashcards",
-      "quiz": "Quizzes and simulations",
+      "quiz": "Quizzes",
       "whiteboard": "Whiteboard",
       "python": "Python"
     },
@@ -60,6 +60,10 @@
       "pen": "Pen",
       "eraser": "Eraser",
       "runCode": "Run the code",
+      "undoCard": "Undo the last rating, suspend or delete",
+      "editCard": "Edit the flashcard",
+      "suspendCard": "Suspend the flashcard",
+      "deleteCard": "Delete the flashcard",
       "goMaps": "Go to Maps"
     },
     "keys": {
@@ -273,7 +277,10 @@
     "groupOlder": "Older",
     "subjectFilter": "Filter by subject",
     "subjectAll": "All subjects",
-    "searchNoneSubject": "No chat in {{subject}} matches “{{query}}”."
+    "searchNoneSubject": "No chat in {{subject}} matches “{{query}}”.",
+    "usage_one": "{{tokens}} token",
+    "usage_other": "{{tokens}} tokens",
+    "usageDetail": "This chat used {{input}} tokens sent, {{cached}} of them from the cache, and {{output}} received."
   },
   "exams": {
     "view": "Show",
@@ -313,6 +320,9 @@
     "readByOcrAfter": "Text read by local OCR after vision could not read it.",
     "search": "Search passages",
     "searchGo": "Search",
+    "viewerFailed": "This passage could not be loaded.",
+    "searchNone": "Nothing in your sources matches “{{query}}”.",
+    "loadFailed": "The sources could not be loaded.",
     "encrypted": "This smartbook is protected. Pyxis opens plain packages only.",
     "importFailed": "This file could not be read.",
     "tooBig": "This file is too large to import. Pyxis takes documents up to 256 MB and photos up to 40 MB.",
@@ -531,6 +541,9 @@
     "spaceKey": "Space",
     "title": "Flashcards",
     "empty": "No flashcards are due.",
+    "loadFailed": "The flashcards could not be loaded.",
+    "nextCard": "Next flashcard: {{front}}",
+    "resumeCard": "Resume flashcard: {{front}}",
     "flip": "Flip",
     "again": "Again",
     "hard": "Hard",
@@ -565,6 +578,12 @@
     "reviewFailed": "The review could not start. Try again.",
     "reviewQuestions": "Continue to questions",
     "reviewCount": "Flashcards in this review",
+    "factDue_one": "1 flashcard due",
+    "factDue_other": "{{count}} flashcards due",
+    "factGaps_one": "1 topic with gaps",
+    "factGaps_other": "{{count}} topics with gaps",
+    "factCards_one": "1 flashcard",
+    "factCards_other": "{{count}} flashcards",
     "reviewResume": "You have a review in progress. It keeps the same flashcards and questions until you finish it.",
     "reviewContinue": "Continue review",
     "reviewProgress": "{{done}} of {{total}} done · {{cards}} flashcards, {{questions}} questions",
@@ -585,7 +604,19 @@
     "reviewDrillCancelled": "Skipped the questions on {{topic}}. You can still finish without them.",
     "reviewDrillCancelledAction": "Try again",
     "reviewDrillSkipped": "Skipped the questions on {{topic}}. You can still finish without them.",
-    "reviewDrillSkip": "Skip"
+    "reviewDrillSkip": "Skip",
+    "rated": "Rated {{rating}}.",
+    "suspended": "Flashcard suspended.",
+    "deleted": "Flashcard removed.",
+    "undo": "Undo",
+    "more": "Flashcard actions",
+    "card": "Flashcard",
+    "askTutor": "Ask the tutor",
+    "askSource": "Source: {{section}}",
+    "askFailed": "The tutor chat could not open. Try again.",
+    "sessionProgress": "{{done}} of {{total}}",
+    "dailyLimit_one": "That's today's {{count}} new flashcard for this exam. The rest start tomorrow. You can change the limit in Settings.",
+    "dailyLimit_other": "That's today's {{count}} new flashcards for this exam. The rest start tomorrow. You can change the limit in Settings."
   },
   "cardImport": {
     "open": "Import from Anki",
@@ -644,7 +675,8 @@
       "all": "All flashcards",
       "due": "Due now",
       "suspended": "Suspended",
-      "removed": "Removed"
+      "removed": "Removed",
+      "leech": "Often forgotten"
     },
     "noSubject": "No subject",
     "noTopic": "No topic",
@@ -674,7 +706,14 @@
     "deleted": "Flashcard removed. You can restore it under Removed.",
     "deletedForever": "Flashcard deleted.",
     "restored": "Flashcard restored.",
-    "pages": "Pages"
+    "pages": "Pages",
+    "tagLeech": "Often forgotten",
+    "leechHint_one": "Forgotten {{count}} time. Rewrite it, check the source, or suspend it.",
+    "leechHint_other": "Forgotten {{count}} times. Rewrite it, check the source, or suspend it.",
+    "rewrite": "Rewrite",
+    "openSource": "Open source",
+    "leechHintNoSource_one": "Forgotten {{count}} time. Rewrite it or suspend it.",
+    "leechHintNoSource_other": "Forgotten {{count}} times. Rewrite it or suspend it."
   },
   "mistakes": {
     "title": "Mistakes notebook",
@@ -725,6 +764,8 @@
     "apply": "Apply changes",
     "applied": "Changes applied. Undo restores the previous map.",
     "editFailed": "The map could not be changed. Try again.",
+    "editConflict": "The map changed while Pyxis was editing it, and that edit no longer fits. Your changes are kept. Try the request again.",
+    "loadFailed": "The map could not be loaded.",
     "generateFailed": "The maps could not be built. Try again.",
     "exportFailed": "The image could not be exported. Try again.",
     "empty": "Build a map of this topic",
@@ -822,10 +863,13 @@
     "rewritePartFailed": "This part could not be rewritten. The lesson is unchanged. Try again.",
     "rewritingPart": "Rewriting “{{title}}”…",
     "markDone": "Mark as done",
+    "done": "Done",
+    "doneContinue": "Done, continue",
     "finishPrompt": "Finished reading?",
     "recapPrompt": "Answer the recap to complete the lesson.",
     "doneTitle": "Lesson complete",
     "backToPath": "Back to the path",
+    "continue": "Continue",
     "sources": "Sources used",
     "page": "p. {{n}}",
     "slide": "slide {{n}}",
@@ -932,10 +976,10 @@
     "empty": "No usable exam questions or source passages are available in this plan.",
     "localGrade": "Scored on this computer, without a model.",
     "byTopic": "By topic",
-    "setup": "Set up a written exam",
     "duration": "Time limit",
     "material": "Questions",
     "tutorLocked": "The tutor is unavailable during the attempt. Your answers save as you write.",
+    "factGrading": "Graded when you hand it in",
     "timeLeft": "Time remaining",
     "outOf100": "out of 100",
     "modelGrade": "Estimated grade by {{model}}.",
@@ -988,6 +1032,7 @@
     "tfOnly": "Only true or false",
     "diagnostic": "Diagnostic",
     "preparing": "Preparing the questions…",
+    "preparingFailed": "I couldn't prepare the questions",
     "position": "Question {{current}} of {{total}}",
     "question": "Question",
     "yourAnswer": "Your answer",
@@ -1015,7 +1060,7 @@
     "drillOwed_other": "{{count}} more questions are still being prepared. You can finish once they are added.",
     "drillOwedOpen": "See status",
     "waitingBatch": "Waiting for more questions",
-    "buildFailed": "Question preparation stopped. Retry to continue this session.",
+    "buildFailed": "Writing stopped before the questions were ready. Retry to pick up this session.",
     "buildCancelled": "Question preparation was cancelled. Retry to continue this session.",
     "retry": "Retry preparation",
     "resume": "Resume preparation",
@@ -1070,6 +1115,8 @@
     "factMinutes_one": "about {{count}} minute",
     "factMinutes_other": "about {{count}} minutes",
     "factAnswered": "{{answered}} of {{total}} answered",
+    "factTopics_one": "1 topic",
+    "factTopics_other": "{{count}} topics",
     "factFeedback": "Feedback after each answer",
     "options": "Customize",
     "continueAttempt": "Resume",
@@ -1163,9 +1210,12 @@
       "gaps_one": "1 open gap",
       "gaps_other": "{{count}} open gaps",
       "done": "Steps done",
+      "doneCount_one": "1 activity done",
+      "doneCount_other": "{{count}} activities done",
+      "show": "Show",
+      "hide": "Hide",
       "planned": "Coming up",
       "choose": "{{topic}}: choose an activity",
-      "showAll": "Show all steps ({{count}})",
       "activity": {
         "intro": "Introduction",
         "diagnostic": "Diagnostic test",
@@ -1315,7 +1365,15 @@
     "create": "Create the plan",
     "preparing": "Preparing {{title}}",
     "open": "Open the plan",
+    "preparingFailed": "I couldn't prepare the plan",
+    "cancelledTitle": "Plan build cancelled",
+    "buildFailed": "A step stopped before the plan was ready. Try again to continue from the last saved step.",
     "stepSources": "Reading the sources",
+    "stepSourcesFailed": "I couldn't read the sources",
+    "stepTopicsFailed": "I couldn't create the topics",
+    "stepPathFailed": "I couldn't build the path",
+    "stepIntroFailed": "I couldn't write the introduction",
+    "stepDiagnosticFailed": "I couldn't prepare the diagnostic quiz",
     "stepTopics": "Creating the topics",
     "stepPath": "Building the path",
     "failed": "The plan could not be prepared.",
@@ -1430,6 +1488,43 @@
     "open": "Open",
     "bad": "This is not a plan.",
     "importFailed": "The plan could not be imported. Choose a valid .pyxis plan file and try again.",
+    "reason": {
+      "not-a-plan": "This file is not a Pyxis plan.",
+      "unknown-version": "This plan was saved by a newer version of Pyxis. Update Pyxis, then open it again.",
+      "oversized-source": "An original file inside the plan is larger than Pyxis can import.",
+      "invalid-file": "The file is damaged or incomplete, so Pyxis cannot read it.",
+      "missing-topic": "A lesson, flashcard or path step points to a topic that is not in the file.",
+      "missing-passage": "A quoted passage that the plan cites is missing from the file.",
+      "missing-source": "A passage names a source that is not in the file.",
+      "missing-document": "A passage points to a document version that is not in the file.",
+      "bad-reference": "Something in the plan refers to content that the file does not contain.",
+      "duplicate-id": "Two items in the file share the same ID.",
+      "passage-text": "A quoted passage changed after the plan was saved, so its checksum no longer matches.",
+      "source-mismatch": "An original file does not match the one the plan was built from.",
+      "source-data": "An original file inside the plan is damaged or has the wrong size.",
+      "document-mismatch": "A passage does not match the version of its document.",
+      "bad-body": "A lesson or quiz in the file is damaged.",
+      "bad-exercise": "Some exercises in the file are damaged.",
+      "bad-map": "Some concept maps in the file are damaged.",
+      "bad-progress": "The progress saved in the file is inconsistent.",
+      "library-mismatch": "The copy in your library is not the file the plan expects. Choose another option for that source.",
+      "no-workspace": "Pyxis has nowhere to keep the original files right now. Restart Pyxis and try again."
+    },
+    "fail": {
+      "failed": "The plan could not be imported. {{reason}}",
+      "offer": "The problem is only {{where}}. The rest of the plan can still be imported.",
+      "in": {
+        "exercises": "in the exercises",
+        "maps": "in the concept maps",
+        "both": "in the exercises and the concept maps"
+      },
+      "rest": "Import the rest"
+    },
+    "openFailed": {
+      "not-a-plan-file": "That file is not a Pyxis plan.",
+      "too-big": "That plan file is larger than 320 MB.",
+      "unreadable": "Pyxis could not read that file."
+    },
     "review": {
       "title": "Import a plan",
       "created": "Created {{date}}",
@@ -1463,6 +1558,8 @@
       "verified": "File matches.",
       "mismatch": "That file is not the one the plan expects. Choose another or keep the excerpts.",
       "import": "Import",
+      "importCopy": "Import a copy anyway",
+      "duplicate": "Already imported on {{date}}. Importing it again adds a second copy.",
       "cancel": "Cancel",
       "skip": "Skip source",
       "skipHelp": "Skipping a source leaves it out of the source list. Quoted passages used by lessons, flashcards and questions remain readable."
@@ -1598,7 +1695,10 @@
     },
     "crashOn": "On: if Pyxis closes by mistake, it can use a technical report to fix it. For now Pyxis sends no report: this choice stays on this computer.",
     "crashOff": "Off: no report leaves this computer.",
-    "crashContents": "A crash report describes the technical state of the app when the error happened: version, system and some portions of memory. Pyxis adds none of your files or chats to it, but memory can hold fragments of what you were using."
+    "crashContents": "A crash report describes the technical state of the app when the error happened: version, system and some portions of memory. Pyxis adds none of your files or chats to it, but memory can hold fragments of what you were using.",
+    "flashcards": "Flashcards",
+    "newPerDay": "New flashcards per day",
+    "newPerDayHint": "For each exam. Flashcards you have started come back when they are due, whatever the limit. With 0 no new ones start."
   },
   "jobs": {
     "label_one": "{{count}} background task",
@@ -1732,7 +1832,13 @@
       "you": "You",
       "pyxis": "Pyxis",
       "copied": "Copied",
-      "copyFailed": "Couldn't copy. Try again."
+      "copyFailed": "Couldn't copy. Try again.",
+      "cutOff": "Cut off",
+      "continue": "Continue",
+      "checking": "Checking the math…",
+      "more": "More actions",
+      "answerStronger": "Answer again with the strongest model",
+      "makeCards": "Make flashcards"
     },
     "quiz": {
       "correct": "Correct",
@@ -1763,7 +1869,9 @@
       "actionFor": "{{action}} {{name}}"
     },
     "notice": {
-      "details": "Details"
+      "details": "Details",
+      "retry": "Try again",
+      "loadFailed": "This could not be loaded."
     },
     "markdown": {
       "run": "Run",
@@ -2010,12 +2118,26 @@
     "terminalInstructions": "Run this command in your terminal to finish sign-in.",
     "termsLink": "Provider terms",
     "termsDetail": "Your provider's terms, usage limits and privacy policy apply to every call. Pyxis does not include an AI subscription.",
+    "usage": {
+      "title": "This week",
+      "hint": "Tokens Pyxis sent to each engine and received since Monday, for chats, lessons, plans and grading. Engines on a subscription count them against your plan's limits. API keys are billed for them.",
+      "empty": "No AI use counted since Monday.",
+      "engine": "Engine",
+      "sent": "Sent",
+      "received": "Received",
+      "cached": "From the cache",
+      "cachedValue": "{{count}} ({{percent}}%)",
+      "cacheSaving": "The prompt cache served {{percent}}% of the tokens sent this week. API keys bill those at a lower rate."
+    },
     "chooseEngine": "Choose an engine and model",
     "cancel": "Cancel",
     "keyRemoved": "API key removed. Choose another default engine if needed.",
     "title": "Engines",
     "terms": "A test sends one short sentence to the provider you pick.",
     "disclosure": "The text, the retrieved passages and the attachments leave this computer and go to that engine's vendor.",
+    "disclosureLocal": "Every task uses the model on this computer, so nothing leaves it.",
+    "disclosureMixed_one": "{{local}} runs on this computer, so nothing leaves it for that. For {{cloud}}, the text, the retrieved passages and the attachments go to that engine's vendor.",
+    "disclosureMixed_other": "{{local}} run on this computer, so nothing leaves it for them. For {{cloud}}, the text, the retrieved passages and the attachments go to that engine's vendor.",
     "acknowledge": "I understand",
     "notice": {
       "title": "What leaves this computer",
@@ -2063,7 +2185,8 @@
       "quota": "Usage limit reached. Try again later or pick another engine.",
       "timeout": "The engine did not answer in time. Try again, or pick another engine.",
       "engine-missing": "Choose and test an engine in Settings before continuing.",
-      "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines."
+      "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines.",
+      "stream-truncated": "The engine stopped before the answer was finished."
     },
     "feature": {
       "default": "Default engine",
@@ -2099,7 +2222,57 @@
       "vision": "photos",
       "grading": "grading"
     },
-    "allCliAdded": "All supported CLI engines are already listed in Settings. Use their details to connect or configure them."
+    "allCliAdded": "All supported CLI engines are already listed in Settings. Use their details to connect or configure them.",
+    "local": {
+      "suggestTitle": "This computer can run a model by itself",
+      "suggestBody": "Pyxis suggests {{model}}. It runs here through Ollama, a free program, so it works offline, costs nothing and your material stays on this computer.",
+      "hardware": "This computer has {{parts}}.",
+      "gpuUnified": "an {{name}} with {{memory}} of shared memory",
+      "gpuCard": "{{name}} with {{memory}} of graphics memory",
+      "vendorCard": "an {{vendor}} graphics card",
+      "ramPart": "{{size}} of RAM",
+      "diskPart": "{{size}} free on disk",
+      "ollamaMissing": "Pyxis runs the model through Ollama. Install it and open it, then press Check again.",
+      "ollamaClosed": "Ollama is not running. Open it to use the model or run the check.",
+      "getOllama": "Get Ollama",
+      "checkAgain": "Check again",
+      "consent": "The download is {{size}} and comes from ollama.com through Ollama. Then Pyxis runs a short check: how fast {{model}} writes, and whether it answers in the format plans, grading and quizzes need.",
+      "consentHave": "Ollama already has {{model}}. Pyxis runs a short check before using it: how fast it writes, and whether it answers in the format plans, grading and quizzes need.",
+      "download": "Download {{size}}",
+      "checkNow": "Check the model",
+      "downloading": "Downloading {{model}}",
+      "progress": "{{done}} of {{total}}, {{percent}}%",
+      "checking": "Checking how {{model}} runs here",
+      "checkingBody": "Pyxis asks for one written answer and one quiz question. The first answer can take a minute while the model loads.",
+      "cancel": "Cancel",
+      "readyTitle": "{{model}} runs on this computer",
+      "offTitle": "{{model}} is off",
+      "result": "It writes {{speed}} tokens per second and answers in the format Pyxis needs.",
+      "use": "Use the local model",
+      "useHint": "Claude Code, Codex and the other subscription engines come first when one is ready. The local model comes before API keys, which cost money per use.",
+      "runCheck": "Run the check again",
+      "failed": {
+        "slow": "{{model}} wrote {{speed}} tokens per second here. Pyxis needs at least {{min}} to keep up with you, so the model stays off.",
+        "structured": "{{model}} did not answer in the format Pyxis needs for plans, grading and quizzes, so the model stays off.",
+        "error": "The check could not run. Make sure Ollama is open, then run the check again."
+      },
+      "stoppedFailed": "The download or check stopped. Make sure Ollama is open and the computer is online, then try again.",
+      "stoppedCancelled": "Cancelled. Ollama keeps what it already downloaded, so the next try continues from there.",
+      "cannotTitle": "Run a model on this computer",
+      "cannot": {
+        "no-gpu": "Pyxis does not suggest a local model here. A model good enough for studying needs an NVIDIA or AMD graphics card with at least {{vram}} GB of memory, or a Mac with Apple Silicon. On the processor alone it is too slow.",
+        "vram": "The graphics memory is too small for a model good enough for studying. It needs at least {{vram}} GB on an NVIDIA or AMD card, or {{unified}} GB of memory on a Mac with Apple Silicon.",
+        "ram": "This computer has less than {{min}} GB of RAM, too little to run a model next to Pyxis.",
+        "disk": "{{model}} needs {{size}} of free disk space. Free some space, then come back.",
+        "unknown": "Pyxis could not read this computer's graphics card, so it does not suggest a local model."
+      },
+      "cannotRun": "This computer cannot run a local model at a usable speed.",
+      "busy": "A download or check is already running.",
+      "cancelled": "Cancelled.",
+      "pullFailed": "The download or check stopped. Make sure Ollama is open, then try again.",
+      "checkFirst": "Run the check first. The local model turns on once it passes.",
+      "noStructured": "This model did not pass the format check, so it cannot build plans or grade."
+    }
   },
   "graph": {
     "title": "Graph",
@@ -2175,6 +2348,7 @@
     "save": "Save",
     "attach": "Attach to chat",
     "erase": "Eraser",
+    "clear": "Clear",
     "pen": "Pen",
     "redo": "Redo",
     "whiteboardTitle": "Whiteboard",
@@ -2255,7 +2429,8 @@
     "settings": "Plan settings",
     "create": "Create lesson",
     "failed": "This action could not be completed. Try again.",
-    "unavailable": "This plan could not be opened. Return to Exams and try again.",
+    "unavailable": "This plan could not be opened.",
+    "gone": "This plan no longer exists.",
     "start": "Start",
     "save": "Save changes",
     "language": "Content language",
@@ -2412,6 +2587,38 @@
     "updateInUse_one": "{{count}} plan uses this book. Updating keeps the old text for that plan's citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in the plan to pick up new chapters. Update it?",
     "updateInUse_other": "{{count}} plans use this book. Updating keeps the old text for those plans' citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in each plan to pick up new chapters. Update it?",
     "retry": "Try again"
+  },
+  "makeCards": {
+    "title": "Make flashcards",
+    "action": "Make flashcards",
+    "fromReply": "From the answer",
+    "fromSelection": "From your selection",
+    "plan": "Plan",
+    "topic": "Topic",
+    "planPlaceholder": "Choose a plan",
+    "topicPlaceholder": "Choose a topic",
+    "noPlans": "Flashcards belong to a topic of a plan. Create a plan first.",
+    "hint": "Pyxis writes short flashcards from this text. You check them before they are saved.",
+    "make": "Make flashcards",
+    "again": "Make again",
+    "cancel": "Cancel",
+    "working": "Writing flashcards…",
+    "failed": "The flashcards could not be written. Check the selected engine, then try again.",
+    "saveFailed": "The flashcards could not be saved. Try again.",
+    "listLabel": "Proposed flashcards",
+    "cardN": "Flashcard {{n}}",
+    "drop": "Drop flashcard {{n}}",
+    "front": "Front",
+    "back": "Back",
+    "source": "Source",
+    "cloze": "Cloze: the words inside {{markup}} are hidden when you study.",
+    "allDropped": "You dropped every flashcard. Make again to get new ones.",
+    "save_one": "Save {{count}} flashcard",
+    "save_other": "Save {{count}} flashcards",
+    "saved_one": "Saved {{count}} flashcard to {{topic}}.",
+    "saved_other": "Saved {{count}} flashcards to {{topic}}.",
+    "skipped_one": "{{count}} was already there.",
+    "skipped_other": "{{count}} were already there."
   },
   "oggi": {
     "title": "Today",

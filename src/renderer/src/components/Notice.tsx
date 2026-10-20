@@ -16,6 +16,8 @@ export function Notice({
   action,
   secondary,
   details,
+  title,
+  titleLevel = 2,
 }: {
   tone: keyof typeof tones;
   children: ReactNode;
@@ -23,10 +25,15 @@ export function Notice({
   /** A second, quieter choice beside the main action, such as going on without it. */
   secondary?: { label: string; onClick: () => void };
   details?: string;
+  /** A short heading above the sentence, for a message that stands for the whole page. */
+  title?: ReactNode;
+  /** The heading level of `title`; 1 when the message is the whole page. */
+  titleLevel?: 1 | 2;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const Icon = tones[tone].icon;
+  const Heading = `h${titleLevel}` as const;
   return (
     <div
       className={["px-notice", tones[tone].className].join(" ")}
@@ -34,6 +41,7 @@ export function Notice({
     >
       <Icon size={16} strokeWidth={1.75} aria-hidden />
       <div className="px-notice-body">
+        {title ? <Heading className="px-notice-title">{title}</Heading> : null}
         <p className="px-notice-text">{children}</p>
         {details ? (
           <button

@@ -24,6 +24,18 @@ const REPLY = [
   "</followups>",
 ].join("\n");
 
+/** A reply many screens tall, so the chat scrolls far more than one wheel turn whatever fonts the platform has. */
+const LONG_REPLY = [
+  ...Array.from(
+    { length: 24 },
+    (_, i) =>
+      `Passo ${i + 1}: si sceglie $u$ come la parte che si semplifica derivando e $dv$ come quella che si integra senza fatica, poi si applica la formula e si controlla il risultato derivandolo.`,
+  ).flatMap((line) => [line, ""]),
+  "<followups>",
+  "Fammi un altro esempio",
+  "</followups>",
+].join("\n");
+
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-layout-"));
   const env = {
@@ -341,6 +353,103 @@ test("Ask: content that grows after a reply, such as the suggestion chips, stays
       window.dispatchEvent(new Event("scroll"));
     });
     await expect.poll(gap).toBeLessThan(4);
+  } finally {
+    await finish(app, userData);
+  }
+});
+
+test("Ask: a layout shift above the end of the chat is not the student scrolling up", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  try {
+    seed(userData);
+    await page.setViewportSize({ width: 960, height: 640 });
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await page.reload();
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    for (const text of ["Come si risolve un integrale per parti?", "Una seconda domanda"]) {
+      await box.fill(text);
+      await box.press("Enter");
+      await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
+    }
+    const gap = () =>
+      page.evaluate(() => {
+        const root = document.scrollingElement!;
+        return root.scrollHeight - root.scrollTop - root.clientHeight;
+      });
+    await expect.poll(gap).toBeLessThan(4);
+    // Let the scroll events for the last move arrive, so the page remembers where the student was.
+    await page.evaluate(() => new Promise((done) => setTimeout(done, 300)));
+    // Rows above shrink (a skipped row settles to its real height), which lowers the scroll position without the
+    // student touching anything, and the chips grow below before the next frame. That is not scrolling up.
+    await page.evaluate(() => {
+      const root = document.scrollingElement!;
+      const rows = document.querySelectorAll<HTMLElement>(".ask-thread > .px-msg");
+      for (const row of Array.from(rows).slice(0, -1)) row.style.display = "none";
+      void root.scrollTop;
+      const late = document.createElement("div");
+      late.style.height = "300px";
+      document.querySelector(".ask-page")!.append(late);
+      window.dispatchEvent(new Event("scroll"));
+    });
+    await expect.poll(gap).toBeLessThan(4);
+  } finally {
+    await finish(app, userData);
+  }
+});
+
+test("Ask: a student who scrolled up is not pulled back down by new content", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY: LONG_REPLY });
+  try {
+    seed(userData);
+    await page.setViewportSize({ width: 960, height: 640 });
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await page.reload();
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    for (const text of ["Come si risolve un integrale per parti?", "Una seconda domanda"]) {
+      await box.fill(text);
+      await box.press("Enter");
+      await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
+    }
+    const gap = () =>
+      page.evaluate(() => {
+        const root = document.scrollingElement!;
+        return root.scrollHeight - root.scrollTop - root.clientHeight;
+      });
+    await expect.poll(gap).toBeLessThan(4);
+    const top = () => page.evaluate(() => document.scrollingElement!.scrollTop);
+    const end = await top();
+    // The chat is several wheel turns tall, so one turn up cannot reach the top and stops early.
+    expect(end).toBeGreaterThan(3 * 300);
+    await page.mouse.move(480, 200);
+    await page.mouse.wheel(0, -300);
+    // The wheel scrolls smoothly over several frames. Wait until the page has moved up and stopped there.
+    let last = end;
+    await expect
+      .poll(async () => {
+        const now = await top();
+        const stopped = now < end && now === last;
+        last = now;
+        return stopped;
+      })
+      .toBe(true);
+    const scrolled = last;
+    const before = await gap();
+    // Out of the 96 px near the end where Ask follows the chat again (AskPage.tsx).
+    expect(before).toBeGreaterThan(96);
+    await page.evaluate(() => {
+      const late = document.createElement("div");
+      late.style.height = "300px";
+      document.querySelector(".ask-page")!.append(late);
+    });
+    await page.waitForTimeout(500);
+    expect(await top()).toBe(scrolled);
+    expect(await gap()).toBe(before + 300);
   } finally {
     await finish(app, userData);
   }

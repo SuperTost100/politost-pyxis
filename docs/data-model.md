@@ -27,6 +27,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 18             | `cards.search_text`, the folded text the card browser searches                          |
 | 19             | `messages.figures_json`, the images of the figures an answer drew                       |
 | 20             | `plan_sources.role` (`material` or `past_paper`) and `plan_sources.paper_json`          |
+| 21             | `messages.error`, `messages.passages_json` and the `engine_usage` table                 |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -42,7 +43,9 @@ Migration 20 lets a source be attached to a plan as a past exam (appello). `plan
 
 The past papers of a plan feed two things. The simulation builder summarises them (usual question count, duration, type and difficulty mix, a few example questions) and has the model write the exam after that summary. A practice quiz of the past questions is an ordinary `quiz` item with open answers whose body carries `pastPaper: 1`. Neither is part of a plan file: the exam text is the university's, so papers, and quizzes made from them, stay on this computer. Mastery gets no evidence from practising past questions, because their questions are not tied to a topic.
 
-Current version is 20. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 21 adds `messages.error`, the message key of the engine failure that cut a reply short (a stopped reply without it was stopped by the student), `messages.passages_json`, the passages a stopped reply was given as `{ passageId, index }` in P-number order, which Continue sends again unchanged, and `engine_usage`, one row per model call: time, provider, model, input and output tokens, prompt-cache reads and writes, and the chat and message or the job (with its kind) it was for. Those ids are plain text, not foreign keys, so the tokens of a deleted chat or a replaced reply still count in the week they were used.
+
+Current version is 21. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table            | A row is                                                                                |
 | ---------------- | --------------------------------------------------------------------------------------- |
@@ -82,6 +85,7 @@ Current version is 20. A restored backup is migrated on a staging copy before it
 | learning_events  | An append-only study event. Mastery is computed from these, not stored.                 |
 | jobs             | A long task: extraction, plan build, download.                                          |
 | job_steps        | One named step of a job. A retry skips steps that already stored output.                |
+| engine_usage     | The tokens of one model call, with the chat message or job it was for.                  |
 
 ## Saved content and history
 
@@ -90,6 +94,8 @@ Schema declarations are in `src/core/db/migrations/0001_init.sql`; later changes
 A seeded card the student deletes is soft-deleted (`cards.removed = 1`, its `seed_key` stays), so a later generation run does not create it again. The Flashcards tab lists these under Removed and can restore them. A hand-made card has no `seed_key` and is deleted outright.
 
 Cards come from the `cards.generate` prompt, one passage at a time, or from the student. Each card holds one fact, definition, formula or idea. Validation caps the front at 200 characters (240 for a cloze sentence) and the back at 300, and rejects display math (`$$`), blank-line paragraphs and step lists, so a worked exercise cannot become a card. Exercises are never seeded as cards. Up to 0.3.0 they were: the front was the exercise prompt cut at 400 characters and the `seed_key` was that same text. On the first start after that change, `retireExerciseCards` (`src/core/study/exerciseCards.ts`) sets `removed = 1` on those cards. It matches a card with no `prompt_template`, grounding `sources`, a `seed_key` equal to its front and equal to the prefix of an exercise that has an answer. Generated cards have a template and a `gen:` key, hand-made cards have no key, and a card whose front the student edited no longer matches, so none of them move. Review history stays, and Restore under Removed brings a card back. The pass runs once, marked by the settings key `cards.exercise-seeds-retired`, so a restored card is not removed again.
+
+The student can also make cards from a tutor's answer or from selected lesson or source text (`src/core/study/cardsFromText.ts`). The `cards.text` prompt returns one to eight cards under the same limits and form rules (question, concept or cloze), each with the id of the passage that states its fact or null. Core stores nothing at that point: the student edits or drops cards in a review dialog, and `study.cardsSaveProposed` then inserts the kept ones into the chosen plan and topic with `prompt_template` `cards.text`, a `text:` seed key, grounding `sources` when a passage is linked and `general` when not. A front the topic already has (not removed) is skipped. The new cards have no review row, so they are due at once like any new card.
 
 Subjects have a stable saved position. Source documents and passages retain extraction and locator information; the blob hash identifies original bytes. Deleting cited passages is constrained by references.
 

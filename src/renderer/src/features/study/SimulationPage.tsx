@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal, Segmented } from "antd";
+import { Button, Modal } from "antd";
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -14,6 +14,7 @@ import { StepLines } from "../../components/StepLines";
 import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
+import { ActivityChoice, ActivityIntro } from "./ActivityIntro";
 import "./SimulationPage.css";
 
 /** How long typing pauses before the answers are saved. */
@@ -59,7 +60,18 @@ export function SimulationPage() {
   const open = useQuery({
     queryKey: ["simulation", planId, started],
     enabled: Boolean(planId),
-    refetchInterval: 1000,
+    // The clock runs here, so a running exam is read every second for the time-up freeze and the grading job. Once
+    // handed in, or when grading has stopped (Retry invalidates this query), there is nothing left to watch.
+    refetchInterval: (query) => {
+      const read = query.state.data;
+      if (read?.submitted) return false;
+      if (
+        read?.grading &&
+        ["failed", "cancelled", "interrupted"].includes(read.grading.state)
+      )
+        return false;
+      return 1000;
+    },
     queryFn: () =>
       started
         ? invoke("study.simulationRead", { attemptId: started })
@@ -68,7 +80,13 @@ export function SimulationPage() {
   const build = useQuery({
     queryKey: ["simulation-build", planId],
     enabled: Boolean(planId) && !started,
-    refetchInterval: 1000,
+    // Follows the build until it settles; Retry and Resume invalidate it and bring the interval back.
+    refetchInterval: (query) =>
+      ["succeeded", "failed", "cancelled", "interrupted"].includes(
+        query.state.data?.state ?? "",
+      )
+        ? false
+        : 1000,
     queryFn: () => invoke("study.simulationBuild", { planId }),
   });
   const building = build.data;
@@ -160,6 +178,10 @@ export function SimulationPage() {
   useEffect(() => {
     if (locked) void flushDraft();
   }, [locked]);
+  // The shell asks core whether an exam is running when it opens and when told; starting, time-up and handing in tell it.
+  useEffect(() => {
+    void client.invalidateQueries({ queryKey: ["active-simulation"] });
+  }, [run?.attemptId, run?.submitted, Boolean(run?.grading), locked]);
   const shown = locked
     ? (run?.picks ?? {})
     : { ...(run?.picks ?? {}), ...picks };
@@ -212,60 +234,57 @@ export function SimulationPage() {
         model: `${run.generated.provider} · ${run.generated.model}`,
       })
     : "";
-  // The setup's start button sits with Back in the action bar, as on every other task page.
-  const setupAction = !run ? (
-    ready ? (
-      <Button
-        type="primary"
-        shape="round"
-        loading={busy}
-        onClick={() =>
-          void begin(
-            invoke("study.simulationStart", {
-              planId,
-              minutes: building?.minutes ?? length,
-              source,
-            }),
-          )
-        }
-      >
-        {t("simulation.startNow")}
-      </Button>
-    ) : (
-      <Button
-        type="primary"
-        shape="round"
-        loading={busy}
-        disabled={open.isPending || (Boolean(building) && !buildStopped)}
-        onClick={() => {
-          setBusy(true);
-          setNotice("");
-          setNoEngine(false);
-          void invoke("study.simulationPrepare", {
-            planId,
-            minutes: length,
-            source,
-            ...(style ? { matchPast } : {}),
-          })
-            .then(async (next) => {
-              if (next.attemptId) {
-                setStarted(next.attemptId);
-                navigate(`/plans/${planId}/exam/${next.attemptId}`, {
-                  replace: true,
-                });
-              } else
-                await client.invalidateQueries({
-                  queryKey: ["simulation-build", planId],
-                });
-            })
-            .catch(startFailed)
-            .finally(() => setBusy(false));
-        }}
-      >
-        {t("simulation.start")}
-      </Button>
-    )
-  ) : undefined;
+  // The setup's one action: write the questions first when the material has no exam exercises, then start the clock.
+  function prepare() {
+    setBusy(true);
+    setNotice("");
+    setNoEngine(false);
+    void invoke("study.simulationPrepare", {
+      planId,
+      minutes: length,
+      source,
+      ...(style ? { matchPast } : {}),
+    })
+      .then(async (next) => {
+        if (next.attemptId) {
+          setStarted(next.attemptId);
+          navigate(`/plans/${planId}/exam/${next.attemptId}`, {
+            replace: true,
+          });
+        } else
+          await client.invalidateQueries({
+            queryKey: ["simulation-build", planId],
+          });
+      })
+      .catch(startFailed)
+      .finally(() => setBusy(false));
+  }
+  function startNow() {
+    void begin(
+      invoke("study.simulationStart", {
+        planId,
+        minutes: building?.minutes ?? length,
+        source,
+      }),
+    );
+  }
+  const setupLocked = busy || open.isPending || (Boolean(building) && !buildStopped);
+  const topicCount = plan.data?.topics.length ?? 0;
+  const noticeBox = notice ? (
+    <Notice
+      tone="danger"
+      action={
+        noEngine
+          ? {
+              label: t("simulation.openSettings"),
+              onClick: () => navigate("/settings"),
+            }
+          : undefined
+      }
+    >
+      {notice}
+    </Notice>
+  ) : null;
   return (
     <FocusLayout
       title={
@@ -297,7 +316,7 @@ export function SimulationPage() {
         ) : undefined
       }
       secondary={
-        !run || run.submitted || locked ? (
+        run && (run.submitted || locked) ? (
           <Button
             type="text"
             shape="round"
@@ -307,23 +326,8 @@ export function SimulationPage() {
           </Button>
         ) : undefined
       }
-      primary={setupAction}
     >
-      {notice && (
-        <Notice
-          tone="danger"
-          action={
-            noEngine
-              ? {
-                  label: t("simulation.openSettings"),
-                  onClick: () => navigate("/settings"),
-                }
-              : undefined
-          }
-        >
-          {notice}
-        </Notice>
-      )}
+      {run ? noticeBox : null}
       {run && !run.submitted && run.blocked && !run.grading && (
         <Notice
           tone="warning"
@@ -340,64 +344,75 @@ export function SimulationPage() {
         <Notice tone="warning">{t("simulation.actionFailed")}</Notice>
       )}
       {!run ? (
-        <section className="px-sim-setup">
-          <h2 className="title-2">{t("simulation.setup")}</h2>
-          <label className="body-strong">{t("simulation.duration")}</label>
-          <Segmented
-            aria-label={t("simulation.duration")}
-            value={length}
-            disabled={
-              busy || open.isPending || (Boolean(building) && !buildStopped)
-            }
-            options={[
-              ...new Set([30, 60, 90, 120, ...(style?.minutes ? [style.minutes] : []), length]),
-            ]
-              .sort((a, b) => a - b)
-              .map((value) => ({
-                value,
-                label: t("simulation.minutes", { count: value }),
-              }))}
-            onChange={(value) => setLength(Number(value))}
-          />
-          {style ? (
+        <ActivityIntro
+          eyebrow={plan.data?.title ?? t("simulation.title")}
+          title={t("plans.path.activity.simulation")}
+          sentence={t("simulation.tutorLocked")}
+          facts={[
+            { icon: "clock", label: t("simulation.minutes", { count: length }) },
+            ...(topicCount
+              ? [{ icon: "book-open" as const, label: t("quiz.factTopics", { count: topicCount }) }]
+              : []),
+            { icon: "circle-check", label: t("simulation.factGrading") },
+          ]}
+          options={
             <>
-              <label className="body-strong">{t("simulation.format")}</label>
-              <Segmented
-                aria-label={t("simulation.format")}
-                value={format}
-                disabled={
-                  busy || open.isPending || (Boolean(building) && !buildStopped)
-                }
-                options={[
-                  { value: "past", label: t("simulation.formatPast") },
-                  { value: "generic", label: t("simulation.formatGeneric") },
-                ]}
-                onChange={(value) => setFormat(value as typeof format)}
+              <ActivityChoice
+                label={t("simulation.duration")}
+                value={length}
+                disabled={setupLocked}
+                // The usual lengths, plus the past exams' duration and whatever the prepared exam uses.
+                choices={[
+                  ...new Set([30, 60, 90, 120, ...(style?.minutes ? [style.minutes] : []), length]),
+                ]
+                  .sort((a, b) => a - b)
+                  .map((value) => ({
+                    value,
+                    label: t("simulation.minutes", { count: value }),
+                  }))}
+                onChange={setLength}
               />
-              {format === "past" ? (
-                <p className="small ink-muted px-sim-format-note">
-                  {t("simulation.formatPastInfo", {
-                    count: style.papers,
-                    questions: style.questions,
-                  })}
-                </p>
+              {style ? (
+                <>
+                  <ActivityChoice
+                    label={t("simulation.format")}
+                    value={format}
+                    disabled={setupLocked}
+                    choices={[
+                      { value: "past" as const, label: t("simulation.formatPast") },
+                      { value: "generic" as const, label: t("simulation.formatGeneric") },
+                    ]}
+                    onChange={setFormat}
+                  />
+                  {format === "past" ? (
+                    <p className="small ink-muted px-sim-format-note">
+                      {t("simulation.formatPastInfo", {
+                        count: style.papers,
+                        questions: style.questions,
+                      })}
+                    </p>
+                  ) : null}
+                </>
               ) : null}
+              <ActivityChoice
+                label={t("simulation.material")}
+                value={source}
+                disabled={setupLocked}
+                choices={[
+                  { value: "exam", label: t("simulation.exam") },
+                  { value: "mixed", label: t("simulation.mixed") },
+                ]}
+                onChange={setSource}
+              />
             </>
-          ) : null}
-          <label className="body-strong">{t("simulation.material")}</label>
-          <Segmented
-            aria-label={t("simulation.material")}
-            value={source}
-            disabled={
-              busy || open.isPending || (Boolean(building) && !buildStopped)
-            }
-            options={[
-              { value: "exam", label: t("simulation.exam") },
-              { value: "mixed", label: t("simulation.mixed") },
-            ]}
-            onChange={(value) => setSource(value as typeof source)}
-          />
-          <Notice tone="info">{t("simulation.tutorLocked")}</Notice>
+          }
+          startLabel={t(ready ? "simulation.startNow" : "simulation.start")}
+          starting={busy}
+          disabled={!ready && (open.isPending || (Boolean(building) && !buildStopped))}
+          onStart={ready ? startNow : prepare}
+          onBack={() => navigate(`/plans/${planId}`)}
+        >
+          {noticeBox}
           {ready && (
             <>
               <h3 className="body-strong">{t("simulation.readyTitle")}</h3>
@@ -418,7 +433,11 @@ export function SimulationPage() {
                   },
                 ]}
               />
-              <Button shape="round" onClick={() => void control("jobs.cancel")}>
+              <Button
+                shape="round"
+                className="px-sim-build-cancel"
+                onClick={() => void control("jobs.cancel")}
+              >
                 {t("simulation.buildCancel")}
               </Button>
             </>
@@ -439,7 +458,7 @@ export function SimulationPage() {
               {t("simulation.buildFailed")}
             </Notice>
           )}
-        </section>
+        </ActivityIntro>
       ) : run.submitted ? (
         <section className="px-sim-results">
           {run.score !== undefined && (

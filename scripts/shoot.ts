@@ -102,6 +102,11 @@ async function shootStudy(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Nuovo piano" }).click();
   await page.locator("#plan-title").fill("Fisica");
   for (let step = 0; step < 3; step++) {
+    // Continue stays disabled on the date step until a choice is made.
+    if (step === 1)
+      await page
+        .getByRole("button", { name: "Nessuna data per ora", exact: true })
+        .click();
     await page.getByRole("button", { name: "Continua", exact: true }).click();
   }
   // A source imported on the material step goes into the plan with no ticking.
@@ -127,6 +132,21 @@ async function shootStudy(page: Page): Promise<void> {
     return (await host.pyxis.invoke("plans.read", { planId: id })).topics[0]!
       .id;
   }, planId);
+  // No model writes cards here, so one is saved by hand for the cards screen to show.
+  await page.evaluate(
+    async ([id, topicId]) => {
+      const host = globalThis as unknown as {
+        pyxis: { invoke: (channel: string, input: unknown) => Promise<unknown> };
+      };
+      await host.pyxis.invoke("study.save", {
+        planId: id,
+        topicId,
+        front: "Che cosa descrive il vettore posizione?",
+        back: "Il punto in cui si trova il corpo.",
+      });
+    },
+    [planId, topic] as const,
+  );
   const lesson = `#/plans/${planId}/lesson/${topic}`;
   const practice = `#/plans/${planId}/practice/${topic}`;
   const quiz = `#/plans/${planId}/quiz/${topic}`;
@@ -295,6 +315,13 @@ try {
             .locator("#plan-title")
             .fill(locale === "it" ? "Fisica" : "Physics");
           for (let step = 1; step < 6; step++) {
+            // Continue stays disabled on the date step until a choice is made.
+            if (step === 2)
+              await page
+                .getByRole("button", {
+                  name: /^(Nessuna data per ora|No date yet)$/,
+                })
+                .click();
             if (step === 4) await addPlanSource(page);
             await page
               .getByRole("button", { name: /^(Continua|Continue)$/ })

@@ -6,6 +6,7 @@ import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Icon } from "../../components/Icon";
+import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { QuizOption, type QuizOptionState } from "../../components/QuizOption";
 import { StepLines } from "../../components/StepLines";
@@ -15,11 +16,12 @@ import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { ExportButton } from "../share/ExportButton";
+import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { useReviewSession } from "./ReviewProgress";
 import { useMenuLock } from "../../app/menu-state";
-import { QuizIntro } from "./QuizIntro";
+import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { QuizResults } from "./QuizResults";
 import {
   blanks,
@@ -672,6 +674,38 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     : diagnostic
       ? `/plans/${planId ?? ""}/diagnostic`
       : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`;
+  // The intro's facts: how many questions, about how long, how many topics a diagnostic covers, and when it corrects.
+  const introCount = past ? pastCount : diagnostic ? preview.data?.count : QUIZ_MAX_QUESTIONS;
+  const introMinutes = past
+    ? pastCount
+      ? quizMinutes(Array.from({ length: pastCount }, () => "open"))
+      : undefined
+    : diagnostic
+      ? preview.data?.minutes
+      : types.length
+        ? quizMinutes(Array.from({ length: QUIZ_MAX_QUESTIONS }, (_, i) => types[i % types.length]!))
+        : undefined;
+  const answeredBefore = diagnostic ? (preview.data?.answered ?? 0) : 0;
+  const introTopics = diagnostic ? (plan.data?.topics.length ?? 0) : 0;
+  const introFacts: ActivityFact[] = [
+    ...(introCount
+      ? [
+          {
+            icon: "list-checks" as const,
+            label: answeredBefore
+              ? t("quiz.factAnswered", { answered: answeredBefore, total: introCount })
+              : t("quiz.factQuestions", { count: introCount }),
+          },
+        ]
+      : []),
+    ...(introMinutes
+      ? [{ icon: "clock" as const, label: t("quiz.factMinutes", { count: introMinutes }) }]
+      : []),
+    ...(introTopics
+      ? [{ icon: "book-open" as const, label: t("quiz.factTopics", { count: introTopics }) }]
+      : []),
+    { icon: "circle-check", label: t("quiz.factFeedback") },
+  ];
   const kind = question?.grade.kind;
   const options =
     question && (kind === "mcq" || kind === "tf")
@@ -696,6 +730,32 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const wrongMarked = question
     ? (wrongMarks[question.id] ?? false)
     : false;
+  // A failed preparation sits under the step it stopped at, or above the questions that did arrive.
+  const buildFailed = generationFailed ? (
+    <ErrorState
+      action={
+        session.data?.jobId
+          ? {
+              label: t(
+                session.data.state === "interrupted"
+                  ? "quiz.resume"
+                  : "quiz.retry",
+              ),
+              onClick: () => {
+                if (!retry.isPending) retry.mutate();
+              },
+            }
+          : undefined
+      }
+      details={session.data?.error}
+    >
+      {t(
+        session.data?.state === "cancelled"
+          ? "quiz.buildCancelled"
+          : "quiz.buildFailed",
+      )}
+    </ErrorState>
+  ) : null;
   // A redo exists only as an attempt the notebook started; without one there is nothing to show.
   if (redo && !savedAttempt) return <Navigate to={back} replace />;
   return (
@@ -746,34 +806,11 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             </p>
           ) : null}
           {generating && timed ? <p className="small ink-muted">{t("quiz.timerWaiting")}</p> : null}
-          {generationFailed ? (
-            <>
-              <p className="small" role="alert">
-                {t(
-                  session.data?.state === "cancelled"
-                    ? "quiz.buildCancelled"
-                    : "quiz.buildFailed",
-                )}
-              </p>
-              {session.data?.jobId ? (
-                <Button
-                  shape="round"
-                  loading={retry.isPending}
-                  onClick={() => retry.mutate()}
-                >
-                  {t(
-                    session.data.state === "interrupted"
-                      ? "quiz.resume"
-                      : "quiz.retry",
-                  )}
-                </Button>
-              ) : null}
-            </>
-          ) : null}
+          {generationFailed && questions.length ? buildFailed : null}
         </div>
       ) : null}
       {showIntro ? (
-        <QuizIntro
+        <ActivityIntro
           eyebrow={plan.data?.title ?? t("quiz.title")}
           title={
             past
@@ -789,50 +826,24 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
                 ? "quiz.introDiagnostic"
                 : "quiz.introTopic",
           )}
-          count={past ? pastCount : diagnostic ? preview.data?.count : QUIZ_MAX_QUESTIONS}
-          minutes={
-            past
-              ? pastCount
-                ? quizMinutes(Array.from({ length: pastCount }, () => "open"))
-                : undefined
-              : diagnostic
-              ? preview.data?.minutes
-              : types.length
-                ? quizMinutes(
-                    Array.from(
-                      { length: QUIZ_MAX_QUESTIONS },
-                      (_, i) => types[i % types.length]!,
-                    ),
-                  )
-                : undefined
-          }
-          answered={diagnostic ? preview.data?.answered : 0}
+          facts={introFacts}
+          startLabel={t(answeredBefore ? "quiz.continueAttempt" : "quiz.start")}
           starting={start.isPending}
+          startingLabel={t("quiz.preparing")}
           disabled={past ? !pastCount : !diagnostic && (!types.length || !pageReady || !timerReady)}
           onStart={() => start.mutate()}
-          onClose={() => navigate(`/plans/${planId ?? ""}`)}
+          onBack={() => navigate(`/plans/${planId ?? ""}`)}
+          folded
           options={
             diagnostic || past ? undefined : (
               <>
-                <fieldset className="px-quiz-types">
-                  <legend className="body-strong">{t("quiz.scope")}</legend>
-                  <div className="px-quiz-pills">
-                    {SCOPES.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        className={
-                          scope === item ? "choice is-selected" : "choice"
-                        }
-                        aria-pressed={scope === item}
-                        disabled={start.isPending}
-                        onClick={() => setScope(item)}
-                      >
-                        {t(`quiz.scopes.${item}`)}
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
+                <ActivityChoice
+                  label={t("quiz.scope")}
+                  value={scope}
+                  disabled={start.isPending}
+                  choices={SCOPES.map((item) => ({ value: item, label: t(`quiz.scopes.${item}`) }))}
+                  onChange={setScope}
+                />
                 {scope === "page" ? (
                   <div className="px-quiz-page">
                     <label className="px-quiz-field">
@@ -864,9 +875,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
                     </label>
                   </div>
                 ) : null}
-                <fieldset className="px-quiz-types">
+                <fieldset className="px-intro-field">
                   <legend className="body-strong">{t("quiz.types")}</legend>
-                  <div className="px-quiz-pills">
+                  <div className="px-intro-pills">
                     {KINDS.map((item) => (
                       <button
                         key={item}
@@ -933,11 +944,12 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             steps={[
               {
                 id: "questions",
-                label: t("quiz.preparing"),
+                label: t(generationFailed ? "quiz.preparingFailed" : "quiz.preparing"),
                 state: generationFailed ? "failed" : "running",
               },
             ]}
           />
+          {buildFailed}
         </section>
       ) : noAnswers ? (
         <section className="px-quiz-wait">
@@ -1342,9 +1354,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         <p className="small">{t("quiz.empty")}</p>
       )}
       {error ? (
-        <p className="small" role="alert">
+        <ErrorState details={errorDetails(error)}>
           {t(errorKey, { defaultValue: t("quiz.error") })}
-        </p>
+        </ErrorState>
       ) : null}
     </FocusLayout>
   );

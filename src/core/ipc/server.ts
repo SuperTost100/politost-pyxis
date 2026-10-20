@@ -5,6 +5,7 @@ import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
 import { setFallbackListener } from "../engine/generate";
+import { setUsageRecorder, storeUsage } from "../engine/usage";
 import {
   IpcError,
   requests,
@@ -13,6 +14,7 @@ import {
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
+import { setChecksListener } from "../chat/turn";
 import { registerRuntimeJob, toolHandlers } from "../math/handlers";
 import { mapHandlers } from "../maps/handlers";
 import { planHandlers } from "../plans/handlers";
@@ -254,6 +256,8 @@ async function dispatchValidated(
     case "engines.features":
       requests["engines.features"].input.parse(input);
       return engines?.features();
+    case "engines.usage":
+      return engines?.usage(requests["engines.usage"].input.parse(input));
     case "engines.autoConfigure":
       return engines?.autoConfigure(
         requests["engines.autoConfigure"].input.parse(input),
@@ -290,6 +294,22 @@ async function dispatchValidated(
       const parsed = requests["engines.cancelLogin"].input.parse(input);
       return engines?.cancelLogin({ provider: parsed.provider as ProviderId });
     }
+    case "engines.local":
+      requests["engines.local"].input.parse(input);
+      return engines?.local();
+    case "engines.localPull":
+      requests["engines.localPull"].input.parse(input);
+      return engines?.localPull();
+    case "engines.localCancel":
+      requests["engines.localCancel"].input.parse(input);
+      return engines?.localCancel();
+    case "engines.localCheck":
+      requests["engines.localCheck"].input.parse(input);
+      return engines?.localCheck();
+    case "engines.localEnable":
+      return engines?.localEnable(
+        requests["engines.localEnable"].input.parse(input),
+      );
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({
@@ -301,7 +321,7 @@ async function dispatchValidated(
       return study?.lesson(requests["study.lesson"].input.parse(input), {
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
-        onPassages: (passageIds) => emit?.({ type: "sources", passageIds }),
+        onPassages: (passageIds, citations) => emit?.({ type: "sources", passageIds, citations }),
       });
     case "study.lessonSection":
       return study?.lessonSection(
@@ -431,6 +451,19 @@ async function dispatchValidated(
       );
     case "study.cardsBuild":
       return study?.cardsBuild(requests["study.cardsBuild"].input.parse(input));
+    case "study.cardsPlaces":
+      return study?.cardsPlaces(
+        requests["study.cardsPlaces"].input.parse(input),
+      );
+    case "study.cardsPropose":
+      return study?.cardsPropose(
+        requests["study.cardsPropose"].input.parse(input),
+        signal,
+      );
+    case "study.cardsSaveProposed":
+      return study?.cardsSaveProposed(
+        requests["study.cardsSaveProposed"].input.parse(input),
+      );
     case "study.gapDrillStart":
       return study?.gapDrillStart(
         requests["study.gapDrillStart"].input.parse(input),
@@ -441,6 +474,13 @@ async function dispatchValidated(
       );
     case "study.queue":
       return study?.queue(requests["study.queue"].input.parse(input));
+    case "study.cardSettings":
+      requests["study.cardSettings"].input.parse(input);
+      return study?.cardSettings();
+    case "study.saveCardSettings":
+      return study?.saveCardSettings(
+        requests["study.saveCardSettings"].input.parse(input),
+      );
     case "study.save":
       return study?.save(requests["study.save"].input.parse(input));
     case "study.remove":
@@ -463,6 +503,8 @@ async function dispatchValidated(
       );
     case "study.rate":
       return study?.rate(requests["study.rate"].input.parse(input));
+    case "study.undoRate":
+      return study?.undoRate(requests["study.undoRate"].input.parse(input));
     case "study.active":
       return study?.active(requests["study.active"].input.parse(input));
     case "study.exercises":
@@ -500,7 +542,7 @@ async function dispatchValidated(
     case "maps.generate":
       return maps?.generate(requests["maps.generate"].input.parse(input));
     case "maps.edit":
-      return maps?.edit(requests["maps.edit"].input.parse(input));
+      return maps?.edit(requests["maps.edit"].input.parse(input), signal);
     case "maps.open":
       return maps?.open(requests["maps.open"].input.parse(input));
     case "maps.layout":
@@ -551,6 +593,8 @@ async function dispatchValidated(
       return plans?.export(requests["plans.export"].input.parse(input));
     case "plans.import":
       return plans?.import(requests["plans.import"].input.parse(input));
+    case "plans.importedFile":
+      return plans?.importedFile(requests["plans.importedFile"].input.parse(input)) ?? null;
     case "plans.mastery":
       return plans?.mastery(requests["plans.mastery"].input.parse(input)) ?? [];
     case "plans.masteryBreakdown":
@@ -787,10 +831,19 @@ export function bindEngines(
 ): void {
   configureDisclosure(db);
   setFallbackListener((event) => broadcast("engine.fallback", event));
+  setUsageRecorder((usage, where) => {
+    // Counting is bookkeeping: a write that fails must not fail the answer it counts.
+    try {
+      storeUsage(db, usage, where);
+    } catch (err) {
+      console.error("pyxis: token usage not stored", err);
+    }
+  });
   engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
     onInstallLog: (event) => broadcast("engine.install", event),
+    onLocal: (event) => broadcast("engine.local", event),
     installerFixture,
   });
 }
@@ -837,6 +890,7 @@ export function bindChat(
   replyDelayMs = 0,
 ): void {
   chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs);
+  setChecksListener((event) => broadcast("chats.checks", event));
 }
 
 export function bindSources(

@@ -1,0 +1,144 @@
+/* The first screen of every study activity: one centred column, options left-aligned in a panel. */
+.px-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  text-align: center;
+  padding-top: clamp(var(--space-6), 9vh, var(--space-16));
+}
+.px-intro-eyebrow {
+  margin: 0;
+  max-width: 100%;
+  color: var(--ink-subtle);
+  overflow-wrap: anywhere;
+}
+.px-intro-title {
+  margin: var(--space-3) 0 0;
+  max-width: 18em;
+  overflow-wrap: anywhere;
+}
+.px-intro-text {
+  margin: var(--space-4) 0 0;
+  max-width: 34em;
+  color: var(--ink-muted);
+}
+.px-intro-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2) var(--space-6);
+  margin: var(--space-8) 0 0;
+  padding: var(--space-4) var(--space-6);
+  list-style: none;
+  border-block: 1px solid var(--border);
+  color: var(--ink-muted);
+  font: 400 calc(14px * var(--text-scale, 1)) / 20px var(--font-sans);
+}
+.px-intro-facts li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.px-intro-facts .px-icon {
+  color: var(--ink-subtle);
+}
+
+.px-intro-options {
+  width: 100%;
+  margin-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.px-intro-options-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--primary-text);
+  font: 500 calc(14px * var(--text-scale, 1)) / 20px var(--font-sans);
+  cursor: pointer;
+}
+.px-intro-options-toggle:hover {
+  background: var(--primary-soft);
+}
+.px-intro-options-toggle + .px-intro-options-panel {
+  margin-top: var(--space-4);
+}
+.px-intro-chevron {
+  transition: transform 150ms ease-out;
+}
+.px-intro-options-toggle[aria-expanded="true"] .px-intro-chevron {
+  transform: rotate(90deg);
+}
+.px-intro-options-panel {
+  width: 100%;
+  padding: var(--space-5);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: left;
+}
+
+/* A choice: its label, then a row of pills. */
+.px-intro-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.px-intro-field legend {
+  margin-bottom: var(--space-3);
+}
+.px-intro-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.px-intro-pills .choice {
+  width: auto;
+  min-height: var(--control-md);
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+}
+.px-intro-pills .choice.is-selected {
+  padding: 7px 15px;
+}
+
+/* Notices and progress that belong to the start sit full width, left-aligned, above the actions. */
+.px-intro-state {
+  width: 100%;
+  margin-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  text-align: left;
+}
+.px-intro-state > :where(p, h3) {
+  margin: 0;
+}
+
+.px-intro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-8);
+}
+.px-intro-actions .ant-btn {
+  min-width: 132px;
+}
+.px-intro-starting {
+  margin: var(--space-3) 0 0;
+  color: var(--ink-muted);
+}

@@ -1,4 +1,12 @@
-import { planFileSchema, type PlanFile } from "../../../../shared/plan-file";
+import {
+  PLAN_FILE_PARTS,
+  PLAN_FILE_REASONS,
+  planFileReason,
+  planFileSchema,
+  type PlanFile,
+  type PlanFilePart,
+  type PlanFileReason,
+} from "../../../../shared/plan-file";
 
 /** Resolve originals separately from the quoted passages already used by the plan. */
 export type SourceChoice = "library" | "file" | "excerpts" | "skip";
@@ -28,14 +36,37 @@ export type PlanPreview = {
   missing: PreviewSource[];
 };
 
+/**
+ * Parses with the one plan-file schema. A file that is not a plan says why: not JSON or no plan version at all
+ * (`not-a-plan`), a version this app does not know, a source over the limit, or any other damage.
+ */
+export function readPlanText(text: string): { file: PlanFile } | { reason: PlanFileReason } {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { reason: "not-a-plan" };
+  }
+  if (!value || typeof value !== "object" || typeof (value as { version?: unknown }).version !== "number")
+    return { reason: "not-a-plan" };
+  const parsed = planFileSchema.safeParse(value);
+  return parsed.success ? { file: parsed.data } : { reason: planFileReason(parsed.error.issues) };
+}
+
 /** Parses with the one plan-file schema; null means the file is not a valid plan. */
 export function parsePlanText(text: string): PlanFile | null {
-  try {
-    const parsed = planFileSchema.safeParse(JSON.parse(text));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
+  const read = readPlanText(text);
+  return "file" in read ? read.file : null;
+}
+
+/** Why `plans.import` refused a file, and the parts of it the plan can go without, from the error the core sent. */
+export function importFailure(error: unknown): { reason: PlanFileReason; without: PlanFilePart[] } | null {
+  const body = error as { code?: unknown; detail?: unknown; params?: { without?: unknown } } | null;
+  if (body?.code !== "plan-file") return null;
+  const reason = PLAN_FILE_REASONS.find((known) => known === body.detail);
+  if (!reason) return null;
+  const named = typeof body.params?.without === "string" ? body.params.without.split(",") : [];
+  return { reason, without: PLAN_FILE_PARTS.filter((part) => named.includes(part)) };
 }
 
 export function previewPlan(
@@ -93,6 +124,8 @@ export function defaultChoices(
 }
 
 export type ImportRequest = PlanFile & {
+  /** Parts of the file to leave out, after the student agreed to a plan without them. */
+  without?: PlanFilePart[];
   /** Source index -> library source whose stored original replaces the missing one; main checks the hash. */
   libraryFor?: Record<string, string>;
 };

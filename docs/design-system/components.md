@@ -151,6 +151,7 @@ A stop on the vertical study path (PLAN-21, PLAN-22).
 - Exactly one `current` node, marked by the gold `glow-star`: the student's position.
 - `done` is mint, `locked` is dashed with a lock icon and says what unlocks it.
 - Nodes sit `space-16` apart, joined by 1px `border` connectors that zig-zag; connectors to done nodes use `mastery`.
+- On the plan path, finished steps fold into one line above the suggested step ("6 attività fatte · Mostra"), so the suggestion sits under the plan header. Planned steps show their type and their topic, and the "In programma" label sits on the path's axis.
 - Custom component; antd has no equivalent (Steps is too rigid).
 
 ## GapItem
@@ -248,6 +249,18 @@ An inline message with an icon, a sentence, an optional action and optional deta
 
 - `warning` uses star text on star-soft. `danger` uses danger on danger-soft. Each tone has its own icon.
 - Details stay collapsed until the student opens them.
+- An optional `title` adds a heading above the sentence, for a message that stands for the whole page.
+
+## ErrorState
+
+A failed load, build or quiz. One danger Notice, used on every screen that can fail, so a failure looks and behaves the same everywhere.
+
+**Consumer provides** the sentence that says what failed, the action that fixes it (Try again, Back to Exams), an optional second action, an optional `title`, and the technical message as `details`.
+
+- Always inside the page column: the shell's column, or a full-screen page's `FocusLayout` column. The route fallback brings its own column when it replaces a full-screen page.
+- The sentence says what failed in plain words. The technical message only goes behind Details.
+- A progress list that failed tells the failed step in the past tense ("I couldn't read the sources"), and a screen that was "Preparing…" changes its title to say it failed.
+- `LoadError` is this component with Try again as the action.
 
 ## StepLines
 
@@ -282,7 +295,9 @@ The one renderer for model output.
 **Consumer provides** markdown text, `variant` (`reading` | `body`), and an optional citation resolver.
 
 - Raw HTML stays off. `[P3]` becomes a citation chip. KaTeX, including mhchem, is bundled.
-- `\( \)` and `\[ \]` are normalized to dollar math before rendering.
+- `\( \)` and `\[ \]` are normalized to dollar math before rendering. A `$$ … $$` alone on its line becomes a display block.
+- Display formulas are centred, with `space-4` above and below (`space-6` in a lesson).
+- Lessons label citation chips with the cited section path, as Ask does.
 
 ## CheckBadge
 
@@ -310,6 +325,20 @@ A written answer with a sigma button that opens a math field (MathLive) and a fo
 - Keys are real buttons, so Tab and the arrow keys work: `surface-raised` with `ink`, digits on `surface-overlay`, `radius-md`, the active tab underlined in `primary`. Gold stays out of the panel; keyboard focus uses the system `focus-ring`.
 - MathLive loads on first open (dynamic import). Glyphs use the bundled KaTeX fonts; nothing is fetched and no sounds play, which the CSP requires.
 - Key tooltips and spoken names live under `math.*` in both locale files.
+
+## ActivityIntro
+
+The first screen of a quiz, the diagnostic, a review and a simulation.
+
+**Consumer provides** an eyebrow (the plan), a title, one sentence, `facts` (icon and text: questions, time, topics, when it corrects), optional `options`, the start label and handler, and Back.
+
+- Centred column: eyebrow, `display` title, sentence, the facts between two hairlines, the options panel, then Back and the primary action side by side. Notices and a session to resume go between the options and the actions.
+- `ActivityChoice` is one choice as a row of pills under its label (a duration, a question count, a scope). New options, such as a format switch, are more `ActivityChoice` rows in the same panel.
+- `folded` hides the options behind "Personalizza" when the defaults suit most students (the quiz). The focus bar's X stays the exit; the intro has no Close.
+
+## Lesson end
+
+The end of a lesson or the course introduction: a quiet "Fatto" that marks it done and goes back to the plan, and a primary "Fatto, continua" that marks it done and opens the path's next suggestion. A finished page shows "Torna al percorso" and "Continua".
 
 ## Feature layouts added after the initial gallery
 

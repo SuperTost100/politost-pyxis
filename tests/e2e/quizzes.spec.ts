@@ -260,12 +260,23 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     const deadline = (await read()).deadlineAt;
     await page.reload();
     expect((await read()).deadlineAt).toBe(deadline);
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    db.prepare(
-      "UPDATE attempt_answers SET payload_json = json_set(payload_json, '$.deadlineAt', ?) WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object'",
-    ).run(Date.now() - 1000, timed.attemptId);
-    db.close();
+    // Move the deadline into the past while no quiz page is open, since an open page saves its draft on a timer and
+    // keeps the session it loaded. Leave, reload so nothing of that page is left, then write.
+    await go(page, "/exams");
+    await expect(page.locator(".px-quiz-question")).toHaveCount(0);
     await page.reload();
+    const past = Date.now() - 1000;
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    const moved = db
+      .prepare(
+        "UPDATE attempt_answers SET payload_json = json_set(payload_json, '$.deadlineAt', ?) WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object'",
+      )
+      .run(past, timed.attemptId);
+    db.close();
+    expect(moved.changes).toBe(1);
+    // Core answers with the moved deadline before the quiz opens on it.
+    await expect.poll(async () => (await read()).deadlineAt).toBe(past);
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${timed.attemptId}`);
     await expect.poll(async () => (await read()).submittedAt).toBeGreaterThan(0);
     expect((await read()).result?.score).toBe(0);
   } finally {
@@ -445,9 +456,11 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     await expect(page.getByRole("heading", { name: "Diagnosi", level: 2 })).toBeVisible();
     await expect(page.getByText("10 domande", { exact: true })).toBeVisible();
     await expect(page.getByText(/alla fine/)).toHaveCount(0);
-    const close = page.locator(".px-quiz-intro-actions").getByRole("button", { name: "Chiudi" });
+    // Back and Start sit side by side; the focus bar's X is the only exit, so the intro has no Close of its own.
+    const back = page.locator(".px-intro-actions").getByRole("button", { name: "Indietro" });
     const begin = page.getByRole("button", { name: "Inizia", exact: true });
-    expect(Math.abs((await close.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
+    expect(Math.abs((await back.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
+    await expect(page.locator(".px-intro-actions").getByRole("button", { name: "Chiudi" })).toHaveCount(0);
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
     // The options are shown in a shuffled order, so each answer is picked by its text.
@@ -586,8 +599,9 @@ test("quiz screens in both languages and themes", async () => {
         }
       };
       await go(page, `/plans/${planId}/diagnostic`);
-      await expect(page.locator(".px-quiz-intro")).toBeVisible();
-      await expect(page.locator(".px-quiz-facts li")).toHaveCount(3);
+      await expect(page.locator(".px-intro")).toBeVisible();
+      // Questions, time, topics and when it corrects.
+      await expect(page.locator(".px-intro-facts li")).toHaveCount(4);
       await shoot("start");
       const started = await invoke<{
         attemptId: string;
@@ -615,11 +629,13 @@ test("quiz screens in both languages and themes", async () => {
       await shoot("correct");
       await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[1], pick: wrong[1] });
       // An open quiz page saves its own draft shortly after loading and again when it closes, so a draft set while it
-      // is open can be overwritten on a slow runner. Set it with no quiz page open: leave, wait until the page is gone
-      // (its closing save is then already queued ahead of ours), save, and come back.
+      // is open can be overwritten on a slow runner. Set it with no quiz page open: leave, wait until the page is gone,
+      // and reload. The reload also drops the session the page cached: opened again from that cache, the quiz page
+      // would save the old draft half a second later, over ours.
       await go(page, "/exams");
       await expect(page.locator(".px-opt")).toHaveCount(0);
-      // The page's own closing save can still land after ours on a slow runner, so save until the stored draft holds.
+      await page.reload();
+      // A closing save sent just before the reload can still land after ours, so save until the stored draft holds.
       const wanted = { [ids[0]!]: right[0]!, [ids[1]!]: wrong[1]! };
       await expect(async () => {
         await invoke(page, "study.quizDraft", {
@@ -633,9 +649,7 @@ test("quiz screens in both languages and themes", async () => {
         };
         expect(stored.draft).toEqual({ picks: wanted, index: 1 });
       }).toPass({ timeout: 15000 });
-      // Reload so the page reads the saved draft instead of the session it cached before leaving.
       await go(page, view);
-      await page.reload();
       await expect(page.locator(".px-quiz-feedback.is-wrong")).toBeVisible();
       await shoot("wrong");
       const picks: Record<string, string> = { [ids[0]!]: right[0]!, [ids[1]!]: wrong[1]! };

@@ -1,3 +1,5 @@
+import { Button as AntButton, Dropdown } from "antd";
+import { ArrowRight, Ellipsis } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Chip } from "./Chip";
@@ -15,11 +17,16 @@ export function ChatMessage({
   onSuggest,
   general,
   text,
+  onMakeCards,
   reaction,
   onReact,
   onRegenerate,
+  onAnswerStronger,
   regenerateDisabled,
   stopped,
+  failure,
+  onContinue,
+  checking,
   streaming,
 }: {
   role?: "user" | "tutor";
@@ -29,12 +36,21 @@ export function ChatMessage({
   onSuggest?: (text: string) => void;
   general?: boolean;
   text?: string;
+  /** Opens the flashcard dialog for this reply. */
+  onMakeCards?: () => void;
   reaction?: "up" | "down" | null;
   onRegenerate?: () => void;
+  /** Answer the question again with the strongest model, from the reply's menu. */
+  onAnswerStronger?: () => void;
   regenerateDisabled?: boolean;
   onReact?: (reaction: "up" | "down") => void;
   /** The student stopped this reply before it finished. */
   stopped?: boolean;
+  /** Why the engine cut the reply short. Such a reply is kept and can be continued. */
+  failure?: string;
+  onContinue?: () => void;
+  /** The math check for this reply is still running. */
+  checking?: boolean;
   /** The reply is still being written, so there is nothing yet to copy, rate or rewrite. */
   streaming?: boolean;
 }) {
@@ -65,12 +81,34 @@ export function ChatMessage({
         {general || stopped ? (
           <div className="px-msg-tags">
             {general ? <Tag tone="general">{t("components.chat.generalTag")}</Tag> : null}
-            {stopped ? <Tag>{t("ask.stopped")}</Tag> : null}
+            {stopped ? <Tag>{failure ? t("components.chat.cutOff") : t("ask.stopped")}</Tag> : null}
           </div>
         ) : null}
         <div className="px-msg-text">
           <RunnablePython.Provider value>{children}</RunnablePython.Provider>
         </div>
+        {failure ? (
+          <div className="px-msg-cut">
+            <p className="px-msg-status">{failure}</p>
+            {onContinue ? (
+              <AntButton
+                shape="round"
+                size="small"
+                icon={<ArrowRight size={14} aria-hidden />}
+                iconPlacement="end"
+                disabled={regenerateDisabled}
+                onClick={onContinue}
+              >
+                {t("components.chat.continue")}
+              </AntButton>
+            ) : null}
+          </div>
+        ) : null}
+        {checking ? (
+          <p className="px-msg-status px-msg-checking" role="status">
+            {t("components.chat.checking")}
+          </p>
+        ) : null}
         {streaming ? null : (
           <div className="px-msg-foot">
             <IconButton
@@ -115,6 +153,15 @@ export function ChatMessage({
               pressed={reaction === "down"}
               onClick={() => onReact?.("down")}
             />
+            {onMakeCards ? (
+              <IconButton
+                icon="layers"
+                label={t("components.chat.makeCards")}
+                variant="ghost"
+                size="sm"
+                onClick={onMakeCards}
+              />
+            ) : null}
             {onRegenerate ? (
               <IconButton
                 icon="refresh-cw"
@@ -124,6 +171,28 @@ export function ChatMessage({
                 disabled={regenerateDisabled}
                 onClick={onRegenerate}
               />
+            ) : null}
+            {onAnswerStronger ? (
+              <Dropdown
+                trigger={["click"]}
+                placement="bottomLeft"
+                disabled={regenerateDisabled}
+                menu={{
+                  items: [{ key: "strong", label: t("components.chat.answerStronger") }],
+                  onClick: () => onAnswerStronger(),
+                }}
+              >
+                <AntButton
+                  type="text"
+                  shape="circle"
+                  size="small"
+                  className="px-btn px-btn-ghost px-iconbtn px-btn-sm"
+                  aria-label={t("components.chat.more")}
+                  title={t("components.chat.more")}
+                  disabled={regenerateDisabled}
+                  icon={<Ellipsis size={16} aria-hidden />}
+                />
+              </Dropdown>
             ) : null}
             {engine ? <span className="px-msg-engine">{engine}</span> : null}
           </div>

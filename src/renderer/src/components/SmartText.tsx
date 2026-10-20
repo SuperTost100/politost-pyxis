@@ -10,7 +10,7 @@ import {
 } from "@shared/smart-text";
 import { Figure } from "./Figure";
 import { InlineMarkdown } from "./InlineMarkdown";
-import { MarkdownView } from "./MarkdownView";
+import { MarkdownView, type CitationResolver } from "./MarkdownView";
 import { QuizOption } from "./QuizOption";
 import "./SmartText.css";
 
@@ -36,6 +36,7 @@ export function SmartText({
   onAnswer,
   streaming = false,
   onCitationClick,
+  citationResolver,
   figures = {},
 }: {
   children: string;
@@ -43,6 +44,8 @@ export function SmartText({
   onAnswer?: SmartAnswer;
   streaming?: boolean;
   onCitationClick?: (passageId: number) => void;
+  /** The chip label of each [Pn]; without it the chips read "Pn". */
+  citationResolver?: CitationResolver;
   /** Images of the figure blocks, by `figureKey`. While `streaming`, a figure without one is still being drawn. */
   figures?: Record<string, string>;
 }) {
@@ -78,6 +81,7 @@ export function SmartText({
             key={index}
             runnable
             onCitationClick={onCitationClick}
+            citationResolver={citationResolver}
           >
             {segment.text}
           </MarkdownView>

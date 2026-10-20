@@ -21,6 +21,7 @@ import type { RequestOutput } from "@shared/ipc";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
 import { examDaysLabel } from "./examDays";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
+import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { MasteryBar } from "../../components/MasteryBar";
 import { PlanEducationLevel } from "./PlanEducationLevel";
@@ -31,6 +32,7 @@ import { IconButton } from "../../components/IconButton";
 import type { IconName } from "../../components/Icon";
 import { LessonTile } from "../../components/LessonTile";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
+import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -225,8 +227,20 @@ export function PlanPage() {
         </Button>
       </section>
     );
-  if (plan.isError || (plan.isSuccess && !plan.data))
-    return <Notice tone="warning">{t("planOverview.unavailable")}</Notice>;
+  if (plan.isError || (plan.isSuccess && !plan.data)) {
+    const toExams = { label: t("nav.toExams"), onClick: () => navigate("/exams") };
+    return plan.isError ? (
+      <ErrorState
+        action={{ label: t("components.notice.retry"), onClick: () => void plan.refetch() }}
+        secondary={toExams}
+        details={errorDetails(plan.error)}
+      >
+        {t("planOverview.unavailable")}
+      </ErrorState>
+    ) : (
+      <ErrorState action={toExams}>{t("planOverview.gone")}</ErrorState>
+    );
+  }
   return (
     <div className="px-plan-page">
       {modalContext}

@@ -3,7 +3,7 @@ import {
   fetchPublicResponse,
   idleTimeout,
 } from "../core/sources/public-fetch";
-import { httpPlanUrl } from "../shared/plan-file";
+import { directPlanUrl, httpPlanUrl } from "../shared/plan-file";
 
 // Room for one embedded 200 MiB original as base64 plus the plan. A file this app saves is smaller (MAX_PLAN_FILE_BYTES).
 export const MAX_LINKED_PLAN_BYTES = 320 * 1024 * 1024;
@@ -30,7 +30,8 @@ async function readPlan(
   request: typeof fetchPublicResponse,
   idle: ReturnType<typeof idleTimeout>,
 ): Promise<string> {
-  let current = httpPlanUrl(raw);
+  // A share link from Google Drive, Dropbox or OneDrive is rewritten once; the loop checks it and every redirect.
+  let current = directPlanUrl(httpPlanUrl(raw));
   const signal = idle.signal;
   for (let hop = 0; hop <= 5; hop++) {
     if (blockedAddress(new URL(current).hostname)) throw new Error("plan-url");

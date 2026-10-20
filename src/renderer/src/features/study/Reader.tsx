@@ -2,9 +2,13 @@ import { Button } from "antd";
 import { ArrowLeft, CircleCheck } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { CitationChip } from "../../components/CitationChip";
 import { openSourceViewer } from "../../components/SourceViewer";
+import { invoke } from "../../lib/ipc";
+import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 
 /**
@@ -107,12 +111,35 @@ export function ReaderProgress({
   );
 }
 
-/** The end of the reading: done, or a hint to answer the recap and a "Mark as done" fallback. */
+/**
+ * After a reading is done, opens the plan's next suggested step, or the plan when there is none or the suggestion is
+ * this same page.
+ */
+export function useOpenNext(planId: string) {
+  const client = useQueryClient();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  return async () => {
+    const guide = await client.fetchQuery({
+      queryKey: ["recommend", planId],
+      queryFn: () => invoke("plans.recommend", { planId }),
+    });
+    const next = guide?.next;
+    const to = next ? stepPath(planId, next.activity, next.topicId) : null;
+    navigate(to && to.split("?")[0] !== pathname ? to : `/plans/${planId}`);
+  };
+}
+
+/**
+ * The end of the reading. Not done yet: a hint, a quiet "Done" that stops here and a primary "Done, continue" that
+ * opens the next step. Done: the same next step, or back to the path.
+ */
 export function ReaderEnd({
   state,
   doneLabel,
   pendingHint,
-  onMarkDone,
+  onDone,
+  onContinue,
   onBack,
   busy,
   failed,
@@ -121,29 +148,43 @@ export function ReaderEnd({
   doneLabel: string;
   /** Why the page is not done yet, such as the unanswered recap. */
   pendingHint?: string;
-  onMarkDone: () => void;
+  /** Marks the page done and goes back to the plan. */
+  onDone: () => void;
+  /** Marks the page done if it is not yet, then opens the next step. */
+  onContinue: () => void;
   onBack: () => void;
-  busy?: boolean;
+  /** Which action is running. */
+  busy?: "done" | "continue";
   failed?: boolean;
 }) {
   const { t } = useTranslation();
   if (state === "other") return null;
-  if (state === "done")
-    return (
-      <section className="px-reader-end is-done" aria-live="polite">
-        <CircleCheck size={20} strokeWidth={1.75} aria-hidden />
-        <p className="body-strong">{doneLabel}</p>
-        <Button type="primary" shape="round" onClick={onBack}>
-          {t("lesson.backToPath")}
-        </Button>
-      </section>
-    );
+  const done = state === "done";
   return (
-    <section className="px-reader-end" aria-live="polite">
-      <p className="small ink-muted">{pendingHint ?? t("lesson.finishPrompt")}</p>
-      <Button shape="round" loading={busy} onClick={onMarkDone}>
-        {t("lesson.markDone")}
-      </Button>
+    <section className={`px-reader-end${done ? " is-done" : ""}`} aria-live="polite">
+      {done ? <CircleCheck size={20} strokeWidth={1.75} aria-hidden /> : null}
+      <p className={done ? "body-strong" : "small ink-muted"}>
+        {done ? doneLabel : (pendingHint ?? t("lesson.finishPrompt"))}
+      </p>
+      <div className="px-reader-end-actions">
+        <Button
+          shape="round"
+          loading={busy === "done"}
+          disabled={busy === "continue"}
+          onClick={done ? onBack : onDone}
+        >
+          {t(done ? "lesson.backToPath" : "lesson.done")}
+        </Button>
+        <Button
+          type="primary"
+          shape="round"
+          loading={busy === "continue"}
+          disabled={busy === "done"}
+          onClick={onContinue}
+        >
+          {t(done ? "lesson.continue" : "lesson.doneContinue")}
+        </Button>
+      </div>
       {failed ? (
         <p className="small px-reader-error" role="alert">
           {t("planOverview.failed")}

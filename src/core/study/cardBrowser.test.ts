@@ -317,6 +317,39 @@ describe("card browser", () => {
     expect(dueNow).not.toContain("Velocità media?");
   });
 
+  it("marks a card forgotten six times or more as a leech, and filters to them", () => {
+    const db = library();
+    const leech = idOf(db, "Numero atomico?");
+    const close = idOf(db, "Velocità media?");
+    const review = db.prepare(
+      `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at) VALUES (?, ?, 'again', ?, ?)`,
+    );
+    const state = (lapses: number) =>
+      JSON.stringify({
+        intervalDays: 0,
+        ease: 8,
+        dueAt: T0,
+        fsrs: { lapses, state: 3, reps: 12, stability: 0.4 },
+      });
+    review.run("r1", leech, state(6), T0 - 1000);
+    review.run("r2", close, state(5), T0 - 1000);
+    const byId = new Map(
+      browseCards(db, {}, T0).cards.map((card) => [card.id, card]),
+    );
+    expect(byId.get(leech)).toMatchObject({ lapses: 6, leech: true });
+    expect(byId.get(close)).toMatchObject({ lapses: 5, leech: false });
+    expect(byId.get(idOf(db, "Sparsa"))).toMatchObject({
+      lapses: 0,
+      leech: false,
+    });
+    expect(fronts(db, { status: "leech" })).toEqual(["Numero atomico?"]);
+    // A suspended leech stays in the filter; a removed one goes to Removed.
+    setSuspended(db, leech, true);
+    expect(fronts(db, { status: "leech" })).toEqual(["Numero atomico?"]);
+    deleteCard(db, leech);
+    expect(fronts(db, { status: "leech" })).toEqual([]);
+  });
+
   it("uses the newest review when a card has several", () => {
     const db = library();
     const id = idOf(db, "Numero atomico?");

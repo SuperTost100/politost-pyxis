@@ -341,7 +341,19 @@ html[data-platform="darwin"] .canvas-bar {
   color: var(--ink-muted);
 }
 
+/* The progress line sits under the header's 56px, inside it so it belongs to a landmark. */
+.focus-bar {
+  position: relative;
+}
+
+.focus-bar:has(.focus-progress) {
+  margin-bottom: 2px;
+}
+
 .focus-progress {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
   height: 2px;
   background: var(--primary);
 }

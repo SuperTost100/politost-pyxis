@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { openSourceViewer } from "../../components/SourceViewer";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
@@ -21,7 +22,7 @@ import "./CardBrowser.css";
 
 const PAGE_SIZE = 25;
 
-type Status = "all" | "due" | "suspended" | "removed";
+type Status = "all" | "due" | "suspended" | "removed" | "leech";
 type Browse = RequestOutput<"study.browse">;
 type Card = Browse["cards"][number];
 
@@ -340,6 +341,16 @@ export function CardBrowser() {
             <span className="visually-hidden">{t("cardBrowser.backText")}</span>
             <MarkdownView variant="body">{card.back}</MarkdownView>
           </div>
+          {card.leech && !card.removed ? (
+            <p className="small px-cardbrowser-leech">
+              {t(
+                card.passageId
+                  ? "cardBrowser.leechHint"
+                  : "cardBrowser.leechHintNoSource",
+                { count: card.lapses },
+              )}
+            </p>
+          ) : null}
         </div>
         <div className="px-cardbrowser-foot">
           <div className="px-cardbrowser-state">
@@ -352,6 +363,9 @@ export function CardBrowser() {
                       date: dateText(card.dueAt ?? 0),
                     })}
             </span>
+            {card.leech && !card.removed ? (
+              <Tag tone="general">{t("cardBrowser.tagLeech")}</Tag>
+            ) : null}
             {card.suspended ? <Tag>{t("cardBrowser.tagSuspended")}</Tag> : null}
             {card.removed ? <Tag>{t("cardBrowser.tagRemoved")}</Tag> : null}
           </div>
@@ -376,7 +390,7 @@ export function CardBrowser() {
                   size="small"
                   shape="round"
                   type="text"
-                  aria-label={label("cards.edit")}
+                  aria-label={label(card.leech ? "cardBrowser.rewrite" : "cards.edit")}
                   onClick={() => {
                     setDraftFront(card.front);
                     setDraftBack(card.back);
@@ -384,8 +398,24 @@ export function CardBrowser() {
                     setEditing(card);
                   }}
                 >
-                  {t("cards.edit")}
+                  {t(card.leech ? "cardBrowser.rewrite" : "cards.edit")}
                 </Button>
+                {card.leech && card.passageId ? (
+                  <Button
+                    size="small"
+                    shape="round"
+                    type="text"
+                    aria-label={label("cardBrowser.openSource")}
+                    onClick={() =>
+                      openSourceViewer({
+                        passageId: card.passageId ?? undefined,
+                        sourceId: card.sourceId ?? undefined,
+                      })
+                    }
+                  >
+                    {t("cardBrowser.openSource")}
+                  </Button>
+                ) : null}
                 <Button
                   size="small"
                   shape="round"
@@ -488,7 +518,7 @@ export function CardBrowser() {
             id="card-status"
             value={status}
             onChange={filter(setStatus)}
-            options={(["all", "due", "suspended", "removed"] as const).map(
+            options={(["all", "due", "leech", "suspended", "removed"] as const).map(
               (value) => ({ value, label: t(`cardBrowser.status.${value}`) }),
             )}
           />

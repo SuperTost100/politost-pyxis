@@ -3,7 +3,7 @@ import { Drawer, Skeleton } from "antd";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../lib/ipc";
-import { Notice } from "./Notice";
+import { LoadError } from "./LoadError";
 import { SelectionMenu } from "./SelectionMenu";
 import "./SourceViewer.css";
 
@@ -57,8 +57,12 @@ export function SourceViewer() {
       title={<div><span>{title}</span><div className="meta source-viewer-locator">{current?.sectionPath}</div></div>}
       afterOpenChange={(open) => { if (!open) trigger.current?.focus(); }}>
       {passages.isPending || (!markdownReady && source.data?.kind !== "pdf") ? <Skeleton active /> : null}
-      {passages.isError ? <Notice tone="danger">{t("sources.importFailed")}</Notice> : null}
-      <SelectionMenu sourceIds={sourceId ? [sourceId] : []} onAsk={(chatId) => { close(); window.location.hash = `/ask/${chatId}`; }}>
+      {passages.isError || source.isError ? (
+        <LoadError onRetry={() => void Promise.all([passages.isError ? passages.refetch() : null, source.isError ? source.refetch() : null])}>
+          {t("sources.viewerFailed")}
+        </LoadError>
+      ) : null}
+      <SelectionMenu sourceIds={sourceId ? [sourceId] : []} passageIds={rows.map((row) => row.id)} onAsk={(chatId) => { close(); window.location.hash = `/ask/${chatId}`; }}>
       <div ref={body} className="source-viewer-chapter">
         {source.data?.kind === "pdf" && source.data.blobSha ?
           <Suspense fallback={<Skeleton active />}><PdfSourcePage sha={source.data.blobSha} initialPage={current?.locator.page ?? 1} excerpt={source.data.excerpt ?? current?.text ?? ""} /></Suspense>

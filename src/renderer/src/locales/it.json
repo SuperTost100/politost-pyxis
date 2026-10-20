@@ -1,8 +1,7 @@
 {
   "routeError": {
     "title": "Non è stato possibile aprire questa pagina",
-    "body": "Torna ai tuoi esami e prova ad aprirla di nuovo.",
-    "home": "Vai agli esami"
+    "body": "Torna a Esami e aprila di nuovo."
   },
   "doors": {
     "ask": "Chiedi",
@@ -14,7 +13,8 @@
     "settings": "Impostazioni",
     "close": "Chiudi",
     "back": "Indietro",
-    "exams": "Esami"
+    "exams": "Esami",
+    "toExams": "Torna a Esami"
   },
   "stepper": {
     "label": "Avanzamento",
@@ -28,7 +28,7 @@
       "general": "Ovunque",
       "ask": "Chiedi",
       "cards": "Flashcard",
-      "quiz": "Quiz e simulazioni",
+      "quiz": "Quiz",
       "whiteboard": "Lavagna",
       "python": "Python"
     },
@@ -60,6 +60,10 @@
       "pen": "Penna",
       "eraser": "Gomma",
       "runCode": "Esegui il codice",
+      "undoCard": "Annulla l'ultima valutazione, sospensione o eliminazione",
+      "editCard": "Modifica la flashcard",
+      "suspendCard": "Sospendi la flashcard",
+      "deleteCard": "Elimina la flashcard",
       "goMaps": "Vai alle Mappe"
     },
     "keys": {
@@ -273,7 +277,10 @@
     "groupOlder": "Meno recenti",
     "subjectFilter": "Filtra per materia",
     "subjectAll": "Tutte le materie",
-    "searchNoneSubject": "Nessuna chat di {{subject}} contiene “{{query}}”."
+    "searchNoneSubject": "Nessuna chat di {{subject}} contiene “{{query}}”.",
+    "usage_one": "{{tokens}} token",
+    "usage_other": "{{tokens}} token",
+    "usageDetail": "Questa chat ha usato {{input}} token inviati, di cui {{cached}} dalla cache, e {{output}} ricevuti."
   },
   "exams": {
     "view": "Mostra",
@@ -313,6 +320,9 @@
     "readByOcrAfter": "Testo letto tramite OCR locale dopo il tentativo con la visione.",
     "search": "Cerca nei brani",
     "searchGo": "Cerca",
+    "viewerFailed": "Non è stato possibile caricare questo brano.",
+    "searchNone": "Nessun brano delle tue fonti corrisponde a “{{query}}”.",
+    "loadFailed": "Non è stato possibile caricare le fonti.",
     "encrypted": "Questo smartbook è protetto. Pyxis apre solo i pacchetti in chiaro.",
     "importFailed": "Non riesco a leggere questo file.",
     "tooBig": "Il file è troppo grande da importare. Pyxis accetta documenti fino a 256 MB e foto fino a 40 MB.",
@@ -531,6 +541,9 @@
     "spaceKey": "Spazio",
     "title": "Flashcard",
     "empty": "Nessuna flashcard in scadenza.",
+    "loadFailed": "Non è stato possibile caricare le flashcard.",
+    "nextCard": "Flashcard successiva: {{front}}",
+    "resumeCard": "Riprendi la flashcard: {{front}}",
     "flip": "Gira",
     "again": "Da rivedere",
     "hard": "Difficile",
@@ -565,6 +578,12 @@
     "reviewFailed": "Non sono riuscito a far partire il ripasso. Riprova.",
     "reviewQuestions": "Vai alle domande",
     "reviewCount": "Flashcard in questo ripasso",
+    "factDue_one": "1 flashcard in scadenza",
+    "factDue_other": "{{count}} flashcard in scadenza",
+    "factGaps_one": "1 argomento con lacune",
+    "factGaps_other": "{{count}} argomenti con lacune",
+    "factCards_one": "1 flashcard",
+    "factCards_other": "{{count}} flashcard",
     "reviewResume": "Hai un ripasso in corso. Mantiene le stesse flashcard e domande finché non lo finisci.",
     "reviewContinue": "Continua il ripasso",
     "reviewProgress": "{{done}} di {{total}} fatti · {{cards}} flashcard, {{questions}} domande",
@@ -585,7 +604,19 @@
     "reviewDrillCancelled": "Hai saltato le domande su {{topic}}. Puoi finire il ripasso senza.",
     "reviewDrillCancelledAction": "Riprova",
     "reviewDrillSkipped": "Hai saltato le domande su {{topic}}. Puoi finire il ripasso senza.",
-    "reviewDrillSkip": "Salta"
+    "reviewDrillSkip": "Salta",
+    "rated": "Hai scelto {{rating}}.",
+    "suspended": "Flashcard sospesa.",
+    "deleted": "Flashcard rimossa.",
+    "undo": "Annulla",
+    "more": "Azioni sulla flashcard",
+    "card": "Flashcard",
+    "askTutor": "Chiedi al tutor",
+    "askSource": "Fonte: {{section}}",
+    "askFailed": "Non sono riuscito ad aprire la chat con il tutor. Riprova.",
+    "sessionProgress": "{{done}} di {{total}}",
+    "dailyLimit_one": "Hai visto la {{count}} flashcard nuova di oggi per questo esame. Le altre arrivano domani. Puoi cambiare il limite nelle Impostazioni.",
+    "dailyLimit_other": "Hai visto le {{count}} flashcard nuove di oggi per questo esame. Le altre arrivano domani. Puoi cambiare il limite nelle Impostazioni."
   },
   "cardImport": {
     "open": "Importa da Anki",
@@ -644,7 +675,8 @@
       "all": "Tutte le flashcard",
       "due": "In scadenza",
       "suspended": "Sospese",
-      "removed": "Rimosse"
+      "removed": "Rimosse",
+      "leech": "Dimenticate spesso"
     },
     "noSubject": "Nessuna materia",
     "noTopic": "Nessun argomento",
@@ -674,7 +706,14 @@
     "deleted": "Flashcard rimossa. Puoi ripristinarla da Rimosse.",
     "deletedForever": "Flashcard eliminata.",
     "restored": "Flashcard ripristinata.",
-    "pages": "Pagine"
+    "pages": "Pagine",
+    "tagLeech": "Dimenticata spesso",
+    "leechHint_one": "Dimenticata {{count}} volta. Riscrivila, controlla la fonte o sospendila.",
+    "leechHint_other": "Dimenticata {{count}} volte. Riscrivila, controlla la fonte o sospendila.",
+    "rewrite": "Riscrivi",
+    "openSource": "Apri la fonte",
+    "leechHintNoSource_one": "Dimenticata {{count}} volta. Riscrivila o sospendila.",
+    "leechHintNoSource_other": "Dimenticata {{count}} volte. Riscrivila o sospendila."
   },
   "mistakes": {
     "title": "Quaderno degli errori",
@@ -725,6 +764,8 @@
     "apply": "Applica modifiche",
     "applied": "Modifiche applicate. Annulla ripristina la mappa precedente.",
     "editFailed": "Non riesco a modificare la mappa. Riprova.",
+    "editConflict": "La mappa è cambiata mentre Pyxis la modificava e quella modifica non si adatta più. Le tue modifiche restano. Ripeti la richiesta.",
+    "loadFailed": "Non è stato possibile caricare la mappa.",
     "generateFailed": "Non riesco a creare le mappe. Riprova.",
     "exportFailed": "Non riesco a esportare l’immagine. Riprova.",
     "empty": "Crea una mappa di questo argomento",
@@ -822,10 +863,13 @@
     "rewritePartFailed": "Non è stato possibile riscrivere questa parte. La lezione non è cambiata. Riprova.",
     "rewritingPart": "Sto riscrivendo «{{title}}»…",
     "markDone": "Segna come fatto",
+    "done": "Fatto",
+    "doneContinue": "Fatto, continua",
     "finishPrompt": "Hai finito di leggere?",
     "recapPrompt": "Rispondi al ripasso finale per completare la lezione.",
     "doneTitle": "Lezione completata",
     "backToPath": "Torna al percorso",
+    "continue": "Continua",
     "sources": "Fonti usate",
     "page": "p. {{n}}",
     "slide": "slide {{n}}",
@@ -932,10 +976,10 @@
     "empty": "Questo piano non contiene domande d’esame o brani utilizzabili.",
     "localGrade": "Voto calcolato in locale, senza un modello.",
     "byTopic": "Per argomento",
-    "setup": "Prepara un esame scritto",
     "duration": "Tempo a disposizione",
     "material": "Domande",
     "tutorLocked": "Il tutor non è disponibile durante la prova. Le risposte si salvano mentre scrivi.",
+    "factGrading": "Correzione alla consegna",
     "timeLeft": "Tempo rimanente",
     "outOf100": "su 100",
     "modelGrade": "Valutazione stimata da {{model}}.",
@@ -988,6 +1032,7 @@
     "tfOnly": "Solo vero o falso",
     "diagnostic": "Diagnosi",
     "preparing": "Preparo le domande…",
+    "preparingFailed": "Non sono riuscito a preparare le domande",
     "position": "Domanda {{current}} di {{total}}",
     "question": "Domanda",
     "yourAnswer": "La tua risposta",
@@ -1015,7 +1060,7 @@
     "drillOwed_other": "Mancano ancora {{count}} domande in preparazione. Potrai concludere quando saranno aggiunte.",
     "drillOwedOpen": "Vedi lo stato",
     "waitingBatch": "In attesa delle prossime domande",
-    "buildFailed": "La preparazione delle domande si è fermata. Riprova per continuare questa sessione.",
+    "buildFailed": "La scrittura si è fermata prima che le domande fossero pronte. Riprova per riprendere questa sessione.",
     "buildCancelled": "La preparazione delle domande è stata annullata. Riprova per continuare questa sessione.",
     "retry": "Riprova la preparazione",
     "resume": "Riprendi la preparazione",
@@ -1070,6 +1115,8 @@
     "factMinutes_one": "circa {{count}} minuto",
     "factMinutes_other": "circa {{count}} minuti",
     "factAnswered": "{{answered}} di {{total}} già risposte",
+    "factTopics_one": "1 argomento",
+    "factTopics_other": "{{count}} argomenti",
     "factFeedback": "Correzione dopo ogni risposta",
     "options": "Personalizza",
     "continueAttempt": "Riprendi",
@@ -1163,9 +1210,12 @@
       "gaps_one": "1 lacuna aperta",
       "gaps_other": "{{count}} lacune aperte",
       "done": "Passi fatti",
+      "doneCount_one": "1 attività fatta",
+      "doneCount_other": "{{count}} attività fatte",
+      "show": "Mostra",
+      "hide": "Nascondi",
       "planned": "In programma",
       "choose": "{{topic}}: scegli un'attività",
-      "showAll": "Mostra tutti i passi ({{count}})",
       "activity": {
         "intro": "Introduzione",
         "diagnostic": "Test diagnostico",
@@ -1315,7 +1365,15 @@
     "create": "Crea il piano",
     "preparing": "Sto preparando {{title}}",
     "open": "Apri il piano",
+    "preparingFailed": "Non sono riuscito a preparare il piano",
+    "cancelledTitle": "Creazione annullata",
+    "buildFailed": "Un passaggio si è fermato prima che il piano fosse pronto. Riprova per continuare dall’ultimo passaggio salvato.",
     "stepSources": "Leggo le fonti",
+    "stepSourcesFailed": "Non sono riuscito a leggere le fonti",
+    "stepTopicsFailed": "Non sono riuscito a creare gli argomenti",
+    "stepPathFailed": "Non sono riuscito a costruire il percorso",
+    "stepIntroFailed": "Non sono riuscito a scrivere l’introduzione",
+    "stepDiagnosticFailed": "Non sono riuscito a preparare il test iniziale",
     "stepTopics": "Creo gli argomenti",
     "stepPath": "Costruisco il percorso",
     "failed": "Non riesco a preparare il piano.",
@@ -1372,7 +1430,7 @@
     "decide": "Decidi tu",
     "stepIntro": "Scrivo l’introduzione",
     "stepIntroDiagnostic": "Scrivo l’introduzione e il test iniziale",
-    "stepDiagnostic": "Preparazione del test iniziale",
+    "stepDiagnostic": "Preparo il test iniziale",
     "stepReady": "Piano pronto",
     "sourceNotReady": "Una fonte richiede attenzione. Completa l’importazione o l’OCR, poi riprova a costruire il piano.",
     "cancelled": "Creazione annullata. Riprova per riprendere dal passaggio salvato.",
@@ -1430,6 +1488,43 @@
     "open": "Apri",
     "bad": "Questo non è un piano.",
     "importFailed": "Il piano non è stato importato. Scegli un file di piano .pyxis valido e riprova.",
+    "reason": {
+      "not-a-plan": "Questo file non è un piano di Pyxis.",
+      "unknown-version": "Questo piano è stato salvato da una versione più recente di Pyxis. Aggiorna Pyxis e aprilo di nuovo.",
+      "oversized-source": "Un file originale nel piano è più grande di quanto Pyxis possa importare.",
+      "invalid-file": "Il file è danneggiato o incompleto, quindi Pyxis non riesce a leggerlo.",
+      "missing-topic": "Una lezione, una flashcard o un passo del percorso rimanda a un argomento che non c'è nel file.",
+      "missing-passage": "Nel file manca un brano citato dal piano.",
+      "missing-source": "Un brano indica una fonte che non c'è nel file.",
+      "missing-document": "Un brano rimanda a una versione del documento che non c'è nel file.",
+      "bad-reference": "Qualcosa nel piano rimanda a contenuti che il file non contiene.",
+      "duplicate-id": "Due elementi nel file hanno lo stesso ID.",
+      "passage-text": "Un brano citato è cambiato dopo il salvataggio del piano, quindi il suo checksum non corrisponde più.",
+      "source-mismatch": "Un file originale non corrisponde a quello da cui è nato il piano.",
+      "source-data": "Un file originale nel piano è danneggiato o ha la dimensione sbagliata.",
+      "document-mismatch": "Un brano non corrisponde alla versione del suo documento.",
+      "bad-body": "Una lezione o un quiz nel file è danneggiato.",
+      "bad-exercise": "Alcuni esercizi nel file sono danneggiati.",
+      "bad-map": "Alcune mappe concettuali nel file sono danneggiate.",
+      "bad-progress": "I progressi salvati nel file non sono coerenti.",
+      "library-mismatch": "La copia nella tua libreria non è il file che il piano si aspetta. Scegli un'altra opzione per quella fonte.",
+      "no-workspace": "Pyxis non ha dove salvare i file originali in questo momento. Riavvia Pyxis e riprova."
+    },
+    "fail": {
+      "failed": "Il piano non è stato importato. {{reason}}",
+      "offer": "Il problema è solo {{where}}. Il resto del piano si può importare lo stesso.",
+      "in": {
+        "exercises": "negli esercizi",
+        "maps": "nelle mappe concettuali",
+        "both": "negli esercizi e nelle mappe concettuali"
+      },
+      "rest": "Importa il resto"
+    },
+    "openFailed": {
+      "not-a-plan-file": "Quel file non è un piano di Pyxis.",
+      "too-big": "Quel file di piano supera 320 MB.",
+      "unreadable": "Pyxis non è riuscito a leggere quel file."
+    },
     "review": {
       "title": "Importa un piano",
       "created": "Creato il {{date}}",
@@ -1463,6 +1558,8 @@
       "verified": "Il file corrisponde.",
       "mismatch": "Questo file non è quello atteso dal piano. Scegline un altro o tieni gli estratti.",
       "import": "Importa",
+      "importCopy": "Importa una copia lo stesso",
+      "duplicate": "Già importato il {{date}}. Importandolo di nuovo aggiungi una seconda copia.",
       "cancel": "Annulla",
       "skip": "Salta la fonte",
       "skipHelp": "Saltando una fonte, questa non viene aggiunta all’elenco. I brani citati nelle lezioni, nelle flashcard e nelle domande restano leggibili."
@@ -1598,7 +1695,10 @@
     },
     "crashOn": "Acceso: se Pyxis si chiude per errore, potrà usare un rapporto tecnico per correggerlo. Per ora Pyxis non invia nessun rapporto: la scelta resta su questo computer.",
     "crashOff": "Spento: nessun rapporto lascia questo computer.",
-    "crashContents": "Un rapporto di crash descrive lo stato tecnico del programma al momento dell'errore: versione, sistema e alcune porzioni di memoria. Pyxis non ci aggiunge i tuoi file né le tue chat, ma la memoria può contenere frammenti di ciò che stavi usando."
+    "crashContents": "Un rapporto di crash descrive lo stato tecnico del programma al momento dell'errore: versione, sistema e alcune porzioni di memoria. Pyxis non ci aggiunge i tuoi file né le tue chat, ma la memoria può contenere frammenti di ciò che stavi usando.",
+    "flashcards": "Flashcard",
+    "newPerDay": "Flashcard nuove al giorno",
+    "newPerDayHint": "Per ogni esame. Le flashcard già iniziate tornano quando scadono, qualunque sia il limite. Con 0 non ne partono di nuove."
   },
   "jobs": {
     "label_one": "{{count}} attività",
@@ -1732,7 +1832,13 @@
       "you": "Tu",
       "pyxis": "Pyxis",
       "copied": "Copiato",
-      "copyFailed": "Non sono riuscito a copiare. Riprova."
+      "copyFailed": "Non sono riuscito a copiare. Riprova.",
+      "cutOff": "Interrotta",
+      "continue": "Continua",
+      "checking": "Controllo i calcoli…",
+      "more": "Altre azioni",
+      "answerStronger": "Rispondi di nuovo con il modello più potente",
+      "makeCards": "Crea flashcard"
     },
     "quiz": {
       "correct": "Corretta",
@@ -1763,7 +1869,9 @@
       "actionFor": "{{action}} {{name}}"
     },
     "notice": {
-      "details": "Dettagli"
+      "details": "Dettagli",
+      "retry": "Riprova",
+      "loadFailed": "Non è stato possibile caricarlo."
     },
     "markdown": {
       "run": "Esegui",
@@ -2010,12 +2118,26 @@
     "terminalInstructions": "Esegui questo comando nel terminale per completare l'accesso.",
     "termsLink": "Condizioni del fornitore",
     "termsDetail": "Le condizioni, i limiti d'uso e l'informativa sulla privacy del fornitore si applicano a ogni chiamata. Pyxis non include un abbonamento AI.",
+    "usage": {
+      "title": "Questa settimana",
+      "hint": "I token che Pyxis ha inviato a ogni motore e ricevuto da lunedì, per chat, lezioni, piani e correzioni. I motori in abbonamento li contano nei limiti del tuo piano. Le chiavi API li fanno pagare.",
+      "empty": "Nessun uso dell'AI da lunedì.",
+      "engine": "Motore",
+      "sent": "Inviati",
+      "received": "Ricevuti",
+      "cached": "Dalla cache",
+      "cachedValue": "{{count}} ({{percent}}%)",
+      "cacheSaving": "Questa settimana la cache dei prompt ha servito il {{percent}}% dei token inviati. Le chiavi API li fanno pagare meno."
+    },
     "chooseEngine": "Scegli un motore e un modello",
     "cancel": "Annulla",
     "keyRemoved": "Chiave API rimossa. Scegli un altro motore predefinito se necessario.",
     "title": "Motori",
     "terms": "Una prova invia una frase corta al fornitore scelto.",
     "disclosure": "Il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore del motore.",
+    "disclosureLocal": "Tutte le attività usano il modello su questo computer, quindi non esce nulla.",
+    "disclosureMixed_one": "{{local}} gira su questo computer, quindi per questa non esce nulla. Per {{cloud}}, il testo, i brani recuperati e gli allegati arrivano al fornitore del motore.",
+    "disclosureMixed_other": "{{local}} girano su questo computer, quindi per queste non esce nulla. Per {{cloud}}, il testo, i brani recuperati e gli allegati arrivano al fornitore del motore.",
     "acknowledge": "Ho capito",
     "notice": {
       "title": "Cosa esce da questo computer",
@@ -2063,7 +2185,8 @@
       "quota": "Limite di utilizzo raggiunto. Riprova più tardi o scegli un altro motore.",
       "timeout": "Il motore non ha risposto in tempo. Riprova o scegli un altro motore.",
       "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
-      "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI."
+      "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI.",
+      "stream-truncated": "Il motore si è fermato prima di finire la risposta."
     },
     "feature": {
       "default": "Motore predefinito",
@@ -2099,7 +2222,57 @@
       "vision": "le foto",
       "grading": "le correzioni"
     },
-    "allCliAdded": "Tutti i motori CLI supportati sono già elencati nelle Impostazioni. Apri i dettagli per collegarli o configurarli."
+    "allCliAdded": "Tutti i motori CLI supportati sono già elencati nelle Impostazioni. Apri i dettagli per collegarli o configurarli.",
+    "local": {
+      "suggestTitle": "Questo computer può far girare un modello da solo",
+      "suggestBody": "Pyxis ti consiglia {{model}}. Gira qui tramite Ollama, un programma gratuito: funziona offline, non costa niente e il tuo materiale resta su questo computer.",
+      "hardware": "Questo computer ha {{parts}}.",
+      "gpuUnified": "un {{name}} con {{memory}} di memoria condivisa",
+      "gpuCard": "{{name}} con {{memory}} di memoria grafica",
+      "vendorCard": "una scheda grafica {{vendor}}",
+      "ramPart": "{{size}} di RAM",
+      "diskPart": "{{size}} liberi su disco",
+      "ollamaMissing": "Pyxis usa Ollama per far girare il modello. Installalo e aprilo, poi premi Controlla di nuovo.",
+      "ollamaClosed": "Ollama non è aperto. Aprilo per usare il modello o rifare la verifica.",
+      "getOllama": "Scarica Ollama",
+      "checkAgain": "Controlla di nuovo",
+      "consent": "Il download pesa {{size}} e arriva da ollama.com tramite Ollama. Poi Pyxis fa una breve verifica: quanto è veloce {{model}} e se risponde nel formato che serve a piani, correzioni e quiz.",
+      "consentHave": "Ollama ha già {{model}}. Prima di usarlo Pyxis fa una breve verifica: quanto è veloce e se risponde nel formato che serve a piani, correzioni e quiz.",
+      "download": "Scarica {{size}}",
+      "checkNow": "Verifica il modello",
+      "downloading": "Download di {{model}}",
+      "progress": "{{done}} di {{total}}, {{percent}}%",
+      "checking": "Verifica di {{model}} su questo computer",
+      "checkingBody": "Pyxis chiede una risposta scritta e una domanda da quiz. La prima risposta può richiedere un minuto mentre il modello si carica.",
+      "cancel": "Annulla",
+      "readyTitle": "{{model}} gira su questo computer",
+      "offTitle": "{{model}} è spento",
+      "result": "Scrive {{speed}} token al secondo e risponde nel formato che serve a Pyxis.",
+      "use": "Usa il modello locale",
+      "useHint": "Claude Code, Codex e gli altri motori in abbonamento vengono prima quando uno è pronto. Il modello locale viene prima delle chiavi API, che si pagano a consumo.",
+      "runCheck": "Rifai la verifica",
+      "failed": {
+        "slow": "Qui {{model}} ha scritto {{speed}} token al secondo. A Pyxis ne servono almeno {{min}} per starti dietro, quindi il modello resta spento.",
+        "structured": "{{model}} non ha risposto nel formato che serve a Pyxis per piani, correzioni e quiz, quindi il modello resta spento.",
+        "error": "La verifica non è partita. Controlla che Ollama sia aperto, poi rifai la verifica."
+      },
+      "stoppedFailed": "Il download o la verifica si è fermato. Controlla che Ollama sia aperto e che il computer sia online, poi riprova.",
+      "stoppedCancelled": "Annullato. Ollama tiene la parte già scaricata, quindi il prossimo tentativo riparte da lì.",
+      "cannotTitle": "Far girare un modello su questo computer",
+      "cannot": {
+        "no-gpu": "Qui Pyxis non consiglia un modello locale. Un modello adatto allo studio richiede una scheda grafica NVIDIA o AMD con almeno {{vram}} GB di memoria, oppure un Mac con Apple Silicon. Con il solo processore è troppo lento.",
+        "vram": "La memoria grafica è troppo piccola per un modello adatto allo studio. Servono almeno {{vram}} GB su una scheda NVIDIA o AMD, oppure {{unified}} GB di memoria su un Mac con Apple Silicon.",
+        "ram": "Questo computer ha meno di {{min}} GB di RAM, troppo pochi per far girare un modello insieme a Pyxis.",
+        "disk": "{{model}} richiede {{size}} di spazio libero su disco. Libera un po' di spazio, poi torna qui.",
+        "unknown": "Pyxis non è riuscito a leggere la scheda grafica di questo computer, quindi non consiglia un modello locale."
+      },
+      "cannotRun": "Questo computer non può far girare un modello locale a una velocità utile.",
+      "busy": "Un download o una verifica è già in corso.",
+      "cancelled": "Annullato.",
+      "pullFailed": "Il download o la verifica si è fermato. Controlla che Ollama sia aperto, poi riprova.",
+      "checkFirst": "Prima fai la verifica. Il modello locale si accende quando la supera.",
+      "noStructured": "Questo modello non ha superato la verifica del formato, quindi non può creare piani né correggere."
+    }
   },
   "graph": {
     "title": "Grafico",
@@ -2175,6 +2348,7 @@
     "save": "Salva",
     "attach": "Allega alla chat",
     "erase": "Gomma",
+    "clear": "Cancella tutto",
     "pen": "Penna",
     "redo": "Ripeti",
     "whiteboardTitle": "Lavagna",
@@ -2255,7 +2429,8 @@
     "settings": "Impostazioni del piano",
     "create": "Crea lezione",
     "failed": "Non è stato possibile completare questa azione. Riprova.",
-    "unavailable": "Non è stato possibile aprire il piano. Torna a Esami e riprova.",
+    "unavailable": "Non è stato possibile aprire il piano.",
+    "gone": "Questo piano non esiste più.",
     "start": "Inizia",
     "save": "Salva modifiche",
     "language": "Lingua dei contenuti",
@@ -2412,6 +2587,38 @@
     "updateInUse_one": "{{count}} piano usa questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quel piano e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti nel piano per aggiungere i nuovi capitoli. Vuoi aggiornarlo?",
     "updateInUse_other": "{{count}} piani usano questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quei piani e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti in ogni piano per aggiungere i nuovi capitoli. Vuoi aggiornarlo?",
     "retry": "Riprova"
+  },
+  "makeCards": {
+    "title": "Crea flashcard",
+    "action": "Crea flashcard",
+    "fromReply": "Dalla risposta",
+    "fromSelection": "Dalla tua selezione",
+    "plan": "Piano",
+    "topic": "Argomento",
+    "planPlaceholder": "Scegli un piano",
+    "topicPlaceholder": "Scegli un argomento",
+    "noPlans": "Le flashcard stanno in un argomento di un piano. Crea prima un piano.",
+    "hint": "Pyxis scrive flashcard brevi a partire da questo testo. Le controlli tu prima di salvarle.",
+    "make": "Crea flashcard",
+    "again": "Crea di nuovo",
+    "cancel": "Annulla",
+    "working": "Sto scrivendo le flashcard…",
+    "failed": "Pyxis non è riuscito a scrivere le flashcard. Controlla il motore scelto e riprova.",
+    "saveFailed": "Pyxis non è riuscito a salvare le flashcard. Riprova.",
+    "listLabel": "Flashcard proposte",
+    "cardN": "Flashcard {{n}}",
+    "drop": "Scarta la flashcard {{n}}",
+    "front": "Davanti",
+    "back": "Dietro",
+    "source": "Fonte",
+    "cloze": "Cloze: le parole dentro {{markup}} restano nascoste mentre studi.",
+    "allDropped": "Hai scartato tutte le flashcard. Crea di nuovo per averne altre.",
+    "save_one": "Salva {{count}} flashcard",
+    "save_other": "Salva {{count}} flashcard",
+    "saved_one": "{{count}} flashcard salvata in {{topic}}.",
+    "saved_other": "{{count}} flashcard salvate in {{topic}}.",
+    "skipped_one": "{{count}} c’era già.",
+    "skipped_other": "{{count}} c’erano già."
   },
   "oggi": {
     "title": "Oggi",

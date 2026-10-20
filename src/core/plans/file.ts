@@ -5,19 +5,58 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { uuidv7 } from "../../shared/ids";
 import { cardReviewSchema } from "../../shared/card-schedule";
+import { ZodError } from "zod";
+import { IpcError } from "../../shared/ipc";
 import {
   citationOrder,
   MAX_EXAM_AT,
   MAX_PLAN_FILE_BYTES,
   PLAN_TITLE_MAX,
+  planFileReason,
   planFileSchema,
   type PlanFile,
+  type PlanFilePart,
+  type PlanFileReason,
 } from "../../shared/plan-file";
 import { MAX_SOURCE_BYTES } from "../../shared/source-types";
 import { hasBlob, putBlob, readBlob, removeBlob } from "../blobs";
 import { validateGraph, type ConceptGraph } from "../maps/graph";
 
 export type { PlanFile };
+
+/**
+ * A plan file the importer refuses. `reason` is what the student reads (`shared.reason.<reason>`). `part` is set when the
+ * refusal came from the exercises or the maps, the two parts nothing else in the file refers to, so the plan can be
+ * imported without them. The message stays `plan-file`.
+ */
+export class PlanFileError extends IpcError {
+  constructor(
+    readonly reason: PlanFileReason,
+    readonly part: PlanFilePart | null = null,
+  ) {
+    super("plan-file", `shared.reason.${reason}`, {}, reason);
+  }
+}
+
+export type ImportOptions = {
+  /** Parts of the file to leave out, after the student agreed to a plan without them. */
+  without?: readonly PlanFilePart[];
+  /** Run every check and write nothing. */
+  check?: boolean;
+};
+
+/** Maps `rows` for one optional part, and tags a refusal with that part. */
+function inPart<T, R>(part: PlanFilePart, rows: readonly T[], each: (row: T, index: number) => R): R[] {
+  try {
+    return rows.map(each);
+  } catch (error) {
+    if (error instanceof PlanFileError) throw error.part ? error : new PlanFileError(error.reason, part);
+    // A graph the map checks refuse, or a body the schema refuses.
+    if (part === "maps" && (error instanceof ZodError || (error instanceof Error && /^map-/.test(error.message))))
+      throw new PlanFileError("bad-map", part);
+    throw error;
+  }
+}
 
 /** Payload keys that hold an ID from this plan; import remaps them and rejects dangling ones. */
 const REFERENCE_KEYS = [
@@ -518,7 +557,7 @@ function importedPayload(
     return record;
   }
   const id = nodeIds[record.nodeId];
-  if (!id) throw new Error("plan-file");
+  if (!id) throw new PlanFileError("bad-reference");
   record.nodeId = id;
   return record;
 }
@@ -551,7 +590,7 @@ function undoingNewBlobs<T>(workspace: string, shas: string[], run: () => T): T 
 
 /** A passage list where one passage appears twice would fail on the database's key after the files were written. */
 function listedOnce(ids: readonly string[]): readonly string[] {
-  if (new Set(ids).size !== ids.length) throw new Error("plan-file");
+  if (new Set(ids).size !== ids.length) throw new PlanFileError("duplicate-id");
   return ids;
 }
 
@@ -560,17 +599,17 @@ function decodeSource(data: string, bytes: number): Buffer {
     data !== "" &&
     (data.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data))
   ) {
-    throw new Error("plan-file");
+    throw new PlanFileError("source-data");
   }
   const decoded = Buffer.from(data, "base64");
-  if (decoded.length !== bytes) throw new Error("plan-file");
+  if (decoded.length !== bytes) throw new PlanFileError("source-data");
   return decoded;
 }
 
 function topicRef(topicIds: string[], index: number | null): string | null {
   if (index == null) return null;
   const id = topicIds[index];
-  if (!id) throw new Error("plan-file");
+  if (!id) throw new PlanFileError("missing-topic");
   return id;
 }
 
@@ -579,19 +618,22 @@ export function importPlan(
   file: PlanFile,
   now = Date.now(),
   workspace = "",
+  options: ImportOptions = {},
 ): string {
-  const parsed = planFileSchema.parse(file);
+  const checked = planFileSchema.safeParse(file);
+  if (!checked.success) throw new PlanFileError(planFileReason(checked.error.issues));
+  const parsed = checked.data;
   if (parsed.version === 2)
-    return importPortablePlan(db, parsed, now, workspace);
+    return importPortablePlan(db, parsed, now, workspace, options);
   const planId = uuidv7(now);
   const topicIds = parsed.topics.map((_, i) => uuidv7(now + i + 1));
   const nodeIds = parsed.nodes.map((_, i) => uuidv7(now + 100 + i));
   const embedded = (parsed.sources ?? []).flatMap((source) => {
     if (source.data === undefined) return [];
     const bytes = decodeSource(source.data, source.bytes);
-    if (!workspace) throw new Error("plan-file");
+    if (!workspace) throw new PlanFileError("no-workspace");
     const sha = createHash("sha256").update(bytes).digest("hex");
-    if (source.sha && source.sha !== sha) throw new Error("plan-file");
+    if (source.sha && source.sha !== sha) throw new PlanFileError("source-mismatch");
     return [{ title: source.title, mime: source.mime ?? null, bytes, sha }];
   });
   const run = db.transaction(() => {
@@ -611,6 +653,7 @@ export function importPlan(
     markPlanImported(db, planId, now, {
       ...(parsed.author ? { author: parsed.author } : {}),
       ...(parsed.createdAt != null ? { exportedAt: parsed.createdAt } : {}),
+      ...(parsed.id ? { fileId: parsed.id } : {}),
     });
     snapshotPlanEducation(db, planId, parsed.educationLevel, now);
     parsed.topics.forEach((topic, i) => {
@@ -701,6 +744,29 @@ export function importPlan(
   });
   undoingNewBlobs(workspace, embedded.map((source) => source.sha), run);
   return planId;
+}
+
+/**
+ * For a refusal that comes from the exercises or the maps: the parts to leave out so that the rest of the plan imports,
+ * or null when leaving them out would not be enough. Writes nothing.
+ */
+export function importableWithout(
+  db: Database.Database,
+  file: PlanFile,
+  workspace: string,
+  error: unknown,
+): PlanFilePart[] | null {
+  if (!(error instanceof PlanFileError) || !error.part) return null;
+  const without: PlanFilePart[] = [error.part];
+  for (;;) {
+    try {
+      importPlan(db, file, 0, workspace, { without, check: true });
+      return without;
+    } catch (next) {
+      if (!(next instanceof PlanFileError) || !next.part || without.includes(next.part)) return null;
+      without.push(next.part);
+    }
+  }
 }
 
 function portableQuestionIds(itemId: string, body: unknown): unknown {
@@ -992,6 +1058,7 @@ function importPortablePlan(
   file: PlanFile,
   now: number,
   workspace: string,
+  options: ImportOptions = {},
 ): string {
   file = {
     ...file,
@@ -1000,6 +1067,19 @@ function importPortablePlan(
       body: portableQuestionIds(item.id, item.body),
     })),
   };
+  if (options.without?.includes("maps")) file = { ...file, maps: [] };
+  if (options.without?.includes("exercises")) {
+    // Nothing else refers to an exercise but the self-ratings in the progress, which have nothing left to rate.
+    const left = new Set((file.exercises ?? []).flatMap((e) => (e.id ? [e.id] : [])));
+    file = {
+      ...file,
+      exercises: [],
+      progress: file.progress?.filter((e) => {
+        const named = (e.payload as { exerciseId?: unknown } | null)?.exerciseId;
+        return !(typeof named === "string" && left.has(named));
+      }),
+    };
+  }
   // Older exports could carry another plan's generated exercises, written for a topic the file does not have. One that
   // the file names elsewhere stays, tied to this plan instead of the topic; the others are left out.
   const topicKeys = new Set(file.topics.flatMap((t) => (t.id ? [t.id] : [])));
@@ -1021,7 +1101,7 @@ function importPortablePlan(
   const allocate = (old: string | undefined) => {
     const value = uuidv7(now + sequence++);
     if (old) {
-      if (ids.has(old)) throw new Error("plan-file");
+      if (ids.has(old)) throw new PlanFileError("duplicate-id");
       ids.set(old, value);
     }
     return value;
@@ -1029,7 +1109,7 @@ function importPortablePlan(
   const ref = (old: string | null | undefined) => {
     if (old == null) return null;
     const id = ids.get(old);
-    if (!id) throw new Error("plan-file");
+    if (!id) throw new PlanFileError("bad-reference");
     return id;
   };
   const sourceKeys = new Set(
@@ -1041,7 +1121,10 @@ function importPortablePlan(
     old: string | null | undefined,
     keys: Set<string>,
   ): string | null {
-    if (old != null && !keys.has(old)) throw new Error("plan-file");
+    if (old != null && !keys.has(old))
+      throw new PlanFileError(
+        keys === passageKeys ? "missing-passage" : keys === sourceKeys ? "missing-source" : "missing-document",
+      );
     return ref(old);
   }
   const planId = allocate(file.id);
@@ -1050,7 +1133,7 @@ function importPortablePlan(
   const sourceIds = (file.sources ?? []).map((s) => allocate(s.id));
   const documentIds = (file.documents ?? []).map((d) => allocate(d.id));
   const passageIds = (file.passages ?? []).map((p) => allocate(p.id));
-  const exerciseIds = (file.exercises ?? []).map((e) => allocate(e.id));
+  const exerciseIds = inPart("exercises", file.exercises ?? [], (e) => allocate(e.id));
   const itemIds = (file.items ?? []).map((i) => allocate(i.id));
   const cardIds = file.cards.map((c) => allocate(c.id));
   // Gap state is optional. A file without `gaps` or `attempts` has no such IDs, so references to them are dropped
@@ -1059,12 +1142,12 @@ function importPortablePlan(
   const attemptAware = file.attempts !== undefined;
   const gapIds = (file.gaps ?? []).map((g) => allocate(g.id));
   const attemptIds = (file.attempts ?? []).map((a) => allocate(a.id));
-  const mapIds = (file.maps ?? []).map((m) => allocate(m.id));
+  const mapIds = inPart("maps", file.maps ?? [], (m) => allocate(m.id));
   const entryKeys = new Set<string>();
   for (const m of file.maps ?? []) {
     for (const entry of m.entries) {
       if (entryKeys.has(entry.id) || (ids.has(entry.id) && entry.id !== m.id))
-        throw new Error("plan-file");
+        throw new PlanFileError("duplicate-id", "maps");
       entryKeys.add(entry.id);
       if (!ids.has(entry.id)) allocate(entry.id);
     }
@@ -1077,13 +1160,13 @@ function importPortablePlan(
   const embedded = new Map<number, Buffer>();
   (file.sources ?? []).forEach((source, i) => {
     if (source.data !== undefined) {
-      if (!workspace) throw new Error("plan-file");
+      if (!workspace) throw new PlanFileError("no-workspace");
       const bytes = decodeSource(source.data, source.bytes);
       if (
         source.sha &&
         createHash("sha256").update(bytes).digest("hex") !== source.sha
       )
-        throw new Error("plan-file");
+        throw new PlanFileError("source-mismatch");
       embedded.set(i, bytes);
     }
   });
@@ -1111,7 +1194,7 @@ function importPortablePlan(
         try {
           cache = JSON.parse(value);
         } catch {
-          throw new Error("plan-file");
+          throw new PlanFileError("bad-body");
         }
         return JSON.stringify(remap(cache));
       }
@@ -1191,7 +1274,7 @@ function importPortablePlan(
   const documentVersions = new Set<string>();
   const documents = (file.documents ?? []).map((d) => {
     const key = JSON.stringify([d.sourceId, d.version]);
-    if (documentVersions.has(key)) throw new Error("plan-file");
+    if (documentVersions.has(key)) throw new PlanFileError("duplicate-id");
     documentVersions.add(key);
     return {
       ...d,
@@ -1209,23 +1292,23 @@ function importPortablePlan(
   const documentsById = firstById(file.documents ?? []);
   const passages = (file.passages ?? []).map((p) => {
     if (createHash("sha256").update(p.text).digest("hex") !== p.textSha)
-      throw new Error("plan-file");
+      throw new PlanFileError("passage-text");
     const source = p.sourceId == null ? undefined : sourcesById.get(p.sourceId);
     if (p.sourceSha && source?.sha !== p.sourceSha)
-      throw new Error("plan-file");
+      throw new PlanFileError("source-mismatch");
     const document = p.documentId == null ? undefined : documentsById.get(p.documentId);
     if (
       document &&
       (document.sourceId !== p.sourceId || document.version !== p.version)
     )
-      throw new Error("plan-file");
+      throw new PlanFileError("document-mismatch");
     return {
       ...p,
       sourceId: checkedRef(p.sourceId, sourceKeys),
       documentId: checkedRef(p.documentId, documentKeys),
     };
   });
-  const exercises = (file.exercises ?? []).map((e) => {
+  const exercises = inPart("exercises", file.exercises ?? [], (e) => {
     const { planId: _stale, ...locator } = (
       e.locator && typeof e.locator === "object" && !Array.isArray(e.locator)
         ? e.locator
@@ -1271,7 +1354,7 @@ function importPortablePlan(
     topicId: topicRef(topicIds, c.topic),
     passageId: checkedRef(c.passageId, passageKeys),
   }));
-  const maps = (file.maps ?? []).map((m) => ({
+  const maps = inPart("maps", file.maps ?? [], (m) => ({
     ...m,
     topicId: topicRef(topicIds, m.topic),
     entries: m.entries.map((e) => ({
@@ -1284,7 +1367,7 @@ function importPortablePlan(
   file.nodes.forEach((n) => topicRef(topicIds, n.topic));
   // Gap state: every reference is checked here, before anything is written.
   if (!gapAware && (file.gapAnswers?.length || file.gapItems?.length))
-    throw new Error("plan-file");
+    throw new PlanFileError("bad-progress");
   const gapRows = file.gaps ?? [];
   const gapByOld = new Map(gapRows.map((g) => [g.id, g]));
   const attemptRows = file.attempts ?? [];
@@ -1305,15 +1388,15 @@ function importPortablePlan(
   for (const start of gapRows) {
     const path = new Set<(typeof gapRows)[number]>();
     for (let g: (typeof gapRows)[number] | undefined = start; g && !finished.has(g); ) {
-      if (path.has(g)) throw new Error("plan-file");
+      if (path.has(g)) throw new PlanFileError("bad-progress");
       path.add(g);
       topicRef(topicIds, g.topic);
-      if (g.closedAt != null && g.closedAt < g.openedAt) throw new Error("plan-file");
+      if (g.closedAt != null && g.closedAt < g.openedAt) throw new PlanFileError("bad-progress");
       if (g.mergedInto == null) break;
       const into = gapByOld.get(g.mergedInto);
       // A gap is absorbed only once it is closed, by another gap of the same topic.
       if (!into || into === g || g.closedAt == null || into.topic !== g.topic)
-        throw new Error("plan-file");
+        throw new PlanFileError("bad-progress");
       g = into;
     }
     path.forEach((g) => finished.add(g));
@@ -1322,8 +1405,8 @@ function importPortablePlan(
   for (const a of attemptRows) {
     // An attempt may have lost its quiz (item null); one that names an item names a quiz, diagnostic or simulation.
     if (a.item != null && !["quiz", "diagnostic", "simulation"].includes(itemKind.get(a.item) ?? ""))
-      throw new Error("plan-file");
-    if (a.submittedAt < a.startedAt) throw new Error("plan-file");
+      throw new PlanFileError("bad-progress");
+    if (a.submittedAt < a.startedAt) throw new PlanFileError("bad-progress");
   }
   const once = new Set<string>();
   for (const link of file.gapAnswers ?? []) {
@@ -1335,7 +1418,7 @@ function importPortablePlan(
       !questionsOfItem.get(attempt.item)?.has(link.question) ||
       once.has(key)
     )
-      throw new Error("plan-file");
+      throw new PlanFileError("bad-progress");
     once.add(key);
   }
   for (const link of file.gapItems ?? []) {
@@ -1346,7 +1429,7 @@ function importPortablePlan(
       !["quiz", "diagnostic"].includes(itemKind.get(link.item) ?? "") ||
       once.has(key)
     )
-      throw new Error("plan-file");
+      throw new PlanFileError("bad-progress");
     once.add(key);
   }
   const opened = new Set<string>();
@@ -1361,11 +1444,11 @@ function importPortablePlan(
       const gap = gapByOld.get(old);
       const seen = e.kind === "gap_opened" ? opened : closed;
       // The event must say what the row says: same gap, topic and time, written once.
-      if (!gap || seen.has(old) || e.topic !== gap.topic) throw new Error("plan-file");
+      if (!gap || seen.has(old) || e.topic !== gap.topic) throw new PlanFileError("bad-progress");
       seen.add(old);
       if (e.kind === "gap_opened") {
         if (record.into !== undefined || e.at !== gap.openedAt || (record.origin ?? gap.origin) !== gap.origin)
-          throw new Error("plan-file");
+          throw new PlanFileError("bad-progress");
         payload = { gapId: ref(old), origin: gap.origin };
       } else {
         const merged = record.reason === "merged";
@@ -1378,7 +1461,7 @@ function importPortablePlan(
               record.into !== undefined ||
               gap.mergedInto != null)
         )
-          throw new Error("plan-file");
+          throw new PlanFileError("bad-progress");
         payload = {
           gapId: ref(old),
           reason: record.reason,
@@ -1391,12 +1474,13 @@ function importPortablePlan(
     const itemId = e.item == null ? null : (itemIds[e.item] ?? null);
     // Only a lesson or introduction has quick checks to answer.
     if (e.item != null && !["lesson", "intro"].includes(file.items?.[e.item]?.kind ?? ""))
-      throw new Error("plan-file");
+      throw new PlanFileError("bad-progress");
     return [{ ...e, topicId: topicRef(topicIds, e.topic), itemId, payload }];
   });
   // A file with gap rows carries exactly one opened event per gap and one closed event per closed gap.
   for (const g of gapRows)
-    if (!opened.has(g.id) || (g.closedAt != null && !closed.has(g.id))) throw new Error("plan-file");
+    if (!opened.has(g.id) || (g.closedAt != null && !closed.has(g.id))) throw new PlanFileError("bad-progress");
+  if (options.check) return planId;
   const embeddedShas = [...embedded.values()].map((bytes) => createHash("sha256").update(bytes).digest("hex"));
   return undoingNewBlobs(workspace, embeddedShas, db.transaction(() => {
     db.prepare(
@@ -1419,6 +1503,7 @@ function importPortablePlan(
     markPlanImported(db, planId, now, {
       ...(file.author ? { author: file.author } : {}),
       ...(file.createdAt != null ? { exportedAt: file.createdAt } : {}),
+      ...(file.id ? { fileId: file.id } : {}),
     });
     snapshotPlanEducation(db, planId, file.educationLevel, now);
     topics.forEach((t, i) => {

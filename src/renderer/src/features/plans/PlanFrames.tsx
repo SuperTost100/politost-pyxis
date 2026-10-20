@@ -9,18 +9,20 @@ import dateItBase from "antd/es/date-picker/locale/it_IT";
 import dateEn from "antd/es/date-picker/locale/en_GB";
 import { WizardSources } from "./WizardSources";
 import "./PlanWizard.css";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
+import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { FreeBooks } from "../../components/FreeBooks";
 import { PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
 import { useMenuLock } from "../../app/menu-state";
 import { ImportReview } from "./ImportReview";
-import { parsePlanText, type ImportRequest } from "./importPreview";
+import { readPlanText, type ImportRequest } from "./importPreview";
+import { takePlanText } from "./openedPlan";
 import {
   examChosen,
   examFromChoice,
@@ -87,15 +89,25 @@ export function WizardFrame() {
   );
   const [style, setStyle] = useState<"read" | "practice" | "decide">("decide");
   const [starting, setStarting] = useState(false);
-  // Answers given so far live only on this page, so the menu leaves it alone until it has some.
-  useMenuLock(wizardStep > 0 || starting || title.trim() !== "" || picked.length > 0);
   const [params, setParams] = useSearchParams();
   const buildPlanId = params.get("build");
+  // Answers given so far live only on this page, so the menu leaves it alone until it has some. Once the plan is
+  // created they are saved, and the build screen must not trap the student.
+  useMenuLock(
+    !buildPlanId &&
+      (wizardStep > 0 || starting || title.trim() !== "" || picked.length > 0),
+  );
   const build = useQuery({
     queryKey: ["plan-build", buildPlanId],
     queryFn: () => invoke("plans.build", { planId: buildPlanId! }),
     enabled: Boolean(buildPlanId),
-    refetchInterval: 500,
+    // Follows the job until it settles; Retry and Resume refetch by hand and bring the interval back.
+    refetchInterval: (query) =>
+      ["succeeded", "failed", "cancelled", "interrupted"].includes(
+        query.state.data?.state ?? "",
+      )
+        ? false
+        : 500,
   });
   const buildingPlan = useQuery({
     queryKey: ["plan", buildPlanId],
@@ -118,10 +130,16 @@ export function WizardFrame() {
   );
   const [topicTitles, setTopicTitles] = useState<Record<string, string>>({});
   const [startError, setStartError] = useState<string | null>(null);
+  // An error belongs to the step and the attempt that raised it.
+  function goTo(step: number) {
+    setStartError(null);
+    setWizardStep(step);
+  }
 
   async function create() {
     const name = title.trim();
     if (!name || busy) return;
+    setStartError(null);
     setStarting(true);
     try {
       const result = await invoke("plans.create", {
@@ -168,9 +186,29 @@ export function WizardFrame() {
 
   if (buildPlanId || busy || built || failed) {
     const name = buildingPlan.data?.title ?? title.trim();
+    const retryAction = {
+      label: t(
+        build.data?.state === "interrupted" ? "jobs.resume" : "wizard.retry",
+      ),
+      onClick: () => {
+        if (build.data)
+          void invoke(
+            build.data.state === "interrupted" ? "jobs.resume" : "jobs.retry",
+            { jobId: build.data.jobId },
+          ).then(() => build.refetch());
+      },
+    };
     return (
       <FocusLayout
-        title={t("wizard.preparing", { title: name })}
+        title={
+          failed
+            ? t(
+                build.data?.state === "cancelled"
+                  ? "wizard.cancelledTitle"
+                  : "wizard.preparingFailed",
+              )
+            : t("wizard.preparing", { title: name })
+        }
         closable={!busy}
       >
         <div className="px-build">
@@ -190,7 +228,11 @@ export function WizardFrame() {
           <StepLines
             steps={(build.data?.steps ?? []).map((step) => ({
               id: step.name,
-              label: t(step.label),
+              // A step that failed is told in the past tense.
+              label:
+                step.state === "failed"
+                  ? t(`${step.label}Failed`, { defaultValue: t(step.label) })
+                  : t(step.label),
               state: step.state === "succeeded" ? "done" : step.state,
             }))}
             label={t("wizard.preparing", { title: name })}
@@ -201,22 +243,28 @@ export function WizardFrame() {
             </p>
           ) : null}
           {buildPlanId && !build.isPending && !build.data ? (
-            <div className="px-build-notice" role="alert">
-              <Notice tone="danger">{t("wizard.buildMissing")}</Notice>
+            <div className="px-build-notice">
+              <ErrorState
+                action={{ label: t("nav.toExams"), onClick: () => navigate("/exams") }}
+              >
+                {t("wizard.buildMissing")}
+              </ErrorState>
             </div>
           ) : null}
           {failed ? (
             <div className="px-build-notice">
-              <Notice
-                tone={build.data?.state === "cancelled" ? "warning" : "danger"}
-                details={build.data?.error?.slice(0, 2000) || undefined}
-              >
-                {t(
-                  build.data?.state === "cancelled"
-                    ? "wizard.cancelled"
-                    : "wizard.failed",
-                )}
-              </Notice>
+              {build.data?.state === "cancelled" ? (
+                <Notice tone="warning" action={retryAction}>
+                  {t("wizard.cancelled")}
+                </Notice>
+              ) : (
+                <ErrorState
+                  action={retryAction}
+                  details={build.data?.error}
+                >
+                  {t("wizard.buildFailed")}
+                </ErrorState>
+              )}
             </div>
           ) : null}
           <div className="px-build-actions">
@@ -228,26 +276,6 @@ export function WizardFrame() {
                 onClick={() => navigate(`/plans/${built}`)}
               >
                 {t("wizard.open")}
-              </Button>
-            ) : null}
-            {failed ? (
-              <Button
-                shape="round"
-                onClick={() => {
-                  if (build.data)
-                    void invoke(
-                      build.data.state === "interrupted"
-                        ? "jobs.resume"
-                        : "jobs.retry",
-                      { jobId: build.data.jobId },
-                    ).then(() => build.refetch());
-                }}
-              >
-                {t(
-                  build.data?.state === "interrupted"
-                    ? "jobs.resume"
-                    : "wizard.retry",
-                )}
               </Button>
             ) : null}
             {busy ? (
@@ -298,7 +326,7 @@ export function WizardFrame() {
           onClick={() =>
             wizardStep === 0
               ? navigate("/exams")
-              : setWizardStep(wizardStep - 1)
+              : goTo(wizardStep - 1)
           }
         >
           {t("nav.back")}
@@ -316,7 +344,7 @@ export function WizardFrame() {
             onClick={() =>
               wizardStep === 3 && picked.length === 0
                 ? startGuided()
-                : setWizardStep(wizardStep + 1)
+                : goTo(wizardStep + 1)
             }
           >
             {t("wizard.continue")}
@@ -405,6 +433,7 @@ export function WizardFrame() {
                 )
               }
               onClick={() => {
+                setStartError(null);
                 void invoke("subjects.add", { name: subject.trim() })
                   .then(() =>
                     client.invalidateQueries({ queryKey: ["subjects"] }),
@@ -627,10 +656,20 @@ export function SharedPlanPage() {
 
   // The file is only validated here; nothing is written until the person confirms the summary.
   function openText(text: string) {
-    const parsed = parsePlanText(text);
-    setReview(parsed);
-    setNote(parsed ? null : t("shared.bad"));
+    const read = readPlanText(text);
+    setReview("file" in read ? read.file : null);
+    setNote("file" in read ? null : t(`shared.reason.${read.reason}`));
   }
+
+  // A file opened from the system or dropped on the window waits in the store. It is taken when this page mounts, and
+  // again whenever the page is entered again (a new location key), so a page that is on its way out never claims it.
+  const location = useLocation();
+  const openWaiting = useRef((text: string) => openText(text));
+  openWaiting.current = openText;
+  useEffect(() => {
+    const text = takePlanText();
+    if (text !== null) openWaiting.current(text);
+  }, [location.key]);
 
   async function importReviewed(request: ImportRequest) {
     const result = await invoke("plans.import", request);

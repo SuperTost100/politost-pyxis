@@ -57,9 +57,20 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
     // One session over both plans' cards, the closest exam's card first.
     await rows.nth(0).getByRole("button").click();
     await expect(page).toHaveURL(/#\/cards\/due$/);
-    await expect(page.getByText("Unità della forza?")).toBeVisible();
+    await expect(page.getByText("Unità della forza?", { exact: true })).toBeVisible();
+    // The header names the card's plan and counts the session.
+    await expect(page.getByText("Fisica 1 \u00b7 0 of 2")).toBeVisible();
+    // Undo takes back a rating across plans: the second plan's card shows, then the first one returns.
+    await page.getByRole("button", { name: /Flip/ }).click();
+    await page.getByRole("button", { name: "Easy", exact: true }).click();
+    await expect(page.getByText("Numero atomico?", { exact: true })).toBeVisible();
+    await expect(page.getByText("Chimica generale \u00b7 1 of 2")).toBeVisible();
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(page.getByText("Unità della forza?", { exact: true })).toBeVisible();
+    await expect(page.getByText("Fisica 1 \u00b7 0 of 2")).toBeVisible();
     for (const front of ["Unità della forza?", "Numero atomico?"]) {
-      await expect(page.getByText(front)).toBeVisible();
+      // The card itself: after a rating its front is also in the "Next flashcard" announcement.
+      await expect(page.getByText(front, { exact: true })).toBeVisible();
       await page.getByRole("button", { name: /Flip/ }).click();
       // Easy moves a new card out of today's learning steps, so the session ends.
       await page.getByRole("button", { name: "Easy", exact: true }).click();
@@ -76,7 +87,7 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
           .map((row) => `${row.plan_id}:${row.topic_id}`),
       )
       .toEqual(["p-far:t-atoms", "p-near:t-dyn"]);
-    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByRole("button", { name: "Close", exact: true }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(rows.nth(0)).toContainText("Flashcards reviewed");
     await expect(rows.nth(0)).toContainText("Done");

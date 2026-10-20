@@ -1,17 +1,38 @@
-import { createHashRouter, Link, Navigate } from "react-router";
+import { createHashRouter, isRouteErrorResponse, Navigate, useNavigate, useRouteError } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { ComponentType } from "react";
 import { ExamsHome } from "../features/home/HomePages";
+import { ErrorState } from "../components/ErrorState";
+import { errorDetails } from "../lib/errorDetails";
 import { rememberDoorPath, Shell } from "./layouts/Shell";
 
-function RouteError() {
+/**
+ * The fallback for a page that failed or does not exist. Inside the shell it sits in the page column; a full-screen
+ * page has no shell, so it brings its own column.
+ */
+function RouteError({ standalone }: { standalone?: boolean }) {
   const { t } = useTranslation();
-  return (
-    <main className="empty" style={{ maxWidth: 768, margin: "0 auto", padding: "var(--space-12) var(--space-6)" }}>
-      <h1 className="title-2">{t("routeError.title")}</h1>
-      <p className="body">{t("routeError.body")}</p>
-      <Link to="/exams">{t("routeError.home")}</Link>
+  const navigate = useNavigate();
+  const error = useRouteError();
+  const details = isRouteErrorResponse(error)
+    ? `${error.status} ${error.statusText}`.trim()
+    : errorDetails(error);
+  const state = (
+    <ErrorState
+      title={t("routeError.title")}
+      titleLevel={1}
+      action={{ label: t("nav.toExams"), onClick: () => navigate("/exams") }}
+      details={details}
+    >
+      {t("routeError.body")}
+    </ErrorState>
+  );
+  return standalone ? (
+    <main className="column" style={{ paddingTop: "var(--space-12)" }}>
+      {state}
     </main>
+  ) : (
+    state
   );
 }
 
@@ -59,6 +80,7 @@ export const router = createHashRouter([
       { path: "settings/subjects", element: <Navigate to="/exams" replace /> },
       { path: "settings/:section", lazy: settings },
       { path: "dev/gallery", lazy: page(() => import("../features/jobs/DevGallery"), "DevGallery") },
+      { path: "*", element: <RouteError /> },
     ],
   },
   { path: "/plans/new", lazy: page(plans, "WizardFrame") },
@@ -80,7 +102,12 @@ export const router = createHashRouter([
   { path: "/tools/whiteboard", lazy: page(() => import("../features/tools/WhiteboardPage"), "WhiteboardPage") },
   { path: "/tools/graph", lazy: page(() => import("../features/tools/GraphPage"), "GraphPage") },
   { path: "/tools/python", lazy: page(() => import("../features/tools/PythonPage"), "PythonPage") },
-].map((route) => ({ ...route, errorElement: <RouteError /> })));
+].map((route) => ({
+  ...route,
+  errorElement: <RouteError standalone />,
+  // A failing page in the shell keeps the shell around its message.
+  children: route.children?.map((child) => ({ ...child, errorElement: <RouteError /> })),
+})));
 
 // The page the window opens on, then every page the router reaches, in order. Full-screen pages outside the shell,
 // such as a lesson or a map, are not where a door was left.
