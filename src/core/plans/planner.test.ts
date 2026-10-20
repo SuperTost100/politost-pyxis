@@ -267,6 +267,21 @@ describe("Oggi", () => {
     expect(todayPlan(db, now).items).toEqual([]);
   });
 
+  it("leaves out an archived exam, its due flashcards and its sessions", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "kept", { examIn: 10 });
+    addPlan(db, "done", { examIn: 3 });
+    dueCard(db, "c1", "kept", "kept-t0");
+    dueCard(db, "c2", "done", "done-t0");
+    db.prepare("UPDATE plans SET archived_at = 1 WHERE id = 'done'").run();
+    const today = todayPlan(db, now);
+    expect(today.items.map((item) => item.planId)).toEqual(["kept"]);
+    expect(today.cards).toMatchObject({ due: 1, plans: 1 });
+    expect(dueEverywhere(db, now).map((card) => card.planId)).toEqual(["kept"]);
+    savePlannerHours(db, { hours: 10 }, now);
+    expect(sessionPlan(db, now).exams.map((exam) => exam.planId)).toEqual(["kept"]);
+  });
+
   it("is empty with no plans", () => {
     const db = openDatabase(":memory:");
     expect(todayPlan(db, now)).toEqual({ planned: false, behind: [], cards: null, items: [] });

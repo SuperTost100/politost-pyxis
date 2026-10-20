@@ -3,10 +3,8 @@ import { StepLines } from "../../components/StepLines";
 import { Stepper } from "../../components/Stepper";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./PlanPage.css";
-import { Button, Input, Modal, DatePicker, Slider } from "antd";
+import { Button, Input, Modal, Slider } from "antd";
 import dayjs from "dayjs";
-import dateItBase from "antd/es/date-picker/locale/it_IT";
-import dateEn from "antd/es/date-picker/locale/en_GB";
 import { WizardSources } from "./WizardSources";
 import "./PlanWizard.css";
 import { useEffect, useRef, useState } from "react";
@@ -30,12 +28,8 @@ import {
   type ExamChoice,
   type WizardSeed,
 } from "./wizardSeed";
-
-// antd's Italian placeholder is "Selezionare la data", in the formal infinitive. The app speaks to the student as "tu".
-const dateIt = {
-  ...dateItBase,
-  lang: { ...dateItBase.lang, placeholder: "Scegli la data" },
-};
+import { ExamSessionsField } from "./ExamSessionsField";
+import { emptyDraft, sessionsFromDrafts, type SessionDraft } from "./examSessions";
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();
@@ -82,7 +76,9 @@ export function WizardFrame() {
   const [examChoice, setExamChoice] = useState<ExamChoice>(
     seed?.examChoice ?? "",
   );
-  const [date, setDate] = useState(seed?.date ?? "");
+  const [sessions, setSessions] = useState<SessionDraft[]>(
+    seed?.sessions.length ? seed.sessions : [emptyDraft()],
+  );
   const [target, setTarget] = useState(seed?.target ?? 75);
   const [language, setLanguage] = useState(
     seed?.language ?? (i18n.language.startsWith("en") ? "en" : "it"),
@@ -146,7 +142,7 @@ export function WizardFrame() {
         title: name,
         subject: subject.trim() || undefined,
         sourceIds: picked,
-        examAt: examFromChoice(examChoice, date),
+        sessions: sessionsFromDrafts(sessions),
         target: target / 100,
         language: language === "en" ? "en" : "it",
         style,
@@ -177,7 +173,7 @@ export function WizardFrame() {
       title: title.trim(),
       subject,
       examChoice,
-      date,
+      sessions,
       target,
       language: language === "en" ? "en" : "it",
     };
@@ -314,7 +310,8 @@ export function WizardFrame() {
     : blockedSource
       ? t("wizard.sourceNotReady")
       : null;
-  const examAt = examFromChoice(examChoice, date);
+  const examDays = sessionsFromDrafts(sessions).map((session) => session.date);
+  const examAt = examDays.length ? Math.min(...examDays) : null;
   return (
     <FocusLayout
       title={t("wizard.title")}
@@ -339,7 +336,7 @@ export function WizardFrame() {
             shape="round"
             disabled={
               (wizardStep === 0 && !title.trim()) ||
-              (wizardStep === 1 && !examChosen(examChoice, date))
+              (wizardStep === 1 && !examChosen(examChoice, sessions))
             }
             onClick={() =>
               wizardStep === 3 && picked.length === 0
@@ -462,45 +459,54 @@ export function WizardFrame() {
                 <button
                   type="button"
                   key={id}
-                  className={
-                    !date && examChoice === id ? "choice is-selected" : "choice"
-                  }
-                  aria-pressed={!date && examChoice === id}
+                  className={examChoice === id ? "choice is-selected" : "choice"}
+                  aria-pressed={examChoice === id}
                   onClick={() => {
-                    setDate("");
                     setExamChoice(id);
+                    // A quick choice answers for the first session; "No date yet" clears them all.
+                    setSessions((current) =>
+                      id === "none"
+                        ? [emptyDraft()]
+                        : current.map((row, index) =>
+                            index === 0
+                              ? {
+                                  ...row,
+                                  date: dayjs(examFromChoice(id, "")).format("YYYY-MM-DD"),
+                                }
+                              : row,
+                          ),
+                    );
                   }}
                 >
                   {label}
                 </button>
               ))}
             </div>
-            <div className="px-form-field">
-              <label className="label" htmlFor="plan-date">
-                {t("wizard.examDate")}
-              </label>
-              <DatePicker
-                id="plan-date"
-                value={date ? dayjs(date) : null}
-                locale={i18n.language.startsWith("it") ? dateIt : dateEn}
-                format="DD/MM/YYYY"
-                disabledDate={(value) =>
-                  value.startOf("day").isBefore(dayjs().startOf("day"))
-                }
-                onChange={(value) =>
-                  setDate(value ? value.format("YYYY-MM-DD") : "")
-                }
-              />
-            </div>
+            <ExamSessionsField
+              idPrefix="plan"
+              dateLabel={t("wizard.examDate")}
+              value={sessions}
+              onChange={(next) => {
+                // Picking a day by hand replaces the quick choice.
+                if (next[0]?.date !== sessions[0]?.date) setExamChoice("");
+                setSessions(next);
+              }}
+            />
             <p className="body ink-muted" aria-live="polite">
               {examAt != null
-                ? t("wizard.examSummary", {
-                    date: new Intl.DateTimeFormat(i18n.language, {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    }).format(examAt),
-                  })
+                ? t(
+                    examDays.length > 1
+                      ? "wizard.examSummaryMany"
+                      : "wizard.examSummary",
+                    {
+                      count: examDays.length,
+                      date: new Intl.DateTimeFormat(i18n.language, {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      }).format(examAt),
+                    },
+                  )
                 : t(
                     examChoice === "none"
                       ? "wizard.noDateSummary"

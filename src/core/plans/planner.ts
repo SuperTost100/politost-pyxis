@@ -24,10 +24,10 @@ export const stepMinutes: Record<Activity, number> = {
   simulation: 60,
 };
 
-/** Plans Oggi and the planner look at. Archived plans (#153) will be one more condition here. */
+/** Plans Oggi and the planner look at: every built plan that is not archived. */
 const studyPlans = `SELECT id, title, exam_at, target, updated_at,
   (SELECT name FROM subjects s WHERE s.id = p.subject_id) AS subject
-  FROM plans p WHERE status <> 'building'`;
+  FROM plans p WHERE status <> 'building' AND archived_at IS NULL`;
 
 type PlanRow = {
   id: string;

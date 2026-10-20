@@ -3,6 +3,7 @@ import { cardReviewSchema } from "./card-schedule";
 import { conceptGraphSchema } from "./concept-map";
 import { figureImagesSchema } from "./smart-text";
 import { MAX_SOURCE_BYTES } from "./source-types";
+import { examSessionSchema, MAX_EXAM_SESSIONS, SESSION_DATE_MAX } from "./exam-sessions";
 const id = z.string().min(1).max(160);
 const index = z.number().int().nonnegative();
 const text = z.string().max(1000000);
@@ -133,7 +134,7 @@ export const AUTHOR_MAX = 200;
  * (UTC-12 to UTC+14), so the exam day and the calendar's day after it keep four-digit years. Older plan files may
  * carry a later date; import and export clamp it.
  */
-export const MAX_EXAM_AT = Date.UTC(9999, 11, 30, 10) - 1;
+export const MAX_EXAM_AT = SESSION_DATE_MAX;
 
 /** The most base64 the save bridge takes for one exported file (`src/main/artifacts.ts`). */
 export const MAX_ARTIFACT_BASE64 = 96 * 1024 * 1024;
@@ -275,7 +276,13 @@ export const planFileSchema = z.object({
     )
     .max(1000)
     .optional(),
+  /** The next exam date: the earliest session that is still ahead, or the latest one. Older apps read only this. */
   examAt: z.number().int().min(0).max(8_640_000_000_000_000).nullable().optional(),
+  /**
+   * The exam sessions (a written and an oral part), each with a day, an optional start time and a place. When a file has
+   * them they win over `examAt`; a file without them gets one session from `examAt`.
+   */
+  sessions: z.array(examSessionSchema.omit({ id: true })).max(MAX_EXAM_SESSIONS).optional(),
   target: z.number().min(0.5).max(1).optional(),
   language: z.enum(["it", "en"]).nullable().optional(),
   style: z.enum(["read", "practice", "decide"]).optional(),

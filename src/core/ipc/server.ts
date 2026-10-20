@@ -587,6 +587,8 @@ async function dispatchValidated(
     case "plans.freeSpace":
       requests["plans.freeSpace"].input.parse(input);
       return plans?.freeSpace() ?? { bytes: 0 };
+    case "plans.archive":
+      return plans?.archive(requests["plans.archive"].input.parse(input));
     case "plans.delete":
       return plans?.delete(requests["plans.delete"].input.parse(input));
     case "plans.export":

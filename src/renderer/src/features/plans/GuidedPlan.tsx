@@ -25,7 +25,7 @@ import {
   toDraftTopics,
   type DraftNode,
 } from "./draftTree";
-import { isWizardSeed, seedExamAt, type WizardSeed } from "./wizardSeed";
+import { isWizardSeed, seedSessions, type WizardSeed } from "./wizardSeed";
 import { useMenuLock } from "../../app/menu-state";
 import "./PlanPage.css";
 import "./PlanWizard.css";
@@ -164,7 +164,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
         title: seed.title.trim(),
         subject: seed.subject.trim() || undefined,
         sourceIds: [],
-        examAt: seedExamAt(seed),
+        sessions: seedSessions(seed),
         target: seed.target / 100,
         language,
         style,

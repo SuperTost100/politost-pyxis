@@ -484,6 +484,9 @@ function seed(db: DatabaseSync) {
     examDay.getTime(),
   );
   db.prepare(
+    "INSERT INTO plan_sessions(id,plan_id,date,created_at) VALUES('audit-ready-plan','audit-ready-plan',?,1)",
+  ).run(examDay.getTime());
+  db.prepare(
     "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('audit-ready-build','simulation-build',?,'succeeded',1,?,?)",
   ).run(
     JSON.stringify({
