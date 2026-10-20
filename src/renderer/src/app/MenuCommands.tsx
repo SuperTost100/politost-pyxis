@@ -53,6 +53,18 @@ export function MenuCommands() {
     [client],
   );
 
+  // A click on a study reminder: main brings the window forward and names the page. A quiz, a dialog or a text in
+  // progress is not interrupted, the same rule as for a menu pick.
+  useEffect(
+    () =>
+      window.pyxis.onOpenPath((path) => {
+        const pathname = router.state.location.pathname;
+        if (!menuCommandAllowed("exams", readMenuContext(pathname))) return;
+        if (path !== pathname) void router.navigate(path);
+      }),
+    [],
+  );
+
   return (
     <ShortcutsDialog open={shortcuts} onClose={() => setShortcuts(false)} />
   );

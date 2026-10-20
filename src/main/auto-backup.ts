@@ -14,14 +14,23 @@ import {
 import { randomBytes } from "node:crypto";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { Worker } from "node:worker_threads";
-import type { AutoBackupFailure, AutoBackupStatus } from "../shared/bridge";
+import type {
+  AutoBackupFailure,
+  AutoBackupFile,
+  AutoBackupStatus,
+} from "../shared/bridge";
 import { inside } from "./workspace-move";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 export const DAY = 24 * HOUR;
-/** Automatic backups kept in the folder. Older ones Pyxis made are deleted. */
+/**
+ * Daily backups kept in the folder: the newest ones. Retention also keeps one weekly and one monthly backup (see
+ * `retainedBackups`), so a computer holds at most KEEP + 2 of its own.
+ */
 export const KEEP = 3;
+/** shortcut: Settings lists only the newest 12 backups, since each one costs unpacking its database; add paging if folders hold more. */
+const MAX_LISTED = 12;
 /** A backup that keeps finding jobs runs anyway after this long, so a job stuck in the queue cannot stop backups. */
 export const JOB_WAIT_LIMIT = 3 * HOUR;
 /**
@@ -40,6 +49,7 @@ const FAILURES: readonly AutoBackupFailure[] = [
   "disk-full",
   "too-large",
   "too-many-files",
+  "unverified",
   "failed",
 ];
 
@@ -98,7 +108,13 @@ export function readAutoBackupState(file: string): AutoBackupState {
       at === null
         ? null
         : last?.ok === true
-          ? { at, ok: true, size: time(last.size) ?? 0 }
+          ? {
+              at,
+              ok: true,
+              size: time(last.size) ?? 0,
+              // Backups recorded before Pyxis checked them were never verified.
+              verified: last.verified === true,
+            }
           : FAILURES.includes(last?.reason as AutoBackupFailure)
             ? {
                 at,
@@ -150,19 +166,22 @@ export function autoBackupName(at: Date, backupId: string): string {
 }
 
 /**
- * The automatic backups in the folder written by one of `owners`, newest first. Only regular files whose whole name
+ * The automatic backups in the folder written by one of `owners` (or by any computer), newest first. Only regular files whose whole name
  * matches the automatic pattern count; folders, links and every other file are left out. The owner of a name without
  * an ID is null.
  */
 function automaticBackups(
   folder: string,
-  owners: ReadonlyArray<string | null>,
+  owners: ReadonlyArray<string | null> | "all",
 ): string[] {
   return (
     readdirSync(folder)
       .filter((name) => {
         const match = AUTO_BACKUP_NAME.exec(name);
-        return match !== null && owners.includes(match[1] ?? null);
+        return (
+          match !== null &&
+          (owners === "all" || owners.includes(match[1] ?? null))
+        );
       })
       .filter((name) => {
         const info = lstatSync(join(folder, name));
@@ -174,10 +193,68 @@ function automaticBackups(
   );
 }
 
+/** The local date and time in an automatic backup's name, as a timestamp. NaN for a name that is not one. */
+export function backupTime(name: string): number {
+  const match = /(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(name);
+  if (!match) return Number.NaN;
+  const [year, month, day, hour, minute, second] = match.slice(1).map(Number);
+  return new Date(year!, month! - 1, day, hour, minute, second).getTime();
+}
+
+/** Days since 1 January 1970 of the local date in a name, counted so the number does not jump at a time change. */
+function backupDay(name: string): number {
+  const [year, month, day] = name
+    .slice("pyxis-auto-backup-".length, "pyxis-auto-backup-".length + 10)
+    .split("-")
+    .map(Number);
+  return Math.floor(Date.UTC(year!, month! - 1, day) / DAY);
+}
+
+/** A week runs Monday to Sunday (1 January 1970 was a Thursday). */
+const backupWeek = (name: string) => Math.floor((backupDay(name) + 3) / 7);
+const backupMonth = (name: string) =>
+  Number(name.slice(18, 22)) * 12 + Number(name.slice(23, 25));
+
 /**
- * Deletes this computer's automatic backups beyond the newest `keep`. Backups with another ID, and those without one,
- * are never pruned: nothing proves this computer wrote them. `written` names the backup just made: it is always kept and
- * counts as one of the `keep`, even when a clock set back gives it an older name than the rest.
+ * Which of one computer's automatic backups retention keeps: the newest `daily`, one weekly and one monthly. It replays
+ * the backups from the oldest. A backup leaving the newest `daily` becomes the weekly one when it is from a later
+ * calendar week than the current weekly one, and drops otherwise. The weekly one it replaces becomes the monthly one
+ * when it is from a later month than the current monthly one, and drops otherwise. So at most `daily` + 2 are kept, the
+ * weekly and monthly ones are always older than the newest `daily`, and a backup that was kept stays kept until a
+ * newer one takes its place. Replaying what is left in the folder gives the same result as the day-by-day history.
+ * `names` are the computer's backups, oldest first.
+ */
+export function retainedBackups(
+  names: readonly string[],
+  daily = KEEP,
+): Set<string> {
+  const recent: string[] = [];
+  let weekly: string | undefined;
+  let monthly: string | undefined;
+  for (const name of names) {
+    recent.push(name);
+    if (recent.length <= daily) continue;
+    const left = recent.shift()!;
+    if (weekly !== undefined && backupWeek(left) <= backupWeek(weekly))
+      continue;
+    const replaced = weekly;
+    weekly = left;
+    if (
+      replaced !== undefined &&
+      (monthly === undefined || backupMonth(replaced) > backupMonth(monthly))
+    )
+      monthly = replaced;
+  }
+  const kept = new Set(recent);
+  for (const name of [weekly, monthly]) if (name !== undefined) kept.add(name);
+  return kept;
+}
+
+/**
+ * Deletes this computer's automatic backups that retention does not keep (`retainedBackups`: the newest `keep` plus one
+ * weekly and one monthly). Backups with another ID, and those without one, are never pruned: nothing proves this
+ * computer wrote them. `written` names the backup just made: it is always kept and counts as one of the `keep`, even
+ * when a clock set back gives it an older name than the rest.
  */
 export function pruneAutoBackups(
   folder: string,
@@ -186,10 +263,13 @@ export function pruneAutoBackups(
   written?: string,
 ): string[] {
   const all = automaticBackups(folder, [backupId]);
-  const kept = written !== undefined && all.includes(written);
-  const removed = all
-    .filter((name) => name !== written)
-    .slice(kept ? Math.max(keep - 1, 0) : keep);
+  const kept = retainedBackups(
+    all.filter((name) => name !== written).reverse(),
+    written !== undefined && all.includes(written)
+      ? Math.max(keep - 1, 0)
+      : keep,
+  );
+  const removed = all.filter((name) => name !== written && !kept.has(name));
   for (const name of removed) rmSync(join(folder, name), { force: true });
   return removed;
 }
@@ -309,6 +389,7 @@ export function failureReason(
   if (message === "backup-folder-missing") return "folder-missing";
   if (message === "backup-folder-inside-data") return "folder-inside-data";
   if (message === "backup-folder-permission") return "permission";
+  if (message === "backup-unverified") return "unverified";
   if (code === "ENOSPC" || code === "EDQUOT") return "disk-full";
   if (code === "EACCES" || code === "EPERM" || code === "EROFS")
     return "permission";
@@ -435,6 +516,8 @@ export type AutoBackupDeps = {
     waitForJobs: boolean,
     requireData: boolean,
   ) => LiveBackupRun;
+  /** Checks archives in a worker (the database of each one passes integrity_check); one answer per path. */
+  verify: (zips: string[]) => Promise<Array<boolean | null>>;
   changed: (status: AutoBackupStatus) => void;
   now?: () => number;
   log?: (message: string) => void;
@@ -451,6 +534,9 @@ export class AutoBackups {
   private waitingSince: number | null = null;
   private timers: NodeJS.Timeout[] = [];
   private disposed = false;
+  /** Archives already checked, by path, size and change time, so reopening Settings does not unpack them again. */
+  private readonly verified = new Map<string, boolean>();
+  private listing: Promise<AutoBackupFile[]> | null = null;
   private readonly now: () => number;
 
   constructor(private readonly deps: AutoBackupDeps) {
@@ -497,6 +583,94 @@ export class AutoBackups {
           ? this.notice
           : null,
     };
+  }
+
+  /**
+   * The automatic backups in the folder that can be restored, newest first: files of any computer, since a reinstall
+   * gets a new ID and its own older backups then look foreign. Each is unpacked and checked once (see `verify`); one
+   * that fails is left out. One the check could not reach (`null`: drive unplugged, temporary folder full, worker down) is
+   * listed as not verified and checked again next time. Only the newest MAX_LISTED are looked at.
+   */
+  list(): Promise<AutoBackupFile[]> {
+    // Settings asks twice while it mounts; one check serves both.
+    this.listing ??= this.readList().finally(() => {
+      this.listing = null;
+    });
+    return this.listing;
+  }
+
+  private async readList(): Promise<AutoBackupFile[]> {
+    const folder = this.folder();
+    let names: string[];
+    try {
+      names = automaticBackups(folder, "all");
+    } catch {
+      // A folder that is not there (a drive that is not connected) has no backups to list.
+      return [];
+    }
+    const found: Array<Omit<AutoBackupFile, "verified"> & { key: string }> = [];
+    for (const name of names) {
+      try {
+        const info = statSync(join(folder, name));
+        found.push({
+          name,
+          at: backupTime(name),
+          size: info.size,
+          key: `${name}|${info.size}|${info.mtimeMs}`,
+        });
+      } catch {
+        // Deleted since the listing.
+      }
+      if (found.length >= MAX_LISTED) break;
+    }
+    // The name is the date; ties and clocks set back sort by the file name.
+    found.sort((a, b) => b.at - a.at || (a.name < b.name ? 1 : -1));
+    const unknown = found.filter((file) => !this.verified.has(file.key));
+    if (unknown.length) {
+      let answers: Array<boolean | null>;
+      try {
+        answers = await this.deps.verify(
+          unknown.map((file) => join(folder, file.name)),
+        );
+      } catch (error) {
+        // Not knowing is not the same as broken: nothing is cached, and the list shows what is already known.
+        this.deps.log?.(
+          `pyxis: backups not checked (${error instanceof Error ? error.message : "unknown"})`,
+        );
+        answers = [];
+      }
+      unknown.forEach((file, index) => {
+        // null: the check could not run for this file, so it is neither listed nor remembered as broken.
+        const answer = answers[index];
+        if (typeof answer === "boolean") this.verified.set(file.key, answer);
+      });
+    }
+    // Only a copy proven broken is left out. One the check could not reach stays, marked, and restoring it runs the
+    // full restore validation anyway.
+    return found
+      .filter((file) => this.verified.get(file.key) !== false)
+      .map(({ name, at, size, key }) => ({
+        name,
+        at,
+        size,
+        verified: this.verified.get(key) === true,
+      }));
+  }
+
+  /**
+   * The path of a backup the student picked from the list. The name is checked against the automatic pattern and must be
+   * a regular file in the backup folder, so a name from the renderer cannot reach another path.
+   */
+  resolve(name: string): string {
+    if (!AUTO_BACKUP_NAME.test(name)) throw new Error("backup-missing");
+    const path = join(this.folder(), name);
+    try {
+      const info = lstatSync(path);
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error("not-file");
+    } catch {
+      throw new Error("backup-missing");
+    }
+    return path;
   }
 
   /** Starts the checks. Until then nothing backs up on its own (tests without a Documents folder never start them). */
@@ -639,9 +813,11 @@ export class AutoBackups {
           ...this.state(),
           lastSuccessAt: started,
           lastAttemptAt: started,
-          last: { at: started, ok: true, size },
+          // The worker checks the archive before it reports success, so a backup that got here verified.
+          last: { at: started, ok: true, size, verified: true },
           toldTooLarge: false,
         });
+        this.remember(zip);
       }
       this.tidy(folder, backupId, basename(zip));
       return "saved";
@@ -691,6 +867,16 @@ export class AutoBackups {
         // setFolder's own check found this run still going; the new folder gets its first backup now.
         if (folderChanged() && this.timers.length) void this.check();
       }
+    }
+  }
+
+  /** Records that a backup this run just wrote and checked needs no second look. */
+  private remember(zip: string): void {
+    try {
+      const info = statSync(zip);
+      this.verified.set(`${basename(zip)}|${info.size}|${info.mtimeMs}`, true);
+    } catch {
+      // Gone already; the list checks whatever is there.
     }
   }
 

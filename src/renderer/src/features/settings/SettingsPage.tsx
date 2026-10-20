@@ -1,6 +1,8 @@
 import { AboutPanel } from "./AboutPanel";
 import { UpdatesPanel } from "./UpdatesPanel";
 import { AutoBackupsSection } from "./AutoBackups";
+import { BackupList } from "./BackupList";
+import { RemindersPanel, useReminders } from "./RemindersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Checkbox, Input, InputNumber } from "antd";
 import {
@@ -16,6 +18,7 @@ import {
   RefreshCw,
   Info,
   ALargeSmall,
+  Bell,
   Terminal,
   Layers,
 } from "lucide-react";
@@ -107,11 +110,13 @@ export function SettingsPage() {
   // From the confirming click until main answers: a second click would start another wipe.
   const [wiping, setWiping] = useState(false);
   const { modal } = App.useApp();
-  const [restoreArmed, setRestoreArmed] = useState(false);
+  // What the next click on a Restore button replaces the data with: "file" asks for a file, a name is a listed backup.
+  const [restoreArmed, setRestoreArmed] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [archiving, setArchiving] = useState<"backup" | "restore" | null>(null);
   const [freeing, setFreeing] = useState(false);
   const [freeNote, setFreeNote] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState<string | null>(null);
   const place = useQuery({
     queryKey: ["workspace-path"],
     queryFn: () => window.pyxis.workspacePath(),
@@ -122,6 +127,7 @@ export function SettingsPage() {
     queryFn: () => window.pyxis.autoBackups.status(),
   });
   const backupFolder = backupStatus.data?.folder;
+  const reminders = useReminders();
   const usage = useQuery({
     queryKey: ["plan-usage"],
     queryFn: () => invoke("plans.usage", {}),
@@ -151,6 +157,43 @@ export function SettingsPage() {
       setSaveError(true);
     }
   }
+  /** Restores from a file the student picks, or from the listed backup `name`. */
+  function restore(name?: string) {
+    setRestoreArmed(null);
+    setDataNote(null);
+    setArchiving("restore");
+    setRestoring(name ?? "file");
+    void window.pyxis
+      .restoreWorkspace(name)
+      .then((status) => {
+        if (status === "restored") {
+          // Drafts, board strokes and staged files belong to the replaced workspace.
+          sessionStorage.clear();
+          window.location.reload();
+        }
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "";
+        const rolledBack = message.includes("restore-rolled-back");
+        setDataNote(
+          t(
+            rolledBack
+              ? "settings.restoreRolledBack"
+              : message.includes("restore-recovery-required")
+                ? "settings.restoreRecoveryRequired"
+                : "settings.restoreFailed",
+          ),
+        );
+        // Core ran on the restored copy for a moment; what the pages read from it is gone again.
+        if (rolledBack) void client.invalidateQueries();
+        // The file may be gone or no longer pass its check.
+        void client.invalidateQueries({ queryKey: ["auto-backup-list"] });
+      })
+      .finally(() => {
+        setArchiving(null);
+        setRestoring(null);
+      });
+  }
   const workspaceName =
     place.data?.split(/[\\/]/).filter(Boolean).at(-1) ??
     t("settings.workspaceThis");
@@ -160,6 +203,7 @@ export function SettingsPage() {
     tutor: t("settings.tutor"),
     reading: t("settings.reading"),
     flashcards: t("settings.flashcards"),
+    reminders: t("settings.reminders.title"),
     appearance: t("settings.appearance"),
     language: t("settings.language"),
     data: t("settings.data"),
@@ -212,6 +256,13 @@ export function SettingsPage() {
           key: "flashcards",
           icon: Layers,
           value: cardSettings.data ? String(cardSettings.data.newPerDay) : "",
+        },
+        {
+          key: "reminders",
+          icon: Bell,
+          value: reminders.data?.enabled
+            ? reminders.data.time
+            : t("settings.reminders.valueOff"),
         },
       ],
     },
@@ -402,6 +453,7 @@ export function SettingsPage() {
         </p>
       </div>
     ),
+    reminders: <RemindersPanel />,
     data: (
       <>
         {place.data ? <p className="small section-hint">{place.data}</p> : null}
@@ -512,56 +564,29 @@ export function SettingsPage() {
           </Button>
           <Button
             disabled={moving || (archiving !== null && archiving !== "restore")}
-            loading={archiving === "restore"}
-            danger={restoreArmed}
+            loading={restoring === "file"}
+            danger={restoreArmed === "file"}
             onClick={() => {
               if (archiving) return;
-              if (!restoreArmed) {
-                setRestoreArmed(true);
+              if (restoreArmed !== "file") {
+                setRestoreArmed("file");
                 return;
               }
-              setRestoreArmed(false);
-              setDataNote(null);
-              setArchiving("restore");
-              void window.pyxis
-                .restoreWorkspace()
-                .then((status) => {
-                  if (status === "restored") {
-                    // Drafts, board strokes and staged files belong to the replaced workspace.
-                    sessionStorage.clear();
-                    window.location.reload();
-                  }
-                })
-                .catch((error: unknown) => {
-                  const message = error instanceof Error ? error.message : "";
-                  const rolledBack = message.includes("restore-rolled-back");
-                  setDataNote(
-                    t(
-                      rolledBack
-                        ? "settings.restoreRolledBack"
-                        : message.includes("restore-recovery-required")
-                          ? "settings.restoreRecoveryRequired"
-                          : "settings.restoreFailed",
-                    ),
-                  );
-                  // Core ran on the restored copy for a moment; what the pages read from it is gone again.
-                  if (rolledBack) void client.invalidateQueries();
-                })
-                .finally(() => setArchiving(null));
+              restore();
             }}
           >
-            {restoreArmed
+            {restoreArmed === "file"
               ? t("settings.restoreReplace", { workspace: workspaceName })
               : t("settings.restore")}
           </Button>
-          {restoreArmed ? (
-            <Button type="text" onClick={() => setRestoreArmed(false)}>
+          {restoreArmed === "file" ? (
+            <Button type="text" onClick={() => setRestoreArmed(null)}>
               {t("wizard.cancel")}
             </Button>
           ) : null}
         </div>
         {/* The confirmation and the hint sit under the backup buttons they explain. */}
-        {restoreArmed ? (
+        {restoreArmed === "file" ? (
           <p className="small section-hint" role="alert">
             {t("settings.restoreConfirm", { workspace: workspaceName })}
           </p>
@@ -573,6 +598,15 @@ export function SettingsPage() {
         </div>
         <AutoBackupsSection
           formatSize={(bytes) => formatBytes(bytes, i18n.language)}
+        />
+        <BackupList
+          formatSize={(bytes) => formatBytes(bytes, i18n.language)}
+          workspaceName={workspaceName}
+          armed={restoreArmed !== "file" ? restoreArmed : null}
+          restoring={restoring !== "file" ? restoring : null}
+          disabled={moving || archiving !== null}
+          onArm={setRestoreArmed}
+          onRestore={restore}
         />
         <div className="px-settings-danger">
           <p className="small ink-muted">{t("settings.wipeHint")}</p>
@@ -706,7 +740,7 @@ export function SettingsPage() {
   function open(key: string) {
     navigate(`/settings/${key}`);
     setWipeArmed(false);
-    setRestoreArmed(false);
+    setRestoreArmed(null);
   }
   const subpage = shown ? (
     <section className="px-settings-subpage">
@@ -733,7 +767,7 @@ export function SettingsPage() {
           onClick={() => {
             navigate("/settings");
             setWipeArmed(false);
-            setRestoreArmed(false);
+            setRestoreArmed(null);
           }}
         >
           {t("settings.back")}

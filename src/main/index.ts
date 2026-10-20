@@ -18,6 +18,12 @@ import {
   startLiveBackupWorker,
 } from "./auto-backup";
 import { commitRestore, RestoreRecoveryRequired } from "./restore-commit";
+import { StudyReminders } from "./reminders";
+import {
+  isReminderTime,
+  reminderText,
+  type ReminderSummary,
+} from "../shared/reminder";
 import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
@@ -48,6 +54,7 @@ import {
   ipcMain,
   MessageChannelMain,
   nativeTheme,
+  Notification,
   protocol,
   safeStorage,
   screen,
@@ -327,6 +334,7 @@ function setUpAutoBackups(): void {
         waitForJobs,
         requireData,
       ),
+    verify: verifyArchives,
     changed: (status: AutoBackupStatus) =>
       mainWindow?.webContents.send(mainChannels.autoBackupChanged, status),
     log: (message) => console.warn(message),
@@ -338,6 +346,74 @@ function setUpAutoBackups(): void {
   // every 2 s: a first check that finds core still starting or a job running is postponed, and a slow runner must not
   // wait 10 minutes for the next one.
   autoBackups.start(testing ? 1000 : 60_000, testing ? 2000 : 10 * 60_000);
+}
+
+let reminders: StudyReminders | null = null;
+/** Notifications stay referenced until the student acts on them or the system drops them, or they could be collected first. */
+const shownReminders = new Set<Notification>();
+
+/** Brings the window forward and opens a page in it. After the last window closed on macOS, a new one starts there. */
+function openAppPath(path: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow(path);
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send(mainChannels.openPath, path);
+}
+
+function showReminder(summary: ReminderSummary): void {
+  if (!Notification.isSupported()) return;
+  const { title, body } = reminderText(menuLanguage ?? systemLanguage(), summary);
+  const note = new Notification({ title, body });
+  shownReminders.add(note);
+  note.once("click", () => {
+    shownReminders.delete(note);
+    openAppPath(`/plans/${summary.planId}`);
+  });
+  note.once("close", () => shownReminders.delete(note));
+  note.show();
+}
+
+/** Asks core for the cards due now. null: core is not up, so the check runs again in a minute. */
+function askCoreForReminder(): Promise<{ summary: ReminderSummary | null } | null> {
+  const child = coreChild;
+  if (!child || coreExited(child) || keysReadyFor !== child || holdCore)
+    return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const id = randomUUID();
+    const done = (answer: { summary: ReminderSummary | null } | null) => {
+      clearTimeout(timer);
+      child.off("message", listener);
+      resolve(answer);
+    };
+    const listener = (data: { type?: string; id?: string; ok?: boolean; summary?: ReminderSummary | null }) => {
+      if (data?.type === "reminder-result" && data.id === id)
+        done(data.ok ? { summary: data.summary ?? null } : null);
+    };
+    const timer = setTimeout(() => done(null), 10_000);
+    child.on("message", listener);
+    try {
+      child.postMessage({ type: "reminder-query", id });
+    } catch {
+      done(null);
+    }
+  });
+}
+
+function setUpReminders(): void {
+  reminders = new StudyReminders({
+    stateFile: userFile("reminders.json"),
+    query: askCoreForReminder,
+    show: showReminder,
+    busy: () => workspaceBusy,
+    log: (message) => console.warn(message),
+  });
+  // Tests that ask for no Documents folder also keep out of the notification center.
+  if (documentsFolder() === null && e2eSeam() && process.env["PYXIS_E2E"] === "1") return;
+  reminders.start();
 }
 
 function broadcastAppearance(): void {
@@ -375,7 +451,7 @@ function savedWindowBounds(): {
   return visible ? { width, height, x, y } : { width, height };
 }
 
-function createWindow(): void {
+function createWindow(route?: string): void {
   const hiddenTest = e2eSeam() && process.env["PYXIS_E2E_HIDDEN"] === "1";
   const bounds = savedWindowBounds();
   const theme = resolvedTheme();
@@ -433,7 +509,7 @@ function createWindow(): void {
     mainWindow = null;
   });
 
-  const hash = process.env["PYXIS_ROUTE"];
+  const hash = route ?? process.env["PYXIS_ROUTE"];
   if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
     const url = new URL(process.env["ELECTRON_RENDERER_URL"]);
     if (hash) url.hash = hash;
@@ -837,6 +913,38 @@ function runArchive(
 }
 
 /**
+ * Unpacks the database of each archive in a worker and checks it (see `verifyBackupArchive`). Reads the archives only,
+ * so it runs beside a backup or a restore.
+ */
+function verifyArchives(zips: string[]): Promise<Array<boolean | null>> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
+      workerData: { op: "verify", zips },
+    });
+    let settled = false;
+    const finish = (err?: Error, verified?: Array<boolean | null>) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(verified ?? []);
+    };
+    worker.once("message", (message: {
+        ok?: boolean;
+        verified?: Array<boolean | null>;
+        message?: string;
+      }) =>
+      message.ok && message.verified
+        ? finish(undefined, message.verified)
+        : finish(new Error(message.message || "backup-failed")),
+    );
+    worker.once("error", (err) =>
+      finish(err instanceof Error ? err : new Error("backup-failed")),
+    );
+    worker.once("exit", () => finish(new Error("backup-worker-no-result")));
+  });
+}
+
+/**
  * Enters the restore-recovery state. holdCore stops restarts and Retry; a core that ignored pauseCore is ended outright,
  * which also closes the renderer's port to it, so no more edits reach the uncommitted copy.
  */
@@ -1172,12 +1280,17 @@ function registerIpc(): void {
       release();
     }
   });
-  ipcMain.handle(mainChannels.workspaceRestore, async (event) => {
+  ipcMain.handle(mainChannels.workspaceRestore, async (event, backup: unknown) => {
     requireMainSender(event, "workspace-untrusted-sender");
+    if (backup !== undefined && typeof backup !== "string")
+      throw new Error("invalid-backup");
     const release = await takeWorkspace();
     try {
+      // A backup picked from the list in Settings; its name is resolved against the backup folder, never used as a path.
+      if (typeof backup === "string" && !autoBackups) throw new Error("backup-failed");
+      const listed = typeof backup === "string" ? autoBackups!.resolve(backup) : undefined;
       const forced = e2eSeam() ? process.env["PYXIS_E2E_ZIP"] : undefined;
-      let filePath = forced;
+      let filePath = listed ?? forced;
       if (!filePath) {
         const result = mainWindow
           ? await dialog.showOpenDialog(mainWindow, {
@@ -1392,9 +1505,34 @@ function registerAutoBackupIpc(): void {
     if (workspaceBusy) throw new Error("workspace-busy");
     return backups().runNow();
   });
+  ipcMain.handle(mainChannels.autoBackupList, (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
+    return backups().list();
+  });
   ipcMain.handle(mainChannels.autoBackupDismiss, (event) => {
     requireMainSender(event, "workspace-untrusted-sender");
     return backups().dismissNotice();
+  });
+}
+
+function registerReminderIpc(): void {
+  const study = (): StudyReminders => {
+    if (!reminders) throw new Error("invalid-setting");
+    return reminders;
+  };
+  ipcMain.handle(mainChannels.remindersGet, (event) => {
+    requireMainSender(event, "reminders-untrusted-sender");
+    return { ...study().get(), supported: Notification.isSupported() };
+  });
+  ipcMain.handle(mainChannels.remindersSet, (event, raw: unknown) => {
+    requireMainSender(event, "reminders-untrusted-sender");
+    const input = raw as { enabled?: unknown; time?: unknown } | null;
+    if (typeof input?.enabled !== "boolean" || !isReminderTime(input.time))
+      throw new Error("invalid-setting");
+    return {
+      ...study().set({ enabled: input.enabled, time: input.time }),
+      supported: Notification.isSupported(),
+    };
   });
 }
 
@@ -1507,6 +1645,8 @@ app.whenReady().then(() => {
   registerIpc();
   setUpAutoBackups();
   registerAutoBackupIpc();
+  setUpReminders();
+  registerReminderIpc();
   nativeTheme.on("updated", broadcastAppearance);
   startCore();
   createWindow();
@@ -1526,6 +1666,7 @@ let quitAfterAutoBackup = false;
 app.on("before-quit", (event) => {
   // No check may start a backup from here on. A running one is stopped below.
   autoBackups?.dispose();
+  reminders?.dispose();
   // An automatic backup is stopped, not waited for: the next launch makes a new one.
   if (autoBackups?.running && !quitAfterAutoBackup) {
     event.preventDefault();

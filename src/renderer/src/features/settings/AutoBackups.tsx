@@ -10,7 +10,7 @@ import "./AutoBackups.css";
 const KEY = ["auto-backups"];
 
 /** The automatic-backup status, kept current by main's change events. */
-function useAutoBackups() {
+export function useAutoBackups() {
   const client = useQueryClient();
   useEffect(
     () =>
@@ -57,10 +57,12 @@ export function AutoBackupsSection({
     : !last
       ? t("settings.autoBackup.never")
       : last.ok
-        ? t("settings.autoBackup.saved", {
-            at: when(last.at),
-            size: formatSize(last.size),
-          })
+        ? t(
+            last.verified
+              ? "settings.autoBackup.savedVerified"
+              : "settings.autoBackup.saved",
+            { at: when(last.at), size: formatSize(last.size) },
+          )
         : t("settings.autoBackup.failed", { at: when(last.at) });
   return (
     <div className="px-autobackup">

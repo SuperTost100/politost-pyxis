@@ -1653,7 +1653,7 @@
     "autoBackup": {
       "title": "Copie automatiche",
       "switch": "Copia di sicurezza automatica",
-      "on": "Una volta al giorno, mentre Pyxis è aperto. Pyxis tiene in questa cartella le sue 3 copie più recenti e cancella quelle più vecchie che ha fatto.",
+      "on": "Una volta al giorno, mentre Pyxis è aperto. Pyxis tiene le 3 copie più recenti, una di circa una settimana fa e una di circa un mese fa, e cancella le altre copie che ha fatto.",
       "off": "Spenta. Pyxis non fa copie da solo. Copia ora ne salva comunque una qui.",
       "folder": "Cartella: {{path}}",
       "change": "Cambia cartella",
@@ -1662,10 +1662,23 @@
       "running": "Copia in corso. Puoi continuare a studiare.",
       "never": "Nessuna copia automatica per ora.",
       "saved": "Ultima copia: {{at}}, {{size}}.",
+      "savedVerified": "Ultima copia: {{at}}, {{size}}, verificata.",
       "failed": "La copia del {{at}} non è riuscita.",
       "lastGood": "L'ultima copia completa è del {{at}}.",
       "fix": "Impostazioni copie",
       "dismissFailed": "Pyxis non è riuscito a nascondere questo avviso. Riprova.",
+      "list": {
+        "title": "Ripristina una copia automatica",
+        "hint": "Pyxis controlla ogni copia prima di mostrarla.",
+        "loading": "Controllo le copie nella cartella delle copie.",
+        "empty": "Nessuna copia automatica da ripristinare per ora. La prima compare dopo la prossima copia.",
+        "failed": "Pyxis non riesce a leggere la cartella delle copie.",
+        "retry": "Riprova",
+        "restore": "Ripristina",
+        "hintUnverified": "Una copia segnata come non controllata non si è potuta controllare adesso. Ripristina la controlla di nuovo prima di sostituire qualcosa.",
+        "unverified": "Non ancora controllata",
+        "restoreOne": "Ripristina la copia del {{at}}"
+      },
       "notice": "La copia automatica non è riuscita. {{reason}}",
       "reason": {
         "folder-missing": "La cartella delle copie non è disponibile. Collega il disco su cui si trova, oppure scegli un'altra cartella.",
@@ -1674,6 +1687,7 @@
         "disk-full": "Il disco è pieno. Libera un po' di spazio, oppure scegli una cartella su un altro disco.",
         "too-large": "Posso salvare al massimo {{limit}} GB in una copia, e questo spazio di lavoro ne occupa {{size}} GB. Rimuovi le fonti che non ti servono più, oppure spegni le copie automatiche.",
         "too-many-files": "Questo spazio di lavoro ha più file di quanti ne possa contenere una copia. Rimuovi le fonti che non ti servono più, oppure spegni le copie automatiche.",
+        "unverified": "La nuova copia non ha superato il controllo, quindi Pyxis l'ha cancellata e ha tenuto le copie precedenti. Prova con Copia ora. Se non riesce di nuovo, scegli un'altra cartella.",
         "failed": "Prova con Copia ora. Se non riesce di nuovo, scegli un'altra cartella."
       },
       "short": {
@@ -1683,8 +1697,19 @@
         "disk-full": "Il disco della cartella delle copie è pieno.",
         "too-large": "Questo spazio di lavoro è più grande di quanto possa contenere una copia.",
         "too-many-files": "Questo spazio di lavoro ha più file di quanti ne possa contenere una copia.",
+        "unverified": "La nuova copia non ha superato il controllo.",
         "failed": "Pyxis non è riuscito a scrivere la copia."
       }
+    },
+    "reminders": {
+      "title": "Promemoria di studio",
+      "switch": "Ricordami di ripassare",
+      "off": "Disattivato. Pyxis non invia notifiche.",
+      "on": "Una volta al giorno Pyxis mostra una notifica con le flashcard da ripassare e, se un esame è vicino, quanti giorni mancano. Compare solo mentre Pyxis è aperto, e cliccandola si apre quell'esame.",
+      "time": "Ora",
+      "quiet": "Un giorno senza flashcard da ripassare non invia nulla.",
+      "unsupported": "Questo computer non mostra le notifiche di Pyxis. Consentile nelle impostazioni di sistema.",
+      "valueOff": "Disattivato"
     },
     "restoreFailed": "Il file non è una copia valida.",
     "restoreRolledBack": "Il ripristino non è riuscito a finire, quindi Pyxis è tornato ai dati che avevi prima. Della copia non è stato tenuto nulla.",
