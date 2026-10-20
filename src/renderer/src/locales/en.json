@@ -1,8 +1,7 @@
 {
   "routeError": {
     "title": "This page could not be opened",
-    "body": "Return to your exams and try opening it again.",
-    "home": "Go to exams"
+    "body": "Go back to Exams and open it again."
   },
   "doors": {
     "ask": "Ask",
@@ -14,7 +13,8 @@
     "settings": "Settings",
     "close": "Close",
     "back": "Back",
-    "exams": "Exams"
+    "exams": "Exams",
+    "toExams": "Back to Exams"
   },
   "stepper": {
     "label": "Progress",
@@ -1032,6 +1032,7 @@
     "tfOnly": "Only true or false",
     "diagnostic": "Diagnostic",
     "preparing": "Preparing the questions…",
+    "preparingFailed": "I couldn't prepare the questions",
     "position": "Question {{current}} of {{total}}",
     "question": "Question",
     "yourAnswer": "Your answer",
@@ -1059,7 +1060,7 @@
     "drillOwed_other": "{{count}} more questions are still being prepared. You can finish once they are added.",
     "drillOwedOpen": "See status",
     "waitingBatch": "Waiting for more questions",
-    "buildFailed": "Question preparation stopped. Retry to continue this session.",
+    "buildFailed": "Writing stopped before the questions were ready. Retry to pick up this session.",
     "buildCancelled": "Question preparation was cancelled. Retry to continue this session.",
     "retry": "Retry preparation",
     "resume": "Resume preparation",
@@ -1364,7 +1365,15 @@
     "create": "Create the plan",
     "preparing": "Preparing {{title}}",
     "open": "Open the plan",
+    "preparingFailed": "I couldn't prepare the plan",
+    "cancelledTitle": "Plan build cancelled",
+    "buildFailed": "A step stopped before the plan was ready. Try again to continue from the last saved step.",
     "stepSources": "Reading the sources",
+    "stepSourcesFailed": "I couldn't read the sources",
+    "stepTopicsFailed": "I couldn't create the topics",
+    "stepPathFailed": "I couldn't build the path",
+    "stepIntroFailed": "I couldn't write the introduction",
+    "stepDiagnosticFailed": "I couldn't prepare the diagnostic quiz",
     "stepTopics": "Creating the topics",
     "stepPath": "Building the path",
     "failed": "The plan could not be prepared.",
@@ -2419,7 +2428,8 @@
     "settings": "Plan settings",
     "create": "Create lesson",
     "failed": "This action could not be completed. Try again.",
-    "unavailable": "This plan could not be opened. Return to Exams and try again.",
+    "unavailable": "This plan could not be opened.",
+    "gone": "This plan no longer exists.",
     "start": "Start",
     "save": "Save changes",
     "language": "Content language",

@@ -10,6 +10,7 @@ import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { CitationChip } from "../../components/CitationChip";
 import { MarkdownView } from "../../components/MarkdownView";
 import { ExportButton } from "../share/ExportButton";
+import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
@@ -585,6 +586,7 @@ export function CardsPage() {
           building || deckLoading ? null : shown.isError ? (
             <LoadError
               onRetry={() => void shown.refetch()}
+              details={errorDetails(shown.error)}
             >
               {t("cards.loadFailed")}
             </LoadError>

@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
+import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { FreeBooks } from "../../components/FreeBooks";
@@ -185,9 +186,29 @@ export function WizardFrame() {
 
   if (buildPlanId || busy || built || failed) {
     const name = buildingPlan.data?.title ?? title.trim();
+    const retryAction = {
+      label: t(
+        build.data?.state === "interrupted" ? "jobs.resume" : "wizard.retry",
+      ),
+      onClick: () => {
+        if (build.data)
+          void invoke(
+            build.data.state === "interrupted" ? "jobs.resume" : "jobs.retry",
+            { jobId: build.data.jobId },
+          ).then(() => build.refetch());
+      },
+    };
     return (
       <FocusLayout
-        title={t("wizard.preparing", { title: name })}
+        title={
+          failed
+            ? t(
+                build.data?.state === "cancelled"
+                  ? "wizard.cancelledTitle"
+                  : "wizard.preparingFailed",
+              )
+            : t("wizard.preparing", { title: name })
+        }
         closable={!busy}
       >
         <div className="px-build">
@@ -207,7 +228,11 @@ export function WizardFrame() {
           <StepLines
             steps={(build.data?.steps ?? []).map((step) => ({
               id: step.name,
-              label: t(step.label),
+              // A step that failed is told in the past tense.
+              label:
+                step.state === "failed"
+                  ? t(`${step.label}Failed`, { defaultValue: t(step.label) })
+                  : t(step.label),
               state: step.state === "succeeded" ? "done" : step.state,
             }))}
             label={t("wizard.preparing", { title: name })}
@@ -218,22 +243,28 @@ export function WizardFrame() {
             </p>
           ) : null}
           {buildPlanId && !build.isPending && !build.data ? (
-            <div className="px-build-notice" role="alert">
-              <Notice tone="danger">{t("wizard.buildMissing")}</Notice>
+            <div className="px-build-notice">
+              <ErrorState
+                action={{ label: t("nav.toExams"), onClick: () => navigate("/exams") }}
+              >
+                {t("wizard.buildMissing")}
+              </ErrorState>
             </div>
           ) : null}
           {failed ? (
             <div className="px-build-notice">
-              <Notice
-                tone={build.data?.state === "cancelled" ? "warning" : "danger"}
-                details={build.data?.error?.slice(0, 2000) || undefined}
-              >
-                {t(
-                  build.data?.state === "cancelled"
-                    ? "wizard.cancelled"
-                    : "wizard.failed",
-                )}
-              </Notice>
+              {build.data?.state === "cancelled" ? (
+                <Notice tone="warning" action={retryAction}>
+                  {t("wizard.cancelled")}
+                </Notice>
+              ) : (
+                <ErrorState
+                  action={retryAction}
+                  details={build.data?.error}
+                >
+                  {t("wizard.buildFailed")}
+                </ErrorState>
+              )}
             </div>
           ) : null}
           <div className="px-build-actions">
@@ -245,26 +276,6 @@ export function WizardFrame() {
                 onClick={() => navigate(`/plans/${built}`)}
               >
                 {t("wizard.open")}
-              </Button>
-            ) : null}
-            {failed ? (
-              <Button
-                shape="round"
-                onClick={() => {
-                  if (build.data)
-                    void invoke(
-                      build.data.state === "interrupted"
-                        ? "jobs.resume"
-                        : "jobs.retry",
-                      { jobId: build.data.jobId },
-                    ).then(() => build.refetch());
-                }}
-              >
-                {t(
-                  build.data?.state === "interrupted"
-                    ? "jobs.resume"
-                    : "wizard.retry",
-                )}
               </Button>
             ) : null}
             {busy ? (
