@@ -146,11 +146,14 @@
   overflow-wrap: anywhere;
   border-color: var(--border) !important;
 }
-/* Same quiet header as the sources library: no grey Pro band, no column dividers. */
+/* The picker's quiet header: no grey Pro band, no column dividers, the small type at the student's text size. */
 .px-plan-source-table .ant-table-thead > tr > th {
   background: transparent !important;
   color: var(--ink-muted);
-  font: 500 11px/16px var(--font-mono);
+  font-family: var(--font-sans);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: calc(18px * var(--text-scale, 1));
+  font-weight: 500;
   white-space: nowrap;
 }
 .px-plan-source-table .ant-table-thead > tr > th::before {

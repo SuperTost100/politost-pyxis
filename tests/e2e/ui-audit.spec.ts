@@ -34,6 +34,10 @@ const routes = [
   ["exams-empty", "/exams"],
   ["exams-import-menu", "/exams"],
   ["library", "/exams/library"],
+  // The Library with no sources: the empty state and its two ways in, no search or filters.
+  ["library-empty", "/exams/library"],
+  // Passage search: the same field with the Content scope, its results and the local model offer.
+  ["library-search", "/exams/library"],
   // The flashcard browser: cards grouped by subject, no cards at all, a search with no match, and its two dialogs.
   ["cards-browser", "/exams/cards"],
   ["cards-browser-empty", "/exams/cards"],
@@ -819,6 +823,24 @@ function prepareExamsEmpty(name: string) {
   });
 }
 
+/** The empty Library: its sources leave the library for this state only and come back for every other. */
+function prepareLibraryEmpty(name: string) {
+  withDb((db) => {
+    const hidden = db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'audit_hidden_library'",
+      )
+      .get();
+    if (name === "library-empty") {
+      if (hidden) return;
+      db.exec(`CREATE TABLE audit_hidden_library AS SELECT id FROM sources WHERE library = 1;
+        UPDATE sources SET library = 0 WHERE id IN (SELECT id FROM audit_hidden_library);`);
+    } else if (hidden)
+      db.exec(`UPDATE sources SET library = 1 WHERE id IN (SELECT id FROM audit_hidden_library);
+        DROP TABLE audit_hidden_library;`);
+  });
+}
+
 /** The empty Maps section: the maps move to a side table and come back for every other state. */
 function prepareMapsEmpty(name: string) {
   withDb((db) => {
@@ -839,6 +861,7 @@ function prepareMapsEmpty(name: string) {
 
 function prepareState(name: string) {
   prepareExamsEmpty(name);
+  prepareLibraryEmpty(name);
   prepareMapsEmpty(name);
   prepareCardBrowser(name);
   prepareBackupState(name);
@@ -1988,6 +2011,30 @@ async function openState(page: Page, name: string) {
       }
       break;
     }
+    case "library-empty":
+      await expect(
+        page.getByRole("heading", {
+          name: both("Nessuna fonte ancora", "No sources yet"),
+        }),
+      ).toBeVisible();
+      break;
+    case "library-search":
+      await page
+        .getByRole("combobox", { name: both("Cerca in", "Search in") })
+        .click();
+      await page
+        .locator(
+          '.ant-select-dropdown:visible .ant-select-item-option:is([title="Contenuto"],[title="Content"])',
+        )
+        .click();
+      await page
+        .getByRole("textbox", { name: both("Cerca nei brani", "Search passages") })
+        .fill("forza");
+      await page.keyboard.press("Enter");
+      await expect(
+        page.getByRole("button", { name: /1\. Dinamica/ }),
+      ).toBeVisible();
+      break;
     case "library-book-update":
       await expect(
         page.getByText(
@@ -1999,8 +2046,9 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "library-books-update":
+      await page.getByRole("button", { name: both("Altro", "More") }).click();
       await page
-        .getByRole("button", {
+        .getByRole("menuitem", {
           name: both("Libri PoliTost gratuiti", "Free PoliTost books"),
         })
         .click();
@@ -2051,9 +2099,7 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("menuitem").first()).toBeVisible();
       break;
     case "exams-import-menu":
-      await page
-        .getByRole("button", { name: /^(Importa|Import)$/ })
-        .click();
+      await page.getByRole("button", { name: both("Altro", "More") }).click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
       break;
     case "library-row-menu":
@@ -2226,7 +2272,7 @@ async function openState(page: Page, name: string) {
         }),
       ).toBeVisible();
       await expect(
-        page.locator(".px-cardbrowser-card .katex").first(),
+        page.locator(".px-cardbrowser-row .katex").first(),
       ).toBeVisible();
       break;
     case "cards-browser-empty":
@@ -2247,13 +2293,21 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "cards-browser-edit":
+      await page
+        .getByRole("button", {
+          name: /^(Modifica|Edit): Che cos’è il numero atomico/,
+        })
+        .click();
+      await expect(dialog).toBeVisible();
+      break;
     case "cards-browser-delete":
       await page
         .getByRole("button", {
-          name: new RegExp(
-            `^${name === "cards-browser-edit" ? "(Modifica|Edit)" : "(Elimina|Delete)"}: Che cos’è il numero atomico`,
-          ),
+          name: /^(Altre azioni|More actions): Che cos’è il numero atomico/,
         })
+        .click();
+      await page
+        .getByRole("menuitem", { name: both("Elimina", "Delete") })
         .click();
       await expect(dialog).toBeVisible();
       break;
@@ -2643,13 +2697,16 @@ test("M14 every application route in both languages, themes and supported widths
               await expect(page.locator("h1:visible").first()).toBeVisible();
               if (name.startsWith("wizard-"))
                 await openWizard(page, Number(name.split("-")[1]));
-              if (name === "library-import")
+              if (name === "library-import") {
                 await page
                   .getByRole("button", {
                     name: /Aggiungi fonti|Add sources/,
                     exact: true,
                   })
                   .click();
+                // The dialog mounts a frame after the click; the keyboard check needs it there.
+                await expect(page.getByRole("dialog")).toBeVisible();
+              }
               if (name === "plan-settings")
                 await page
                   .getByRole("button", {

@@ -1,0 +1,64 @@
+.px-source-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  min-height: 64px;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+}
+.px-source-row.is-selected {
+  background: var(--primary-soft);
+}
+.px-source-row-icon {
+  display: flex;
+  align-self: start;
+  padding-top: 2px;
+  color: var(--ink-muted);
+}
+.px-source-row-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+.px-source-row-main > p {
+  margin: 0;
+}
+/* Long titles stop at two lines; the details drawer and the viewer show the whole name. */
+.px-source-row-title {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  text-align: left;
+}
+button.px-source-row-title {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+button.px-source-row-title:hover {
+  color: var(--primary-text);
+}
+.px-source-row-meta {
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.px-source-row-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.px-source-row-status svg {
+  flex-shrink: 0;
+}
+.px-source-row-status.is-problem {
+  color: var(--warning);
+}

@@ -82,6 +82,14 @@ async function noAxeViolations(page: Page) {
 const button = (page: Page, name: string | RegExp) =>
   page.getByRole("button", { name, exact: typeof name === "string" });
 
+/** With sources in the Library, the free books sit in the toolbar's More menu. */
+async function openBooksFromMenu(page: Page) {
+  await button(page, "Altro").click();
+  await page
+    .getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true })
+    .click();
+}
+
 test("Free books: from the end of setup a book goes into a new exam, and the Library shows it as already there", async () => {
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-books-user-"));
@@ -131,7 +139,7 @@ test("Free books: from the end of setup a book goes into a new exam, and the Lib
     await page.evaluate(() => {
       location.hash = "/exams/library";
     });
-    await button(page, "Libri PoliTost gratuiti").click();
+    await openBooksFromMenu(page);
     const again = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
     await expect(again.getByText("Nella tua libreria")).toBeVisible({
       timeout: 30000,
@@ -165,7 +173,8 @@ test("Free books: a package that does not match the catalog is refused and nothi
   try {
     const page = await app.firstWindow();
     await button(page, "Salta").click();
-    await expect(page).toHaveURL(/exams/);
+    // The hash, not the whole URL: a checkout path can contain "exams" too.
+    await expect(page).toHaveURL(/#\/exams$/);
     await page.evaluate(() => {
       location.hash = "/exams/library";
     });
