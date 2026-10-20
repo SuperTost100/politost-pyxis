@@ -15,7 +15,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import "katex/contrib/mhchem";
-import { linkCitations, type CitationResolver } from "../markdown/citations";
+import { citedPassage, linkCitations, type CitationResolver } from "../markdown/citations";
 import { displayMathLines, normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
 import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
@@ -37,6 +37,7 @@ type MarkdownScope = {
   claims: MathCheck[];
   canRun: boolean;
   onCitationClick?: (passageId: number) => void;
+  citationResolver?: CitationResolver;
   figures?: Record<string, string>;
   drawing: boolean;
 };
@@ -44,21 +45,22 @@ const Scope = createContext<MarkdownScope>({ claims: [], canRun: false, drawing:
 
 const components: Components = {
   a: function Link({ href, children: linkChildren, node: _node, ...rest }) {
-    const { claims, onCitationClick } = useContext(Scope);
+    const { claims, onCitationClick, citationResolver } = useContext(Scope);
     const check = href?.match(/^mathcheck:(\d+)$/);
     if (check) {
       const claim = claims[Number(check[1])];
       return claim ? <AsyncCheck claim={claim} /> : null;
     }
-    const match = href?.match(/^cite:p(\d+)$/);
-    if (match) {
-      const id = Number(match[1]);
+    const id = citedPassage(href, citationResolver);
+    if (id !== null) {
       return (
         <CitationChip onClick={() => onCitationClick?.(id)}>
           {linkChildren}
         </CitationChip>
       );
     }
+    // A cite: link the reply wrote for a passage it was never given: its text, not a chip and not a link.
+    if (href?.startsWith("cite:")) return <>{linkChildren}</>;
     return (
       <a href={href} {...rest} rel="noreferrer" target="_blank">
         {linkChildren}
@@ -154,8 +156,8 @@ export const MarkdownView = memo(function MarkdownView({
     return displayMathLines(normalizeMathDelimiters(linkCitations(body, citationResolver)));
   }, [children, citationResolver, claims]);
   const scope = useMemo(
-    () => ({ claims, canRun, onCitationClick, figures, drawing }),
-    [claims, canRun, onCitationClick, figures, drawing],
+    () => ({ claims, canRun, onCitationClick, citationResolver, figures, drawing }),
+    [claims, canRun, onCitationClick, citationResolver, figures, drawing],
   );
   // The same element for the same text, so React skips the parse; the renderers read a changed scope from context.
   const tree = useMemo(

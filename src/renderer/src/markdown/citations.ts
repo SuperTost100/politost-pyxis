@@ -27,3 +27,14 @@ export function linkCitations(markdown: string, resolver?: CitationResolver): st
     }),
   );
 }
+
+/**
+ * A `cite:` link as the passage number it names, or null when the href is not one. With a resolver, only numbers it
+ * knows (the passages stored with the reply) count: a model that writes `[x](cite:p9)` for a passage it never had gets
+ * no chip. Without one, a number is a position in a list the page owns and every number counts.
+ */
+export function citedPassage(href: string | undefined, resolver?: CitationResolver): number | null {
+  const id = href?.match(/^cite:p(\d+)$/)?.[1];
+  if (id === undefined) return null;
+  return !resolver || resolver(Number(id)) !== undefined ? Number(id) : null;
+}

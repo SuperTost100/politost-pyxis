@@ -114,6 +114,34 @@ describe("chatMarkdown", () => {
     expect(chatMarkdown({ ...base, context: null })).not.toContain("Context");
   });
 
+  it("closes a code fence a message leaves open, so later blocks are not code", () => {
+    const markdown = chatMarkdown({
+      ...base,
+      messages: [
+        { role: "assistant", text: "Ecco:\n```python\nx = 1", stopped: true, photos: 0, sources: [{ title: "Dispensa", section: null }] },
+        { role: "user", text: "Un solo ``` qui", stopped: false, photos: 0, sources: [] },
+        { role: "assistant", text: "Ok", stopped: false, photos: 0, sources: [] },
+      ],
+    });
+    expect(markdown).toContain("```python\nx = 1\n```\n\n*This reply was stopped.*\n\n**Sources**");
+    // Three backticks inside a line are not a fence.
+    expect(markdown).toContain("Un solo ``` qui\n\n## Pyxis");
+    // Balanced fences get no extra line.
+    const fine = chatMarkdown({ ...base, messages: [{ role: "assistant", text: "```js\n1\n```", stopped: false, photos: 0, sources: [] }] });
+    expect(fine).toContain("```js\n1\n```\n");
+    expect(fine).not.toContain("```\n```");
+  });
+
+  it("closes a lone fence line in a message and an open fence in the pinned context", () => {
+    const markdown = chatMarkdown({
+      ...base,
+      context: { title: "T", body: "~~~~\ncodice" },
+      messages: [{ role: "user", text: "prima\n```\nsolo apertura", stopped: false, photos: 0, sources: [] }],
+    });
+    expect(markdown).toContain("> ~~~~\n> codice\n> ~~~~\n\n## Student");
+    expect(markdown).toContain("```\nsolo apertura\n```\n");
+  });
+
   it("marks a stopped reply", () => {
     const markdown = chatMarkdown({
       ...base,
