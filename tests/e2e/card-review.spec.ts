@@ -142,7 +142,11 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     });
 
     // A hand-made card is deleted for good, so D asks first.
-    db.exec("UPDATE cards SET suspended = 1 WHERE id IN ('c1','c2','c3')");
+    // Through core, as Suspend does: core keeps each plan's cards in memory and only its own writes refresh that copy.
+    await page.evaluate(async () => {
+      for (const cardId of ["c1", "c2", "c3"])
+        await window.pyxis.invoke("study.suspend", { cardId, suspended: true });
+    });
     await page.evaluate(() => {
       location.hash = "#/plans/p/cards/t";
     });
