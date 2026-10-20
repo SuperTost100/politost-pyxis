@@ -875,7 +875,7 @@
   },
   {
     "name": "@rc-component/notification",
-    "version": "2.0.9",
+    "version": "2.1.1",
     "license": "MIT",
     "texts": [
       {
@@ -1172,7 +1172,7 @@
   },
   {
     "name": "@rc-component/util",
-    "version": "1.13.0",
+    "version": "1.14.0",
     "license": "MIT",
     "texts": [
       {
@@ -1227,7 +1227,7 @@
   },
   {
     "name": "@tanstack/query-core",
-    "version": "5.104.0",
+    "version": "5.104.5",
     "license": "MIT",
     "texts": [
       {
@@ -1238,7 +1238,7 @@
   },
   {
     "name": "@tanstack/react-query",
-    "version": "5.104.0",
+    "version": "5.104.5",
     "license": "MIT",
     "texts": [
       {
@@ -1612,7 +1612,7 @@
   },
   {
     "name": "antd",
-    "version": "6.6.5",
+    "version": "6.6.7",
     "license": "MIT",
     "texts": [
       {
@@ -2836,7 +2836,7 @@
   },
   {
     "name": "i18next",
-    "version": "26.4.2",
+    "version": "26.5.3",
     "license": "MIT",
     "texts": [
       {
@@ -4494,7 +4494,7 @@
   },
   {
     "name": "react",
-    "version": "19.3.0",
+    "version": "19.3.1",
     "license": "MIT",
     "texts": [
       {
@@ -4505,7 +4505,7 @@
   },
   {
     "name": "react-dom",
-    "version": "19.3.0",
+    "version": "19.3.1",
     "license": "MIT",
     "texts": [
       {
@@ -4527,7 +4527,7 @@
   },
   {
     "name": "react-i18next",
-    "version": "17.0.15",
+    "version": "17.1.0",
     "license": "MIT",
     "texts": [
       {
@@ -5531,7 +5531,7 @@
   },
   {
     "name": "zod",
-    "version": "4.6.5",
+    "version": "4.6.7",
     "license": "MIT",
     "texts": [
       {
