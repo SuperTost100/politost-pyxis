@@ -1,4 +1,4 @@
-import { createHashRouter, isRouteErrorResponse, Navigate, useNavigate, useRouteError } from "react-router";
+import { createHashRouter, isRouteErrorResponse, replace, useNavigate, useRouteError } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { ComponentType } from "react";
 import { ExamsHome } from "../features/home/HomePages";
@@ -36,17 +36,17 @@ function RouteError({ standalone }: { standalone?: boolean }) {
   );
 }
 
-// Every page but the exam list loads on its first visit, so the window parses less at startup.
+// Every page but the exam list loads on its first visit, so the window parses less at startup. Until a route's page
+// has loaded, the router keeps the previous page on screen, so a page with tabs or an optional id is one route: moving
+// between its tabs never waits for a load. Redirects are loaders, not rendered <Navigate>s: a redirect that renders
+// late would cancel a navigation started before it, such as one still loading its page.
 function page<K extends string>(
   load: () => Promise<Record<K, ComponentType>>,
   name: K,
 ) {
   return async () => ({ Component: (await load())[name] });
 }
-const settings = page(() => import("../features/settings/SettingsPage"), "SettingsPage");
-const ask = page(() => import("../features/ask/AskPage"), "AskPage");
 const plans = () => import("../features/plans/PlanFrames");
-const plan = page(plans, "PlanPage");
 const quiz = page(() => import("../features/study/QuizPage"), "QuizPage");
 const quizRedo = async () => {
   const { QuizPage } = await import("../features/study/QuizPage");
@@ -63,10 +63,9 @@ export const router = createHashRouter([
     path: "/",
     element: <Shell />,
     children: [
-      { index: true, element: <Navigate to="/exams" replace /> },
+      { index: true, loader: () => replace("/exams") },
       { path: "onboarding", lazy: page(() => import("../features/onboarding/OnboardingPage"), "OnboardingPage") },
-      { path: "ask", lazy: ask },
-      { path: "ask/:chatId", lazy: ask },
+      { path: "ask/:chatId?", lazy: page(() => import("../features/ask/AskPage"), "AskPage") },
       { path: "exams", element: <ExamsHome /> },
       { path: "exams/library", element: <ExamsHome /> },
       { path: "exams/cards", element: <ExamsHome /> },
@@ -74,11 +73,9 @@ export const router = createHashRouter([
       { path: "exams/planner", lazy: page(() => import("../features/home/PlannerPage"), "PlannerPage") },
       { path: "exams/get", lazy: page(plans, "SharedPlanPage") },
       { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },
-      { path: "plans/:planId", lazy: plan },
-      { path: "plans/:planId/:view", lazy: plan },
-      { path: "settings", lazy: settings },
-      { path: "settings/subjects", element: <Navigate to="/exams" replace /> },
-      { path: "settings/:section", lazy: settings },
+      { path: "plans/:planId/:view?", lazy: page(plans, "PlanPage") },
+      { path: "settings/subjects", loader: () => replace("/exams") },
+      { path: "settings/:section?", lazy: page(() => import("../features/settings/SettingsPage"), "SettingsPage") },
       { path: "dev/gallery", lazy: page(() => import("../features/jobs/DevGallery"), "DevGallery") },
       { path: "*", element: <RouteError /> },
     ],
