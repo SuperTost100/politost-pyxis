@@ -1,6 +1,6 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "antd";
+import { Button, Skeleton } from "antd";
 import { RefreshCw, X } from "lucide-react";
 import {
   memo,
@@ -39,12 +39,12 @@ import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
 import { ChatPanel } from "./ChatPanel";
 import { replyPlainText } from "./replyText";
-import { addIds, allowsGeneral, applySubject, scopeItems, type ScopeItem } from "./scope";
+import { addIds, allowsGeneral, applySubject, choseGeneral, scopeItems, type ScopeItem } from "./scope";
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { activePlans, starterPrompts, type Starter } from "./starters";
-import { latestEvery, liveValue } from "./throttle";
 import { formatTokens } from "../../lib/tokens";
+import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
 
 function errorKey(err: unknown): string {
@@ -70,9 +70,35 @@ function errorParams(err: unknown): Record<string, unknown> {
 }
 
 type ChatRow = Awaited<ReturnType<typeof invoke<"chats.read">>>["messages"][number];
-type LiveText = ReturnType<typeof liveValue<string>>;
 /** An image staged for the next message, shown in its attachment chip. A pasted one is named for what it is. */
 type Preview = { src: string; alt: string; name?: string };
+/** A message taken out of the composer as it was sent, put back if its turn fails or is stopped. */
+type Held = { draft: string; files: string[]; previews: Record<string, Preview> };
+type Skipped = Array<"too-large" | "unreadable" | "over-limit">;
+
+/** Whether each chat's latest question was asked with "Answer generally", for the session (see choseGeneral). */
+const askedGeneral = new Map<string, boolean>();
+
+/**
+ * What a turn needs from the Ask page when it ends. That can be a later mount than the one it was sent from, or none
+ * when the student is on another page: then nothing navigates, and the message goes back to its chat's saved draft.
+ */
+type Screen = {
+  /** The chat on screen, "" for a new one. */
+  chat: () => string;
+  /** The chat whose draft and files the composer holds. */
+  composer: () => string;
+  restore: (held: Held) => void;
+  /** The reply was saved in `to`: the notices for it, and a move there from a new chat. */
+  replied: (to: string, uncovered: string | null, skipped: Skipped, announce: boolean) => void;
+  fail: (err: unknown) => void;
+};
+let screen: { current: Screen } | null = null;
+/** The page on screen, if it shows the turn's chat. */
+const showing = (turn: Turn) =>
+  screen && runsIn(turn, screen.current.chat()) ? screen.current : null;
+/** Stands in for a turn's chat while none runs. */
+const noChat = { subscribe: () => () => undefined, get: () => "" };
 
 /** A chat opens with this many recent messages; older ones join as the student scrolls up to them. */
 const RECENT = 8;
@@ -170,21 +196,35 @@ const Reply = memo(function Reply({
   );
 });
 
+/** The question just sent, until the chat as read holds it. Core names a reused question only once the reply has begun. */
+function PendingQuestion({ turn, last }: { turn: Turn; last: ChatRow | undefined }) {
+  useSyncExternalStore(turn.questionId.subscribe, turn.questionId.get);
+  return turn.question === null || questionStored(turn, last) ? null : <Question body={turn.question} />;
+}
+
 /** The reply being written. Only this component follows the stream, so the conversation above it does not re-render. */
 function StreamingReply({
-  live,
+  turn,
   usesSources,
   onGrow,
 }: {
-  live: LiveText;
+  turn: Turn;
   usesSources: boolean;
   onGrow: () => void;
 }) {
-  const text = useSyncExternalStore(live.subscribe, live.get);
+  const text = useSyncExternalStore(turn.live.subscribe, turn.live.get);
+  const passages = useSyncExternalStore(turn.passages.subscribe, turn.passages.get);
+  // Only the passages retrieved for this turn link, with the labels the saved reply will show.
+  const citationResolver = useCallback(
+    (index: number) => passages.find((passage) => passage.index === index)?.label,
+    [passages],
+  );
   useEffect(() => onGrow(), [text, onGrow]);
   return text ? (
     <ChatMessage role="tutor" streaming>
-      <MarkdownView drawing>{text}</MarkdownView>
+      <MarkdownView drawing citationResolver={citationResolver}>
+        {text}
+      </MarkdownView>
     </ChatMessage>
   ) : (
     <ThinkingMessage usesSources={usesSources} />
@@ -216,25 +256,18 @@ export function AskPage() {
   const [planId, setPlanId] = useState<string | null>(null);
   const loadedFor = useRef<string | undefined>(undefined);
   const [uncovered, setUncovered] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [live] = useState(() => liveValue(""));
-  // Each delta carries the whole reply so far. Rendering it at most every 100 ms keeps long answers with math responsive.
-  const liveUpdates = useRef(latestEvery<string>(100, live.set));
+  // The reply being written, kept outside the page so it survives leaving Ask and coming back. Its text shows only in
+  // the chat it was sent from, and the page follows it to its new chat only if the student is still there.
+  const turn = useSyncExternalStore(turns.subscribe, turns.get);
+  const busy = turn !== null;
+  // A new chat's reply shows on its own page too, once core has named the chat it created.
+  const turnChat = useSyncExternalStore((turn?.chat ?? noChat).subscribe, (turn?.chat ?? noChat).get);
+  const streamHere = turn !== null && (turn.from === (chatId ?? "") || turnChat === chatId);
+  // The question just sent, shown at once: the stored message only arrives with the reply.
+  const pendingQuestion = turn?.question ?? null;
+  const regenerating = turn?.regenerating ?? false;
   // The finished reply, read out once by screen readers.
   const [announcement, setAnnouncement] = useState("");
-  // A chat deleted while its reply streams: its turn ends quietly, without putting the message back.
-  const dropped = useRef<string | null>(null);
-  // The question just sent, shown at once: the stored message only arrives with the reply.
-  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
-  // Chats whose latest question was sent with "Answer generally". Try again and Regenerate keep that choice.
-  const askedGeneral = useRef(new Set<string>());
-  const [regenerating, setRegenerating] = useState(false);
-  // The chat a reply is being written for ("" for a new one). Its text shows only there, and the page follows
-  // the reply to its new chat only if the student is still on the chat it was sent from.
-  const [streamIn, setStreamIn] = useState<string | null>(null);
-  const streamHere = streamIn === (chatId ?? "");
-  const streamNow = useRef(streamIn);
-  streamNow.current = streamIn;
   const chatNow = useRef(chatId);
   chatNow.current = chatId;
   const arrived = useRef<string | null>(null);
@@ -279,10 +312,7 @@ export function AskPage() {
     setErrorText(errorDetail(err));
   }
   // Saved photos the last answer did not see, so a shorter context is never silent.
-  const [skipped, setSkipped] = useState<
-    Array<"too-large" | "unreadable" | "over-limit">
-  >([]);
-  const stop = useRef<(() => void) | null>(null);
+  const [skipped, setSkipped] = useState<Skipped>([]);
 
   const sources = useQuery({
     queryKey: ["sources"],
@@ -298,6 +328,9 @@ export function AskPage() {
     enabled: Boolean(chatId),
     queryFn: () => invoke("chats.read", { chatId: chatId ?? "" }),
   });
+  // A chat being read has a state of its own, so the greeting does not flash first, and one that can't be read says so.
+  const threadLoading = Boolean(chatId) && thread.isPending;
+  const threadFailed = Boolean(chatId) && thread.isError && !thread.data;
 
   // Notices belong to the chat they were raised in; the chat a new reply just moved to keeps its own.
   useEffect(() => {
@@ -529,52 +562,42 @@ export function AskPage() {
     options: { allowGeneral?: boolean; textOnly?: boolean; subject?: string } = {},
   ) {
     const trimmed = text.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || turns.get()) return;
     if (chatId && loadedFor.current !== chatId) return;
-    setBusy(true);
     const startedIn = chatId ?? "";
-    setStreamIn(startedIn);
-    dropped.current = null;
+    const turn = turns.start(startedIn, trimmed, false, messages.at(-1)?.id ?? null);
+    if (!turn) return;
     // Stop works from the first moment, also while the subject's sources are still loading.
     let stoppedEarly = false;
-    stop.current = () => {
+    turn.stop = () => {
       stoppedEarly = true;
     };
     await scopeReady.current.catch(() => undefined);
     if (stoppedEarly) {
-      stop.current = null;
-      setStreamIn(null);
-      setBusy(false);
+      turns.end(turn);
       return;
     }
     const ids = visible(pickedNow.current);
-    liveUpdates.current.cancel();
-    live.set("");
     setError(null);
     setAnnouncement("");
     setSkipped([]);
-    setPendingQuestion(trimmed);
     following.current = true;
     const attached = options.textOnly ? [] : files;
     // The message leaves the composer as it is sent; a failed or stopped turn puts it back.
-    const held = { draft, files, previews };
+    const held: Held = { draft, files, previews };
     if (!options.textOnly) {
       setDraft("");
       setFiles([]);
       setPreviews({});
       sessionStorage.removeItem(draftKey(chatId));
     }
-    // The message goes back to the chat it was sent from, even if the student has moved to another one since.
+    // The message goes back to the chat it was sent from, even if the student has moved to another one or left Ask.
     const restore = () => {
-      if (options.textOnly || dropped.current === startedIn) return;
+      if (options.textOnly || turn.dropped) return;
       const from = startedIn || undefined;
-      if ((composerFor.current ?? "") === startedIn) {
-        setDraft((current) => current || held.draft);
-        setFiles((current) => (current.length > 0 ? current : held.files));
-        setPreviews((current) =>
-          Object.keys(current).length > 0 ? current : held.previews,
-        );
-      } else if (readPendingFiles(sessionStorage, from).length === 0) {
+      const page = screen?.current;
+      if (page && page.composer() === startedIn) page.restore(held);
+      else if (readPendingFiles(sessionStorage, from).length === 0) {
         writePendingFiles(sessionStorage, from, held.files);
       }
       if (held.draft && !sessionStorage.getItem(draftKey(from)))
@@ -586,10 +609,7 @@ export function AskPage() {
       sourceCount: ids.length,
       fileCount: attached.length,
     });
-    if (startedIn) {
-      if (options.allowGeneral === true) askedGeneral.current.add(startedIn);
-      else askedGeneral.current.delete(startedIn);
-    }
+    if (startedIn) askedGeneral.set(startedIn, options.allowGeneral === true);
     const handle = window.pyxis.stream(
       "chats.ask",
       {
@@ -602,12 +622,9 @@ export function AskPage() {
         files: attached.length > 0 ? attached : undefined,
         allowGeneral: general,
       },
-      (event) => {
-        const data = event as { text?: string };
-        if (typeof data.text === "string") liveUpdates.current.push(data.text);
-      },
+      turn.onEvent,
     );
-    stop.current = handle.cancel;
+    turn.stop = handle.cancel;
     try {
       const result = (await handle.result) as Awaited<
         ReturnType<typeof invoke<"chats.ask">>
@@ -616,11 +633,7 @@ export function AskPage() {
         restore();
         return;
       }
-      const stillHere = (chatNow.current ?? "") === startedIn;
-      if (stillHere) {
-        setUncovered(result.covered ? null : trimmed);
-        setSkipped(result.skippedImages ?? []);
-      }
+      askedGeneral.set(result.chatId, options.allowGeneral === true);
       // Store the new messages in the cache before the placeholder goes, so the reply replaces it without a gap.
       await client
         .fetchQuery({
@@ -629,34 +642,21 @@ export function AskPage() {
           staleTime: 0,
         })
         .catch(() => undefined);
-      if (stillHere && result.message) announce();
       void client.invalidateQueries({ queryKey: ["chats"] });
-      if (stillHere && result.chatId !== chatNow.current) {
-        arrived.current = result.chatId;
-        // Anything typed or picked while the first reply was written moves with the student to the new chat.
-        if (!chatNow.current) {
-          const typed = sessionStorage.getItem(draftKey());
-          if (typed) sessionStorage.setItem(draftKey(result.chatId), typed);
-          sessionStorage.removeItem(draftKey());
-          writePendingFiles(sessionStorage, result.chatId, readPendingFiles(sessionStorage));
-          writePendingFiles(sessionStorage, undefined, []);
-          composerFor.current = result.chatId;
-        }
-        navigate(`/ask/${result.chatId}`);
-      }
+      showing(turn)?.replied(
+        result.chatId,
+        result.covered ? null : trimmed,
+        result.skippedImages ?? [],
+        Boolean(result.message),
+      );
     } catch (err) {
       restore();
       // An existing chat keeps the question it stored, so the thread shows it with Try again.
-      if (startedIn && dropped.current !== startedIn)
+      if (startedIn && !turn.dropped)
         void client.invalidateQueries({ queryKey: ["chat", startedIn] });
-      if (errorKey(err) !== "errors.aborted" && dropped.current !== startedIn) fail(err);
+      if (errorKey(err) !== "errors.aborted" && !turn.dropped) showing(turn)?.fail(err);
     } finally {
-      stop.current = null;
-      liveUpdates.current.cancel();
-      live.set("");
-      setPendingQuestion(null);
-      setStreamIn(null);
-      setBusy(false);
+      turns.end(turn);
     }
   }
 
@@ -667,19 +667,60 @@ export function AskPage() {
     window.setTimeout(() => setAnnouncement(t("ask.replied")), 50);
   }
 
+  const here = useRef<Screen>(null!);
+  here.current = {
+    chat: () => chatNow.current ?? "",
+    composer: () => composerFor.current ?? "",
+    restore(held) {
+      setDraft((current) => current || held.draft);
+      setFiles((current) => (current.length > 0 ? current : held.files));
+      setPreviews((current) =>
+        Object.keys(current).length > 0 ? current : held.previews,
+      );
+    },
+    replied(to, notCovered, skippedImages, reply) {
+      setUncovered(notCovered);
+      setSkipped(skippedImages);
+      if (reply) announce();
+      if (to === (chatNow.current ?? "")) return;
+      arrived.current = to;
+      // Anything typed or picked while the first reply was written moves with the student to the new chat.
+      if (!chatNow.current) {
+        const typed = sessionStorage.getItem(draftKey());
+        if (typed) sessionStorage.setItem(draftKey(to), typed);
+        sessionStorage.removeItem(draftKey());
+        writePendingFiles(sessionStorage, to, readPendingFiles(sessionStorage));
+        writePendingFiles(sessionStorage, undefined, []);
+        composerFor.current = to;
+      }
+      navigate(`/ask/${to}`);
+    },
+    fail,
+  };
+  // Only a mounted page takes a turn's ending: one the student left does not navigate or show notices.
+  useLayoutEffect(() => {
+    const mine = here;
+    screen = mine;
+    return () => {
+      if (screen === mine) screen = null;
+    };
+  }, []);
+
   /** Answers the last question again. `strong` uses the strongest model; `resume` continues a reply that was cut short. */
   function regenerate(options: { engine?: "strong"; resume?: boolean } = {}) {
     if (!chatId) return;
-    setBusy(true);
-    setStreamIn(chatId);
-    setRegenerating(true);
+    const turn = turns.start(chatId, null, true);
+    if (!turn) return;
     setError(null);
     setAnnouncement("");
-    dropped.current = null;
-    liveUpdates.current.cancel();
-    // Continue keeps the saved part on screen: the cut-off reply is hidden while it runs, and core adds to this text.
-    live.set(options.resume && lastTutor ? lastTutor.body : "");
+    // Continue keeps the saved part on screen, with its citation chips: the cut-off reply is hidden while it runs, core
+    // adds to this text, and it answers from the same passages in the same numbering.
+    if (options.resume && lastTutor) {
+      turn.live.set(lastTutor.body);
+      turn.passages.set(lastTutor.citations.map(({ index, label }) => ({ index, label })));
+    }
     following.current = true;
+    const question = messages.filter((message) => message.role === "user").at(-1)?.body ?? "";
     const handle = window.pyxis.stream(
       "chats.regenerate",
       {
@@ -691,50 +732,34 @@ export function AskPage() {
         subject,
         // Same rule as a first send: the reply's own grounding says nothing about whether sources are selected.
         allowGeneral: allowsGeneral({
-          chosen: askedGeneral.current.has(chatId),
+          chosen: choseGeneral(askedGeneral.get(chatId), messages),
           planId,
           sourceCount: sendIds.length,
         }),
       },
-      (event) => {
-        const data = event as { text?: string };
-        if (typeof data.text === "string") liveUpdates.current.push(data.text);
-      },
+      turn.onEvent,
     );
-    stop.current = handle.cancel;
+    turn.stop = handle.cancel;
     void handle.result
       .then(async (result) => {
         const reply = result as Awaited<
           ReturnType<typeof invoke<"chats.regenerate">>
         >;
-        if (chatNow.current === chatId) {
-          setSkipped(reply.skippedImages ?? []);
-          setUncovered(
-            reply.covered
-              ? null
-              : (thread.data?.messages
-                  .filter((message) => message.role === "user")
-                  .at(-1)?.body ?? ""),
-          );
-        }
         await client.invalidateQueries({ queryKey: ["chat", chatId] });
         const last = client
           .getQueryData<Awaited<ReturnType<typeof invoke<"chats.read">>>>(["chat", chatId])
           ?.messages.at(-1);
-        if (chatNow.current === chatId && reply.covered && last?.role === "assistant")
-          announce();
+        showing(turn)?.replied(
+          chatId,
+          reply.covered ? null : question,
+          reply.skippedImages ?? [],
+          reply.covered && last?.role === "assistant",
+        );
       })
       .catch((err: unknown) => {
-        if (errorKey(err) !== "errors.aborted" && dropped.current !== chatId) fail(err);
+        if (errorKey(err) !== "errors.aborted" && !turn.dropped) showing(turn)?.fail(err);
       })
-      .finally(() => {
-        stop.current = null;
-        liveUpdates.current.cancel();
-        live.set("");
-        setRegenerating(false);
-        setStreamIn(null);
-        setBusy(false);
-      });
+      .finally(() => turns.end(turn));
   }
 
   const conversation =
@@ -885,9 +910,10 @@ export function AskPage() {
   function chatDeleted(id: string) {
     sessionStorage.removeItem(draftKey(id));
     writePendingFiles(sessionStorage, id, []);
-    if (streamNow.current === id) {
-      dropped.current = id;
-      stop.current?.();
+    const running = turns.get();
+    if (running && runsIn(running, id)) {
+      running.dropped = true;
+      running.stop();
     }
   }
 
@@ -942,7 +968,30 @@ export function AskPage() {
         onNew={() => navigate("/ask")}
         onDeleted={chatDeleted}
       />
-      {!conversation ? (
+      {threadFailed ? (
+        <div className="ask-thread">
+          <h1 className="visually-hidden">{t("doors.ask")}</h1>
+          <Notice
+            tone="danger"
+            details={errorDetail(thread.error) || undefined}
+            action={{ label: t("ask.retry"), onClick: () => void thread.refetch() }}
+          >
+            {t("ask.loadFailed")}
+          </Notice>
+        </div>
+      ) : threadLoading ? (
+        <div className="ask-thread">
+          <h1 className="visually-hidden">{t("doors.ask")}</h1>
+          {/* The shape of a question and its reply. It shows only when reading the chat takes a moment, so a quick open does not flash. */}
+          <div className="ask-loading" role="status">
+            <span className="visually-hidden">{t("ask.loadingChat")}</span>
+            <div className="ask-loading-question" aria-hidden />
+            <div aria-hidden>
+              <Skeleton active title={false} paragraph={{ rows: 3, width: ["92%", "86%", "48%"] }} />
+            </div>
+          </div>
+        </div>
+      ) : !conversation ? (
         <div className="ask-greeting">
           <h1 className="display">
             {name ? t("ask.greetingNamed", { name }) : t("ask.greeting")}
@@ -1008,11 +1057,9 @@ export function AskPage() {
               </Button>
             </div>
           ) : null}
-          {streamHere && pendingQuestion !== null && !regenerating ? (
-            <Question body={pendingQuestion} />
-          ) : null}
-          {streamHere && busy ? (
-            <StreamingReply live={live} usesSources={usesSources} onGrow={followStream} />
+          {streamHere && !regenerating ? <PendingQuestion turn={turn} last={lastRow} /> : null}
+          {streamHere ? (
+            <StreamingReply turn={turn} usesSources={usesSources} onGrow={followStream} />
           ) : null}
         </div>
       )}
@@ -1196,7 +1243,7 @@ export function AskPage() {
           mode={mode}
           onModeChange={setMode}
           streaming={busy}
-          onStop={() => stop.current?.()}
+          onStop={() => turns.get()?.stop()}
           onSend={() => void send(draft)}
           onPasteImages={(images) => void attachPasted(images)}
           dropping={dropping}

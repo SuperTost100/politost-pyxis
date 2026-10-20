@@ -108,3 +108,62 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test("Ask: Continue keeps the cut reply's citation chips while it waits for the engine", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-replies-"));
+  const env = {
+    ...process.env,
+    PYXIS_USER_DATA: userData,
+    PYXIS_E2E: "1",
+    PYXIS_E2E_REPLY: CONTINUATION,
+    PYXIS_E2E_REPLY_DELAY: "4000",
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({ args: [MAIN], env });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    const now = Date.now();
+    db.exec(`
+      INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('src-an','excerpt','Dispense di analisi','ready',1,1,1);
+      INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('d-an','src-an',1,'{"kind":"excerpt"}',1);
+      INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at)
+        VALUES('pa-w','src-an','d-an','Una funzione continua su un intervallo chiuso ha massimo e minimo.','{"chapter":1,"paragraph":"p1"}','3. Weierstrass',1);
+      INSERT INTO chats(id,title,created_at,updated_at) VALUES('chat-cut','Teorema di Weierstrass',${now},${now});
+      INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m-q','chat-cut','user','Che cosa dice il teorema di Weierstrass?',${now});
+      INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,stopped,error,passages_json,created_at)
+        VALUES('m-a','chat-cut','assistant','Il teorema [P1] dice che ogni funzione continua','claude','claude-sonnet-5','reported',1,'engines.errors.stream-truncated','[{"passageId":"pa-w","index":1}]',${now + 1});
+      INSERT INTO message_passages(message_id,passage_id,label) VALUES('m-a','pa-w','P1');
+    `);
+    db.close();
+    await page.evaluate(() => {
+      location.hash = "/ask/chat-cut";
+    });
+    await page.reload();
+
+    const reply = page.locator(".px-msg:not(.px-msg-user)").last();
+    await expect(reply.locator(".px-cite")).toHaveCount(1);
+    // Every state the page shows is recorded: core sends the passages again only after retrieval, and until then the
+    // saved part must keep its chip rather than flash a bare [P1].
+    await page.evaluate(() => {
+      const seen: string[] = [];
+      (window as unknown as { seen: string[] }).seen = seen;
+      const note = () => {
+        for (const reply of document.querySelectorAll(".px-msg:not(.px-msg-user)"))
+          if (reply.textContent?.includes("[P1]")) seen.push(reply.textContent);
+      };
+      new MutationObserver(note).observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
+    await reply.getByRole("button", { name: "Continua" }).click();
+    await expect(page.getByRole("button", { name: "Interrompi", exact: true })).toBeVisible();
+    await expect(reply.locator(".px-cite")).toHaveCount(1);
+    await expect(page.getByText(CONTINUATION.trim(), { exact: false })).toBeVisible({ timeout: 30000 });
+    expect(await page.evaluate(() => (window as unknown as { seen: string[] }).seen)).toEqual([]);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});

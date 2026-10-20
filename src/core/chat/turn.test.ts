@@ -408,8 +408,10 @@ describe("askTurn", () => {
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
     ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
     // The model refuses, so the question is stored and the answer is not.
+    const stored: string[] = [];
     const first = await askTurn(db, {
       text: "fotosintesi delle banane",
+      onQuestion: (id) => stored.push(id),
       run: async () => ({ ...reply, text: "NOT_COVERED" }),
     });
     expect(first.covered).toBe(false);
@@ -417,6 +419,7 @@ describe("askTurn", () => {
       chatId: first.chatId,
       text: "fotosintesi delle banane",
       allowGeneral: true,
+      onQuestion: (id) => stored.push(id),
       run: async () => ({
         ...reply,
         text: "Dalle conoscenze generali.\n<followups>\nA\nB\nC\n</followups>",
@@ -426,7 +429,8 @@ describe("askTurn", () => {
       (row) => row.role === "user",
     );
     expect(users).toHaveLength(1);
-
+    // Each turn says which stored message is its question, so the page can tell it from the one it shows meanwhile.
+    expect(stored).toEqual([users[0]!.id, users[0]!.id]);
   });
 
   it("still asks the model when the material does not cover the question, and says so", async () => {

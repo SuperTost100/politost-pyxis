@@ -107,6 +107,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       allowGeneral?: boolean;
       signal?: AbortSignal;
       onDelta?: (text: string) => void;
+      onPassages?: (passages: Array<{ index: number; label: string }>) => void;
       subject?: string;
       files?: string[];
     }) {
@@ -125,6 +126,8 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       allowGeneral?: boolean;
       signal?: AbortSignal;
       onDelta?: (text: string) => void;
+      onPassages?: (passages: Array<{ index: number; label: string }>) => void;
+      onQuestion?: (messageId: string, chatId: string) => void;
       subject?: string;
       files?: string[];
     }) {

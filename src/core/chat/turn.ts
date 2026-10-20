@@ -95,6 +95,10 @@ type AskInput = {
   embed?: Embedder | null;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
+  /** The passages this turn's reply may cite, by number, before it streams. A stored reply labels them the same way. */
+  onPassages?: (passages: Array<{ index: number; label: string }>) => void;
+  /** The stored message that is this turn's question, new or reused, and its chat (new for a first question), before the reply streams. */
+  onQuestion?: (messageId: string, chatId: string) => void;
   run?: Parameters<typeof generate>[0]["run"];
   /** Runs figure code; null turns figures off. Defaults to the Pyodide sandbox when its runtime is downloaded. */
   python?: FigureRunner | null;
@@ -578,6 +582,22 @@ export function chatContext(
   return JSON.parse(row.context_json) as ChatContext;
 }
 
+/** Chats with a reply being written. A second turn into one would interleave with it, so it is refused. */
+const generating = new Set<string>();
+
+function requireIdle(chatId: string | undefined) {
+  if (chatId && generating.has(chatId))
+    throw new IpcError("chat-busy", "errors.chatBusy");
+}
+
+/** How the streaming preview names the passages a reply may cite: the same labels a stored reply has (see readChat). */
+function passageLabels(citations: ChatCitation[]) {
+  return citations.map((cite) => ({
+    index: cite.index,
+    label: cite.sectionPath || `P${cite.index}`,
+  }));
+}
+
 export async function askTurn(
   db: Database.Database,
   input: AskInput,
@@ -585,11 +605,13 @@ export async function askTurn(
 ): Promise<AskResult> {
   requireTutorAvailable(db);
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
+  requireIdle(input.chatId);
   const now = Date.now();
   const chat = ensureChat(db, input.chatId, input.text, now);
   // Stop also stops a math check still running for an earlier reply in this chat.
   const stopChecks = () => cancelChecks(chat.id);
   input.signal?.addEventListener("abort", stopChecks, { once: true });
+  generating.add(chat.id);
   try {
     return await answer(db, input, replacing, chat.id, now);
   } catch (err) {
@@ -604,6 +626,7 @@ export async function askTurn(
     throw err;
   } finally {
     input.signal?.removeEventListener("abort", stopChecks);
+    generating.delete(chat.id);
   }
 }
 
@@ -726,6 +749,7 @@ async function answer(
   const { sourceIds, subject, userMessageId, attachedIds } = staged
     ? commitStaged(db, input.workspace!, staged, (ids) => persist([...new Set([...reused, ...ids])])).value
     : db.transaction(() => persist([]))();
+  input.onQuestion?.(userMessageId, chatId);
 
   const selection =
     input.engine === "strong" ? strongestSelection(db) : selectionFor(db, "chat");
@@ -765,6 +789,7 @@ async function answer(
     sectionPath: hit.sectionPath,
     locator: hit.locator,
   }));
+  input.onPassages?.(passageLabels(citations));
   const passageBlock = citations
     .map(
       (cite, index) =>
@@ -1057,6 +1082,7 @@ export async function regenerateTurn(
   input: Omit<AskInput, "text" | "resumeFrom"> & { chatId: string; resume?: boolean },
 ): Promise<AskResult> {
   const { resume, ...rest } = input;
+  requireIdle(input.chatId);
   const last = db
     .prepare(
       `SELECT id, role, body, stopped, passages_json FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
