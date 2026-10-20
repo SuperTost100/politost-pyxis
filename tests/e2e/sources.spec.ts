@@ -71,6 +71,10 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
       page.getByRole("dialog", { name: "Fisica", exact: true }),
     ).toBeHidden();
     await animationsSettled(page);
+    // The drawer gives focus back to its opener once its close animation ends.
+    await expect(
+      page.getByRole("button", { name: "Fisica", exact: true }),
+    ).toBeFocused();
     await page.getByRole("combobox", { name: "Cerca in" }).click();
     await page
       .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]')

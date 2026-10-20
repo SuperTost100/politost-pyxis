@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { blobParts } from "../../src/shared/blob-path";
 import { importPickedSource } from "./picked-source";
+import { animationsSettled } from "./settled";
 
 const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 
@@ -26,7 +27,11 @@ async function readAgain(page: Page, title: string, answer: "accept" | "dismiss"
     void (answer === "accept" ? dialog.accept() : dialog.dismiss());
   });
   await page.getByRole("button", { name: `Azioni per ${title}` }).click();
-  await page.getByRole("menuitem", { name: "Leggi di nuovo" }).click();
+  const item = page.getByRole("menuitem", { name: "Leggi di nuovo" });
+  await expect(item).toBeVisible();
+  // The menu fades and slides in. On a slow runner a click that lands while it moves is lost and no confirmation follows.
+  await animationsSettled(page);
+  await item.click();
   await expect.poll(() => asked.length).toBe(1);
   return asked[0]!;
 }

@@ -100,9 +100,12 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(front).toHaveText("Seconda legge di Newton?");
     expect(count("SELECT COUNT(*) AS n FROM cards WHERE removed = 1")).toBe(0);
+    // The undo bar and its focused button go once the undo is done; until then Space is not the card's.
+    await expect(page.locator(".px-cards-undo")).toHaveCount(0);
 
     // Ask the tutor after the flip: a chat seeded with front, back and the source passage.
     await page.keyboard.press("Space");
+    await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
     await page.getByRole("button", { name: "Ask the tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\/[\w-]+$/);
     const chat = db
