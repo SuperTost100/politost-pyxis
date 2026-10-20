@@ -2440,9 +2440,11 @@
       "install": "Close Pyxis and install",
       "restart": "Restart Pyxis",
       "openImage": "Open the disk image again",
+      "openFolder": "Show the new app again",
       "showFile": "Show the file again",
       "verified": {
         "dmg-opened": "Pyxis {{version}} is downloaded and checked, and its disk image is open in Finder. Quit Pyxis, drag PoliTost Pyxis into Applications and choose Replace. Then open Pyxis again.",
+        "app-opened": "Pyxis {{version}} is downloaded and checked, and a Finder window shows the new app. Quit Pyxis, drag PoliTost Pyxis into Applications and choose Replace. Then open Pyxis again.",
         "exe-ready": "Pyxis {{version}} is downloaded and checked. When you install it, Pyxis closes and the installer runs. Pyxis opens again when it finishes.",
         "appimage-replaced": "Pyxis {{version}} is installed. Restart Pyxis to use it.",
         "appimage-folder": "Pyxis {{version}} is downloaded and checked, but Pyxis can't write to the folder its AppImage is in. The new file is open in its folder. Move it over the old AppImage, then open Pyxis again.",

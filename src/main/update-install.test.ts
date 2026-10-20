@@ -5,12 +5,14 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { deflateRawSync, gzipSync } from "node:zlib";
 import { afterEach, expect, it, vi } from "vitest";
 import type { UpdateInstallView } from "../shared/updates";
 import { finishBlock } from "../shared/updates";
@@ -344,59 +346,95 @@ it("asks to wait for workspace work and to confirm running jobs before Pyxis clo
   ).toBeNull();
 });
 
-/** A fake GitHub: release metadata, a redirect for every download and the asset bytes from memory. */
+/**
+ * A fake GitHub: release metadata, a redirect for every download and the asset bytes from memory. With `ranges`, the
+ * asset host answers a single `bytes=a-b` Range with 206, as GitHub's does; otherwise it ignores Range. `served` counts
+ * the bytes sent for every asset but SHA256SUMS.
+ */
 function fakeGithub(
   files: Record<string, Uint8Array | string>,
   tag = "v0.3.0",
+  options: { ranges?: boolean } = {},
 ) {
+  const served = { bytes: 0, ranges: [] as string[] };
   const repo = "SuperTost100/politost-pyxis";
   const assets = Object.entries(files).map(([name, bytes]) => ({
     name,
     size: typeof bytes === "string" ? Buffer.byteLength(bytes) : bytes.length,
     browser_download_url: `https://github.com/${repo}/releases/download/${tag}/${name}`,
   }));
-  const fetcher = vi.fn(async (resource: string | URL | Request) => {
-    const url = new URL(String(resource));
-    if (url.hostname === "api.github.com")
-      return new Response(
-        JSON.stringify({
-          tag_name: tag,
-          draft: false,
-          prerelease: false,
-          assets,
-        }),
-      );
-    const name = url.pathname.split("/").at(-1)!;
-    if (url.hostname === "github.com")
-      return new Response(null, {
-        status: 302,
-        headers: {
-          location: `https://release-assets.githubusercontent.com/fixture/${name}`,
-        },
-      });
-    const bytes = files[name];
-    if (bytes == null) return new Response("", { status: 404 });
-    return new Response(
-      body(typeof bytes === "string" ? Buffer.from(bytes) : bytes),
-    );
-  });
-  return { repo, fetcher };
+  const fetcher = vi.fn(
+    async (resource: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(resource));
+      if (url.hostname === "api.github.com")
+        return new Response(
+          JSON.stringify({
+            tag_name: tag,
+            draft: false,
+            prerelease: false,
+            assets,
+          }),
+        );
+      const name = url.pathname.split("/").at(-1)!;
+      if (url.hostname === "github.com")
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: `https://release-assets.githubusercontent.com/fixture/${name}`,
+          },
+        });
+      const stored = files[name];
+      if (stored == null) return new Response("", { status: 404 });
+      const bytes = typeof stored === "string" ? Buffer.from(stored) : stored;
+      const range = new Headers(init?.headers)
+        .get("range")
+        ?.match(/^bytes=(\d+)-(\d+)$/);
+      const counted = name !== "SHA256SUMS";
+      if (options.ranges && range) {
+        const start = Number(range[1]);
+        const end = Math.min(Number(range[2]), bytes.length - 1);
+        if (counted) served.bytes += end + 1 - start;
+        served.ranges.push(`${name} ${start}-${end}`);
+        return new Response(body(bytes.subarray(start, end + 1)), {
+          status: 206,
+          headers: {
+            "content-range": `bytes ${start}-${end}/${bytes.length}`,
+            "content-length": String(end + 1 - start),
+          },
+        });
+      }
+      if (counted) served.bytes += bytes.length;
+      return new Response(body(bytes));
+    },
+  );
+  return { repo, fetcher, served };
 }
 
 function installer(
   root: string,
   files: Record<string, Uint8Array | string>,
   target: { platform: string; arch: string; appImage?: string },
+  options: {
+    ranges?: boolean;
+    mac?: Parameters<typeof updateInstaller>[0]["mac"];
+    /** Puts a layer between the installer and the fake GitHub. */
+    wrap?: (inner: typeof fetch) => typeof fetch;
+  } = {},
 ) {
-  const { repo, fetcher } = fakeGithub(files);
+  const { repo, fetcher, served } = fakeGithub(files, "v0.3.0", options);
   const views: UpdateInstallView[] = [];
   const calls: string[] = [];
+  const logs: string[] = [];
   const instance = updateInstaller({
+    ...(options.mac ? { mac: options.mac } : {}),
+    log: (message) => logs.push(message),
     repository: repo,
     current: "0.2.3",
     dir: join(root, "updates"),
     target,
-    fetch: fetcher as typeof fetch,
+    fetch: options.wrap
+      ? options.wrap(fetcher as typeof fetch)
+      : (fetcher as typeof fetch),
     emit: (view) => views.push(view),
     openPath: async (path) => {
       calls.push(`open ${path}`);
@@ -409,7 +447,7 @@ function installer(
     relaunch: (path) => calls.push(`relaunch ${path}`),
     quit: () => calls.push("quit"),
   });
-  return { instance, views, calls, fetcher };
+  return { instance, views, calls, fetcher, served, logs };
 }
 
 it("downloads, verifies and replaces the running AppImage, then restarts only on request", async () => {
@@ -739,4 +777,406 @@ it("ends a download as failed when the downloads folder cannot be cleared, with 
   } finally {
     process.off("unhandledRejection", onRejection);
   }
+});
+
+/** Blocks of `size` bytes filled with `seed`, so equal seeds make equal blocks. */
+const block = (seed: number, size = 1000) => Buffer.alloc(size, seed);
+/** electron-builder's blockmap JSON for `blocks`, with SHA-256 standing in for its BLAKE2 checksums. */
+const blockMapJson = (blocks: Buffer[]) =>
+  JSON.stringify({
+    version: "2",
+    files: [
+      {
+        name: "file",
+        offset: 0,
+        checksums: blocks.map((b) =>
+          createHash("sha256").update(b).digest("base64"),
+        ),
+        sizes: blocks.map((b) => b.length),
+      },
+    ],
+  });
+/** An AppImage as electron-builder writes it: the image, its raw-deflate blockmap, and the blockmap's length. */
+function appImageOf(blocks: Buffer[]): { bytes: Buffer; tail: number } {
+  const map = deflateRawSync(blockMapJson(blocks));
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(map.length);
+  return {
+    bytes: Buffer.concat([...blocks, map, length]),
+    tail: map.length + 4,
+  };
+}
+
+it("rebuilds the AppImage from the running one, downloading only the changed blocks", async () => {
+  const root = temp();
+  mkdirSync(join(root, "apps"));
+  const appImage = join(root, "apps", "PoliTost.Pyxis-0.2.3.AppImage");
+  const old = appImageOf([1, 2, 3, 4, 5, 6].map((seed) => block(seed)));
+  const next = appImageOf([1, 2, 9, 4, 5, 6].map((seed) => block(seed)));
+  writeFileSync(appImage, old.bytes);
+  const name = "PoliTost.Pyxis-0.3.0.AppImage";
+  const { instance, views, served, logs } = installer(
+    root,
+    { [name]: next.bytes, SHA256SUMS: `${sha(next.bytes)}  ${name}\n` },
+    { platform: "linux", arch: "x64", appImage },
+    { ranges: true },
+  );
+  await instance.start();
+  expect(instance.state()).toMatchObject({ handover: "appimage-replaced" });
+  expect(readFileSync(appImage)).toEqual(next.bytes);
+  // The trailer, the blockmap and the one changed block: three Range requests.
+  expect(served.ranges).toHaveLength(3);
+  expect(served.bytes).toBe(next.tail + 1000);
+  expect(logs).toEqual([]);
+  // Once planned, progress counts the downloaded bytes, not the copied ones.
+  const downloading = views.filter((view) => view.state === "downloading");
+  const planned = downloading.findIndex((view) => view.total === 1000);
+  expect(planned).toBeGreaterThan(0);
+  for (const view of downloading.slice(planned))
+    expect(view).toMatchObject({ total: 1000 });
+  expect(existsSync(join(root, "updates", name))).toBe(false);
+});
+
+it("downloads the whole AppImage when the server ignores Range or the rebuilt file does not match", async () => {
+  const name = "PoliTost.Pyxis-0.3.0.AppImage";
+  const blocks = [1, 2, 3, 4].map((seed) => block(seed));
+  const next = appImageOf([1, 2, 9, 4].map((seed) => block(seed)));
+  for (const [ranges, installed, reason] of [
+    [false, appImageOf(blocks).bytes, "update-diff-range"],
+    // The installed file's second block changed after its blockmap was written, so copying it gives wrong bytes.
+    [
+      true,
+      Buffer.concat([
+        block(1),
+        block(7),
+        appImageOf(blocks).bytes.subarray(2000),
+      ]),
+      "update-diff-mismatch",
+    ],
+  ] as const) {
+    const root = temp();
+    const appImage = join(root, "Pyxis.AppImage");
+    writeFileSync(appImage, installed);
+    const { instance, views, served, logs } = installer(
+      root,
+      { [name]: next.bytes, SHA256SUMS: `${sha(next.bytes)}  ${name}\n` },
+      { platform: "linux", arch: "x64", appImage },
+      { ranges },
+    );
+    await instance.start();
+    expect(instance.state(), reason).toMatchObject({
+      handover: "appimage-replaced",
+    });
+    expect(readFileSync(appImage)).toEqual(next.bytes);
+    expect(logs).toEqual([
+      `pyxis: downloading the whole update file (${reason})`,
+    ]);
+    expect(served.bytes).toBeGreaterThan(next.bytes.length);
+    expect(
+      views.filter((view) => view.state === "downloading").at(-1),
+    ).toMatchObject({ total: next.bytes.length });
+    expect(readdirSync(join(root, "updates"))).toEqual([]);
+  }
+});
+
+/** The AppImage case for the idle limit: the running file, the new release and the first Range request's URL test. */
+function idleCase() {
+  const root = temp();
+  mkdirSync(join(root, "apps"));
+  const appImage = join(root, "apps", "PoliTost.Pyxis-0.2.3.AppImage");
+  const old = appImageOf([1, 2, 3, 4].map((seed) => block(seed)));
+  const next = appImageOf([1, 2, 9, 4].map((seed) => block(seed)));
+  writeFileSync(appImage, old.bytes);
+  const name = "PoliTost.Pyxis-0.3.0.AppImage";
+  const files = {
+    [name]: next.bytes,
+    SHA256SUMS: `${sha(next.bytes)}  ${name}\n`,
+  };
+  const isRange = (resource: string | URL | Request, init?: RequestInit) =>
+    String(resource).endsWith(`/fixture/${name}`) &&
+    new Headers(init?.headers).has("range");
+  return { root, appImage, next, files, isRange };
+}
+
+it("falls back to the whole AppImage when the differential path stalls for the idle limit", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const { root, appImage, next, files, isRange } = idleCase();
+    let stalled!: () => void;
+    const hung = new Promise<void>((resolve) => (stalled = resolve));
+    let first = true;
+    const { instance, logs } = installer(
+      root,
+      files,
+      { platform: "linux", arch: "x64", appImage },
+      {
+        ranges: true,
+        wrap: (inner) => (resource, init) => {
+          if (!isRange(resource, init) || !first) return inner(resource, init);
+          first = false;
+          stalled();
+          // The trailer request never answers, as on a connection that stopped.
+          return new Promise((_, reject) =>
+            init?.signal?.addEventListener("abort", () =>
+              reject(init.signal!.reason),
+            ),
+          );
+        },
+      },
+    );
+    const running = instance.start();
+    await hung;
+    await vi.advanceTimersByTimeAsync(30_000);
+    await running;
+    expect(instance.state()).toMatchObject({ handover: "appimage-replaced" });
+    expect(readFileSync(appImage)).toEqual(next.bytes);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatch(/^pyxis: downloading the whole update file/);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("ends the update, without the whole-file fallback, when the user cancels the differential path", async () => {
+  const { root, appImage, files, isRange } = idleCase();
+  let stalled!: () => void;
+  const hung = new Promise<void>((resolve) => (stalled = resolve));
+  let whole = 0;
+  const { instance, logs } = installer(
+    root,
+    files,
+    { platform: "linux", arch: "x64", appImage },
+    {
+      ranges: true,
+      wrap: (inner) => (resource, init) => {
+        if (!isRange(resource, init)) {
+          if (
+            String(resource).endsWith("/fixture/PoliTost.Pyxis-0.3.0.AppImage")
+          )
+            whole++;
+          return inner(resource, init);
+        }
+        stalled();
+        return new Promise((_, reject) =>
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal!.reason),
+          ),
+        );
+      },
+    },
+  );
+  const running = instance.start();
+  await hung;
+  instance.cancel();
+  await running;
+  expect(instance.state()).toEqual({ state: "idle" });
+  expect(whole).toBe(0);
+  expect(logs).toEqual([]);
+});
+
+it("keeps a slow differential download alive while bytes keep arriving", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const { root, appImage, next, files, isRange } = idleCase();
+    let waiting = 0;
+    const { instance, logs } = installer(
+      root,
+      files,
+      { platform: "linux", arch: "x64", appImage },
+      {
+        ranges: true,
+        // Every Range answer trickles in one byte per 20 s: longer than the idle limit in all, never silent for it.
+        wrap: (inner) => async (resource, init) => {
+          const response = await inner(resource, init);
+          if (!isRange(resource, init)) return response;
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          let at = 0;
+          return new Response(
+            new ReadableStream<Uint8Array>(
+              {
+                async pull(controller) {
+                  if (at >= bytes.length) return controller.close();
+                  waiting++;
+                  await new Promise((resolve) => setTimeout(resolve, 20_000));
+                  waiting--;
+                  controller.enqueue(bytes.subarray(at, ++at));
+                },
+              },
+              { highWaterMark: 0 },
+            ),
+            { status: response.status, headers: response.headers },
+          );
+        },
+      },
+    );
+    const running = instance.start();
+    let done = false;
+    void running.then(() => (done = true));
+    // The trailer, the blockmap and one changed block, a byte at a time. Time moves only while a read waits, so real
+    // file work never races the fake clock.
+    while (!done) {
+      await new Promise((resolve) => setImmediate(resolve));
+      if (waiting > 0) {
+        await vi.advanceTimersByTimeAsync(20_000);
+      }
+    }
+    await running;
+    expect(instance.state()).toMatchObject({ handover: "appimage-replaced" });
+    expect(readFileSync(appImage)).toEqual(next.bytes);
+    // Rebuilt from the changed block, not by the whole-file fallback.
+    expect(logs).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+}, 30_000);
+
+/** A stand-in for ditto: the unpacked folder gets the app bundle as one file holding the zip's bytes. */
+function fakeMac(root: string) {
+  const unpacked: string[] = [];
+  return {
+    unpacked,
+    mac: {
+      keepDir: join(root, "update-base"),
+      extractZip: async (zip: string, folder: string) => {
+        unpacked.push(zip);
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, "PoliTost Pyxis.app"), readFileSync(zip));
+      },
+    },
+  };
+}
+
+it("updates a Mac from the zip: whole the first time and kept, then only the changed blocks", async () => {
+  const root = temp();
+  const { mac, unpacked } = fakeMac(root);
+  const zip = "PoliTost.Pyxis-0.3.0-arm64-mac.zip";
+  const dmg = "PoliTost.Pyxis-0.3.0-arm64.dmg";
+  const kept = join(root, "update-base", "arm64.zip");
+  const folder = join(root, "updates", "PoliTost Pyxis 0.3.0");
+  const release = (blocks: Buffer[]) => {
+    const bytes = Buffer.concat(blocks);
+    const map = gzipSync(blockMapJson(blocks));
+    return {
+      bytes,
+      map,
+      files: {
+        [zip]: bytes,
+        [`${zip}.blockmap`]: map,
+        [dmg]: "a disk image",
+        SHA256SUMS: `${sha(bytes)}  ${zip}\n${sha(Buffer.from("a disk image"))}  ${dmg}\n`,
+      },
+    };
+  };
+
+  // No kept zip yet: the whole zip, which then stays for the next update.
+  const first = release([1, 2, 3, 4, 5].map((seed) => block(seed)));
+  const one = installer(
+    root,
+    first.files,
+    { platform: "darwin", arch: "arm64" },
+    { ranges: true, mac },
+  );
+  await one.instance.start();
+  expect(one.instance.state()).toEqual({
+    state: "verified",
+    version: "v0.3.0",
+    handover: "app-opened",
+  });
+  expect(one.served.bytes).toBe(first.map.length + first.bytes.length);
+  expect(one.logs).toEqual([
+    "pyxis: downloading the whole update file (ENOENT)",
+  ]);
+  expect(readFileSync(kept)).toEqual(first.bytes);
+  expect(readFileSync(`${kept}.blockmap`)).toEqual(first.map);
+  expect(unpacked).toEqual([kept]);
+  expect(readFileSync(join(folder, "PoliTost Pyxis.app"))).toEqual(first.bytes);
+  // Node on Windows stores an absolute link target with the current drive; macOS keeps it as written.
+  expect(readlinkSync(join(folder, "Applications"))).toBe(
+    process.platform === "win32" ? resolve("/Applications") : "/Applications",
+  );
+  expect(one.calls).toEqual([`open ${folder}`]);
+  await one.instance.reveal();
+  expect(one.calls).toEqual([`open ${folder}`, `open ${folder}`]);
+  expect(
+    await one.instance.finish({
+      workspaceBusy: false,
+      activeJobs: 0,
+      confirmed: false,
+    }),
+  ).toBe("done");
+  expect(one.calls.at(-1)).toBe("quit");
+
+  // The next update starts from the kept zip and fetches the two changed blocks in one range.
+  const second = release([1, 8, 9, 4, 5].map((seed) => block(seed)));
+  const two = installer(
+    root,
+    second.files,
+    { platform: "darwin", arch: "arm64" },
+    { ranges: true, mac },
+  );
+  await two.instance.start();
+  expect(two.instance.state()).toMatchObject({ handover: "app-opened" });
+  expect(two.logs).toEqual([]);
+  expect(two.served.ranges).toEqual([`${zip} 1000-2999`]);
+  expect(two.served.bytes).toBe(second.map.length + 2000);
+  expect(readFileSync(kept)).toEqual(second.bytes);
+  expect(readFileSync(`${kept}.blockmap`)).toEqual(second.map);
+  expect(readFileSync(join(folder, "PoliTost Pyxis.app"))).toEqual(
+    second.bytes,
+  );
+  expect(
+    two.views.filter((view) => view.state === "downloading").at(-1),
+  ).toMatchObject({ total: 2000 });
+});
+
+it("opens the disk image without a zip checksum, keeps no zip without a blockmap, and fails when the zip won't unpack", async () => {
+  const zip = "PoliTost.Pyxis-0.3.0-mac.zip";
+  const dmg = "PoliTost.Pyxis-0.3.0.dmg";
+  const bytes = Buffer.concat([block(1), block(2)]);
+  const target = { platform: "darwin", arch: "x64" };
+
+  let root = temp();
+  let mac = fakeMac(root).mac;
+  const noZipSum = installer(
+    root,
+    { [zip]: bytes, [dmg]: bytes, SHA256SUMS: `${sha(bytes)}  ${dmg}\n` },
+    target,
+    { mac },
+  );
+  await noZipSum.instance.start();
+  expect(noZipSum.instance.state()).toMatchObject({ handover: "dmg-opened" });
+  expect(noZipSum.calls).toEqual([`open ${join(root, "updates", dmg)}`]);
+
+  root = temp();
+  const fake = fakeMac(root);
+  const noMap = installer(
+    root,
+    { [zip]: bytes, SHA256SUMS: `${sha(bytes)}  ${zip}\n` },
+    target,
+    { mac: fake.mac },
+  );
+  await noMap.instance.start();
+  expect(noMap.instance.state()).toMatchObject({ handover: "app-opened" });
+  expect(fake.unpacked).toEqual([join(root, "updates", zip)]);
+  expect(existsSync(join(root, "update-base"))).toBe(false);
+
+  root = temp();
+  mac = {
+    keepDir: join(root, "update-base"),
+    extractZip: async () => {
+      throw new Error("ditto failed");
+    },
+  };
+  const broken = installer(
+    root,
+    { [zip]: bytes, SHA256SUMS: `${sha(bytes)}  ${zip}\n` },
+    target,
+    { mac },
+  );
+  await broken.instance.start();
+  expect(broken.instance.state()).toEqual({
+    state: "failed",
+    error: "handover",
+  });
+  expect(broken.calls).toEqual([]);
 });
