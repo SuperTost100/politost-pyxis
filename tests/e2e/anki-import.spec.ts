@@ -236,6 +236,8 @@ test("an Anki package imports into a topic with its history, in both themes", as
       await page.waitForTimeout(500);
       await page.screenshot({ path: join(SHOTS, "en-light-export.png") });
     }
+    // A click while the dialog still zooms in is lost; let it open fully first.
+    await animationsSettled(page);
     await exporting.getByRole("button", { name: "Cancel" }).click();
     await expect(exporting).toBeHidden();
     // Closing the dialog returns focus to the menu button it came from.
