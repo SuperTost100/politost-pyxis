@@ -3,7 +3,6 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
-  DatePicker,
   Form,
   Input,
   Modal,
@@ -13,14 +12,22 @@ import {
   Dropdown,
 } from "antd";
 import dayjs from "dayjs";
-import dateIt from "antd/es/date-picker/locale/it_IT";
-import dateEn from "antd/es/date-picker/locale/en_GB";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
 import { examDaysLabel } from "./examDays";
+import { ExamSessionsField } from "./ExamSessionsField";
+import {
+  draftsFromSessions,
+  emptyDraft,
+  nextUpcomingDay,
+  sameSessions,
+  sessionsFromDrafts,
+  type SessionDraft,
+} from "./examSessions";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
+import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { MasteryBar } from "../../components/MasteryBar";
 import { PlanEducationLevel } from "./PlanEducationLevel";
@@ -31,6 +38,7 @@ import { IconButton } from "../../components/IconButton";
 import type { IconName } from "../../components/Icon";
 import { LessonTile } from "../../components/LessonTile";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
+import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -40,9 +48,32 @@ import { PlanProgress } from "./PlanProgress";
 import { RebuildDialog } from "./RebuildDialog";
 import { PlanPath } from "./PlanPath";
 import { MistakesNotebook } from "../study/MistakesNotebook";
+import { PastPapers } from "./PastPapers";
 import "./PlanPage.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
+
+/** "Written: Tue 20 Nov, 09:30 · Aula 5", with "· over" once the day has passed. */
+function sessionLine(
+  session: Plan["sessions"][number],
+  language: string,
+  t: (key: string) => string,
+): string {
+  const day = new Intl.DateTimeFormat(language, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(session.date);
+  const when = session.time ? `${day}, ${session.time}` : day;
+  const over = dayjs(session.date).isBefore(dayjs().startOf("day"));
+  return [
+    session.label ? `${session.label}: ${when}` : when,
+    session.place,
+    over ? t("sessions.over") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 const kinds = ["mcq", "completion", "matching", "tf", "open"] as const;
 type QuizKind = (typeof kinds)[number];
 
@@ -65,6 +96,11 @@ export function PlanPage() {
     queryKey: ["simulations", planId],
     enabled: !!planId,
     queryFn: () => invoke("plans.simulations", { planId }),
+  });
+  const pastPapers = useQuery({
+    queryKey: ["past-papers", planId],
+    enabled: !!planId,
+    queryFn: () => invoke("study.pastPapers", { planId }),
   });
   const series = useQuery({
     queryKey: ["series", planId],
@@ -95,8 +131,8 @@ export function PlanPage() {
   const [error, setError] = useState("");
   const busyRef = useRef(false);
   const [form] = Form.useForm();
-  // The date field as edited, so the calendar button never exports an older saved date.
-  const [draftExamAt, setDraftExamAt] = useState<dayjs.Dayjs | null>(null);
+  // The sessions as edited, so the calendar button never exports older saved ones.
+  const [draftSessions, setDraftSessions] = useState<SessionDraft[]>([emptyDraft()]);
   const [modal, modalContext] = Modal.useModal();
   const tab = ["progress", "topics", "sources", "mistakes"].includes(view ?? "")
     ? view!
@@ -133,27 +169,35 @@ export function PlanPage() {
     setError("");
     setCreateOpen(true);
   }
-  const savedExamDay = plan.data?.examAt
-    ? dayjs(plan.data.examAt).format("YYYY-MM-DD")
-    : null;
-  const calendarBlocked =
-    (draftExamAt?.format("YYYY-MM-DD") ?? null) !== savedExamDay
-      ? t("calendar.saveFirst")
-      : savedExamDay === null
-        ? t("calendar.oneNoDate")
-        : savedExamDay < dayjs().format("YYYY-MM-DD")
-          ? t("calendar.onePast")
-          : undefined;
+  const savedSessions = draftsFromSessions(plan.data?.sessions ?? []);
+  const upcomingDay = nextUpcomingDay(savedSessions);
+  const calendarBlocked = !sameSessions(draftSessions, savedSessions)
+    ? t("calendar.saveFirst")
+    : savedSessions.length === 0
+      ? t("calendar.oneNoDate")
+      : upcomingDay === null
+        ? t("calendar.onePast")
+        : undefined;
   function openSettings() {
     if (!plan.data) return;
     form.setFieldsValue({
       title: plan.data.title,
       target: Math.round(plan.data.target * 100),
-      examAt: plan.data.examAt ? dayjs(plan.data.examAt) : null,
     });
-    setDraftExamAt(plan.data.examAt ? dayjs(plan.data.examAt) : null);
+    const saved = draftsFromSessions(plan.data.sessions);
+    setDraftSessions(saved.length ? saved : [emptyDraft()]);
     setError("");
     setSettingsOpen(true);
+  }
+  /** Archiving changes what every review queue, count and card list shows, so they all read again. */
+  async function setArchived(archived: boolean) {
+    await invoke("plans.archive", { planId, archived });
+    await Promise.all([
+      refresh(),
+      ...["card-browse", "cards", "card-queue", "review-session"].map((key) =>
+        client.invalidateQueries({ queryKey: [key] }),
+      ),
+    ]);
   }
   function chooseLesson(kind: string) {
     if (["quiz", "simulation"].includes(kind)) {
@@ -219,8 +263,20 @@ export function PlanPage() {
         </Button>
       </section>
     );
-  if (plan.isError || (plan.isSuccess && !plan.data))
-    return <Notice tone="warning">{t("planOverview.unavailable")}</Notice>;
+  if (plan.isError || (plan.isSuccess && !plan.data)) {
+    const toExams = { label: t("nav.toExams"), onClick: () => navigate("/exams") };
+    return plan.isError ? (
+      <ErrorState
+        action={{ label: t("components.notice.retry"), onClick: () => void plan.refetch() }}
+        secondary={toExams}
+        details={errorDetails(plan.error)}
+      >
+        {t("planOverview.unavailable")}
+      </ErrorState>
+    ) : (
+      <ErrorState action={toExams}>{t("planOverview.gone")}</ErrorState>
+    );
+  }
   return (
     <div className="px-plan-page">
       {modalContext}
@@ -256,6 +312,17 @@ export function PlanPage() {
             count: progress?.preparation.totalTopics ?? 0,
           })}
         </p>
+        {plan.data &&
+        (plan.data.sessions.length > 1 ||
+          plan.data.sessions.some((s) => s.time || s.place || s.label)) ? (
+          <ul className="px-plan-sessions small ink-muted" aria-label={t("sessions.list")}>
+            {plan.data.sessions.map((session) => (
+              <li key={session.id}>
+                {sessionLine(session, i18n.language, t)}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <MasteryBar
           value={Math.round((progress?.preparation.mastery ?? 0) * 100)}
           target={(plan.data?.target ?? 0.75) * 100}
@@ -269,8 +336,8 @@ export function PlanPage() {
           >
             {t("cards.reviewTitle")}
           </Button>
-          {/* Only an exam with a date today or later has anything to save. */}
-          {savedExamDay !== null && savedExamDay >= dayjs().format("YYYY-MM-DD") ? (
+          {/* Only an exam with a session today or later has anything to save. */}
+          {upcomingDay !== null ? (
             <CalendarButton planId={planId} icon />
           ) : null}
           <IconButton
@@ -303,6 +370,19 @@ export function PlanPage() {
                 .join(" · ")}
             </span>
           </p>
+        )}
+        {plan.data?.archivedAt != null && (
+          <div className="px-plan-archived">
+            <Notice
+              tone="info"
+              action={{
+                label: t("planOverview.restore"),
+                onClick: () => void action(() => setArchived(false)),
+              }}
+            >
+              {t("planOverview.archivedNotice")}
+            </Notice>
+          </div>
         )}
         {(plan.data?.status === "draft" ||
           plan.data?.topics.some((topic) => topic.grounding === "general")) && (
@@ -511,6 +591,7 @@ export function PlanPage() {
           >
             {t("planOverview.addSources")}
           </Button>
+          <PastPapers planId={planId} />
         </section>
       )}
       <Modal
@@ -542,7 +623,10 @@ export function PlanPage() {
           loading={library.isPending}
           dataSource={(library.data ?? []).filter(
             (source) =>
-              !plan.data?.sources.some((attached) => attached.id === source.id),
+              !plan.data?.sources.some((attached) => attached.id === source.id) &&
+              !pastPapers.data?.papers.some((paper) =>
+                paper.sourceIds.includes(source.id),
+              ),
           )}
           rowSelection={{
             selectedRowKeys: selectedSources,
@@ -651,10 +735,8 @@ export function PlanPage() {
                   planId,
                   title: values.title,
                   target: values.target / 100,
-                  // Noon, as in the wizard, so a shared plan keeps its day in another time zone.
-                  examAt: values.examAt
-                    ? values.examAt.startOf("day").hour(12).valueOf()
-                    : null,
+                  // Noon on each day, as in the wizard, so a shared plan keeps its days in another time zone.
+                  sessions: sessionsFromDrafts(draftSessions),
                 });
                 await refresh();
                 setSettingsOpen(false);
@@ -664,13 +746,7 @@ export function PlanPage() {
         }
       >
         {error && <Notice tone="danger">{error}</Notice>}
-        <Form
-          form={form}
-          layout="vertical"
-          onValuesChange={(changed) => {
-            if ("examAt" in changed) setDraftExamAt(changed.examAt ?? null);
-          }}
-        >
+        <Form form={form} layout="vertical">
           <Form.Item
             name="title"
             label={t("wizard.planTitle")}
@@ -686,17 +762,13 @@ export function PlanPage() {
               ariaLabelForHandle={t("planOverview.target")}
             />
           </Form.Item>
-          <Form.Item name="examAt" label={t("wizard.exam")}>
-            <DatePicker
-              locale={i18n.language.startsWith("it") ? dateIt : dateEn}
-              format={
-                i18n.language.startsWith("it") ? "DD/MM/YYYY" : "DD/MM/YYYY"
-              }
+          <Form.Item>
+            <ExamSessionsField
+              idPrefix="settings"
+              dateLabel={t("wizard.exam")}
+              value={draftSessions}
+              onChange={setDraftSessions}
               disabled={busy}
-              disabledDate={(value) =>
-                value.startOf("day").isBefore(dayjs().startOf("day"))
-              }
-              style={{ width: "100%" }}
             />
           </Form.Item>
           <p className="small">
@@ -721,6 +793,26 @@ export function PlanPage() {
             onClick={() => setRebuildOpen(true)}
           >
             {t("plans.rebuild")}
+          </Button>
+        </section>
+        <section className="px-plan-archive">
+          <p className="small ink-muted">
+            {plan.data?.archivedAt != null
+              ? t("planOverview.restoreHelp")
+              : t("planOverview.archiveHelp")}
+          </p>
+          <Button
+            disabled={busy}
+            onClick={() =>
+              void action(async () => {
+                await setArchived(plan.data?.archivedAt == null);
+                setSettingsOpen(false);
+              })
+            }
+          >
+            {plan.data?.archivedAt != null
+              ? t("planOverview.restore")
+              : t("planOverview.archive")}
           </Button>
         </section>
         <section className="px-plan-danger">
@@ -822,6 +914,17 @@ export function PlanPage() {
                         icon: "clock",
                         label: t("simulation.title"),
                       },
+                      ...(pastPapers.data?.papers.some(
+                        (paper) => paper.status === "ready",
+                      )
+                        ? [
+                            {
+                              kind: "past",
+                              icon: "file-pen",
+                              label: t("pastPapers.practiceTitle"),
+                            },
+                          ]
+                        : []),
                     ]
               ).map((tile) => (
                 <LessonTile

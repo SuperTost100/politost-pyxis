@@ -1,6 +1,5 @@
 import { strToU8, zipSync } from "fflate";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
@@ -32,6 +31,7 @@ import {
   importRequest,
   previewPlan,
 } from "../../renderer/src/features/plans/importPreview";
+import { tempDir } from "../test-temp";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(
@@ -207,7 +207,7 @@ describe("plan file", () => {
 
   it("names a source by hash and embeds the file only when asked", () => {
     const db = openDatabase(":memory:");
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-"));
+    const workspace = tempDir("pyxis-");
     const imported = importSmartbook(
       db,
       pack({
@@ -1587,7 +1587,7 @@ describe("progress keeps gap state (PRO-02, PRO-08)", () => {
 describe("import lookups stay linear in a large file", () => {
   it("rejects duplicate document versions before writing embedded sources", () => {
     const db = openDatabase(":memory:");
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-document-version-"));
+    const workspace = tempDir("pyxis-document-version-");
     const bytes = Buffer.from("Source");
     const file = planFileSchema.parse({
       version: 2, title: "Duplicate", topics: [], nodes: [], cards: [],
@@ -1686,7 +1686,7 @@ describe("an imported document keeps its original file's identity (PLAN-13)", ()
   const original = createHash("sha256").update(body).digest("hex");
 
   function pdfPlan() {
-    const workspace = mkdtempSync(join(tmpdir(), "pyxis-identity-"));
+    const workspace = tempDir("pyxis-identity-");
     const db = openDatabase(":memory:");
     putBlob(workspace, body, "application/pdf", "pdf");
     db.exec(`
@@ -1719,7 +1719,7 @@ describe("an imported document keeps its original file's identity (PLAN-13)", ()
       // A forged hash inside the document is not carried over.
       (file.documents![0]!.tree as Record<string, unknown>).blobSha = "f".repeat(64);
       const fresh = openDatabase(":memory:");
-      const copy = importPlan(fresh, file, 10, mkdtempSync(join(tmpdir(), "pyxis-identity-")));
+      const copy = importPlan(fresh, file, 10, tempDir("pyxis-identity-"));
       const sourceId = (fresh.prepare("SELECT source_id AS id FROM plan_sources WHERE plan_id = ?").get(copy) as { id: string }).id;
       const imported = fresh.prepare("SELECT tree_json FROM source_documents WHERE source_id = ?").get(sourceId) as { tree_json: string };
       expect(JSON.parse(imported.tree_json)).toMatchObject({ sourceSha: original });
@@ -1780,5 +1780,93 @@ describe("progress with path steps that name what was done", () => {
     expect(readQuiz(fresh, copiedAttempt.id)).toMatchObject({ submittedAt: at + 2, result: undefined, checked: [] });
     db.close();
     fresh.close();
+  });
+});
+
+describe("plan file exam sessions", () => {
+  const noon = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12).getTime();
+  const future = (days: number) => examInstant(days);
+
+  function planWithSessions() {
+    const db = openDatabase(":memory:");
+    const { planId } = createPlan(db, {
+      title: "Fisica 1",
+      sourceIds: [],
+      draftTopics: [{ title: "Moti" }],
+      sessions: [
+        { date: future(40), time: "14:00", place: "Studio 14", label: "Oral" },
+        { date: future(30), time: "09:30", place: "Aula 5", label: "Written" },
+      ],
+    });
+    return { db, planId };
+  }
+
+  it("exports the sessions, and examAt as the next exam date for older apps", () => {
+    const { db, planId } = planWithSessions();
+    const file = exportPlan(db, planId);
+    expect(file.examAt).toBe(future(30));
+    expect(file.sessions).toEqual([
+      { date: future(30), time: "09:30", place: "Aula 5", label: "Written" },
+      { date: future(40), time: "14:00", place: "Studio 14", label: "Oral" },
+    ]);
+    expect(planFileSchema.safeParse(file).success).toBe(true);
+    db.close();
+  });
+
+  it("leaves sessions out of a plan with no date", () => {
+    const db = openDatabase(":memory:");
+    const { planId } = createPlan(db, { title: "Senza data", sourceIds: [], draftTopics: [{ title: "T" }] });
+    const file = exportPlan(db, planId);
+    expect(file.examAt).toBeNull();
+    expect(file).not.toHaveProperty("sessions");
+    db.close();
+  });
+
+  it("imports the sessions with new IDs, and importing twice keeps two independent lists", () => {
+    const { db, planId } = planWithSessions();
+    const file = exportPlan(db, planId);
+    const first = importPlan(db, file);
+    const second = importPlan(db, file);
+    const read = (id: string) => readPlan(db, id)!;
+    expect(read(first).sessions.map(({ id: _id, ...rest }) => rest)).toEqual(file.sessions!.map((s) => ({ time: null, place: null, label: null, ...s })));
+    expect(read(first).examAt).toBe(future(30));
+    const ids = [...read(first).sessions, ...read(second).sessions, ...read(planId).sessions].map((s) => s.id);
+    expect(new Set(ids).size).toBe(6);
+    db.close();
+  });
+
+  it("turns the examAt of an older file into one all-day session", () => {
+    const { db, planId } = planWithSessions();
+    const { sessions: _sessions, ...older } = exportPlan(db, planId);
+    expect(older.examAt).toBe(future(30));
+    const copy = importPlan(db, older);
+    expect(readPlan(db, copy)!.sessions.map(({ id: _id, ...rest }) => rest)).toEqual([
+      { date: future(30), time: null, place: null, label: null },
+    ]);
+    const version1 = importPlan(db, { version: 1, title: "Vecchio", topics: [], nodes: [], cards: [], examAt: noon(2031, 5, 4) });
+    expect(readPlan(db, version1)!.sessions).toHaveLength(1);
+    expect(readPlan(db, version1)!.examAt).toBe(noon(2031, 5, 4));
+    db.close();
+  });
+
+  it("lets the sessions win over a different examAt, and treats a file with neither as no date", () => {
+    const { db, planId } = planWithSessions();
+    const file = { ...exportPlan(db, planId), examAt: noon(2020, 1, 1) };
+    expect(readPlan(db, importPlan(db, file))!.examAt).toBe(future(30));
+    const none = importPlan(db, { version: 1, title: "Nessuna data", topics: [], nodes: [], cards: [] });
+    expect(readPlan(db, none)!.sessions).toEqual([]);
+    expect(readPlan(db, none)!.examAt).toBeNull();
+    db.close();
+  });
+
+  it("rejects a malformed time, too long a place and more than ten sessions", () => {
+    const base = { version: 2 as const, title: "T", topics: [], nodes: [], cards: [] };
+    const ok = (sessions: unknown) => planFileSchema.safeParse({ ...base, sessions }).success;
+    expect(ok([{ date: 1000, time: "09:30", place: "Aula" }])).toBe(true);
+    expect(ok([{ date: 1000, time: null, place: null }])).toBe(true);
+    expect(ok([{ date: 1000, time: "9.30" }])).toBe(false);
+    expect(ok([{ date: 1000, place: "x".repeat(201) }])).toBe(false);
+    expect(ok(Array.from({ length: 11 }, () => ({ date: 1000 })))).toBe(false);
+    expect(ok([{ date: -1 }])).toBe(false);
   });
 });

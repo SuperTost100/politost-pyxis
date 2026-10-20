@@ -214,6 +214,8 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await expect(dialog.getByRole("checkbox")).toHaveCount(2);
     await dialog.getByRole("textbox", { name: "Cerca nella libreria" }).fill("vecc");
     await expect(dialog.getByRole("checkbox")).toHaveCount(1);
+    // The dialog zooms in, as openAdd's does; a click while it moves can be lost.
+    await animationsSettled(page);
     await dialog.getByRole("checkbox").check();
     await dialog.getByRole("button", { name: "Aggiungi 1 fonte", exact: true }).click();
     await expect(page.getByText("2 fonti nel piano")).toBeVisible();

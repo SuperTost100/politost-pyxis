@@ -8,6 +8,16 @@
   margin-bottom: var(--space-6);
 }
 
+.px-exams-tab-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.px-exams-tab-actions .ant-select {
+  width: 130px;
+}
+
 .px-exams-import {
   display: inline-flex;
   align-items: center;
@@ -29,6 +39,10 @@
 }
 
 @media (max-width: 720px) {
+  /* The tabs and the filter side by side outgrow a narrow window, so the filter drops below them. */
+  .px-exams-tabs {
+    flex-wrap: wrap;
+  }
   .px-exams-toolbar {
     grid-template-columns: minmax(0, 1fr) 150px;
   }

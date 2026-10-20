@@ -10,7 +10,6 @@
   font-size: 16px;
   font-variant-numeric: tabular-nums;
 }
-.px-sim-setup,
 .px-sim-run,
 .px-sim-grading,
 .px-sim-results {
@@ -18,10 +17,7 @@
   flex-direction: column;
   gap: var(--space-5);
 }
-.px-sim-setup .ant-segmented {
-  align-self: flex-start;
-}
-.px-sim-setup .ant-btn {
+.px-sim-build-cancel.ant-btn {
   align-self: flex-start;
   white-space: nowrap;
 }
@@ -111,3 +107,6 @@
   }
 }
 
+.px-intro-options-panel .px-sim-format-note {
+  margin: 0;
+}

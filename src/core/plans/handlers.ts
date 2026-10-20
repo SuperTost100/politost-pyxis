@@ -3,8 +3,9 @@ import {
   removePlanSource,
   readPlanItem,
   openPlanQuiz,
+  planImportedFrom,
 } from "./views";
-import { savePlanSettings } from "./settings";
+import { savePlanSettings, setPlanArchived } from "./settings";
 import {
   applyStoredRebuild,
   enqueuePlan,
@@ -33,10 +34,10 @@ import {
 } from "./create";
 import { proposeModules, proposeTree } from "./guided";
 import { withLibraryOriginals } from "./libraryOriginals";
-import { exportPlan, importPlan } from "./file";
+import { exportPlan, importableWithout, importPlan, PlanFileError } from "./file";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { readProfile } from "../profile/profile";
-import { planMastery, planSeries } from "./progress";
+import { planMastery, planMasteryBreakdown, planSeries } from "./progress";
 import { freeUpSpace, planDiskUsage } from "../share/usage";
 import {
   chatListedSources,
@@ -44,9 +45,11 @@ import {
   deleteLoosePassages,
   removeUnreferencedBlobs,
 } from "../chat/delete";
+import { dueEverywhere, savePlannerHours, sessionPlan, todayPlan } from "./planner";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
-import { AUTHOR_MAX, type PlanFile } from "../../shared/plan-file";
+import { AUTHOR_MAX, type PlanFile, type PlanFilePart } from "../../shared/plan-file";
+import { IpcError } from "../../shared/ipc";
 
 /** The profile name as a plan file carries it: trimmed, and cut to the file's limit without splitting a character. */
 function fileAuthor(name: string): string {
@@ -168,6 +171,9 @@ export function planHandlers(
     settings(input: Parameters<typeof savePlanSettings>[1]) {
       return recheck(input.planId, savePlanSettings(db, input));
     },
+    archive(input: { planId: string; archived: boolean }) {
+      return setPlanArchived(db, input.planId, input.archived);
+    },
     attachSources(input: { planId: string; sourceIds: string[] }) {
       return recheck(input.planId, attachPlanSources(db, input.planId, input.sourceIds));
     },
@@ -262,17 +268,28 @@ export function planHandlers(
         workspace,
       });
     },
-    import(input: PlanFile & { libraryFor?: Record<string, string> }) {
-      const planId = importPlan(
-        db,
-        withLibraryOriginals(db, workspace, input),
-        Date.now(),
-        workspace,
-      );
+    import(input: PlanFile & { libraryFor?: Record<string, string>; without?: PlanFilePart[] }) {
+      const { without, ...request } = input;
+      const file = withLibraryOriginals(db, workspace, request);
+      let planId: string;
+      try {
+        planId = importPlan(db, file, Date.now(), workspace, { without });
+      } catch (error) {
+        // When only the exercises or the maps are at fault, say which parts the plan can go without.
+        const left = importableWithout(db, file, workspace, error);
+        if (!left || !(error instanceof PlanFileError)) throw error;
+        throw new IpcError("plan-file", error.messageKey, { without: left.join(",") }, error.reason);
+      }
       return recheck(planId, { planId });
+    },
+    importedFile(input: { id: string; createdAt: number }) {
+      return planImportedFrom(db, input);
     },
     mastery(input: { planId: string }) {
       return planMastery(db, input.planId);
+    },
+    masteryBreakdown(input: { planId: string }) {
+      return planMasteryBreakdown(db, input.planId);
     },
     series(input: { planId: string }) {
       return planSeries(db, input.planId);
@@ -282,6 +299,18 @@ export function planHandlers(
     },
     recommend(input: { planId: string }) {
       return planGuide(db, input.planId);
+    },
+    today() {
+      return todayPlan(db);
+    },
+    planner() {
+      return sessionPlan(db);
+    },
+    plannerHours(input: { week?: string; hours: number | null }) {
+      return savePlannerHours(db, input);
+    },
+    dueEverywhere() {
+      return dueEverywhere(db);
     },
     complete(input: {
       planId: string;

@@ -1,7 +1,13 @@
 import type { ElectronApplication } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 
-type PyxisProcess = { pid: number; ppid: number; command: string };
+/** `started`: when the process started, in ms. Windows only, where a parent ID can outlive its parent (see descendants). */
+type PyxisProcess = {
+  pid: number;
+  ppid: number;
+  command: string;
+  started?: number;
+};
 
 /** Every process on the machine with its parent and command line. */
 function processTable(): PyxisProcess[] {
@@ -12,7 +18,7 @@ function processTable(): PyxisProcess[] {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)`t$($_.ParentProcessId)`t$($_.CommandLine)" }',
+        'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)`t$($_.ParentProcessId)`t$(if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() })`t$($_.CommandLine)" }',
       ],
       { encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
     );
@@ -20,10 +26,11 @@ function processTable(): PyxisProcess[] {
       .split(/\r?\n/)
       .filter(Boolean)
       .map((line) => {
-        const [pid, ppid, ...command] = line.split("\t");
+        const [pid, ppid, started, ...command] = line.split("\t");
         return {
           pid: Number(pid),
           ppid: Number(ppid),
+          started: started ? Number(started) : undefined,
           command: command.join("\t"),
         };
       });
@@ -46,10 +53,31 @@ function processTable(): PyxisProcess[] {
 /** Pyxis's main process and every process under it: renderer, GPU, network service, core, crash handler. */
 async function processTree(app: ElectronApplication): Promise<PyxisProcess[]> {
   const main = await app.evaluate(() => process.pid);
-  const table = processTable();
-  const tree = table.filter((proc) => proc.pid === main);
-  for (let i = 0; i < tree.length; i++)
-    tree.push(...table.filter((proc) => proc.ppid === tree[i]!.pid));
+  return descendants(processTable(), main);
+}
+
+/**
+ * The process `root` and everything under it. Windows keeps a process's parent ID after the parent exits and reuses
+ * IDs, so system processes started at boot can name a dead parent whose ID Pyxis now has. A child is never older than
+ * its parent, which tells them apart. POSIX hands orphans to init, so there the parent ID is always live.
+ */
+export function descendants(
+  table: PyxisProcess[],
+  root: number,
+): PyxisProcess[] {
+  const tree = table.filter((proc) => proc.pid === root);
+  for (let i = 0; i < tree.length; i++) {
+    const parent = tree[i]!;
+    tree.push(
+      ...table.filter(
+        (proc) =>
+          proc.ppid === parent.pid &&
+          (proc.started === undefined ||
+            parent.started === undefined ||
+            proc.started >= parent.started),
+      ),
+    );
+  }
   return tree;
 }
 

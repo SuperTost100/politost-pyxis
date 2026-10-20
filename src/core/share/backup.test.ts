@@ -22,6 +22,8 @@ import {
   recoverInterruptedRestore,
   commitWorkspaceRestore,
   hasStudyData,
+  verifyBackupArchive,
+  verifyOrDiscardBackup,
 } from "./backup";
 
 const removal = vi.hoisted(() => ({
@@ -961,6 +963,128 @@ describe("hasStudyData", () => {
         expect(hasStudyData(root)).toBe(false);
       }
       db.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("verifyBackupArchive", { timeout: 30_000 }, () => {
+  function backedUp(root: string): string {
+    const source = join(root, "source");
+    mkdirSync(source);
+    const db = openDatabase(join(source, "pyxis.db"));
+    db.prepare(
+      "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('p1','Fisica','ready',1,1)",
+    ).run();
+    db.close();
+    const archive = join(root, "backup.zip");
+    backupWorkspace(source, archive);
+    return archive;
+  }
+
+  it("accepts a backup just written, and leaves nothing in the temporary folder", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-ok-"));
+    try {
+      const before = readdirSync(tmpdir()).filter((name) =>
+        name.startsWith("pyxis-verify-"),
+      );
+      expect(verifyBackupArchive(backedUp(root))).toBe(true);
+      expect(
+        readdirSync(tmpdir()).filter((name) => name.startsWith("pyxis-verify-")),
+      ).toEqual(before);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("cannot answer for a missing file, and rejects a file that is not a zip and a truncated archive", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-bad-"));
+    try {
+      const archive = backedUp(root);
+      // Not there is not the same as broken: a drive that is unplugged may come back with the same file.
+      expect(() => verifyBackupArchive(join(root, "absent.zip"))).toThrow(
+        /ENOENT/,
+      );
+      writeFileSync(join(root, "text.zip"), "not a zip");
+      expect(verifyBackupArchive(join(root, "text.zip"))).toBe(false);
+      const bytes = readFileSync(archive);
+      writeFileSync(join(root, "cut.zip"), bytes.subarray(0, bytes.length - 40));
+      expect(verifyBackupArchive(join(root, "cut.zip"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an archive whose database fails integrity_check although the zip is well formed", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-db-"));
+    try {
+      const files = unzipSync(readFileSync(backedUp(root)));
+      const damaged = Uint8Array.from(files["pyxis.db"]!);
+      // Whole pages after the header: the CRC of the new zip matches, the database does not.
+      damaged.fill(0xa5, 4096, Math.min(damaged.length, 4096 * 3));
+      writeFileSync(
+        join(root, "damaged.zip"),
+        zipSync({ ...files, "pyxis.db": damaged }),
+      );
+      expect(verifyBackupArchive(join(root, "damaged.zip"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** os.tmpdir() reads TMPDIR on Linux and macOS, TEMP or TMP on Windows. */
+  function breakTemp(dir: string) {
+    for (const name of ["TMPDIR", "TEMP", "TMP"]) vi.stubEnv(name, dir);
+  }
+
+  it("does not call a good archive broken when the temporary folder is unusable", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-env-"));
+    try {
+      const archive = backedUp(root);
+      breakTemp(join(root, "no-such-folder"));
+      // The environment is at fault, not the file: the check cannot answer.
+      expect(() => verifyBackupArchive(archive)).toThrow(/ENOENT/);
+      // A file that is broken before the database is reached is still proven broken.
+      writeFileSync(join(root, "text.zip"), "not a zip");
+      expect(verifyBackupArchive(join(root, "text.zip"))).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a good archive when the check cannot run, and deletes one proven broken", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-discard-"));
+    try {
+      const archive = backedUp(root);
+      breakTemp(join(root, "no-such-folder"));
+      expect(() => verifyOrDiscardBackup(archive)).toThrow(/ENOENT/);
+      expect(existsSync(archive)).toBe(true);
+      vi.unstubAllEnvs();
+      verifyOrDiscardBackup(archive);
+      expect(existsSync(archive)).toBe(true);
+      const bytes = Uint8Array.from(readFileSync(archive));
+      bytes[Math.floor(bytes.length / 3)] = ~bytes[Math.floor(bytes.length / 3)]!;
+      writeFileSync(archive, bytes);
+      expect(() => verifyOrDiscardBackup(archive)).toThrow("backup-unverified");
+      expect(existsSync(archive)).toBe(false);
+      // A file that is already gone leaves nothing to keep: the backup still fails.
+      expect(() => verifyOrDiscardBackup(archive)).toThrow("backup-unverified");
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a flipped byte inside the compressed database", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-verify-flip-"));
+    try {
+      const archive = backedUp(root);
+      const bytes = Uint8Array.from(readFileSync(archive));
+      bytes[Math.floor(bytes.length / 3)] = ~bytes[Math.floor(bytes.length / 3)]!;
+      writeFileSync(join(root, "flipped.zip"), bytes);
+      expect(verifyBackupArchive(join(root, "flipped.zip"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

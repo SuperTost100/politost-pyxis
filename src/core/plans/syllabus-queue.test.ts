@@ -1,3 +1,4 @@
+import { readSessions } from "./sessions";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -139,6 +140,23 @@ describe("SRC-08 comparison after the plan is made or edited", () => {
     db.close();
   });
 
+  it("keeps the exam sessions of a plan that is built in the background", async () => {
+    const { db, plans, sourceId } = setup();
+    const date = new Date(2026, 10, 20, 12).getTime();
+    const built = await plans.create({
+      title: "Fisica",
+      sourceIds: [sourceId],
+      sessions: [{ date, time: "09:30", place: "Aula 5" }],
+    });
+    await expect
+      .poll(() => planBuildState(db, built.planId)?.state)
+      .toBe("succeeded");
+    expect(readSessions(db, built.planId)).toMatchObject([{ date, time: "09:30", place: "Aula 5" }]);
+    expect(db.prepare("SELECT exam_at FROM plans WHERE id = ?").pluck().get(built.planId)).toBe(date);
+    await expect.poll(idle(db)).toEqual({ n: 0 });
+    db.close();
+  });
+
   it("compares again after a plan edit changes what the result depends on, once per change and not when nothing changed", async () => {
     const { db, sources, plans, sourceId } = setup();
     const built = await plans.create({
@@ -154,7 +172,7 @@ describe("SRC-08 comparison after the plan is made or edited", () => {
         planId: built.planId,
         title,
         target: 0.75,
-        examAt: null,
+        sessions: [],
       });
     // Saving the same settings changes nothing the result depends on.
     edit("Fisica");

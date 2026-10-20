@@ -5,6 +5,7 @@ import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
 import { setFallbackListener } from "../engine/generate";
+import { setUsageRecorder, storeUsage } from "../engine/usage";
 import {
   IpcError,
   requests,
@@ -13,6 +14,7 @@ import {
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
+import { setChecksListener } from "../chat/turn";
 import { registerRuntimeJob, toolHandlers } from "../math/handlers";
 import { mapHandlers } from "../maps/handlers";
 import { planHandlers } from "../plans/handlers";
@@ -254,6 +256,8 @@ async function dispatchValidated(
     case "engines.features":
       requests["engines.features"].input.parse(input);
       return engines?.features();
+    case "engines.usage":
+      return engines?.usage(requests["engines.usage"].input.parse(input));
     case "engines.autoConfigure":
       return engines?.autoConfigure(
         requests["engines.autoConfigure"].input.parse(input),
@@ -290,6 +294,22 @@ async function dispatchValidated(
       const parsed = requests["engines.cancelLogin"].input.parse(input);
       return engines?.cancelLogin({ provider: parsed.provider as ProviderId });
     }
+    case "engines.local":
+      requests["engines.local"].input.parse(input);
+      return engines?.local();
+    case "engines.localPull":
+      requests["engines.localPull"].input.parse(input);
+      return engines?.localPull();
+    case "engines.localCancel":
+      requests["engines.localCancel"].input.parse(input);
+      return engines?.localCancel();
+    case "engines.localCheck":
+      requests["engines.localCheck"].input.parse(input);
+      return engines?.localCheck();
+    case "engines.localEnable":
+      return engines?.localEnable(
+        requests["engines.localEnable"].input.parse(input),
+      );
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({
@@ -301,7 +321,7 @@ async function dispatchValidated(
       return study?.lesson(requests["study.lesson"].input.parse(input), {
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
-        onPassages: (passageIds) => emit?.({ type: "sources", passageIds }),
+        onPassages: (passageIds, citations) => emit?.({ type: "sources", passageIds, citations }),
       });
     case "study.lessonSection":
       return study?.lessonSection(
@@ -393,6 +413,20 @@ async function dispatchValidated(
       return study?.simulationPrepare(
         requests["study.simulationPrepare"].input.parse(input),
       );
+    case "study.pastPapers":
+      return study?.pastPapers(requests["study.pastPapers"].input.parse(input));
+    case "study.pastPaperAdd":
+      return study?.pastPaperAdd(
+        requests["study.pastPaperAdd"].input.parse(input),
+      );
+    case "study.pastPaperRemove":
+      return study?.pastPaperRemove(
+        requests["study.pastPaperRemove"].input.parse(input),
+      );
+    case "study.pastPracticeStart":
+      return study?.pastPracticeStart(
+        requests["study.pastPracticeStart"].input.parse(input),
+      );
     case "study.simulationBuild":
       return study?.simulationBuild(
         requests["study.simulationBuild"].input.parse(input),
@@ -417,6 +451,19 @@ async function dispatchValidated(
       );
     case "study.cardsBuild":
       return study?.cardsBuild(requests["study.cardsBuild"].input.parse(input));
+    case "study.cardsPlaces":
+      return study?.cardsPlaces(
+        requests["study.cardsPlaces"].input.parse(input),
+      );
+    case "study.cardsPropose":
+      return study?.cardsPropose(
+        requests["study.cardsPropose"].input.parse(input),
+        signal,
+      );
+    case "study.cardsSaveProposed":
+      return study?.cardsSaveProposed(
+        requests["study.cardsSaveProposed"].input.parse(input),
+      );
     case "study.gapDrillStart":
       return study?.gapDrillStart(
         requests["study.gapDrillStart"].input.parse(input),
@@ -427,6 +474,13 @@ async function dispatchValidated(
       );
     case "study.queue":
       return study?.queue(requests["study.queue"].input.parse(input));
+    case "study.cardSettings":
+      requests["study.cardSettings"].input.parse(input);
+      return study?.cardSettings();
+    case "study.saveCardSettings":
+      return study?.saveCardSettings(
+        requests["study.saveCardSettings"].input.parse(input),
+      );
     case "study.save":
       return study?.save(requests["study.save"].input.parse(input));
     case "study.remove":
@@ -449,6 +503,8 @@ async function dispatchValidated(
       );
     case "study.rate":
       return study?.rate(requests["study.rate"].input.parse(input));
+    case "study.undoRate":
+      return study?.undoRate(requests["study.undoRate"].input.parse(input));
     case "study.active":
       return study?.active(requests["study.active"].input.parse(input));
     case "study.exercises":
@@ -477,12 +533,16 @@ async function dispatchValidated(
     }
     case "maps.list":
       return maps?.list(requests["maps.list"].input.parse(input));
+    case "maps.all":
+      return maps?.all(requests["maps.all"].input.parse(input)) ?? [];
+    case "maps.export":
+      return maps?.export(requests["maps.export"].input.parse(input));
     case "maps.build":
       return maps?.build(requests["maps.build"].input.parse(input));
     case "maps.generate":
       return maps?.generate(requests["maps.generate"].input.parse(input));
     case "maps.edit":
-      return maps?.edit(requests["maps.edit"].input.parse(input));
+      return maps?.edit(requests["maps.edit"].input.parse(input), signal);
     case "maps.open":
       return maps?.open(requests["maps.open"].input.parse(input));
     case "maps.layout":
@@ -527,14 +587,24 @@ async function dispatchValidated(
     case "plans.freeSpace":
       requests["plans.freeSpace"].input.parse(input);
       return plans?.freeSpace() ?? { bytes: 0 };
+    case "plans.archive":
+      return plans?.archive(requests["plans.archive"].input.parse(input));
     case "plans.delete":
       return plans?.delete(requests["plans.delete"].input.parse(input));
     case "plans.export":
       return plans?.export(requests["plans.export"].input.parse(input));
     case "plans.import":
       return plans?.import(requests["plans.import"].input.parse(input));
+    case "plans.importedFile":
+      return plans?.importedFile(requests["plans.importedFile"].input.parse(input)) ?? null;
     case "plans.mastery":
       return plans?.mastery(requests["plans.mastery"].input.parse(input)) ?? [];
+    case "plans.masteryBreakdown":
+      return (
+        plans?.masteryBreakdown(
+          requests["plans.masteryBreakdown"].input.parse(input),
+        ) ?? []
+      );
     case "plans.series":
       return plans?.series(requests["plans.series"].input.parse(input));
     case "plans.simulations":
@@ -546,6 +616,17 @@ async function dispatchValidated(
       return (
         plans?.recommend(requests["plans.recommend"].input.parse(input)) ?? null
       );
+    case "plans.today":
+      requests["plans.today"].input.parse(input);
+      return plans?.today() ?? { planned: false, behind: [], cards: null, items: [] };
+    case "plans.planner":
+      requests["plans.planner"].input.parse(input);
+      return plans?.planner();
+    case "plans.plannerHours":
+      return plans?.plannerHours(requests["plans.plannerHours"].input.parse(input));
+    case "study.dueEverywhere":
+      requests["study.dueEverywhere"].input.parse(input);
+      return plans?.dueEverywhere() ?? [];
     case "plans.complete":
       return plans?.complete(requests["plans.complete"].input.parse(input));
     case "plans.attachSources":
@@ -695,6 +776,10 @@ async function dispatchValidated(
       return sources?.syllabus(requests["sources.syllabus"].input.parse(input), signal);
     case "sources.reextract":
       return sources?.reextract(requests["sources.reextract"].input.parse(input));
+    case "sources.refresh":
+      return sources?.refresh(requests["sources.refresh"].input.parse(input), signal);
+    case "sources.unlockPdf":
+      return sources?.unlockPdf(requests["sources.unlockPdf"].input.parse(input));
     case "sources.remove":
       return sources?.remove(requests["sources.remove"].input.parse(input));
     case "sources.promote":
@@ -748,10 +833,19 @@ export function bindEngines(
 ): void {
   configureDisclosure(db);
   setFallbackListener((event) => broadcast("engine.fallback", event));
+  setUsageRecorder((usage, where) => {
+    // Counting is bookkeeping: a write that fails must not fail the answer it counts.
+    try {
+      storeUsage(db, usage, where);
+    } catch (err) {
+      console.error("pyxis: token usage not stored", err);
+    }
+  });
   engines = engineHandlers(db, (event) => broadcast("engine.login", event), {
     auto: true,
     onAuto: () => broadcast("engine.auto", {}),
     onInstallLog: (event) => broadcast("engine.install", event),
+    onLocal: (event) => broadcast("engine.local", event),
     installerFixture,
   });
 }
@@ -798,6 +892,7 @@ export function bindChat(
   replyDelayMs = 0,
 ): void {
   chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs);
+  setChecksListener((event) => broadcast("chats.checks", event));
 }
 
 export function bindSources(

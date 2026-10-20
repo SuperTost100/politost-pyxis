@@ -3,7 +3,7 @@
   z-index: 1100;
   display: flex;
   flex-wrap: wrap;
-  max-width: 280px;
+  max-width: 380px;
   padding: var(--space-1);
   background: var(--surface-overlay);
   border: 1px solid var(--border-control);

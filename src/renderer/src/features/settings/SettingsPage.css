@@ -141,6 +141,12 @@
   align-items: flex-start;
   gap: var(--space-3);
 }
+.px-settings-cards .ant-input-number {
+  width: 120px;
+}
+.px-settings-cards .section-hint {
+  margin-top: 0;
+}
 .px-settings-reading-sample {
   border: 1px solid var(--border);
   background: var(--surface);

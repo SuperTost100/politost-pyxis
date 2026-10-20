@@ -40,6 +40,8 @@ export type AutoBackupFailure =
   | "disk-full"
   | "too-large"
   | "too-many-files"
+  /** The finished archive failed its check (see `verifyBackupArchive`) and was deleted. */
+  | "unverified"
   | "failed";
 
 export type AutoBackupStatus = {
@@ -50,12 +52,29 @@ export type AutoBackupStatus = {
   running: boolean;
   lastSuccessAt: number | null;
   last:
-    | { at: number; ok: true; size: number }
+    | { at: number; ok: true; size: number; verified: boolean }
     | { at: number; ok: false; reason: AutoBackupFailure; size?: number }
     | null;
   /** A failed automatic backup the student has not dismissed yet. */
   notice: AutoBackupFailure | null;
 };
+
+/**
+ * An automatic backup in the folder that can be restored. `at` is the time in its name. `verified` is false when the
+ * check could not run for it (drive unplugged, temporary folder full); restoring it checks it again. A copy that
+ * failed its check is not listed.
+ */
+export type AutoBackupFile = {
+  name: string;
+  at: number;
+  size: number;
+  verified: boolean;
+};
+
+/** Study reminders: off by default; `time` is local, "HH:MM". */
+export type ReminderSettings = { enabled: boolean; time: string };
+/** The settings, and whether this system can show notifications at all. */
+export type ReminderView = ReminderSettings & { supported: boolean };
 
 export interface PyxisBridge {
   platform: string;
@@ -90,7 +109,8 @@ export interface PyxisBridge {
   retryCore(): Promise<void>;
   killCore(): Promise<void>;
   backupWorkspace(): Promise<"saved" | "cancelled">;
-  restoreWorkspace(): Promise<"restored" | "cancelled">;
+  /** Without a name, asks for a backup file. With the name of an automatic backup from `autoBackups.list`, restores that one. */
+  restoreWorkspace(backup?: string): Promise<"restored" | "cancelled">;
   workspacePath(): Promise<string>;
   moveWorkspace(): Promise<
     | { status: "cancelled" }
@@ -107,18 +127,39 @@ export interface PyxisBridge {
     /** Backs up to the automatic folder now, without waiting for jobs. */
     runNow(): Promise<AutoBackupStatus>;
     dismissNotice(): Promise<AutoBackupStatus>;
+    /** The automatic backups that passed their check, newest first. Unpacks ones not checked yet, so it can take a while. */
+    list(): Promise<AutoBackupFile[]>;
     onStatus(cb: (status: AutoBackupStatus) => void): () => void;
   };
+  reminders: {
+    get(): Promise<ReminderView>;
+    /** Rejects with `invalid-setting` for a time that is not "HH:MM". */
+    set(settings: ReminderSettings): Promise<ReminderView>;
+  };
+  /** A page main asks the app to open, such as a click on a study reminder. Only a plan page or Flashcards. */
+  onOpenPath(cb: (path: string) => void): () => void;
   fetchPlan(url: string): Promise<string>;
+  /**
+   * Plan files the system opened with Pyxis (double-click, Open with, a second launch). Main keeps the path, so the
+   * renderer cannot name one; it only asks for the file that is waiting.
+   */
+  openedPlan: {
+    /** The waiting plan file's text, once; null when none is waiting. */
+    take(): Promise<OpenedPlan | null>;
+    /** A plan file is waiting. Runs whenever one is opened while the window is up. */
+    onWaiting(cb: () => void): () => void;
+  };
   saveArtifact(input: {
     filename: string;
     base64: string;
   }): Promise<"saved" | "cancelled">;
+  /** `svg` is a concept map's drawing, printed on its own page before the Markdown. */
   exportPdf(input: {
     filename: string;
     markdown: string;
+    svg?: string;
   }): Promise<"saved" | "cancelled">;
-  printData(): Promise<{ markdown: string } | null>;
+  printData(): Promise<{ markdown: string; svg?: string } | null>;
   printReady(): Promise<void>;
   /** `force` is for a student asking again: it skips the cache, though main still waits a minute between requests. */
   checkUpdates(force?: boolean): Promise<UpdateView>;
@@ -167,7 +208,13 @@ export const mainChannels = {
   autoBackupRunNow: "auto-backup:run-now",
   autoBackupDismiss: "auto-backup:dismiss",
   autoBackupChanged: "auto-backup:changed",
+  autoBackupList: "auto-backup:list",
+  remindersGet: "reminders:get",
+  remindersSet: "reminders:set",
+  openPath: "app:open-path",
   planFetch: "plan:fetch",
+  planFileTake: "plan-file:take",
+  planFileWaiting: "plan-file:waiting",
   artifactSave: "artifact:save",
   pdfExport: "artifact:pdf",
   printData: "print:data",
@@ -182,3 +229,11 @@ export const mainChannels = {
   updatesReveal: "updates:reveal",
   updatesFinish: "updates:finish",
 } as const;
+
+/** The most a plan file opened from disk or dropped on the window may hold: as much as a linked plan (`MAX_LINKED_PLAN_BYTES`). */
+export const MAX_OPENED_PLAN_BYTES = 320 * 1024 * 1024;
+
+/** A plan file the system opened with Pyxis, read in main. */
+export type OpenedPlan =
+  | { ok: true; text: string }
+  | { ok: false; reason: "not-a-plan-file" | "too-big" | "unreadable" };

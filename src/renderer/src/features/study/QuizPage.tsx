@@ -2,10 +2,11 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { App, Button, Input, InputNumber, Select } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Icon } from "../../components/Icon";
+import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { QuizOption, type QuizOptionState } from "../../components/QuizOption";
 import { StepLines } from "../../components/StepLines";
@@ -15,15 +16,18 @@ import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { ExportButton } from "../share/ExportButton";
+import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { useReviewSession } from "./ReviewProgress";
 import { useMenuLock } from "../../app/menu-state";
-import { QuizIntro } from "./QuizIntro";
+import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { QuizResults } from "./QuizResults";
 import {
   blanks,
   pairs,
+  retryPick,
+  skipOrder,
   stemText,
   verdict,
   type QuizAnswer,
@@ -49,8 +53,11 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const { planId, topicId } = useParams();
   useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
-  const diagnostic = !topicId && !redo;
+  // Past questions: a quiz of the plan's past exam questions, opened at /plans/:planId/past.
+  const past = useLocation().pathname.endsWith("/past");
+  const diagnostic = !topicId && !redo && !past;
   const [searchParams, setSearchParams] = useSearchParams();
+  const paper = searchParams.get("paper") ?? undefined;
   const savedAttempt = searchParams.get("attempt");
   const back = !redo
     ? `/plans/${planId ?? ""}`
@@ -64,6 +71,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     planId?: string;
     picks: Record<string, string>;
     index: number;
+    skipped: string[];
   } | null>(null);
   const [types, setTypes] = useState<Kind[]>([...KINDS]);
   const [scope, setScope] = useState<Scope>("topic");
@@ -82,6 +90,11 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     queryFn: () =>
       invoke("study.diagnosticPreview", { planId: planId ?? "" }),
   });
+  const papers = useQuery({
+    queryKey: ["past-papers", planId],
+    enabled: past && !savedAttempt && Boolean(planId),
+    queryFn: () => invoke("study.pastPapers", { planId: planId ?? "" }),
+  });
   const library = useQuery({
     queryKey: ["sources"],
     queryFn: () => invoke("sources.list", {}),
@@ -93,11 +106,15 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<Record<string, QuizAnswer>>({});
   const [wrongMarks, setWrongMarks] = useState<Record<string, boolean>>({});
+  // Questions the student skipped, in the order they did; they come back once, after all the others.
+  const [skipped, setSkipped] = useState<string[]>([]);
   const [actionError, setActionError] = useState(false);
   const heading = useRef<HTMLDivElement>(null);
   const start = useMutation({
     mutationFn: () =>
-      topicId
+      past
+        ? invoke("study.pastPracticeStart", { planId: planId ?? "", sourceId: paper })
+        : topicId
         ? invoke("study.quizStart", {
             planId: planId ?? "",
             scope,
@@ -111,7 +128,10 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         : invoke("study.diagnosticStart", { planId: planId ?? "" }),
     onSuccess: (session) => {
       if (session.attemptId)
-        setSearchParams({ attempt: session.attemptId }, { replace: true });
+        setSearchParams(
+          { ...(paper ? { paper } : {}), attempt: session.attemptId },
+          { replace: true },
+        );
     },
   });
   const attemptId = savedAttempt ?? start.data?.attemptId ?? "";
@@ -153,8 +173,10 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     Boolean(attemptId) &&
     !generationFailed &&
     session.data?.state !== "succeeded";
+  // Until the queue answers, a review does not know yet how many drill questions it still owes.
+  const queueLoading = review && reviewQueue.isLoading;
   const canFinish =
-    (diagnostic && owed === 0) ||
+    (diagnostic && !queueLoading && owed === 0) ||
     (!diagnostic && session.data?.state === "succeeded" && questions.length >= requestedCount);
   const retry = useMutation({
     mutationFn: async () => {
@@ -189,7 +211,12 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     });
     if (restoring) {
       restoredAttempt.current = attemptId;
-      const firstUnchecked = session.data.questions.findIndex(
+      const restoredSkips = session.data.draft?.skipped ?? [];
+      setSkipped(restoredSkips);
+      const firstUnchecked = skipOrder(
+        session.data.questions,
+        restoredSkips,
+      ).findIndex(
         (row) => !session.data.checked.some((answer) => answer.id === row.id),
       );
       setIndex(
@@ -207,12 +234,21 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
       setHydratedAttempt(attemptId);
     }
   }, [session.data, attemptId]);
-  const question = questions[index];
+  const ordered = skipOrder(questions, skipped);
+  const question = ordered[index];
+  const pickAtFailure = useRef("");
   const check = useMutation({
     mutationFn: (input: { questionId: string; pick: string }) =>
       invoke("study.quizCheck", { attemptId, ...input }),
-    onSuccess: (result) =>
-      setChecked((current) => ({ ...current, [result.id]: result })),
+    onSuccess: (result, input) => {
+      setChecked((current) => ({ ...current, [result.id]: result }));
+      // The pick that was checked is the answer, an empty "I don't know" too.
+      setPicks((current) => ({ ...current, [result.id]: input.pick }));
+    },
+    // The answer in the field when the check failed, so Try again can tell an edit from an untouched pick.
+    onError: (_, input) => {
+      pickAtFailure.current = picks[input.questionId] ?? "";
+    },
   });
   // An open answer the student stopped checking goes back to editable, without an error.
   const cancelledCheck = useRef<string | null>(null);
@@ -301,7 +337,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
       !gradingStarted &&
       !expired &&
       session.data?.submittedAt == null
-        ? { attemptId, planId, picks, index }
+        ? { attemptId, planId, picks, index, skipped }
         : null;
     if (!draftToSave.current) return;
     const timer = window.setTimeout(() => {
@@ -313,6 +349,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     hydratedAttempt,
     picks,
     index,
+    skipped,
     finalResult,
     gradingStarted,
     expired,
@@ -381,6 +418,30 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     if (!question || !hasAnswer || locked) return;
     cancelledCheck.current = null;
     check.mutate({ questionId: question.id, pick: picks[question.id] ?? "" });
+  }
+  // "I don't know" checks an empty pick: scored 0, wrong evidence, answer shown.
+  function dontKnow() {
+    if (!question || locked) return;
+    cancelledCheck.current = null;
+    check.mutate({ questionId: question.id, pick: "" });
+  }
+  // A question can be skipped once: it moves behind the others, and when it comes back it can only be answered.
+  const skippable =
+    Boolean(question) &&
+    !skipped.includes(question?.id ?? "") &&
+    ordered.slice(index + 1).some((row) => !checked[row.id]);
+  function skip() {
+    if (!question || !skippable || locked || !canFinish) return;
+    check.reset();
+    setSkipped((current) => [...current, question.id]);
+  }
+  function retryCheck() {
+    if (!check.variables) return;
+    cancelledCheck.current = null;
+    check.mutate({
+      questionId: check.variables.questionId,
+      pick: retryPick(check.variables.pick, pickAtFailure.current, picks[check.variables.questionId] ?? ""),
+    });
   }
   function stopCheck() {
     if (!question) return;
@@ -524,9 +585,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
               disabled: true,
               loading: false,
             };
-  // Keys: 1–4 pick an option, Enter checks or moves on. Typing in a field and real buttons keep their own keys.
-  const keys = useRef({ primary, pick, question, locked });
-  keys.current = { primary, pick, question, locked };
+  // Keys: 1–4 pick an option, 0 says "I don't know", S skips, Enter checks or moves on. Typing in a field and real buttons keep their own keys.
+  const keys = useRef({ primary, pick, question, locked, dontKnow, skip });
+  keys.current = { primary, pick, question, locked, dontKnow, skip };
   const answering = Boolean(question) && !finalResult && !gradingStarted && !noAnswers;
   // The menu leaves a quiz alone until it is finished.
   useMenuLock(answering);
@@ -554,6 +615,16 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         return;
       }
       if (event.ctrlKey || event.metaKey || field || current.locked) return;
+      if (event.key === "0") {
+        event.preventDefault();
+        current.dontKnow();
+        return;
+      }
+      if (event.key === "s" || event.key === "S") {
+        event.preventDefault();
+        current.skip();
+        return;
+      }
       if (!/^[1-4]$/.test(event.key)) return;
       const option = Number(event.key) - 1;
       const kind = current.question.grade.kind;
@@ -589,6 +660,52 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const answered = questions.filter((row) => checked[row.id]).length;
   const topic = plan.data?.topics.find((row) => row.id === topicId);
   const showIntro = !start.data && !savedAttempt;
+  // The questions the start button will ask: one paper's, or at most a quiz's ten from all of them.
+  const pastCount = (() => {
+    const rows = (papers.data?.papers ?? []).filter(
+      (row) => row.status === "ready" && (!paper || row.sourceId === paper),
+    );
+    const total = rows.reduce((sum, row) => sum + row.questions, 0);
+    return paper ? total : Math.min(QUIZ_MAX_QUESTIONS, total);
+  })();
+  // A new quiz of the same kind: on the same topic, a new diagnostic, or the same past paper again.
+  const redoPath = past
+    ? `/plans/${planId ?? ""}/past${paper ? `?paper=${paper}` : ""}`
+    : diagnostic
+      ? `/plans/${planId ?? ""}/diagnostic`
+      : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`;
+  // The intro's facts: how many questions, about how long, how many topics a diagnostic covers, and when it corrects.
+  const introCount = past ? pastCount : diagnostic ? preview.data?.count : QUIZ_MAX_QUESTIONS;
+  const introMinutes = past
+    ? pastCount
+      ? quizMinutes(Array.from({ length: pastCount }, () => "open"))
+      : undefined
+    : diagnostic
+      ? preview.data?.minutes
+      : types.length
+        ? quizMinutes(Array.from({ length: QUIZ_MAX_QUESTIONS }, (_, i) => types[i % types.length]!))
+        : undefined;
+  const answeredBefore = diagnostic ? (preview.data?.answered ?? 0) : 0;
+  const introTopics = diagnostic ? (plan.data?.topics.length ?? 0) : 0;
+  const introFacts: ActivityFact[] = [
+    ...(introCount
+      ? [
+          {
+            icon: "list-checks" as const,
+            label: answeredBefore
+              ? t("quiz.factAnswered", { answered: answeredBefore, total: introCount })
+              : t("quiz.factQuestions", { count: introCount }),
+          },
+        ]
+      : []),
+    ...(introMinutes
+      ? [{ icon: "clock" as const, label: t("quiz.factMinutes", { count: introMinutes }) }]
+      : []),
+    ...(introTopics
+      ? [{ icon: "book-open" as const, label: t("quiz.factTopics", { count: introTopics }) }]
+      : []),
+    { icon: "circle-check", label: t("quiz.factFeedback") },
+  ];
   const kind = question?.grade.kind;
   const options =
     question && (kind === "mcq" || kind === "tf")
@@ -613,6 +730,32 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const wrongMarked = question
     ? (wrongMarks[question.id] ?? false)
     : false;
+  // A failed preparation sits under the step it stopped at, or above the questions that did arrive.
+  const buildFailed = generationFailed ? (
+    <ErrorState
+      action={
+        session.data?.jobId
+          ? {
+              label: t(
+                session.data.state === "interrupted"
+                  ? "quiz.resume"
+                  : "quiz.retry",
+              ),
+              onClick: () => {
+                if (!retry.isPending) retry.mutate();
+              },
+            }
+          : undefined
+      }
+      details={session.data?.error}
+    >
+      {t(
+        session.data?.state === "cancelled"
+          ? "quiz.buildCancelled"
+          : "quiz.buildFailed",
+      )}
+    </ErrorState>
+  ) : null;
   // A redo exists only as an attempt the notebook started; without one there is nothing to show.
   if (redo && !savedAttempt) return <Navigate to={back} replace />;
   return (
@@ -663,77 +806,44 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             </p>
           ) : null}
           {generating && timed ? <p className="small ink-muted">{t("quiz.timerWaiting")}</p> : null}
-          {generationFailed ? (
-            <>
-              <p className="small" role="alert">
-                {t(
-                  session.data?.state === "cancelled"
-                    ? "quiz.buildCancelled"
-                    : "quiz.buildFailed",
-                )}
-              </p>
-              {session.data?.jobId ? (
-                <Button
-                  shape="round"
-                  loading={retry.isPending}
-                  onClick={() => retry.mutate()}
-                >
-                  {t(
-                    session.data.state === "interrupted"
-                      ? "quiz.resume"
-                      : "quiz.retry",
-                  )}
-                </Button>
-              ) : null}
-            </>
-          ) : null}
+          {generationFailed && questions.length ? buildFailed : null}
         </div>
       ) : null}
       {showIntro ? (
-        <QuizIntro
+        <ActivityIntro
           eyebrow={plan.data?.title ?? t("quiz.title")}
-          title={diagnostic ? t("quiz.diagnostic") : (topic?.title ?? t("quiz.title"))}
-          sentence={t(diagnostic ? "quiz.introDiagnostic" : "quiz.introTopic")}
-          count={diagnostic ? preview.data?.count : QUIZ_MAX_QUESTIONS}
-          minutes={
-            diagnostic
-              ? preview.data?.minutes
-              : types.length
-                ? quizMinutes(
-                    Array.from(
-                      { length: QUIZ_MAX_QUESTIONS },
-                      (_, i) => types[i % types.length]!,
-                    ),
-                  )
-                : undefined
+          title={
+            past
+              ? t("pastPapers.practiceTitle")
+              : diagnostic
+                ? t("quiz.diagnostic")
+                : (topic?.title ?? t("quiz.title"))
           }
-          answered={diagnostic ? preview.data?.answered : 0}
+          sentence={t(
+            past
+              ? "pastPapers.practiceIntro"
+              : diagnostic
+                ? "quiz.introDiagnostic"
+                : "quiz.introTopic",
+          )}
+          facts={introFacts}
+          startLabel={t(answeredBefore ? "quiz.continueAttempt" : "quiz.start")}
           starting={start.isPending}
-          disabled={!diagnostic && (!types.length || !pageReady || !timerReady)}
+          startingLabel={t("quiz.preparing")}
+          disabled={past ? !pastCount : !diagnostic && (!types.length || !pageReady || !timerReady)}
           onStart={() => start.mutate()}
-          onClose={() => navigate(`/plans/${planId ?? ""}`)}
+          onBack={() => navigate(`/plans/${planId ?? ""}`)}
+          folded
           options={
-            diagnostic ? undefined : (
+            diagnostic || past ? undefined : (
               <>
-                <fieldset className="px-quiz-types">
-                  <legend className="body-strong">{t("quiz.scope")}</legend>
-                  <div className="px-quiz-pills">
-                    {SCOPES.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        className={
-                          scope === item ? "choice is-selected" : "choice"
-                        }
-                        aria-pressed={scope === item}
-                        disabled={start.isPending}
-                        onClick={() => setScope(item)}
-                      >
-                        {t(`quiz.scopes.${item}`)}
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
+                <ActivityChoice
+                  label={t("quiz.scope")}
+                  value={scope}
+                  disabled={start.isPending}
+                  choices={SCOPES.map((item) => ({ value: item, label: t(`quiz.scopes.${item}`) }))}
+                  onChange={setScope}
+                />
                 {scope === "page" ? (
                   <div className="px-quiz-page">
                     <label className="px-quiz-field">
@@ -765,9 +875,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
                     </label>
                   </div>
                 ) : null}
-                <fieldset className="px-quiz-types">
+                <fieldset className="px-intro-field">
                   <legend className="body-strong">{t("quiz.types")}</legend>
-                  <div className="px-quiz-pills">
+                  <div className="px-intro-pills">
                     {KINDS.map((item) => (
                       <button
                         key={item}
@@ -834,11 +944,12 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             steps={[
               {
                 id: "questions",
-                label: t("quiz.preparing"),
+                label: t(generationFailed ? "quiz.preparingFailed" : "quiz.preparing"),
                 state: generationFailed ? "failed" : "running",
               },
             ]}
           />
+          {buildFailed}
         </section>
       ) : noAnswers ? (
         <section className="px-quiz-wait">
@@ -848,13 +959,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
               <Button
                 shape="round"
                 size="large"
-                onClick={() =>
-                  navigate(
-                    diagnostic
-                      ? `/plans/${planId ?? ""}/diagnostic`
-                      : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`,
-                  )
-                }
+                onClick={() => navigate(redoPath)}
               >
                 {t("quiz.redo")}
               </Button>
@@ -920,11 +1025,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
                     size="large"
                     // A new quiz on the same topic (a drill's topic too), or a new diagnostic; this one stays as it is.
                     onClick={() =>
-                      navigate(
-                        diagnostic
-                          ? `/plans/${planId ?? ""}/diagnostic`
-                          : `/plans/${planId ?? ""}/quiz/${topicId ?? ""}`,
-                      )
+                      navigate(redoPath)
                     }
                   >
                     {t("quiz.redo")}
@@ -1053,6 +1154,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             {session.data?.general ? (
               <Tag tone="general">{t("components.tags.general")}</Tag>
             ) : null}
+            {skipped.includes(question.id) && !result ? (
+              <span className="meta">{t("quiz.skippedNote")}</span>
+            ) : null}
           </div>
           <div
             ref={heading}
@@ -1168,14 +1272,47 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
           {checkFailed ? (
             <Notice
               tone="danger"
-              action={{ label: t("quiz.checkRetry"), onClick: runCheck }}
+              action={{ label: t("quiz.checkRetry"), onClick: retryCheck }}
             >
               {t("quiz.checkFailed")}
             </Notice>
           ) : null}
+          {!result ? (
+            <div className="px-quiz-pass">
+              <Button
+                type="text"
+                shape="round"
+                size="small"
+                disabled={locked}
+                aria-keyshortcuts="0"
+                onClick={dontKnow}
+              >
+                {t("quiz.dontKnow")}
+                <kbd className="px-quiz-keycap" aria-hidden>
+                  0
+                </kbd>
+              </Button>
+              {skippable ? (
+                <Button
+                  type="text"
+                  shape="round"
+                  size="small"
+                  disabled={locked || !canFinish}
+                  aria-keyshortcuts="S"
+                  onClick={skip}
+                >
+                  {t("quiz.skip")}
+                  <kbd className="px-quiz-keycap" aria-hidden>
+                    S
+                  </kbd>
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {result ? (
             <Feedback
               result={result}
+              dontKnow={rawPick === ""}
               kind={kind ?? "open"}
               expected={expectedText(result)}
               wrong={wrongMarked}
@@ -1217,9 +1354,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         <p className="small">{t("quiz.empty")}</p>
       )}
       {error ? (
-        <p className="small" role="alert">
+        <ErrorState details={errorDetails(error)}>
           {t(errorKey, { defaultValue: t("quiz.error") })}
-        </p>
+        </ErrorState>
       ) : null}
     </FocusLayout>
   );
@@ -1228,6 +1365,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
 /** The correction shown right after Check: verdict, the right answer when it is not on screen, and why. */
 function Feedback({
   result,
+  dontKnow,
   kind,
   expected,
   wrong,
@@ -1236,6 +1374,8 @@ function Feedback({
   onWrong,
 }: {
   result: QuizAnswer;
+  /** The student said "I don't know": scored 0, with the answer shown. */
+  dontKnow: boolean;
   kind: string;
   expected: string;
   wrong: boolean;
@@ -1262,17 +1402,20 @@ function Feedback({
         />
         <span className="title-3">
           {t(
-            state === "correct"
-              ? "quiz.correct"
-              : state === "partial"
-                ? "quiz.partial"
-                : "quiz.incorrect",
+            dontKnow
+              ? "quiz.dontKnowVerdict"
+              : state === "correct"
+                ? "quiz.correct"
+                : state === "partial"
+                  ? "quiz.partial"
+                  : "quiz.incorrect",
           )}
         </span>
         {state === "partial" ? (
           <span className="meta">{Math.round(result.score * 100)}%</span>
         ) : null}
       </p>
+      {dontKnow ? <p className="small px-quiz-dont-know">{t("quiz.dontKnowNote")}</p> : null}
       {!closed && result.score < 1 && expected ? (
         <div className="px-quiz-answer is-expected">
           <p className="label">

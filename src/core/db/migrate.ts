@@ -137,6 +137,59 @@ END;`,
     version: 19,
     sql: `ALTER TABLE messages ADD COLUMN figures_json TEXT CHECK (figures_json IS NULL OR json_valid(figures_json));`,
   },
+  // Past exams: a source can be attached to a plan as one of its past papers. `role` says which, and `paper_json` holds
+  // what the model read from the paper (questions, types, points, duration). Everything that builds the plan from its
+  // sources reads `role = 'material'` only, so a past paper never becomes a topic, a lesson or a citation.
+  {
+    version: 20,
+    sql: `ALTER TABLE plan_sources ADD COLUMN role TEXT NOT NULL DEFAULT 'material' CHECK (role IN ('material', 'past_paper'));
+ALTER TABLE plan_sources ADD COLUMN paper_json TEXT CHECK (paper_json IS NULL OR json_valid(paper_json));`,
+  },
+  // `messages.error` is the message key of the engine failure that cut a reply short, and `messages.passages_json` the
+  // passages a stopped reply was written with, for Continue. `engine_usage` is one row per model
+  // call with its tokens and the chat message or job it was for. The ids are plain text, so a deleted chat's or a
+  // replaced reply's tokens still count in the week they were used.
+  {
+    version: 21,
+    sql: `ALTER TABLE messages ADD COLUMN error TEXT;
+ALTER TABLE messages ADD COLUMN passages_json TEXT CHECK (passages_json IS NULL OR json_valid(passages_json));
+CREATE TABLE engine_usage (
+  id TEXT PRIMARY KEY,
+  at INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT,
+  kind TEXT,
+  chat_id TEXT,
+  message_id TEXT,
+  job_id TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX engine_usage_at ON engine_usage(at);
+CREATE INDEX engine_usage_chat ON engine_usage(chat_id);
+CREATE INDEX engine_usage_job ON engine_usage(job_id);`,
+  },
+  // A plan holds several exam sessions (a written and an oral part). plans.exam_at stays as the derived next exam date,
+  // so countdowns, scheduling and the path keep reading one column. A plan's existing exam_at becomes its first session,
+  // with the plan's id as the session id so the calendar event keeps its UID. A date after year 9999, which an older version accepted, is cut to the latest a session can hold. archived_at sets a finished exam aside.
+  {
+    version: 22,
+    sql: `CREATE TABLE plan_sessions (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  date INTEGER NOT NULL,
+  time TEXT CHECK (time IS NULL OR time GLOB '[0-2][0-9]:[0-5][0-9]'),
+  place TEXT,
+  label TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX plan_sessions_plan ON plan_sessions(plan_id, date);
+INSERT INTO plan_sessions (id, plan_id, date, created_at)
+  SELECT id, id, MIN(exam_at, 253402163999999), COALESCE(updated_at, created_at) FROM plans WHERE exam_at IS NOT NULL;
+ALTER TABLE plans ADD COLUMN archived_at INTEGER;`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

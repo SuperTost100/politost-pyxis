@@ -6,12 +6,16 @@ import {
   restoreWorkspace,
   commitWorkspaceRestore,
   recoverInterruptedRestore,
+  verifyBackupArchive,
+  verifyOrDiscardBackup,
 } from "../core/share/backup";
 
 const data = workerData as {
   op?: string;
   workspace?: string;
   zip?: string;
+  /** op "verify": the archives to check. */
+  zips?: string[];
   /** Automatic backups: one Int32 that main sets to 1 to stop the copy. */
   stop?: SharedArrayBuffer;
   waitForJobs?: boolean;
@@ -20,8 +24,21 @@ const data = workerData as {
 };
 
 try {
-  if (!data.workspace) throw new Error("backup-failed");
-  if (data.op === "recover") {
+  if (data.op === "verify") {
+    // Reads archives only; no workspace is involved.
+    parentPort?.postMessage({
+      ok: true,
+      // null: the check could not run (full temporary folder, read error), which says nothing about the archive.
+      verified: (data.zips ?? []).map((zip) => {
+        try {
+          return verifyBackupArchive(zip);
+        } catch {
+          return null;
+        }
+      }),
+    });
+  } else if (!data.workspace) throw new Error("backup-failed");
+  else if (data.op === "recover") {
     parentPort?.postMessage({
       ok: true,
       outcome: recoverInterruptedRestore(data.workspace),
@@ -45,6 +62,9 @@ try {
         stopped: () => (flag ? Atomics.load(flag, 0) === 1 : false),
         onTemporary: (temporary) => parentPort?.postMessage({ temporary }),
       });
+      // A broken archive must not stand among the backups worth keeping, so it is removed and the backup fails. A
+      // check that cannot run fails the backup too, but keeps the file.
+      verifyOrDiscardBackup(data.zip);
     } else if (data.op === "restore")
       restoreWorkspace(data.zip, data.workspace, { deferCommit: true });
     else throw new Error("backup-failed");

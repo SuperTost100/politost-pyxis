@@ -18,6 +18,8 @@ import {
   undoTopicMap,
   redoTopicMap,
 } from "./store";
+import { listAllMaps } from "./library";
+import { exportMap, type MapExportLanguage } from "./export";
 export function mapHandlers(
   db: Database.Database,
   runner?: Runner,
@@ -27,6 +29,17 @@ export function mapHandlers(
   return {
     build(input: { planId: string; topicId: string }) {
       return mapBuild(db, input);
+    },
+    all(input: { query?: string }) {
+      return listAllMaps(db, input.query);
+    },
+    export(input: {
+      planId: string;
+      topicId: string;
+      mapId?: string;
+      language: MapExportLanguage;
+    }) {
+      return exportMap(db, input);
     },
     list(input: { planId: string; topicId: string }) {
       return listTopicMaps(db, input.planId, input.topicId);
@@ -41,8 +54,8 @@ export function mapHandlers(
       topicId: string;
       mapId?: string;
       instruction: string;
-    }) {
-      return editMap(db, input, run);
+    }, signal?: AbortSignal) {
+      return editMap(db, input, run, signal);
     },
     open(input: { planId: string; topicId: string; mapId?: string }) {
       return openTopicMap(

@@ -260,14 +260,174 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     const deadline = (await read()).deadlineAt;
     await page.reload();
     expect((await read()).deadlineAt).toBe(deadline);
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    db.prepare(
-      "UPDATE attempt_answers SET payload_json = json_set(payload_json, '$.deadlineAt', ?) WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object'",
-    ).run(Date.now() - 1000, timed.attemptId);
-    db.close();
+    // Move the deadline into the past while no quiz page is open, since an open page saves its draft on a timer and
+    // keeps the session it loaded. Leave, reload so nothing of that page is left, then write.
+    await go(page, "/exams");
+    await expect(page.locator(".px-quiz-question")).toHaveCount(0);
     await page.reload();
+    const past = Date.now() - 1000;
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    const moved = db
+      .prepare(
+        "UPDATE attempt_answers SET payload_json = json_set(payload_json, '$.deadlineAt', ?) WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object'",
+      )
+      .run(past, timed.attemptId);
+    db.close();
+    expect(moved.changes).toBe(1);
+    // Core answers with the moved deadline before the quiz opens on it.
+    await expect.poll(async () => (await read()).deadlineAt).toBe(past);
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${timed.attemptId}`);
     await expect.poll(async () => (await read()).submittedAt).toBeGreaterThan(0);
     expect((await read()).result?.score).toBe(0);
+  } finally {
+    await done();
+  }
+});
+
+test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S) moves it to the end, once", async () => {
+  test.setTimeout(120000);
+  const { page, planId, topics, done } = await launch({
+    markdown: { markdown: "## Il moto\nLa velocità descrive il moto [P1]." },
+    questions: diagnosticReply,
+    quizQuestions: {
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        kind: "tf",
+        stem: `La velocità descrive lo spostamento nel tempo. Affermazione {{question:${i}}}.`,
+        correct: true,
+        passageIds: ["{{passage:0}}"],
+        explanation: "La velocità è lo spostamento per unità di tempo.",
+      })),
+    },
+  });
+  mkdirSync(".shots", { recursive: true });
+  const shoot = async (name: string, lang: string) => {
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
+      await page.evaluate(() => document.fonts.ready);
+      await page.screenshot({
+        path: `.shots/quiz-mastery-${name}-${lang}-${theme}.png`,
+        animations: "disabled",
+      });
+    }
+  };
+  try {
+    const started = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["tf"],
+    });
+    const read = () =>
+      invoke<{
+        state: string;
+        draft?: { index: number; skipped?: string[] };
+        questions: Array<{ id: string; stem: string }>;
+      }>(page, "study.quizRead", { attemptId: started.attemptId });
+    await expect.poll(async () => (await read()).state).toBe("succeeded");
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${started.attemptId}`);
+    const stem = page.locator(".px-quiz-stem");
+    await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
+    const skippedStem = await stem.innerText();
+    await axe(page);
+    await shoot("question", "it");
+
+    // S moves the first question to the end: the next one takes its place in the count.
+    await page.keyboard.press("s");
+    await expect(stem).not.toHaveText(skippedStem);
+    await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
+    // 0 on the second question: scored wrong, no pick, the right option is shown.
+    await page.keyboard.press("0");
+    const feedback = page.locator(".px-quiz-feedback.is-wrong");
+    await expect(feedback).toContainText("Ancora da imparare");
+    await expect(feedback).toContainText("Vale 0, come una risposta sbagliata.");
+    await expect(page.getByRole("button", { name: /^A\. Vero, Risposta giusta$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Non lo so" })).toHaveCount(0);
+    await axe(page);
+    await shoot("dont-know", "it");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
+    await expect.poll(async () => (await read()).draft?.skipped).toHaveLength(1);
+
+    for (let i = 2; i <= 9; i++) {
+      await expect(page.getByText(`Domanda ${i} di 10`, { exact: true })).toBeVisible();
+      await page.keyboard.press("1");
+      await page.keyboard.press("Enter");
+      await expect(page.locator(".px-quiz-feedback.is-correct")).toBeVisible();
+      await page.keyboard.press("Enter");
+    }
+    // The skipped question comes back last, says so, and cannot be skipped again.
+    await expect(page.getByText("Domanda 10 di 10", { exact: true })).toBeVisible();
+    await expect(stem).toHaveText(skippedStem);
+    await expect(page.getByText(/Già saltata/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Salta/ })).toHaveCount(0);
+    await page.keyboard.press("s");
+    await expect(stem).toHaveText(skippedStem);
+    await expect(page.getByRole("button", { name: /^Non lo so/ })).toBeVisible();
+    await shoot("skipped-back", "it");
+    // The order survives a reload.
+    await expect.poll(async () => (await read()).draft?.index).toBe(9);
+    await page.reload();
+    await expect(page.getByText("Domanda 10 di 10", { exact: true })).toBeVisible();
+    await expect(stem).toHaveText(skippedStem);
+    await page.keyboard.press("1");
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".px-quiz-feedback.is-correct")).toBeVisible();
+    await page.getByRole("button", { name: "Vedi risultato", exact: true }).click();
+    // Nine right answers; the one "I don't know" is a wrong answer with no pick.
+    await expect(score(page)).toHaveText(/^9\s*su 10$/);
+    const second = page.locator(".px-quiz-row").nth(1);
+    await second.locator(".px-quiz-row-head").click();
+    await expect(second.locator(".px-quiz-answer-empty")).toHaveText("Nessuna risposta");
+    await expect(second.locator(".px-quiz-answer.is-expected")).toContainText("Vero");
+
+    // The same three screens in English.
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    const english = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["tf"],
+    });
+    await go(page, "/exams");
+    await page.reload();
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${english.attemptId}`);
+    await expect(page.getByRole("button", { name: /^I don't know/ })).toBeVisible();
+    await shoot("question", "en");
+    await page.setViewportSize({ width: 480, height: 800 });
+    await shoot("question-narrow", "en");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.keyboard.press("0");
+    await expect(page.locator(".px-quiz-feedback.is-wrong")).toContainText("Not known yet");
+    await shoot("dont-know", "en");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("s");
+    await expect(page.getByRole("button", { name: /^Skip/ })).toBeVisible();
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "it"));
+    await go(page, "/exams");
+    await page.reload();
+
+    // On a timed quiz Skip leaves the deadline alone and still saves the order.
+    const timed = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["tf"],
+      timerMinutes: 5,
+    });
+    const timedRead = () =>
+      invoke<{ state: string; deadlineAt?: number; draft?: { skipped?: string[] } }>(
+        page,
+        "study.quizRead",
+        { attemptId: timed.attemptId },
+      );
+    await expect.poll(async () => (await timedRead()).state).toBe("succeeded");
+    // A new page, as from the path: the finished quiz's page state does not carry over.
+    await go(page, "/exams");
+    await expect(page.locator(".px-quiz-results")).toHaveCount(0);
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${timed.attemptId}`);
+    await expect.poll(async () => (await timedRead()).deadlineAt).toBeGreaterThan(0);
+    const deadline = (await timedRead()).deadlineAt;
+    await expect(page.getByRole("timer")).toBeVisible();
+    await page.keyboard.press("s");
+    await expect.poll(async () => (await timedRead()).draft?.skipped).toHaveLength(1);
+    expect((await timedRead()).deadlineAt).toBe(deadline);
   } finally {
     await done();
   }
@@ -296,9 +456,11 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     await expect(page.getByRole("heading", { name: "Diagnosi", level: 2 })).toBeVisible();
     await expect(page.getByText("10 domande", { exact: true })).toBeVisible();
     await expect(page.getByText(/alla fine/)).toHaveCount(0);
-    const close = page.locator(".px-quiz-intro-actions").getByRole("button", { name: "Chiudi" });
+    // Back and Start sit side by side; the focus bar's X is the only exit, so the intro has no Close of its own.
+    const back = page.locator(".px-intro-actions").getByRole("button", { name: "Indietro" });
     const begin = page.getByRole("button", { name: "Inizia", exact: true });
-    expect(Math.abs((await close.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
+    expect(Math.abs((await back.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
+    await expect(page.locator(".px-intro-actions").getByRole("button", { name: "Chiudi" })).toHaveCount(0);
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
     // The options are shown in a shuffled order, so each answer is picked by its text.
@@ -437,8 +599,9 @@ test("quiz screens in both languages and themes", async () => {
         }
       };
       await go(page, `/plans/${planId}/diagnostic`);
-      await expect(page.locator(".px-quiz-intro")).toBeVisible();
-      await expect(page.locator(".px-quiz-facts li")).toHaveCount(3);
+      await expect(page.locator(".px-intro")).toBeVisible();
+      // Questions, time, topics and when it corrects.
+      await expect(page.locator(".px-intro-facts li")).toHaveCount(4);
       await shoot("start");
       const started = await invoke<{
         attemptId: string;
@@ -466,11 +629,13 @@ test("quiz screens in both languages and themes", async () => {
       await shoot("correct");
       await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[1], pick: wrong[1] });
       // An open quiz page saves its own draft shortly after loading and again when it closes, so a draft set while it
-      // is open can be overwritten on a slow runner. Set it with no quiz page open: leave, wait until the page is gone
-      // (its closing save is then already queued ahead of ours), save, and come back.
+      // is open can be overwritten on a slow runner. Set it with no quiz page open: leave, wait until the page is gone,
+      // and reload. The reload also drops the session the page cached: opened again from that cache, the quiz page
+      // would save the old draft half a second later, over ours.
       await go(page, "/exams");
       await expect(page.locator(".px-opt")).toHaveCount(0);
-      // The page's own closing save can still land after ours on a slow runner, so save until the stored draft holds.
+      await page.reload();
+      // A closing save sent just before the reload can still land after ours, so save until the stored draft holds.
       const wanted = { [ids[0]!]: right[0]!, [ids[1]!]: wrong[1]! };
       await expect(async () => {
         await invoke(page, "study.quizDraft", {
@@ -484,9 +649,7 @@ test("quiz screens in both languages and themes", async () => {
         };
         expect(stored.draft).toEqual({ picks: wanted, index: 1 });
       }).toPass({ timeout: 15000 });
-      // Reload so the page reads the saved draft instead of the session it cached before leaving.
       await go(page, view);
-      await page.reload();
       await expect(page.locator(".px-quiz-feedback.is-wrong")).toBeVisible();
       await shoot("wrong");
       const picks: Record<string, string> = { [ids[0]!]: right[0]!, [ids[1]!]: wrong[1]! };

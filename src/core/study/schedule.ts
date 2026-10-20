@@ -6,6 +6,11 @@
  *
  * `intervalDays` is FSRS `scheduled_days`. `ease` keeps the last difficulty
  * so older rows still parse. The full card lives on `fsrs`.
+ *
+ * A plan with an exam date caps the interval at the days left until the exam,
+ * so the last review lands on the exam day at the latest. ts-fsrs keeps Hard,
+ * Good and Easy a day apart even above its `maximum_interval`, so the cap is
+ * applied to the chosen card instead.
  */
 
 import {
@@ -46,6 +51,24 @@ export type ScheduleState = {
 const scheduler = fsrs(
   generatorParameters({ enable_fuzz: false, request_retention: 0.9 }),
 );
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * The longest interval that keeps the next review on or before the exam day: whole local days from today to the exam,
+ * at least 1. No date, or an exam already past, gives null and the default maximum.
+ */
+export function examMaxInterval(
+  examAt: number | null | undefined,
+  now: number,
+): number | null {
+  if (examAt == null) return null;
+  const exam = new Date(examAt);
+  exam.setHours(0, 0, 0, 0);
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((exam.getTime() - today.getTime()) / MS_PER_DAY);
+  return days < 0 ? null : Math.max(1, days);
+}
 
 function revive(stored: StoredCard): Card {
   return {
@@ -80,6 +103,8 @@ export function review(
   state: ScheduleState,
   rating: RatingName,
   now: number,
+  /** The plan's exam date; no review is scheduled after its day. */
+  examAt?: number | null,
 ): ScheduleState {
   const current = state.fsrs
     ? revive(state.fsrs)
@@ -94,6 +119,11 @@ export function review(
           ? preview[FsrsRating.Good].card
           : preview[FsrsRating.Easy].card;
   const saved = store(next);
+  const maxDays = examMaxInterval(examAt, now);
+  if (maxDays != null && saved.scheduled_days > maxDays) {
+    saved.scheduled_days = maxDays;
+    saved.due = new Date(now + maxDays * MS_PER_DAY).toISOString();
+  }
   return {
     intervalDays: Math.max(0, saved.scheduled_days),
     ease: saved.difficulty,
@@ -115,8 +145,6 @@ export function isMastered(state: ScheduleState): boolean {
     state.fsrs.stability >= masteredAfterDays
   );
 }
-
-const MS_PER_DAY = 86_400_000;
 
 /**
  * Current recall probability, rather than a rating counted as another success.

@@ -153,7 +153,8 @@ jobs:
     if: ${{ !inputs.windows_trace }}
     # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
     runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
-    timeout-minutes: 45
+    # macOS arm64 also audits large text and took 35-40 minutes in October 2026, close to the old 45.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

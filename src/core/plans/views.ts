@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { IpcError } from "../../shared/ipc";
 import { startAttempt } from "../study/attempt";
 
 const materialKey = (planId: string) => `plan-material:${planId}`;
@@ -33,11 +34,13 @@ export type ImportedFrom = {
   exportedAt: number | null;
   importedAt: number;
 };
+/** The identity of a plan file: the exporting plan's ID and the time of the export. */
+export type PlanFileIdentity = { id?: string; createdAt?: number };
 export function markPlanImported(
   db: Database.Database,
   planId: string,
   now: number,
-  from?: { author?: string; exportedAt?: number },
+  from?: { author?: string; exportedAt?: number; fileId?: string },
 ) {
   db.prepare(
     "INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,?)",
@@ -46,9 +49,26 @@ export function markPlanImported(
     JSON.stringify({
       author: from?.author ?? null,
       exportedAt: from?.exportedAt ?? null,
+      fileId: from?.fileId ?? null,
     }),
     now,
   );
+}
+/**
+ * The newest plan still in the workspace that was imported from this same file: same exporting plan and same export
+ * time. A file without either, or one from a later export of the same plan, matches nothing.
+ */
+/** The latest plan imported from this file. Two imports in the same millisecond are told apart by which was written last. */
+export function planImportedFrom(db: Database.Database, file: PlanFileIdentity) {
+  if (!file.id || file.createdAt == null) return null;
+  const row = db
+    .prepare(
+      `SELECT p.id AS planId, s.updated_at AS importedAt FROM settings s JOIN plans p ON s.key = 'plan-import:' || p.id
+       WHERE json_extract(s.value_json, '$.fileId') = ? AND json_extract(s.value_json, '$.exportedAt') = ?
+       ORDER BY s.updated_at DESC, s.rowid DESC LIMIT 1`,
+    )
+    .get(file.id, file.createdAt) as { planId: string; importedAt: number } | undefined;
+  return row ?? null;
 }
 export function planOrigin(db: Database.Database, planId: string) {
   const row = db
@@ -127,6 +147,13 @@ export function attachPlanSources(
         .prepare("SELECT status FROM sources WHERE id=?")
         .get(sourceId) as { status: string } | undefined;
       if (source?.status !== "ready") throw new Error("source-not-ready");
+      // A source is one link per plan: a past paper cannot also be study material of the same plan.
+      if (
+        db
+          .prepare("SELECT 1 FROM plan_sources WHERE plan_id=? AND source_id=? AND role='past_paper'")
+          .get(planId, sourceId)
+      )
+        throw new IpcError("source-is-past-paper", "pastPapers.isPaper");
       const info = db
         .prepare(
           "INSERT OR IGNORE INTO plan_sources(plan_id,source_id) VALUES(?,?)",
@@ -175,7 +202,7 @@ export function suggestSourceRebuild(
   now = Date.now(),
 ) {
   const plans = db
-    .prepare("SELECT plan_id AS id FROM plan_sources WHERE source_id=?")
+    .prepare("SELECT plan_id AS id FROM plan_sources WHERE source_id=? AND role='material'")
     .all(sourceId) as { id: string }[];
   for (const plan of plans)
     savePending(

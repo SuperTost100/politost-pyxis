@@ -136,7 +136,7 @@ Pyxis runs the CLIs in text-only mode, so they can't use their shell, file or we
 
 ## Your data
 
-Sources, plans, progress and generated material stay in a local workspace. Settings → Data shows its path and lets you move it. It also controls automatic backups: turn them off, pick another folder (not one inside the workspace or the app's own data), or back up now.
+Sources, plans, progress and generated material stay in a local workspace. Settings → Data shows its path and lets you move it. It also controls automatic backups: turn them off, pick another folder (not one inside the workspace or the app's own data), or back up now. It lists the automatic backups that pass their check, each with Restore. Settings → Study reminders turns on one notification a day, at a time you pick, when flashcards are due. It is off until you switch it on and only appears while Pyxis is open.
 
 These actions send data off your computer:
 
@@ -181,7 +181,7 @@ npm run dist -- --publish never       # installers land in dist/
 | [Engines](docs/engines.md)                     | How model calls are routed, validated and repaired  |
 | [Mastery and recommendations](docs/mastery.md) | The formulas behind mastery, gaps and the next step |
 | [Card scheduler](docs/scheduler.md)            | How FSRS is configured                              |
-| [Plan file](docs/plan-file.md)                 | The portable `.pyxis.json` format and its schema    |
+| [Plan file](docs/plan-file.md)                 | The portable `.pyxis` format and its schema         |
 | [Design system](docs/design-system/README.md)  | Colours, type, components and the logo              |
 | [Release checks](docs/releasing.md)            | CI targets, provenance and the manual release loop  |
 

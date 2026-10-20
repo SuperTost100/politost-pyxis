@@ -27,14 +27,21 @@ const artifact = z.object({
 const pdf = z.object({
   filename: fileName,
   markdown: z.string().max(16 * 1024 * 1024),
+  // A concept map's drawing, printed on its own page before the outline. The print page shows it as an image.
+  svg: z
+    .string()
+    .max(8 * 1024 * 1024)
+    .refine((s) => s.startsWith("<svg"))
+    .optional(),
 });
+type PrintJob = { markdown: string; svg?: string; ready: () => void };
 
 export function registerArtifactHandlers(
   mainWindow: () => BrowserWindow | null,
   e2eSeam: () => boolean,
 ): void {
   let printing = false;
-  const printJobs = new Map<number, { markdown: string; ready: () => void }>();
+  const printJobs = new Map<number, PrintJob>();
   function authorize(senderId: number): void {
     if (senderId !== mainWindow()?.webContents.id)
       throw new Error("export-untrusted-sender");
@@ -64,7 +71,10 @@ export function registerArtifactHandlers(
   });
   ipcMain.handle(mainChannels.printData, (event) => {
     const job = printJobs.get(event.sender.id);
-    return job ? { markdown: job.markdown } : null;
+    if (!job) return null;
+    return job.svg
+      ? { markdown: job.markdown, svg: job.svg }
+      : { markdown: job.markdown };
   });
   ipcMain.handle(mainChannels.printReady, (event) => {
     const job = printJobs.get(event.sender.id);
@@ -100,7 +110,11 @@ export function registerArtifactHandlers(
     let onFailed: (() => void) | undefined;
     try {
       const ready = new Promise<void>((resolve, reject) => {
-        printJobs.set(senderId, { markdown: parsed.markdown, ready: resolve });
+        printJobs.set(senderId, {
+          markdown: parsed.markdown,
+          svg: parsed.svg,
+          ready: resolve,
+        });
         timer = setTimeout(() => reject(new Error("print-timeout")), 30_000);
         onFailed = () => reject(new Error("print-window-closed"));
         printWindow.once("closed", onFailed);

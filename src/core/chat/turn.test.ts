@@ -1,5 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PNG } from "pngjs";
@@ -25,6 +24,7 @@ import {
   seedChat,
   splitFollowups,
 } from "./turn";
+import { tempDir } from "../test-temp";
 
 describe("replyGrounding", () => {
   const turn = { selected: true, cited: 0, attached: false, question: false, passages: 3 };
@@ -651,7 +651,7 @@ describe("askTurn", () => {
   });
 
   it("retrieves a document attached to the message and keeps it out of the library", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-attach-"));
+    const dir = tempDir("pyxis-attach-");
     const file = join(dir, "note.txt");
     writeFileSync(
       file,
@@ -692,7 +692,7 @@ describe("askTurn", () => {
   });
 
   it("reads an image with local OCR when the model cannot see it", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-ocr-"));
+    const dir = tempDir("pyxis-ocr-");
     const file = join(dir, "board.png");
     writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
     const db = openDatabase(":memory:");
@@ -731,7 +731,7 @@ describe("askTurn", () => {
   });
 
   it("answers from an image even when no passage covers the question", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-vision-"));
+    const dir = tempDir("pyxis-vision-");
     const file = join(dir, "board.png");
     writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
     const db = openDatabase(":memory:");
@@ -753,7 +753,7 @@ describe("askTurn", () => {
   });
 
   it("does not treat a blank image as a source when the model cannot see it", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-blank-"));
+    const dir = tempDir("pyxis-blank-");
     const file = join(dir, "board.png");
     writeFileSync(file, PNG.sync.write(new PNG({ width: 1, height: 1 })));
     const db = openDatabase(":memory:");
@@ -776,7 +776,7 @@ describe("askTurn", () => {
   });
 
   it("refuses an attachment over 15 MB", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-big-"));
+    const dir = tempDir("pyxis-big-");
     const file = join(dir, "huge.txt");
     writeFileSync(file, "x");
     const { openSync, ftruncateSync, closeSync } = await import("node:fs");

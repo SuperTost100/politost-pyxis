@@ -1,0 +1,131 @@
+/* The Maps section follows the Exams page: one toolbar, then subject groups like the flashcard browser. */
+.px-maps-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+}
+.px-maps-toolbar > .ant-btn {
+  white-space: nowrap;
+}
+.px-maps-summary {
+  margin: var(--space-4) 0 0;
+  color: var(--ink-muted);
+}
+.px-maps-subject {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+.px-maps-subject > header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.px-maps-subject h2 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.px-maps-subject > header .small {
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.px-maps-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-maps-grid > li {
+  display: flex;
+  min-width: 0;
+}
+.px-maps-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+}
+.px-maps-card-top {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+}
+.px-maps-card-title {
+  margin: 0;
+  font: 600 calc(17px * var(--text-scale, 1)) /
+    calc(24px * var(--text-scale, 1)) var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.px-maps-card-origin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.px-maps-card-origin a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--border-control);
+  text-underline-offset: 3px;
+}
+.px-maps-card-origin a:hover {
+  text-decoration-color: currentColor;
+}
+.px-maps-card-origin a svg {
+  flex: none;
+}
+.px-maps-card-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+.px-maps-card-meta {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: calc(18px * var(--text-scale, 1));
+  color: var(--ink-muted);
+}
+.px-maps-card-foot .ant-btn {
+  white-space: nowrap;
+}
+.px-maps-new-lead {
+  margin: 0 0 var(--space-4);
+  color: var(--ink-muted);
+}
+.px-maps-new-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.px-maps-new-note {
+  margin: 0;
+  color: var(--ink-muted);
+}
+@media (max-width: 815px) {
+  .px-maps-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

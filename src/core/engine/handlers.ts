@@ -13,6 +13,7 @@ import {
   endConversations,
   getFunnel,
   isProviderAcknowledged,
+  providerName,
   runTurn,
   shellPathReady,
   type ProviderId,
@@ -21,6 +22,21 @@ import { clearSignOut } from "./bench";
 import { effortsOf, rememberModels, resolveEffort } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
 import { rememberReady, type StoredSelection } from "./selection";
+import { hardware as probeHardware, type Hardware } from "./hardware";
+import {
+  adviseLocal,
+  checkLocalModel,
+  LOCAL_PROVIDER,
+  localData,
+  localUsable,
+  pullLocalModel,
+  readLocal,
+  tierOf,
+  writeLocal,
+  type LocalCheck,
+  type LocalSettings,
+} from "./local";
+import { usageSince } from "./usage";
 
 const features = [
   "default",
@@ -77,9 +93,11 @@ function kindOf(id: string): "cli" | "api" {
   return id.endsWith("-api") ? "api" : "cli";
 }
 
-/** A CLI runs only when its adapter enforces text-only access. API providers have no machine access. */
+/** A CLI runs only when its adapter enforces text-only access. API providers and Ollama have no machine access. */
 function textOnly(id: string, access: readonly string[] = []): boolean {
-  return kindOf(id) === "api" || access.includes("none");
+  return (
+    kindOf(id) === "api" || id === LOCAL_PROVIDER || access.includes("none")
+  );
 }
 
 /** How long Test waits for the one-word answer. A CLI that starts cold can take half a minute. */
@@ -209,6 +227,8 @@ export async function autoConfigureEngines(
       failed += 1;
     }
   }
+  const local = await localCandidate(db);
+  if (local) listed.push(local);
   // A failed model listing is not proof that the engine went away. Keep the
   // current choices rather than blanking them.
   const unreadable = failed > 0 && listed.length === 0;
@@ -285,10 +305,56 @@ export async function autoConfigureEngines(
   });
   apply();
   return {
-    ready: ready.map((row) => row.id),
+    ready: [...ready.map((row) => row.id), ...(local ? [local.id] : [])],
     features: readFeatures(db),
   };
 }
+
+/**
+ * The local model as a candidate for the automatic choice: only the model Pyxis checked, only while the student has it
+ * on, the check passed and Ollama still lists it. Other models in the student's Ollama are never chosen.
+ */
+async function localCandidate(
+  db: Database.Database,
+): Promise<AutoProvider | undefined> {
+  const saved = readLocal(db);
+  if (!localUsable(saved) || !isProviderAcknowledged(LOCAL_PROVIDER)) return;
+  try {
+    const models = await getFunnel().models(LOCAL_PROVIDER);
+    const model = models.find((candidate) => candidate.id === saved!.model);
+    if (!model) return;
+    rememberModels(LOCAL_PROVIDER, models);
+    return {
+      id: LOCAL_PROVIDER,
+      kind: "local",
+      structured: saved!.check!.structured,
+      effort: true,
+      images: providerSeesImages(LOCAL_PROVIDER),
+      models: [{ id: model.id, efforts: model.efforts }],
+    };
+  } catch {
+    // Ollama is not running: the local model sits out until it is.
+    return undefined;
+  }
+}
+
+type LocalProgress = {
+  phase: "pull" | "check";
+  completed: number;
+  total: number;
+};
+type LocalRun = {
+  promise: Promise<LocalCheck>;
+  abort: AbortController;
+  progress: LocalProgress;
+};
+
+export type LocalEvent = {
+  phase: "pull" | "check" | "done" | "failed" | "cancelled";
+  status?: string;
+  completed?: number;
+  total?: number;
+};
 
 function readFeatures(db: Database.Database): Record<string, StoredSelection> {
   const rows = db
@@ -309,8 +375,78 @@ export function engineHandlers(
     onInstallLog?: (event: { provider: string; text: string }) => void;
     /** Tests run this script instead of the vendor installer. */
     installerFixture?: string;
+    /** Download and check progress of the local model. */
+    onLocal?: (event: LocalEvent) => void;
+    /** Tests describe the computer instead of probing it. */
+    hardware?: () => Promise<Hardware>;
   } = {},
 ) {
+  const readHardware = options.hardware ?? probeHardware;
+  // The download and check of the local model. One at a time; a second request waits for the same run.
+  let localRun: LocalRun | null = null;
+  let localStarting = false;
+  let localLast: { outcome: "failed" | "cancelled"; detail: string } | null =
+    null;
+  function emitLocal(event: LocalEvent) {
+    options.onLocal?.(event);
+  }
+  async function localState() {
+    const hw = await readHardware();
+    const ollama = getFunnel().providers[LOCAL_PROVIDER];
+    const installation = await ollama?.detect().catch(() => undefined);
+    const running = installation?.installed === true;
+    const downloaded = running
+      ? (await ollama!.models().catch(() => [])).map((model) => model.id)
+      : [];
+    const advice = adviseLocal(hw, downloaded);
+    const saved = readLocal(db);
+    // A model the student downloaded or checked stays theirs. One saved by a pull that never finished follows the advice
+    // for this computer as it is now, so more free space or a changed GPU is not hidden behind the old pick.
+    const keepsSaved =
+      !!saved &&
+      (saved.check?.model === saved.model || downloaded.includes(saved.model));
+    const id = keepsSaved ? saved.model : advice.tier?.model;
+    const tier = id ? tierOf(id) : undefined;
+    return {
+      hardware: {
+        ramBytes: hw.ramBytes,
+        freeDiskBytes: hw.freeDiskBytes,
+        gpu: advice.gpu,
+      },
+      reason: advice.reason,
+      model: id
+        ? {
+            id,
+            name: tier?.name ?? id,
+            downloadBytes: tier?.downloadBytes ?? 0,
+          }
+        : null,
+      ollama: { running, version: installation?.version ?? "" },
+      downloaded: !!id && downloaded.includes(id),
+      task: localRun ? { ...localRun.progress } : null,
+      last: localLast,
+      check: saved?.check ?? null,
+      enabled: localUsable(saved),
+      installUrl: localData.installUrl,
+      minTokensPerSecond: localData.minTokensPerSecond,
+      // What the smallest model needs, for the explanation on a computer that cannot run one.
+      minimum: {
+        ramGb: localData.minRamGb,
+        vramGb: Math.min(...localData.tiers.map((t) => t.minVramGb)),
+        unifiedGb: Math.min(...localData.tiers.map((t) => t.minUnifiedGb)),
+        diskMarginGb: localData.diskMarginGb,
+      },
+    };
+  }
+
+  /** Turns the local model off and hands its tasks back to the other engines. */
+  function dropLocal(saved: LocalSettings, check?: LocalCheck) {
+    writeLocal(db, { ...saved, enabled: false, ...(check ? { check } : {}) });
+    db.prepare(
+      "DELETE FROM feature_engines WHERE json_extract(selection_json, '$.provider') = ?",
+    ).run(LOCAL_PROVIDER);
+    endConversations();
+  }
   // Background recomputation is on in the app and off in unit tests, which
   // check the stored rows right after each call.
   let queue: Promise<unknown> = Promise.resolve();
@@ -355,6 +491,147 @@ export function engineHandlers(
       // Screens that already read the old choices reload them.
       void run.then(() => options.onAuto?.()).catch(() => undefined);
       return run;
+    },
+    /**
+     * What Pyxis knows about running a model on this computer: the hardware verdict, Ollama, the suggested model, a
+     * download or check in progress, and the last check. The hardware query runs once per launch.
+     */
+    local: localState,
+    /**
+     * Downloads the suggested model through Ollama after the student agreed, then checks it. The local model turns on
+     * when the check passes. Only offered when the hardware check suggests a model.
+     */
+    async localPull() {
+      if (localRun) return localRun.promise;
+      // A second press while this one still reads the state must not start a second download.
+      if (localStarting) throw new IpcError("busy", "engines.local.busy");
+      localStarting = true;
+      const state = await localState().finally(() => {
+        localStarting = false;
+      });
+      if (state.reason || !state.model)
+        throw new IpcError("unsupported", "engines.local.cannotRun");
+      if (!state.ollama.running)
+        throw new IpcError("not-ready", "engines.local.ollamaMissing");
+      // The student agreed to send study material to the model on this computer.
+      acknowledgeProviders([LOCAL_PROVIDER]);
+      const model = state.model.id;
+      const abort = new AbortController();
+      const run: LocalProgress = {
+        phase: "pull",
+        completed: 0,
+        total: state.model.downloadBytes,
+      };
+      localLast = null;
+      dropLocal({ model, enabled: false });
+      const promise = (async () => {
+        emitLocal({ phase: "pull", completed: 0, total: run.total });
+        let shown = -1;
+        await pullLocalModel(model, {
+          signal: abort.signal,
+          onProgress: (progress) => {
+            run.completed = progress.completed;
+            run.total = progress.total;
+            // One update per whole percent is plenty for a progress bar.
+            const percent = Math.floor(
+              (progress.completed / Math.max(1, progress.total)) * 100,
+            );
+            if (percent === shown) return;
+            shown = percent;
+            emitLocal({ phase: "pull", ...progress });
+          },
+        });
+        getFunnel().refresh(LOCAL_PROVIDER);
+        run.phase = "check";
+        emitLocal({ phase: "check" });
+        const check = await checkLocalModel(model, { signal: abort.signal });
+        writeLocal(db, { model, enabled: check.passed, check });
+        emitLocal({ phase: "done" });
+        reconfigureSoon();
+        return check;
+      })()
+        .catch((err: unknown) => {
+          const cancelled = abort.signal.aborted;
+          localLast = {
+            outcome: cancelled ? "cancelled" : "failed",
+            detail: cancelled
+              ? ""
+              : err instanceof Error
+                ? err.message
+                : String(err),
+          };
+          emitLocal({ phase: cancelled ? "cancelled" : "failed" });
+          if (cancelled)
+            throw new IpcError("aborted", "engines.local.cancelled");
+          throw new IpcError(
+            "local-failed",
+            "engines.local.pullFailed",
+            {},
+            localLast.detail,
+          );
+        })
+        .finally(() => {
+          if (localRun?.promise === promise) localRun = null;
+        });
+      localRun = { promise, abort, progress: run };
+      return promise;
+    },
+    localCancel() {
+      localRun?.abort.abort();
+      return { ok: true as const };
+    },
+    /** Runs the check again on the downloaded model, for example after updating Ollama or closing other programs. */
+    async localCheck() {
+      const saved = readLocal(db);
+      if (!saved) throw new IpcError("not-ready", "engines.local.cannotRun");
+      if (localRun) throw new IpcError("busy", "engines.local.busy");
+      const abort = new AbortController();
+      const promise = checkLocalModel(saved.model, { signal: abort.signal });
+      const run: LocalRun = {
+        promise,
+        abort,
+        progress: { phase: "check", completed: 0, total: 0 },
+      };
+      localRun = run;
+      localLast = null;
+      emitLocal({ phase: "check" });
+      try {
+        const check = await promise;
+        if (check.passed) writeLocal(db, { ...saved, enabled: true, check });
+        else dropLocal(saved, check);
+        emitLocal({ phase: "done" });
+        reconfigureSoon();
+        return check;
+      } catch (err) {
+        const cancelled = abort.signal.aborted;
+        localLast = {
+          outcome: cancelled ? "cancelled" : "failed",
+          detail: cancelled
+            ? ""
+            : err instanceof Error
+              ? err.message
+              : String(err),
+        };
+        emitLocal({ phase: cancelled ? "cancelled" : "failed" });
+        throw new IpcError(
+          cancelled ? "aborted" : "local-failed",
+          cancelled ? "engines.local.cancelled" : "engines.local.pullFailed",
+        );
+      } finally {
+        if (localRun === run) localRun = null;
+      }
+    },
+    /** Turns the local model on (only after a passed check) or off. Off hands its tasks back to the other engines. */
+    localEnable(input: { enabled: boolean }) {
+      const saved = readLocal(db);
+      if (!saved) throw new IpcError("not-ready", "engines.local.cannotRun");
+      if (input.enabled) {
+        if (!localUsable({ ...saved, enabled: true }))
+          throw new IpcError("unsupported", "engines.local.checkFirst");
+        writeLocal(db, { ...saved, enabled: true });
+      } else dropLocal(saved);
+      reconfigureSoon();
+      return { ok: true as const };
     },
     async models(input: { provider: ProviderId }) {
       await shellPathReady();
@@ -442,11 +719,23 @@ export function engineHandlers(
       effort?: string;
       fast?: boolean;
     }) {
-      if (!providers.has(input.provider)) {
+      const local = input.provider === LOCAL_PROVIDER;
+      if (!providers.has(input.provider) && !local) {
         throw new IpcError(
           "invalid-selection",
           "engines.errors.invalid-selection",
         );
+      }
+      if (local) {
+        // Only the checked model, and only while it is on.
+        const saved = readLocal(db);
+        if (!localUsable(saved) || saved!.model !== input.model)
+          throw new IpcError("unsupported", "engines.local.checkFirst");
+        if (
+          localData.strictFeatures.includes(input.feature) &&
+          !saved!.check!.structured
+        )
+          throw new IpcError("unsupported", "engines.local.noStructured");
       }
       if (disabled(input.provider))
         throw new IpcError("unsupported", "engines.disabled");
@@ -540,6 +829,12 @@ export function engineHandlers(
     },
     capability(input: { model: string; need: Need }) {
       return { warning: capabilityWarning(input.model, input.need) };
+    },
+    usage(input: { since: number }) {
+      return usageSince(db, input.since).map((row) => ({
+        ...row,
+        name: providerName(row.provider),
+      }));
     },
     features() {
       return readFeatures(db);

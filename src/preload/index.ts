@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { isMenuCommand, type MenuLanguage } from "../shared/menu";
+import { isOpenablePath } from "../shared/reminder";
 import {
   mainChannels,
   type Appearance,
@@ -50,7 +51,9 @@ const replayable = new Set([
   "plans.list",
   "subjects.list",
   "study.queue",
+  "study.cardSettings",
   "study.cardsBuild",
+  "study.cardsPlaces",
   "study.gapDrillRead",
   "study.suspended",
   "study.browse",
@@ -59,9 +62,13 @@ const replayable = new Set([
   "plans.read",
   "plans.export",
   "plans.mastery",
+  "plans.masteryBreakdown",
   "plans.series",
   "plans.simulations",
   "plans.recommend",
+  "plans.today",
+  "plans.planner",
+  "study.dueEverywhere",
   "profile.get",
   "sources.list",
   "sources.search",
@@ -274,7 +281,8 @@ const bridge: PyxisBridge = {
   retryCore: () => ipcRenderer.invoke(mainChannels.coreRetry),
   killCore: () => ipcRenderer.invoke("dev:killCore"),
   backupWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceBackup),
-  restoreWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceRestore),
+  restoreWorkspace: (backup) =>
+    ipcRenderer.invoke(mainChannels.workspaceRestore, backup),
   workspacePath: () => ipcRenderer.invoke(mainChannels.workspacePath),
   moveWorkspace: () => ipcRenderer.invoke(mainChannels.workspaceMove),
   wipeWorkspace: (options) => ipcRenderer.invoke(mainChannels.workspaceWipe, options),
@@ -286,6 +294,7 @@ const bridge: PyxisBridge = {
     openFolder: () => ipcRenderer.invoke(mainChannels.autoBackupOpenFolder),
     runNow: () => ipcRenderer.invoke(mainChannels.autoBackupRunNow),
     dismissNotice: () => ipcRenderer.invoke(mainChannels.autoBackupDismiss),
+    list: () => ipcRenderer.invoke(mainChannels.autoBackupList),
     onStatus: (cb: (status: AutoBackupStatus) => void) => {
       const listener = (_event: unknown, status: AutoBackupStatus) =>
         cb(status);
@@ -294,7 +303,26 @@ const bridge: PyxisBridge = {
         ipcRenderer.removeListener(mainChannels.autoBackupChanged, listener);
     },
   },
+  reminders: {
+    get: () => ipcRenderer.invoke(mainChannels.remindersGet),
+    set: (settings) => ipcRenderer.invoke(mainChannels.remindersSet, settings),
+  },
+  onOpenPath: (cb) => {
+    const listener = (_event: unknown, path: unknown) => {
+      if (isOpenablePath(path)) cb(path);
+    };
+    ipcRenderer.on(mainChannels.openPath, listener);
+    return () => ipcRenderer.removeListener(mainChannels.openPath, listener);
+  },
   fetchPlan: (url: string) => ipcRenderer.invoke(mainChannels.planFetch, url),
+  openedPlan: {
+    take: () => ipcRenderer.invoke(mainChannels.planFileTake),
+    onWaiting: (cb) => {
+      const listener = () => cb();
+      ipcRenderer.on(mainChannels.planFileWaiting, listener);
+      return () => ipcRenderer.removeListener(mainChannels.planFileWaiting, listener);
+    },
+  },
   saveArtifact: (input) => ipcRenderer.invoke(mainChannels.artifactSave, input),
   exportPdf: (input) => ipcRenderer.invoke(mainChannels.pdfExport, input),
   printData: () => ipcRenderer.invoke(mainChannels.printData),

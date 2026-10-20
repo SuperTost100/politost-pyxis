@@ -29,6 +29,7 @@ import { embedWithModel } from "../sources/retrieve";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { shuffleChoices } from "../../shared/choices";
 import { stripPassageRefs } from "../../shared/smart-text";
+import { saveSessions, sessionsFromInput } from "./sessions";
 
 const randomUnit = () => randomInt(2 ** 32) / 2 ** 32;
 
@@ -738,6 +739,7 @@ export function enqueuePlan(
       Date.now(),
       Date.now(),
     );
+    saveSessions(db, planId, sessionsFromInput(input));
     snapshotPlanEducation(db, planId);
     for (const sourceId of new Set(input.sourceIds))
       db.prepare(
@@ -824,7 +826,7 @@ export function startRebuild(
   const sourceIds = (
     db
       .prepare(
-        "SELECT source_id AS id FROM plan_sources WHERE plan_id = ? ORDER BY source_id",
+        "SELECT source_id AS id FROM plan_sources WHERE plan_id = ? AND role = 'material' ORDER BY source_id",
       )
       .all(planId) as Array<{ id: string }>
   ).map((row) => row.id);

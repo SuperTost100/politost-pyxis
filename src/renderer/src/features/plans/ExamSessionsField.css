@@ -1,0 +1,47 @@
+.px-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+/* One session. A lone session has no frame, so a plan with one exam looks as it did before sessions. */
+.px-session {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.px-session:not(:only-of-type) {
+  box-sizing: border-box;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.px-session-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-sm);
+  margin-bottom: var(--space-2);
+}
+
+.px-session-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-3) var(--space-4);
+}
+
+.px-session-grid .ant-picker {
+  width: 100%;
+}
+
+@media (max-width: 520px) {
+  .px-session-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

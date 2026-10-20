@@ -20,6 +20,16 @@ Each quiz answer contributes one observation with weight 1, or 1.5 for open answ
 | Self-rating of an exercise     | 0.5    |
 | Reviewed card (retrievability) | 0.5    |
 
+## "I don't know" and Skip in quizzes
+
+A student can answer "I don't know" (key `0`) to any question of a quiz, diagnostic or review. The page checks an empty pick; core scores an empty pick 0 for every question type, shows the correct answer, and stores it like any checked answer. It becomes a normal wrong answer: the same `answer_given` evidence with score 0, counted for gaps, and it replaces the 0 a blank would also get at submit. Simulations have no per-question check, so they have no such button.
+
+Skip (key `S`) moves a question behind the others. It comes back once; the second time it can only be answered or marked "I don't know". The skipped ids and their order are saved in the answer draft, so closing and reopening keeps the order. Skipping changes only the order shown: grading, the timer deadline and the stored question order do not change. Skip waits until every question of the quiz exists.
+
+## What a topic's number is made of
+
+`plans.masteryBreakdown` returns, for each topic, the parts of the formula above: for quiz answers (open ones included), simulation answers, quick checks, self-ratings and cards, the count, the summed weight after decay, the summed weighted score and the plain average score (for cards, the average recall). `masteryDetail` in `src/core/study/mastery.ts` computes them in the same pass as the number, and `masteryFor` returns its `mastery`, so `sum(points) / (3 + sum(weight))` equals the mastery shown. `decay` is the mastery minus what the same evidence would give with no decay. Progress shows these under each topic row.
+
 ## Self-rating of exercises
 
 After a practice exercise the student can choose "Got it" (score 1) or "Missed it" (score 0). It is optional: "Mark as done" works without any rating, and an unrated exercise adds nothing. Each rating is an `answer_given` event with `evidenceKind: "self"`, the exercise id and a `questionScores` entry for that exercise, so flagging the exercise removes the rating like any other evidence from it. Three rules follow from its being light evidence:
@@ -116,3 +126,39 @@ score = 3 * due_cards + 4 * severe_gap_count
 For two due cards, one severe gap, target `0.75`, mastery `0.5`, five days to the exam, two idle days and a matching style, the score is `6 + 4 + 0.7 + 2 + 1 = 13.7`. The explanation prefers due cards, then gaps, then the next lesson. Equal scores keep the first candidate.
 
 The caller syncs the gap rows first, then passes only the open gaps that Progress would call severe (see Severity above) as `severeGaps`; a minor gap does not count. It only ranks topics that have due cards or severe gaps; it does not decide which lesson comes next. Recommendation weights are rules in code, not a predictive model. Progress forecasts are estimates and never promise an exam result.
+
+## Oggi and the session planner
+
+Oggi is the block at the top of Esami. It lists today's study across every exam that is not archived: due flashcards from all plans as one item, then one item per plan, each opening that plan's next step directly. The step comes from `suggestStep`, the same path rules as the plan page, except that due cards are left out because the flashcards item covers them. Dated exams come first, the closest first; plans without a date come after them; exams already past are left out. The first item not done carries the Suggested tag. `todayPlan` in `src/core/plans/planner.ts` builds the list, and the flashcards item opens `/cards/due`, one session over the due cards of every plan, the closest exam's first. Rating cards there records a cards step on each topic it touched.
+
+An item ticks off for the day once today's steps cover it. Without hours set in the planner, one step on the path today is enough. With hours set, the plan's steps today must add up to the minutes the planner gave the plan today, counted with the step estimates below, and at least one step must be done; a plan the planner gives under 2.5 minutes today stays out of the list unless it was studied today. The flashcards item is done when no card is due and at least one was rated today. Ticked items stay in place until the next day.
+
+The session planner (`/exams/planner`, `sessionPlan`) takes every exam with a date after today, the hours the student can study each week and each plan's remaining work, and spreads that work over the days before each exam. The student sets the usual hours once and can change any single week. Both are stored in the `planner` settings row.
+
+### Remaining work
+
+`remainingMinutes` estimates a plan's remaining work in minutes from what the path already knows:
+
+| Work                                                       | Minutes |
+| ---------------------------------------------------------- | ------- |
+| Introduction, while nothing is studied and it was not read | 10      |
+| Diagnostic, while nothing is studied and it was not taken  | 15      |
+| Lesson of each unread topic                                | 30      |
+| Each graded activity a topic below the target still needs  | 20      |
+| One simulation, until one is done                          | 60      |
+
+A topic at zero mastery needs `stayActivities` (3) graded activities, the length of a stay under rule 5. A topic part of the way to the reachable target needs that share of the three, rounded up: halfway needs 2, a topic at the target needs none. Flashcards are review, outside the planned work. The same minutes count a finished step: a lesson done today counts 30 minutes, a quiz or exercise 20.
+
+These numbers are rules, not measurements. They do not use the recorded active time, and real sessions vary a lot. They make the plan proportional to what is left, which is what the spreading needs.
+
+### Spreading the work
+
+Every day from today to the last exam, each exam with work left needs a pace: its remaining work divided by the days left before it. The exam day itself gets no study time for that exam. A day has the week's hours divided by 7. When the day's time covers every pace, each exam gets its pace and the rest stays free, so the work is spread evenly up to each exam. When it does not, every exam gets the same share of its pace. The day after an exam its time goes to the others.
+
+The plan starts from today's start: today's finished steps are added back to the remaining work, so studying today does not change today's share. Every read computes the plan again from the current mastery and steps, so a day without study simply leaves more work for fewer days, and the days left get more.
+
+`neededHours` is the weekly time that would bring every exam to its target on time: for each exam, the work of that exam and every earlier one over the days before it, the largest such pace, times 7, rounded up to the half hour.
+
+### Falling behind
+
+An exam is behind when work is still left on its exam day. The warning gives two numbers. At the pace the exam got, it reaches its target that many days after the exam: the work left divided by its average minutes a day. By the exam it gets the share of the way from its current mastery to the target that matches the share of its work done: an exam at 10% with a 75% target that gets half its work done shows about 42%. This assumes mastery grows in step with the work, which is a simplification; it says which exam needs more time, not what the exam result will be.
