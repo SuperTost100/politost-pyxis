@@ -89,7 +89,10 @@
   },
   "overrides": {
     "katex": "$katex",
-    "sharp": "$sharp"
+    "sharp": "$sharp",
+    "onnxruntime-node": {
+      "global-agent": "^4.1.3"
+    }
   },
   "bundledByVite": [
     "@ant-design/pro-components",
