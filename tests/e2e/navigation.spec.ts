@@ -57,3 +57,29 @@ test("the window stays on the app page and refuses device permissions", async ()
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test("a page opened while the start page still redirects to Exams is not lost", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-navigation-"));
+  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({
+    args: [join(process.cwd(), "out/main/index.js")],
+    env,
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    // The window's start page sends it on to Exams. Settings, opened right after and not loaded yet, must win, as when
+    // a plan file or a menu command opens a page while the window starts.
+    await page.evaluate(() => {
+      location.hash = "#/";
+      location.hash = "#/settings";
+    });
+    await expect(page.getByRole("heading", { name: "Impostazioni" })).toBeVisible();
+    await expect(page).toHaveURL(/#\/settings$/);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});

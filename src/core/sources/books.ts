@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { fetchPublicResponse } from "./link";
+import { fetchPublicResponse } from "./public-fetch";
 
 /** The free PoliTost smartbooks. The site is static: a catalog plus one package per book version. */
 export const BOOKS_ORIGIN = "https://books.politost.it";

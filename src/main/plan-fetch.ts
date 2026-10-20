@@ -1,4 +1,8 @@
-import { blockedAddress, fetchPublicResponse, idleTimeout } from "../core/sources/link";
+import {
+  blockedAddress,
+  fetchPublicResponse,
+  idleTimeout,
+} from "../core/sources/public-fetch";
 import { directPlanUrl, httpPlanUrl } from "../shared/plan-file";
 
 // Room for one embedded 200 MiB original as base64 plus the plan. A file this app saves is smaller (MAX_PLAN_FILE_BYTES).

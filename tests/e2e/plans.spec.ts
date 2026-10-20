@@ -122,6 +122,8 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await page
       .getByRole("button", { name: "Apri il piano", exact: true })
       .click();
+    // The plan page loads on its first visit and the build page stays until it has; the URL moves once it is there.
+    await expect(page).toHaveURL(new RegExp(`#/plans/${created.planId}$`));
     await page.getByText("Argomenti", { exact: true }).click();
     await page.getByText("Moto", { exact: true }).first().click();
     await expect(

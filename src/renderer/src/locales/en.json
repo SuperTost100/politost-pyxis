@@ -1462,6 +1462,7 @@
     "practice": "Practicing",
     "decide": "You decide",
     "stepIntro": "Writing the introduction",
+    "stepIntroDiagnostic": "Writing the introduction and the diagnostic quiz",
     "stepDiagnostic": "Preparing the diagnostic quiz",
     "stepReady": "Plan ready",
     "sourceNotReady": "A source needs attention. Finish its import or OCR, then retry this build.",

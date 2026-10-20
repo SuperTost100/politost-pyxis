@@ -1,23 +1,7 @@
-import { PrintPage } from "../features/share/PrintPage";
-import { createHashRouter, isRouteErrorResponse, Navigate, useNavigate, useRouteError } from "react-router";
+import { createHashRouter, isRouteErrorResponse, replace, useNavigate, useRouteError } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { ComponentType } from "react";
-import { CardsPage } from "../features/study/CardsPage";
-import { LessonPage } from "../features/study/LessonPage";
-import { IntroPage } from "../features/study/IntroPage";
-import { PracticePage } from "../features/study/PracticePage";
-import { SimulationPage } from "../features/study/SimulationPage";
-import { QuizPage } from "../features/study/QuizPage";
-import { ReviewPage } from "../features/study/ReviewPage";
-import { OnboardingPage } from "../features/onboarding/OnboardingPage";
-import { AskPage } from "../features/ask/AskPage";
 import { ExamsHome } from "../features/home/HomePages";
-import {
-  GuidedPlanPage,
-  PlanPage,
-  SharedPlanPage,
-  WizardFrame,
-} from "../features/plans/PlanFrames";
 import { ErrorState } from "../components/ErrorState";
 import { errorDetails } from "../lib/errorDetails";
 import { rememberDoorPath, Shell } from "./layouts/Shell";
@@ -52,57 +36,65 @@ function RouteError({ standalone }: { standalone?: boolean }) {
   );
 }
 
-// Pages a student opens rarely load on first visit, so the window parses less at startup.
+// Every page but the exam list loads on its first visit, so the window parses less at startup. Until a route's page
+// has loaded, the router keeps the previous page on screen, so a page with tabs or an optional id is one route: moving
+// between its tabs never waits for a load. Redirects are loaders, not rendered <Navigate>s: a redirect that renders
+// late would cancel a navigation started before it, such as one still loading its page.
 function page<K extends string>(
   load: () => Promise<Record<K, ComponentType>>,
   name: K,
 ) {
   return async () => ({ Component: (await load())[name] });
 }
-const settings = page(() => import("../features/settings/SettingsPage"), "SettingsPage");
+const plans = () => import("../features/plans/PlanFrames");
+const quiz = page(() => import("../features/study/QuizPage"), "QuizPage");
+const quizRedo = async () => {
+  const { QuizPage } = await import("../features/study/QuizPage");
+  return { Component: () => <QuizPage redo /> };
+};
+const cards = page(() => import("../features/study/CardsPage"), "CardsPage");
+const simulation = page(() => import("../features/study/SimulationPage"), "SimulationPage");
+const review = page(() => import("../features/study/ReviewPage"), "ReviewPage");
 
 export const router = createHashRouter([
-  { path: "/print", element: <PrintPage /> },
+  { path: "/print", lazy: page(() => import("../features/share/PrintPage"), "PrintPage") },
   {
     id: "shell",
     path: "/",
     element: <Shell />,
     children: [
-      { index: true, element: <Navigate to="/exams" replace /> },
-      { path: "onboarding", element: <OnboardingPage /> },
-      { path: "ask", element: <AskPage /> },
-      { path: "ask/:chatId", element: <AskPage /> },
+      { index: true, loader: () => replace("/exams") },
+      { path: "onboarding", lazy: page(() => import("../features/onboarding/OnboardingPage"), "OnboardingPage") },
+      { path: "ask/:chatId?", lazy: page(() => import("../features/ask/AskPage"), "AskPage") },
       { path: "exams", element: <ExamsHome /> },
       { path: "exams/library", element: <ExamsHome /> },
       { path: "exams/cards", element: <ExamsHome /> },
       { path: "exams/mistakes", element: <ExamsHome /> },
       { path: "exams/planner", lazy: page(() => import("../features/home/PlannerPage"), "PlannerPage") },
-      { path: "exams/get", element: <SharedPlanPage /> },
+      { path: "exams/get", lazy: page(plans, "SharedPlanPage") },
       { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },
-      { path: "plans/:planId", element: <PlanPage /> },
-      { path: "plans/:planId/:view", element: <PlanPage /> },
-      { path: "settings", lazy: settings },
-      { path: "settings/subjects", element: <Navigate to="/exams" replace /> },
-      { path: "settings/:section", lazy: settings },
+      { path: "plans/:planId/:view?", lazy: page(plans, "PlanPage") },
+      { path: "settings/subjects", loader: () => replace("/exams") },
+      { path: "settings/:section?", lazy: page(() => import("../features/settings/SettingsPage"), "SettingsPage") },
       { path: "dev/gallery", lazy: page(() => import("../features/jobs/DevGallery"), "DevGallery") },
       { path: "*", element: <RouteError /> },
     ],
   },
-  { path: "/plans/new", element: <WizardFrame /> },
-  { path: "/plans/new/guided", element: <GuidedPlanPage /> },
-  { path: "/plans/:planId/practice/:topicId", element: <PracticePage /> },
-  { path: "/plans/:planId/lesson/:topicId", element: <LessonPage /> },
-  { path: "/plans/:planId/intro", element: <IntroPage /> },
-  { path: "/plans/:planId/diagnostic", element: <QuizPage /> },
-  { path: "/plans/:planId/quiz/:topicId", element: <QuizPage /> },
-  { path: "/plans/:planId/redo", element: <QuizPage redo /> },
-  { path: "/plans/:planId/past", element: <QuizPage /> },
-  { path: "/plans/:planId/cards/:topicId", element: <CardsPage /> },
-  { path: "/plans/:planId/review", element: <ReviewPage /> },
-  { path: "/plans/:planId/review/cards", element: <CardsPage /> },
-  { path: "/cards/due", element: <CardsPage /> },
-  { path: "/plans/:planId/simulation", element: <SimulationPage /> },
-  { path: "/plans/:planId/exam/:attemptId", element: <SimulationPage /> },
+  { path: "/plans/new", lazy: page(plans, "WizardFrame") },
+  { path: "/plans/new/guided", lazy: page(plans, "GuidedPlanPage") },
+  { path: "/plans/:planId/practice/:topicId", lazy: page(() => import("../features/study/PracticePage"), "PracticePage") },
+  { path: "/plans/:planId/lesson/:topicId", lazy: page(() => import("../features/study/LessonPage"), "LessonPage") },
+  { path: "/plans/:planId/intro", lazy: page(() => import("../features/study/IntroPage"), "IntroPage") },
+  { path: "/plans/:planId/diagnostic", lazy: quiz },
+  { path: "/plans/:planId/quiz/:topicId", lazy: quiz },
+  { path: "/plans/:planId/redo", lazy: quizRedo },
+  { path: "/plans/:planId/past", lazy: quiz },
+  { path: "/plans/:planId/cards/:topicId", lazy: cards },
+  { path: "/plans/:planId/review", lazy: review },
+  { path: "/plans/:planId/review/cards", lazy: cards },
+  { path: "/cards/due", lazy: cards },
+  { path: "/plans/:planId/simulation", lazy: simulation },
+  { path: "/plans/:planId/exam/:attemptId", lazy: simulation },
   { path: "/plans/:planId/map/:topicId", lazy: page(() => import("../features/maps/MapPage"), "MapPage") },
   { path: "/tools/whiteboard", lazy: page(() => import("../features/tools/WhiteboardPage"), "WhiteboardPage") },
   { path: "/tools/graph", lazy: page(() => import("../features/tools/GraphPage"), "GraphPage") },

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { EngineProvider } from "@shared/ipc";
 import { invoke } from "../lib/ipc";
+import "./EngineNotice.css";
 
 const vendors: Record<EngineProvider, string> = {
   claude: "Anthropic",

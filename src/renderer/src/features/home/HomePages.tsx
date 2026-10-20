@@ -1,13 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Button, Modal, Segmented, Select } from "antd";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
-import { CardBrowser } from "./CardBrowser";
 import { LibraryPanel } from "./LibraryPanel";
-import { MistakesNotebook } from "../study/MistakesNotebook";
 import { PlanCard } from "../../components/PlanCard";
 import { Notice } from "../../components/Notice";
 import {
@@ -22,6 +20,16 @@ import { parsePlanText } from "../plans/importPreview";
 import { examDaysLabel } from "../plans/examDays";
 import { OggiBlock } from "./OggiBlock";
 import "./HomePages.css";
+
+// Cards and mistakes render Markdown and math, which load with their tab rather than with the window.
+const CardBrowser = lazy(() =>
+  import("./CardBrowser").then((module) => ({ default: module.CardBrowser })),
+);
+const MistakesNotebook = lazy(() =>
+  import("../study/MistakesNotebook").then((module) => ({
+    default: module.MistakesNotebook,
+  })),
+);
 
 export function ExamsHome() {
   const { t } = useTranslation();
@@ -127,9 +135,13 @@ export function ExamsHome() {
       {tab === "sources" ? (
         <LibraryPanel />
       ) : tab === "cards" ? (
-        <CardBrowser />
+        <Suspense fallback={null}>
+          <CardBrowser />
+        </Suspense>
       ) : tab === "mistakes" ? (
-        <MistakesNotebook />
+        <Suspense fallback={null}>
+          <MistakesNotebook />
+        </Suspense>
       ) : plans.isPending ? null : (plans.data?.length ?? 0) > 0 ? (
         <div className="px-exams-plans">
           <OggiBlock />

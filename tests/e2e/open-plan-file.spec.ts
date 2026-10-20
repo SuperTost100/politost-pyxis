@@ -155,6 +155,8 @@ test("a plan with broken exercises names the problem and imports the rest", asyn
   try {
     await skipSetup(page);
     await page.goto(page.url().replace(/#.*$/, "#/exams/get"));
+    // The page loads on its first visit; until then the previous page and its own file input are still there.
+    await expect(page.getByRole("heading", { level: 1, name: "Apri un piano condiviso" })).toBeVisible();
     const broken = plan("Con esercizi rotti", {
       exercises: [
         {
@@ -196,6 +198,8 @@ test("a plan broken outside the exercises and maps offers nothing to leave out",
   try {
     await skipSetup(page);
     await page.goto(page.url().replace(/#.*$/, "#/exams/get"));
+    // The page loads on its first visit; until then the previous page and its own file input are still there.
+    await expect(page.getByRole("heading", { level: 1, name: "Apri un piano condiviso" })).toBeVisible();
     const broken = plan("Senza argomento", {
       nodes: [{ title: "Passo", kind: "learn", position: 0, topic: 7 }],
     });

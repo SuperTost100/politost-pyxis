@@ -1,12 +1,11 @@
 import { UpdateNotice } from "../features/settings/UpdatesPanel";
 import { BackupNotice } from "../features/settings/AutoBackups";
-import { PrintPage } from "../features/share/PrintPage";
 import { App as AntApp, ConfigProvider } from "antd";
 import { ProConfigProvider } from "@ant-design/pro-components";
 import enUS from "antd/locale/en_US";
 import itIT from "antd/locale/it_IT";
 import { Calendar, ChevronDown } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RouterProvider } from "react-router";
 import type { Appearance, ThemeSource } from "@shared/bridge";
@@ -24,9 +23,16 @@ import { router } from "./router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "../lib/ipc";
 
+// Only the print window shows it, and it waits for the page to say it is ready.
+const PrintPage = lazy(() =>
+  import("../features/share/PrintPage").then((module) => ({ default: module.PrintPage })),
+);
+
 export function App() {
   return window.location.hash.startsWith("#/print") ? (
-    <PrintPage />
+    <Suspense fallback={null}>
+      <PrintPage />
+    </Suspense>
   ) : (
     <StudyApp />
   );
