@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { seededRandom, shuffleChoices } from "./choices";
+import { mapOutsideCode } from "./math-delimiters";
 
 /**
  * Smart text: lesson Markdown with interactive blocks written inline by the model as fenced code blocks
@@ -517,6 +518,14 @@ export function stripPassageRefs(markdown: string): string {
     .replace(uuidRef, "")
     .replace(/\s?\[P\d+(?:\s*[,;]\s*P?\d+)*\]/g, "")
     .replace(/[ \t]+([.,;:!?])/g, "$1");
+}
+
+/**
+ * The same for a chat reply, where code is code: `list[P1]`, `x : int` and the indent of a chained call stay as written.
+ * Lessons and introductions keep stripPassageRefs, since their pyxis-* blocks are JSON that carries markers too.
+ */
+export function stripPassageRefsOutsideCode(markdown: string): string {
+  return mapOutsideCode(markdown, stripPassageRefs);
 }
 
 export type SmartSection = { title: string; start: number; end: number };

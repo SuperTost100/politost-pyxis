@@ -18,6 +18,11 @@ describe("math check fences", () => {
     expect(stripCheckFences("```json\n{\"kind\":")).toBe("```json\n{\"kind\":");
   });
 
+  it("hides a check block that a stopped reply left open, and keeps an open json block", () => {
+    expect(stripCheckFences('Passo uno.\n\n```check\n{"kind":"equal","expr":"1+')).toBe("Passo uno.\n\n");
+    expect(stripCheckFences('A\n```check\n{"kind":"equal"}\n```\nB\n```check\n{"ki')).toBe("A\n\nB\n");
+  });
+
   it("does not attach an invented step to surrounding prose", () => {
     const body = 'Real explanation.\n\n```json\n{"kind":"equal","expr":"1+1","claimed":"2","step":"Invented step"}\n```';
     expect(fencedChecks(body)).toEqual([]);

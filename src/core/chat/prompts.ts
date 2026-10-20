@@ -9,14 +9,18 @@ export type ChatTemplateId = Extract<
   "chat.general" | "chat.socratic" | "chat.solver"
 >;
 
+/**
+ * Socratic mode wins over "answer from general knowledge": chat.socratic already builds its question on the
+ * model's own knowledge when no passage is attached, so a student who chose to be questioned still is.
+ */
 export function chatTemplateId(input: {
   allowGeneral?: boolean;
   mode?: string;
 }): ChatTemplateId {
-  return input.allowGeneral
-    ? "chat.general"
-    : input.mode === "socratic"
-      ? "chat.socratic"
+  return input.mode === "socratic"
+    ? "chat.socratic"
+    : input.allowGeneral
+      ? "chat.general"
       : "chat.solver";
 }
 
@@ -42,3 +46,12 @@ export function chatSystemPrompt(
 
 /** Stored with each assistant message: the template ID and its own version. */
 export const chatProvenance = promptProvenance;
+
+/**
+ * Material the tutor reads but must not obey (passages, a pinned context, an attached file) sits between tags. A tag
+ * of the same name inside the text is written as `&lt;`, so the text cannot close the block early.
+ */
+export function dataBlock(tag: string, body: string): string {
+  const safe = body.replace(new RegExp(`<(/?${tag})`, "gi"), "&lt;$1");
+  return `<${tag}>\n${safe}\n</${tag}>`;
+}

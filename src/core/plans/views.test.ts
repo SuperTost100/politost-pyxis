@@ -61,9 +61,11 @@ describe("plan views and material", () => {
     finishSourceRebuild(db, "p", ["s"]);
     expect(topicContent(db, "p", "t").passageCount).toBe(1);
     expect(planOrigin(db, "p").needsRebuild).toBe(false);
+    // The plan's Sources tab shows how many sections each source has, like the Library.
     expect(readPlan(db, "p")!.sources[0]).toMatchObject({
       kind: "file",
       status: "ready",
+      sections: 1,
     });
     db.close();
   });

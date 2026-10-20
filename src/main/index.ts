@@ -36,7 +36,7 @@ import {
 } from "../shared/menu";
 import { updateInstaller } from "./update-install";
 import { updateSeam } from "./update-fixture";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { registerArtifactHandlers } from "./artifacts";
 import { invalidateRuntime } from "./runtime-pack";
 import {
@@ -1087,6 +1087,21 @@ function registerIpc(): void {
             process.platform === "linux" ? process.env["APPIMAGE"] : undefined,
         },
     ...(fixture ? { fetch: fixture } : {}),
+    // A Mac keeps the zip it installed, outside the downloads folder, so the next update fetches only changed blocks.
+    // ditto unpacks it the way Finder does, keeping the bundle's symlinks and signature.
+    ...(process.platform === "darwin" && !testAppImage
+      ? {
+          mac: {
+            keepDir: userFile("update-base"),
+            extractZip: (zip: string, folder: string) =>
+              new Promise<void>((resolve, reject) =>
+                execFile("/usr/bin/ditto", ["-x", "-k", zip, folder], (error) =>
+                  error ? reject(error) : resolve(),
+                ),
+              ),
+          },
+        }
+      : {}),
     emit: (view) =>
       mainWindow?.webContents.send(mainChannels.updatesChanged, view),
     openPath: (path) => shell.openPath(path),

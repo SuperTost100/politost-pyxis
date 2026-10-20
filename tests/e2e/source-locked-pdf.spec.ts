@@ -108,7 +108,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     await page.evaluate(() => {
       window.location.hash = "/exams/library";
     });
-    await expect(page.getByRole("row", { name: /^Appunti Link/ })).toBeVisible();
+    await expect(page.getByRole("listitem").filter({ hasText: "Appunti" }).filter({ hasText: "Link" })).toBeVisible();
     await page.getByRole("button", { name: "Azioni per Dispense" }).click();
     await expect(page.getByRole("menuitem", { name: "Controlla se c'è una nuova versione" })).toHaveCount(0);
     await page.keyboard.press("Escape");

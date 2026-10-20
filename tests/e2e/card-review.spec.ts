@@ -205,9 +205,10 @@ test("card browser: a card forgotten six times is tagged and filtered", async ()
     const card = page.getByRole("listitem");
     await expect(card).toContainText("Often forgotten");
     await expect(card).toContainText("Forgotten 7 times.");
-    await expect(
-      card.getByRole("button", { name: /^Open source: Seconda legge/ }),
-    ).toBeVisible();
+    // Open source sits in the row's menu, next to Suspend and Delete.
+    await card.getByRole("button", { name: /^More actions: Seconda legge/ }).click();
+    await expect(page.getByRole("menuitem", { name: "Open source" })).toBeVisible();
+    await page.keyboard.press("Escape");
     await card.getByRole("button", { name: /^Rewrite: Seconda legge/ }).click();
     await expect(page.getByRole("dialog", { name: "Edit flashcard" })).toBeVisible();
   } finally {

@@ -395,11 +395,6 @@ html[data-platform="darwin"] .canvas-bar {
   justify-content: flex-start;
   margin-bottom: var(--space-6);
 }
-.tabs-row-split {
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
 
 .passage {
   margin: var(--space-4) 0;

@@ -91,6 +91,15 @@ test("refuses sums that would make the in-app download fail or vouch for the wro
       },
       /no checksum for PoliTost.Pyxis.Setup.1.2.3.exe/,
     ],
+    // A Mac target without its zip, which the in-app update now downloads.
+    [
+      (target, files, sums) => {
+        if (target !== "pyxis-mac-x64") return;
+        delete files["PoliTost Pyxis-1.2.3-mac.zip"];
+        sums.splice(1, 1);
+      },
+      /no checksum for PoliTost.Pyxis-1.2.3-mac.zip/,
+    ],
     // Two targets uploading the same name.
     [
       (target, files, sums) => {

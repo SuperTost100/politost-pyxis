@@ -1,5 +1,5 @@
 import { stripCheckFences } from "../../shared/math-check";
-import { stripPassageRefs } from "../../shared/smart-text";
+import { stripPassageRefsOutsideCode } from "../../shared/smart-text";
 import { splitChecks } from "./checks";
 import { splitFollowups } from "./turn";
 import { figureCaptions } from "../math/figures";
@@ -10,7 +10,7 @@ import { figureCaptions } from "../math/figures";
  */
 export function visibleText(role: string, body: string): string {
   if (role !== "assistant") return body.trim();
-  return stripPassageRefs(
+  return stripPassageRefsOutsideCode(
     figureCaptions(stripCheckFences(splitFollowups(splitChecks(body).body).body)),
   )
     .replace(/\n{3,}/g, "\n\n")

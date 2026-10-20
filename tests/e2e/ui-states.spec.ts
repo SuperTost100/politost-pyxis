@@ -155,30 +155,64 @@ test("UI-02 a passage search says when nothing matches, ignores an empty query a
   const { app, page, userData } = await launch();
   try {
     await addSource(page, app, userData);
+    // A second source keeps the toolbar on screen after the first is removed.
+    const notes = join(userData, "Appunti.txt");
+    writeFileSync(notes, "Il primo principio della termodinamica lega calore, lavoro ed energia interna.\n");
+    const { sourceId: notesId } = (await importPickedSource(page, app, notes)) as { sourceId: string };
+    await expect
+      .poll(async () =>
+        (
+          (await page.evaluate(() => window.pyxis.invoke("sources.list", {}))) as Array<{
+            id: string;
+            status: string;
+          }>
+        ).find((row) => row.id === notesId)?.status,
+      )
+      .toBe("ready");
     await goto(page, "/exams/library");
+    // Passages are searched in the Contenuto scope of the title field; Enter asks at once.
+    await page.getByRole("combobox", { name: "Cerca in" }).click();
+    await page
+      .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]')
+      .click();
     const query = page.getByRole("textbox", { name: "Cerca nei brani" });
-    const search = page.getByRole("button", { name: "Cerca", exact: true });
-    await expect(search).toBeDisabled();
+    const none = (text: string) => page.getByText(`Nessun brano delle tue fonti corrisponde a “${text}”.`);
+
+    // An empty query asks nothing: no result section, no message.
     await query.fill("   ");
-    await expect(search).toBeDisabled();
+    await query.press("Enter");
+    await expect(page.getByRole("region", { name: "Cerca nelle fonti" })).toHaveCount(0);
+    await expect(page.getByText(/Nessun brano delle tue fonti/)).toHaveCount(0);
 
     await query.fill("pappagallo");
-    await search.click();
-    await expect(page.getByText("Nessun brano delle tue fonti corrisponde a “pappagallo”.")).toBeVisible();
+    await query.press("Enter");
+    await expect(none("pappagallo")).toBeVisible();
     await page.screenshot({ path: ".shots/ui-states-search-none-it.png", animations: "disabled" });
 
     await query.fill("moto rettilineo");
-    await search.click();
-    const hits = page.locator(".choice-list .choice");
+    await query.press("Enter");
+    const hits = page.locator(".px-library-hit");
     await expect(hits.first()).toBeVisible();
     await expect(page.getByText(/Nessun brano delle tue fonti/)).toHaveCount(0);
 
     // The source goes away: its hits go with it, and the search says nothing matches.
+    // The hits replace the list in the Contenuto scope, so the source is removed from the Titoli scope.
+    const pickScope = async (name: string) => {
+      await page.getByRole("combobox", { name: "Cerca in" }).click();
+      await page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${name}"]`).click();
+    };
+    await pickScope("Titoli");
+    // The typed words filter titles in this scope, so the field is emptied to list the source again.
+    await page.getByRole("textbox", { name: "Cerca una fonte per titolo" }).fill("");
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Azioni per Fisica" }).click();
     await page.getByRole("menuitem", { name: "Rimuovi", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Azioni per Fisica" })).toHaveCount(0);
+    await pickScope("Contenuto");
+    await query.fill("moto rettilineo");
+    await query.press("Enter");
     await expect(hits).toHaveCount(0);
-    await expect(page.getByText("Nessun brano delle tue fonti corrisponde a “moto rettilineo”.")).toBeVisible();
+    await expect(none("moto rettilineo")).toBeVisible();
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

@@ -54,27 +54,28 @@ test("onboarding save and invalid plan imports remain retryable", async () => {
         ).toBeVisible();
         await expect(input).toHaveValue("");
         await expect(
-          page.getByRole("button", { name: "Importa", exact: true }),
+          page.getByRole("button", { name: "Altro", exact: true }),
         ).toBeEnabled();
       }
-      // The Import menu works from the keyboard and leads to the shared-plan page.
+      // The More menu works from the keyboard and leads to the shared-plan page.
       const trigger = page.getByRole("button", {
-        name: "Importa",
+        name: "Altro",
         exact: true,
       });
       await trigger.focus();
       await page.keyboard.press("Enter");
       const menu = page.getByRole("menu");
       await expect(menu.getByRole("menuitem")).toHaveText([
-        "Da un file .pyxis",
-        "Da un link",
+        "Importa da un file .pyxis",
+        "Importa da un link",
+        "Gestisci materie",
       ]);
       await expect(trigger).toHaveAttribute("aria-expanded", "true");
       await page.keyboard.press("Escape");
       await expect(menu).toBeHidden();
       await expect(trigger).toBeFocused();
       await page.keyboard.press("Enter");
-      await menu.getByRole("menuitem", { name: "Da un link" }).click();
+      await menu.getByRole("menuitem", { name: "Importa da un link" }).click();
       await expect(page).toHaveURL(/#\/exams\/get$/);
     } finally {
       db.close();

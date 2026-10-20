@@ -4,6 +4,7 @@ import { App as AntApp, ConfigProvider } from "antd";
 import { ProConfigProvider } from "@ant-design/pro-components";
 import enUS from "antd/locale/en_US";
 import itIT from "antd/locale/it_IT";
+import { Calendar, ChevronDown } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RouterProvider } from "react-router";
@@ -36,6 +37,15 @@ export function App() {
     <StudyApp />
   );
 }
+
+// Lucide in place of antd's own chevron and calendar on every Select and date field (range pickers read the
+// date picker's setting), set once for the app.
+const selectIcons = {
+  suffixIcon: <ChevronDown size={16} strokeWidth={1.75} aria-hidden />,
+};
+const dateIcons = {
+  suffixIcon: <Calendar size={16} strokeWidth={1.75} aria-hidden />,
+};
 
 function StudyApp() {
   const { i18n: i18nInstance } = useTranslation();
@@ -117,6 +127,8 @@ function StudyApp() {
               : 1,
         )}
         locale={locale === "it" ? itIT : enUS}
+        select={selectIcons}
+        datePicker={dateIcons}
       >
         <ProConfigProvider dark={appearance.resolved === "dark"} hashed={false}>
           <AntApp>

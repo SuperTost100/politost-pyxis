@@ -1,6 +1,7 @@
 import { Button } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { CHAT_SEED_BODY_MAX } from "@shared/ipc";
 import { invoke } from "../lib/ipc";
 import { openMakeCards } from "./MakeCardsDialog";
 import "./SelectionMenu.css";
@@ -23,7 +24,7 @@ export function SelectionMenu({ children, sourceIds = [], planId, topicId, passa
   const selected = useRef(selection);
   selected.current = selection;
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<"quiz.actionFailed" | "errors.inputTooLong" | null>(null);
   useEffect(() => {
     const update = () => {
       if (menu.current?.contains(document.activeElement)) return;
@@ -33,7 +34,7 @@ export function SelectionMenu({ children, sourceIds = [], planId, topicId, passa
       const range = current.getRangeAt(0);
       if (!root.current.contains(range.startContainer) || !root.current.contains(range.endContainer)) return setSelection(null);
       const rect = range.getBoundingClientRect();
-      setFailed(false);
+      setFailed(null);
       setSelection({ text, x: Math.max(12, Math.min(rect.left, window.innerWidth - 392)), y: Math.max(12, Math.min(rect.top - 48, window.innerHeight - 60)) });
     };
     const hide = () => setSelection(null);
@@ -58,7 +59,7 @@ export function SelectionMenu({ children, sourceIds = [], planId, topicId, passa
   async function act(action: "ask" | "copy" | "cards") {
     if (!selection || busy) return;
     setBusy(true);
-    setFailed(false);
+    setFailed(null);
     try {
       if (action === "copy") await navigator.clipboard.writeText(selection.text);
       else if (action === "cards") openMakeCards({ text: selection.text, origin: "selection", planId, topicId, passageIds });
@@ -67,7 +68,10 @@ export function SelectionMenu({ children, sourceIds = [], planId, topicId, passa
         onAsk(chatId);
       }
       setSelection(null);
-    } catch { setFailed(true); }
+    } catch (err) {
+      const tooLong = typeof err === "object" && err !== null && "messageKey" in err && err.messageKey === "errors.inputTooLong";
+      setFailed(tooLong ? "errors.inputTooLong" : "quiz.actionFailed");
+    }
     finally { setBusy(false); }
   }
   return <div ref={root}>
@@ -76,7 +80,7 @@ export function SelectionMenu({ children, sourceIds = [], planId, topicId, passa
       <Button type="text" disabled={busy} onClick={() => void act("ask")}>{t("ask.askTutor")}</Button>
       <Button type="text" disabled={busy} onClick={() => void act("cards")}>{t("makeCards.action")}</Button>
       <Button type="text" disabled={busy} onClick={() => void act("copy")}>{t("sources.copySelection")}</Button>
-      {failed ? <span className="small" role="alert">{t("quiz.actionFailed")}</span> : null}
+      {failed ? <span className="small" role="alert">{t(failed, { max: CHAT_SEED_BODY_MAX })}</span> : null}
     </div> : null}
   </div>;
 }
