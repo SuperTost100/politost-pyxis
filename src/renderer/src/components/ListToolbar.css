@@ -1,0 +1,76 @@
+/* One row when everything fits. When it does not, the filters and actions move together under the search,
+   filters on the left and actions on the right, rather than wrapping one control at a time. The search takes
+   nearly all the spare room on a shared row. */
+.px-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.px-list-toolbar-search {
+  display: flex;
+  flex: 1000 1 240px;
+  min-width: 0;
+}
+.px-list-toolbar-search.has-scope {
+  flex-basis: 400px;
+}
+.px-list-toolbar-search > .ant-input-affix-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.px-list-toolbar-search.has-scope > .ant-select {
+  flex: 0 0 128px;
+  width: 128px;
+}
+.px-list-toolbar-rest {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 100%;
+}
+.px-list-toolbar-rest > .ant-select {
+  flex: 0 1 180px;
+  width: 180px;
+  min-width: 0;
+}
+.px-list-toolbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-3);
+  margin-inline-start: auto;
+}
+.px-list-toolbar-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.px-list-toolbar-menu svg {
+  transition: transform 150ms ease-out;
+}
+.px-list-toolbar-menu svg.is-open {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-list-toolbar-menu svg {
+    transition: none;
+  }
+}
+
+/* The one surface a list's rows sit in, divided by hairlines: the Library, a plan's sources and each group of
+   flashcards. */
+.px-list-surface {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.px-list-surface > li + li {
+  border-top: 1px solid var(--border);
+}

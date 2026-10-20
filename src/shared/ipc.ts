@@ -229,6 +229,26 @@ export const IpcErrorBody = z.object({
 
 export type IpcErrorBody = z.infer<typeof IpcErrorBody>;
 
+/**
+ * Longest text the tutor takes. A pasted page of notes is about 3,000 characters, so 20,000 leaves room for several,
+ * and a longer paste is refused with a message in the chat instead of failing as a vague engine error. The same
+ * numbers limit the Ask composer, so the student sees them before sending.
+ */
+export const CHAT_TEXT_MAX = 20_000;
+/** The pinned body of a chat started from an answer or a passage. It is sent again with every turn. */
+export const CHAT_SEED_BODY_MAX = 20_000;
+export const CHAT_TITLE_MAX = 200;
+/** Profile text reaches every system prompt, so each field is short. */
+export const PROFILE_LIMITS = {
+  displayName: 100,
+  year: 60,
+  school: 120,
+  course: 120,
+  language: 40,
+  interest: 60,
+  interests: 20,
+} as const;
+
 export class IpcError extends Error {
   readonly params: Record<string, string | number>;
   readonly detail: string;
@@ -264,6 +284,9 @@ export function toIpcError(err: unknown): IpcErrorBody {
       detail: "",
     };
   }
+  const tooLong = err instanceof z.ZodError ? err.issues.find((issue) => issue.code === "too_big" && issue.origin === "string") : undefined;
+  if (tooLong && tooLong.code === "too_big")
+    return new IpcError("input-too-long", "errors.inputTooLong", { max: Number(tooLong.maximum) }).toBody();
   return {
     code: "internal",
     messageKey: "errors.internal",
@@ -1651,6 +1674,7 @@ export const requests = {
             title: z.string(),
             kind: z.string(),
             status: z.string(),
+            sections: z.number().int().nonnegative(),
           }),
         ),
       })
@@ -2140,7 +2164,7 @@ export const requests = {
   },
   "profile.save": {
     input: z.object({
-      displayName: z.string().optional(),
+      displayName: z.string().max(PROFILE_LIMITS.displayName).optional(),
       educationLevel: z
         .enum([
           "primary",
@@ -2152,12 +2176,12 @@ export const requests = {
           "other",
         ])
         .optional(),
-      year: z.string().optional(),
-      school: z.string().optional(),
-      course: z.string().optional(),
+      year: z.string().max(PROFILE_LIMITS.year).optional(),
+      school: z.string().max(PROFILE_LIMITS.school).optional(),
+      course: z.string().max(PROFILE_LIMITS.course).optional(),
       tutorMode: z.enum(["solver", "socratic"]).optional(),
-      contentLanguage: z.string().optional(),
-      interests: z.array(z.string()).optional(),
+      contentLanguage: z.string().max(PROFILE_LIMITS.language).optional(),
+      interests: z.array(z.string().max(PROFILE_LIMITS.interest)).max(PROFILE_LIMITS.interests).optional(),
       interestsOn: z.boolean().optional(),
       followups: z.boolean().optional(),
       dyslexia: z.boolean().optional(),
@@ -2274,7 +2298,7 @@ export const requests = {
       .nullable(),
   },
   "chats.rename": {
-    input: z.object({ chatId: z.string(), title: z.string() }),
+    input: z.object({ chatId: z.string(), title: z.string().max(CHAT_TITLE_MAX) }),
     output: z.object({ ok: z.literal(true) }),
   },
   "chats.delete": {
@@ -2282,21 +2306,25 @@ export const requests = {
     output: z.object({ ok: z.literal(true) }),
   },
   "chats.search": {
-    input: z.object({ query: z.string().max(200) }),
-    output: z.array(
-      z.object({
-        id: z.string(),
-        title: z.string().nullable(),
-        updatedAt: z.number(),
-        snippet: z
-          .object({
-            text: z.string(),
-            start: z.number().int().nonnegative(),
-            end: z.number().int().nonnegative(),
-          })
-          .nullable(),
-      }),
-    ),
+    input: z.object({ query: z.string().max(200), subject: z.string().max(200).optional() }),
+    output: z.object({
+      hits: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string().nullable(),
+          updatedAt: z.number(),
+          snippet: z
+            .object({
+              text: z.string(),
+              start: z.number().int().nonnegative(),
+              end: z.number().int().nonnegative(),
+            })
+            .nullable(),
+        }),
+      ),
+      /** More chats matched than the list holds. */
+      capped: z.boolean(),
+    }),
   },
   "chats.export": {
     input: z.object({ chatId: z.string(), language: z.enum(["en", "it"]) }),
@@ -2398,8 +2426,8 @@ export const requests = {
   "chats.seed": {
     input: z.object({
       kind: z.enum(["answer", "passage"]),
-      title: z.string(),
-      body: z.string(),
+      title: z.string().max(CHAT_TITLE_MAX),
+      body: z.string().max(CHAT_SEED_BODY_MAX),
       sourceIds: z.array(z.string()).optional(),
       planId: z.string().optional(),
       subject: z.string().optional(),
@@ -2418,7 +2446,7 @@ export const requests = {
   "chats.ask": {
     input: z.object({
       chatId: z.string().optional(),
-      text: z.string(),
+      text: z.string().max(CHAT_TEXT_MAX),
       sourceIds: z.array(z.string()).optional(),
       planId: z.string().nullable().optional(),
       mode: z.enum(["solver", "socratic"]).optional(),

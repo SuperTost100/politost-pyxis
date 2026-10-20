@@ -31,6 +31,7 @@ export function MathTextEditor({
   placeholder,
   disabled,
   maxLength,
+  onRefused,
   className,
   style,
 }: {
@@ -44,14 +45,16 @@ export function MathTextEditor({
   placeholder?: string;
   disabled?: boolean;
   maxLength?: number;
+  /** An edit, such as a long paste, was refused because the text would pass `maxLength`. */
+  onRefused?: () => void;
   className?: string;
   style?: CSSProperties;
 }) {
   const { t, i18n } = useTranslation();
   const root = useRef<HTMLDivElement>(null);
   const editor = useRef<MathEditor | null>(null);
-  const latest = useRef({ onChange, onSubmit, onKeyDown, maxLength, label: t("math.field"), language: i18n.language });
-  latest.current = { onChange, onSubmit, onKeyDown, maxLength, label: t("math.field"), language: i18n.language };
+  const latest = useRef({ onChange, onSubmit, onKeyDown, maxLength, onRefused, label: t("math.field"), language: i18n.language });
+  latest.current = { onChange, onSubmit, onKeyDown, maxLength, onRefused, label: t("math.field"), language: i18n.language };
 
   useLayoutEffect(() => {
     const instance = new MathEditor(root.current!, {
@@ -63,6 +66,7 @@ export function MathTextEditor({
       },
       onKeyDown: (event) => latest.current.onKeyDown?.(event),
       maxLength: () => latest.current.maxLength,
+      onRefused: () => latest.current.onRefused?.(),
       formulaLabel: () => latest.current.label,
       language: () => latest.current.language,
     });

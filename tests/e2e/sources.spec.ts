@@ -66,16 +66,23 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
       .getByRole("dialog", { name: "Fisica", exact: true })
       .getByRole("button", { name: /Close|Chiudi/, exact: true })
       .click();
-    // The details drawer gives focus back to its opener when its close animation ends. Landing between the press
-    // and release of the result click below, it moved focus off the result, and the viewer then returned focus to
-    // the wrong button.
+    // Passage search is the same field with the Content scope. The closing drawer moves focus back first.
+    await expect(
+      page.getByRole("dialog", { name: "Fisica", exact: true }),
+    ).toBeHidden();
+    await animationsSettled(page);
+    // The drawer gives focus back to its opener once its close animation ends.
     await expect(
       page.getByRole("button", { name: "Fisica", exact: true }),
     ).toBeFocused();
+    await page.getByRole("combobox", { name: "Cerca in" }).click();
+    await page
+      .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]')
+      .click();
     await page
       .getByRole("textbox", { name: "Cerca nei brani" })
       .fill("energia cinetica");
-    await page.getByRole("button", { name: "Cerca", exact: true }).click();
+    await page.keyboard.press("Enter");
     const hit = page
       .getByRole("button", { name: /2\. Energia.*energia cinetica/i })
       .first();
@@ -139,9 +146,9 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
       )
       .toBe("ready");
     await page.getByRole("textbox", { name: "Cerca nei brani" }).fill("Energy");
-    await page.getByRole("button", { name: "Cerca", exact: true }).click();
+    await page.keyboard.press("Enter");
     await page
-      .locator(".choice-list .choice").filter({ hasText: "Energy" })
+      .locator(".px-library-hit").filter({ hasText: "Energy" })
       .first()
       .click();
     await expect(

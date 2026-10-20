@@ -139,7 +139,7 @@ function UpdateInstall({ releaseUrl }: { releaseUrl: string }) {
 
   if (view.state === "verified") {
     const primary =
-      view.handover === "dmg-opened"
+      view.handover === "dmg-opened" || view.handover === "app-opened"
         ? "quit"
         : view.handover === "exe-ready"
           ? "install"
@@ -149,9 +149,11 @@ function UpdateInstall({ releaseUrl }: { releaseUrl: string }) {
     const again =
       view.handover === "dmg-opened"
         ? "openImage"
-        : view.handover === "deb-shown" || view.handover === "appimage-folder"
-          ? "showFile"
-          : null;
+        : view.handover === "app-opened"
+          ? "openFolder"
+          : view.handover === "deb-shown" || view.handover === "appimage-folder"
+            ? "showFile"
+            : null;
     return (
       <div className="px-update-install">
         <p className="small" role="status">

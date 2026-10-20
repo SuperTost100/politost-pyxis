@@ -50,6 +50,16 @@ function seed(db: DatabaseSync) {
 const reviewRows = (db: DatabaseSync) =>
   db.prepare("SELECT * FROM card_reviews WHERE card_id = 'c-atomic'").all();
 
+/** Picks an action from a card's menu: Suspend, Resume and Delete sit there, next to Edit. */
+async function cardAction(page: Page, card: string, action: string) {
+  await page
+    .getByRole("button", { name: new RegExp(`^More actions: ${card}`) })
+    .click();
+  await page
+    .getByRole("menuitem", { name: action, exact: true })
+    .click();
+}
+
 async function choose(page: Page, label: string, option: string) {
   await page.getByRole("combobox", { name: label }).click();
   // The listbox only exposes the options next to the active one, so pick from the visible list.
@@ -99,9 +109,14 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
       "Chimica generale · Atomi",
       "Appunti sparsi · Varie",
     ]);
+    // Each card is a compact row: Edit stays on the row, Suspend and Delete wait in its menu.
+    await expect(page.getByRole("button", { name: /^Edit: / })).toHaveCount(6);
+    await expect(
+      page.getByRole("button", { name: /^(Suspend|Delete): / }),
+    ).toHaveCount(0);
     // Math is rendered; a cloze shows its sentence with the answer filled in.
     await expect(
-      page.locator(".px-cardbrowser-card .katex").first(),
+      page.locator(".px-cardbrowser-row .katex").first(),
     ).toBeVisible();
     await expect(
       page
@@ -173,25 +188,19 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     expect(reviewRows(db)).toEqual(before);
 
     // Suspend, find it under Suspended, resume.
-    await page
-      .getByRole("button", { name: /^Suspend: Velocità media\?/ })
-      .click();
+    await cardAction(page, "Velocità media\\?", "Suspend");
     const speed = page
       .getByRole("listitem")
       .filter({ hasText: "Velocità media?" });
     await expect(speed).toContainText("Suspended");
     await choose(page, "Show", "Suspended");
     await expect(page.getByRole("listitem")).toHaveCount(1);
-    await page
-      .getByRole("button", { name: /^Resume: Velocità media\?/ })
-      .click();
+    await cardAction(page, "Velocità media\\?", "Resume");
     await expect(page.getByRole("listitem")).toHaveCount(0);
     await choose(page, "Show", "All flashcards");
 
     // A seeded card is removed, then restored.
-    await page
-      .getByRole("button", { name: /^Delete: Unità della forza\?/ })
-      .click();
+    await cardAction(page, "Unità della forza\\?", "Delete");
     const confirm = page.getByRole("dialog", { name: "Delete this flashcard?" });
     await expect(confirm).toContainText("You can bring it back under Removed");
     await confirm.getByRole("button", { name: "Delete", exact: true }).click();
@@ -215,9 +224,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await expect(page.getByText("Unità della forza?")).toBeVisible();
 
     // A hand-made card says its delete is permanent.
-    await page
-      .getByRole("button", { name: /^Delete: Elettroni orbitano/ })
-      .click();
+    await cardAction(page, "Elettroni orbitano", "Delete");
     const permanent = page.getByRole("dialog", { name: "Delete this flashcard?" });
     await expect(permanent).toContainText("deleting it is permanent");
     await permanent.getByRole("button", { name: "Delete forever" }).click();

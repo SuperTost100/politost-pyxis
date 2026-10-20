@@ -91,8 +91,8 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       deleteChat(db, workspace, input.chatId);
       return { ok: true as const };
     },
-    search(input: { query: string }) {
-      return searchChats(db, input.query);
+    search(input: { query: string; subject?: string }) {
+      return searchChats(db, input.query, input.subject);
     },
     exportChat(input: { chatId: string; language: ChatExportLanguage }) {
       return exportChat(db, input.chatId, input.language);

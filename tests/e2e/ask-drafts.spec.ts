@@ -168,3 +168,30 @@ test("R14-4 deleting all data and restoring a backup clear the session before th
     rmSync(out, { recursive: true, force: true });
   }
 });
+
+test("a paste longer than a message can hold says so instead of vanishing", async () => {
+  test.setTimeout(90000);
+  const { app, page, userData } = await launch();
+  try {
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Riassumi:");
+    // A chapter pasted into a short draft: the field keeps the draft and the composer says why the paste is missing.
+    await box.evaluate((field) => {
+      const data = new DataTransfer();
+      data.setData("text/plain", "parola ".repeat(4000));
+      field.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+    await expect(box).toHaveText("Riassumi:");
+    await expect(page.getByRole("status").filter({ hasText: "troppo lungo" })).toBeVisible();
+    // The next edit the field takes clears the notice.
+    await box.press("End");
+    await box.pressSequentially(" il capitolo");
+    await expect(page.getByRole("status").filter({ hasText: "troppo lungo" })).toHaveCount(0);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
