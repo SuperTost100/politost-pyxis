@@ -198,12 +198,13 @@ test("automatic backups: not while empty, then once a day with retention of this
       })
       .toHaveLength(2);
     // Old backups are pruned just after the new one is saved; wait for that before reading the list.
-    await expect.poll(() => mine().length).toBe(3);
+    await expect.poll(() => mine().length).toBe(4);
     const newest = mine().at(-1)!;
     expect(newest > first).toBe(true);
-    // Three of this computer's kept: today's two and the newest of the old ones. Another computer's backups, the one
+    // Four of this computer's kept: the newest three (today's two and the newest of the old ones) and one weekly
+    // backup, the oldest of the old ones (the three old ones fall in one week). Another computer's backups, the one
     // without an ID and the student's own files stay.
-    expect(mine()).toEqual([older[2], first, newest]);
+    expect(mine()).toEqual([older[0], older[2], first, newest]);
     for (const name of others)
       expect(readFileSync(join(folder, name), "utf8")).toBe("old");
     expect(readFileSync(join(folder, "notes.txt"), "utf8")).toBe("mine");
@@ -214,23 +215,32 @@ test("automatic backups: not while empty, then once a day with retention of this
       [],
     );
 
-    // The scheduled backup restores through the ordinary restore flow.
+    // Settings lists the backups that pass their check, newest first. The old files are not archives, so they are left
+    // out although they stay in the folder.
+    await page.evaluate(() => {
+      location.hash = "/settings/data";
+    });
+    const restoreButtons = page.getByRole("button", {
+      name: /^Ripristina la copia del /,
+    });
+    await expect(restoreButtons).toHaveCount(2);
+    expect(
+      await page.evaluate(async () =>
+        (await window.pyxis.autoBackups.list()).map((file) => file.name),
+      ),
+    ).toEqual([newest, first]);
+
+    // Restoring from the list goes through the ordinary restore flow and its confirmation.
     await page.evaluate(() =>
       window.pyxis.invoke("plans.delete", { planId: "auto-plan" }),
     );
     expect(
       await page.evaluate(() => window.pyxis.invoke("plans.list", {})),
     ).toHaveLength(0);
-    await app.evaluate(
-      (_electron, path) => {
-        process.env.PYXIS_E2E_ZIP = path;
-      },
-      join(folder, newest),
-    );
-    await page.evaluate(() => {
-      location.hash = "/settings/data";
-    });
-    await page.getByRole("button", { name: "Ripristina", exact: true }).click();
+    await restoreButtons.first().click();
+    await expect(
+      page.getByRole("alert").filter({ hasText: "Sostituire" }),
+    ).toBeVisible();
     await Promise.all([
       page.waitForEvent("load"),
       page.getByRole("button", { name: /^Sostituisci / }).click(),

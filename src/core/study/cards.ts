@@ -82,10 +82,11 @@ const ACTIVE = `c.suspended = 0
 
 /**
  * Active, due cards of a plan; parameters: planId, topicId twice, ids JSON twice, now twice, the new cards allowed today
- * (JSON, or null for no cap) twice.
+ * (JSON, or null for no cap) twice. An archived plan has none.
  */
 const DUE_FROM = `FROM cards c
        WHERE c.plan_id = ?
+         AND NOT EXISTS (SELECT 1 FROM plans ap WHERE ap.id = c.plan_id AND ap.archived_at IS NOT NULL)
          AND ${ACTIVE}
          AND (? IS NULL OR c.topic_id = ?)
          AND (? IS NULL OR c.id IN (SELECT value FROM json_each(?)))

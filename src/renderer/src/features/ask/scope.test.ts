@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addIds, allowsGeneral, applySubject, scopeItems } from "./scope";
+import { addIds, allowsGeneral, applySubject, choseGeneral, scopeItems } from "./scope";
 
 describe("chat scope", () => {
   it("swaps the previous subject's sources for the new one and keeps hand-picked ones", () => {
@@ -51,5 +51,24 @@ describe("allowsGeneral", () => {
 
   it("keeps the student's choice to answer generally, as a retry needs", () => {
     expect(allowsGeneral({ chosen: true, planId: "p", sourceCount: 3, fileCount: 1 })).toBe(true);
+  });
+});
+
+describe("choseGeneral", () => {
+  const general = [
+    { role: "user", grounding: null },
+    { role: "assistant", grounding: "general" },
+  ];
+
+  it("keeps the choice made in this session", () => {
+    expect(choseGeneral(false, general)).toBe(false);
+    expect(choseGeneral(true, [])).toBe(true);
+  });
+
+  it("reads a reopened chat's choice from its last reply", () => {
+    expect(choseGeneral(undefined, general)).toBe(true);
+    expect(choseGeneral(undefined, [...general, { role: "user", grounding: null }])).toBe(true);
+    expect(choseGeneral(undefined, [{ role: "assistant", grounding: "sources" }])).toBe(false);
+    expect(choseGeneral(undefined, [])).toBe(false);
   });
 });

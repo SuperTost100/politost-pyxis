@@ -40,6 +40,8 @@ export type AutoBackupFailure =
   | "disk-full"
   | "too-large"
   | "too-many-files"
+  /** The finished archive failed its check (see `verifyBackupArchive`) and was deleted. */
+  | "unverified"
   | "failed";
 
 export type AutoBackupStatus = {
@@ -50,12 +52,29 @@ export type AutoBackupStatus = {
   running: boolean;
   lastSuccessAt: number | null;
   last:
-    | { at: number; ok: true; size: number }
+    | { at: number; ok: true; size: number; verified: boolean }
     | { at: number; ok: false; reason: AutoBackupFailure; size?: number }
     | null;
   /** A failed automatic backup the student has not dismissed yet. */
   notice: AutoBackupFailure | null;
 };
+
+/**
+ * An automatic backup in the folder that can be restored. `at` is the time in its name. `verified` is false when the
+ * check could not run for it (drive unplugged, temporary folder full); restoring it checks it again. A copy that
+ * failed its check is not listed.
+ */
+export type AutoBackupFile = {
+  name: string;
+  at: number;
+  size: number;
+  verified: boolean;
+};
+
+/** Study reminders: off by default; `time` is local, "HH:MM". */
+export type ReminderSettings = { enabled: boolean; time: string };
+/** The settings, and whether this system can show notifications at all. */
+export type ReminderView = ReminderSettings & { supported: boolean };
 
 export interface PyxisBridge {
   platform: string;
@@ -90,7 +109,8 @@ export interface PyxisBridge {
   retryCore(): Promise<void>;
   killCore(): Promise<void>;
   backupWorkspace(): Promise<"saved" | "cancelled">;
-  restoreWorkspace(): Promise<"restored" | "cancelled">;
+  /** Without a name, asks for a backup file. With the name of an automatic backup from `autoBackups.list`, restores that one. */
+  restoreWorkspace(backup?: string): Promise<"restored" | "cancelled">;
   workspacePath(): Promise<string>;
   moveWorkspace(): Promise<
     | { status: "cancelled" }
@@ -107,8 +127,17 @@ export interface PyxisBridge {
     /** Backs up to the automatic folder now, without waiting for jobs. */
     runNow(): Promise<AutoBackupStatus>;
     dismissNotice(): Promise<AutoBackupStatus>;
+    /** The automatic backups that passed their check, newest first. Unpacks ones not checked yet, so it can take a while. */
+    list(): Promise<AutoBackupFile[]>;
     onStatus(cb: (status: AutoBackupStatus) => void): () => void;
   };
+  reminders: {
+    get(): Promise<ReminderView>;
+    /** Rejects with `invalid-setting` for a time that is not "HH:MM". */
+    set(settings: ReminderSettings): Promise<ReminderView>;
+  };
+  /** A page main asks the app to open, such as a click on a study reminder. Only a plan page or Flashcards. */
+  onOpenPath(cb: (path: string) => void): () => void;
   fetchPlan(url: string): Promise<string>;
   /**
    * Plan files the system opened with Pyxis (double-click, Open with, a second launch). Main keeps the path, so the
@@ -179,6 +208,10 @@ export const mainChannels = {
   autoBackupRunNow: "auto-backup:run-now",
   autoBackupDismiss: "auto-backup:dismiss",
   autoBackupChanged: "auto-backup:changed",
+  autoBackupList: "auto-backup:list",
+  remindersGet: "reminders:get",
+  remindersSet: "reminders:set",
+  openPath: "app:open-path",
   planFetch: "plan:fetch",
   planFileTake: "plan-file:take",
   planFileWaiting: "plan-file:waiting",

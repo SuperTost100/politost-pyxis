@@ -29,6 +29,7 @@ import { embedWithModel } from "../sources/retrieve";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { shuffleChoices } from "../../shared/choices";
 import { stripPassageRefs } from "../../shared/smart-text";
+import { saveSessions, sessionsFromInput } from "./sessions";
 
 const randomUnit = () => randomInt(2 ** 32) / 2 ** 32;
 
@@ -754,6 +755,7 @@ export function enqueuePlan(
       Date.now(),
       Date.now(),
     );
+    saveSessions(db, planId, sessionsFromInput(input));
     snapshotPlanEducation(db, planId);
     for (const sourceId of new Set(input.sourceIds))
       db.prepare(

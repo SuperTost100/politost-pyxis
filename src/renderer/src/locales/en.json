@@ -256,6 +256,8 @@
     "retry": "Try again",
     "attachFilter": "Photos and documents",
     "replied": "Pyxis replied.",
+    "loadingChat": "Opening the chat…",
+    "loadFailed": "This chat couldn't be opened.",
     "renameTitle": "Click to rename",
     "renameNamed": "Rename {{title}}",
     "startersLabel": "Suggested questions",
@@ -309,7 +311,12 @@
     "continuePlan": "Continue {{title}}",
     "imported": "Imported",
     "aligned_one": "{{ready}} of {{count}} topic on track",
-    "aligned_other": "{{ready}} of {{count}} topics on track"
+    "aligned_other": "{{ready}} of {{count}} topics on track",
+    "status": "Status",
+    "statusActive": "Active",
+    "statusArchived": "Archived",
+    "noArchived": "No archived exams.",
+    "allArchived": "Every exam is archived. Choose Archived in the filter to see them."
   },
   "sources": {
     "dropSkipped": "Some items were skipped. Drop individual files of the listed types.",
@@ -880,6 +887,20 @@
     "introMissing": "This course has no introduction yet.",
     "introFailed": "The introduction could not be opened."
   },
+  "sessions": {
+    "heading": "Session {{n}}",
+    "remove": "Remove session {{n}}",
+    "removeShort": "Remove",
+    "date": "Date",
+    "time": "Time (optional)",
+    "name": "Name (optional)",
+    "namePlaceholder": "Written, oral",
+    "place": "Place (optional)",
+    "placePlaceholder": "Room or building",
+    "add": "Add another session",
+    "list": "Exam sessions",
+    "over": "over"
+  },
   "calendar": {
     "add": "Add to calendar",
     "saved": "Calendar file saved. Open it to add the exam date.",
@@ -887,7 +908,7 @@
     "nothing": "This exam has no upcoming date.",
     "oneNoDate": "This exam has no date yet. Set one to add it to a calendar.",
     "onePast": "This exam date has passed.",
-    "saveFirst": "Save the new date first."
+    "saveFirst": "Save the new sessions first."
   },
   "export": {
     "markdown": "Markdown",
@@ -1454,6 +1475,8 @@
     "examSummary": "Exam on {{date}}",
     "noDate": "No date yet",
     "noDateSummary": "No exam date for now. You can add one later in the plan's settings.",
+    "examSummaryMany_one": "{{count}} sessions, the first on {{date}}",
+    "examSummaryMany_other": "{{count}} sessions, the first on {{date}}",
     "examRequired": "Pick one of these to continue.",
     "sourcesInPlan_one": "{{count}} source in the plan",
     "sourcesInPlan_other": "{{count}} sources in the plan",
@@ -1633,7 +1656,7 @@
     "autoBackup": {
       "title": "Automatic backups",
       "switch": "Back up automatically",
-      "on": "Once a day while Pyxis is open. Pyxis keeps its 3 newest copies in this folder and deletes older ones it made.",
+      "on": "Once a day while Pyxis is open. Pyxis keeps the 3 newest copies, one from about a week ago and one from about a month ago, and deletes the other copies it made.",
       "off": "Off. Pyxis makes no copies on its own. Back up now still saves one here.",
       "folder": "Folder: {{path}}",
       "change": "Change folder",
@@ -1642,10 +1665,23 @@
       "running": "Backing up. You can keep studying.",
       "never": "No automatic backup yet.",
       "saved": "Last backup: {{at}}, {{size}}.",
+      "savedVerified": "Last backup: {{at}}, {{size}}, verified.",
       "failed": "The backup of {{at}} did not finish.",
       "lastGood": "The last complete backup is from {{at}}.",
       "fix": "Backup settings",
       "dismissFailed": "Pyxis could not hide this notice. Try again.",
+      "list": {
+        "title": "Restore an automatic backup",
+        "hint": "Pyxis checks each copy before it lists it.",
+        "loading": "Checking the copies in the backup folder.",
+        "empty": "No automatic copy to restore yet. The first one appears after the next backup.",
+        "failed": "Pyxis could not read the backup folder.",
+        "retry": "Try again",
+        "restore": "Restore",
+        "hintUnverified": "A copy marked not checked could not be checked just now. Restore checks it again before it replaces anything.",
+        "unverified": "Not checked yet",
+        "restoreOne": "Restore the copy of {{at}}"
+      },
       "notice": "The automatic backup did not finish. {{reason}}",
       "reason": {
         "folder-missing": "The backup folder is not available. Connect the drive it is on, or choose another folder.",
@@ -1654,6 +1690,7 @@
         "disk-full": "The disk is full. Free some space, or choose a folder on another disk.",
         "too-large": "I can back up at most {{limit}} GB, and this workspace holds {{size}} GB. Remove sources you no longer need, or turn automatic backups off.",
         "too-many-files": "This workspace has more files than one backup can hold. Remove sources you no longer need, or turn automatic backups off.",
+        "unverified": "The new copy did not pass its check, so Pyxis deleted it and kept your earlier copies. Try Back up now. If it fails again, choose another folder.",
         "failed": "Try Back up now. If it fails again, choose another folder."
       },
       "short": {
@@ -1663,8 +1700,19 @@
         "disk-full": "The disk with the backup folder is full.",
         "too-large": "This workspace is larger than one backup can hold.",
         "too-many-files": "This workspace has more files than one backup can hold.",
+        "unverified": "The new copy did not pass its check.",
         "failed": "Pyxis could not write the copy."
       }
+    },
+    "reminders": {
+      "title": "Study reminders",
+      "switch": "Remind me to review",
+      "off": "Off. Pyxis sends no notifications.",
+      "on": "Once a day Pyxis shows a notification with the flashcards due and, when an exam is near, how many days are left. It appears only while Pyxis is open, and clicking it opens that exam.",
+      "time": "Time",
+      "quiet": "A day with no flashcards due sends nothing.",
+      "unsupported": "This computer does not show notifications from Pyxis. Allow them in the system settings.",
+      "valueOff": "Off"
     },
     "restoreFailed": "That file is not a valid backup.",
     "restoreRolledBack": "The restore could not finish, so Pyxis went back to the data you had before it. Nothing from the backup was kept.",
@@ -1749,7 +1797,8 @@
     "invalidSubject": "Enter a subject name of 1 to 120 characters.",
     "subjectExists": "A subject with that name already exists.",
     "coreUnavailable": "The internal engine could not start. Retry, or open Settings to restore a backup.",
-    "attachScanned": "{{name}} is a scan, so I find no text in it to read here. Add it to the library and choose Read the scan."
+    "attachScanned": "{{name}} is a scan, so I find no text in it to read here. Add it to the library and choose Read the scan.",
+    "chatBusy": "Pyxis is still answering in this chat. Wait for the reply or stop it, then ask again."
   },
   "dev": {
     "kicker": "Gallery",
@@ -2492,7 +2541,12 @@
     "rebuildNoneArchived": "No topics are archived.",
     "educationLevel": "Education level",
     "educationHelp": "The tutor answers chats about this plan at this level. It was copied from your profile when the plan was made.",
-    "educationFailed": "The level could not be saved. Try again."
+    "educationFailed": "The level could not be saved. Try again.",
+    "archive": "Archive exam",
+    "archiveHelp": "Set a finished exam aside. It leaves your review queues, counts and recommendations. Lessons and progress stay, and you can restore it at any time.",
+    "restore": "Restore exam",
+    "restoreHelp": "Bring this exam back into your review queues and recommendations.",
+    "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations."
   },
   "smart": {
     "check": "Quick check",

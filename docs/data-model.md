@@ -28,6 +28,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 19             | `messages.figures_json`, the images of the figures an answer drew                       |
 | 20             | `plan_sources.role` (`material` or `past_paper`) and `plan_sources.paper_json`          |
 | 21             | `messages.error`, `messages.passages_json` and the `engine_usage` table                 |
+| 22             | `plan_sessions`, the exam sessions of a plan, and `plans.archived_at`                   |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -45,47 +46,50 @@ The past papers of a plan feed two things. The simulation builder summarises the
 
 Migration 21 adds `messages.error`, the message key of the engine failure that cut a reply short (a stopped reply without it was stopped by the student), `messages.passages_json`, the passages a stopped reply was given as `{ passageId, index }` in P-number order, which Continue sends again unchanged, and `engine_usage`, one row per model call: time, provider, model, input and output tokens, prompt-cache reads and writes, and the chat and message or the job (with its kind) it was for. Those ids are plain text, not foreign keys, so the tokens of a deleted chat or a replaced reply still count in the week they were used.
 
-Current version is 21. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 22 lets a plan hold several exam sessions and be archived. `plan_sessions` has one row per sitting: `date` (local noon of the day, as `plans.exam_at` always was), `time` (`HH:MM` or NULL for an all-day entry), `place` and `label` (both optional text, such as "Aula 5" and "Oral"). At most ten per plan, and the rows cascade with the plan. `plans.exam_at` stays and holds the derived next exam date: the earliest session that is today or later, or the latest session when all are over, or NULL for "No date yet". Countdowns, the path and scheduling read only that column. Core rewrites it whenever the sessions are saved, and again when the plan list, a plan or its recommendations are read (`syncExamDates` in `src/core/plans/sessions.ts`), so it moves on to the oral part the day after the written part. The migration turns each non-null `exam_at` into one session whose ID is the plan's ID, so the calendar event keeps the UID it had (`<session id>@pyxis.politost.it`). A date after year 9999, which older versions accepted, is cut to the latest a session can hold. `plans.archived_at` is the time the student archived a finished exam, or NULL. It is separate from `status` (`building`, `draft`, `ready`), because a rebuild writes `status` and would undo the archive. An archived plan keeps all its content and history. It is left out of the card browser and its filters, its cards are never due (`countDueCards`, `dueCards`), its path recommends nothing (`planGuide`), and `plans.list` marks it so the Exams page can filter it. Opening it, its calendar file and its plan file still work, and restoring it clears the column.
 
-| Table            | A row is                                                                                |
-| ---------------- | --------------------------------------------------------------------------------------- |
-| profile          | The student's profile. The renderer writes it.                                          |
-| settings         | One app setting, keyed by name.                                                         |
-| engines          | A configured model provider.                                                            |
-| feature_engines  | Which engine a feature uses.                                                            |
-| subjects         | A school subject.                                                                       |
-| sources          | An imported file or link. A link keeps `origin_url` and `fetched_at` of its saved copy. |
-| source_documents | One extraction version of a source.                                                     |
-| passages         | An immutable chunk of a document.                                                       |
-| passages_fts     | The full-text index of passages.                                                        |
-| passages_vec     | The embedding index of passages.                                                        |
-| smartbooks       | Metadata for a PoliTost smartbook source.                                               |
-| exercises        | An exercise from a smartbook or a model.                                                |
-| plans            | A study plan. `exam_at`, `target`, `content_language` and `style` come from the wizard. |
-| plan_sources     | A source attached to a plan, as study material or as a past exam.                       |
-| topics           | A node in a plan's topic tree.                                                          |
-| topic_passages   | Passages that support a topic.                                                          |
-| path_nodes       | One step on a plan's path.                                                              |
-| items            | A generated lesson, question, or explanation.                                           |
-| item_passages    | Passages cited by an item. Deleting a passage is restricted.                            |
-| cards            | A flashcard. `passage_id` is the source passage shown on the back.                      |
-| card_reviews     | One rating of a card.                                                                   |
-| attempts         | A quiz or exercise attempt.                                                             |
-| attempt_answers  | One answer inside an attempt.                                                           |
-| gaps             | An open or closed knowledge gap. A topic can have several, one per misconception.       |
-| gap_items        | The drill quiz built for a gap.                                                         |
-| gap_answers      | A wrong answer (attempt and question) that counts for a gap.                            |
-| maps             | A concept map.                                                                          |
-| chats            | A tutor conversation.                                                                   |
-| messages         | One turn in a chat.                                                                     |
-| message_passages | Passages cited by a message.                                                            |
-| attachments      | A file attached to a message, stored as a blob hash.                                    |
-| whiteboards      | A whiteboard scene.                                                                     |
-| flags            | A student flag on a generated item.                                                     |
-| learning_events  | An append-only study event. Mastery is computed from these, not stored.                 |
-| jobs             | A long task: extraction, plan build, download.                                          |
-| job_steps        | One named step of a job. A retry skips steps that already stored output.                |
-| engine_usage     | The tokens of one model call, with the chat message or job it was for.                  |
+Current version is 22. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+
+| Table            | A row is                                                                                                     |
+| ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| profile          | The student's profile. The renderer writes it.                                                               |
+| settings         | One app setting, keyed by name.                                                                              |
+| engines          | A configured model provider.                                                                                 |
+| feature_engines  | Which engine a feature uses.                                                                                 |
+| subjects         | A school subject.                                                                                            |
+| sources          | An imported file or link. A link keeps `origin_url` and `fetched_at` of its saved copy.                      |
+| source_documents | One extraction version of a source.                                                                          |
+| passages         | An immutable chunk of a document.                                                                            |
+| passages_fts     | The full-text index of passages.                                                                             |
+| passages_vec     | The embedding index of passages.                                                                             |
+| smartbooks       | Metadata for a PoliTost smartbook source.                                                                    |
+| exercises        | An exercise from a smartbook or a model.                                                                     |
+| plans            | A study plan. `exam_at` (the next exam date), `target`, `content_language` and `style` come from the wizard. |
+| plan_sessions    | One exam sitting of a plan: a day, an optional time and place.                                               |
+| plan_sources     | A source attached to a plan, as study material or as a past exam.                                            |
+| topics           | A node in a plan's topic tree.                                                                               |
+| topic_passages   | Passages that support a topic.                                                                               |
+| path_nodes       | One step on a plan's path.                                                                                   |
+| items            | A generated lesson, question, or explanation.                                                                |
+| item_passages    | Passages cited by an item. Deleting a passage is restricted.                                                 |
+| cards            | A flashcard. `passage_id` is the source passage shown on the back.                                           |
+| card_reviews     | One rating of a card.                                                                                        |
+| attempts         | A quiz or exercise attempt.                                                                                  |
+| attempt_answers  | One answer inside an attempt.                                                                                |
+| gaps             | An open or closed knowledge gap. A topic can have several, one per misconception.                            |
+| gap_items        | The drill quiz built for a gap.                                                                              |
+| gap_answers      | A wrong answer (attempt and question) that counts for a gap.                                                 |
+| maps             | A concept map.                                                                                               |
+| chats            | A tutor conversation.                                                                                        |
+| messages         | One turn in a chat.                                                                                          |
+| message_passages | Passages cited by a message.                                                                                 |
+| attachments      | A file attached to a message, stored as a blob hash.                                                         |
+| whiteboards      | A whiteboard scene.                                                                                          |
+| flags            | A student flag on a generated item.                                                                          |
+| learning_events  | An append-only study event. Mastery is computed from these, not stored.                                      |
+| jobs             | A long task: extraction, plan build, download.                                                               |
+| job_steps        | One named step of a job. A retry skips steps that already stored output.                                     |
+| engine_usage     | The tokens of one model call, with the chat message or job it was for.                                       |
 
 ## Saved content and history
 
@@ -115,7 +119,15 @@ The settings and the last result are main-process state in `userData/backups.jso
 
 A workspace with no source, plan, chat or whiteboard is not backed up automatically. On a new computer set up to restore, that empty copy would be the newest file in a synced folder. Back up now still copies it, because the student asked.
 
-Each computer marks its automatic backups with an ID: eight hex digits made on its first backup, saved in `backups.json` as `backupId` and added to every file name, as in `pyxis-auto-backup-2026-10-13-210512-1a2b3c4d.zip`. The ID is in `backups.json` and not in the database, so a computer that restores another one's backup still gets its own. Retention keeps the newest three files with this computer's ID and deletes nothing else, so two computers sharing a synced folder never delete each other's backups. Files from Pyxis 0.3.1 and earlier have no ID. Retention never deletes them, since nothing proves which computer wrote them, and Restore accepts them as before. Delete all data with its backups box ticked removes this computer's backups and those without an ID, and keeps backups with another computer's ID.
+Each computer marks its automatic backups with an ID: eight hex digits made on its first backup, saved in `backups.json` as `backupId` and added to every file name, as in `pyxis-auto-backup-2026-10-13-210512-1a2b3c4d.zip`. The ID is in `backups.json` and not in the database, so a computer that restores another one's backup still gets its own. Retention keeps this computer's newest three files, one weekly and one monthly backup, and deletes nothing else, so two computers sharing a synced folder never delete each other's backups. A backup that leaves the newest three becomes the weekly one when it is from a later calendar week (Monday to Sunday) than the current weekly one, and is deleted otherwise. The weekly one it replaces becomes the monthly one when it is from a later month than the current monthly one, and is deleted otherwise. With a backup every day that leaves a weekly backup 3 to 9 days old and a monthly one 10 to about 45 days old, at most five files. Retention only runs after the new backup passed its check. Files from Pyxis 0.3.1 and earlier have no ID. Retention never deletes them, since nothing proves which computer wrote them, and Restore accepts them as before. After writing, the backup worker reopens the archive (`verifyBackupArchive` in `src/core/share/backup.ts`): the zip index must be well formed, `pyxis.db` must inflate with a matching CRC, and the database must pass the checks a restore runs on its staging copy (`integrity_check`, `foreign_key_check`, schema version, the tables Pyxis needs). Blobs are not unpacked, so a damaged blob is only found by a restore. An archive proven broken is deleted, the backup counts as failed (`unverified`), and nothing is pruned, so a broken file never pushes a good one out. If the check itself cannot run (a full or unusable temporary folder, a read error), the file is kept, the backup counts as failed with that error's reason, and the Restore list keeps listing the file, marked as not checked, and checks it again later instead of remembering it as broken. The same goes for an archive that is not reachable (an unplugged drive). Only an archive proven broken is left out of the list. Restoring a not-checked copy runs the full restore validation on a staging copy before anything is replaced. A successful backup is saved in `backups.json` with `verified: true`.
+
+Settings, Data lists the backups in the backup folder, newest first, with date and size. The list holds every file with an automatic name, whoever wrote it, because a reinstall gets a new ID and its own older backups then look foreign. Main unpacks and checks each file the first time it lists it (the newest 12 at most) and remembers the result by name, size and change time; a file that fails is left out, not deleted. Restore on a row sends the file name, not a path, and main resolves it against the backup folder before it runs the ordinary restore.
+
+Delete all data with its backups box ticked removes this computer's backups and those without an ID, and keeps backups with another computer's ID.
+
+### Study reminders
+
+The reminder settings are main-process state in `userData/reminders.json`: `enabled` (off by default), `time` (local `HH:MM`, 18:00 by default) and `lastDay`, the local date the reminder last ran. A check every minute compares the clock with `time`. It runs the reminder once a day, from `time` until an hour later, also past midnight (a 23:30 reminder is still sent at 00:10 and counts for the day it began), so a computer that slept through it still sends it when it wakes. Switching it on, or picking a time that has already passed today, waits for tomorrow. Main asks core for the cards due now (`reminder-query` over the core's parent port, answered by `reminderSummary` in `src/core/plans/reminder.ts`, which sums `countDueCards` over plans that are not still building). With nothing due it sends nothing and does not ask again that day. Otherwise it shows an Electron `Notification` in the interface language: the number of cards, and the exam of the plan with the nearest exam when it is within 30 days. Clicking the notification brings the window forward and opens that plan's page. Nothing runs while Pyxis is closed.
 
 ## Restore safety
 

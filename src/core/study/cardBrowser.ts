@@ -129,6 +129,7 @@ export function browseCards(
        LEFT JOIN topics t ON t.id = c.topic_id
        LEFT JOIN subjects s ON s.id = p.subject_id
        WHERE t.archived_at IS NULL
+         AND p.archived_at IS NULL
          AND (? IS NULL OR c.plan_id = ?)
          AND (? IS NULL OR c.topic_id = ?)
          AND NOT EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(c.search_text, w.value) = 0)
@@ -207,7 +208,7 @@ function browseFilters(db: Database.Database) {
     .prepare(
       `SELECT p.id, p.title, s.id AS subjectId, s.name AS subject
        FROM plans p LEFT JOIN subjects s ON s.id = p.subject_id
-       WHERE EXISTS (
+       WHERE p.archived_at IS NULL AND EXISTS (
          SELECT 1 FROM cards c LEFT JOIN topics t ON t.id = c.topic_id
          WHERE c.plan_id = p.id AND t.archived_at IS NULL)
        ORDER BY s.id IS NULL, s.position, s.name COLLATE NOCASE, s.id,
@@ -218,6 +219,7 @@ function browseFilters(db: Database.Database) {
     .prepare(
       `SELECT t.id, t.plan_id AS planId, t.title FROM topics t
        WHERE t.archived_at IS NULL
+         AND t.plan_id IN (SELECT id FROM plans WHERE archived_at IS NULL)
          AND EXISTS (SELECT 1 FROM cards c WHERE c.topic_id = t.id)
        ORDER BY t.plan_id, t.position, t.id`,
     )

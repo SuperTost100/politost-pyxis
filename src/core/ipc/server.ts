@@ -587,6 +587,8 @@ async function dispatchValidated(
     case "plans.freeSpace":
       requests["plans.freeSpace"].input.parse(input);
       return plans?.freeSpace() ?? { bytes: 0 };
+    case "plans.archive":
+      return plans?.archive(requests["plans.archive"].input.parse(input));
     case "plans.delete":
       return plans?.delete(requests["plans.delete"].input.parse(input));
     case "plans.export":
@@ -711,12 +713,15 @@ async function dispatchValidated(
         ...requests["chats.ask"].input.parse(input),
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onPassages: (passages) => emit?.({ type: "passages", passages }),
+        onQuestion: (id, chatId) => emit?.({ type: "question", id, chatId }),
       });
     case "chats.regenerate":
       return chats?.regenerate({
         ...requests["chats.regenerate"].input.parse(input),
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onPassages: (passages) => emit?.({ type: "passages", passages }),
       });
     case "sources.list":
       requests["sources.list"].input.parse(input);
