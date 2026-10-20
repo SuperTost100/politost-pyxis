@@ -1,5 +1,5 @@
 import { activeSimulation } from "../study/simulation";
-import { splitChecks, solverChecks } from "./checks";
+import { needsSolverChecks, splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -15,11 +15,12 @@ import {
   noSandbox,
   type FigureRunner,
 } from "../math/figures";
-import { isAbort, IpcError } from "../../shared/ipc";
-import { generate } from "../engine/generate";
+import { isAbort, IpcError, toIpcError } from "../../shared/ipc";
+import { generate, type GenerateInput } from "../engine/generate";
 import { endConversation } from "../engine/funnel";
 import { engineSeesImages } from "../engine/capabilities";
-import { selectionFor } from "../engine/selection";
+import { selectionFor, strongestSelection } from "../engine/selection";
+import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
 import { contentWords, retrieveWithModel } from "../sources/retrieve";
 import { sha256 } from "../sources/quality";
@@ -62,9 +63,13 @@ export type ChatMessageView = {
   citations: ChatCitation[];
   reaction: "up" | "down" | null;
   stopped: boolean;
+  /** Message key of the engine failure that cut the reply short. Such a reply offers Continue. */
+  error: string | null;
   checks: AnchoredCheck[];
   /** Images of the answer's figure blocks, by `figureKey`. */
   figures?: Record<string, string>;
+  /** The math check for this reply is still running; its badges arrive with a `chats.checks` broadcast. */
+  checking: boolean;
 };
 
 export type AskResult = {
@@ -93,7 +98,44 @@ type AskInput = {
   run?: Parameters<typeof generate>[0]["run"];
   /** Runs figure code; null turns figures off. Defaults to the Pyodide sandbox when its runtime is downloaded. */
   python?: FigureRunner | null;
+  /** `strong` answers with the plan task's engine at high effort ("Answer again with the strongest model"). */
+  engine?: "chat" | "strong";
+  /**
+   * Continue: the reply that was cut short. The model writes only the rest, appended to its text, from the passages it
+   * was written with (null for a reply saved before they were recorded, which retrieves them again).
+   */
+  resumeFrom?: { text: string; passages: KeptPassage[] | null };
 };
+
+/** A passage a stopped reply was written with, and the P-number it had. */
+type KeptPassage = { passageId: string; index: number };
+
+/** The passages a cut reply was written with, in its numbering. One deleted since then is left out; the rest keep their numbers. */
+function keptPassages(
+  db: Database.Database,
+  kept: KeptPassage[],
+): { hits: PassageHit[]; numbers: number[] } {
+  const read = db.prepare(
+    `SELECT id, source_id, text, section_path, locator_json FROM passages WHERE id = ?`,
+  );
+  const hits: PassageHit[] = [];
+  const numbers: number[] = [];
+  for (const passage of kept) {
+    const row = read.get(passage.passageId) as
+      | { id: string; source_id: string | null; text: string; section_path: string | null; locator_json: string | null }
+      | undefined;
+    if (!row) continue;
+    hits.push({
+      id: row.id,
+      sourceId: row.source_id ?? "",
+      text: row.text,
+      sectionPath: row.section_path,
+      locator: row.locator_json ? (JSON.parse(row.locator_json) as PassageHit["locator"]) : {},
+    });
+    numbers.push(passage.index);
+  }
+  return { hits, numbers };
+}
 
 /** Passages a chat turn sends to the model. Questions that ask for a full explanation need more than the default eight. */
 const CHAT_PASSAGES = 12;
@@ -103,6 +145,69 @@ const ATTACHED_PASSAGES = 4;
 const ATTACHED_TOTAL = 12;
 /** Characters of earlier turns sent with a question. Whole messages are kept, newest first. */
 const HISTORY_CHARS = 6000;
+
+/** Math checks still running after their reply was saved, by the message they are for. */
+const runningChecks = new Map<
+  string,
+  { chatId: string; controller: AbortController; done: Promise<void> }
+>();
+let onChecked: ((event: { chatId: string; messageId: string }) => void) | undefined;
+
+/** Core tells the window when a reply's math check ended, so its badges, or the end of "checking", show. */
+export function setChecksListener(
+  listener: ((event: { chatId: string; messageId: string }) => void) | undefined,
+): void {
+  onChecked = listener;
+}
+
+/**
+ * Checks a saved reply's math after the turn has returned, so the student can read and ask on while it runs. The
+ * claims are appended to the stored body. A check that is stopped, fails or times out attaches nothing.
+ */
+function startChecks(
+  db: Database.Database,
+  target: { chatId: string; messageId: string; body: string },
+  engine: Pick<GenerateInput, "selection" | "run">,
+): void {
+  const { chatId, messageId, body } = target;
+  const controller = new AbortController();
+  const done = withUsageScope({ chatId, messageId, kind: "chat" }, () =>
+    solverChecks(body, { ...engine, signal: controller.signal }),
+  )
+    .then((checks) => {
+      if (controller.signal.aborted || checks.length === 0 || activeSimulation(db)) return;
+      // A reply regenerated or deleted meanwhile is gone, and nothing is attached.
+      const row = db
+        .prepare(`SELECT body FROM messages WHERE id = ? AND chat_id = ?`)
+        .get(messageId, chatId) as { body: string } | undefined;
+      if (!row) return;
+      db.prepare(`UPDATE messages SET body = ? WHERE id = ?`).run(
+        `${row.body}\n<checks>${JSON.stringify(checks)}</checks>`,
+        messageId,
+      );
+    })
+    .catch((err: unknown) => {
+      console.error("pyxis: math check not saved", err);
+    })
+    .finally(() => {
+      runningChecks.delete(messageId);
+      onChecked?.({ chatId, messageId });
+    });
+  runningChecks.set(messageId, { chatId, controller, done });
+}
+
+/** Stops the chat's running math checks, or only the one for `messageId`. */
+export function cancelChecks(chatId: string, messageId?: string): void {
+  for (const [id, check] of runningChecks) {
+    if (check.chatId === chatId && (!messageId || id === messageId))
+      check.controller.abort();
+  }
+}
+
+/** Resolves once every running math check has ended. */
+export async function settleChecks(): Promise<void> {
+  await Promise.all([...runningChecks.values()].map((check) => check.done));
+}
 
 /**
  * What the reply message records, and so whether the "general knowledge" badge shows. The badge is only for a turn where
@@ -269,7 +374,7 @@ function readScope(db: Database.Database, chatId: string): Scope {
 function planSourceIds(db: Database.Database, planId: string): string[] {
   return (
     db
-      .prepare(`SELECT source_id FROM plan_sources WHERE plan_id = ?`)
+      .prepare(`SELECT source_id FROM plan_sources WHERE plan_id = ? AND role = 'material'`)
       .all(planId) as Array<{ source_id: string }>
   ).map((row) => row.source_id);
 }
@@ -482,6 +587,9 @@ export async function askTurn(
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
   const now = Date.now();
   const chat = ensureChat(db, input.chatId, input.text, now);
+  // Stop also stops a math check still running for an earlier reply in this chat.
+  const stopChecks = () => cancelChecks(chat.id);
+  input.signal?.addEventListener("abort", stopChecks, { once: true });
   try {
     return await answer(db, input, replacing, chat.id, now);
   } catch (err) {
@@ -494,6 +602,8 @@ export async function askTurn(
     )
       deleteChat(db, input.workspace ?? "", chat.id);
     throw err;
+  } finally {
+    input.signal?.removeEventListener("abort", stopChecks);
   }
 }
 
@@ -617,15 +727,23 @@ async function answer(
     ? commitStaged(db, input.workspace!, staged, (ids) => persist([...new Set([...reused, ...ids])])).value
     : db.transaction(() => persist([]))();
 
+  const selection =
+    input.engine === "strong" ? strongestSelection(db) : selectionFor(db, "chat");
   const seesImage =
     Boolean(input.workspace) &&
-    engineSeesImages(selectionFor(db, "chat")) &&
+    engineSeesImages(selection) &&
     images.some((image) => image.data);
   const thisTurnFile = notes.length > 0 || seesImage;
   // The passages are the main reference, not a gate: a question they do not cover is still answered from the model's own
   // knowledge, and the reply shows it by citing nothing (see replyGrounding).
-  const gathered =
-    input.allowGeneral ||
+  // Continue answers from the passages the cut reply was written with, in the same numbering, so the citations in its
+  // saved text still point where they did.
+  const kept = input.resumeFrom?.passages
+    ? keptPassages(db, input.resumeFrom.passages)
+    : undefined;
+  const gathered = kept
+    ? { hits: kept.hits, covered: true, usedVectors: false }
+    : input.allowGeneral ||
     (thisTurnFile && sourceIds.length === 0) ||
     (planId && sourceIds.length === 0)
       ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
@@ -634,14 +752,14 @@ async function answer(
     ...gathered,
     hits: [
       ...gathered.hits,
-      ...(await attachedPassages(db, input.text, attachedIds, gathered.hits, input.embed)),
+      ...(kept ? [] : await attachedPassages(db, input.text, attachedIds, gathered.hits, input.embed)),
     ],
   };
   const selected = sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
 
   const citations: ChatCitation[] = found.hits.map((hit, index) => ({
-    label: hit.sectionPath || hit.locator.paragraph || `P${index + 1}`,
-    index: index + 1,
+    label: hit.sectionPath || hit.locator.paragraph || `P${kept?.numbers[index] ?? index + 1}`,
+    index: kept?.numbers[index] ?? index + 1,
     passageId: hit.id,
     sourceId: hit.sourceId,
     sectionPath: hit.sectionPath,
@@ -685,17 +803,22 @@ async function answer(
       : "";
   // What is new for this question goes last, after the parts that stay the same from turn to turn, so a provider's
   // prompt cache keeps the start of the prompt. A conversation the engine still holds gets only the new part.
-  const question = `${attachedBlock}${passageBlock}${noPassages}\n\nQuestion:\n${input.text}`;
+  // Continue sends the reply that was cut short with the question, so the model writes only what is missing.
+  const resume = input.resumeFrom?.text ?? "";
+  const resumeBlock = resume
+    ? `\n\nYour earlier answer to this question was cut off. It ends here:\n${resume}\n\nContinue from exactly where it stops. Do not repeat any of it.`
+    : "";
+  const question = `${attachedBlock}${passageBlock}${noPassages}\n\nQuestion:\n${input.text}${resumeBlock}`;
   const prompt = `${pinnedBlock}Earlier turns:\n${historyText(db, chatId, [userMessageId, replacing?.assistantId ?? ""])}\n\n${question}`;
   const followUp = citations.length
     ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
     : question.trimStart();
   // A regenerated reply replaces one the engine's conversation already holds, so the conversation starts over.
   if (replacing) endConversation(chatId);
-  const selection = selectionFor(db, "chat");
+  const messageId = uuidv7(now + 2);
   // The engine answering, which differs from the selection when an automatic one was out and another took over.
   let answering: { provider: string; model: string } = selection;
-  let streamed = "";
+  let streamed = resume;
   let result;
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
   const saved =
@@ -721,21 +844,26 @@ async function answer(
       run: input.run,
       conversation: { key: chatId, followUp },
       cache: true,
+      usage: { chatId, messageId, kind: "chat" },
       onEngine: (engine) => (answering = engine),
       onDelta: (text) => {
         requireTutorAvailable(db);
-        streamed = text;
-        input.onDelta?.(text.replace(/<followups>[\s\S]*$/, "").trim());
+        streamed = resume + text;
+        input.onDelta?.(streamed.replace(/<followups>[\s\S]*$/, "").trim());
       },
     });
   } catch (err) {
     requireTutorAvailable(db);
-    if (
-      (isAbort(err) || (err instanceof Error && err.name === "AbortError")) &&
-      streamed.trim()
-    ) {
+    const aborted =
+      isAbort(err) || (err instanceof Error && err.name === "AbortError");
+    // What arrived is kept when the student stops, and when the engine fails mid-answer (a dropped connection, a usage
+    // limit), as a reply marked with the failure that offers Continue. A regenerated reply that fails keeps the earlier
+    // one instead, and a Continue that added nothing leaves the reply as it was.
+    const kept = streamed.trim() !== "" && streamed !== resume;
+    if (kept && (aborted || !replacing || resume)) {
       return {
         ...finishReply(db, chatId, streamed, {
+          messageId,
           provider: answering.provider,
           model: answering.model,
           selected,
@@ -744,6 +872,7 @@ async function answer(
           template,
           citations,
           stopped: true,
+          error: aborted ? null : toIpcError(err).messageKey,
           now,
         }),
         ...skippedImages,
@@ -752,33 +881,24 @@ async function answer(
     throw err;
   }
   // The prompts no longer ask for it, but a model or an older prompt can still answer NOT_COVERED: nothing is stored.
-  if (result.text.trim().startsWith("NOT_COVERED")) {
+  if (!resume && result.text.trim().startsWith("NOT_COVERED")) {
     return { chatId, covered: false, message: null };
   }
-  const parsed = splitFollowups(result.text);
+  const parsed = splitFollowups(resume + result.text);
   if (profile?.followups === false) parsed.followups = [];
-  // The checks and the figures use different sandbox lanes, so they run side by side. A figure that fails is left out.
-  const [checks, drawn] = await Promise.all([
-    mode !== "socratic"
-      ? solverChecks(parsed.body, {
-          selection,
-          signal: input.signal,
-          run: input.run,
-        })
-      : Promise.resolve([]),
-    drawFigures(parsed.body, { python: python ?? noSandbox, signal: input.signal }),
-  ]);
+  // A figure that fails is left out. The math check runs after the reply is saved (startChecks), on the final text.
+  const drawn = await drawFigures(parsed.body, { python: python ?? noSandbox, signal: input.signal });
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
 
+  // The reply is saved once its figures are drawn. Its math check runs afterwards (startChecks), so it does not hold the turn.
   requireTutorAvailable(db);
   requireChat(db, chatId);
   const stored = `${parsed.body}${
     parsed.followups.length > 0
       ? `\n<followups>\n${parsed.followups.join("\n")}\n</followups>`
       : ""
-  }${checks.length ? `\n<checks>${JSON.stringify(checks)}</checks>` : ""}`;
-  const messageId = uuidv7(now + 2);
+  }`;
   const used = new Set(
     [...splitCitationGroups(parsed.body).matchAll(/\[P(\d+)\]/g)].map((match) =>
       Number(match[1]),
@@ -814,6 +934,14 @@ async function answer(
   for (const cite of linked) {
     link.run(messageId, cite.passageId, `P${cite.index}`);
   }
+  // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer.
+  const checking = mode !== "socratic" && needsSolverChecks(parsed.body);
+  if (checking)
+    startChecks(
+      db,
+      { chatId, messageId, body: parsed.body },
+      { selection: selectionFor(db, "chat"), run: input.run },
+    );
   return {
     chatId,
     covered: true,
@@ -828,7 +956,9 @@ async function answer(
       citations: linked,
       reaction: null,
       stopped: false,
-      checks,
+      error: null,
+      checks: splitChecks(parsed.body).checks,
+      checking,
       ...(figures ? { figures } : {}),
     },
     ...skippedImages,
@@ -840,6 +970,7 @@ function finishReply(
   chatId: string,
   text: string,
   meta: {
+    messageId: string;
     provider: string;
     model: string;
     selected: boolean;
@@ -848,6 +979,7 @@ function finishReply(
     template: string;
     citations: ChatCitation[];
     stopped: boolean;
+    error: string | null;
     now: number;
   },
 ): AskResult {
@@ -855,7 +987,7 @@ function finishReply(
   const parsed = splitFollowups(text);
   // Nothing draws a stopped reply's figures, so their blocks go.
   parsed.body = mapFigureBlocks(parsed.body, () => "");
-  const messageId = uuidv7(meta.now + 2);
+  const { messageId } = meta;
   const used = new Set(
     [...splitCitationGroups(parsed.body).matchAll(/\[P(\d+)\]/g)].map((match) =>
       Number(match[1]),
@@ -871,8 +1003,8 @@ function finishReply(
   });
   db.prepare(
     `INSERT INTO messages
-      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, stopped, created_at)
-     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?)`,
+      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, stopped, error, passages_json, created_at)
+     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     messageId,
     chatId,
@@ -883,6 +1015,11 @@ function finishReply(
     chatProvenance(meta.template as ChatTemplateId).version,
     grounding,
     meta.stopped ? 1 : 0,
+    meta.error,
+    // Every passage the reply was given, cited or not, so Continue can answer from the same ones in the same numbering.
+    JSON.stringify(
+      meta.citations.map((cite): KeptPassage => ({ passageId: cite.passageId, index: cite.index })),
+    ),
     meta.now + 1,
   );
   const link = db.prepare(
@@ -904,34 +1041,55 @@ function finishReply(
       citations: linked,
       reaction: null,
       stopped: meta.stopped,
+      error: meta.error,
       checks: splitChecks(parsed.body).checks,
+      checking: false,
     },
   };
 }
 
+/**
+ * Answers the chat's last question again, replacing the reply that ends the chat once the new one is saved. With
+ * `resume` it continues a reply that was cut short instead: the new reply is that text plus what the model adds.
+ */
 export async function regenerateTurn(
   db: Database.Database,
-  input: Omit<AskInput, "text"> & { chatId: string },
+  input: Omit<AskInput, "text" | "resumeFrom"> & { chatId: string; resume?: boolean },
 ): Promise<AskResult> {
+  const { resume, ...rest } = input;
   const last = db
     .prepare(
-      `SELECT id, role FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, role, body, stopped, passages_json FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
     )
-    .get(input.chatId) as { id: string; role: string } | undefined;
+    .get(input.chatId) as
+    | { id: string; role: string; body: string; stopped: number; passages_json: string | null }
+    | undefined;
   const user = db
     .prepare(
       `SELECT id, body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC LIMIT 1`,
     )
     .get(input.chatId) as { id: string; body: string } | undefined;
   if (!user) throw new Error("chat-missing");
+  if (resume && !(last?.role === "assistant" && last.stopped === 1))
+    throw new IpcError("nothing-to-continue", "errors.internal");
+  // The reply being replaced drops its math check.
+  if (last?.role === "assistant") cancelChecks(input.chatId, last.id);
+  const resumeFrom =
+    resume && last
+      ? {
+          text: splitFollowups(splitChecks(last.body).body).body,
+          passages: last.passages_json ? (JSON.parse(last.passages_json) as KeptPassage[]) : null,
+        }
+      : undefined;
   const result = await askTurn(
     db,
-    { ...input, text: user.body },
+    { ...rest, text: user.body, resumeFrom },
     last?.role === "assistant"
       ? { assistantId: last.id, userId: user.id }
       : undefined,
   );
-  if (result.message?.stopped && last?.role === "assistant") {
+  // A continued reply stopped again is still longer than before, so it replaces the earlier one like a finished reply.
+  if (result.message?.stopped && last?.role === "assistant" && !resumeFrom) {
     db.prepare("DELETE FROM messages WHERE id = ? AND chat_id = ?").run(result.message.id, input.chatId);
     throw new DOMException("Aborted", "AbortError");
   }
@@ -981,6 +1139,7 @@ export function renameChat(
  * files nothing else names. The rows go in one transaction; the files are removed after it commits.
  */
 export function deleteChat(db: Database.Database, workspace: string, chatId: string) {
+  cancelChecks(chatId);
   const hashes = db.transaction(() => {
     const mine = readScope(db, chatId).ids;
     const shared = new Set(
@@ -1052,7 +1211,7 @@ export function readChat(
 ): ChatMessageView[] {
   const rows = db
     .prepare(
-      `SELECT id, role, body, model_id, engine_provider, grounding, reaction, stopped, figures_json FROM messages
+      `SELECT id, role, body, model_id, engine_provider, grounding, reaction, stopped, figures_json, error FROM messages
        WHERE chat_id = ? ORDER BY created_at`,
     )
     .all(chatId) as Array<{
@@ -1065,6 +1224,7 @@ export function readChat(
     reaction: string | null;
     stopped: number;
     figures_json: string | null;
+    error: string | null;
   }>;
   const chips = readProfile(db)?.followups !== false;
   const links = db.prepare(
@@ -1112,10 +1272,12 @@ export function readChat(
       reaction:
         row.reaction === "up" || row.reaction === "down" ? row.reaction : null,
       stopped: row.stopped === 1,
+      error: row.error,
       checks: metadata.checks,
       ...(row.figures_json
         ? { figures: figureImages(JSON.parse(row.figures_json)) }
         : {}),
+      checking: runningChecks.has(row.id),
     };
   });
 }

@@ -1,10 +1,9 @@
-import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { PASTE_MIN, importPastedText } from "./paste";
 import { searchPassages } from "./smartbook";
+import { tempDir } from "../test-temp";
 
 describe("pasted text", () => {
   it("refuses a note shorter than one page", () => {
@@ -14,7 +13,7 @@ describe("pasted text", () => {
 
   it("stores a long paste as searchable passages", () => {
     const db = openDatabase(":memory:");
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-paste-"));
+    const dir = tempDir("pyxis-paste-");
     const body = `${"La velocità è la derivata dello spazio. ".repeat(80)}`;
     expect(body.length).toBeGreaterThan(PASTE_MIN);
     const stored = importPastedText(db, dir, "Cinematica", body);

@@ -8,6 +8,7 @@ import {
 } from "../core/ipc/file-grants";
 import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { fetchPlanText } from "./plan-fetch";
+import { isPlanFileName, needsWindowForPlan, planFileFromArgv, readOpenedPlan } from "./plan-open";
 import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
 import {
@@ -17,6 +18,13 @@ import {
   startLiveBackupWorker,
 } from "./auto-backup";
 import { commitRestore, RestoreRecoveryRequired } from "./restore-commit";
+import { StudyReminders } from "./reminders";
+import {
+  isReminderTime,
+  reminderText,
+  type ReminderSummary,
+} from "../shared/reminder";
+import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
@@ -46,6 +54,7 @@ import {
   ipcMain,
   MessageChannelMain,
   nativeTheme,
+  Notification,
   protocol,
   safeStorage,
   screen,
@@ -253,7 +262,6 @@ function installPermissionHandlers(): void {
 let mainWindow: BrowserWindow | null = null;
 let coreChild: UtilityProcess | null = null;
 let coreRestartFailures = 0;
-const exitedCores = new WeakSet<UtilityProcess>();
 let holdCore = false;
 let workspaceBusy = false;
 let archiveSettled = Promise.resolve();
@@ -317,7 +325,7 @@ function setUpAutoBackups(): void {
       workspaceBusy ||
       !coreChild ||
       keysReadyFor !== coreChild ||
-      exitedCores.has(coreChild),
+      coreExited(coreChild),
     start: (zip, waitForJobs, requireData) =>
       startLiveBackupWorker(
         join(import.meta.dirname, "archive-worker.js"),
@@ -326,6 +334,7 @@ function setUpAutoBackups(): void {
         waitForJobs,
         requireData,
       ),
+    verify: verifyArchives,
     changed: (status: AutoBackupStatus) =>
       mainWindow?.webContents.send(mainChannels.autoBackupChanged, status),
     log: (message) => console.warn(message),
@@ -337,6 +346,74 @@ function setUpAutoBackups(): void {
   // every 2 s: a first check that finds core still starting or a job running is postponed, and a slow runner must not
   // wait 10 minutes for the next one.
   autoBackups.start(testing ? 1000 : 60_000, testing ? 2000 : 10 * 60_000);
+}
+
+let reminders: StudyReminders | null = null;
+/** Notifications stay referenced until the student acts on them or the system drops them, or they could be collected first. */
+const shownReminders = new Set<Notification>();
+
+/** Brings the window forward and opens a page in it. After the last window closed on macOS, a new one starts there. */
+function openAppPath(path: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow(path);
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send(mainChannels.openPath, path);
+}
+
+function showReminder(summary: ReminderSummary): void {
+  if (!Notification.isSupported()) return;
+  const { title, body } = reminderText(menuLanguage ?? systemLanguage(), summary);
+  const note = new Notification({ title, body });
+  shownReminders.add(note);
+  note.once("click", () => {
+    shownReminders.delete(note);
+    openAppPath(`/plans/${summary.planId}`);
+  });
+  note.once("close", () => shownReminders.delete(note));
+  note.show();
+}
+
+/** Asks core for the cards due now. null: core is not up, so the check runs again in a minute. */
+function askCoreForReminder(): Promise<{ summary: ReminderSummary | null } | null> {
+  const child = coreChild;
+  if (!child || coreExited(child) || keysReadyFor !== child || holdCore)
+    return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const id = randomUUID();
+    const done = (answer: { summary: ReminderSummary | null } | null) => {
+      clearTimeout(timer);
+      child.off("message", listener);
+      resolve(answer);
+    };
+    const listener = (data: { type?: string; id?: string; ok?: boolean; summary?: ReminderSummary | null }) => {
+      if (data?.type === "reminder-result" && data.id === id)
+        done(data.ok ? { summary: data.summary ?? null } : null);
+    };
+    const timer = setTimeout(() => done(null), 10_000);
+    child.on("message", listener);
+    try {
+      child.postMessage({ type: "reminder-query", id });
+    } catch {
+      done(null);
+    }
+  });
+}
+
+function setUpReminders(): void {
+  reminders = new StudyReminders({
+    stateFile: userFile("reminders.json"),
+    query: askCoreForReminder,
+    show: showReminder,
+    busy: () => workspaceBusy,
+    log: (message) => console.warn(message),
+  });
+  // Tests that ask for no Documents folder also keep out of the notification center.
+  if (documentsFolder() === null && e2eSeam() && process.env["PYXIS_E2E"] === "1") return;
+  reminders.start();
 }
 
 function broadcastAppearance(): void {
@@ -374,7 +451,7 @@ function savedWindowBounds(): {
   return visible ? { width, height, x, y } : { width, height };
 }
 
-function createWindow(): void {
+function createWindow(route?: string): void {
   const hiddenTest = e2eSeam() && process.env["PYXIS_E2E_HIDDEN"] === "1";
   const bounds = savedWindowBounds();
   const theme = resolvedTheme();
@@ -432,7 +509,7 @@ function createWindow(): void {
     mainWindow = null;
   });
 
-  const hash = process.env["PYXIS_ROUTE"];
+  const hash = route ?? process.env["PYXIS_ROUTE"];
   if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
     const url = new URL(process.env["ELECTRON_RENDERER_URL"]);
     if (hash) url.hash = hash;
@@ -490,7 +567,7 @@ async function grantPickedPaths(paths: string[]): Promise<void> {
 async function grantFiles(grants: FileGrant[]): Promise<void> {
   for (const grant of grants) pickedGrants.set(grant.path, grant);
   const child = coreChild;
-  if (!child || exitedCores.has(child)) throw new Error("core-busy");
+  if (!child || coreExited(child)) throw new Error("core-busy");
   const id = randomUUID();
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -577,10 +654,10 @@ function startCore(strict = false): Promise<void> {
   }
   coreChild = child;
   configurePythonRuntime(workspacePath);
+  watchCoreExit(child);
   let childExited = false;
   child.once("exit", () => {
     childExited = true;
-    exitedCores.add(child);
   });
   function runtimeReply(message: unknown): void {
     if (childExited || coreChild !== child || quitting || holdCore) return;
@@ -667,16 +744,16 @@ function startCore(strict = false): Promise<void> {
         }
       }
       if (err instanceof Error && err.message === "core-ready-timeout") {
-        // Terminate the unhealthy core; it must not restart on its own.
+        // Terminate the unhealthy core; it must not restart on its own. It counts as exited only once it has, so a
+        // backup, restore, move or wipe that comes next waits for this stop instead of touching files it holds.
         timedOut = true;
-        exitedCores.add(child);
-        child.kill();
+        killCore(child);
         if (coreChild === child && !quitting)
           mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
       }
       // A reported bootstrap failure exits on its own; kill covers a hang. The
       // exit handler then applies the bounded restart policy.
-      else if (!exitedCores.has(child)) child.kill();
+      else killCore(child);
       throw err;
     })
     .then(() => {
@@ -687,8 +764,7 @@ function startCore(strict = false): Promise<void> {
       startupFailed = true;
       if (deliveringKeys) {
         timedOut = true;
-        exitedCores.add(child);
-        child.kill();
+        killCore(child);
         if (coreChild === child && !quitting)
           mainWindow?.webContents.send(mainChannels.coreUnavailable, true);
       }
@@ -699,13 +775,13 @@ function startCore(strict = false): Promise<void> {
       );
     })
     .finally(() => {
-      if (coreChild !== child || startupFailed || exitedCores.has(child))
+      if (coreChild !== child || startupFailed || coreExited(child))
         return;
       if (!startupFailed) {
         // Only a core that stays up counts as recovered. A crash that comes back right after each restart (a replayed
         // request that crashes it again) must still reach the 5-failure stop instead of looping forever.
         const stable = setTimeout(() => {
-          if (coreChild === child && !exitedCores.has(child))
+          if (coreChild === child && !coreExited(child))
             coreRestartFailures = 0;
         }, 30_000);
         child.once("exit", () => clearTimeout(stable));
@@ -764,32 +840,23 @@ async function showNewerWorkspace(): Promise<void> {
     );
 }
 
+/** Ends a core whose start failed at once, through the same stop a later pauseCore joins. */
+function killCore(child: UtilityProcess): void {
+  stopCoreProcess(child, 0).catch((error: unknown) =>
+    console.error("pyxis-core: could not be ended", (error as Error).message),
+  );
+}
+
 function pauseCore(): Promise<void> {
   holdCore = true;
   disposePythonRuntime();
   const child = coreChild;
   const stopped =
-    !child || exitedCores.has(child)
+    !child || coreExited(child)
       ? Promise.resolve()
-      : new Promise<void>((resolve, reject) => {
-          let settled = false;
-          const timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            holdCore = false;
-            reject(new Error("core-busy"));
-          }, 3000);
-          // Core checkpoints and closes the database before it exits, so the files copied next are complete.
-          // One that does not exit in time is killed.
-          const kill = setTimeout(() => child.kill(), 1500);
-          child.once("exit", () => {
-            clearTimeout(kill);
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve();
-          });
-          child.postMessage({ type: "shutdown" });
+      : stopCoreProcess(child).catch((error: unknown) => {
+          holdCore = false;
+          throw error;
         });
   return Promise.allSettled([stopped, invalidateRuntime(workspacePath)]).then(
     (results) => {
@@ -846,6 +913,38 @@ function runArchive(
 }
 
 /**
+ * Unpacks the database of each archive in a worker and checks it (see `verifyBackupArchive`). Reads the archives only,
+ * so it runs beside a backup or a restore.
+ */
+function verifyArchives(zips: string[]): Promise<Array<boolean | null>> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
+      workerData: { op: "verify", zips },
+    });
+    let settled = false;
+    const finish = (err?: Error, verified?: Array<boolean | null>) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(verified ?? []);
+    };
+    worker.once("message", (message: {
+        ok?: boolean;
+        verified?: Array<boolean | null>;
+        message?: string;
+      }) =>
+      message.ok && message.verified
+        ? finish(undefined, message.verified)
+        : finish(new Error(message.message || "backup-failed")),
+    );
+    worker.once("error", (err) =>
+      finish(err instanceof Error ? err : new Error("backup-failed")),
+    );
+    worker.once("exit", () => finish(new Error("backup-worker-no-result")));
+  });
+}
+
+/**
  * Enters the restore-recovery state. holdCore stops restarts and Retry; a core that ignored pauseCore is ended outright,
  * which also closes the renderer's port to it, so no more edits reach the uncommitted copy.
  */
@@ -853,7 +952,7 @@ function holdForRestoreRecovery(): void {
   restoreRecoveryRequired = true;
   holdCore = true;
   const child = coreChild;
-  if (child?.pid && !exitedCores.has(child)) {
+  if (child?.pid && !coreExited(child)) {
     try {
       process.kill(child.pid, "SIGKILL");
     } catch (error) {
@@ -885,7 +984,7 @@ function registerIpc(): void {
     // open the workspace mid-swap, and the operation's own start would then leave two cores on one database. A wipe
     // that could not put the data back keeps core stopped too.
     if (workspaceBusy || holdCore) return;
-    if (coreChild && !exitedCores.has(coreChild)) return;
+    if (coreChild && !coreExited(coreChild)) return;
     coreRestartFailures = 0;
     await startCore();
   });
@@ -1141,6 +1240,12 @@ function registerIpc(): void {
     requireMainSender(event, "plan-untrusted-sender");
     return fetchPlanText(raw);
   });
+  ipcMain.handle(mainChannels.planFileTake, async (event) => {
+    requireMainSender(event, "plan-untrusted-sender");
+    const path = waitingPlanPath;
+    waitingPlanPath = null;
+    return path ? readOpenedPlan(path) : null;
+  });
   ipcMain.handle(mainChannels.workspaceBackup, async (event) => {
     requireMainSender(event, "workspace-untrusted-sender");
     const release = await takeWorkspace();
@@ -1175,12 +1280,17 @@ function registerIpc(): void {
       release();
     }
   });
-  ipcMain.handle(mainChannels.workspaceRestore, async (event) => {
+  ipcMain.handle(mainChannels.workspaceRestore, async (event, backup: unknown) => {
     requireMainSender(event, "workspace-untrusted-sender");
+    if (backup !== undefined && typeof backup !== "string")
+      throw new Error("invalid-backup");
     const release = await takeWorkspace();
     try {
+      // A backup picked from the list in Settings; its name is resolved against the backup folder, never used as a path.
+      if (typeof backup === "string" && !autoBackups) throw new Error("backup-failed");
+      const listed = typeof backup === "string" ? autoBackups!.resolve(backup) : undefined;
       const forced = e2eSeam() ? process.env["PYXIS_E2E_ZIP"] : undefined;
-      let filePath = forced;
+      let filePath = listed ?? forced;
       if (!filePath) {
         const result = mainWindow
           ? await dialog.showOpenDialog(mainWindow, {
@@ -1259,7 +1369,7 @@ function registerIpc(): void {
         await pauseCore();
       } catch (error) {
         holdCore = false;
-        if (!coreChild || exitedCores.has(coreChild)) await resumeCore();
+        if (!coreChild || coreExited(coreChild)) await resumeCore();
         throw error;
       }
       let move: Awaited<ReturnType<typeof stageWorkspaceMove>> | undefined;
@@ -1395,9 +1505,34 @@ function registerAutoBackupIpc(): void {
     if (workspaceBusy) throw new Error("workspace-busy");
     return backups().runNow();
   });
+  ipcMain.handle(mainChannels.autoBackupList, (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
+    return backups().list();
+  });
   ipcMain.handle(mainChannels.autoBackupDismiss, (event) => {
     requireMainSender(event, "workspace-untrusted-sender");
     return backups().dismissNotice();
+  });
+}
+
+function registerReminderIpc(): void {
+  const study = (): StudyReminders => {
+    if (!reminders) throw new Error("invalid-setting");
+    return reminders;
+  };
+  ipcMain.handle(mainChannels.remindersGet, (event) => {
+    requireMainSender(event, "reminders-untrusted-sender");
+    return { ...study().get(), supported: Notification.isSupported() };
+  });
+  ipcMain.handle(mainChannels.remindersSet, (event, raw: unknown) => {
+    requireMainSender(event, "reminders-untrusted-sender");
+    const input = raw as { enabled?: unknown; time?: unknown } | null;
+    if (typeof input?.enabled !== "boolean" || !isReminderTime(input.time))
+      throw new Error("invalid-setting");
+    return {
+      ...study().set({ enabled: input.enabled, time: input.time }),
+      supported: Notification.isSupported(),
+    };
   });
 }
 
@@ -1406,11 +1541,46 @@ function registerProtocols(): void {
   registerRuntimeProtocol(session.defaultSession, () => workspacePath);
 }
 
-app.on("second-instance", () => {
-  if (!mainWindow) return;
+/**
+ * The plan file the system asked Pyxis to open, until the window has taken it. Only a path that main checked for a plan
+ * file name is kept, and the renderer cannot set it: it asks for the file, and main reads it (see `plan-open.ts`).
+ */
+let waitingPlanPath: string | null = null;
+
+/** True once startup has created the first window. A plan file that arrives earlier only waits (see `openPlanFile`). */
+let startupWindowCreated = false;
+
+function showWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+}
+
+function openPlanFile(path: string | null): void {
+  if (!path) return;
+  waitingPlanPath = path;
+  // The window may not exist yet (a launch from the file), or have been closed on macOS. It takes the file when it loads.
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (needsWindowForPlan(startupWindowCreated, BrowserWindow.getAllWindows().length)) createWindow();
+    return;
+  }
+  showWindow();
+  mainWindow.webContents.send(mainChannels.planFileWaiting);
+}
+
+// Windows and Linux hand the file to the first launch as an argument; a launch that finds Pyxis running hands it over
+// as the second instance's arguments.
+if (primaryInstance) waitingPlanPath = planFileFromArgv(process.argv.slice(1));
+app.on("second-instance", (_event, argv, workingDirectory) => {
+  const path = planFileFromArgv(argv.slice(1), workingDirectory);
+  if (path) openPlanFile(path);
+  else showWindow();
+});
+// macOS sends open-file for a double-click, a drop on the Dock icon and Open With, also before the app is ready.
+app.on("open-file", (event, path) => {
+  event.preventDefault();
+  if (isPlanFileName(path)) openPlanFile(path);
 });
 
 app.whenReady().then(() => {
@@ -1475,9 +1645,12 @@ app.whenReady().then(() => {
   registerIpc();
   setUpAutoBackups();
   registerAutoBackupIpc();
+  setUpReminders();
+  registerReminderIpc();
   nativeTheme.on("updated", broadcastAppearance);
   startCore();
   createWindow();
+  startupWindowCreated = true;
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -1493,6 +1666,7 @@ let quitAfterAutoBackup = false;
 app.on("before-quit", (event) => {
   // No check may start a backup from here on. A running one is stopped below.
   autoBackups?.dispose();
+  reminders?.dispose();
   // An automatic backup is stopped, not waited for: the next launch makes a new one.
   if (autoBackups?.running && !quitAfterAutoBackup) {
     event.preventDefault();

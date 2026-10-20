@@ -362,3 +362,36 @@ test("LES-03 a single gap drill started from the progress page opens its quiz wi
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test("a gap drill opened from the path is requested once: Back from its quiz does not start another", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-drill-back-"));
+  const app = await launch(userData, drillReplies());
+  try {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    const { planId, topics } = await setupPlan(userData, page, app);
+    const drills = () => {
+      const db = new DatabaseSync(dbPath(userData), { readOnly: true, timeout: 10000 });
+      try {
+        return (db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE kind = 'gap-drill'").get() as { n: number }).n;
+      } finally {
+        db.close();
+      }
+    };
+    // The path's "Gaps" step opens Progress with the topic to drill.
+    await goto(page, `/plans/${planId}/progress?drill=${topics[1]!}`);
+    await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=/, { timeout: 60000 });
+    expect(drills()).toBe(1);
+    await page.evaluate(() => window.history.back());
+    await expect(page).toHaveURL(/#\/plans\/[^/]+\/progress$/);
+    await expect(page.getByRole("button", { name: /^Colma la lacuna ·/ }).first()).toBeVisible();
+    // Give a wrongly repeated request time to show itself.
+    await page.waitForTimeout(1500);
+    await expect(page).toHaveURL(/#\/plans\/[^/]+\/progress$/);
+    expect(drills()).toBe(1);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});

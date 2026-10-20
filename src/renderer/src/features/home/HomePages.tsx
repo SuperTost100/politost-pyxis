@@ -20,6 +20,7 @@ import { SubjectManagerModal } from "../ask/SubjectPicker";
 import { ImportReview } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
 import { examDaysLabel } from "../plans/examDays";
+import { OggiBlock } from "./OggiBlock";
 import "./HomePages.css";
 
 export function ExamsHome() {
@@ -33,6 +34,7 @@ export function ExamsHome() {
   });
   const [query, setQuery] = useState("");
   const [picked, setSubject] = useState("");
+  const [shownStatus, setStatus] = useState<"active" | "archived">("active");
   const [managing, setManaging] = useState(false);
   const [failed, setFailed] = useState(false);
   const tab = location.pathname.startsWith("/exams/library")
@@ -51,7 +53,11 @@ export function ExamsHome() {
   ];
   // A renamed or removed subject can no longer filter.
   const subject = subjects.includes(picked) ? picked : "";
+  // The filter appears with the first archived exam, and falls back to Active when the last one is restored.
+  const hasArchived = (plans.data ?? []).some((plan) => plan.archived);
+  const status = hasArchived ? shownStatus : "active";
   const shown = (plans.data ?? []).filter((plan) => {
+    if (plan.archived !== (status === "archived")) return false;
     const needle = query.trim().toLocaleLowerCase();
     const haystack = `${plan.title} ${plan.subject ?? ""}`.toLocaleLowerCase();
     if (needle && !haystack.includes(needle)) return false;
@@ -126,6 +132,7 @@ export function ExamsHome() {
         <MistakesNotebook />
       ) : plans.isPending ? null : (plans.data?.length ?? 0) > 0 ? (
         <div className="px-exams-plans">
+          <OggiBlock />
           <ListToolbar
             search={
               <ToolbarSearch
@@ -137,19 +144,34 @@ export function ExamsHome() {
               />
             }
             filters={
-              <Select
-                id="plan-subject-filter"
-                aria-label={t("exams.subject")}
-                value={subject}
-                onChange={setSubject}
-                options={[
-                  { value: "", label: t("exams.allSubjects") },
-                  ...subjects.map((name) => ({
-                    value: name ?? "",
-                    label: name ?? "",
-                  })),
-                ]}
-              />
+              <>
+                <Select
+                  id="plan-subject-filter"
+                  aria-label={t("exams.subject")}
+                  value={subject}
+                  onChange={setSubject}
+                  options={[
+                    { value: "", label: t("exams.allSubjects") },
+                    ...subjects.map((name) => ({
+                      value: name ?? "",
+                      label: name ?? "",
+                    })),
+                  ]}
+                />
+                {/* Appears with the first archived exam; Archived is the only way back to one. */}
+                {hasArchived ? (
+                  <Select
+                    id="plan-status-filter"
+                    aria-label={t("exams.status")}
+                    value={status}
+                    onChange={setStatus}
+                    options={[
+                      { value: "active", label: t("exams.statusActive") },
+                      { value: "archived", label: t("exams.statusArchived") },
+                    ]}
+                  />
+                ) : null}
+              </>
             }
             menu={moreMenu}
             primary={
@@ -164,7 +186,15 @@ export function ExamsHome() {
           />
           {importFailed}
           {shown.length === 0 ? (
-            <p className="body">{t("exams.noMatch")}</p>
+            <p className="body">
+              {t(
+                query.trim() || subject
+                  ? "exams.noMatch"
+                  : status === "archived"
+                    ? "exams.noArchived"
+                    : "exams.allArchived",
+              )}
+            </p>
           ) : null}
           <ul className="px-plan-grid">
             {shown.map((plan) => (

@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
@@ -29,6 +30,8 @@ import {
   useFreeBooks,
 } from "../../components/FreeBooks";
 import { jobErrorKey } from "../jobs/jobErrors";
+import { PdfPasswordDialog } from "../../components/PdfPassword";
+import { isPdfPasswordError } from "@shared/source-errors";
 import {
   MAX_DROPPED_FILES,
   MAX_FOLDER_DEPTH,
@@ -121,6 +124,12 @@ export function LibraryPanel({
   );
   const [warning, setWarning] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // The locked PDF whose password is being asked for, and the link source being checked for a new version.
+  const [unlocking, setUnlocking] = useState<{
+    jobId: string;
+    title: string;
+  } | null>(null);
+  const [refreshing, setRefreshing] = useState<string | null>(null);
   // The scan being read page by page, and whether the student has asked it to stop.
   const [ocrFor, setOcrFor] = useState<{
     id: string;
@@ -567,6 +576,33 @@ export function LibraryPanel({
       setInfo(t("sources.reextractStarted", { title: source.title }));
     void client.invalidateQueries({ queryKey: ["sources"] });
   }
+  /** Fetches a link source again. A changed page is read as a new version; a source that plans use asks first. */
+  async function refresh(source: LibrarySource, confirmed = false) {
+    setInfo(null);
+    setError(null);
+    setAgain(null);
+    setRefreshing(source.id);
+    let result;
+    try {
+      result = await invoke("sources.refresh", {
+        sourceId: source.id,
+        confirmed,
+      });
+    } finally {
+      setRefreshing(null);
+    }
+    if (!result.started && result.inUse > 0 && !result.unchanged) {
+      if (!window.confirm(t("sources.refreshInUse", { count: result.inUse })))
+        return;
+      return refresh(source, true);
+    }
+    setInfo(
+      t(result.unchanged ? "sources.refreshUnchanged" : "sources.refreshStarted", {
+        title: source.title,
+      }),
+    );
+    void client.invalidateQueries({ queryKey: ["sources"] });
+  }
   async function remove(source: LibrarySource) {
     if (!window.confirm(`${t("sources.remove")} "${source.title}"?`)) return;
     const result = await invoke("sources.remove", {
@@ -600,8 +636,11 @@ export function LibraryPanel({
       (filterType === "all" || source.kind === filterType) &&
       source.title.toLocaleLowerCase().includes(titleNeedle),
   );
+  // A hit whose source was removed since the search would open nothing.
   const hits = (passages.data ?? []).filter(
-    (hit) => filterType === "all" || kindOf.get(hit.sourceId) === filterType,
+    (hit) =>
+      kindOf.has(hit.sourceId) &&
+      (filterType === "all" || kindOf.get(hit.sourceId) === filterType),
   );
   function openHit(hit: (typeof hits)[number]) {
     openSourceViewer({ passageId: hit.id, sourceId: hit.sourceId });
@@ -630,6 +669,25 @@ export function LibraryPanel({
         {source.error ? (
           <p className="small px-library-flag">
             {t(jobErrorKey(source.error))}
+          </p>
+        ) : null}
+        {source.errorJobId && isPdfPasswordError(source.error) ? (
+          <p className="small px-library-unlock">
+            <Button
+              shape="round"
+              size="small"
+              aria-label={t("sources.pdfPassword.enterNamed", {
+                title: source.title,
+              })}
+              onClick={() =>
+                setUnlocking({
+                  jobId: source.errorJobId!,
+                  title: source.title,
+                })
+              }
+            >
+              {t("sources.pdfPassword.enter")}
+            </Button>
           </p>
         ) : null}
         {newVersions.has(source.id) ? (
@@ -1049,7 +1107,8 @@ export function LibraryPanel({
     </Modal>
   );
   if (importOnly) return addModal;
-  const empty = !list.isPending && sources.length === 0;
+  const loadFailed = list.isError && !list.data;
+  const empty = list.isSuccess && sources.length === 0;
   const showHits = contentQuery.length > 0;
   const actions = (source: LibrarySource) => ({
     items: [
@@ -1062,6 +1121,16 @@ export function LibraryPanel({
         // A smartbook is read from its package and has no stored file to read again.
         disabled: source.kind === "smartbook" || !source.blobSha,
       },
+      // Only a source saved from a link has a page to fetch again.
+      ...(source.originUrl
+        ? [
+            {
+              key: "refresh",
+              label: t("sources.refresh"),
+              disabled: refreshing !== null,
+            },
+          ]
+        : []),
       { type: "divider" as const },
       { key: "remove", label: t("sources.remove"), danger: true },
     ],
@@ -1069,6 +1138,7 @@ export function LibraryPanel({
       select(source);
       if (key === "replace") void replace(source.id).catch(fail);
       else if (key === "reextract") void reextract(source).catch(fail);
+      else if (key === "refresh") void refresh(source).catch(fail);
       else if (key === "remove") void remove(source).catch(fail);
       else setDetailsOpen(true);
     },
@@ -1077,7 +1147,18 @@ export function LibraryPanel({
     <div className="px-library">
       {addModal}
       <FreeBooks open={booksOpen} onClose={() => setBooksOpen(false)} />
-      {empty ? (
+      <PdfPasswordDialog
+        target={unlocking}
+        onClose={() => {
+          setUnlocking(null);
+          void client.invalidateQueries({ queryKey: ["sources"] });
+        }}
+      />
+      {loadFailed ? (
+        <LoadError onRetry={() => void list.refetch()}>
+          {t("sources.loadFailed")}
+        </LoadError>
+      ) : empty ? (
         <EmptyState
           title={t("exams.sourcesEmptyTitle")}
           body={t("exams.sourcesEmptyBody")}
@@ -1157,7 +1238,7 @@ export function LibraryPanel({
               : passages.data
                 ? hits.length
                   ? t("sources.hits", { count: hits.length })
-                  : t("sources.noHits")
+                  : t("sources.searchNone", { query: contentQuery })
                 : "\u00a0"}
           </p>
           {hits.length > 0 ? (
@@ -1177,7 +1258,7 @@ export function LibraryPanel({
             </ul>
           ) : null}
         </section>
-      ) : list.isPending ? (
+      ) : loadFailed ? null : list.isPending ? (
         <div className="px-list-surface px-library-loading" aria-hidden>
           <Skeleton active title={false} paragraph={{ rows: 2 }} />
         </div>
@@ -1380,6 +1461,24 @@ export function LibraryPanel({
             {t("sources.syllabusUnavailable")}
           </p>
         ) : null}
+        {detailSource?.originUrl ? (
+          <p className="small section-hint">
+            {t("sources.savedFrom", {
+              host: (() => {
+                try {
+                  return new URL(detailSource.originUrl).hostname;
+                } catch {
+                  return detailSource.originUrl;
+                }
+              })(),
+              date: detailSource.fetchedAt
+                ? new Intl.DateTimeFormat(i18n.language, {
+                    dateStyle: "medium",
+                  }).format(detailSource.fetchedAt)
+                : "—",
+            })}
+          </p>
+        ) : null}
         {meta.data && !meta.data.knownSpec ? (
           <Notice tone="warning">{t("sources.specUnknown")}</Notice>
         ) : null}
@@ -1418,6 +1517,16 @@ export function LibraryPanel({
             >
               {t("sources.reextract")}
             </Button>
+            {detailSource?.originUrl ? (
+              <Button
+                shape="round"
+                loading={refreshing === detailSource.id}
+                disabled={refreshing !== null && refreshing !== detailSource.id}
+                onClick={() => void refresh(detailSource).catch(fail)}
+              >
+                {t("sources.refresh")}
+              </Button>
+            ) : null}
             <Button
               shape="round"
               danger

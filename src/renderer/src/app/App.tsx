@@ -15,6 +15,8 @@ import { i18n, type Locale } from "../locales/i18n";
 import { CoreNotice } from "./CoreNotice";
 import { EngineFallbackNotice } from "./EngineFallbackNotice";
 import { MenuCommands } from "./MenuCommands";
+import { OpenedPlans } from "./OpenedPlans";
+import { MakeCardsDialog } from "../components/MakeCardsDialog";
 import { SourceViewer } from "../components/SourceViewer";
 import { JobsSync } from "../features/jobs/queries";
 import { AppStateContext } from "./app-state";
@@ -132,8 +134,10 @@ function StudyApp() {
             <CoreNotice />
             <EngineFallbackNotice />
             <MenuCommands />
+            <OpenedPlans />
             <RouterProvider router={router} />
             <SourceViewer />
+            <MakeCardsDialog />
           </AntApp>
         </ProConfigProvider>
       </ConfigProvider>

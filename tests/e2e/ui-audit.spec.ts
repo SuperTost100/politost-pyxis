@@ -47,6 +47,9 @@ const routes = [
   // The mistakes notebook across exams and on one plan.
   ["mistakes", "/exams/mistakes"],
   ["plan-mistakes", "/plans/audit-plan/mistakes"],
+  // Oggi's flashcards from every plan, and the session planner (the fixture's one plan has no exam date).
+  ["cards-due", "/cards/due"],
+  ["planner", "/exams/planner"],
   ["library-vision", "/exams/library"],
   ["shared", "/exams/get"],
   ["import-review", "/exams/get"],
@@ -56,6 +59,8 @@ const routes = [
     "engines",
     "tutor",
     "reading",
+    "flashcards",
+    "reminders",
     "appearance",
     "language",
     "data",
@@ -119,6 +124,12 @@ const routes = [
   ["simulation-ready", "/plans/audit-ready-plan/simulation"],
   ["simulation-result", "/plans/audit-plan/exam/audit-exam-attempt"],
   ["map", "/plans/audit-plan/map/audit-topic"],
+  // The Maps section: maps by subject, no map at all, a search with no match, the new-map dialog, and a map opened from it with its export menu.
+  ["maps", "/maps"],
+  ["maps-empty", "/maps"],
+  ["maps-none", "/maps"],
+  ["maps-new", "/maps"],
+  ["map-export", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
   ["whiteboard", "/tools/whiteboard"],
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
@@ -478,6 +489,9 @@ function seed(db: DatabaseSync) {
     examDay.getTime(),
   );
   db.prepare(
+    "INSERT INTO plan_sessions(id,plan_id,date,created_at) VALUES('audit-ready-plan','audit-ready-plan',?,1)",
+  ).run(examDay.getTime());
+  db.prepare(
     "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('audit-ready-build','simulation-build',?,'succeeded',1,?,?)",
   ).run(
     JSON.stringify({
@@ -773,7 +787,7 @@ function prepareBackupState(name: string) {
     folder: null,
     lastSuccessAt: at,
     lastAttemptAt: at,
-    last: { at, ok: true, size: 48_213_504 },
+    last: { at, ok: true, size: 48_213_504, verified: true },
     toldTooLarge: false,
   };
   const states: Record<string, unknown> = {
@@ -827,9 +841,28 @@ function prepareLibraryEmpty(name: string) {
   });
 }
 
+/** The empty Maps section: the maps move to a side table and come back for every other state. */
+function prepareMapsEmpty(name: string) {
+  withDb((db) => {
+    const hidden = db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'audit_hidden_maps'",
+      )
+      .get();
+    if (name === "maps-empty") {
+      if (hidden) return;
+      db.exec(`CREATE TABLE audit_hidden_maps AS SELECT * FROM maps;
+        DELETE FROM maps;`);
+    } else if (hidden)
+      db.exec(`INSERT INTO maps SELECT * FROM audit_hidden_maps;
+        DROP TABLE audit_hidden_maps;`);
+  });
+}
+
 function prepareState(name: string) {
   prepareExamsEmpty(name);
   prepareLibraryEmpty(name);
+  prepareMapsEmpty(name);
   prepareCardBrowser(name);
   prepareBackupState(name);
   prepareUpdate(name);
@@ -2030,6 +2063,41 @@ async function openState(page: Page, name: string) {
         ),
       ).toBeVisible();
       break;
+    case "maps":
+      await expect(
+        page.getByRole("heading", { level: 3, name: "Dinamica" }),
+      ).toBeVisible();
+      break;
+    case "maps-empty":
+      await expect(
+        page.getByRole("heading", {
+          name: both("Ancora nessuna mappa", "No maps yet"),
+        }),
+      ).toBeVisible();
+      break;
+    case "maps-none":
+      await page
+        .getByRole("textbox", { name: both("Cerca nelle mappe", "Search maps") })
+        .fill("zzzz");
+      await expect(
+        page.getByText(
+          both("Nessuna mappa corrisponde.", "No map matches."),
+        ),
+      ).toBeVisible();
+      break;
+    case "maps-new":
+      await page
+        .getByRole("button", { name: both("Nuova mappa", "New map") })
+        .click();
+      await expect(dialog).toBeVisible();
+      break;
+    case "map-export":
+      await expect(page.locator(".react-flow__node")).toHaveCount(3);
+      await page
+        .getByRole("button", { name: both("Esporta", "Export") })
+        .click();
+      await expect(page.getByRole("menuitem").first()).toBeVisible();
+      break;
     case "exams-import-menu":
       await page.getByRole("button", { name: both("Altro", "More") }).click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
@@ -2676,7 +2744,8 @@ test("M14 every application route in both languages, themes and supported widths
               // Tabbing beyond a dropdown closes it. Reopen it for visual/axe checks.
               if (
                 (name === "library-row-menu" ||
-                  name === "exams-import-menu") &&
+                  name === "exams-import-menu" ||
+                  name === "map-export") &&
                 !(await page.getByRole("menuitem").first().isVisible())
               )
                 await openState(page, name);

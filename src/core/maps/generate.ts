@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
+import { IpcError } from "../../shared/ipc";
 import { mapOpSchema } from "../../shared/concept-map";
 import { generate, type GenerateInput } from "../engine/generate";
 import {
@@ -286,12 +287,12 @@ export async function editMap(
   db: Database.Database,
   input: Input & { mapId?: string; instruction: string },
   run?: GenerateInput["run"],
+  signal?: AbortSignal,
 ) {
   const stored = readStoredMap(db, input.planId, input.topicId, input.mapId);
   if (!stored) throw new Error("map-missing");
   if (!input.instruction.trim() || input.instruction.length > 2000)
     throw new Error("map-instruction");
-  const original = JSON.stringify(stored.graph);
   const schema = z
     .object({ ops: z.array(mapOpSchema).min(1).max(50) })
     .superRefine((value, ctx) => {
@@ -308,26 +309,37 @@ export async function editMap(
   const result = await generate({
     selection: selectionFor(db, "map"),
     run,
+    signal,
     schema,
     system: systemPrompt("map.edit", {
       contentLanguage: planLanguage(db, input.planId),
     }),
     prompt: JSON.stringify({
       instruction: input.instruction,
-      graph: { ...stored.graph, undo: null },
+      graph: { ...stored.graph, undo: null, redo: null },
     }),
   });
+  // The student may have moved, renamed or undone something while the model wrote. The model's operations name nodes
+  // by id, so they are applied to the map as it is now; that keeps the student's changes and puts the edit on top.
   return db.transaction(() => {
     const current = readStoredMap(db, input.planId, input.topicId, stored.id);
-    if (!current || JSON.stringify(current.graph) !== original)
-      throw new Error("map-changed");
-    const next = applyOps(
-      current.graph,
-      (result.data as z.infer<typeof schema>).ops,
-    );
+    if (!current) throw editConflict();
+    let next: ConceptGraph;
+    try {
+      next = applyOps(
+        current.graph,
+        (result.data as z.infer<typeof schema>).ops,
+      );
+    } catch {
+      throw editConflict();
+    }
     storeMap(db, input.planId, input.topicId, { ...current, graph: next });
     return next;
   })();
+}
+/** The map changed while the model was editing, in a way the edit no longer fits (a node it names is gone). */
+function editConflict() {
+  return new IpcError("map-edit-conflict", "map.editConflict");
 }
 
 export function mapBuild(db: Database.Database, input: Input) {

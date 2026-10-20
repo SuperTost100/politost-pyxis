@@ -1,8 +1,10 @@
 import { AboutPanel } from "./AboutPanel";
 import { UpdatesPanel } from "./UpdatesPanel";
 import { AutoBackupsSection } from "./AutoBackups";
+import { BackupList } from "./BackupList";
+import { RemindersPanel, useReminders } from "./RemindersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Checkbox, Input } from "antd";
+import { App, Button, Checkbox, Input, InputNumber } from "antd";
 import {
   ArrowLeft,
   ChevronRight,
@@ -16,7 +18,9 @@ import {
   RefreshCw,
   Info,
   ALargeSmall,
+  Bell,
   Terminal,
+  Layers,
 } from "lucide-react";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
@@ -72,6 +76,32 @@ export function SettingsPage() {
     queryFn: () => invoke("profile.get", {}),
   });
 
+  const cardSettings = useQuery({
+    queryKey: ["card-settings"],
+    queryFn: () => invoke("study.cardSettings", {}),
+  });
+  const [draftNewPerDay, setDraftNewPerDay] = useState<number | null>(null);
+  async function saveNewPerDay() {
+    const value = draftNewPerDay;
+    setDraftNewPerDay(null);
+    if (value == null || value === cardSettings.data?.newPerDay) return;
+    setSaveError(false);
+    try {
+      client.setQueryData(
+        ["card-settings"],
+        await invoke("study.saveCardSettings", { newPerDay: value }),
+      );
+      // Due counts on the path and in card sessions follow the new limit.
+      await Promise.all(
+        ["plan", "plans", "card-queue", "cards"].map((key) =>
+          client.invalidateQueries({ queryKey: [key] }),
+        ),
+      );
+    } catch {
+      setSaveError(true);
+    }
+  }
+
   const [saveError, setSaveError] = useState(false);
   const [draftInterests, setDraftInterests] = useState<string | null>(null);
   const [dataNote, setDataNote] = useState<string | null>(null);
@@ -80,11 +110,13 @@ export function SettingsPage() {
   // From the confirming click until main answers: a second click would start another wipe.
   const [wiping, setWiping] = useState(false);
   const { modal } = App.useApp();
-  const [restoreArmed, setRestoreArmed] = useState(false);
+  // What the next click on a Restore button replaces the data with: "file" asks for a file, a name is a listed backup.
+  const [restoreArmed, setRestoreArmed] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [archiving, setArchiving] = useState<"backup" | "restore" | null>(null);
   const [freeing, setFreeing] = useState(false);
   const [freeNote, setFreeNote] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState<string | null>(null);
   const place = useQuery({
     queryKey: ["workspace-path"],
     queryFn: () => window.pyxis.workspacePath(),
@@ -95,6 +127,7 @@ export function SettingsPage() {
     queryFn: () => window.pyxis.autoBackups.status(),
   });
   const backupFolder = backupStatus.data?.folder;
+  const reminders = useReminders();
   const usage = useQuery({
     queryKey: ["plan-usage"],
     queryFn: () => invoke("plans.usage", {}),
@@ -124,6 +157,43 @@ export function SettingsPage() {
       setSaveError(true);
     }
   }
+  /** Restores from a file the student picks, or from the listed backup `name`. */
+  function restore(name?: string) {
+    setRestoreArmed(null);
+    setDataNote(null);
+    setArchiving("restore");
+    setRestoring(name ?? "file");
+    void window.pyxis
+      .restoreWorkspace(name)
+      .then((status) => {
+        if (status === "restored") {
+          // Drafts, board strokes and staged files belong to the replaced workspace.
+          sessionStorage.clear();
+          window.location.reload();
+        }
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "";
+        const rolledBack = message.includes("restore-rolled-back");
+        setDataNote(
+          t(
+            rolledBack
+              ? "settings.restoreRolledBack"
+              : message.includes("restore-recovery-required")
+                ? "settings.restoreRecoveryRequired"
+                : "settings.restoreFailed",
+          ),
+        );
+        // Core ran on the restored copy for a moment; what the pages read from it is gone again.
+        if (rolledBack) void client.invalidateQueries();
+        // The file may be gone or no longer pass its check.
+        void client.invalidateQueries({ queryKey: ["auto-backup-list"] });
+      })
+      .finally(() => {
+        setArchiving(null);
+        setRestoring(null);
+      });
+  }
   const workspaceName =
     place.data?.split(/[\\/]/).filter(Boolean).at(-1) ??
     t("settings.workspaceThis");
@@ -132,6 +202,8 @@ export function SettingsPage() {
     engines: t("settings.enginesTitle"),
     tutor: t("settings.tutor"),
     reading: t("settings.reading"),
+    flashcards: t("settings.flashcards"),
+    reminders: t("settings.reminders.title"),
     appearance: t("settings.appearance"),
     language: t("settings.language"),
     data: t("settings.data"),
@@ -179,6 +251,18 @@ export function SettingsPage() {
           key: "reading",
           icon: ALargeSmall,
           value: t(`settings.text.${profile.data?.textSize ?? "md"}`),
+        },
+        {
+          key: "flashcards",
+          icon: Layers,
+          value: cardSettings.data ? String(cardSettings.data.newPerDay) : "",
+        },
+        {
+          key: "reminders",
+          icon: Bell,
+          value: reminders.data?.enabled
+            ? reminders.data.time
+            : t("settings.reminders.valueOff"),
         },
       ],
     },
@@ -348,6 +432,28 @@ export function SettingsPage() {
         </div>
       </>
     ),
+    flashcards: (
+      <div className="px-form-field px-settings-cards">
+        <label className="label" htmlFor="settings-new-per-day">
+          {t("settings.newPerDay")}
+        </label>
+        <InputNumber
+          id="settings-new-per-day"
+          min={0}
+          max={999}
+          precision={0}
+          value={draftNewPerDay ?? cardSettings.data?.newPerDay ?? 20}
+          onChange={(value) => setDraftNewPerDay(value ?? null)}
+          onBlur={() => void saveNewPerDay()}
+          onPressEnter={() => void saveNewPerDay()}
+          aria-describedby="settings-new-per-day-hint"
+        />
+        <p className="small section-hint" id="settings-new-per-day-hint">
+          {t("settings.newPerDayHint")}
+        </p>
+      </div>
+    ),
+    reminders: <RemindersPanel />,
     data: (
       <>
         {place.data ? <p className="small section-hint">{place.data}</p> : null}
@@ -458,56 +564,29 @@ export function SettingsPage() {
           </Button>
           <Button
             disabled={moving || (archiving !== null && archiving !== "restore")}
-            loading={archiving === "restore"}
-            danger={restoreArmed}
+            loading={restoring === "file"}
+            danger={restoreArmed === "file"}
             onClick={() => {
               if (archiving) return;
-              if (!restoreArmed) {
-                setRestoreArmed(true);
+              if (restoreArmed !== "file") {
+                setRestoreArmed("file");
                 return;
               }
-              setRestoreArmed(false);
-              setDataNote(null);
-              setArchiving("restore");
-              void window.pyxis
-                .restoreWorkspace()
-                .then((status) => {
-                  if (status === "restored") {
-                    // Drafts, board strokes and staged files belong to the replaced workspace.
-                    sessionStorage.clear();
-                    window.location.reload();
-                  }
-                })
-                .catch((error: unknown) => {
-                  const message = error instanceof Error ? error.message : "";
-                  const rolledBack = message.includes("restore-rolled-back");
-                  setDataNote(
-                    t(
-                      rolledBack
-                        ? "settings.restoreRolledBack"
-                        : message.includes("restore-recovery-required")
-                          ? "settings.restoreRecoveryRequired"
-                          : "settings.restoreFailed",
-                    ),
-                  );
-                  // Core ran on the restored copy for a moment; what the pages read from it is gone again.
-                  if (rolledBack) void client.invalidateQueries();
-                })
-                .finally(() => setArchiving(null));
+              restore();
             }}
           >
-            {restoreArmed
+            {restoreArmed === "file"
               ? t("settings.restoreReplace", { workspace: workspaceName })
               : t("settings.restore")}
           </Button>
-          {restoreArmed ? (
-            <Button type="text" onClick={() => setRestoreArmed(false)}>
+          {restoreArmed === "file" ? (
+            <Button type="text" onClick={() => setRestoreArmed(null)}>
               {t("wizard.cancel")}
             </Button>
           ) : null}
         </div>
         {/* The confirmation and the hint sit under the backup buttons they explain. */}
-        {restoreArmed ? (
+        {restoreArmed === "file" ? (
           <p className="small section-hint" role="alert">
             {t("settings.restoreConfirm", { workspace: workspaceName })}
           </p>
@@ -519,6 +598,15 @@ export function SettingsPage() {
         </div>
         <AutoBackupsSection
           formatSize={(bytes) => formatBytes(bytes, i18n.language)}
+        />
+        <BackupList
+          formatSize={(bytes) => formatBytes(bytes, i18n.language)}
+          workspaceName={workspaceName}
+          armed={restoreArmed !== "file" ? restoreArmed : null}
+          restoring={restoring !== "file" ? restoring : null}
+          disabled={moving || archiving !== null}
+          onArm={setRestoreArmed}
+          onRestore={restore}
         />
         <div className="px-settings-danger">
           <p className="small ink-muted">{t("settings.wipeHint")}</p>
@@ -652,7 +740,7 @@ export function SettingsPage() {
   function open(key: string) {
     navigate(`/settings/${key}`);
     setWipeArmed(false);
-    setRestoreArmed(false);
+    setRestoreArmed(null);
   }
   const subpage = shown ? (
     <section className="px-settings-subpage">
@@ -679,7 +767,7 @@ export function SettingsPage() {
           onClick={() => {
             navigate("/settings");
             setWipeArmed(false);
-            setRestoreArmed(false);
+            setRestoreArmed(null);
           }}
         >
           {t("settings.back")}
@@ -691,8 +779,10 @@ export function SettingsPage() {
       {saveError ? (
         <Notice tone="danger">{t("settings.saveFailed")}</Notice>
       ) : null}
-      {twoPane ? (
-        <div className="px-settings-panes">
+      {/* Both layouts share this wrapper and keep the open section in the same slot. Crossing 960 px then re-lays the
+          page out without remounting the section, so an open drawer or a half-typed field survives. */}
+      <div className={twoPane ? "px-settings-panes" : undefined}>
+        {twoPane ? (
           <nav className="px-settings-nav" aria-label={t("settings.title")}>
             {groups.map((group) => (
               <div className="px-settings-nav-group" key={group.name}>
@@ -712,32 +802,31 @@ export function SettingsPage() {
               </div>
             ))}
           </nav>
-          {subpage}
-        </div>
-      ) : subpage ? (
-        subpage
-      ) : (
-        <div className="px-settings-groups">
-          {groups.map((group) => (
-            <section className="px-settings-group" key={group.name}>
-              <h2 className="label">{group.name}</h2>
-              {group.rows.map((row) => (
-                <button
-                  type="button"
-                  className="px-settings-row"
-                  key={row.key}
-                  onClick={() => navigate(`/settings/${row.key}`)}
-                >
-                  <row.icon size={20} aria-hidden="true" />
-                  <span className="body-strong">{labels[row.key]}</span>
-                  <span className="meta px-settings-current">{row.value}</span>
-                  <ChevronRight size={18} aria-hidden="true" />
-                </button>
+        ) : null}
+        {subpage ??
+          (twoPane ? null : (
+            <div className="px-settings-groups">
+              {groups.map((group) => (
+                <section className="px-settings-group" key={group.name}>
+                  <h2 className="label">{group.name}</h2>
+                  {group.rows.map((row) => (
+                    <button
+                      type="button"
+                      className="px-settings-row"
+                      key={row.key}
+                      onClick={() => navigate(`/settings/${row.key}`)}
+                    >
+                      <row.icon size={20} aria-hidden="true" />
+                      <span className="body-strong">{labels[row.key]}</span>
+                      <span className="meta px-settings-current">{row.value}</span>
+                      <ChevronRight size={18} aria-hidden="true" />
+                    </button>
+                  ))}
+                </section>
               ))}
-            </section>
+            </div>
           ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,4 @@
-/* Quiz: one calm column. Intro, one question at a time, then the results. */
-.px-quiz-intro,
+/* Quiz: one calm column. Intro (ActivityIntro), one question at a time, then the results. */
 .px-quiz-wait,
 .px-quiz-question,
 .px-quiz-results {
@@ -13,125 +12,14 @@
   color: var(--ink-subtle);
 }
 
-/* Intro */
-.px-quiz-intro {
-  align-items: center;
-  text-align: center;
-  padding-top: clamp(var(--space-6), 9vh, var(--space-16));
-}
-.px-quiz-intro-title {
-  margin: var(--space-3) 0 0;
-  max-width: 18em;
-  overflow-wrap: anywhere;
-}
-.px-quiz-intro-text {
-  margin: var(--space-4) 0 0;
-  max-width: 34em;
-  color: var(--ink-muted);
-}
-.px-quiz-facts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-2) var(--space-6);
-  margin: var(--space-8) 0 0;
-  padding: var(--space-4) var(--space-6);
-  list-style: none;
-  border-block: 1px solid var(--border);
-  color: var(--ink-muted);
-  font: 400 calc(14px * var(--text-scale, 1)) / 20px var(--font-sans);
-}
-.px-quiz-facts li {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.px-quiz-facts .px-icon {
-  color: var(--ink-subtle);
-}
-.px-quiz-options {
-  width: 100%;
-  margin-top: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.px-quiz-options-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-3);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--primary-text);
-  font: 500 calc(14px * var(--text-scale, 1)) / 20px var(--font-sans);
-  cursor: pointer;
-}
-.px-quiz-options-toggle:hover {
-  background: var(--primary-soft);
-}
 .px-quiz-chevron {
   transition: transform 150ms ease-out;
 }
-.px-quiz-options-toggle[aria-expanded="true"] .px-quiz-chevron,
 .px-quiz-row.is-open .px-quiz-chevron {
   transform: rotate(90deg);
 }
-.px-quiz-options-panel {
-  width: 100%;
-  margin-top: var(--space-4);
-  padding: var(--space-5);
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  text-align: left;
-}
-.px-quiz-intro-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-3);
-  margin-top: var(--space-8);
-}
-.px-quiz-intro-actions .ant-btn {
-  min-width: 132px;
-}
-.px-quiz-intro-status {
-  margin: var(--space-3) 0 0;
-  color: var(--ink-muted);
-}
 
-/* Intro options */
-.px-quiz-types {
-  border: 0;
-  padding: 0;
-  margin: 0;
-  min-width: 0;
-}
-.px-quiz-types legend {
-  margin-bottom: var(--space-3);
-}
-.px-quiz-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-}
-.px-quiz-pills .choice {
-  width: auto;
-  min-height: var(--control-md);
-  white-space: nowrap;
-  border-radius: var(--radius-pill);
-  padding: 8px 16px;
-}
-.px-quiz-pills .choice.is-selected {
-  padding: 7px 15px;
-}
+/* Intro options that only a quiz has */
 .px-quiz-toggle {
   display: flex;
   align-items: center;
@@ -205,6 +93,7 @@
 }
 .px-quiz-kicker {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   min-height: 16px;
@@ -622,4 +511,34 @@
 .px-quiz-open textarea:disabled,
 .px-quiz-blanks input:disabled {
   color: var(--ink);
+}
+
+/* "I don't know" and Skip: quiet actions under the answer, so Check stays the one filled button */
+.px-quiz-pass {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: calc(-1 * var(--space-2)) 0 0 calc(-1 * var(--space-2));
+}
+.px-quiz-pass .ant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-muted);
+}
+.px-quiz-dont-know {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-quiz-keycap {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--space-1);
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--ink-subtle);
+  font: 400 11px/1 var(--font-mono);
 }

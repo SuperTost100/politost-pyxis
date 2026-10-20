@@ -16,6 +16,9 @@
   margin: var(--space-1) 0 0;
   color: var(--primary-text);
 }
+.px-library-unlock {
+  margin: var(--space-1) 0 0;
+}
 .px-library-count {
   margin: 0 0 var(--space-3);
 }

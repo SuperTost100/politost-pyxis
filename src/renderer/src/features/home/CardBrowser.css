@@ -89,6 +89,10 @@
   margin-top: 0;
   margin-bottom: 0;
 }
+.px-cardbrowser-leech {
+  margin: 0;
+  color: var(--ink-muted);
+}
 .px-cardbrowser-state {
   display: flex;
   flex-wrap: wrap;
@@ -105,6 +109,25 @@
 }
 .px-cardbrowser-actions .ant-btn {
   white-space: nowrap;
+}
+/* Narrow, a tagged card's state drops under the text so the text keeps a readable line. */
+@media (max-width: 720px) {
+  .px-cardbrowser-row.has-tags {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "text actions"
+      "state state";
+  }
+  .has-tags > .px-cardbrowser-text {
+    grid-area: text;
+  }
+  .has-tags > .px-cardbrowser-state {
+    grid-area: state;
+    justify-content: flex-start;
+  }
+  .has-tags > .px-cardbrowser-actions {
+    grid-area: actions;
+  }
 }
 .px-cardbrowser-pages {
   margin-top: var(--space-4);

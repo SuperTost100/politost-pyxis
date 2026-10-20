@@ -2,11 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { PlanFile } from "@shared/plan-file";
+import type { PlanFile, PlanFilePart, PlanFileReason } from "@shared/plan-file";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import {
   defaultChoices,
+  importFailure,
   importRequest,
   locatedData,
   previewPlan,
@@ -53,7 +54,16 @@ export function ImportReview({
   const [located, setLocated] = useState<Record<number, string>>({});
   const [wrong, setWrong] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<
+    boolean | { reason: PlanFileReason; without: PlanFilePart[] }
+  >(false);
+  // The same file imported before, if that plan is still here. Importing it again is allowed, with the date shown.
+  const earlier = useQuery({
+    queryKey: ["plans", "importedFile", file.id, file.createdAt],
+    queryFn: () => invoke("plans.importedFile", { id: file.id!, createdAt: file.createdAt! }),
+    enabled: file.id !== undefined && file.createdAt !== undefined,
+    gcTime: 0,
+  });
   const pending = useRef(false);
   const locating = useRef<number | null>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -78,15 +88,15 @@ export function ImportReview({
     });
   }
 
-  async function submit() {
+  async function submit(without?: PlanFilePart[]) {
     if (pending.current || unresolved) return;
     pending.current = true;
     setBusy(true);
     setFailed(false);
     try {
-      await onImport(importRequest(file, preview, choices, located));
-    } catch {
-      setFailed(true);
+      await onImport({ ...importRequest(file, preview, choices, located), ...(without ? { without } : {}) });
+    } catch (error) {
+      setFailed(importFailure(error) ?? true);
     } finally {
       pending.current = false;
       setBusy(false);
@@ -138,6 +148,13 @@ export function ImportReview({
       </ul>
       {preview.generalTopics > 0 ? (
         <Notice tone="warning">{t("plans.draft")}</Notice>
+      ) : null}
+      {earlier.data ? (
+        <Notice tone="warning">
+          {t("shared.review.duplicate", {
+            date: new Date(earlier.data.importedAt).toLocaleDateString(i18n.language),
+          })}
+        </Notice>
       ) : null}
       {preview.sources.some((source) => source.embedded) ? (
         <>
@@ -224,7 +241,21 @@ export function ImportReview({
           ))}
         </>
       ) : null}
-      {failed ? (
+      {typeof failed === "object" ? (
+        <Notice
+          tone="danger"
+          action={
+            failed.without.length
+              ? { label: t("shared.fail.rest"), onClick: () => void submit(failed.without) }
+              : undefined
+          }
+        >
+          {t("shared.fail.failed", { reason: t(`shared.reason.${failed.reason}`) })}
+          {failed.without.length
+            ? ` ${t("shared.fail.offer", { where: t(`shared.fail.in.${failed.without.length > 1 ? "both" : failed.without[0]}`) })}`
+            : ""}
+        </Notice>
+      ) : failed ? (
         <Notice tone="danger">{t("shared.importFailed")}</Notice>
       ) : null}
       <div className="px-import-actions">
@@ -235,7 +266,7 @@ export function ImportReview({
           disabled={unresolved}
           onClick={() => void submit()}
         >
-          {t("shared.review.import")}
+          {t(earlier.data ? "shared.review.importCopy" : "shared.review.import")}
         </Button>
         <Button type="text" shape="round" disabled={busy} onClick={onCancel}>
           {t("shared.review.cancel")}

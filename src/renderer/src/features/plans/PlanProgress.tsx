@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { TriangleAlert } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import {
@@ -18,12 +18,14 @@ import {
   YAxis,
 } from "recharts";
 import type { RequestOutput } from "@shared/ipc";
+import { Icon } from "../../components/Icon";
 import { StatTile } from "../../components/StatTile";
 import { MasteryBar } from "../../components/MasteryBar";
 import { GapItem } from "../../components/GapItem";
 import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { invoke } from "../../lib/ipc";
+import { MasteryEvidence } from "./MasteryEvidence";
 import "./PlanProgress.css";
 
 type Progress = RequestOutput<"plans.series">;
@@ -38,7 +40,7 @@ export function PlanProgress({
 }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedDrill = searchParams.get("drill");
   const startedDrill = useRef<string | null>(null);
   const date = (
@@ -102,9 +104,31 @@ export function PlanProgress({
   useEffect(() => {
     if (!requestedDrill || startedDrill.current === requestedDrill) return;
     startedDrill.current = requestedDrill;
+    // The request is spent once read: left in the address, Back from the drill's quiz would start another drill.
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("drill");
+        return next;
+      },
+      { replace: true },
+    );
     void fill(requestedDrill);
   }, [requestedDrill]);
   const target = Math.round(summary.target * 100);
+  // A topic row opens to the evidence behind its number. One request covers every topic, so rows open without a wait
+  // after the first; it reloads when a shown number changes, so the evidence always matches the bar.
+  const [openTopics, setOpenTopics] = useState<ReadonlySet<string>>(new Set());
+  const evidenceId = useId();
+  const breakdown = useQuery({
+    queryKey: [
+      "mastery-breakdown",
+      planId,
+      progress.topics.map((topic) => topic.mastery).join(),
+    ],
+    enabled: openTopics.size > 0,
+    queryFn: () => invoke("plans.masteryBreakdown", { planId }),
+  });
   const chart = progress.chart.map((point) => ({
     ...point,
     value: Math.round(point.mastery * 100),
@@ -369,31 +393,59 @@ export function PlanProgress({
           <section className="px-progress-block">
             <h3 className="title-3">{t("progress.skills")}</h3>
             <ul className="px-progress-skills">
-              {progress.topics.map((topic) => (
-                <li key={topic.id}>
-                  <div>
-                    <span className="body-strong">{topic.title}</span>
-                    <p className="meta">
-                      {t("progress.topicExercises", {
-                        count: topic.exercisesSolved,
-                      })}{" "}
-                      · {t("progress.topicLessons", { count: topic.lessons })}
-                    </p>
-                    <p className="meta">
-                      {topic.lastStudied
-                        ? t("progress.lastStudied", {
-                            date: date(topic.lastStudied),
+              {progress.topics.map((topic) => {
+                const open = openTopics.has(topic.id);
+                const panel = `${evidenceId}-${topic.id}`;
+                return (
+                  <li key={topic.id} className={open ? "is-open" : undefined}>
+                    <div>
+                      <button
+                        type="button"
+                        className="px-skill-toggle"
+                        aria-expanded={open}
+                        aria-controls={panel}
+                        aria-label={t("progress.evidence.toggle", {
+                          topic: topic.title,
+                        })}
+                        onClick={() =>
+                          setOpenTopics((current) => {
+                            const next = new Set(current);
+                            if (!next.delete(topic.id)) next.add(topic.id);
+                            return next;
                           })
-                        : t("progress.neverStudied")}
-                    </p>
-                  </div>
-                  <MasteryBar
-                    value={Math.round(topic.mastery * 100)}
-                    target={target}
-                    label={topic.title}
-                  />
-                </li>
-              ))}
+                        }
+                      >
+                        <Icon name="chevron-right" size={16} className="px-skill-chevron" />
+                        <span className="body-strong">{topic.title}</span>
+                      </button>
+                      <p className="meta">
+                        {t("progress.topicExercises", {
+                          count: topic.exercisesSolved,
+                        })}{" "}
+                        · {t("progress.topicLessons", { count: topic.lessons })}
+                      </p>
+                      <p className="meta">
+                        {topic.lastStudied
+                          ? t("progress.lastStudied", {
+                              date: date(topic.lastStudied),
+                            })
+                          : t("progress.neverStudied")}
+                      </p>
+                    </div>
+                    <MasteryBar
+                      value={Math.round(topic.mastery * 100)}
+                      target={target}
+                      label={topic.title}
+                    />
+                    {open ? (
+                      <MasteryEvidence
+                        id={panel}
+                        breakdown={breakdown.data?.find((row) => row.id === topic.id)}
+                      />
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           </section>
           <section className="px-progress-block">

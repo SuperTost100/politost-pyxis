@@ -3,6 +3,7 @@ import { availableParallelism } from "node:os";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError, isAbort, type JobView } from "../../shared/ipc";
+import { withUsageScope } from "../engine/usage";
 
 export type JobClass = "model-cli" | "model-api" | "local" | "demo";
 
@@ -67,6 +68,7 @@ export type Runner = {
   cancel: (jobId: string) => void;
   retry: (jobId: string) => void;
   resume: (jobId: string) => void;
+  resumeLocal: (kinds: string[]) => string[];
   dismiss: (jobId: string) => void;
   list: () => JobView[];
 };
@@ -187,12 +189,14 @@ export function createRunner(
           }
           entry.jobClass = desired;
           queueMicrotask(kick);
-          const output = await specStep.run({
-            name: step.name,
-            signal: entry.controller.signal,
-            params: readParams(jobId),
-            setParams: (params) => setParams(jobId, params),
-          });
+          const output = await withUsageScope({ jobId, kind: job.kind }, () =>
+            specStep.run({
+              name: step.name,
+              signal: entry.controller.signal,
+              params: readParams(jobId),
+              setParams: (params) => setParams(jobId, params),
+            }),
+          );
           if (entry.controller.signal.aborted) {
             db.prepare(
               `UPDATE job_steps SET state = 'pending' WHERE id = ?`,
@@ -240,6 +244,17 @@ export function createRunner(
       publish(jobId);
       kick();
     }
+  }
+
+  function resume(jobId: string): void {
+    const changed = db
+      .prepare(
+        `UPDATE jobs SET state = 'queued', dismissed = 0, updated_at = ? WHERE id = ? AND state = 'interrupted'`,
+      )
+      .run(Date.now(), jobId);
+    if (changed.changes === 0) return;
+    publish(jobId);
+    kick();
   }
 
   function finishCancelled(jobId: string): void {
@@ -358,15 +373,34 @@ export function createRunner(
       publish(jobId);
       kick();
     },
-    resume(jobId) {
-      const changed = db
+    resume,
+    /**
+     * Resumes the interrupted jobs of `kinds` whose next step does local work, and returns their ids. A model step
+     * keeps waiting for the student's Resume, since it uses an engine. A job resumes this way once per step: one that
+     * stops again at the step it was resumed at (it may be what ended the process) waits for the student too. The step
+     * is noted in the job's input as `autoResumedAt`. Call it after the kinds are registered.
+     */
+    resumeLocal(kinds) {
+      const rows = db
         .prepare(
-          `UPDATE jobs SET state = 'queued', dismissed = 0, updated_at = ? WHERE id = ? AND state = 'interrupted'`,
+          `SELECT id, kind, params_json FROM jobs WHERE state = 'interrupted' AND kind IN (${kinds.map(() => "?").join(", ")})
+           ORDER BY created_at, rowid`,
         )
-        .run(Date.now(), jobId);
-      if (changed.changes === 0) return;
-      publish(jobId);
-      kick();
+        .all(...kinds) as Array<{ id: string; kind: string; params_json: string }>;
+      const resumed: string[] = [];
+      for (const row of rows) {
+        const spec = specs.get(row.kind);
+        const next = (stepsStmt.all(row.id) as StepRow[]).find((step) => step.output_json == null);
+        const specStep = next ? spec?.steps.find((step) => step.name === next.name) : undefined;
+        if (!spec || !next || !specStep) continue;
+        const stepClass = specStep.jobClass === undefined ? spec.jobClass : specStep.jobClass;
+        const params = JSON.parse(row.params_json) as { autoResumedAt?: string } | null;
+        if (stepClass !== "local" || params?.autoResumedAt === next.name) continue;
+        setParams(row.id, { ...(params ?? {}), autoResumedAt: next.name });
+        resume(row.id);
+        resumed.push(row.id);
+      }
+      return resumed;
     },
     dismiss(jobId) {
       if (active.has(jobId)) return;

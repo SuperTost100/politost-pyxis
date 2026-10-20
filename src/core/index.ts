@@ -35,6 +35,7 @@ import { markStoppedImport } from "./sources/jobs";
 import { folderTransport } from "./sources/books";
 import { retireExerciseCards } from "./study/exerciseCards";
 import { onEvidenceChanged } from "./plans/evidenceCache";
+import { reminderSummary } from "./plans/reminder";
 
 setSourceWorkerDirectory(import.meta.dirname);
 addInstallDirsToPath();
@@ -222,6 +223,19 @@ if (!parent) {
         result: data.result,
         error: data.error,
       });
+    if (data?.type === "reminder-query" && data.id) {
+      // Main asks once a day, at the time the student picked. ok false: core could not tell, so main asks again.
+      let reply: { ok: boolean; summary: unknown } = { ok: false, summary: null };
+      try {
+        if (database) reply = { ok: true, summary: reminderSummary(database) };
+      } catch (err) {
+        console.error(
+          "pyxis-core: reminder failed",
+          err instanceof Error ? err.message : "unknown",
+        );
+      }
+      port.postMessage({ type: "reminder-result", id: data.id, ...reply });
+    }
     if (data?.type === "file-grants" && data.grants) {
       addFileGrants(data.grants);
       port.postMessage({ type: "file-grants-applied", id: data.id });

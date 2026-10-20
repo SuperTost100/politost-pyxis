@@ -53,3 +53,58 @@
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
+
+/* The automatic backups that can be restored: one card per file, date and size left, the action right. */
+.px-backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.px-backup-list > .section-hint,
+.px-backup-list-empty {
+  margin: 0;
+}
+.px-backup-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.px-backup-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-backup-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-5);
+}
+.px-backup-item-text {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.px-backup-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The time of day for the study reminder: a label above a field as wide as a time needs. */
+.px-reminder-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.px-reminder-time .ant-input {
+  width: 9rem;
+}

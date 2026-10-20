@@ -320,7 +320,12 @@ describe("profile name and exam date (#126)", () => {
     const db = openDatabase(":memory:");
     const plan = createPlan(db, { title: "Lontano", sourceIds: [] });
     expect(() =>
-      savePlanSettings(db, { planId: plan.planId, title: "Lontano", target: 0.8, examAt: MAX_EXAM_AT + 1 }),
+      savePlanSettings(db, {
+        planId: plan.planId,
+        title: "Lontano",
+        target: 0.8,
+        sessions: [{ date: MAX_EXAM_AT + 1 }],
+      }),
     ).toThrow();
     db.prepare("UPDATE plans SET exam_at=? WHERE id=?").run(8_000_000_000_000_000, plan.planId);
     const file = exportPlan(db, plan.planId);

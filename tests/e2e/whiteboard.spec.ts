@@ -198,3 +198,67 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
     rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test("ASK-05 an empty board cannot be saved, one eraser drag removes what it crosses and Clear can be undone", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-empty-"));
+  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({
+    args: [
+      join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"),
+    ],
+    env,
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.evaluate(() => {
+      sessionStorage.removeItem("pyxis-board");
+      location.hash = "/tools/whiteboard";
+    });
+    const save = page.getByRole("button", { name: "Salva", exact: true });
+    const attach = page.getByRole("button", { name: "Allega alla chat" });
+    const clear = page.getByRole("button", { name: "Cancella tutto" });
+    await expect(page.locator(".px-whiteboard canvas")).toBeVisible();
+    // Nothing drawn: there is nothing to save or send to Ask, and nothing to clear.
+    for (const button of [save, attach, clear]) await expect(button).toBeDisabled();
+
+    await draw(page);
+    const rect = (await page.locator(".px-whiteboard canvas").boundingBox())!;
+    await page.mouse.move(rect.x + 100, rect.y + 500);
+    await page.mouse.down();
+    await page.mouse.move(rect.x + 250, rect.y + 600, { steps: 12 });
+    await page.mouse.up();
+    expect(await strokes(page)).toBe(2);
+    for (const button of [save, attach, clear]) await expect(button).toBeEnabled();
+
+    // Dragging the eraser across both strokes removes both, as one step.
+    await page.keyboard.press("e");
+    await page.mouse.move(rect.x + 100, rect.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(rect.x + 250, rect.y + 300, { steps: 12 });
+    await page.mouse.move(rect.x + 100, rect.y + 500, { steps: 12 });
+    await page.mouse.move(rect.x + 250, rect.y + 600, { steps: 12 });
+    await page.mouse.up();
+    expect(await strokes(page)).toBe(0);
+    await expect(save).toBeDisabled();
+    await page.keyboard.press("Control+z");
+    expect(await strokes(page)).toBe(2);
+
+    // Clear empties the board and can be undone like any other change.
+    await clear.click();
+    expect(await strokes(page)).toBe(0);
+    await expect(save).toBeDisabled();
+    await page.keyboard.press("Control+z");
+    expect(await strokes(page)).toBe(2);
+    await page.getByRole("button", { name: "Chiudi", exact: true }).click();
+    await page.getByRole("button", { name: "Elimina le modifiche" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
