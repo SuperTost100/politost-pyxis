@@ -1,6 +1,6 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   loadShellPath,
@@ -15,14 +15,14 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A login shell that takes `seconds` to start, like zsh with nvm, and then prints its environment. */
-function slowShell(seconds: number, path: string): string {
+/** A login shell that stays blocked until the test creates `gate`, like zsh with nvm, and then prints its environment. */
+function gatedShell(gate: string, path: string): string {
   const dir = mkdtempSync(join(tmpdir(), "pyxis-shell-"));
   dirs.push(dir);
-  const shell = join(dir, "slow-sh");
+  const shell = join(dir, "gated-sh");
   writeFileSync(
     shell,
-    `#!/bin/sh\nsleep ${seconds}\nexport PATH="${path}"\nexec /bin/sh -c "$2"\n`,
+    `#!/bin/sh\nwhile [ ! -e "${gate}" ]; do sleep 0.02; done\nexport PATH="${path}"\nexec /bin/sh -c "$2"\n`,
   );
   chmodSync(shell, 0o755);
   return shell;
@@ -38,19 +38,19 @@ describe("login shell PATH", () => {
   it.skipIf(process.platform === "win32")(
     "adds the shell's folders in the background, without holding up the caller",
     async () => {
+      const gate = join(mkdtempSync(join(tmpdir(), "pyxis-gate-")), "open");
+      dirs.push(dirname(gate));
       const env: NodeJS.ProcessEnv = {
         PATH: "/usr/bin:/bin",
-        SHELL: slowShell(0.5, "/opt/nvm/bin:/usr/bin:/bin"),
+        SHELL: gatedShell(gate, "/opt/nvm/bin:/usr/bin:/bin"),
       };
-      const started = Date.now();
       const loading = loadShellPath(env, "linux");
-      // The call returns at once; CLI Funnel is told not to run its own blocking lookup.
-      expect(Date.now() - started).toBeLessThan(100);
+      // The shell cannot finish before the gate opens, so a call that returns now did not wait for it.
       expect(env.CLI_FUNNEL_NO_SHELL_PATH).toBe("1");
       expect(env.PATH).toBe("/usr/bin:/bin");
+      writeFileSync(gate, "");
       await shellPathReady();
       await loading;
-      expect(Date.now() - started).toBeGreaterThanOrEqual(400);
       expect(env.PATH).toBe("/usr/bin:/bin:/opt/nvm/bin");
       // Once per launch: a second call reuses the first.
       expect(loadShellPath(env, "linux")).toBe(loading);

@@ -66,6 +66,12 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
       .getByRole("dialog", { name: "Fisica", exact: true })
       .getByRole("button", { name: /Close|Chiudi/, exact: true })
       .click();
+    // The details drawer gives focus back to its opener when its close animation ends. Landing between the press
+    // and release of the result click below, it moved focus off the result, and the viewer then returned focus to
+    // the wrong button.
+    await expect(
+      page.getByRole("button", { name: "Fisica", exact: true }),
+    ).toBeFocused();
     await page
       .getByRole("textbox", { name: "Cerca nei brani" })
       .fill("energia cinetica");
