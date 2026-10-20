@@ -1,13 +1,21 @@
 version: 2
 updates:
-  # Every pull request runs the four-platform CI, so security fixes arrive as one grouped pull request.
-  # The limit of 0 keeps routine version updates off; security updates are not affected by it.
+  # Every pull request runs the four-platform CI, so updates arrive grouped: security fixes in one pull request, and once
+  # a month the patch releases, Electron's Chromium fixes among them, in another. Minor and major versions stay manual.
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 0
+      interval: monthly
+    open-pull-requests-limit: 1
+    # Version updates only: `update-types` in `allow` does not limit security updates, which may need a minor version.
+    allow:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch"]
     groups:
       npm-security:
         applies-to: security-updates
+        patterns: ["*"]
+      npm-patch:
+        applies-to: version-updates
+        update-types: ["patch"]
         patterns: ["*"]

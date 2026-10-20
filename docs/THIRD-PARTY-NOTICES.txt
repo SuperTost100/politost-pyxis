@@ -2407,7 +2407,7 @@ SOFTWARE.
 
 ========================================================================
 
-@rc-component/notification 2.0.9
+@rc-component/notification 2.1.1
 License metadata: MIT
 
 --- LICENSE ---
@@ -3167,7 +3167,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-@rc-component/util 1.13.0
+@rc-component/util 1.14.0
 License metadata: MIT
 
 --- LICENSE ---
@@ -3311,7 +3311,7 @@ SOFTWARE.
 
 ========================================================================
 
-@tanstack/query-core 5.104.0
+@tanstack/query-core 5.104.5
 License metadata: MIT
 
 --- LICENSE ---
@@ -3340,7 +3340,7 @@ SOFTWARE.
 
 ========================================================================
 
-@tanstack/react-query 5.104.0
+@tanstack/react-query 5.104.5
 License metadata: MIT
 
 --- LICENSE ---
@@ -4307,7 +4307,7 @@ SOFTWARE.
 
 ========================================================================
 
-antd 6.6.5
+antd 6.6.7
 License metadata: MIT
 
 --- LICENSE ---
@@ -8330,7 +8330,7 @@ IN THE SOFTWARE.
 
 ========================================================================
 
-i18next 26.4.2
+i18next 26.5.3
 License metadata: MIT
 
 --- LICENSE ---
@@ -62752,7 +62752,7 @@ SOFTWARE.
 
 ========================================================================
 
-react 19.3.0
+react 19.3.1
 License metadata: MIT
 
 --- LICENSE ---
@@ -62781,7 +62781,7 @@ SOFTWARE.
 
 ========================================================================
 
-react-dom 19.3.0
+react-dom 19.3.1
 License metadata: MIT
 
 --- LICENSE ---
@@ -62839,7 +62839,7 @@ DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-react-i18next 17.0.15
+react-i18next 17.1.0
 License metadata: MIT
 
 --- LICENSE ---
@@ -66501,7 +66501,7 @@ License metadata: MIT
 
 ========================================================================
 
-zod 4.6.5
+zod 4.6.7
 License metadata: MIT
 
 --- LICENSE ---
