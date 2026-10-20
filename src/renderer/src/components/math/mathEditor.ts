@@ -18,6 +18,8 @@ export type MathEditorOptions = {
   /** Keys pressed in the text, after the editor's own handling declined them. */
   onKeyDown: (event: KeyboardEvent) => void;
   maxLength: () => number | undefined;
+  /** An edit that would pass `maxLength` was refused, and the text kept as it was. */
+  onRefused: () => void;
   /** Accessible name of a formula, and the interface language for MathLive. */
   formulaLabel: () => string;
   language: () => string;
@@ -614,6 +616,7 @@ export class MathEditor {
     const limit = this.options.maxLength();
     if (limit !== undefined && value.length > limit && value.length > this.value.length) {
       this.restore(this.present);
+      this.options.onRefused();
       return;
     }
     this.value = value;

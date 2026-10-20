@@ -1871,7 +1871,8 @@
       "send": "Invia",
       "graph": "Grafico",
       "count": "{{used, number}} di {{max, number}} caratteri",
-      "full": "Limite del messaggio raggiunto: {{max, number}} caratteri. Accorcialo, o invialo a parti."
+      "full": "Limite del messaggio raggiunto: {{max, number}} caratteri. Accorcialo, o invialo a parti.",
+      "refused": "Questo testo è troppo lungo da aggiungere: un messaggio contiene al massimo {{max, number}} caratteri. Accorcialo, o invialo a parti."
     },
     "chat": {
       "generalTag": "Conoscenza generale, non dalle tue fonti",

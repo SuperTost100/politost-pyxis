@@ -1871,7 +1871,8 @@
       "send": "Send",
       "graph": "Graph",
       "count": "{{used, number}} of {{max, number}} characters",
-      "full": "Message limit reached: {{max, number}} characters. Shorten it, or send it in parts."
+      "full": "Message limit reached: {{max, number}} characters. Shorten it, or send it in parts.",
+      "refused": "That text is too long to add: a message holds up to {{max, number}} characters. Shorten it, or send it in parts."
     },
     "chat": {
       "generalTag": "General knowledge, not from your sources",
