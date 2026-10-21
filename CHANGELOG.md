@@ -2,6 +2,280 @@
 
 Each release lists what changed for students, in English and Italian. The GitHub release page uses the same text.
 
+## 0.4.0
+
+### English
+
+Pyxis 0.4.0 is a big alpha release. It adds a Today list and a session plan across all your exams, a mistakes notebook, past exams for simulations, a Maps section, Anki import and export, local models through Ollama, and study reminders. Large workspaces open much faster, and the installers are smaller.
+
+#### Before you update
+
+- The first time you open 0.4.0, Pyxis upgrades your workspace. Pyxis 0.3.1 or older can't open it afterwards, and it can't restore a backup made by 0.4.0 either. If you may want to go back, make a backup first in Settings, under Data.
+- Your language, dismissed notices and page settings carry over once, on the first launch. The window now loads from its own address instead of a file, so Pyxis copies them across.
+- "Delete all data" now also deletes this computer's automatic backups unless you untick "Also delete automatic backups". Backups from another computer and other files in the folder stay.
+- Mastery can move a little after the update. A flashcard whose last rating was Again now counts as 0 until you rate it again. Questions you flagged as wrong no longer count. A numeric answer must be within 1% of the right one, also for values under 1.
+- In Italian, "schede" are now "flashcard" everywhere, and source passages are "brani".
+- Lessons written before 0.4.0 open as before. To rewrite one part of an older lesson, rewrite the whole lesson once.
+
+#### Today and the session plan
+
+- Exams opens on Today. It shows one "Flashcards to review" item for all your exams, then the next step of each plan, closest exam first. Done items tick off and stay until tomorrow. When everything is ticked, it says "That's everything for today. Anything more is extra."
+- "Open the session plan" shows every upcoming exam, how far your mastery is from its target, and the work left. Set your hours per week, or change a single week. It has a week view and a day view.
+- When an exam falls behind, the session plan says by how many days, and how many weekly hours would keep every exam on time. Today shows the same warning. Missed days are planned again on their own.
+
+#### Exams
+
+- An exam can have several sessions, for example a written and an oral part. Each has a date and, if you want, a time, a place and a name. Use "Add another session" in the wizard or in plan settings.
+- "Add to calendar" writes one event per session. A session with a time becomes a two-hour event with its place. Without a time it stays all-day. The reminder at 9:00 the day before stays.
+- "Archive exam" in plan settings puts a finished exam away. Its cards leave reviews and the card browser, and the Exams list gets an "Active" and "Archived" filter. "Restore exam" brings it back.
+- The new mistakes notebook lists every question you missed, from quizzes, drills, diagnostics, simulations and lesson checks. Open it from the Exams tab next to Flashcards, or from a plan next to Progress. It is grouped by exam and topic and shows your answer, the right one and the explanation.
+- "Redo" on a mistake, or "Redo N questions" on a topic, gives you up to 10 of them again. A right answer takes a question out of the notebook, and missing it later brings it back.
+- Finished steps on the path fold into one line, such as "6 activities done · Show". "Suggested next" sits right under the plan header.
+- Plans, Sources and Flashcards share one toolbar: search, filters, a "More" menu, then the main button. The Exams "More" menu holds the plan imports and "Manage subjects".
+- A .pyxis file now opens Pyxis from your file manager, or when you drop it on the window. Importing the same file twice warns you first and offers "Import a copy anyway".
+- Plan links from Google Drive, Dropbox and OneDrive work.
+- A broken import says why, for example "This file is not a Pyxis plan." When only exercises or maps are broken, "Import the rest" imports everything else.
+- A plan export over 72 MiB no longer fails. Pyxis leaves out the original files that don't fit and names them.
+- Progress explains each topic's bar. Open a topic to see the quiz answers, flashcards, simulations, lesson checks and self-ratings behind it.
+- A plan build writes the introduction and the diagnostic quiz at the same time, so it finishes sooner.
+
+#### Studying
+
+- A lesson ends with "Done, continue", which opens the next step the path suggests. "Done" takes you back to the plan.
+- Lessons and Ask answers can include figures: function plots, vector diagrams and simple circuits, drawn on your computer. They need the Python runtime from the Python tool.
+- Citations in a lesson name the section, such as "1. Forze", instead of "P1".
+- Quizzes, the diagnostic, reviews and simulations open on the same start screen. Quiz options are under "Customize".
+- In quizzes, "I don't know" (key 0) scores 0, like a wrong answer, and moves on. "Skip" (key S) puts a question after the others, once per question.
+- Math answers are checked with SymPy. Blanks accept equal forms, so 1/2 counts for 0.5 and 2x+2 for 2(x+1). Italian names such as sen and tg, and decimal commas, work too. Open answers and simulation answers tell the grader which step goes wrong first.
+- A timed quiz starts its clock only when every question is ready.
+
+#### Flashcards
+
+- The card fills the review page. Below it are only Flip and the four ratings. Edit, Suspend and Delete are in the card's menu.
+- After a rating, "Undo" (key U) takes it back. It also undoes a suspend or a delete.
+- "New flashcards per day" in Settings sets how many new cards each exam starts per day. It starts at 20. Cards you already started always come back when they are due.
+- Reviews no longer schedule a card after its exam day.
+- A card you forgot 6 times or more is tagged "Often forgotten", with a hint to rewrite it, check the source or suspend it. The browser can filter for them.
+- "Ask the tutor" on a flipped card opens a chat about it and its source.
+- "Make flashcards" on an Ask answer, or on text you select in a lesson or a source, writes up to 8 cards. You edit them and pick a plan and topic, and nothing is saved until you press "Save N flashcards".
+- "Import from Anki" reads an .apkg deck and can keep its review history. "Export to Anki" saves an exam or one topic as an .apkg. Both are in the Flashcards "More" menu.
+- The card browser shows about twice as many cards on screen.
+
+#### Ask
+
+- Long chats open fast. A chat opens with its last 8 messages, and "Show N earlier messages" loads more.
+- The chat has a header with its title (click to rename) and "New chat". An empty chat suggests three questions about your topic.
+- Paste a screenshot, or drop files anywhere on Ask.
+- The chat list is grouped into Today, This week and Older, and can be filtered by subject.
+- "Answer again with the strongest model", under "More actions" on the last answer, asks again with the best model at high effort. If that fails, the old answer stays.
+- An answer cut off by an engine error stays on screen, marked "Cut off", with "Continue".
+- You can leave Ask while an answer is being written. It no longer pulls you back when it finishes, and coming back shows the text so far.
+- Ask shows how many tokens the chat has used. Settings, under AI engines, shows this week's use per engine.
+- A message can be up to 20,000 characters, and a counter appears near the limit.
+
+#### Maps
+
+- Maps has its own section next to Ask and Exams (Ctrl or Cmd+5). It lists every map of every exam, by subject, exam and topic, and you can search titles and concepts.
+- "New map" asks for an exam and a topic.
+- A full-screen map can be exported as an outline (Markdown), the whole map (SVG) or both (PDF).
+
+#### Sources
+
+- PowerPoint imports keep the speaker notes, next to each slide.
+- A password-protected PDF asks for its password with "Enter password". Pyxis never saves the password. The viewer and page-by-page reading can't show a locked PDF's pages, but its text works everywhere.
+- Imports, indexing and downloads that stopped when you quit pick up again at the next start.
+- A source saved from a link has "Check for a new version".
+- Word headings become sections. A failed reading of a scan can be started again.
+- The plan's Sources tab can search inside the passages with "Content".
+- Big PDFs import with less memory and no longer freeze the window.
+
+#### Past exams and simulations
+
+- A plan's Sources tab has "Past exams". Add old exams as a PDF or photos, and Pyxis reads their questions, points, difficulty and duration.
+- Simulations then copy their number of questions, mix, difficulty and time limit. Choose "Standard" for the old format. The time limit can be anything from 10 to 240 minutes.
+- "Practise past questions" lets you try the real questions. Practising them doesn't change your mastery, and past exams never go into a shared plan file.
+
+#### Tools
+
+- Python runs with Ctrl+Enter (Cmd+Enter on a Mac), keeps your code when you leave, and saves up to 8 snippets.
+- The graph draws up to four functions and marks where they cross.
+- The whiteboard eraser works while you drag, and "Clear" can be undone.
+
+#### AI engines
+
+- Pyxis can run a model on your own computer through Ollama, if the computer is fast enough. Settings explains what it found under "Run a model on this computer", and setup suggests it when it fits. A model has to pass a speed and format check before Pyxis uses it.
+- When the engine Pyxis picked reaches its usage limit or is signed out, the next ready engine answers, and a line tells you so.
+- Claude Code and Codex keep a chat's session open, so follow-up questions start sooner.
+- Anthropic and OpenAI API keys now get the same reasoning effort per task as the apps.
+
+#### Settings, backups and updates
+
+- Settings shows its sections in a sidebar on wide windows.
+- "Restore an automatic backup", under Data, lists your automatic backups with date and size. Pyxis checks every new backup after writing it and deletes a broken one.
+- Pyxis keeps the newest 3 automatic backups, plus one from about a week ago and one from about a month ago.
+- "Remind me to review" sends one notification a day, at the time you choose, when flashcards are due. It works only while Pyxis is open, and it is off until you turn it on.
+- "Free up space", under Data, removes files that deleted plans and finished imports left behind.
+- On Linux (AppImage) and Mac, updates download only the parts that changed. A Mac downloads the whole file on its first update after 0.4.0.
+
+#### Speed and size
+
+- In a large test workspace, Exams, a plan and Progress went from many seconds to well under a tenth of a second.
+- Pyxis opens faster after the first launch, and uses less memory.
+- The installers are 19 to 40% smaller. The Windows installer went from 136 to 103 MB, the Apple Silicon disk image from 167 to 101 MB, the Linux .deb from 141 to 100 MB and the AppImage from 180 to 145 MB.
+
+#### Fixed
+
+- A restore that failed at the last step could leave your data unusable. Pyxis now retries, or goes back to the data you had.
+- "Delete all data" could hang, and some buttons in background tasks failed without a message.
+- Local search didn't work in the packaged Linux app.
+- "Answer from general knowledge" turned off Socratic mode. Socratic mode now wins.
+- A chat export with an unclosed code block lost the sources list.
+- After Stop, an answer could be saved as complete, and engine processes could keep running.
+- A slow engine check at startup could reset your automatic engine choices, and "Test" could wait forever. It now stops after 90 seconds.
+- Cancelling local search indexing could crash Pyxis's background process.
+- The lesson counts on Progress, the weekly pace and the topic list could disagree.
+- A shared plan's lessons didn't open for a classmate.
+- Moving a node while the AI edited a map threw the edit away.
+- Back from a quiz after a gap drill started the drill again.
+- Empty states showed while pages were still loading.
+- On Windows, backup, restore and "Delete all data" could fail with "core-busy" when Pyxis's background process was slow to quit.
+
+### Italiano
+
+Pyxis 0.4.0 è una versione alpha corposa. Aggiunge un elenco Oggi e un piano della sessione per tutti i tuoi esami, un quaderno degli errori, gli appelli passati per le simulazioni, una sezione Mappe, l'importazione e l'esportazione in Anki, i modelli locali con Ollama e i promemoria di studio. Gli spazi di lavoro grandi si aprono molto più in fretta e gli installer sono più leggeri.
+
+#### Prima di aggiornare
+
+- La prima volta che apri la 0.4.0, Pyxis aggiorna il tuo spazio di lavoro. Dopo, Pyxis 0.3.1 o precedenti non riescono più ad aprirlo, e non possono nemmeno ripristinare una copia fatta con la 0.4.0. Se pensi di voler tornare indietro, fai prima una copia di sicurezza da Impostazioni, alla voce Dati.
+- La lingua, gli avvisi che hai chiuso e le impostazioni delle pagine passano alla nuova versione una volta sola, al primo avvio. La finestra ora si carica da un suo indirizzo invece che da un file, quindi Pyxis li copia.
+- "Cancella tutti i dati" ora cancella anche le copie automatiche di questo computer, a meno che tu non tolga la spunta a "Cancella anche le copie automatiche". Le copie di un altro computer e gli altri file della cartella restano.
+- Dopo l'aggiornamento la padronanza può cambiare un po'. Una flashcard che hai valutato per ultimo "Da rivedere" vale 0 finché non la valuti di nuovo. Le domande che hai segnalato come sbagliate non contano più. Una risposta numerica deve stare entro l'1% da quella giusta, anche per i valori sotto 1.
+- In italiano le "schede" ora si chiamano "flashcard" ovunque, e i passaggi delle fonti si chiamano "brani".
+- Le lezioni scritte prima della 0.4.0 si aprono come prima. Per riscrivere una parte di una lezione vecchia, riscrivi una volta la lezione intera.
+
+#### Oggi e il piano della sessione
+
+- Esami si apre su Oggi. Mostra una sola voce "Flashcard da ripassare" per tutti gli esami, poi il prossimo passo di ogni piano, dall'esame più vicino. Le voci fatte si spuntano e restano fino a domani. Quando hai spuntato tutto, dice "Per oggi hai finito. Quello che fai in più è un extra."
+- "Apri il piano della sessione" mostra ogni esame in arrivo, quanto manca alla padronanza obiettivo e il lavoro che resta. Imposta le tue ore a settimana, o cambia una sola settimana. C'è una vista per settimana e una per giorno.
+- Quando un esame resta indietro, il piano della sessione dice di quanti giorni e quante ore a settimana servirebbero per arrivare in tempo a tutti gli esami. Oggi mostra lo stesso avviso. I giorni saltati vengono ripianificati da soli.
+
+#### Esami
+
+- Un esame può avere più prove, per esempio uno scritto e un orale. Ognuna ha una data e, se vuoi, un'ora, un luogo e un nome. Usa "Aggiungi un'altra prova" nella procedura guidata o nelle impostazioni del piano.
+- "Aggiungi al calendario" scrive un evento per ogni prova. Una prova con l'ora diventa un evento di due ore con il suo luogo. Senza ora resta per tutto il giorno. Il promemoria alle 9:00 del giorno prima resta.
+- "Archivia l'esame", nelle impostazioni del piano, mette via un esame finito. Le sue flashcard escono dai ripassi e dall'elenco delle flashcard, e l'elenco Esami ha un filtro "Attivi" e "Archiviati". "Ripristina l'esame" lo riporta indietro.
+- Il nuovo quaderno degli errori raccoglie ogni domanda che hai sbagliato, da quiz, esercitazioni sulle lacune, test iniziali, simulazioni e verifiche nelle lezioni. Aprilo dalla scheda di Esami accanto a Flashcard, o da un piano accanto a Progressi. È diviso per esame e argomento e mostra la tua risposta, quella giusta e la spiegazione.
+- "Rifai" su un errore, o "Rifai N domande" su un argomento, te ne ripropone fino a 10. Una risposta giusta toglie la domanda dal quaderno, e se la sbagli di nuovo torna.
+- I passi finiti del percorso si raccolgono in una riga, per esempio "6 attività fatte · Mostra". "Ti suggerisco" sta subito sotto l'intestazione del piano.
+- Piani, Fonti e Flashcard hanno la stessa barra: ricerca, filtri, un menu "Altro" e poi il pulsante principale. Il menu "Altro" di Esami contiene le importazioni dei piani e "Gestisci materie".
+- Un file .pyxis ora apre Pyxis dal tuo gestore di file, o quando lo trascini sulla finestra. Se importi due volte lo stesso file, Pyxis ti avvisa prima e propone "Importa una copia lo stesso".
+- I link ai piani da Google Drive, Dropbox e OneDrive funzionano.
+- Un'importazione non riuscita dice il perché, per esempio "Questo file non è un piano di Pyxis." Se sono rotti solo gli esercizi o le mappe, "Importa il resto" importa tutto il resto.
+- L'esportazione di un piano oltre i 72 MiB non fallisce più. Pyxis lascia fuori i file originali che non ci stanno e li nomina.
+- Progressi spiega la barra di ogni argomento. Apri un argomento per vedere le risposte ai quiz, le flashcard, le simulazioni, le verifiche nelle lezioni e le autovalutazioni che ci sono dietro.
+- La creazione di un piano scrive insieme l'introduzione e il test iniziale, quindi finisce prima.
+
+#### Studiare
+
+- Una lezione finisce con "Fatto, continua", che apre il passo suggerito dal percorso. "Fatto" ti riporta al piano.
+- Le lezioni e le risposte di Chiedi possono contenere figure: grafici di funzioni, diagrammi di vettori e circuiti semplici, disegnati sul tuo computer. Serve il Python dello strumento Python.
+- Le citazioni nelle lezioni dicono la sezione, per esempio "1. Forze", invece di "P1".
+- Quiz, test iniziale, ripassi e simulazioni si aprono sulla stessa schermata iniziale. Le opzioni dei quiz sono sotto "Personalizza".
+- Nei quiz, "Non lo so" (tasto 0) vale 0, come una risposta sbagliata, e va avanti. "Salta" (tasto S) sposta una domanda dopo le altre, una volta per domanda.
+- Le risposte di matematica vengono controllate con SymPy. Gli spazi da completare accettano forme equivalenti, quindi 1/2 vale per 0,5 e 2x+2 per 2(x+1). Funzionano anche i nomi italiani come sen e tg e la virgola decimale. Nelle risposte aperte e nelle simulazioni, chi corregge sa qual è il primo passaggio sbagliato.
+- Un quiz a tempo fa partire il tempo solo quando tutte le domande sono pronte.
+
+#### Flashcard
+
+- Nel ripasso la flashcard occupa la pagina. Sotto ci sono solo "Gira" e le quattro valutazioni. Modifica, Sospendi ed Elimina sono nel menu della flashcard.
+- Dopo una valutazione, "Annulla" (tasto U) la toglie. Annulla anche una sospensione o un'eliminazione.
+- "Flashcard nuove al giorno", nelle Impostazioni, decide quante flashcard nuove inizia ogni esame al giorno. Parte da 20. Le flashcard già iniziate tornano sempre quando è il loro momento.
+- I ripassi non fissano più una flashcard dopo il giorno dell'esame.
+- Una flashcard dimenticata 6 volte o più ha l'etichetta "Dimenticata spesso", con un consiglio: riscriverla, controllare la fonte o sospenderla. Nell'elenco puoi filtrarle.
+- "Chiedi al tutor" su una flashcard girata apre una chat su di lei e sulla sua fonte.
+- "Crea flashcard" su una risposta di Chiedi, o su un testo che selezioni in una lezione o in una fonte, scrive fino a 8 flashcard. Le modifichi e scegli piano e argomento, e non si salva niente finché non premi "Salva N flashcard".
+- "Importa da Anki" legge un mazzo .apkg e può tenerne lo storico dei ripassi. "Esporta in Anki" salva un esame o un argomento come .apkg. Sono tutti e due nel menu "Altro" di Flashcard.
+- L'elenco delle flashcard ne mostra circa il doppio sullo schermo.
+
+#### Chiedi
+
+- Le chat lunghe si aprono in fretta. Una chat si apre con gli ultimi 8 messaggi, e "Mostra N messaggi precedenti" carica gli altri.
+- La chat ha un'intestazione con il titolo (fai clic per rinominarla) e "Nuova chat". Una chat vuota propone tre domande sul tuo argomento.
+- Incolla uno screenshot, o trascina i file in qualsiasi punto di Chiedi.
+- L'elenco delle chat è diviso in Oggi, Questa settimana e Meno recenti, e si può filtrare per materia.
+- "Rispondi di nuovo con il modello più potente", sotto "Altre azioni" sull'ultima risposta, chiede di nuovo al modello migliore con il ragionamento alto. Se non riesce, la risposta vecchia resta.
+- Una risposta interrotta da un errore del motore resta sullo schermo, segnata "Interrotta", con "Continua".
+- Puoi uscire da Chiedi mentre Pyxis scrive una risposta. Quando finisce non ti riporta più indietro, e se torni vedi il testo scritto fin lì.
+- Chiedi mostra quanti token ha usato la chat. Impostazioni, alla voce Motori AI, mostra l'uso della settimana per ogni motore.
+- Un messaggio può arrivare a 20.000 caratteri, e vicino al limite compare un contatore.
+
+#### Mappe
+
+- Mappe ha una sua sezione accanto a Chiedi ed Esami (Ctrl o Cmd+5). Elenca tutte le mappe di tutti gli esami, per materia, esame e argomento, e puoi cercare nei titoli e nei concetti.
+- "Nuova mappa" chiede un esame e un argomento.
+- Una mappa a schermo intero si può esportare come schema (Markdown), come mappa intera (SVG) o con tutti e due (PDF).
+
+#### Fonti
+
+- Le presentazioni PowerPoint importate tengono le note del relatore, accanto a ogni diapositiva.
+- Un PDF protetto da password la chiede con "Inserisci password". Pyxis non la salva mai. Il visualizzatore e la lettura pagina per pagina non mostrano le pagine di un PDF protetto, ma il suo testo funziona ovunque.
+- Le importazioni, le indicizzazioni e i download interrotti quando hai chiuso Pyxis ripartono all'avvio successivo.
+- Una fonte salvata da un link ha "Controlla se c'è una nuova versione".
+- I titoli di Word diventano sezioni. La lettura non riuscita di una scansione si può far ripartire.
+- La scheda Fonti di un piano può cercare dentro i brani con "Contenuto".
+- I PDF grandi si importano con meno memoria e non bloccano più la finestra.
+
+#### Appelli passati e simulazioni
+
+- La scheda Fonti di un piano ha "Appelli passati". Aggiungi i vecchi appelli come PDF o foto, e Pyxis ne legge domande, punti, difficoltà e durata.
+- Le simulazioni copiano poi il numero di domande, i tipi, la difficoltà e il tempo. Scegli "Standard" per il formato di prima. Il tempo può essere qualsiasi valore tra 10 e 240 minuti.
+- "Esercitati sulle domande passate" ti fa provare le domande vere. Esercitarti non cambia la padronanza, e gli appelli passati non finiscono mai in un file di piano condiviso.
+
+#### Strumenti
+
+- Python si esegue con Ctrl+Invio (Cmd+Invio su Mac), tiene il tuo codice quando esci e salva fino a 8 frammenti.
+- Il grafico disegna fino a quattro funzioni e segna dove si incontrano.
+- La gomma della lavagna funziona mentre trascini, e "Cancella tutto" si può annullare.
+
+#### Motori AI
+
+- Pyxis può far girare un modello sul tuo computer con Ollama, se il computer è abbastanza veloce. Impostazioni spiega cosa ha trovato sotto "Far girare un modello su questo computer", e la configurazione lo propone quando va bene. Un modello deve superare una verifica di velocità e di formato prima che Pyxis lo usi.
+- Quando il motore scelto da Pyxis raggiunge il limite d'uso o non ha più l'accesso, risponde il prossimo motore pronto, e una riga te lo dice.
+- Claude Code e Codex tengono aperta la sessione della chat, così le domande successive partono prima.
+- Le chiavi API di Anthropic e OpenAI ora ricevono lo stesso livello di ragionamento per funzione delle app.
+
+#### Impostazioni, copie e aggiornamenti
+
+- Nelle finestre larghe, Impostazioni mostra le sezioni in una barra laterale.
+- "Ripristina una copia automatica", alla voce Dati, elenca le copie automatiche con data e dimensione. Pyxis controlla ogni nuova copia dopo averla scritta e cancella quelle rotte.
+- Pyxis tiene le 3 copie automatiche più recenti, più una di circa una settimana fa e una di circa un mese fa.
+- "Ricordami di ripassare" manda una notifica al giorno, all'ora che scegli, quando ci sono flashcard da ripassare. Funziona solo con Pyxis aperto ed è spento finché non lo accendi.
+- "Libera spazio", alla voce Dati, toglie i file lasciati dai piani cancellati e dalle importazioni finite.
+- Su Linux (AppImage) e Mac, gli aggiornamenti scaricano solo le parti cambiate. Un Mac scarica il file intero al primo aggiornamento dopo la 0.4.0.
+
+#### Velocità e dimensioni
+
+- In uno spazio di lavoro di prova molto grande, Esami, un piano e Progressi sono passati da molti secondi a meno di un decimo di secondo.
+- Dopo il primo avvio Pyxis si apre più in fretta e usa meno memoria.
+- Gli installer sono più leggeri dal 19 al 40%. L'installer per Windows è passato da 136 a 103 MB, l'immagine disco per Apple Silicon da 167 a 101 MB, il .deb per Linux da 141 a 100 MB e l'AppImage da 180 a 145 MB.
+
+#### Corretti
+
+- Un ripristino che falliva all'ultimo passo poteva lasciare i dati inutilizzabili. Ora Pyxis riprova, o torna ai dati che avevi prima.
+- "Cancella tutti i dati" poteva bloccarsi, e alcuni pulsanti delle attività in corso fallivano senza messaggio.
+- La ricerca locale non funzionava nell'app Linux installata.
+- "Rispondi con le conoscenze generali" spegneva la modalità Socratico. Ora vince Socratico.
+- Esportare una chat con un blocco di codice non chiuso faceva perdere l'elenco delle fonti.
+- Dopo Stop, una risposta poteva essere salvata come completa, e i processi dei motori potevano restare accesi.
+- Un controllo lento dei motori all'avvio poteva azzerare le scelte automatiche, e "Testa" poteva aspettare all'infinito. Ora si ferma dopo 90 secondi.
+- Annullare l'indicizzazione della ricerca locale poteva far chiudere di colpo il processo in background di Pyxis.
+- Il numero di lezioni in Progressi, il ritmo settimanale e l'elenco degli argomenti potevano non coincidere.
+- Le lezioni di un piano condiviso non si aprivano per un compagno di corso.
+- Spostare un nodo mentre l'AI modificava una mappa buttava via la modifica.
+- Tornare indietro da un quiz dopo un'esercitazione sulle lacune faceva ripartire l'esercitazione.
+- Le pagine mostravano lo stato vuoto mentre stavano ancora caricando.
+- Su Windows, copia, ripristino e "Cancella tutti i dati" potevano fallire con "core-busy" quando il processo in background di Pyxis ci metteva a chiudersi.
+
 ## 0.3.1
 
 ### English
