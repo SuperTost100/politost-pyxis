@@ -1,4 +1,4 @@
-PoliTost Pyxis 0.3.1
+PoliTost Pyxis 0.4.0
 
 MIT License
 
@@ -4366,7 +4366,7 @@ THE SOFTWARE.
 
 ========================================================================
 
-argparse 3.0.2
+argparse 3.0.3
 License metadata: PSF-2.0
 
 --- LICENSE ---
@@ -12513,7 +12513,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
 
-markdown-it 15.0.2
+markdown-it 15.0.3
 License metadata: MIT
 
 --- LICENSE ---
