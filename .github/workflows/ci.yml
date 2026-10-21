@@ -32,7 +32,8 @@ jobs:
   test:
     name: test ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 50
+    # macOS x64 took 44-48 minutes in October 2026, and two runs were cancelled at the old 50.
+    timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
