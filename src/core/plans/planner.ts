@@ -184,7 +184,8 @@ function studyState(db: Database.Database, now: number) {
     "SELECT t.id, count(tp.passage_id) AS n FROM topics t LEFT JOIN topic_passages tp ON tp.topic_id = t.id WHERE t.plan_id = ? GROUP BY t.id",
   );
   return rows.flatMap((row) => {
-    const state = pathState(db, row.id, now);
+    // Today counts due cards per plan as one item, so the path's per-topic counts are not needed here.
+    const state = pathState(db, row.id, now, { dueCards: false });
     if (!state) return [];
     const doneToday = state.steps.filter((step) => step.at >= today && step.activity !== "cards");
     const remainingNow = remainingMinutes(state);

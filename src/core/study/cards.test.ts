@@ -14,7 +14,7 @@ import {
   setSuspended,
   undoRating,
 } from "./cards";
-import { planGuide } from "../plans/create";
+import { pathState, planGuide } from "../plans/create";
 import { seedCards } from "./test-study";
 
 const T0 = Date.UTC(2026, 2, 15, 10, 0, 0);
@@ -95,6 +95,8 @@ describe("cards", () => {
     });
     expect(dueCards(db, planId, T0)).toHaveLength(20);
     expect(planGuide(db, planId, T0)?.topics[0]?.dueCards).toBe(25);
+    // Today's list counts them per plan instead, so it asks the path not to.
+    expect(pathState(db, planId, T0, { dueCards: false })?.topics[0]?.dueCards).toBe(0);
   });
 
   it("treats a new card as due now", () => {

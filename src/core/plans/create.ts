@@ -399,6 +399,8 @@ export function pathState(
   db: Database.Database,
   planId: string,
   now = Date.now(),
+  /** False leaves every topic's `dueCards` at 0, for a caller that counts due cards across the plan itself. */
+  options: { dueCards?: boolean } = {},
 ) {
   syncExamDates(db, now, planId);
   const meta = db
@@ -415,9 +417,16 @@ export function pathState(
     )
     .all(planId) as Array<{ topic_id: string | null; severity: "severe" | "minor" | null }>;
   // Gap rows are written by the app itself (syncs, flags, merges), so they say nothing about when the topic was studied.
-  const lastStudied = db.prepare(
-    `SELECT MAX(created_at) AS at FROM learning_events
-     WHERE plan_id = ? AND topic_id = ? AND kind NOT IN ('gap_opened', 'gap_closed')`,
+  const lastStudied = new Map(
+    (
+      db
+        .prepare(
+          `SELECT topic_id, MAX(created_at) AS at FROM learning_events
+           WHERE plan_id = ? AND topic_id IS NOT NULL AND kind NOT IN ('gap_opened', 'gap_closed')
+           GROUP BY topic_id`,
+        )
+        .all(planId) as Array<{ topic_id: string; at: number }>
+    ).map((row) => [row.topic_id, row.at]),
   );
   // A topic's lesson is recorded once, so its step marks when the stay on that topic began.
   const readAt = new Map(
@@ -425,17 +434,17 @@ export function pathState(
   );
   const topics: TopicStatus[] = planMastery(db, planId, now).map((topic) => {
     const open = gaps.filter((gap) => gap.topic_id === topic.id);
-    const last = lastStudied.get(planId, topic.id) as { at: number | null };
+    const last = lastStudied.get(topic.id);
     const since = readAt.get(topic.id);
     return {
       id: topic.id,
       mastery: topic.mastery,
-      dueCards: countDueCards(db, planId, now, topic.id),
+      dueCards: options.dueCards === false ? 0 : countDueCards(db, planId, now, topic.id),
       // Only gaps Progress would call severe count as such; a minor reading is not a severe gap.
       severeGaps: open.filter(
         (gap) => gapSeverity(gap.severity, topic.mastery, meta.target) === "severe",
       ).length,
-      daysIdle: last.at == null ? 0 : Math.max(0, -daysUntil(last.at, now)),
+      daysIdle: last == null ? 0 : Math.max(0, -daysUntil(last, now)),
       graded: since == null ? 0 : gradedActivities(db, planId, topic.id, since),
     };
   });
