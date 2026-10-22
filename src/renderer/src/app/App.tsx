@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { RouterProvider } from "react-router";
 import type { Appearance, ThemeSource } from "@shared/bridge";
 import { pyxisTheme } from "../design-system/theme/pyxis-theme";
-import { i18n, type Locale } from "../locales/i18n";
+import type { Locale } from "../locales/i18n";
 import { CoreNotice } from "./CoreNotice";
 import { EngineFallbackNotice } from "./EngineFallbackNotice";
 import { MenuCommands } from "./MenuCommands";
@@ -48,8 +48,8 @@ const dateIcons = {
 };
 
 function StudyApp() {
-  const { i18n: i18nInstance } = useTranslation();
-  const locale: Locale = i18nInstance.language === "en" ? "en" : "it";
+  const { i18n } = useTranslation();
+  const locale: Locale = i18n.language === "en" ? "en" : "it";
   const [appearance, setAppearance] = useState<Appearance>({
     source: "system",
     resolved: "dark",
@@ -103,14 +103,6 @@ function StudyApp() {
   async function setTheme(source: ThemeSource) {
     applyTheme(await window.pyxis.setAppearance(source));
   }
-
-  useEffect(() => {
-    const onLanguage = () => {
-      document.documentElement.lang = i18n.language === "en" ? "en" : "it";
-    };
-    i18n.on("languageChanged", onLanguage);
-    return () => i18n.off("languageChanged", onLanguage);
-  }, []);
 
   if (!ready) return null;
 
