@@ -77,9 +77,12 @@ export function wrapText(text: string, chars: number): string[] {
 
 function childrenOf(nodes: MapNode[]): Map<string, MapNode[]> {
   const children = new Map<string, MapNode[]>();
-  for (const node of nodes)
-    if (node.parent !== null)
-      children.set(node.parent, [...(children.get(node.parent) ?? []), node]);
+  for (const node of nodes) {
+    if (node.parent === null) continue;
+    const list = children.get(node.parent);
+    if (list) list.push(node);
+    else children.set(node.parent, [node]);
+  }
   return children;
 }
 
