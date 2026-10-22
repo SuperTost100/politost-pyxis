@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import {
   cpSync,
   existsSync,
@@ -15,6 +14,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 // The built app can be pointed at another output folder so a test run never races a rebuild of out/.
 
@@ -27,24 +27,17 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
   const file = join(userData, "fisica.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "fisica",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Forze", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8("## p1 | Forza\nLa forza vale massa per accelerazione.\n"),
-      "chapters/02.md": strToU8("## p1 | Energia\nL’energia cinetica dipende dalla velocità.\n"),
-      "esercizi.md": strToU8(
-        [1, 2, 3, 4].map((n) => exercise(`a${n}`, 1, n)).join("\n") +
+    makeBook({
+      id: "fisica",
+      chapters: [
+        { title: "Forze", text: "## p1 | Forza\nLa forza vale massa per accelerazione.\n" },
+        { title: "Energia", text: "## p1 | Energia\nL’energia cinetica dipende dalla velocità.\n" },
+      ],
+      files: {
+        "esercizi.md":
+          [1, 2, 3, 4].map((n) => exercise(`a${n}`, 1, n)).join("\n") +
           [5, 6, 7].map((n) => exercise(`b${n}`, 2, n)).join("\n"),
-      ),
+      },
     }),
   );
   const planReplies = {

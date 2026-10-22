@@ -3,18 +3,15 @@ import AxeBuilder from "@axe-core/playwright";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 test("selected source text opens a scoped tutor context and Escape dismisses its actions", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-selection-"));
   const file = join(userData, "notes.ptsb");
   const excerpt = "La forza è il prodotto di massa e accelerazione.";
-  writeFileSync(file, zipSync({
-    "smartbook.json": strToU8(JSON.stringify({ id: "sel", title: "Fisica", access: "public", chapters: [{ id: "c1", number: 1, title: "Forze", file: "01.md" }] })),
-    "chapters/01.md": strToU8(`## p1 | Forza\n${excerpt}\n`),
-  }));
+  writeFileSync(file, makeBook({ id: "sel", chapters: [{ title: "Forze", text: `## p1 | Forza\n${excerpt}\n` }] }));
   const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();

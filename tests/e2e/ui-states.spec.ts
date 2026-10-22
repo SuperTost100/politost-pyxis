@@ -4,26 +4,20 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 function smartbook() {
-  return zipSync({
-    "smartbook.json": strToU8(
-      JSON.stringify({
-        id: "states",
-        title: "Fisica",
-        access: "public",
-        chapters: [1, 2].map((n) => ({ id: `c${n}`, number: n, title: `Tema ${n}`, file: `0${n}.md` })),
-      }),
-    ),
-    ...Object.fromEntries(
-      [1, 2].map((n) => [`chapters/0${n}.md`, strToU8(`## p1 | Tema ${n}\nIl moto rettilineo uniforme del tema ${n}.\n`)]),
-    ),
+  return makeBook({
+    id: "states",
+    chapters: [1, 2].map((n) => ({
+      title: `Tema ${n}`,
+      text: `## p1 | Tema ${n}\nIl moto rettilineo uniforme del tema ${n}.\n`,
+    })),
   });
 }
 

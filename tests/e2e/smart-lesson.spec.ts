@@ -4,9 +4,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -102,18 +102,14 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "smart",
-          title: "Fisica",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Forze", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Forza\nLa forza cambia lo stato di moto.\n\n## p2 | Seconda legge\nLa forza è il prodotto di massa e accelerazione.\n",
-      ),
+    makeBook({
+      id: "smart",
+      chapters: [
+        {
+          title: "Forze",
+          text: "## p1 | Forza\nLa forza cambia lo stato di moto.\n\n## p2 | Seconda legge\nLa forza è il prodotto di massa e accelerazione.\n",
+        },
+      ],
     }),
   );
   const replies = {

@@ -13,9 +13,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
-import { strToU8, zipSync } from "fflate";
 import type { ConceptGraph } from "../../src/shared/concept-map";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PNG", async () => {
   test.setTimeout(240_000);
@@ -23,18 +23,15 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
   const file = join(userData, "derivatives.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "calculus",
-          title: "Analisi",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Derivate", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Derivata\nLa derivata misura il cambiamento. La derivata di $x^2$ è $2x$.\n\n## p2 | Prodotto\nLa regola del prodotto deriva $fg$ come $f'g+fg'$.\n\n## p3 | Composizione\nLa regola della catena deriva $f(g(x))$ come $f'(g(x))g'(x)$. Una tangente descrive la variazione locale.\n",
-      ),
+    makeBook({
+      id: "calculus",
+      title: "Analisi",
+      chapters: [
+        {
+          title: "Derivate",
+          text: "## p1 | Derivata\nLa derivata misura il cambiamento. La derivata di $x^2$ è $2x$.\n\n## p2 | Prodotto\nLa regola del prodotto deriva $fg$ come $f'g+fg'$.\n\n## p3 | Composizione\nLa regola della catena deriva $f(g(x))$ come $f'(g(x))g'(x)$. Una tangente descrive la variazione locale.\n",
+        },
+      ],
     }),
   );
   const planReplies = {

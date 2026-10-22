@@ -15,9 +15,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 const figure = (caption: string, code: string) =>
   ["```pyxis-figure", JSON.stringify({ caption, code }), "```"].join("\n");
@@ -100,18 +100,9 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "figures",
-          title: "Fisica",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Moto", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Moto\nNel moto accelerato la posizione cresce col quadrato del tempo.\n",
-      ),
+    makeBook({
+      id: "figures",
+      chapters: [{ title: "Moto", text: "## p1 | Moto\nNel moto accelerato la posizione cresce col quadrato del tempo.\n" }],
     }),
   );
   const replies = {

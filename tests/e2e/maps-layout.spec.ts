@@ -4,8 +4,8 @@ import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { strToU8, zipSync } from "fflate";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async () => {
   test.setTimeout(240_000);
@@ -13,18 +13,15 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
   const file = join(userData, "derivatives.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "calculus",
-          title: "Analisi",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Derivate", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Derivata\nLa derivata misura il cambiamento. La derivata di $x^2$ è $2x$.\n\n## p2 | Prodotto\nLa regola del prodotto deriva $fg$ come $f'g+fg'$.\n\n## p3 | Composizione\nLa regola della catena deriva $f(g(x))$ come $f'(g(x))g'(x)$. Una tangente descrive la variazione locale.\n",
-      ),
+    makeBook({
+      id: "calculus",
+      title: "Analisi",
+      chapters: [
+        {
+          title: "Derivate",
+          text: "## p1 | Derivata\nLa derivata misura il cambiamento. La derivata di $x^2$ è $2x$.\n\n## p2 | Prodotto\nLa regola del prodotto deriva $fg$ come $f'g+fg'$.\n\n## p3 | Composizione\nLa regola della catena deriva $f(g(x))$ come $f'(g(x))g'(x)$. Una tangente descrive la variazione locale.\n",
+        },
+      ],
     }),
   );
   const planReplies = {

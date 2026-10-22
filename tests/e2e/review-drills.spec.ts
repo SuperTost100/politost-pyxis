@@ -1,12 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 const dbPath = (userData: string) => join(userData, "workspace", "pyxis.db");
 
@@ -21,23 +21,14 @@ type Session = {
 
 /** Three chapters; only the first has exercises, so the other two topics have gaps that need a model-made drill. */
 function smartbook() {
-  return zipSync({
-    "smartbook.json": strToU8(
-      JSON.stringify({
-        id: "drills",
-        title: "Fisica",
-        access: "public",
-        chapters: [1, 2, 3].map((n) => ({ id: `c${n}`, number: n, title: `Tema ${n}`, file: `0${n}.md` })),
-      }),
-    ),
-    ...Object.fromEntries(
-      [1, 2, 3].map((n) => [`chapters/0${n}.md`, strToU8(`## p1 | Tema ${n}\nTesto del tema ${n}.\n`)]),
-    ),
-    "esercizi.md": strToU8(
-      [1, 2, 3, 4]
+  return makeBook({
+    id: "drills",
+    chapters: [1, 2, 3].map((n) => ({ title: `Tema ${n}`, text: `## p1 | Tema ${n}\nTesto del tema ${n}.\n` })),
+    files: {
+      "esercizi.md": [1, 2, 3, 4]
         .map((k) => `:::exercise{id="a${k}" chapter="1"}\nDomanda ${k}?\n:::solution\nrisposta ${k}\n:::\n:::\n`)
         .join("\n"),
-    ),
+    },
   });
 }
 

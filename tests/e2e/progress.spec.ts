@@ -1,12 +1,12 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 test("PRO-01 through PRO-06 preparation layout, flagged content, activity and progress tabs", async () => {
   test.setTimeout(90000);
@@ -14,24 +14,12 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
   const file = join(userData, "book.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "study",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Moti", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Velocità\nLa velocità descrive il moto.\n",
-      ),
-      "chapters/02.md": strToU8(
-        "## p1 | Energia\nL’energia misura il lavoro disponibile.\n",
-      ),
+    makeBook({
+      id: "study",
+      chapters: [
+        { title: "Moti", text: "## p1 | Velocità\nLa velocità descrive il moto.\n" },
+        { title: "Energia", text: "## p1 | Energia\nL’energia misura il lavoro disponibile.\n" },
+      ],
     }),
   );
   const fixture = {

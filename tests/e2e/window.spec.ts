@@ -4,7 +4,6 @@ import {
   test,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import {
   existsSync,
   mkdtempSync,
@@ -17,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 async function clean(page: Page) {
   expect(
@@ -159,21 +159,19 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
   const exported = join(root, "Motion.pyxis");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "motion",
-          title: "Motion",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Velocity", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Velocity\nVelocity is displacement divided by elapsed time. A displacement of 12 metres in 3 seconds gives a velocity of 4 metres per second.\n",
-      ),
-      "esami.md": strToU8(
-        ':::exercise{id="velocity" chapter="1"}\nA displacement of 12 metres takes 3 seconds. What is the velocity?\n:::solution\nVelocity = displacement / time = 4 m/s.\n:::\n:::\n',
-      ),
+    makeBook({
+      id: "motion",
+      title: "Motion",
+      chapters: [
+        {
+          title: "Velocity",
+          text: "## p1 | Velocity\nVelocity is displacement divided by elapsed time. A displacement of 12 metres in 3 seconds gives a velocity of 4 metres per second.\n",
+        },
+      ],
+      files: {
+        "esami.md":
+          ':::exercise{id="velocity" chapter="1"}\nA displacement of 12 metres takes 3 seconds. What is the velocity?\n:::solution\nVelocity = displacement / time = 4 m/s.\n:::\n:::\n',
+      },
     }),
   );
   const replies = {

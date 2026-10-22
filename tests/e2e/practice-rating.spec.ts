@@ -3,12 +3,12 @@ import {
   expect,
   test,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 const both = (it: string, en: string) => new RegExp(`^(${it}|${en})$`);
 
@@ -18,30 +18,18 @@ test("practice: rate two exercises, change one, finish, and mastery moves by two
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "rating",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Lavoro", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Lavoro\nIl lavoro è forza per spostamento.\n",
-      ),
-      "chapters/02.md": strToU8(
-        "## p1 | Energia\nL’energia misura il lavoro disponibile.\n",
-      ),
-      "esercizi.md": strToU8(
-        [
+    makeBook({
+      id: "rating",
+      chapters: [
+        { title: "Lavoro", text: "## p1 | Lavoro\nIl lavoro è forza per spostamento.\n" },
+        { title: "Energia", text: "## p1 | Energia\nL’energia misura il lavoro disponibile.\n" },
+      ],
+      files: {
+        "esercizi.md": [
           ':::exercise{id="work" chapter="1"}\nQuanto vale il lavoro di 5 N su 2 m?\n:::solution\nW = F s = 10 J.\n:::\n:::',
           ':::exercise{id="power" chapter="1"}\nQuanto vale la potenza di 10 J in 5 s?\n:::solution\nP = W / t = 2 W.\n:::\n:::',
         ].join("\n\n"),
-      ),
+      },
     }),
   );
   const replies = {

@@ -4,13 +4,13 @@ import {
   test,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 const SPEED =
   "La velocità media è lo spazio percorso diviso il tempo impiegato.";
@@ -21,36 +21,17 @@ const ACCEL_V2 =
 /** Version 1 has two chapters. Version 2 rewrites one paragraph and adds a third chapter. */
 function pack(version: string) {
   const v2 = version !== "1.0.0";
-  const chapters = [
-    { id: "moti", number: 1, title: "Moti", file: "01.md" },
-    { id: "forze", number: 2, title: "Forze", file: "02.md" },
-    ...(v2
-      ? [{ id: "energia", number: 3, title: "Energia", file: "03.md" }]
-      : []),
-  ];
-  return zipSync({
-    "smartbook.json": strToU8(
-      JSON.stringify({
-        id: "fisica-demo",
-        title: "Fisica di prova",
-        version,
-        access: "public",
-        chapters,
-      }),
-    ),
-    "chapters/01.md": strToU8(
-      `## p1 | Velocità\n${SPEED}\n\n## p2 | Accelerazione\n${v2 ? ACCEL_V2 : ACCEL_V1}\n`,
-    ),
-    "chapters/02.md": strToU8(
-      "## p1 | Dinamica\nLa forza risultante è uguale alla massa per l'accelerazione.\n",
-    ),
-    ...(v2
-      ? {
-          "chapters/03.md": strToU8(
-            "## p1 | Lavoro\nIl lavoro di una forza costante è forza per spostamento.\n",
-          ),
-        }
-      : {}),
+  return makeBook({
+    id: "fisica-demo",
+    title: "Fisica di prova",
+    version,
+    chapters: [
+      { id: "moti", title: "Moti", text: `## p1 | Velocità\n${SPEED}\n\n## p2 | Accelerazione\n${v2 ? ACCEL_V2 : ACCEL_V1}\n` },
+      { id: "forze", title: "Forze", text: "## p1 | Dinamica\nLa forza risultante è uguale alla massa per l'accelerazione.\n" },
+      ...(v2
+        ? [{ id: "energia", title: "Energia", text: "## p1 | Lavoro\nIl lavoro di una forza costante è forza per spostamento.\n" }]
+        : []),
+    ],
   });
 }
 

@@ -4,28 +4,20 @@ import {
   test,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 // A folder laid out like books.politost.it: the catalog and one package. `tamper` lists a checksum that does not match.
 function booksSite(options: { tamper?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "pyxis-books-"));
-  const pkg = zipSync({
-    "smartbook.json": strToU8(
-      JSON.stringify({
-        id: "fisica-demo",
-        title: "Fisica di prova",
-        access: "public",
-        chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
-      }),
-    ),
-    "chapters/01.md": strToU8(
-      "## p1 | Velocità\nLa velocità media è lo spazio percorso diviso il tempo impiegato.\n",
-    ),
+  const pkg = makeBook({
+    id: "fisica-demo",
+    title: "Fisica di prova",
+    chapters: [{ title: "Moti", text: "## p1 | Velocità\nLa velocità media è lo spazio percorso diviso il tempo impiegato.\n" }],
   });
   mkdirSync(join(dir, "books"));
   writeFileSync(join(dir, "books", "fisica-demo@1.0.0.ptsb"), pkg);

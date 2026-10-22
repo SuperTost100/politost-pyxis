@@ -6,12 +6,12 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 /** Ten diagnostic questions over the book's two chapters; each explanation cites a passage by ID. */
 const diagnosticReply = {
@@ -38,20 +38,12 @@ async function launch(replies: Record<string, unknown>, delay = 0) {
   const file = join(userData, "book.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "fisica",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Moti", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8("## p1 | Velocità\nLa velocità descrive lo spostamento nel tempo.\n"),
-      "chapters/02.md": strToU8("## p1 | Lavoro\nIl lavoro è forza per spostamento.\n"),
+    makeBook({
+      id: "fisica",
+      chapters: [
+        { title: "Moti", text: "## p1 | Velocità\nLa velocità descrive lo spostamento nel tempo.\n" },
+        { title: "Energia", text: "## p1 | Lavoro\nIl lavoro è forza per spostamento.\n" },
+      ],
     }),
   );
   const env = {

@@ -4,9 +4,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -106,26 +106,12 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "path",
-          title: "Fisica",
-          access: "public",
-          chapters: chapters.map((chapter) => ({
-            id: `c${chapter.number}`,
-            number: chapter.number,
-            title: chapter.title,
-            file: `0${chapter.number}.md`,
-          })),
-        }),
-      ),
-      ...Object.fromEntries(
-        chapters.map((chapter) => [
-          `chapters/0${chapter.number}.md`,
-          strToU8(`## p${chapter.number} | ${chapter.title}\nTesto su ${chapter.title}.\n`),
-        ]),
-      ),
+    makeBook({
+      id: "path",
+      chapters: chapters.map((chapter) => ({
+        title: chapter.title,
+        text: `## p${chapter.number} | ${chapter.title}\nTesto su ${chapter.title}.\n`,
+      })),
     }),
   );
   const replies = {
@@ -334,25 +320,16 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "path-review",
-          title: "Fisica",
-          access: "public",
-          chapters: chapters.slice(0, 2).map((chapter) => ({
-            id: `c${chapter.number}`,
-            number: chapter.number,
-            title: chapter.title,
-            file: `0${chapter.number}.md`,
-          })),
-        }),
-      ),
-      "chapters/01.md": strToU8("## p1 | Forze\nUna forza cambia il moto.\n"),
-      "chapters/02.md": strToU8("## p2 | Energia e lavoro\nIl lavoro è forza per spostamento.\n"),
-      "esercizi.md": strToU8(
-        ':::exercise{id="push" chapter="1"}\nQuanto vale la forza su 2 kg a 3 m/s²?\n:::solution\nF = m a = 6 N.\n:::\n:::',
-      ),
+    makeBook({
+      id: "path-review",
+      chapters: [
+        { title: chapters[0]!.title, text: "## p1 | Forze\nUna forza cambia il moto.\n" },
+        { title: chapters[1]!.title, text: "## p2 | Energia e lavoro\nIl lavoro è forza per spostamento.\n" },
+      ],
+      files: {
+        "esercizi.md":
+          ':::exercise{id="push" chapter="1"}\nQuanto vale la forza su 2 kg a 3 m/s²?\n:::solution\nF = m a = 6 N.\n:::\n:::',
+      },
     }),
   );
   const replies = {

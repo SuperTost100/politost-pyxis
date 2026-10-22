@@ -1,12 +1,12 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 test("LES-20 through LES-23 exam timer restart, auto-submit and named grading model", async () => {
   test.setTimeout(240000);
@@ -14,36 +14,20 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
   const file = join(userData, "exam.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "physics",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Forze", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Forza\\nLa forza vale massa per accelerazione.\\n".replaceAll(
-          "\\n",
-          "\n",
-        ),
-      ),
-      "chapters/02.md": strToU8(
-        "## p1 | Energia\\nL’energia cinetica vale metà della massa per la velocità al quadrato.\\n".replaceAll(
-          "\\n",
-          "\n",
-        ),
-      ),
-      "esercizi.md": strToU8(
-        ':::exercise{id="practice" chapter="1"}\nDOMANDA DI PRATICA\n:::solution\n1\n:::\n:::\n',
-      ),
-      "esami.md": strToU8(
-        ':::exercise{id="force" chapter="1"}\nUna massa di 2 kg accelera a 3 m/s². Quanto vale la forza?\n:::solution\nF = ma = 6 N.\n:::\n:::\n\n:::exercise{id="energy" chapter="2"}\nUna massa di 2 kg si muove a 2 m/s. Quanto vale l’energia cinetica?\n:::solution\nE = mv²/2 = 4 J.\n:::\n:::\n',
-      ),
+    makeBook({
+      id: "physics",
+      chapters: [
+        { title: "Forze", text: "## p1 | Forza\nLa forza vale massa per accelerazione.\n" },
+        {
+          title: "Energia",
+          text: "## p1 | Energia\nL’energia cinetica vale metà della massa per la velocità al quadrato.\n",
+        },
+      ],
+      files: {
+        "esercizi.md": ':::exercise{id="practice" chapter="1"}\nDOMANDA DI PRATICA\n:::solution\n1\n:::\n:::\n',
+        "esami.md":
+          ':::exercise{id="force" chapter="1"}\nUna massa di 2 kg accelera a 3 m/s². Quanto vale la forza?\n:::solution\nF = ma = 6 N.\n:::\n:::\n\n:::exercise{id="energy" chapter="2"}\nUna massa di 2 kg si muove a 2 m/s. Quanto vale l’energia cinetica?\n:::solution\nE = mv²/2 = 4 J.\n:::\n:::\n',
+      },
     }),
   );
   const planReplies = {

@@ -1,37 +1,28 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
+import { makeBook } from "./book";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
   const file = join(userData, "source.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "physics",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Moti", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Velocità\nLa velocità descrive lo spostamento nel tempo.\n",
-      ),
-      "chapters/02.md": strToU8(
-        "## p1 | Lavoro\nIl lavoro è il prodotto di forza e spostamento.\n\n## p2 | Energia\nL'energia cinetica vale $E = m v^2 / 2$.\n",
-      ),
+    makeBook({
+      id: "physics",
+      chapters: [
+        { title: "Moti", text: "## p1 | Velocità\nLa velocità descrive lo spostamento nel tempo.\n" },
+        {
+          title: "Energia",
+          text: "## p1 | Lavoro\nIl lavoro è il prodotto di forza e spostamento.\n\n## p2 | Energia\nL'energia cinetica vale $E = m v^2 / 2$.\n",
+        },
+      ],
     }),
   );
   const env = {
