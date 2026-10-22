@@ -26,7 +26,7 @@ import { contentWords, queryEmbedder, retrieveWithModel } from "../sources/retri
 import { sha256 } from "../sources/quality";
 import { readingOrder } from "../sources/smartbook";
 import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
-import { deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
+import { chatListedSources, deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 import { contentLanguage, planLanguage } from "../engine/prompts";
 import { oneLine, profileContext } from "../profile/context";
 import { readProfile } from "../profile/profile";
@@ -1187,11 +1187,7 @@ export function deleteChat(db: Database.Database, workspace: string, chatId: str
   cancelChecks(chatId);
   const hashes = db.transaction(() => {
     const mine = readScope(db, chatId).ids;
-    const shared = new Set(
-      (db.prepare(`SELECT id FROM chats WHERE id != ?`).all(chatId) as Array<{ id: string }>).flatMap(
-        (row) => readScope(db, row.id).ids,
-      ),
-    );
+    const shared = chatListedSources(db, chatId);
     const photos = db
       .prepare(`SELECT a.blob_sha AS sha FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.chat_id = ?`)
       .all(chatId) as Array<{ sha: string }>;
