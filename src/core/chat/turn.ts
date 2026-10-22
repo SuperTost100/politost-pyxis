@@ -28,12 +28,11 @@ import { readingOrder } from "../sources/smartbook";
 import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
 import { chatListedSources, deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 import { latestDocument } from "../sources/documents";
-import { contentLanguage, planLanguage } from "../engine/prompts";
+import { contentLanguage, planLanguage, promptProvenance } from "../engine/prompts";
 import { oneLine, profileContext } from "../profile/context";
 import { readProfile } from "../profile/profile";
 import {
   type ChatTemplateId,
-  chatProvenance,
   chatSystemPrompt,
   chatTemplateId,
   dataBlock,
@@ -900,47 +899,20 @@ async function answer(
 
   // The reply is saved once its figures are drawn. Its math check runs afterwards (startChecks), so it does not hold the turn.
   requireTutorAvailable(db);
-  requireChat(db, chatId);
-  const stored = `${parsed.body}${
-    parsed.followups.length > 0
-      ? `\n<followups>\n${parsed.followups.join("\n")}\n</followups>`
-      : ""
-  }`;
-  const used = new Set(
-    [...splitCitationGroups(parsed.body).matchAll(/\[P(\d+)\]/g)].map((match) =>
-      Number(match[1]),
-    ),
-  );
-  const linked = citations.filter((cite) => used.has(cite.index));
-  const grounding = replyGrounding({
-    selected,
-    cited: linked.length,
-    attached: thisTurnFile,
-    question: mode === "socratic" && parsed.body.trim().endsWith("?"),
-    passages: citations.length,
-  });
-  db.prepare(
-    `INSERT INTO messages
-      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, figures_json, created_at)
-     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?)`,
-  ).run(
+  const reply = saveReply(db, chatId, parsed, {
     messageId,
-    chatId,
-    stored,
-    result.provider,
-    result.model,
+    provider: result.provider,
+    model: result.model,
+    selected,
+    attached: thisTurnFile,
+    mode,
     template,
-    chatProvenance(template).version,
-    grounding,
-    figures ? JSON.stringify(figures) : null,
-    now + 1,
-  );
-  const link = db.prepare(
-    `INSERT INTO message_passages (message_id, passage_id, label) VALUES (?, ?, ?)`,
-  );
-  for (const cite of linked) {
-    link.run(messageId, cite.passageId, `P${cite.index}`);
-  }
+    citations,
+    stopped: false,
+    error: null,
+    figures,
+    now,
+  });
   // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer.
   const checking = mode !== "socratic" && needsSolverChecks(parsed.body);
   if (checking)
@@ -949,52 +921,54 @@ async function answer(
       { chatId, messageId, body: parsed.body },
       { selection: selectionFor(db, "chat"), run: input.run },
     );
-  return {
-    chatId,
-    covered: true,
-    message: {
-      id: messageId,
-      role: "assistant",
-      body: parsed.body,
-      modelId: result.model,
-      provider: result.provider,
-      grounding,
-      followups: parsed.followups,
-      citations: linked,
-      reaction: null,
-      stopped: false,
-      error: null,
-      checks: splitChecks(parsed.body).checks,
-      checking,
-      ...(figures ? { figures } : {}),
-    },
-    ...skippedImages,
-  };
+  return { ...reply, message: { ...reply.message!, checking }, ...skippedImages };
 }
 
+/** A reply that stopped early: what arrived is kept, marked stopped or with the failure, and offers Continue. */
 function finishReply(
   db: Database.Database,
   chatId: string,
   text: string,
-  meta: {
-    messageId: string;
-    provider: string;
-    model: string;
-    selected: boolean;
-    attached: boolean;
-    mode: string;
-    template: string;
-    citations: ChatCitation[];
-    stopped: boolean;
-    error: string | null;
-    now: number;
-  },
+  meta: Omit<SavedReply, "figures">,
 ): AskResult {
-  requireChat(db, chatId);
   const parsed = splitFollowups(text);
   // Nothing draws a stopped reply's figures, so their blocks go.
   parsed.body = mapFigureBlocks(parsed.body, () => "");
+  return saveReply(db, chatId, { body: parsed.body, followups: [] }, meta);
+}
+
+type SavedReply = {
+  messageId: string;
+  provider: string;
+  model: string;
+  selected: boolean;
+  attached: boolean;
+  mode: string;
+  template: string;
+  citations: ChatCitation[];
+  stopped: boolean;
+  error: string | null;
+  figures?: Record<string, string>;
+  now: number;
+};
+
+/**
+ * Stores an assistant reply with the passages it cites, and returns its view. A stopped reply also records every passage
+ * it was given, cited or not, so Continue can answer from the same ones in the same numbering.
+ */
+function saveReply(
+  db: Database.Database,
+  chatId: string,
+  parsed: { body: string; followups: string[] },
+  meta: SavedReply,
+): AskResult {
+  requireChat(db, chatId);
   const { messageId } = meta;
+  const stored = `${parsed.body}${
+    parsed.followups.length > 0
+      ? `\n<followups>\n${parsed.followups.join("\n")}\n</followups>`
+      : ""
+  }`;
   const used = new Set(
     [...splitCitationGroups(parsed.body).matchAll(/\[P(\d+)\]/g)].map((match) =>
       Number(match[1]),
@@ -1010,23 +984,27 @@ function finishReply(
   });
   db.prepare(
     `INSERT INTO messages
-      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, stopped, error, passages_json, created_at)
-     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?, ?)`,
+      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding,
+       stopped, error, passages_json, figures_json, created_at)
+     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     messageId,
     chatId,
-    parsed.body,
+    stored,
     meta.provider,
     meta.model,
     meta.template,
-    chatProvenance(meta.template as ChatTemplateId).version,
+    // Stored with each assistant message: the template ID and its own version.
+    promptProvenance(meta.template as ChatTemplateId).version,
     grounding,
     meta.stopped ? 1 : 0,
     meta.error,
-    // Every passage the reply was given, cited or not, so Continue can answer from the same ones in the same numbering.
-    JSON.stringify(
-      meta.citations.map((cite): KeptPassage => ({ passageId: cite.passageId, index: cite.index })),
-    ),
+    meta.stopped
+      ? JSON.stringify(
+          meta.citations.map((cite): KeptPassage => ({ passageId: cite.passageId, index: cite.index })),
+        )
+      : null,
+    meta.figures ? JSON.stringify(meta.figures) : null,
     meta.now + 1,
   );
   const link = db.prepare(
@@ -1044,13 +1022,14 @@ function finishReply(
       modelId: meta.model || null,
       provider: meta.provider || null,
       grounding,
-      followups: [],
+      followups: parsed.followups,
       citations: linked,
       reaction: null,
       stopped: meta.stopped,
       error: meta.error,
       checks: splitChecks(parsed.body).checks,
       checking: false,
+      ...(meta.figures ? { figures: meta.figures } : {}),
     },
   };
 }
