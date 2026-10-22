@@ -20,6 +20,7 @@ import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloz
 import { Notice } from "../../components/Notice";
 import { LoadError } from "../../components/LoadError";
 import { usePlan } from "../../lib/queries";
+import { refreshPlan } from "../../lib/refreshPlan";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
 type RatingName = (typeof RATINGS)[number];
@@ -189,11 +190,7 @@ export function CardsPage() {
           : {}),
       });
       setRecorded(true);
-      await Promise.all(
-        [["plan", planId], ["recommend", planId]].map((queryKey) =>
-          client.invalidateQueries({ queryKey }),
-        ),
-      );
+      await refreshPlan(client, planId);
       return true;
     } catch {
       setFinishFailed(true);
@@ -222,11 +219,7 @@ export function CardsPage() {
           },
         });
       setRecorded(true);
-      await Promise.all(
-        [["plans"], ["plan"], ["recommend"]].map((queryKey) =>
-          client.invalidateQueries({ queryKey }),
-        ),
-      );
+      await refreshPlan(client, ...ratedIn.map((entry) => entry.planId));
       return true;
     } catch {
       setFinishFailed(true);

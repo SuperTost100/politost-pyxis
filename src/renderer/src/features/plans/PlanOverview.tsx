@@ -52,6 +52,7 @@ import { SourceRow } from "../../components/SourceRow";
 import { PastPapers } from "./PastPapers";
 import "./PlanPage.css";
 import { pastPapersQuery, sourcesQuery, usePlan, useRecommend } from "../../lib/queries";
+import { refreshPlan } from "../../lib/refreshPlan";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
 
@@ -128,14 +129,7 @@ export function PlanPage() {
     ? view!
     : "path";
   const progress = series.data;
-  const refresh = async () => {
-    await Promise.all([
-      client.invalidateQueries({ queryKey: ["plan", planId] }),
-      client.invalidateQueries({ queryKey: ["recommend", planId] }),
-      client.invalidateQueries({ queryKey: ["series", planId] }),
-      client.invalidateQueries({ queryKey: ["plans"] }),
-    ]);
-  };
+  const refresh = () => refreshPlan(client, planId);
   async function action(run: () => Promise<unknown>) {
     if (busyRef.current) return;
     busyRef.current = true;

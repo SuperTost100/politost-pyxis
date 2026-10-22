@@ -13,6 +13,7 @@ import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import "./PracticePage.css";
 import { usePlan } from "../../lib/queries";
+import { refreshPlan } from "../../lib/refreshPlan";
 
 type Exercise = Awaited<ReturnType<typeof invoke<"study.exercises">>>["exercises"][number];
 
@@ -38,9 +39,7 @@ function SelfRating({
       invoke("study.rateExercise", { planId, topicId, exerciseId, rating: next }),
     onSuccess: () =>
       Promise.all([
-        ...["series", "plan", "recommend"].map((key) =>
-          client.invalidateQueries({ queryKey: [key, planId] }),
-        ),
+        refreshPlan(client, planId),
         // The exercise list holds each rating; left stale it would show the old one on the next visit.
         client.invalidateQueries({ queryKey: ["exercises", planId, topicId] }),
       ]),
@@ -197,11 +196,7 @@ export function PracticePage() {
     mutationFn: () =>
       invoke("plans.complete", { planId: planId ?? "", activity: "practice", topicId: topicId ?? null }),
     onSuccess: async () => {
-      await Promise.all(
-        [["plan", planId], ["recommend", planId]].map((queryKey) =>
-          client.invalidateQueries({ queryKey }),
-        ),
-      );
+      await refreshPlan(client, planId ?? "");
       navigate(`/plans/${planId ?? ""}`);
     },
   });
