@@ -19,10 +19,6 @@ const css = readFileSync(
   "utf8",
 );
 
-function camelToKebab(value: string): string {
-  return value.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-}
-
 function cssValue(block: string, name: string): string | undefined {
   const match = block.match(new RegExp(`--${name}:\\s*([^;]+);`));
   return match?.[1]?.trim().replace(/(\.\d*?)0+(?=\D|$)/g, "$1");
@@ -44,10 +40,6 @@ function expectedCss(value: string): string {
 }
 
 describe("design tokens stay in sync", () => {
-  const byName = new Map(
-    tokens.color.tokens.map((token) => [token.name, token.value]),
-  );
-
   it("mirrors every theme colour into tokens.css", () => {
     for (const token of tokens.color.tokens) {
       if (
@@ -64,11 +56,11 @@ describe("design tokens stay in sync", () => {
     }
   });
 
-  it("mirrors pyxisColors into tokens.json", () => {
+  // Ant Design derives hover and border shades from these, so a "{name}" reference would break them.
+  it("gives Ant Design a real colour for every token it reads from tokens.json", () => {
     for (const mode of ["dark", "light"] as const) {
       for (const [key, value] of Object.entries(pyxisColors[mode])) {
-        const name = camelToKebab(key);
-        expect(byName.get(name)?.[mode], `${mode} ${name}`).toBe(value);
+        expect(value, `${mode} ${key}`).toMatch(/^(#[0-9a-f]{6}|rgba\([\d., ]+\))$/);
       }
     }
   });

@@ -1,4 +1,5 @@
-/* PoliTost Pyxis tokens — generated from tokens.json. Set <html data-theme="dark|light">. */
+/* PoliTost Pyxis tokens. The colours repeat tokens.json, which the Ant Design theme reads, and tokens.test.ts fails when
+   the two differ. Set <html data-theme="dark|light">. */
 @font-face {
   font-family: "Figtree";
   src: url("../fonts/Figtree-Variable.woff2") format("woff2");
