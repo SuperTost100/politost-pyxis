@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { advanceOcr, applyOcrPage, canStartOcr, currentOcrRun, finishOcr, hasOcrPage, nextOcrPage, ownsOcrRun, requestOcr, stopOcr } from "./ocr";
+import { advanceOcr, applyOcrPage, canStartOcr, currentOcrRun, finishOcr, hasOcrPage, ownsOcrRun, requestOcr, stopOcr } from "./ocr";
 
 /**
  * OCR one rendered page. The PNG bytes are the pixels, not a caption. Pages arrive in order from 1 and the scan finishes
@@ -28,12 +28,12 @@ export async function ocrPngPage(
     if (page !== 1) throw new Error("ocr-out-of-order");
     requestOcr(db, sourceId);
   } else if (row.status !== "ocr-queued") throw new Error("ocr-not-active");
-  else if (page !== nextOcrPage(db, sourceId)) throw new Error("ocr-out-of-order");
   const mine = currentOcrRun(db, sourceId)!;
+  if (page !== mine.next) throw new Error("ocr-out-of-order");
   try {
-    if (!hasOcrPage(db, sourceId, page)) {
+    if (!hasOcrPage(db, sourceId, mine, page)) {
       const text = (await recognize(png)).replace(/\s+/g, " ").trim();
-      if (!ownsOcrRun(db, sourceId, mine) || nextOcrPage(db, sourceId) !== page) throw new Error("ocr-stale");
+      if (!ownsOcrRun(db, sourceId, mine, page)) throw new Error("ocr-stale");
       if (text) applyOcrPage(db, sourceId, { page, text });
     }
     advanceOcr(db, sourceId, page);
