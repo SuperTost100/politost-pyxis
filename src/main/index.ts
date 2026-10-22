@@ -866,47 +866,52 @@ function pauseCore(): Promise<void> {
 /** cleanupComplete: a commit deleted the old copy. outcome: what a recovery left live. */
 type ArchiveResult = { cleanupComplete: boolean; outcome?: RestoreOutcome };
 
+type ArchiveMessage = {
+  ok?: boolean;
+  message?: string;
+  cleanupComplete?: boolean;
+  outcome?: RestoreOutcome;
+  verified?: Array<boolean | null>;
+};
+
+/**
+ * Runs one operation in the archive worker and settles on its one message: `result` turns a successful one into the
+ * value, or returns null when it lacks what was asked. A failed message, a worker error, or an exit before any message
+ * rejects (`exitError` names that last case).
+ */
+function archiveWorker<T>(
+  workerData: Record<string, unknown>,
+  result: (message: ArchiveMessage) => T | null,
+  exitError: (code: number) => string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err: Error | null, value?: T) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(value as T);
+    };
+    const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), { workerData });
+    worker.once("message", (message: ArchiveMessage) => {
+      const value = message.ok ? result(message) : null;
+      if (value !== null) finish(null, value);
+      else finish(new Error(message.message || "backup-failed"));
+    });
+    worker.once("error", (err) => finish(err instanceof Error ? err : new Error("backup-failed")));
+    worker.once("exit", (code) => finish(new Error(exitError(code))));
+  });
+}
+
 function runArchive(
   op: "backup" | "restore" | "commit" | "recover",
   zip?: string,
 ): Promise<ArchiveResult> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (err?: Error, result?: ArchiveResult) => {
-      if (settled) return;
-      settled = true;
-      if (err) reject(err);
-      else resolve(result ?? { cleanupComplete: true });
-    };
-    const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
-      workerData: { op, workspace: workspacePath, zip },
-    });
-    worker.once(
-      "message",
-      (message: {
-        ok?: boolean;
-        message?: string;
-        cleanupComplete?: boolean;
-        outcome?: RestoreOutcome;
-      }) => {
-        if (message.ok)
-          finish(undefined, {
-            cleanupComplete: message.cleanupComplete ?? true,
-            outcome: message.outcome,
-          });
-        else finish(new Error(message.message || "backup-failed"));
-      },
-    );
-    worker.once("error", (err) => {
-      finish(err instanceof Error ? err : new Error("backup-failed"));
-    });
-    worker.once("exit", (code) => {
-      if (!settled)
-        finish(
-          new Error(code === 0 ? "backup-worker-no-result" : "backup-failed"),
-        );
-    });
-  });
+  return archiveWorker(
+    { op, workspace: workspacePath, zip },
+    (message) => ({ cleanupComplete: message.cleanupComplete ?? true, outcome: message.outcome }),
+    (code) => (code === 0 ? "backup-worker-no-result" : "backup-failed"),
+  );
 }
 
 /**
@@ -914,31 +919,11 @@ function runArchive(
  * so it runs beside a backup or a restore.
  */
 function verifyArchives(zips: string[]): Promise<Array<boolean | null>> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
-      workerData: { op: "verify", zips },
-    });
-    let settled = false;
-    const finish = (err?: Error, verified?: Array<boolean | null>) => {
-      if (settled) return;
-      settled = true;
-      if (err) reject(err);
-      else resolve(verified ?? []);
-    };
-    worker.once("message", (message: {
-        ok?: boolean;
-        verified?: Array<boolean | null>;
-        message?: string;
-      }) =>
-      message.ok && message.verified
-        ? finish(undefined, message.verified)
-        : finish(new Error(message.message || "backup-failed")),
-    );
-    worker.once("error", (err) =>
-      finish(err instanceof Error ? err : new Error("backup-failed")),
-    );
-    worker.once("exit", () => finish(new Error("backup-worker-no-result")));
-  });
+  return archiveWorker(
+    { op: "verify", zips },
+    (message) => message.verified ?? null,
+    () => "backup-worker-no-result",
+  );
 }
 
 /**
