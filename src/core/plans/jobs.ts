@@ -771,40 +771,11 @@ export function enqueuePlan(
 }
 
 export function planBuildState(db: Database.Database, planId: string) {
-  const row = db
-    .prepare(
-      "SELECT id, state, progress, step_label, error FROM jobs WHERE kind = 'plan-build' AND json_extract(params_json, '$.planId') = ? ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(planId) as
-    | {
-        id: string;
-        state: string;
-        progress: number;
-        step_label: string | null;
-        error: string | null;
-      }
-    | undefined;
-  return row
-    ? {
-        jobId: row.id,
-        state: row.state,
-        progress: row.progress,
-        stepLabel: row.step_label,
-        error: row.error,
-        steps: db
-          .prepare(
-            "SELECT name, label, state FROM job_steps WHERE job_id = ? ORDER BY position",
-          )
-          .all(row.id) as Array<{
-          name: string;
-          label: string;
-          state: "pending" | "running" | "succeeded" | "failed";
-        }>,
-      }
-    : null;
+  const row = latestPlanJob(db, "plan-build", planId);
+  return row ? jobView(db, row) : null;
 }
 
-type RebuildRow = {
+type PlanJobRow = {
   id: string;
   state: string;
   progress: number;
@@ -812,12 +783,38 @@ type RebuildRow = {
   error: string | null;
   params_json: string;
 };
-function latestRebuild(db: Database.Database, planId: string) {
+
+/** The plan's newest job of this kind; of two started in the same millisecond, the one stored last. */
+function latestPlanJob(db: Database.Database, kind: "plan-build" | "plan-rebuild", planId: string) {
   return db
     .prepare(
-      "SELECT id, state, progress, step_label, error, params_json FROM jobs WHERE kind = 'plan-rebuild' AND json_extract(params_json, '$.planId') = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+      "SELECT id, state, progress, step_label, error, params_json FROM jobs WHERE kind = ? AND json_extract(params_json, '$.planId') = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
     )
-    .get(planId) as RebuildRow | undefined;
+    .get(kind, planId) as PlanJobRow | undefined;
+}
+
+function latestRebuild(db: Database.Database, planId: string) {
+  return latestPlanJob(db, "plan-rebuild", planId);
+}
+
+/** A job's state and its steps in order, as the plan pages show progress. */
+function jobView(db: Database.Database, row: PlanJobRow) {
+  return {
+    jobId: row.id,
+    state: row.state,
+    progress: row.progress,
+    stepLabel: row.step_label,
+    error: row.error,
+    steps: db
+      .prepare(
+        "SELECT name, label, state FROM job_steps WHERE job_id = ? ORDER BY position",
+      )
+      .all(row.id) as Array<{
+      name: string;
+      label: string;
+      state: "pending" | "running" | "succeeded" | "failed";
+    }>,
+  };
 }
 
 /** Starts one rebuild job per plan. A running or reviewable job is returned as is; a finished stale one is replaced. */
@@ -881,20 +878,7 @@ export function rebuildState(db: Database.Database, planId: string) {
   if (!row) return null;
   const params = JSON.parse(row.params_json) as Params;
   return {
-    jobId: row.id,
-    state: row.state,
-    progress: row.progress,
-    stepLabel: row.step_label,
-    error: row.error,
-    steps: db
-      .prepare(
-        "SELECT name, label, state FROM job_steps WHERE job_id = ? ORDER BY position",
-      )
-      .all(row.id) as Array<{
-      name: string;
-      label: string;
-      state: "pending" | "running" | "succeeded" | "failed";
-    }>,
+    ...jobView(db, row),
     review:
       row.state === "succeeded" && params.rebuild
         ? reviewRebuild(db, planId, params.rebuild)
