@@ -1,8 +1,7 @@
-import tiers from "../../../resources/model-tiers.json";
 import { nearestEffort } from "../../shared/effort";
 import { modelCapability } from "./capabilities";
+import { tierData as data, type Tier } from "./tiers";
 
-export type Tier = "fast" | "mid" | "strong";
 export const autoFeatures = [
   "default",
   "chat",
@@ -31,18 +30,6 @@ export type AutoProvider = {
 export type AutoChoice = { provider: string; model: string; effort?: string };
 export type AutoPlan = Partial<Record<AutoFeature, AutoChoice>>;
 
-type TierData = {
-  features: Record<string, { tier: Tier; weight: number }>;
-  unknownFeature: { tier: Tier; weight: number };
-  tierCost: Record<Tier, number>;
-  tierOrder: Record<Tier, Tier[]>;
-  effort: Record<Tier, string>;
-  providerOrder: Record<Tier, string[]>;
-  family: Record<string, string>;
-  patterns: Record<string, Record<Tier, string[]>>;
-  local: { strictFeatures: string[] };
-};
-const data = tiers as unknown as TierData;
 
 function featureTier(feature: string): Tier {
   return (data.features[feature] ?? data.unknownFeature).tier;
