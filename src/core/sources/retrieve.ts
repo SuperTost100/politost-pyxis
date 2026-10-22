@@ -226,53 +226,28 @@ function vectorHits(
   const scope = sourceIds?.length
     ? `AND p.source_id IN (${sourceIds.map(() => "?").join(",")})`
     : "AND (p.source_id IS NULL OR s.library = 1)";
+  // The scope already keeps only live, latest-version passages in the chosen sources, so each hit only needs its ID.
   const rows = db
     .prepare(
-      `SELECT passage_rowid AS n, distance FROM passages_vec
-       WHERE embedding MATCH ? AND k = 30 AND passage_rowid IN (
-         SELECT p.rowid FROM passages p LEFT JOIN sources s ON s.id = p.source_id
-         WHERE (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')) ${scope}
-         AND (p.source_id IS NULL OR p.document_id = (SELECT id FROM source_documents
-           WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))
-       ORDER BY distance`,
+      `SELECT p.id, v.distance FROM (
+         SELECT passage_rowid, distance FROM passages_vec
+         WHERE embedding MATCH ? AND k = 30 AND passage_rowid IN (
+           SELECT p.rowid FROM passages p LEFT JOIN sources s ON s.id = p.source_id
+           WHERE (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')) ${scope}
+           AND (p.source_id IS NULL OR p.document_id = (SELECT id FROM source_documents
+             WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))
+       ) v
+       JOIN passages p ON p.rowid = v.passage_rowid
+       ORDER BY v.distance`,
     )
     .all(bytes, ...(sourceIds ?? [])) as Array<{
-    n: number | bigint;
+    id: string;
     distance: number;
   }>;
-  const ids: string[] = [];
-  let bestDistance: number | null = null;
-  const lookup = db.prepare(
-    `SELECT p.id, p.source_id FROM passages p
-     LEFT JOIN sources s ON s.id = p.source_id
-     WHERE p.rowid = ?
-       AND (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted'))
-       AND (
-         p.source_id IS NULL
-         OR p.document_id = (
-           SELECT id FROM source_documents
-           WHERE source_id = p.source_id
-           ORDER BY version DESC
-           LIMIT 1
-         )
-       )`,
-  );
-  for (const row of rows) {
-    const found = lookup.get(Number(row.n)) as
-      { id: string; source_id: string | null } | undefined;
-    if (!found) continue;
-    if (
-      sourceIds &&
-      sourceIds.length > 0 &&
-      !sourceIds.includes(found.source_id ?? "")
-    ) {
-      continue;
-    }
-    if (bestDistance == null || row.distance < bestDistance)
-      bestDistance = row.distance;
-    if (row.distance <= VECTOR_MAX_DISTANCE) ids.push(found.id);
-  }
-  return { ids, bestDistance };
+  const ids = rows
+    .filter((row) => row.distance <= VECTOR_MAX_DISTANCE)
+    .map((row) => row.id);
+  return { ids, bestDistance: rows[0]?.distance ?? null };
 }
 
 export function retrieve(
