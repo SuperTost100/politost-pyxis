@@ -22,7 +22,7 @@ import { engineSeesImages } from "../engine/capabilities";
 import { selectionFor, strongestSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
-import { contentWords, queryEmbedder, retrieveWithModel } from "../sources/retrieve";
+import { contentWords, hitOf, queryEmbedder, retrieveWithModel, type PassageRow } from "../sources/retrieve";
 import { sha256 } from "../sources/quality";
 import { readingOrder } from "../sources/smartbook";
 import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
@@ -127,17 +127,9 @@ function keptPassages(
   const hits: PassageHit[] = [];
   const numbers: number[] = [];
   for (const passage of kept) {
-    const row = read.get(passage.passageId) as
-      | { id: string; source_id: string | null; text: string; section_path: string | null; locator_json: string | null }
-      | undefined;
+    const row = read.get(passage.passageId) as PassageRow | undefined;
     if (!row) continue;
-    hits.push({
-      id: row.id,
-      sourceId: row.source_id ?? "",
-      text: row.text,
-      sectionPath: row.section_path,
-      locator: row.locator_json ? (JSON.parse(row.locator_json) as PassageHit["locator"]) : {},
-    });
+    hits.push(hitOf(row));
     numbers.push(passage.index);
   }
   return { hits, numbers };
@@ -306,21 +298,7 @@ async function attachedPassages(
   const added: PassageHit[] = [];
   for (const sourceId of sourceIds) {
     const within = await retrieveWithModel(db, text, { sourceIds: [sourceId], embed, limit: ATTACHED_PASSAGES });
-    const first = (
-      opening.all(sourceId, ATTACHED_PASSAGES) as Array<{
-        id: string;
-        source_id: string;
-        text: string;
-        section_path: string | null;
-        locator_json: string | null;
-      }>
-    ).map((row) => ({
-      id: row.id,
-      sourceId: row.source_id,
-      text: row.text,
-      sectionPath: row.section_path,
-      locator: row.locator_json ? (JSON.parse(row.locator_json) as PassageHit["locator"]) : {},
-    }));
+    const first = (opening.all(sourceId, ATTACHED_PASSAGES) as PassageRow[]).map(hitOf);
     let have = found.filter((hit) => hit.sourceId === sourceId).length;
     for (const hit of [...within.hits, ...first]) {
       if (have >= ATTACHED_PASSAGES || added.length >= ATTACHED_TOTAL) break;
@@ -439,13 +417,7 @@ function priorPassages(
        ORDER BY m.created_at DESC
        LIMIT 8`,
     )
-    .all(chatId) as Array<{
-    id: string;
-    source_id: string | null;
-    text: string;
-    section_path: string | null;
-    locator_json: string | null;
-  }>;
+    .all(chatId) as PassageRow[];
   const seen = new Set<string>();
   const hits: PassageHit[] = [];
   for (const row of rows) {
@@ -453,15 +425,7 @@ function priorPassages(
     if (sourceIds.length > 0 && !sourceIds.includes(row.source_id ?? ""))
       continue;
     seen.add(row.id);
-    hits.push({
-      id: row.id,
-      sourceId: row.source_id ?? "",
-      text: row.text,
-      sectionPath: row.section_path,
-      locator: row.locator_json
-        ? (JSON.parse(row.locator_json) as PassageHit["locator"])
-        : {},
-    });
+    hits.push(hitOf(row));
   }
   return hits;
 }

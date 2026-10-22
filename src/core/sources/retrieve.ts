@@ -63,14 +63,16 @@ export async function retrieveWithModel(
   });
 }
 
-type Row = {
+/** The passage columns a hit is made from. */
+export type PassageRow = {
   id: string;
   source_id: string | null;
   text: string;
   section_path: string | null;
   locator_json: string | null;
-  rank: number;
 };
+
+type Row = PassageRow & { rank: number };
 
 /** Passages this near (L2 on normalized e5 vectors) join the fused ranking. Recall only; coverage uses the stricter bound below. */
 const VECTOR_MAX_DISTANCE = 0.8;
@@ -161,7 +163,7 @@ export function contentWords(query: string): string[] {
   return (kept.length > 0 ? kept : words).slice(0, 8);
 }
 
-function hitOf(row: Row): PassageHit {
+export function hitOf(row: PassageRow): PassageHit {
   return {
     id: row.id,
     sourceId: row.source_id ?? "",
