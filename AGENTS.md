@@ -6,7 +6,7 @@ Electron desktop study app. Use Node.js 26 and npm. Core owns persistence and jo
 
 - `npm ci` installs Electron and builds native dependencies for its ABI.
 - `npm run test:fixtures && npm run build` prepares pinned Python, OCR and embedding fixtures and the workers.
-- `npm run typecheck` checks core and renderer.
+- `npm run typecheck` checks core, renderer and the e2e specs.
 - `PYXIS_TEST_E5=.tmp/e5 npm test -- --maxWorkers=2` runs unit checks under Electron's Node. Narrow the file list while developing.
 - `PYXIS_E2E_HIDDEN=1 npx playwright test --workers=1` runs native checks without showing windows. Linux needs `xvfb-run -a` before `npx`.
 
