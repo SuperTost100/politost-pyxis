@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import { strToU8, zipSync } from "fflate";
 import { planExportLabels } from "./markdown";
+import { safeFileName } from "../../shared/file-name";
 
 const BASIC = 1600000000101;
 const CLOZE = 1600000000102;
@@ -198,7 +199,7 @@ export function exportAnki(
     })();
     return {
       bytes: zipSync({ "collection.anki2": collection.serialize(), media: strToU8("{}") }),
-      filename: `${plan.title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").trim() || "cards"}.apkg`,
+      filename: `${safeFileName(plan.title, "cards")}.apkg`,
       noteCount: rows.length, cardCount,
     };
   } finally {

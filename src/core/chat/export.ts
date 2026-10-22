@@ -5,6 +5,7 @@ import {
 } from "../../shared/math-delimiters";
 import { chatContext, heldSources, readChat } from "./turn";
 import { visibleText } from "./visible";
+import { safeFileName } from "../../shared/file-name";
 
 export type ChatExportLanguage = "en" | "it";
 
@@ -175,11 +176,6 @@ export function exportChat(
       };
     }),
   };
-  const name =
-    (chat.title ?? "")
-      .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 100) || labels[language].untitled;
+  const name = safeFileName(chat.title ?? "", labels[language].untitled);
   return { filename: `${name}.md`, markdown: chatMarkdown(data, language) };
 }

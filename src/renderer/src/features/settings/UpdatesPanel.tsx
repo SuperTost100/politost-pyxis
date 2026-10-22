@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import type { UpdateInstallView } from "@shared/updates";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
+import { formatBytes } from "@shared/format-bytes";
 
 /** The next fetch comes from the student pressing a button, so it skips the cache. Automatic fetches keep it. */
 let forceNext = false;
@@ -63,8 +64,7 @@ function UpdateInstall({ releaseUrl }: { releaseUrl: string }) {
   const [problem, setProblem] = useState<
     "workspaceBusy" | "finishFailed" | null
   >(null);
-  const megabytes = (bytes: number) =>
-    `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(bytes / 1e6)} MB`;
+  const megabytes = (bytes: number) => formatBytes(bytes, i18n.language);
   const releasePage = (
     <Button
       shape="round"

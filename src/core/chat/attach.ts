@@ -15,8 +15,8 @@ import {
   type VisionMime,
 } from "../sources/vision-image";
 import { IpcError, isAbort } from "../../shared/ipc";
+import { isImageExt } from "../../shared/source-types";
 
-const images = new Set([".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif"]);
 export const MAX_FILES = 8;
 export const MAX_FILE_BYTES = 15 * 1024 * 1024;
 export const MAX_TOTAL_BYTES = 30 * 1024 * 1024;
@@ -142,7 +142,7 @@ export async function stageFiles(
     const ext = extname(filePath).toLowerCase();
     // A file that grew since the size check above is refused instead of read whole.
     const bytes = readBoundedSync(filePath, MAX_FILE_BYTES);
-    if (images.has(ext)) {
+    if (isImageExt(ext)) {
       const heic = isHeicExt(ext);
       let fitted: VisionImage | undefined;
       if (seesImages) {

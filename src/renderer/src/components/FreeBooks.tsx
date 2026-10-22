@@ -7,6 +7,7 @@ import type { RequestOutput } from "@shared/ipc";
 import { invoke } from "../lib/ipc";
 import { Notice } from "./Notice";
 import "./FreeBooks.css";
+import { formatBytes } from "@shared/format-bytes";
 
 type Book = RequestOutput<"sources.books">[number];
 export type AddedBook = { sourceId: string; title: string; subject: string };
@@ -118,12 +119,7 @@ export function FreeBooks({
     }
   }
 
-  const size = (bytes: number) =>
-    new Intl.NumberFormat(i18n.language, {
-      style: "unit",
-      unit: bytes >= 1e6 ? "megabyte" : "kilobyte",
-      maximumFractionDigits: bytes >= 1e6 ? 1 : 0,
-    }).format(bytes >= 1e6 ? bytes / 1e6 : Math.max(1, bytes / 1e3));
+  const size = (bytes: number) => formatBytes(bytes, i18n.language);
 
   function action(book: Book) {
     const sourceId = done[book.id] ?? book.sourceId;

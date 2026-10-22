@@ -3,6 +3,7 @@ import type { Grade } from "../study/grade";
 import { readLesson } from "../study/openLesson";
 import { planLanguage } from "../engine/prompts";
 import { smartLabels, smartTextToMarkdown } from "../../shared/smart-text";
+import { safeFileName } from "../../shared/file-name";
 
 export type ExportLabels = {
   sources: string;
@@ -92,8 +93,7 @@ export function quizMarkdown(
 }
 
 function fileName(title: string, ext = "md"): string {
-  const safe = title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "export";
-  return `${safe}.${ext}`;
+  return `${safeFileName(title, "export")}.${ext}`;
 }
 
 function csvCell(value: string): string {

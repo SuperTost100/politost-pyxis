@@ -8,6 +8,7 @@ import { invoke, onBroadcast } from "../lib/ipc";
 import { Icon } from "./Icon";
 import { Notice } from "./Notice";
 import "./LocalModel.css";
+import { formatBytes } from "@shared/format-bytes";
 
 type LocalState = RequestOutput<"engines.local">;
 export const localQueryKey = ["engine-local"];
@@ -56,10 +57,7 @@ function formatters(language: string) {
     /** Memory as the system counts it: 16 GiB reads "16 GB". */
     memory: (bytes: number) => `${number(0).format(bytes / GIB)} GB`,
     /** Downloads and disk space in decimal units, as Ollama shows them. */
-    size: (bytes: number) =>
-      bytes >= 1e9
-        ? `${number(1).format(bytes / 1e9)} GB`
-        : `${number(0).format(bytes / 1e6)} MB`,
+    size: (bytes: number) => formatBytes(bytes, language),
     speed: (value: number) => number(1).format(value),
   };
 }

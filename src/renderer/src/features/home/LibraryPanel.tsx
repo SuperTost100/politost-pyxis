@@ -1040,7 +1040,7 @@ export function LibraryPanel({
                 {linkPreview.data.kind === "pdf" ? "PDF" : t("sources.webPage")}
                 {linkPreview.data.bytes == null
                   ? ""
-                  : ` · ${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(linkPreview.data.bytes / 1024)} KB`}
+                  : ` · ${sizeText(linkPreview.data.bytes)}`}
               </p>
               <p className="body">
                 {linkPreview.data.excerpt || t("sources.pdfPreviewHint")}

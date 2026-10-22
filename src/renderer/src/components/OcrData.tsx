@@ -7,6 +7,7 @@ import { invoke } from "../lib/ipc";
 import { Notice } from "./Notice";
 import { ocrErrorKey } from "./ocrErrors";
 import "./OcrData.css";
+import { formatBytes } from "@shared/format-bytes";
 
 const isoCode: Record<string, string> = { eng: "en", ita: "it" };
 
@@ -53,7 +54,7 @@ export function OcrDataCard({
   const last = stopped.at(-1);
   if (!state.data) return null;
 
-  const size = `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(state.data.totalBytes / 1e6)} MB`;
+  const size = formatBytes(state.data.totalBytes, i18n.language);
   const languages = languageList(state.data.languages, i18n.language);
 
   async function start() {

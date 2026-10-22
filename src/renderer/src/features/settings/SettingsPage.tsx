@@ -34,6 +34,7 @@ import { PROFILE_LIMITS } from "@shared/limits";
 import { invoke } from "../../lib/ipc";
 import { i18n, setLanguage, type Locale } from "../../locales/i18n";
 import { EnginesPanel } from "./EnginesPanel";
+import { formatBytes } from "@shared/format-bytes";
 
 const levels = [
   "primary",
@@ -855,22 +856,6 @@ function backupError(
     size: number.format(Math.ceil((Number(size) / GIB) * 10) / 10),
     limit: number.format(2),
   });
-}
-
-/** A size in the interface language, from bytes up to gigabytes ("1,5 MB" in Italian). */
-function formatBytes(bytes: number, locale: string): string {
-  const units = ["byte", "kilobyte", "megabyte", "gigabyte"] as const;
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000;
-    unit += 1;
-  }
-  return new Intl.NumberFormat(locale, {
-    style: "unit",
-    unit: units[unit],
-    maximumFractionDigits: unit === 0 ? 0 : 1,
-  }).format(value);
 }
 
 function Choice(props: {

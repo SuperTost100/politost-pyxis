@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { MAX_EXAM_AT } from "../../shared/plan-file";
 import { readSessions } from "../plans/sessions";
+import { safeFileName } from "../../shared/file-name";
 
 export type CalendarLanguage = "en" | "it";
 
@@ -208,19 +209,6 @@ function reminderBefore(start: number | null): string {
   return `${Math.floor(minutes / 60)}H${m ? `${m}M` : ""}`;
 }
 
-function fileName(title: string, fallback: string): string {
-  const safe = [
-    ...title
-      .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim(),
-  ]
-    .slice(0, 60)
-    .join("")
-    .trim();
-  return `${safe || fallback}.ics`;
-}
-
 /** One plan's exam sessions as an .ics file named after the plan. */
 export function exportCalendar(
   db: Database.Database,
@@ -248,7 +236,7 @@ export function exportCalendar(
   }));
   const { ics, count } = buildCalendar(exams, input.language, now);
   return {
-    filename: fileName(row.title, words[input.language].fallback),
+    filename: `${safeFileName(row.title, words[input.language].fallback, 60)}.ics`,
     base64: Buffer.from(ics, "utf8").toString("base64"),
     count,
   };
