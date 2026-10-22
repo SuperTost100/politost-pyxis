@@ -7,8 +7,17 @@ type Tok =
   | { kind: "op"; value: string };
 
 export function evalExpr(source: string, x: number): number {
+  return compileExpr(source)(x);
+}
+
+/**
+ * Parses a formula once into a function of x, for a curve that evaluates it at many points. It throws the same errors
+ * evalExpr does, since evalExpr is this followed by one call.
+ */
+export function compileExpr(source: string): (x: number) => number {
   const tokens = tokenize(source);
   let i = 0;
+  type Node = (x: number) => number;
   function peek(): Tok | undefined {
     return tokens[i];
   }
@@ -19,7 +28,7 @@ export function evalExpr(source: string, x: number): number {
     i += 1;
     return tok;
   }
-  function parseExpr(): number {
+  function parseExpr(): Node {
     let left = parseTerm();
     while (
       peek()?.kind === "op" &&
@@ -27,11 +36,12 @@ export function evalExpr(source: string, x: number): number {
     ) {
       const op = eat().value;
       const right = parseTerm();
-      left = op === "+" ? left + right : left - right;
+      const a = left;
+      left = op === "+" ? (x) => a(x) + right(x) : (x) => a(x) - right(x);
     }
     return left;
   }
-  function parseTerm(): number {
+  function parseTerm(): Node {
     let left = parseUnary();
     while (
       peek()?.kind === "op" &&
@@ -39,31 +49,35 @@ export function evalExpr(source: string, x: number): number {
     ) {
       const op = eat().value;
       const right = parseUnary();
-      left = op === "*" ? left * right : left / right;
+      const a = left;
+      left = op === "*" ? (x) => a(x) * right(x) : (x) => a(x) / right(x);
     }
     return left;
   }
-  function parseUnary(): number {
+  function parseUnary(): Node {
     if (peek()?.kind === "op" && peek()?.value === "-") {
       eat("-");
-      return -parsePow();
+      const value = parsePow();
+      return (x) => -value(x);
     }
     return parsePow();
   }
-  function parsePow(): number {
+  function parsePow(): Node {
     const base = parsePrimary();
     if (peek()?.kind === "op" && peek()?.value === "^") {
       eat("^");
-      return base ** parseUnary();
+      const exponent = parseUnary();
+      return (x) => base(x) ** exponent(x);
     }
     return base;
   }
-  function parsePrimary(): number {
+  function parsePrimary(): Node {
     const tok = peek();
     if (!tok) throw new Error("expr-end");
     if (tok.kind === "num") {
       eat();
-      return tok.value;
+      const value = tok.value;
+      return () => value;
     }
     if (tok.kind === "op" && tok.value === "(") {
       eat("(");
@@ -73,13 +87,14 @@ export function evalExpr(source: string, x: number): number {
     }
     if (tok.kind === "id") {
       eat();
-      if (tok.value === "x") return x;
-      if (tok.value === "pi") return Math.PI;
-      if (tok.value === "e") return Math.E;
+      if (tok.value === "x") return (x) => x;
+      if (tok.value === "pi") return () => Math.PI;
+      if (tok.value === "e") return () => Math.E;
       eat("(");
       const arg = parseExpr();
       eat(")");
-      return applyFn(tok.value, arg);
+      const fn = mathFn(tok.value);
+      return (x) => fn(arg(x));
     }
     throw new Error("expr-token");
   }
@@ -235,15 +250,20 @@ function keepsClimbing(
   return true;
 }
 
-function applyFn(name: string, arg: number): number {
-  if (name === "sin") return Math.sin(arg);
-  if (name === "cos") return Math.cos(arg);
-  if (name === "tan") return Math.tan(arg);
-  if (name === "exp") return Math.exp(arg);
-  if (name === "log") return Math.log(arg);
-  if (name === "sqrt") return Math.sqrt(arg);
-  if (name === "abs") return Math.abs(arg);
-  throw new Error("expr-fn");
+const MATH_FNS: Record<string, (arg: number) => number> = {
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  exp: Math.exp,
+  log: Math.log,
+  sqrt: Math.sqrt,
+  abs: Math.abs,
+};
+
+function mathFn(name: string): (arg: number) => number {
+  const fn = Object.hasOwn(MATH_FNS, name) ? MATH_FNS[name] : undefined;
+  if (!fn) throw new Error("expr-fn");
+  return fn;
 }
 
 function tokenize(source: string): Tok[] {

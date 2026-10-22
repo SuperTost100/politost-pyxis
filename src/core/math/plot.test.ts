@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evalExpr, splitSeries } from "./plot";
+import { compileExpr, evalExpr, splitSeries } from "./plot";
 
 /** Points of the curve at n + 1 even steps, without the ones that are not finite. */
 function sample(
@@ -29,8 +29,17 @@ describe("plot", () => {
     expect(curve.some((point) => Math.abs(point.x) < 0.1 && Math.abs(point.y) > 0.9)).toBe(true);
   });
 
+  it("parses once and evaluates at any x, and refuses what evalExpr refuses", () => {
+    const curve = compileExpr("2*sin(x)+x^2");
+    for (const x of [-2, 0, 0.5, 3]) expect(curve(x)).toBe(evalExpr("2*sin(x)+x^2", x));
+    expect(() => compileExpr("foo(x)")).toThrow("expr-fn");
+    expect(() => compileExpr("constructor(x)")).toThrow("expr-fn");
+    expect(() => compileExpr("sin(x")).toThrow("expr-end");
+    expect(() => compileExpr("x x")).toThrow("expr-tail");
+  });
+
   it("keeps a steep curve in one stroke and breaks a pole", () => {
-    const at = (source: string) => (x: number) => evalExpr(source, x);
+    const at = compileExpr;
     expect(splitSeries(sample("x^3", -8, 8), at("x^3"))).toHaveLength(1);
     expect(splitSeries(sample("1/(1+1000000000000*x^2)", -8, 8), at("1/(1+1000000000000*x^2)"))).toHaveLength(1);
     expect(splitSeries(sample("sin(x)", -8, 8), at("sin(x)"))).toHaveLength(1);
