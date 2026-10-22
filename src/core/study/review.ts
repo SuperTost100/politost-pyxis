@@ -3,7 +3,7 @@ import { uuidv7 } from "../../shared/ids";
 import type { Runner } from "../jobs/runner";
 import { readSteps } from "../plans/steps";
 import { planSeries } from "../plans/progress";
-import { saveQuiz, startAttempt, type QuizQuestion } from "./attempt";
+import { saveQuiz, startAttempt, withoutAnswer, type QuizQuestion } from "./attempt";
 import { dueCards } from "./cards";
 import { topicExercises } from "./exercises";
 import { flaggedIds } from "./flags";
@@ -242,10 +242,7 @@ function view(db: Database.Database, planId: string, found: Row) {
     sessionId: row.id,
     cards,
     attemptId: attempt ? body.attemptId : "",
-    questions: stored.map(({ answer, ...question }) => ({
-      ...question,
-      grade: { kind: answer.kind },
-    })),
+    questions: stored.map(withoutAnswer),
     progress: {
       done,
       total,

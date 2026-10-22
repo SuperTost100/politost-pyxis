@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { readSteps, recordStep } from "../plans/steps";
 import {
+  askedQuestion,
   QUIZ_MAX_QUESTIONS,
   questionFlagged,
   saveQuiz,
@@ -57,15 +58,7 @@ function openDiagnostic(db: Database.Database, planId: string) {
   };
   return {
     attemptId: row.id,
-    questions: stored.questions.map((question) => ({
-      id: question.id,
-      sourceId: question.sourceId,
-      stem: question.stem,
-      options: question.options,
-      left: question.left,
-      right: question.right,
-      grade: { kind: question.answer.kind },
-    })),
+    questions: stored.questions.map(askedQuestion),
   };
 }
 
