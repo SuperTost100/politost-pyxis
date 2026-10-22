@@ -6,7 +6,8 @@ import {
   statSync,
   rmSync,
 } from "node:fs";
-import { join, sep } from "node:path";
+import { join } from "node:path";
+import { strictlyInside } from "./path-inside";
 import type Database from "better-sqlite3";
 import { blobParts } from "../shared/blob-path";
 import { writeFileAtomic } from "./atomic-write";
@@ -61,7 +62,7 @@ function location(
   const [folder, dir, name] = blobParts(sha);
   const blobsRoot = join(workspace, folder);
   const file = join(blobsRoot, dir, name);
-  if (!file.startsWith(blobsRoot + sep)) throw new Error("path-escape");
+  if (!strictlyInside(blobsRoot, file)) throw new Error("path-escape");
   return { file, meta: `${file}.json` };
 }
 

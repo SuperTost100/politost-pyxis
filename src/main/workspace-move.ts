@@ -12,8 +12,9 @@ import {
   rm,
   rmdir,
 } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import Database from "better-sqlite3";
+import { inside } from "../core/path-inside";
 
 export type WorkspaceMove = {
   path: string;
@@ -25,13 +26,6 @@ export type WorkspaceMove = {
   recoveryPath(): Promise<string>;
 };
 
-export function inside(parent: string, child: string): boolean {
-  const part = relative(parent, child);
-  return (
-    part === "" ||
-    (!part.startsWith(`..${sep}`) && part !== ".." && !isAbsolute(part))
-  );
-}
 
 type Identity = Pick<Stats, "dev" | "ino" | "birthtimeMs">;
 

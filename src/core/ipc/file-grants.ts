@@ -9,6 +9,7 @@ import {
   statSync,
 } from "node:fs";
 import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { strictlyInside } from "../path-inside";
 import { MAX_SOURCE_BYTES } from "../../shared/source-types";
 
 export type FileGrant = {
@@ -103,14 +104,8 @@ export class FileGrants {
       return false;
     if (canonical === grant.path && directory === grant.directory) return true;
     if (!grant.directory) return false;
+    if (!strictlyInside(grant.path, canonical)) return false;
     const child = relative(grant.path, canonical);
-    if (
-      !child ||
-      child === ".." ||
-      child.startsWith(`..${sep}`) ||
-      isAbsolute(child)
-    )
-      return false;
     // A renderer cannot use a symlink inside a selected folder to read another file.
     const lexical = resolve(path);
     const lexicalChild = relative(grant.selectedPath, lexical);

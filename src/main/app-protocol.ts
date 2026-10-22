@@ -1,6 +1,7 @@
 import { realpathSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, sep } from "node:path";
+import { extname, join } from "node:path";
+import { strictlyInside } from "../core/path-inside";
 import { protocol, type Privileges } from "electron";
 import { rendererCsp } from "./csp";
 
@@ -69,14 +70,7 @@ export function appFile(root: string, rawUrl: string): string | null {
   try {
     const realRoot = realpathSync(root);
     const real = realpathSync(candidate);
-    const inside = relative(realRoot, real);
-    if (
-      !inside ||
-      inside === ".." ||
-      inside.startsWith(`..${sep}`) ||
-      isAbsolute(inside)
-    )
-      return null;
+    if (!strictlyInside(realRoot, real)) return null;
     return statSync(real).isFile() ? real : null;
   } catch {
     return null;

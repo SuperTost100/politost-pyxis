@@ -19,7 +19,7 @@ import type {
 } from "../shared/bridge";
 import { writeFileAtomic } from "../core/atomic-write";
 import { two } from "../shared/local-day";
-import { inside } from "./workspace-move";
+import { inside } from "../core/path-inside";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
