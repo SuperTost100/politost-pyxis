@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { writeFileAtomic } from "../atomic-write";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
+import { idleTimeout, readCapped } from "./public-fetch";
 import { sha256 } from "./quality";
 import { runSourceWorker } from "./worker-client";
 
@@ -53,43 +54,22 @@ export async function downloadEmbedding(options: {
   }
   const fetchImpl = options.fetchImpl ?? fetch;
   // A stalled connection fails the job instead of holding a local slot until someone cancels it. A cancel stays a cancel.
-  const idle = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const restart = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => idle.abort(new DOMException("No data arrived in time", "TimeoutError")), options.idleMs ?? IDLE_MS);
-  };
+  const idle = idleTimeout(options.idleMs ?? IDLE_MS, new DOMException("No data arrived in time", "TimeoutError"));
   const signal = options.signal ? AbortSignal.any([options.signal, idle.signal]) : idle.signal;
-  const chunks: Uint8Array[] = [];
-  let size = 0;
+  let bytes: Uint8Array;
   try {
-    restart();
     const response = await fetchImpl(options.url ?? EMBEDDING_URL, { signal });
     if (!response.ok) throw new Error("embed-download");
-    if (response.body) {
-      const reader = response.body.getReader();
-      try {
-        for (;;) {
-          signal.throwIfAborted();
-          const { done, value } = await reader.read();
-          if (done) break;
-          restart();
-          size += value.byteLength;
-          if (size > MAX_BYTES) throw new Error("embed-too-big");
-          chunks.push(value);
-        }
-      } finally { await reader.cancel().catch(() => undefined); }
-    } else {
-      chunks.push(new Uint8Array(await response.arrayBuffer()));
-    }
+    bytes = response.body
+      ? await readCapped(response.body, MAX_BYTES, () => new Error("embed-too-big"), { onPart: idle.touch, signal })
+      : new Uint8Array(await response.arrayBuffer());
   } catch (error) {
     options.signal?.throwIfAborted();
     if (error instanceof Error && error.message.startsWith("embed-")) throw error;
     throw new Error("embed-download", { cause: error });
   } finally {
-    clearTimeout(timer);
+    idle.clear();
   }
-  const bytes = Buffer.concat(chunks);
   if (bytes.byteLength > MAX_BYTES) throw new Error("embed-too-big");
   if (sha256(bytes) !== options.sha256) throw new Error("embed-hash");
   options.signal?.throwIfAborted();

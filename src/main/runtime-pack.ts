@@ -3,6 +3,7 @@ import type { BigIntStats } from "node:fs";
 import { mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import manifest from "../../resources/pyodide-manifest.json";
+import { readCapped } from "../core/sources/public-fetch";
 import { sha256 } from "../core/sources/quality";
 
 export const runtimeManifest = manifest;
@@ -172,17 +173,11 @@ async function install(
           });
           if (!response.ok || !response.body)
             throw new Error(`runtime-download-${response.status}`);
-          const chunks: Uint8Array[] = [];
-          let size = 0;
-          for await (const chunk of response.body) {
-            signal.throwIfAborted();
-            size += chunk.length;
-            if (size > file.size) throw new Error("runtime-file-too-large");
-            chunks.push(chunk);
-          }
-          const bytes = Buffer.concat(chunks);
+          const bytes = await readCapped(response.body, file.size, () => new Error("runtime-file-too-large"), {
+            signal,
+          });
           if (
-            size !== file.size ||
+            bytes.byteLength !== file.size ||
             sha256(bytes) !== file.sha256
           )
             throw new Error("runtime-integrity-failed");

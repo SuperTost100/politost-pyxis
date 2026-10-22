@@ -3,6 +3,7 @@ import { lstatSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import { readCapped } from "./public-fetch";
 import { sha256 } from "./quality";
 
 /**
@@ -204,15 +205,9 @@ export async function downloadOcrLanguage(
     throw new Error("ocr-data-offline", { cause: error });
   }
   if (!response.ok || !response.body) throw new Error("ocr-data-download");
-  const chunks: Uint8Array[] = [];
-  let size = 0;
+  let bytes: Uint8Array;
   try {
-    for await (const chunk of response.body) {
-      signal.throwIfAborted();
-      size += chunk.length;
-      if (size > pinned.size) throw new Error("ocr-data-too-big");
-      chunks.push(chunk);
-    }
+    bytes = await readCapped(response.body, pinned.size, () => new Error("ocr-data-too-big"), { signal });
   } catch (error) {
     if (
       signal.aborted ||
@@ -221,7 +216,6 @@ export async function downloadOcrLanguage(
       throw error;
     throw new Error("ocr-data-offline", { cause: error });
   }
-  const bytes = Buffer.concat(chunks);
   if (bytes.length !== pinned.size || sha256(bytes) !== pinned.sha256)
     throw new Error("ocr-data-integrity");
   signal.throwIfAborted();

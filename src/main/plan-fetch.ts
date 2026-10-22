@@ -2,6 +2,7 @@ import {
   blockedAddress,
   fetchPublicResponse,
   idleTimeout,
+  readCapped,
 } from "../core/sources/public-fetch";
 import { directPlanUrl, httpPlanUrl } from "../shared/plan-file";
 
@@ -59,23 +60,10 @@ async function readPlan(
         await response.body.cancel();
         throw new Error("plan-too-big");
       }
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      for (;;) {
-        const part = await reader.read();
-        if (part.done) break;
-        idle.touch();
-        size += part.value.byteLength;
-        if (size > MAX_LINKED_PLAN_BYTES) {
-          await reader.cancel();
-          throw new Error("plan-too-big");
-        }
-        chunks.push(part.value);
-      }
-      return new TextDecoder("utf-8", { fatal: true }).decode(
-        Buffer.concat(chunks),
-      );
+      const bytes = await readCapped(response.body, MAX_LINKED_PLAN_BYTES, () => new Error("plan-too-big"), {
+        onPart: idle.touch,
+      });
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     } finally {
       await agent.close();
     }

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { fetchPublicResponse } from "./public-fetch";
+import { fetchPublicResponse, idleTimeout, readCapped } from "./public-fetch";
 import { sha256 } from "./quality";
 
 /** The free PoliTost smartbooks. The site is static: a catalog plus one package per book version. */
@@ -47,21 +47,7 @@ export const httpsTransport: BooksTransport = async (url, max, signal, progress)
       await response.body.cancel();
       throw new Error("books-too-big");
     }
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    for (;;) {
-      const part = await reader.read();
-      if (part.done) break;
-      progress?.();
-      size += part.value.byteLength;
-      if (size > max) {
-        await reader.cancel();
-        throw new Error("books-too-big");
-      }
-      chunks.push(part.value);
-    }
-    return new Uint8Array(Buffer.concat(chunks));
+    return await readCapped(response.body, max, () => new Error("books-too-big"), { onPart: progress });
   } finally {
     await agent.close();
   }
@@ -88,25 +74,16 @@ async function readIdle(
   idleMs: number,
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
-  const idle = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const restart = () => {
-    clearTimeout(timer);
-    timer = setTimeout(
-      () => idle.abort(new DOMException("No data arrived in time", "TimeoutError")),
-      idleMs,
-    );
-  };
-  restart();
+  const idle = idleTimeout(idleMs, new DOMException("No data arrived in time", "TimeoutError"));
   try {
     return await transport(
       url,
       max,
       signal ? AbortSignal.any([signal, idle.signal]) : idle.signal,
-      restart,
+      idle.touch,
     );
   } finally {
-    clearTimeout(timer);
+    idle.clear();
   }
 }
 
