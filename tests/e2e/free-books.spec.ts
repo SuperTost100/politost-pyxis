@@ -65,7 +65,7 @@ async function launch(userData: string, books: string) {
     PYXIS_E2E: "1",
     PYXIS_E2E_BOOKS: books,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   return electron.launch({ args: [MAIN], env });
 }
 

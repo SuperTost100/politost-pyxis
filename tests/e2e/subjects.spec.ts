@@ -25,7 +25,7 @@ async function settled(page: Page) {
 test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by keyboard, remove", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-subject-check-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
   try {
     const page = await app.firstWindow();

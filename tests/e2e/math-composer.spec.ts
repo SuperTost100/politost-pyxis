@@ -9,7 +9,7 @@ const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-composer-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1", PYXIS_E2E_REPLY: "Ecco." };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });

@@ -76,9 +76,9 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
         }),
     PYXIS_E2E_SIMULATION_DELAY: "1500",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const launch = () =>
-    electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+    electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env: env as Record<string, string> });
   let app = await launch();
   try {
     let page = await app.firstWindow();

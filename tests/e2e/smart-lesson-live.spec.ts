@@ -98,7 +98,7 @@ test("a quick check can be answered while the lesson is still being written, and
     // Each model call waits first, so there is a moment where a lesson is being written and no text has arrived.
     PYXIS_E2E_PLAN_DELAY: "1500",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

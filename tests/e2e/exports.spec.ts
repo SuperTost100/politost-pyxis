@@ -25,7 +25,7 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     PYXIS_E2E: "1",
     PYXIS_E2E_SAVE: saved,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

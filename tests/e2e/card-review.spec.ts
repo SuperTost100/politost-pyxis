@@ -33,7 +33,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-review-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();
@@ -139,7 +139,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await page.getByRole("button", { name: "Ask the tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\/[\w-]+$/);
     await expect.poll(() => cardSteps().length).toBe(1);
-    expect(JSON.parse(cardSteps()[0].payload_json)).toMatchObject({
+    expect(JSON.parse(cardSteps()[0]!.payload_json)).toMatchObject({
       activity: "cards",
       result: { correct: 1, total: 1 },
     });
@@ -174,7 +174,7 @@ test("card browser: a card forgotten six times is tagged and filtered", async ()
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-leech-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();

@@ -10,7 +10,7 @@ const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-keyboard-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1", ...extra };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   const page = await app.firstWindow();
   const violations: string[] = [];
@@ -208,7 +208,7 @@ test("Quiz: an open answer takes a formula from the keyboard inline", async () =
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: "100",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();

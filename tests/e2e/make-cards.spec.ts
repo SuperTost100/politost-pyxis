@@ -89,7 +89,7 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
     PYXIS_E2E_REPLY: REPLY,
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ cards: { cards: CARDS } }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();

@@ -41,7 +41,7 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
     // The recorded reply waits before its first piece, so the moments right after Continue can be checked.
     PYXIS_E2E_REPLY_DELAY: "4000",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();
@@ -119,7 +119,7 @@ test("Ask: Continue keeps the cut reply's citation chips while it waits for the 
     PYXIS_E2E_REPLY: CONTINUATION,
     PYXIS_E2E_REPLY_DELAY: "4000",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();

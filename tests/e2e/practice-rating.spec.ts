@@ -3,7 +3,6 @@ import {
   _electron as electron,
   expect,
   test,
-  type Page,
 } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -64,7 +63,7 @@ test("practice: rate two exercises, change one, finish, and mastery moves by two
     PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

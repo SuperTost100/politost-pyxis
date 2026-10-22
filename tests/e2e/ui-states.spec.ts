@@ -53,7 +53,7 @@ async function launch(delay = 0) {
     }),
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   const page = await app.firstWindow();
   page.setDefaultTimeout(30000);

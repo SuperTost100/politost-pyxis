@@ -6,7 +6,7 @@ import { join } from "node:path";
 test("SET-05 deleting all data removes saved engine keys across a restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-wipe-keys-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const args = [join(process.cwd(), "out/main/index.js")];
   let app = await electron.launch({ args, env });
   try {

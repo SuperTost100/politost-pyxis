@@ -19,7 +19,7 @@ for (const libraryCopy of [false, true]) {
       PYXIS_USER_DATA: userData,
       PYXIS_E2E_REPLY: "Velocity is displacement divided by elapsed time [P1].",
     };
-    delete env.ELECTRON_RUN_AS_NODE;
+    delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
     const app = await electron.launch(
       process.env.PYXIS_DIST_APP
         ? {

@@ -63,7 +63,7 @@ async function launch(replies: Record<string, unknown>, delay = 0) {
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app: ElectronApplication = await electron.launch({ args: [MAIN], env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
@@ -699,8 +699,8 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
   test.setTimeout(480000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-live-study-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.PYXIS_E2E_PLAN_REPLIES;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).PYXIS_E2E_PLAN_REPLIES;
   const app = await electron.launch({
     args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
     env,
@@ -746,7 +746,7 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
         }),
       imported.sourceId,
     )) as { planId: string };
-    let build: { state: string; error?: string } | null = null;
+    let build = null as { state: string; error?: string } | null;
     await expect
       .poll(
         async () => {
@@ -797,11 +797,11 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
         }),
       scope,
     )) as { attemptId: string };
-    let session: {
+    let session = null as {
       state: string;
       error?: string;
       questions: Array<{ id: string; grade: { kind: string } }>;
-    } | null = null;
+    } | null;
     await expect
       .poll(
         async () => {

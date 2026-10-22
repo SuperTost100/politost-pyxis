@@ -42,7 +42,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       prerelease: false,
     }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   let app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -218,7 +218,7 @@ test("a manual backup saved over the live database is refused and the data stays
     // A Linux save dialog keeps the name as typed, so "pyxis.db" in the workspace reaches main unchanged.
     PYXIS_E2E_SAVE: database,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -257,7 +257,7 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
   const sourcePath = join(userData, "lavoro.txt");
   writeFileSync(sourcePath, "Il lavoro di una forza costante è il prodotto scalare di forza e spostamento.");
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

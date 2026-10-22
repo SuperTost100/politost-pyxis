@@ -2598,7 +2598,7 @@ test("M14 every application route in both languages, themes and supported widths
       },
     }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [
       join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"),
@@ -2683,7 +2683,7 @@ test("M14 every application route in both languages, themes and supported widths
                 dyslexia: false,
                 textSize,
               }),
-            process.env.PYXIS_UI_LARGE ? "lg" : "md",
+            process.env.PYXIS_UI_LARGE ? ("lg" as const) : ("md" as const),
           );
           for (const [name, route] of auditRoutes) {
             const key = `${name}-${language}-${theme}-${width}${process.env.PYXIS_UI_LARGE ? "-large" : ""}`;

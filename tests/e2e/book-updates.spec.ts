@@ -107,7 +107,7 @@ function launch(userData: string, books: string) {
       },
     }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   return electron.launch({ args: [MAIN], env });
 }
 

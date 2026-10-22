@@ -45,7 +45,7 @@ async function launch(extra: Record<string, string> = {}) {
     PYXIS_E2E_REPLY: REPLY,
     ...extra,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();

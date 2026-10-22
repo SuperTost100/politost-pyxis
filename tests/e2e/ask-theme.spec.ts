@@ -109,7 +109,7 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
     PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: REPLY,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();

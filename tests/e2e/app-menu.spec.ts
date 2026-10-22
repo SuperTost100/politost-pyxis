@@ -30,7 +30,7 @@ async function launch(options: { onboarded: boolean }) {
       prerelease: false,
     }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   const page = await app.firstWindow();
   if (options.onboarded) {

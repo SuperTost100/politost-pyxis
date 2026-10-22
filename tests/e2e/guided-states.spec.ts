@@ -32,7 +32,7 @@ function launch(userData: string, state: State) {
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(FIXTURES[state].replies),
     PYXIS_E2E_PLAN_DELAY: String(FIXTURES[state].delay),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   return electron.launch({ args: [MAIN], env });
 }
 
@@ -102,7 +102,7 @@ for (const state of Object.keys(FIXTURES) as State[]) {
       await page.getByRole("button", { name: "Salta" }).click();
       // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
       await expect(page).toHaveURL(/#\/exams$/);
-      await page.evaluate((size) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size }), LARGE ? "lg" : "md");
+      await page.evaluate((size) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size }), LARGE ? ("lg" as const) : ("md" as const));
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       mkdirSync(".shots/m14", { recursive: true });

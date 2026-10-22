@@ -71,7 +71,7 @@ test("update: download and install checks SHA256SUMS, replaces the AppImage, and
     PYXIS_E2E_UPDATE_HOLD: hold,
     PYXIS_E2E_APPIMAGE: appImage,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

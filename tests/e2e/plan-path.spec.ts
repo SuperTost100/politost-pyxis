@@ -147,7 +147,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
   const shots = ".shots/plan-path";
   mkdirSync(shots, { recursive: true });
@@ -386,7 +386,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
   const shots = ".shots/plan-path";
   mkdirSync(shots, { recursive: true });
@@ -425,7 +425,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       attemptId: string | null;
       itemId: string | null;
     }>;
-    const read = () => invoke<Read & { steps: Steps }>("plans.read", { planId });
+    const read = () => invoke<Omit<Read, "steps"> & { steps: Steps }>("plans.read", { planId });
     const topic = (await read()).topics[0]!;
 
     // A lesson read, a quiz handed in and a set of exercises finished, all on the first topic.

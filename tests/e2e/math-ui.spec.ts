@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { MathCheck } from "../../src/shared/math-check";
 
 async function launch(reply?: string) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -21,9 +22,9 @@ async function launch(reply?: string) {
   mkdirSync(pack, { recursive: true });
   cpSync(".tmp/pyodide", pack, { recursive: true });
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.PYXIS_E2E_REPLY;
-  if (reply) env.PYXIS_E2E_REPLY = reply;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).PYXIS_E2E_REPLY;
+  if (reply) (env as NodeJS.ProcessEnv).PYXIS_E2E_REPLY = reply;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -189,7 +190,7 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
       message: {
         body: string;
         checks?: Array<{
-          kind: string;
+          kind: MathCheck["kind"];
           expr: string;
           claimed: string;
           step: string;

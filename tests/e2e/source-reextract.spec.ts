@@ -43,7 +43,7 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
   writeFileSync(file, "La velocità descrive lo spostamento nel tempo.\n\nL'energia cinetica dipende dalla velocità.\n");
   // The recorded-reply seam also selects the fixture engine plan creation requires; no model is called.
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1", PYXIS_E2E_PLAN_REPLIES: "{}" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();
@@ -65,7 +65,7 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
     await invoke("sources.rename", { sourceId, title: "La mia fisica" });
     const { planId } = await invoke<{ planId: string }>("plans.create", { title: "Fisica", sourceIds: [sourceId] });
     // A lesson cites the first reading's passage: after reading again it must still resolve, marked out of date.
-    const [{ id: passageId }] = rows<{ id: string }>(userData, "SELECT id FROM passages WHERE source_id = ? ORDER BY created_at, rowid", sourceId);
+    const passageId = rows<{ id: string }>(userData, "SELECT id FROM passages WHERE source_id = ? ORDER BY created_at, rowid", sourceId)[0]!.id;
     // The app may still be writing after plan creation; wait for its lock instead of failing at once.
     const seed = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seed.prepare("INSERT INTO items(id,plan_id,kind,body_json,created_at) VALUES('cites-old',?,'lesson','{}',1)").run(planId);

@@ -40,7 +40,7 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     PYXIS_E2E: "1",
     PYXIS_E2E_SAVE: saved,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

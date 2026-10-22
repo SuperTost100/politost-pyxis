@@ -74,7 +74,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-browser-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();
@@ -244,7 +244,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
 test("the flashcard browser says when there are no cards", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-browser-empty-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();

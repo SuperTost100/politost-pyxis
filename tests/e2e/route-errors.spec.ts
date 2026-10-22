@@ -8,7 +8,7 @@ import { join } from "node:path";
 test("route failure shows a plain recovery page without stack details", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-route-error-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
   try {
     const page = await app.firstWindow();
@@ -37,7 +37,7 @@ test("route failure shows a plain recovery page without stack details", async ()
 test("a failed plan build says so in the title and steps, shows its message under Details and retries", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-error-state-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
   try {
     const page = await app.firstWindow();

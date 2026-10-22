@@ -222,7 +222,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-mistakes-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();

@@ -95,8 +95,7 @@ async function shoot(page: Page, name: string, locator?: string) {
   mkdirSync(shots, { recursive: true });
   for (const width of [1280, 420]) {
     await page.setViewportSize({ width, height: 900 });
-    const target = locator ? page.locator(locator).first() : page;
-    if (locator) await target.scrollIntoViewIfNeeded();
+    if (locator) await page.locator(locator).first().scrollIntoViewIfNeeded();
     // Let the resized page finish painting before the picture.
     await page.waitForTimeout(400);
     await page.screenshot({

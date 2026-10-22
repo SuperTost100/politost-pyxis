@@ -66,7 +66,7 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
     PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(fixture),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

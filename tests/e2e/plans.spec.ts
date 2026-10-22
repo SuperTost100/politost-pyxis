@@ -48,7 +48,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: "2000",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   let app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -170,8 +170,8 @@ test("PLAN-21 live Claude builds the owner's smartbook plan", async () => {
   test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-live-plan-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.PYXIS_E2E_PLAN_REPLIES;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).PYXIS_E2E_PLAN_REPLIES;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -218,7 +218,7 @@ test("PLAN-21 live Claude builds the owner's smartbook plan", async () => {
         }),
       imported.sourceId,
     )) as { planId: string };
-    let last: { state: string; error?: string } | null = null;
+    let last = null as { state: string; error?: string } | null;
     await expect
       .poll(
         async () => {

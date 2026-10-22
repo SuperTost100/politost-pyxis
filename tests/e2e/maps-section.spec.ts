@@ -40,7 +40,7 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
     PYXIS_E2E: "1",
     PYXIS_E2E_SAVE: saved,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [
       join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js"),

@@ -7,7 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 test("onboarding save and invalid plan imports remain retryable", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-form-recovery-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

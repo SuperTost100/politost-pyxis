@@ -105,10 +105,10 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       ? undefined
       : JSON.stringify(mapReplies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
-    env,
+    env: env as Record<string, string>,
   });
   try {
     const page = await app.firstWindow();

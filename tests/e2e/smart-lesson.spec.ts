@@ -135,7 +135,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: "2500",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -365,16 +365,17 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       file,
     );
     expect(copy).not.toHaveProperty("error");
+    const copyId = (copy as { planId: string }).planId;
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
-    }, copy.planId);
+    }, copyId);
     // Finished steps are folded into one line until opened.
     await page.locator(".px-path-summary").click();
     await page
       .getByRole("list", { name: "Passi fatti" })
       .getByRole("button", { name: /^Testo smart/ })
       .click();
-    await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/lesson/[^/]+\\?item=`));
+    await expect(page).toHaveURL(new RegExp(`#/plans/${copyId}/lesson/[^/]+\\?item=`));
     await expect(quick.getByText("Non proprio.")).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole("region", { name: "Ripasso finale" }).getByText("2 su 3 giuste")).toBeVisible();
     await expect(page.getByText("Lezione completata")).toBeVisible();

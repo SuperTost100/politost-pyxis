@@ -13,7 +13,7 @@ test("the window stays on the app page and refuses device permissions", async ()
     '<html><body><script src="page.js"></script></body></html>',
   );
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -61,7 +61,7 @@ test("the window stays on the app page and refuses device permissions", async ()
 test("a page opened while the start page still redirects to Exams is not lost", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-navigation-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

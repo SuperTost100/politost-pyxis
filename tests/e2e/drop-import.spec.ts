@@ -11,8 +11,8 @@ test("SRC-07 a dropped file gets a native grant and nothing else does", async ()
   writeFileSync(note, "La velocità descrive lo spostamento nel tempo.\n");
   writeFileSync(script, "echo no\n");
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.PYXIS_E2E_FILE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).PYXIS_E2E_FILE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

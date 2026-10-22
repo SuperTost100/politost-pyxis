@@ -22,7 +22,7 @@ const plan = (title: string, extra: object = {}) =>
 async function start(args: string[]) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-open-plan-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN, ...args], env });
   const page = await app.firstWindow();
   return { app, page, userData };

@@ -29,7 +29,7 @@ test("window CSP: no string eval and no remote images in the main window", async
   const userData = mkdtempSync(join(tmpdir(), "pyxis-csp-"));
   const image = "https://tracker.example.com/pixel.png";
   const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const packaged = process.env.PYXIS_DIST_APP;
   const app = await electron.launch(
     packaged
@@ -99,7 +99,7 @@ test("window CSP: no string eval and no remote images in the main window", async
 test("an update from the file:// window keeps what the renderer stored", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-storage-"));
   const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const launch = () =>
     electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
   const assets = join(process.cwd(), "out/renderer/assets");
@@ -234,12 +234,12 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       ? undefined
       : "Velocity is displacement divided by time [P1].",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const packaged = process.env.PYXIS_DIST_APP;
   const app = await electron.launch(
     packaged
-      ? { executablePath: packaged, args: ["--use-mock-keychain"], env }
-      : { args: [join(process.cwd(), "out/main/index.js")], env },
+      ? { executablePath: packaged, args: ["--use-mock-keychain"], env: env as Record<string, string> }
+      : { args: [join(process.cwd(), "out/main/index.js")], env: env as Record<string, string> },
   );
   if (!live)
     app.process().stderr?.on("data", (chunk) => console.error(String(chunk)));
@@ -382,7 +382,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       planId,
     );
     console.log("release: lesson");
-    const topicId = plan.topics[0]!.id;
+    const topicId = plan!.topics[0]!.id;
     // Study routes can be opened directly without asserting obsolete mastery unlocks.
     await page.evaluate(
       ({ planId, topicId }) => {
@@ -625,7 +625,7 @@ test("the packaged app reports the same GPU features as Electron's build", async
   async function features(executablePath?: string) {
     const userData = mkdtempSync(join(tmpdir(), "pyxis-gpu-"));
     const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
-    delete env.ELECTRON_RUN_AS_NODE;
+    delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
     const app = await electron.launch(
       executablePath
         ? { executablePath, args: ["--use-mock-keychain"], env }

@@ -66,7 +66,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();
@@ -213,7 +213,7 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
     PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: "Prova così:\n\n```python\nprint(6 * 7)\n```\n",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page: Page = await app.firstWindow();

@@ -16,7 +16,7 @@ async function launch() {
     PYXIS_E2E_REPLY: "Ecco la risposta.\n<followups>\nUn esempio?\n</followups>",
     PYXIS_E2E_REPLY_DELAY: "8000",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();

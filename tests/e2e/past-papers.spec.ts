@@ -74,7 +74,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
       score: { score: 0.8, explanation: "Corretto, manca un passaggio." },
     }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
   try {
     const page = await app.firstWindow();

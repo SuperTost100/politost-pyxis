@@ -48,7 +48,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
     PYXIS_E2E: "1",
     PYXIS_E2E_SAVE: output,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [
       join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"),
@@ -203,7 +203,7 @@ test("ASK-05 an empty board cannot be saved, one eraser drag removes what it cro
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-empty-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [
       join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"),

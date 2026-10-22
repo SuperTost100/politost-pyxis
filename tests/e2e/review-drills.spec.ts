@@ -80,7 +80,7 @@ function launch(userData: string, replies: object, delay = 0) {
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ markdown: { markdown: "## Ripasso\nUsa le formule [P1]." }, questions: diagnostic, ...replies }),
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   return electron.launch({ args: [MAIN], env });
 }
 

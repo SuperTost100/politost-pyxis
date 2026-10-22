@@ -11,7 +11,7 @@ test("slow core bootstrap beyond 3s still connects the renderer", async () => {
     PYXIS_E2E: "1",
     PYXIS_E2E_CORE_DELAY: "4500",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -45,7 +45,7 @@ test("failed core startup stops retrying and can recover after explicit retry", 
   mkdirSync(join(userData, "workspace"));
   writeFileSync(dbPath, "corrupt test database");
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -84,7 +84,7 @@ test("a timed-out key handoff shows recovery and reconnects after retry", async 
     PYXIS_E2E: "1",
     PYXIS_E2E_KEYS_DELAY: "4500",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
@@ -117,7 +117,7 @@ test("an undecryptable saved API key does not block startup", async () => {
     JSON.stringify({ anthropic: "AA==", openai: "AA==" }),
   );
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

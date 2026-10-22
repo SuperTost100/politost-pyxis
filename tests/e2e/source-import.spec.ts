@@ -50,8 +50,8 @@ async function start() {
   mkdirSync(join(userData, "vuota"));
   writeFileSync(join(userData, "vuota", "foto.xyz"), "not a source");
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.PYXIS_E2E_FILE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).PYXIS_E2E_FILE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,

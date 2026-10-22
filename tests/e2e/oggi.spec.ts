@@ -30,7 +30,7 @@ function seed(db: DatabaseSync) {
 test("Oggi lists due cards from every plan as one item, then each exam's next step, and ticks them off", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-oggi-"));
   const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [MAIN], env });
   try {
     const page = await app.firstWindow();

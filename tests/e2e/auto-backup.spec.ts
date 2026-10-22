@@ -44,7 +44,7 @@ test.beforeEach(() => {
 
 async function launch(env: Record<string, string | undefined>) {
   const full = { ...process.env, PYXIS_E2E: "1", ...env };
-  delete full.ELECTRON_RUN_AS_NODE;
+  delete (full as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env: full as Record<string, string>,

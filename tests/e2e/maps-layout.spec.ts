@@ -110,12 +110,12 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       ? undefined
       : JSON.stringify(mapReplies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [
       join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js"),
     ],
-    env,
+    env: env as Record<string, string>,
   });
   try {
     const page = await app.firstWindow();

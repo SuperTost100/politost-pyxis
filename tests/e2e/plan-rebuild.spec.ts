@@ -17,7 +17,7 @@ function launch(userData: string, replies: unknown) {
     PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   return electron.launch({
     args: [join(process.cwd(), "out/main/index.js")],
     env,
