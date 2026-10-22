@@ -35,9 +35,10 @@ import {
   offersPage,
   type InstallableProvider,
 } from "@shared/installers";
-import { invoke, onBroadcast } from "../../lib/ipc";
+import { invoke } from "../../lib/ipc";
 import { disclosureText } from "./disclosure";
 import { EngineUsage } from "./EngineUsage";
+import { useEngineSetup } from "./useEngineSetup";
 import "./EnginesPanel.css";
 
 const featureNames = [
@@ -176,15 +177,8 @@ export function EnginesPanel() {
     }
   }
   const client = useQueryClient();
-  const overview = useQuery({
-    queryKey: ["engines"],
-    queryFn: () => invoke("engines.overview", {}),
-    refetchOnWindowFocus: true,
-  });
-  const features = useQuery({
-    queryKey: ["engine-features"],
-    queryFn: () => invoke("engines.features", {}),
-  });
+  const engines = useEngineSetup();
+  const { overview, features } = engines;
   const keys = useQuery({
     queryKey: ["engine-key-status"],
     queryFn: () => window.pyxis.keys.status(),
@@ -275,22 +269,10 @@ export function EnginesPanel() {
       ),
   );
   function refresh() {
-    for (const queryKey of [
-      ["engines"],
-      ["engine-features"],
-      ["engine-models"],
-      ["engine-key-status"],
-    ])
+    engines.refresh();
+    for (const queryKey of [["engine-models"], ["engine-key-status"]])
       void client.invalidateQueries({ queryKey });
   }
-  // Pyxis recomputes automatic choices in the background (startup, sign-in, a new CLI); show the result.
-  useEffect(
-    () =>
-      onBroadcast("engine.auto", () => {
-        void client.invalidateQueries({ queryKey: ["engine-features"] });
-      }),
-    [client],
-  );
   const test = useMutation({
     mutationFn: ({
       provider,

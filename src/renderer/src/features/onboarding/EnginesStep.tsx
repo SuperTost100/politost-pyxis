@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,11 +17,12 @@ import { LocalModelCard, useLocalModel } from "../../components/LocalModel";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { ProviderSetup } from "../../components/ProviderSetup";
-import { invoke, onBroadcast } from "../../lib/ipc";
+import { invoke } from "../../lib/ipc";
 import {
   engineSummaryLines,
   engineSummaryText,
 } from "../settings/EnginesPanel";
+import { useEngineSetup } from "../settings/useEngineSetup";
 import "../settings/EnginesPanel.css";
 
 type Engine = RequestOutput<"engines.overview">[number];
@@ -52,15 +53,7 @@ export function EnginesStep({
 }) {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
-  const overview = useQuery({
-    queryKey: ["engines"],
-    queryFn: () => invoke("engines.overview", {}),
-    refetchOnWindowFocus: true,
-  });
-  const features = useQuery({
-    queryKey: ["engine-features"],
-    queryFn: () => invoke("engines.features", {}),
-  });
+  const { overview, features, refresh } = useEngineSetup();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [picked, setPicked] = useState<InstallableProvider | null>(null);
   const [adding, setAdding] = useState(false);
@@ -112,19 +105,6 @@ export function EnginesStep({
     };
   }, [overview.isSuccess, readyKey, again, client]);
 
-  // Core recomputes the choices after the notice is confirmed.
-  useEffect(
-    () =>
-      onBroadcast("engine.auto", () => {
-        void client.invalidateQueries({ queryKey: ["engine-features"] });
-      }),
-    [client],
-  );
-
-  const refresh = () => {
-    for (const queryKey of [["engines"], ["engine-features"]])
-      void client.invalidateQueries({ queryKey });
-  };
   const names = (list: Engine[]) =>
     new Intl.ListFormat(i18n.language.startsWith("it") ? "it" : "en-GB", {
       style: "long",
