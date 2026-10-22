@@ -15,7 +15,6 @@ import {
   ToolbarSearch,
 } from "../../components/ListToolbar";
 import type { PlanFile } from "@shared/plan-file";
-import { SubjectManagerModal } from "../ask/SubjectPicker";
 import { ImportReview } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
 import { examDaysLabel } from "../plans/examDays";
@@ -29,6 +28,12 @@ const CardBrowser = lazy(() =>
 const MistakesNotebook = lazy(() =>
   import("../study/MistakesNotebook").then((module) => ({
     default: module.MistakesNotebook,
+  })),
+);
+// The subject list's drag and drop loads the first time the student opens it.
+const SubjectManagerModal = lazy(() =>
+  import("../ask/SubjectPicker").then((module) => ({
+    default: module.SubjectManagerModal,
   })),
 );
 
@@ -45,6 +50,8 @@ export function ExamsHome() {
   const [picked, setSubject] = useState("");
   const [shownStatus, setStatus] = useState<"active" | "archived">("active");
   const [managing, setManaging] = useState(false);
+  // Stays mounted after the first open, so the dialog can animate closed.
+  const [managerOpened, setManagerOpened] = useState(false);
   const [failed, setFailed] = useState(false);
   const tab = location.pathname.startsWith("/exams/library")
     ? "sources"
@@ -88,8 +95,10 @@ export function ExamsHome() {
         { key: "subjects", label: t("ask.manageSubjects") },
       ]}
       onSelect={(key) => {
-        if (key === "subjects") setManaging(true);
-        else planImport.choose(key);
+        if (key === "subjects") {
+          setManaging(true);
+          setManagerOpened(true);
+        } else planImport.choose(key);
       }}
     />
   );
@@ -124,12 +133,16 @@ export function ExamsHome() {
           ]}
         />
       </div>
-      <SubjectManagerModal
-        open={managing}
-        onClose={() => setManaging(false)}
-        value=""
-        onChange={() => undefined}
-      />
+      {managerOpened ? (
+        <Suspense fallback={null}>
+          <SubjectManagerModal
+            open={managing}
+            onClose={() => setManaging(false)}
+            value=""
+            onChange={() => undefined}
+          />
+        </Suspense>
+      ) : null}
       {tab === "plans" ? planImport.element : null}
       {/* Plans show nothing until the list arrives, so "No plans yet" never flashes first. */}
       {tab === "sources" ? (

@@ -1,16 +1,20 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { App, Button, Input, Modal, Select, Skeleton } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import { isCloze } from "../../../core/study/cloze";
 import { invoke } from "../lib/ipc";
 import { CitationChip } from "./CitationChip";
 import { IconButton } from "./IconButton";
-import { MathText } from "./math/MathText";
 import { Notice } from "./Notice";
 import { openSourceViewer } from "./SourceViewer";
 import "./MakeCardsDialog.css";
+
+// The dialog mounts with the window, so KaTeX loads the first time it opens rather than at startup.
+const MathText = lazy(() =>
+  import("./math/MathText").then((module) => ({ default: module.MathText })),
+);
 
 /** The text to make flashcards from, and what is known about where they belong. */
 export type CardSource = {
@@ -262,7 +266,9 @@ export function MakeCardsDialog() {
               )}
             </figcaption>
             <p>
-              <MathText text={source.text} />
+              <Suspense fallback={source.text}>
+                <MathText text={source.text} />
+              </Suspense>
             </p>
           </figure>
           <div className="px-mc-where">
