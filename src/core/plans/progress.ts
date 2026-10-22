@@ -193,18 +193,12 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   }>;
   const blocked = flaggedIds(db, "exercise");
   const places = questionPlaces(db, planId);
-  const attemptSources = attemptQuestionSources(db, planId);
+  const items = questionItems(db, planId);
+  const attemptSources = attemptQuestionSources(db, planId, items);
   const questionKinds = new Map<string, string>();
-  const itemBodies = db
-    .prepare(
-      "SELECT body_json FROM items WHERE plan_id=? AND kind IN ('quiz','diagnostic','review','simulation')",
-    )
-    .all(planId) as { body_json: string }[];
-  for (const item of itemBodies) {
-    const body = JSON.parse(item.body_json) as {
-      questions?: Array<{ id: string; answer?: { kind: string } }>;
-    };
-    for (const question of body.questions ?? [])
+  for (const item of items.values()) {
+    if (item.planId !== planId) continue;
+    for (const question of item.questions)
       if (question.answer?.kind)
         questionKinds.set(question.id, question.answer.kind);
   }
@@ -212,7 +206,7 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   const legacySimulations = db
     .prepare(
       `
-    SELECT aa.created_at, aa.payload_json, i.body_json FROM attempt_answers aa
+    SELECT aa.created_at, aa.payload_json, a.item_id FROM attempt_answers aa
     JOIN attempts a ON a.id=aa.attempt_id JOIN items i ON i.id=a.item_id
     WHERE a.plan_id=? AND i.kind='simulation' AND a.submitted_at IS NOT NULL
   `,
@@ -220,17 +214,14 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
     .all(planId) as Array<{
     created_at: number;
     payload_json: string;
-    body_json: string;
+    item_id: string;
   }>;
   const simulationEvidence = legacySimulations.flatMap((attempt) => {
-    const body = JSON.parse(attempt.body_json) as {
-      questions?: Array<{ id: string; topicId?: string }>;
-    };
     const result = JSON.parse(attempt.payload_json) as {
       results?: Array<{ id: string; score: number }>;
     };
     const topics = new Map<string, number[]>();
-    for (const question of body.questions ?? []) {
+    for (const question of items.get(attempt.item_id)?.questions ?? []) {
       const answer = result.results?.find((row) => row.id === question.id);
       if (!question.topicId || !answer) continue;
       const scores = topics.get(question.topicId) ?? [];
@@ -608,19 +599,54 @@ type ScorePayload = {
  * recorded before they named their sources (mixed reviews, diagnostics and simulations) find them here, so a later
  * "wrong question" flag still removes them.
  */
-function attemptQuestionSources(db: Database.Database, planId: string) {
+type ItemQuestion = {
+  id: string;
+  topicId?: string;
+  sourceId?: string;
+  sourceIds?: string[];
+  answer?: { kind: string };
+};
+
+/**
+ * The questions of the plan's quizzes, diagnostics, reviews and simulations, and of any such item one of its attempts
+ * answered, each body parsed once.
+ */
+function questionItems(
+  db: Database.Database,
+  planId: string,
+): Map<string, { planId: string; questions: ItemQuestion[] }> {
   const rows = db
     .prepare(
-      `SELECT a.id, i.body_json FROM attempts a JOIN items i ON i.id = a.item_id
+      `SELECT id, plan_id, body_json FROM items
+       WHERE kind IN ('quiz', 'diagnostic', 'review', 'simulation')
+         AND (plan_id = ? OR id IN (SELECT item_id FROM attempts WHERE plan_id = ?))`,
+    )
+    .all(planId, planId) as Array<{ id: string; plan_id: string; body_json: string }>;
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        planId: row.plan_id,
+        questions: (JSON.parse(row.body_json) as { questions?: ItemQuestion[] }).questions ?? [],
+      },
+    ]),
+  );
+}
+
+function attemptQuestionSources(
+  db: Database.Database,
+  planId: string,
+  items: ReturnType<typeof questionItems>,
+) {
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.item_id FROM attempts a JOIN items i ON i.id = a.item_id
        WHERE a.plan_id = ? AND i.kind IN ('quiz', 'diagnostic', 'review', 'simulation')`,
     )
-    .all(planId) as Array<{ id: string; body_json: string }>;
+    .all(planId) as Array<{ id: string; item_id: string }>;
   const sources = new Map<string, string[]>();
   for (const row of rows) {
-    const body = JSON.parse(row.body_json) as {
-      questions?: Array<{ id: string; sourceId?: string; sourceIds?: string[] }>;
-    };
-    for (const question of body.questions ?? []) {
+    for (const question of items.get(row.item_id)?.questions ?? []) {
       const ids = [question.sourceId, ...(question.sourceIds ?? [])].filter(
         (id): id is string => !!id,
       );
