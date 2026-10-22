@@ -10,7 +10,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { droppedFileGrant, FileGrants, pickedFileGrant } from "./file-grants";
+import {
+  droppedFileGrant,
+  type FileGrant,
+  FileGrants,
+  keepGrant,
+  MAX_FILE_GRANTS,
+  pickedFileGrant,
+} from "./file-grants";
 import { SOURCE_EXTENSIONS } from "../../shared/source-types";
 import { IMPORT_EXTENSIONS } from "../sources/folder";
 
@@ -95,6 +102,27 @@ describe("native picker file grants", () => {
     f.grants.add(pickedFileGrant(f.secret));
     rmSync(f.chosen);
     expect(f.grants.read(f.secret)).toEqual(readFileSync(f.secret));
+  });
+  it("keeps the newest grants up to the cap, and a path picked again counts as new", () => {
+    const f = fixture();
+    const kept = new Map<string, FileGrant>();
+    const fake = (index: number): FileGrant => ({
+      path: `/picked/${index}`,
+      selectedPath: `/picked/${index}`,
+      directory: false,
+      dev: 1,
+      ino: index,
+    });
+    keepGrant(kept, pickedFileGrant(f.chosen));
+    for (let index = 0; index < MAX_FILE_GRANTS - 1; index += 1) keepGrant(kept, fake(index));
+    keepGrant(kept, pickedFileGrant(f.chosen));
+    keepGrant(kept, fake(MAX_FILE_GRANTS));
+    expect(kept.size).toBe(MAX_FILE_GRANTS);
+    expect(kept.has("/picked/0")).toBe(false);
+    for (const grant of kept.values()) f.grants.add(grant);
+    expect(f.grants.read(f.chosen)).toEqual(readFileSync(f.chosen));
+    for (let index = 0; index < MAX_FILE_GRANTS; index += 1) f.grants.add(fake(MAX_FILE_GRANTS + 1 + index));
+    expect(() => f.grants.read(f.chosen)).toThrow("file-access-denied");
   });
 });
 

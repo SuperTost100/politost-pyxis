@@ -3,6 +3,7 @@ import { writeKeyStore } from "./key-store";
 import { randomUUID } from "node:crypto";
 import {
   droppedFileGrant,
+  keepGrant,
   pickedFileGrant,
   type FileGrant,
 } from "../core/ipc/file-grants";
@@ -561,7 +562,7 @@ async function grantPickedPaths(paths: string[]): Promise<void> {
   return grantFiles(paths.map(pickedFileGrant));
 }
 async function grantFiles(grants: FileGrant[]): Promise<void> {
-  for (const grant of grants) pickedGrants.set(grant.path, grant);
+  for (const grant of grants) keepGrant(pickedGrants, grant);
   const child = coreChild;
   if (!child || coreExited(child)) throw new Error("core-busy");
   const id = randomUUID();

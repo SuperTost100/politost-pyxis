@@ -8,7 +8,7 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
-import { extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { MAX_SOURCE_BYTES } from "../../shared/source-types";
 
 export type FileGrant = {
@@ -53,10 +53,26 @@ export function droppedFileGrant(
   return grant;
 }
 
+/**
+ * The most grants kept. Every pick and drop adds one, and main sends them all to each new core, so a long session would
+ * otherwise keep every path it ever saw. The oldest goes first, and picking a path again makes it the newest.
+ */
+export const MAX_FILE_GRANTS = 1_000;
+
+/** Adds or refreshes a grant in a list keyed by path, dropping the oldest past MAX_FILE_GRANTS. */
+export function keepGrant(grants: Map<string, FileGrant>, grant: FileGrant): void {
+  grants.delete(grant.path);
+  grants.set(grant.path, grant);
+  for (const oldest of grants.keys()) {
+    if (grants.size <= MAX_FILE_GRANTS) break;
+    grants.delete(oldest);
+  }
+}
+
 export class FileGrants {
   private grants = new Map<string, FileGrant>();
   add(grant: FileGrant): void {
-    this.grants.set(grant.path, grant);
+    keepGrant(this.grants, grant);
   }
   private authorize(path: string, directory: boolean): string {
     if (!isAbsolute(path)) throw new Error("file-access-denied");
@@ -64,47 +80,47 @@ export class FileGrants {
     const current = statSync(canonical);
     if (directory ? !current.isDirectory() : !current.isFile())
       throw new Error("file-access-denied");
-    for (const grant of this.grants.values()) {
-      let root: ReturnType<typeof statSync>;
-      try {
-        root = statSync(grant.path);
-      } catch {
-        continue;
-      }
-      if (
-        root.dev !== grant.dev ||
-        root.ino !== grant.ino ||
-        root.isDirectory() !== grant.directory
-      )
-        continue;
-      if (canonical === grant.path && directory === grant.directory)
-        return canonical;
-      if (!grant.directory) continue;
-      const child = relative(grant.path, canonical);
-      if (
-        !child ||
-        child === ".." ||
-        child.startsWith(`..${sep}`) ||
-        isAbsolute(child)
-      )
-        continue;
-      // A renderer cannot use a symlink inside a selected folder to read another file.
-      const lexical = resolve(path);
-      const lexicalChild = relative(grant.selectedPath, lexical);
-      if (lexical !== canonical && lexicalChild !== child) continue;
-      const parts = child.split(sep);
-      let ancestor = grant.path;
-      let linked = false;
-      for (const part of parts) {
-        ancestor = resolve(ancestor, part);
-        if (lstatSync(ancestor).isSymbolicLink()) {
-          linked = true;
-          break;
-        }
-      }
-      if (!linked) return canonical;
+    // Only a grant on the path itself or on a folder above it can allow it, so only those are looked up and checked.
+    for (let candidate = canonical; ; candidate = dirname(candidate)) {
+      const grant = this.grants.get(candidate);
+      if (grant && this.allows(grant, path, canonical, directory)) return canonical;
+      if (dirname(candidate) === candidate) break;
     }
     throw new Error("file-access-denied");
+  }
+  private allows(grant: FileGrant, path: string, canonical: string, directory: boolean): boolean {
+    let root: ReturnType<typeof statSync>;
+    try {
+      root = statSync(grant.path);
+    } catch {
+      return false;
+    }
+    if (
+      root.dev !== grant.dev ||
+      root.ino !== grant.ino ||
+      root.isDirectory() !== grant.directory
+    )
+      return false;
+    if (canonical === grant.path && directory === grant.directory) return true;
+    if (!grant.directory) return false;
+    const child = relative(grant.path, canonical);
+    if (
+      !child ||
+      child === ".." ||
+      child.startsWith(`..${sep}`) ||
+      isAbsolute(child)
+    )
+      return false;
+    // A renderer cannot use a symlink inside a selected folder to read another file.
+    const lexical = resolve(path);
+    const lexicalChild = relative(grant.selectedPath, lexical);
+    if (lexical !== canonical && lexicalChild !== child) return false;
+    let ancestor = grant.path;
+    for (const part of child.split(sep)) {
+      ancestor = resolve(ancestor, part);
+      if (lstatSync(ancestor).isSymbolicLink()) return false;
+    }
+    return true;
   }
   directory(path: string): string {
     return this.authorize(path, true);
