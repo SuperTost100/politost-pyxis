@@ -10,13 +10,9 @@ import {
 import { createContext, isValidElement, memo, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
-import rehypeKatex from "rehype-katex";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import "katex/dist/katex.min.css";
-import "katex/contrib/mhchem";
 import { citedPassage, linkCitations, type CitationResolver } from "../markdown/citations";
 import { displayMathLines, normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
+import { rehypePlugins, remarkPlugins } from "../markdown/plugins";
 import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
 import { PythonBlock, RunnablePython } from "./PythonBlock";
@@ -26,9 +22,6 @@ import "./MarkdownView.css";
 
 export type { CitationResolver };
 
-// Built once: react-markdown can then reuse its pipeline, and a message that re-renders without new text is not parsed again.
-const remarkPlugins = [remarkGfm, remarkMath];
-const rehypePlugins = [rehypeKatex];
 const urlTransform = (url: string) =>
   /^(?:cite:p|mathcheck:)\d+$/.test(url) ? url : defaultUrlTransform(url);
 

@@ -1,10 +1,7 @@
 import { createElement, Fragment } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeKatex from "rehype-katex";
-import remarkMath from "remark-math";
-import "katex/dist/katex.min.css";
-import "katex/contrib/mhchem";
 import { normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
+import { inlineRemarkPlugins, rehypePlugins } from "../markdown/plugins";
 
 // Everything a button or label cannot hold: blocks, links, images, controls.
 const NOT_INLINE = [
@@ -43,8 +40,8 @@ export function InlineMarkdown({ children }: { children: string }) {
     createElement(
       ReactMarkdown,
       {
-        remarkPlugins: [remarkMath],
-        rehypePlugins: [rehypeKatex],
+        remarkPlugins: inlineRemarkPlugins,
+        rehypePlugins,
         skipHtml: true,
         disallowedElements: NOT_INLINE,
         unwrapDisallowed: true,

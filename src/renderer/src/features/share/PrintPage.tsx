@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import { normalizeMathDelimiters } from "../../markdown/normalizeMathDelimiters";
-import "katex/dist/katex.min.css";
-import "katex/contrib/mhchem";
+import { rehypePlugins, remarkPlugins } from "../../markdown/plugins";
 import "./PrintPage.css";
 
 /** A concept map's drawing gets a page of its own size, so the PDF keeps it at full size. */
@@ -72,8 +68,8 @@ export function PrintPage() {
       {svg ? <MapFigure svg={svg} /> : null}
       <ReactMarkdown
         skipHtml
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         components={{ img: ({ alt }) => <span>{alt ?? ""}</span> }}
       >
         {markdown ?? ""}
