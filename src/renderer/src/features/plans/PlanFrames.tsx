@@ -10,7 +10,7 @@ import "./PlanWizard.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
-import { CanvasLayout, FocusLayout } from "../../app/layouts/TaskLayouts";
+import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { BuildingMark } from "../../components/BuildingMark";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
@@ -768,16 +768,5 @@ export function SharedPlanPage() {
         />
       ) : null}
     </div>
-  );
-}
-
-export function WhiteboardFrame() {
-  const { t } = useTranslation();
-  return (
-    <CanvasLayout title={t("tools.whiteboardTitle")}>
-      <p className="body ink-muted" style={{ padding: 24 }}>
-        {t("tools.whiteboardBody")}
-      </p>
-    </CanvasLayout>
   );
 }

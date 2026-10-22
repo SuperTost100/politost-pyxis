@@ -77,6 +77,6 @@ The mark is **star trails**: three long-exposure trails circling the pole star, 
 ## Building with this system
 
 - UI is **Ant Design Pro** on antd v6: `@ant-design/pro-components` v3 in the Electron + Vite app, themed by `theme/pyxis-theme.ts` (`pyxisTheme` for antd, `pyxisProLayoutToken` for ProLayout). No Umi, no Pro admin template. See [Ant Design mapping](ant-design-pro.md).
-- The shell is ProLayout in `top` mode with a fixed 768px content column (`theme/AppShell.tsx`): lockup left, Chiedi / Esami doors centred, settings right. No sidebar, except the section list on the Settings page from 960px.
-- Pyxis-specific pieces (Logo, PathNode, MasteryBar, LessonTile, Composer, ChatMessage, QuizOption, Flashcard, GapItem, EngineRow, CitationChip) are custom; the previews and `reference/bundle.css` are their reference.
+- The shell is ProLayout in `top` mode with a fixed 768px content column (`app/layouts/Shell.tsx`): lockup left, Chiedi / Esami doors centred, settings right. No sidebar, except the section list on the Settings page from 960px.
+- Pyxis-specific pieces (Logo, PathNode, MasteryBar, LessonTile, Composer, ChatMessage, QuizOption, GapItem, EngineRow, CitationChip) are custom; the previews and `reference/bundle.css` are their reference.
 - Accessibility (NFR-09): every control reachable by keyboard, every icon-only button labelled, status never by colour alone, and all text pairs in this system at 4.5:1 or better in both themes.

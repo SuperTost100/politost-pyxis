@@ -8,26 +8,6 @@ vi.mock("./funnel", async (original) => {
   return { ...actual, getFunnel: vi.fn(actual.getFunnel), runTurn: vi.fn() };
 });
 
-describe("clearFeature", () => {
-  it("drops a chat choice so the default engine is used again", () => {
-    const db = openDatabase(":memory:");
-    const engines = engineHandlers(db, () => undefined);
-    engines.setFeature({
-      feature: "default",
-      provider: "claude",
-      model: "chosen",
-    });
-    engines.setFeature({
-      feature: "chat",
-      provider: "openai-api",
-      model: "gpt-test",
-    });
-    expect(selectionFor(db, "chat").provider).toBe("openai-api");
-    engines.clearFeature({ feature: "chat" });
-    expect(selectionFor(db, "chat").provider).toBe("claude");
-  });
-});
-
 describe("confirmed default engine", () => {
   it("routes all unconfigured features to the first successfully tested provider", async () => {
     const db = openDatabase(":memory:");

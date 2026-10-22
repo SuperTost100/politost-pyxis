@@ -476,12 +476,6 @@ export const requests = {
       inputTokens: z.number(),
     }),
   },
-  "engines.clearFeature": {
-    input: z.object({
-      feature: z.enum(["chat", "plan", "lesson", "grading", "map", "vision"]),
-    }),
-    output: z.object({ ok: z.literal(true) }),
-  },
   "engines.setFeature": {
     input: z.object({
       feature: engineFeature,
@@ -780,8 +774,6 @@ export const requests = {
       sourceId: z.string().min(1).optional(),
       page: z.number().int().min(1).max(100000).optional(),
       timerMinutes: z.number().int().min(1).max(180).optional(),
-      // Ignored: every quiz now corrects each answer when it is checked.
-      feedback: z.boolean().optional(),
       // Core asks at most ten questions whatever is sent here.
       count: z.number().int().min(1).max(100).optional(),
       types: z

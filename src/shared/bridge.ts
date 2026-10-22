@@ -20,12 +20,6 @@ export type OpenDialogOptions = {
   filters?: FileFilter[];
 };
 
-export type SaveDialogOptions = {
-  title?: string;
-  defaultPath?: string;
-  filters?: FileFilter[];
-};
-
 export type KeyStatus = {
   backend: string;
   canSave: boolean;
@@ -88,7 +82,6 @@ export interface PyxisBridge {
   openTerminal(program?: "antigravity"): Promise<void>;
   openExternal(url: string): Promise<void>;
   showOpenDialog(options: OpenDialogOptions): Promise<string[] | null>;
-  showSaveDialog(options: SaveDialogOptions): Promise<string | null>;
   /** Grants dropped files to core and returns their paths. Only real `File` objects from a drop name a path. */
   grantDroppedFiles(files: File[]): Promise<{ paths: string[]; skipped: number }>;
   keys: {
@@ -190,7 +183,6 @@ export const mainChannels = {
   appearanceChanged: "appearance:changed",
   openExternal: "shell:openExternal",
   openDialog: "dialog:open",
-  saveDialog: "dialog:save",
   dropGrant: "dialog:grant-dropped",
   keysSet: "keys:set",
   keysStatus: "keys:status",

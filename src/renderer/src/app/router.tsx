@@ -57,7 +57,6 @@ const simulation = page(() => import("../features/study/SimulationPage"), "Simul
 const review = page(() => import("../features/study/ReviewPage"), "ReviewPage");
 
 export const router = createHashRouter([
-  { path: "/print", lazy: page(() => import("../features/share/PrintPage"), "PrintPage") },
   {
     id: "shell",
     path: "/",
