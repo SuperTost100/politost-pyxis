@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "antd";
 import { Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
@@ -15,6 +15,7 @@ import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
+import { useDraftSaver } from "./draftSaver";
 import { ActivityChoice, ActivityIntro } from "./ActivityIntro";
 import "./SimulationPage.css";
 import { pastPapersQuery, usePlan } from "../../lib/queries";
@@ -39,21 +40,13 @@ export function SimulationPage() {
   const [notice, setNotice] = useState("");
   const [noEngine, setNoEngine] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const drafts = useRef<Promise<unknown>>(Promise.resolve());
   // Typing saves at most every DRAFT_DELAY_MS; time-up, submit and leaving the page save at once.
-  const pending = useRef<{ attemptId: string; picks: Record<string, string> } | null>(null);
-  const saveTimer = useRef<number | undefined>(undefined);
-  function flushDraft() {
-    window.clearTimeout(saveTimer.current);
-    const next = pending.current;
-    pending.current = null;
-    if (next)
-      drafts.current = drafts.current
-        .catch(() => undefined)
-        .then(() => invoke("study.simulationDraft", next))
-        .catch(() => setNotice(t("simulation.saveFailed")));
-    return drafts.current;
-  }
+  const drafts = useDraftSaver(
+    (draft: { attemptId: string; picks: Record<string, string> }) =>
+      invoke("study.simulationDraft", draft),
+    () => setNotice(t("simulation.saveFailed")),
+    DRAFT_DELAY_MS,
+  );
   const plan = usePlan(planId);
   const open = useQuery({
     queryKey: ["simulation", planId, started],
@@ -152,7 +145,6 @@ export function SimulationPage() {
     setPicks({});
     setIndex(0);
   }, [run?.attemptId]);
-  useEffect(() => () => void flushDraft(), []);
   const timeUp = useDeadlinePassed(run?.deadline, Boolean(run && !run.submitted));
   const locked = Boolean(
     run && (run.submitted || run.grading || run.locked || timeUp),
@@ -160,7 +152,7 @@ export function SimulationPage() {
   // The menu leaves a running simulation alone.
   useMenuLock(Boolean(run) && !locked);
   useEffect(() => {
-    if (locked) void flushDraft();
+    if (locked) void drafts.flush();
   }, [locked]);
   // The shell asks core whether an exam is running when it opens and when told; starting, time-up and handing in tell it.
   useEffect(() => {
@@ -187,7 +179,7 @@ export function SimulationPage() {
     setBusy(true);
     setNotice("");
     try {
-      await flushDraft();
+      await drafts.flush();
       await invoke("study.simulationSubmit", {
         attemptId: run.attemptId,
         picks: shown,
@@ -598,9 +590,7 @@ export function SimulationPage() {
                 onChange={(answer) => {
                   const next = { ...shown, [question.id]: answer };
                   setPicks(next);
-                  pending.current = { attemptId: run.attemptId, picks: next };
-                  window.clearTimeout(saveTimer.current);
-                  saveTimer.current = window.setTimeout(flushDraft, DRAFT_DELAY_MS);
+                  drafts.schedule({ attemptId: run.attemptId, picks: next });
                 }}
               />
             </>

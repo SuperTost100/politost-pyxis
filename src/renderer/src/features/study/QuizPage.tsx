@@ -20,6 +20,7 @@ import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
+import { useDraftSaver } from "./draftSaver";
 import { useReviewSession } from "./ReviewProgress";
 import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
@@ -124,13 +125,6 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
       : `/plans/${planId ?? ""}/mistakes`;
   const restoredAttempt = useRef<string | null>(null);
   const [hydratedAttempt, setHydratedAttempt] = useState<string | null>(null);
-  const draftToSave = useRef<{
-    attemptId: string;
-    planId?: string;
-    picks: Record<string, string>;
-    index: number;
-    skipped: string[];
-  } | null>(null);
   const [types, setTypes] = useState<Kind[]>([...KINDS]);
   const [scope, setScope] = useState<Scope>("topic");
   const [pageSource, setPageSource] = useState<string>();
@@ -370,21 +364,32 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     autoSubmitted.current = true;
     submit.mutate();
   }, [expired, running, canFinish, hydratedAttempt, attemptId]);
+  // Answers, checks and the current question are saved as they change and when the page closes.
+  const drafts = useDraftSaver(
+    async (draft: {
+      attemptId: string;
+      planId?: string;
+      picks: Record<string, string>;
+      index: number;
+      skipped: string[];
+    }) => {
+      await invoke("study.quizDraft", draft);
+      // The first save after the quiz is ready starts the timer; pick up its deadline.
+      if (timed && !deadlineAt && canFinish) void session.refetch();
+    },
+    () => setActionError(true),
+  );
   useEffect(() => {
-    draftToSave.current =
+    if (
       attemptId &&
       hydratedAttempt === attemptId &&
       !finalResult &&
       !gradingStarted &&
       !expired &&
       session.data?.submittedAt == null
-        ? { attemptId, planId, picks, index, skipped }
-        : null;
-    if (!draftToSave.current) return;
-    const timer = window.setTimeout(() => {
-      void flushDraft();
-    }, 500);
-    return () => window.clearTimeout(timer);
+    )
+      drafts.schedule({ attemptId, planId, picks, index, skipped });
+    else drafts.cancel();
   }, [
     attemptId,
     hydratedAttempt,
@@ -397,27 +402,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     canFinish,
     session.data?.submittedAt,
   ]);
-  useEffect(
-    () => () => {
-      const draft = draftToSave.current;
-      if (draft) void invoke("study.quizDraft", draft).catch(() => undefined);
-    },
-    [],
-  );
-  async function flushDraft() {
-    const draft = draftToSave.current;
-    if (!draft) return;
-    try {
-      await invoke("study.quizDraft", draft);
-      // The first save after the quiz is ready starts the timer; pick up its deadline.
-      if (timed && !deadlineAt && canFinish) void session.refetch();
-    } catch {
-      setActionError(true);
-    }
-  }
-  // Answers, checks and the current question are saved, so closing never loses work.
+  // Closing never loses work.
   async function close() {
-    await flushDraft();
+    await drafts.flush();
     navigate(back);
   }
   const result = question ? checked[question.id] : undefined;
@@ -816,7 +803,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
           action={{
             label: t("quiz.drillOwedOpen"),
             onClick: () =>
-              void flushDraft().then(() => navigate(`/plans/${planId ?? ""}/review`)),
+              void drafts.flush().then(() => navigate(`/plans/${planId ?? ""}/review`)),
           }}
         >
           {t("quiz.drillOwed", { count: owed })}
