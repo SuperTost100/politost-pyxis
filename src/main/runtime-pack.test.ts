@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 
+vi.mock("node:crypto", async (original) => {
+  const actual = await original<typeof import("node:crypto")>();
+  return { ...actual, createHash: vi.fn(actual.createHash) };
+});
 vi.mock("../../resources/pyodide-manifest.json", () => ({
   default: {
     version: "test",
@@ -23,6 +27,7 @@ import {
   downloadRuntime,
   invalidateRuntime,
   requireRuntime,
+  verifiedRuntimeFile,
 } from "./runtime-pack";
 const workspaces: string[] = [];
 function workspace() {
@@ -91,4 +96,21 @@ it("a cancelled download can retry without trusting a corrupt response", async (
   );
   await downloadRuntime(path);
   expect((await currentRuntimeStatus(path)).phase).toBe("ready");
+});
+
+it("hashes an installed file again only after it changes", async () => {
+  const path = workspace();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("abc")),
+  );
+  await downloadRuntime(path);
+  const hashes = vi.mocked(createHash).mock.calls.length;
+  expect(await verifiedRuntimeFile(path, "runtime.js")).toEqual(new Uint8Array(Buffer.from("abc")));
+  expect(await verifiedRuntimeFile(path, "runtime.js")).toEqual(new Uint8Array(Buffer.from("abc")));
+  expect((await currentRuntimeStatus(path)).phase).toBe("ready");
+  expect(vi.mocked(createHash).mock.calls.length).toBe(hashes + 1);
+  writeFileSync(join(path, "runtimes/pyodide/test/runtime.js"), "bad");
+  expect(await verifiedRuntimeFile(path, "runtime.js")).toBeUndefined();
+  expect((await currentRuntimeStatus(path)).phase).toBe("idle");
 });
