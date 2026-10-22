@@ -105,7 +105,13 @@ function useEngineSignIn(provider: InstallableProvider, done: () => void) {
       setFailed(true);
     }
   }
-  useEffect(() => onBroadcast("engine.login", (event) => handle(event)));
+  // One subscription for the card's life, which always runs the latest handler.
+  const latestHandle = useRef(handle);
+  latestHandle.current = handle;
+  useEffect(
+    () => onBroadcast("engine.login", (event) => latestHandle.current(event)),
+    [],
+  );
   useEffect(
     () => () => {
       if (pending.current)
