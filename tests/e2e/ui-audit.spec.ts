@@ -22,6 +22,7 @@ import { putBlob } from "../../src/core/blobs";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -240,16 +241,32 @@ function stageOcrData(truncateEnglish = false) {
 
 function seed(db: DatabaseSync) {
   const now = Date.now();
-  db.exec(`INSERT INTO subjects(id,name,position,created_at) VALUES('audit-subject','Fisica',0,1);
-    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('audit-source','excerpt','Appunti di fisica','ready',1,1,1);
-    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('audit-document','audit-source',1,'{"kind":"excerpt"}',1);
-    INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('audit-passage','audit-source','audit-document','La forza è il prodotto di massa e accelerazione.','{"chapter":1,"paragraph":"p1"}','1. Dinamica',1);
-    INSERT INTO smartbooks(id,source_id,meta_json,created_at) VALUES('audit-book','audit-source','{"title":"Fisica","chapters":[]}',1);
-    INSERT INTO exercises(id,smartbook_id,passage_id,prompt,answer,locator_json,grounding,created_at) VALUES('audit-exercise','audit-book','audit-passage','Calcola la forza per $m=2$ kg e $a=3$ m/s².','$F=ma=6$ N','{"chapter":1,"kind":"esame"}','sources',1);
-    INSERT INTO plans(id,subject_id,title,status,content_language,target,created_at,updated_at) VALUES('audit-plan','audit-subject','Fisica 1','ready','it',0.75,1,1);
-    INSERT INTO plan_sources(plan_id,source_id) VALUES('audit-plan','audit-source');
-    INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-topic','audit-plan','Dinamica',0,1);
-    INSERT INTO topic_passages(topic_id,passage_id) VALUES('audit-topic','audit-passage');
+  seedSubjects(db, [{ id: "audit-subject", name: "Fisica" }]);
+  seedSource(db, {
+    id: "audit-source",
+    title: "Appunti di fisica",
+    document: { id: "audit-document" },
+    passages: [
+      {
+        id: "audit-passage",
+        text: "La forza è il prodotto di massa e accelerazione.",
+        locator: { chapter: 1, paragraph: "p1" },
+        section: "1. Dinamica",
+      },
+    ],
+  });
+  db.exec(`INSERT INTO smartbooks(id,source_id,meta_json,created_at) VALUES('audit-book','audit-source','{"title":"Fisica","chapters":[]}',1);
+    INSERT INTO exercises(id,smartbook_id,passage_id,prompt,answer,locator_json,grounding,created_at) VALUES('audit-exercise','audit-book','audit-passage','Calcola la forza per $m=2$ kg e $a=3$ m/s².','$F=ma=6$ N','{"chapter":1,"kind":"esame"}','sources',1);`);
+  seedPlan(db, {
+    id: "audit-plan",
+    subjectId: "audit-subject",
+    title: "Fisica 1",
+    language: "it",
+    target: 0.75,
+    sourceIds: ["audit-source"],
+    topics: [{ id: "audit-topic", title: "Dinamica" }],
+  });
+  db.exec(`INSERT INTO topic_passages(topic_id,passage_id) VALUES('audit-topic','audit-passage');
     INSERT INTO cards(id,plan_id,topic_id,front,back,passage_id,grounding,created_at) VALUES('audit-card','audit-plan','audit-topic','Qual è la seconda legge di Newton?','$F=ma$. La forza è proporzionale alla massa.','audit-passage','sources',1);
     INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES('audit-chat','Seconda legge di Newton','Fisica',1,2);
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-user','audit-chat','user','Come calcolo la forza?',1);
@@ -477,10 +494,12 @@ function seed(db: DatabaseSync) {
     now,
     now,
   );
-  db.exec(`
-    INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('audit-ready-plan','Prepared exam','ready','it',1,1);
-    INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-ready-topic','audit-ready-plan','Force',0,1);
-  `);
+  seedPlan(db, {
+    id: "audit-ready-plan",
+    title: "Prepared exam",
+    language: "it",
+    topics: [{ id: "audit-ready-topic", title: "Force" }],
+  });
   // One plan with an exam date, so its card shows the days left and its header audits Add to calendar.
   const examDay = new Date(now);
   examDay.setDate(examDay.getDate() + 40);
@@ -515,9 +534,13 @@ function seed(db: DatabaseSync) {
     now,
     now,
   );
+  seedPlan(db, {
+    id: "audit-review-plan",
+    title: "Review plan",
+    language: "it",
+    topics: [{ id: "audit-review-topic", title: "Cinematica" }],
+  });
   db.exec(`
-    INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('audit-review-plan','Review plan','ready','it',1,1);
-    INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-review-topic','audit-review-plan','Cinematica',0,1);
     INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES('audit-python-chat','Calcolo con Python','Fisica',1,2);
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-python-user','audit-python-chat','user','Calcola 6 per 7',1);
   `);
@@ -762,11 +785,25 @@ function prepareCardBrowser(name: string) {
       return;
     }
     const later = Date.now() + 9 * 86_400_000;
-    db.exec(`INSERT INTO subjects(id,name,position,created_at) VALUES('audit-chem','Chimica',1,1);
-      INSERT INTO plans(id,subject_id,title,status,content_language,target,created_at,updated_at) VALUES('audit-chem-plan','audit-chem','Chimica generale','ready','it',0.75,2,2);
-      INSERT INTO plans(id,title,status,content_language,target,created_at,updated_at) VALUES('audit-loose-plan','Appunti sparsi','ready','it',0.75,3,3);
-      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-atoms','audit-chem-plan','Struttura dell’atomo',0,1),('audit-loose-topic','audit-loose-plan','Varie',0,1);
-      INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,suspended,grounding,created_at) VALUES
+    seedSubjects(db, [{ id: "audit-chem", name: "Chimica", position: 1 }]);
+    seedPlan(db, {
+      id: "audit-chem-plan",
+      subjectId: "audit-chem",
+      title: "Chimica generale",
+      language: "it",
+      target: 0.75,
+      createdAt: 2,
+      topics: [{ id: "audit-atoms", title: "Struttura dell’atomo" }],
+    });
+    seedPlan(db, {
+      id: "audit-loose-plan",
+      title: "Appunti sparsi",
+      language: "it",
+      target: 0.75,
+      createdAt: 3,
+      topics: [{ id: "audit-loose-topic", title: "Varie" }],
+    });
+    db.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,suspended,grounding,created_at) VALUES
         ('audit-card-z','audit-chem-plan','audit-atoms','Che cos’è il numero atomico?','Il numero di protoni nel nucleo, $Z$.','z1',0,'sources',1),
         ('audit-card-bohr','audit-chem-plan','audit-atoms','Perché l’atomo di Bohr non spiega gli spettri di tutti gli elementi, compresi quelli con molti elettroni e interazioni tra loro?','Perché trascura la repulsione tra elettroni.','z2',1,'sources',2),
         ('audit-card-loose','audit-loose-plan','audit-loose-topic','Una flashcard senza materia','Resta nel gruppo finale.','z3',0,'sources',1);

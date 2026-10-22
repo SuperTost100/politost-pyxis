@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
 /** Set PYXIS_SHOTS to a folder to save screenshots of the dialog. */
 const SHOTS = process.env.PYXIS_SHOTS;
@@ -98,11 +99,13 @@ test("an Anki package imports into a topic with its history, in both themes", as
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,
     });
+    seedPlan(db, {
+      id: "p-phys",
+      title: "Fisica 1",
+      language: "it",
+      topics: [{ id: "t-dyn", title: "Dinamica" }, { id: "t-kin", title: "Cinematica" }],
+    });
     db.exec(`
-      INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES
-        ('p-phys','Fisica 1','ready','it',1,1);
-      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES
-        ('t-dyn','p-phys','Dinamica',0,1),('t-kin','p-phys','Cinematica',1,1);
       INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
         ('c-old','p-phys','t-kin','Velocità media?','Spazio diviso tempo.',1);
     `);

@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -62,9 +63,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       .toBe("ready");
     const original = await page.evaluate(() => window.pyxis.workspacePath());
     const db = new DatabaseSync(join(original, "pyxis.db"), { timeout: 10000 });
-    db.exec(
-      "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('move-plan','Energy','ready',1,1)",
-    );
+    seedPlan(db, { id: "move-plan", title: "Energy" });
     const blob = db
       .prepare("SELECT blob_sha FROM sources WHERE id=?")
       .get(imported.sourceId) as { blob_sha: string };

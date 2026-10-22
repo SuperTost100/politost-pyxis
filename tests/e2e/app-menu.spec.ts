@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
 const mac = process.platform === "darwin";
 
@@ -261,10 +262,13 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
   try {
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     seed(userData, (db) =>
-      db.exec(`
-        INSERT INTO plans(id,title,status,content_language,target,created_at,updated_at) VALUES('menu-plan','Fisica 1','ready','it',0.75,1,1);
-        INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('menu-topic','menu-plan','Dinamica',0,1);
-      `),
+      seedPlan(db, {
+        id: "menu-plan",
+        title: "Fisica 1",
+        language: "it",
+        target: 0.75,
+        topics: [{ id: "menu-topic", title: "Dinamica" }],
+      }),
     );
     await page.reload();
     // An open dialog.

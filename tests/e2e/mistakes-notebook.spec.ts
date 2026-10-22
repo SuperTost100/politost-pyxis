@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { parseSmartText, smartQuestions } from "../../src/shared/smart-text";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
 
 const mcq = (id: string, topicId: string, stem: string) => ({
   id,
@@ -22,20 +23,37 @@ const mcq = (id: string, topicId: string, stem: string) => ({
  * missed quick check; Chimica generale has one missed true-or-false question. Appunti sparsi has no mistakes.
  */
 function seed(db: DatabaseSync) {
-  db.exec(`
-    INSERT INTO subjects(id,name,position,created_at) VALUES('s-phys','Fisica',0,1),('s-chem','Chimica',1,1);
-    INSERT INTO plans(id,subject_id,title,status,content_language,created_at,updated_at) VALUES
-      ('p-phys','s-phys','Fisica 1','ready','it',1,1),
-      ('p-chem','s-chem','Chimica generale','ready','it',1,1),
-      ('p-none',NULL,'Appunti sparsi','ready','it',1,1);
-    INSERT INTO topics(id,plan_id,title,position,created_at) VALUES
-      ('t-dyn','p-phys','Dinamica',0,1),('t-kin','p-phys','Cinematica',1,1),
-      ('t-atoms','p-chem','Atomi',0,1),('t-misc','p-none','Varie',0,1);
-    INSERT INTO sources(id,kind,title,status,created_at,updated_at) VALUES('src','file','Mazzoldi','ready',1,1);
-    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('doc','src',1,'{}',1);
-    INSERT INTO passages(id,source_id,document_id,text,section_path,locator_json,created_at) VALUES
-      ('pass-1','src','doc','Una forza produce un''accelerazione proporzionale.','Secondo principio','{"page":12}',1);
-  `);
+  seedSubjects(db, [{ id: "s-phys", name: "Fisica" }, { id: "s-chem", name: "Chimica" }]);
+  seedPlan(db, {
+    id: "p-phys",
+    subjectId: "s-phys",
+    title: "Fisica 1",
+    language: "it",
+    topics: [{ id: "t-dyn", title: "Dinamica" }, { id: "t-kin", title: "Cinematica" }],
+  });
+  seedPlan(db, {
+    id: "p-chem",
+    subjectId: "s-chem",
+    title: "Chimica generale",
+    language: "it",
+    topics: [{ id: "t-atoms", title: "Atomi" }],
+  });
+  seedPlan(db, { id: "p-none", title: "Appunti sparsi", language: "it", topics: [{ id: "t-misc", title: "Varie" }] });
+  seedSource(db, {
+    id: "src",
+    kind: "file",
+    title: "Mazzoldi",
+    library: null,
+    document: { id: "doc", tree: {} },
+    passages: [
+      {
+        id: "pass-1",
+        text: "Una forza produce un'accelerazione proporzionale.",
+        section: "Secondo principio",
+        locator: { page: 12 },
+      },
+    ],
+  });
   const now = Date.now();
   const item = db.prepare(
     "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,model_id,created_at) VALUES(?,?,?,?,?,'claude','m',1)",

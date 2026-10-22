@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
 test("route failure shows a plain recovery page without stack details", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-route-error-"));
@@ -43,7 +44,7 @@ test("a failed plan build says so in the title and steps, shows its message unde
     const reason = "invalid-output: the model returned text that is not a topic list";
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     const now = Date.now();
-    db.exec("INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('b','Chimica','building','it',1,1)");
+    seedPlan(db, { id: "b", title: "Chimica", status: "building", language: "it" });
     db.prepare(
       "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,error,created_at,updated_at) VALUES('jb','plan-build',?,'failed',0.3,'wizard.stepTopics',?,?,?)",
     ).run(JSON.stringify({ planId: "b" }), reason, now, now);

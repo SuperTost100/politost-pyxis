@@ -4,18 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
 /** Two dated exams and one without a date, with one due card in each dated plan. */
 function seed(db: DatabaseSync) {
   const now = Date.now();
   const day = 86_400_000;
+  const plan = (id: string, title: string, examAt: number | null, topic: { id: string; title: string }) =>
+    seedPlan(db, { id, title, language: "it", target: 0.75, examAt, topics: [topic] });
+  plan("p-far", "Chimica generale", now + 20 * day, { id: "t-atoms", title: "Atomi" });
+  plan("p-near", "Fisica 1", now + 4 * day, { id: "t-dyn", title: "Dinamica" });
+  plan("p-none", "Inglese", null, { id: "t-cond", title: "Condizionali" });
   db.exec(`
-    INSERT INTO plans(id,title,status,content_language,target,exam_at,created_at,updated_at) VALUES
-      ('p-far','Chimica generale','ready','it',0.75,${now + 20 * day},1,1),
-      ('p-near','Fisica 1','ready','it',0.75,${now + 4 * day},1,1),
-      ('p-none','Inglese','ready','it',0.75,NULL,1,1);
-    INSERT INTO topics(id,plan_id,title,position,created_at) VALUES
-      ('t-atoms','p-far','Atomi',0,1),('t-dyn','p-near','Dinamica',0,1),('t-cond','p-none','Condizionali',0,1);
     INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
       ('c-near','p-near','t-dyn','Unità della forza?','Il newton.',1),
       ('c-far','p-far','t-atoms','Numero atomico?','Protoni nel nucleo.',2);

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
 
 /** Set to a folder to also save screenshots of the reply action, the selection menu and the review dialog. */
 const SHOTS = process.env.PYXIS_SHOTS_DIR;
@@ -40,20 +41,31 @@ const CARDS = [
 
 function seed(userData: string) {
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
-  db.exec(`
-    INSERT INTO subjects(id,name,position,created_at) VALUES('s-mat','Analisi',0,1);
-    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('src-an','excerpt','Appunti di analisi','ready',1,1,1);
-    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('d-an','src-an',1,'{"kind":"excerpt"}',1);
-    INSERT INTO plans(id,subject_id,title,status,content_language,target,created_at,updated_at) VALUES
-      ('p-an','s-mat','Analisi 1','ready','it',0.75,1,2),
-      ('p-geo','s-mat','Geometria','ready','it',0.75,1,1);
-    INSERT INTO plan_sources(plan_id,source_id) VALUES('p-an','src-an');
-    INSERT INTO topics(id,plan_id,title,position,created_at) VALUES
-      ('t-lim','p-an','Limiti',0,1),('t-int','p-an','Integrali',1,1),('t-mat','p-geo','Matrici',0,1);
-  `);
-  db.prepare(
-    "INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('pa1','src-an','d-an',?,'{\"chapter\":1,\"paragraph\":\"p1\"}','1. Integrali',1)",
-  ).run(PASSAGE);
+  seedSubjects(db, [{ id: "s-mat", name: "Analisi" }]);
+  seedSource(db, {
+    id: "src-an",
+    title: "Appunti di analisi",
+    document: { id: "d-an" },
+    passages: [{ id: "pa1", text: PASSAGE, locator: { chapter: 1, paragraph: "p1" }, section: "1. Integrali" }],
+  });
+  seedPlan(db, {
+    id: "p-an",
+    subjectId: "s-mat",
+    title: "Analisi 1",
+    language: "it",
+    target: 0.75,
+    updatedAt: 2,
+    sourceIds: ["src-an"],
+    topics: [{ id: "t-lim", title: "Limiti" }, { id: "t-int", title: "Integrali" }],
+  });
+  seedPlan(db, {
+    id: "p-geo",
+    subjectId: "s-mat",
+    title: "Geometria",
+    language: "it",
+    target: 0.75,
+    topics: [{ id: "t-mat", title: "Matrici" }],
+  });
   db.exec("INSERT INTO topic_passages(topic_id,passage_id) VALUES('t-int','pa1')");
   db.close();
 }

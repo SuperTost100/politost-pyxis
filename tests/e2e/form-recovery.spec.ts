@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
 test("onboarding save and invalid plan imports remain retryable", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-form-recovery-"));
@@ -31,9 +32,7 @@ test("onboarding save and invalid plan imports remain retryable", async () => {
       await skip.click();
       // Anchored to the hash: a checkout path can contain "exams" too.
       await expect(page).toHaveURL(/#\/exams$/);
-      db.exec(
-        "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('retry-plan','Fisica','ready',1,1);",
-      );
+      seedPlan(db, { id: "retry-plan", title: "Fisica" });
       await page.reload();
       const input = page.locator('input[type="file"]').first();
       const invalid = {

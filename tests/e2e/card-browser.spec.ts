@@ -9,19 +9,28 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSubjects } from "./seed";
 
 /** Two subjects, one exam with no subject, and cards that need the folding, the math and the cloze. */
 function seed(db: DatabaseSync) {
   const now = Date.now();
+  seedSubjects(db, [{ id: "s-chem", name: "Chimica", position: 1 }, { id: "s-phys", name: "Fisica", position: 0 }]);
+  seedPlan(db, {
+    id: "p-phys",
+    subjectId: "s-phys",
+    title: "Fisica 1",
+    language: "it",
+    topics: [{ id: "t-dyn", title: "Dinamica" }, { id: "t-kin", title: "Cinematica" }],
+  });
+  seedPlan(db, {
+    id: "p-chem",
+    subjectId: "s-chem",
+    title: "Chimica generale",
+    language: "it",
+    topics: [{ id: "t-atoms", title: "Atomi" }],
+  });
+  seedPlan(db, { id: "p-none", title: "Appunti sparsi", language: "it", topics: [{ id: "t-misc", title: "Varie" }] });
   db.exec(`
-    INSERT INTO subjects(id,name,position,created_at) VALUES('s-chem','Chimica',1,1),('s-phys','Fisica',0,1);
-    INSERT INTO plans(id,subject_id,title,status,content_language,created_at,updated_at) VALUES
-      ('p-phys','s-phys','Fisica 1','ready','it',1,1),
-      ('p-chem','s-chem','Chimica generale','ready','it',1,1),
-      ('p-none',NULL,'Appunti sparsi','ready','it',1,1);
-    INSERT INTO topics(id,plan_id,title,position,created_at) VALUES
-      ('t-dyn','p-phys','Dinamica',0,1),('t-kin','p-phys','Cinematica',1,1),
-      ('t-atoms','p-chem','Atomi',0,1),('t-misc','p-none','Varie',0,1);
     INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,grounding,created_at) VALUES
       ('c-why','p-phys','t-dyn','Perché un corpo accelera?','Perché agisce una forza: $F=ma$.','k1','sources',1),
       ('c-unit','p-phys','t-dyn','Unità della forza?','Il newton.','k2','sources',2),

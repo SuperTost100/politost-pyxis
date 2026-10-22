@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { unzipSync } from "fflate";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
 test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export modal", async () => {
   const root = mkdtempSync(join(tmpdir(), "pyxis-export-check-"));
@@ -34,9 +35,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,
     });
-    db.exec(`INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('export-plan','Fisica','ready',1,1);
-      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('export-topic','export-plan','Energia',0,1);
-      INSERT INTO cards (id,plan_id,topic_id,front,back,created_at) VALUES ('card-basic','export-plan','export-topic','Forza $F=ma$','La forza è massa per accelerazione',1);
+    seedPlan(db, { id: "export-plan", title: "Fisica", topics: [{ id: "export-topic", title: "Energia" }] });
+    db.exec(`INSERT INTO cards (id,plan_id,topic_id,front,back,created_at) VALUES ('card-basic','export-plan','export-topic','Forza $F=ma$','La forza è massa per accelerazione',1);
       INSERT INTO cards (id,plan_id,topic_id,front,back,created_at) VALUES ('card-cloze','export-plan','export-topic','{{c1::$E=mc^2$}}','Energia',2);`);
     const insert = db.prepare(
       "INSERT INTO items (id,plan_id,topic_id,kind,body_json,created_at) VALUES (?, 'export-plan','export-topic','quiz',?,?)",

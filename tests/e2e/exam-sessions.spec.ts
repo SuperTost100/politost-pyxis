@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -35,12 +36,10 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     });
     const written = noonIn(21);
     const oral = noonIn(33);
+    seedPlan(db, { id: "plan-a", title: "Fisica 1", language: "it", topics: [{ id: "topic-a", title: "Cinematica" }] });
+    seedPlan(db, { id: "plan-b", title: "Analisi 2", language: "it", topics: [{ id: "topic-b", title: "Integrali" }] });
     db.exec(`
-      INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('plan-a','Fisica 1','ready','it',1,1);
-      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('topic-a','plan-a','Cinematica',0,1);
       INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('card-a','plan-a','topic-a','Cos''è la velocità?','Spazio sul tempo',1);
-      INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('plan-b','Analisi 2','ready','it',1,1);
-      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('topic-b','plan-b','Integrali',0,1);
       INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('card-b','plan-b','topic-b','Cos''è un integrale?','Un''area',1);
     `);
     db.close();

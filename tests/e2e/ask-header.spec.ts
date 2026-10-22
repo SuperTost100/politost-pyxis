@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
 
 const REPLY = ["La cinematica descrive il moto: $v = \\frac{dx}{dt}$.", "", "<followups>", "Fammi un esempio", "</followups>"].join(
   "\n",
@@ -40,13 +41,17 @@ test("Ask: starter prompts from the plans, the title in the header, and a pasted
   test.setTimeout(120000);
   const { app, page, userData, db } = await launch();
   try {
-    db.exec(`
-      INSERT INTO subjects(id,name,position,created_at) VALUES('s-fis','Fisica',0,1);
-      INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('src-fis','excerpt','Appunti di fisica','ready',1,1,1);
-      INSERT INTO plans(id,subject_id,title,status,content_language,target,created_at,updated_at) VALUES('p-fis','s-fis','Fisica 1','ready','it',0.75,1,1);
-      INSERT INTO plan_sources(plan_id,source_id) VALUES('p-fis','src-fis');
-      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('t1','p-fis','Cinematica',0,1),('t2','p-fis','Dinamica',1,1);
-    `);
+    seedSubjects(db, [{ id: "s-fis", name: "Fisica" }]);
+    seedSource(db, { id: "src-fis", title: "Appunti di fisica" });
+    seedPlan(db, {
+      id: "p-fis",
+      subjectId: "s-fis",
+      title: "Fisica 1",
+      language: "it",
+      target: 0.75,
+      sourceIds: ["src-fis"],
+      topics: [{ id: "t1", title: "Cinematica" }, { id: "t2", title: "Dinamica" }],
+    });
     await page.evaluate(() => {
       location.hash = "/ask";
     });
@@ -119,8 +124,8 @@ test("Ask: the chat list groups by date and filters by subject with the search; 
   const { app, page, userData, db } = await launch();
   try {
     const now = Date.now();
+    seedSubjects(db, [{ id: "s-an", name: "Analisi" }, { id: "s-fis", name: "Fisica" }]);
     db.exec(`
-      INSERT INTO subjects(id,name,position,created_at) VALUES('s-an','Analisi',0,1),('s-fis','Fisica',1,1);
       INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES
         ('c-today','Moto rettilineo','Fisica',${now},${now}),
         ('c-an','Limiti notevoli','Analisi',1,2),
@@ -181,7 +186,7 @@ test("Ask: a capped chat search still finds older chats in the subject the list 
   test.setTimeout(120000);
   const { app, page, userData, db } = await launch();
   try {
-    db.exec(`INSERT INTO subjects(id,name,position,created_at) VALUES('s-an','Analisi',0,1),('s-fis','Fisica',1,1);`);
+    seedSubjects(db, [{ id: "s-an", name: "Analisi" }, { id: "s-fis", name: "Fisica" }]);
     const chat = db.prepare("INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES(?,?,?,?,?)");
     // Two old Fisica chats, then more recent Analisi ones than one search shows.
     chat.run("c-fis-1", "Derivata della velocità", "Fisica", 1, 1);

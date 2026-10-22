@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
 test("doors navigate from settings and every shell page uses the full column", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-shell-layout-"));
@@ -102,9 +103,7 @@ test("doors navigate from settings and every shell page uses the full column", a
 
     // A plan page offers a way back to the exams.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    db.exec(`
-      INSERT INTO plans(id,title,status,content_language,target,created_at,updated_at) VALUES('p-1','Fisica 1','ready','it',0.75,1,1);
-    `);
+    seedPlan(db, { id: "p-1", title: "Fisica 1", language: "it", target: 0.75 });
     db.close();
     await page.evaluate(() => {
       window.location.hash = "#/plans/p-1";

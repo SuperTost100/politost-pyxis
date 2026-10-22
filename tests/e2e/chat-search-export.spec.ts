@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedSource } from "./seed";
 
 const ANSWER = [
   "Il calore passa per conduzione: \\(Q=mc\\Delta T\\) [P1].",
@@ -28,10 +29,15 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,
     });
+    seedSource(db, {
+      id: "s1",
+      title: "Appunti di fisica",
+      document: { id: "d1" },
+      passages: [
+        { id: "p1", text: "Il calore si trasmette per conduzione.", locator: {}, section: "2. Termodinamica" },
+      ],
+    });
     db.exec(`
-      INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('s1','excerpt','Appunti di fisica','ready',1,1,1);
-      INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('d1','s1',1,'{"kind":"excerpt"}',1);
-      INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('p1','s1','d1','Il calore si trasmette per conduzione.','{}','2. Termodinamica',1);
       INSERT INTO chats(id,title,created_at,updated_at) VALUES('c-termo','Termodinamica',1,2),('c-analisi','Analisi',1,1);
       INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m1','c-termo','user','Perché il calore passa dal caldo al freddo?',1);
       INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m3','c-analisi','user','Come calcolo un limite?',1);

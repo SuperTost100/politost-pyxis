@@ -19,6 +19,7 @@ import { DatabaseSync } from "node:sqlite";
 import { quitPyxis } from "./app-exit";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
+import { seedPlan } from "./seed";
 
 const automatic =
   /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}(?:-[0-9a-f]{8})?\.zip$/;
@@ -28,9 +29,7 @@ const HOUR = 60 * 60 * 1000;
 function addPlan(workspace: string, id = "auto-plan", title = "Motion") {
   const db = new DatabaseSync(join(workspace, "pyxis.db"), { timeout: 10000 });
   try {
-    db.prepare(
-      "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES (?,?,'ready',1,1)",
-    ).run(id, title);
+    seedPlan(db, { id, title });
   } finally {
     db.close();
   }

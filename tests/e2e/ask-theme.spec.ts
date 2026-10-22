@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -17,14 +18,28 @@ const REPLY = [
 
 function seed(userData: string) {
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-  db.exec(`
-    INSERT INTO subjects(id,name,position,created_at) VALUES('s-fis','Fisica',0,1);
-    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('src-fis','excerpt','Appunti di fisica','ready',1,1,1);
-    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('d-fis','src-fis',1,'{"kind":"excerpt"}',1);
-    INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('pa1','src-fis','d-fis','Come si risolve un integrale per parti: la formula integrale per parti di u dv vale uv meno integrale di v du.','{"chapter":1,"paragraph":"p1"}','1. Integrali',1);
-    INSERT INTO plans(id,subject_id,title,status,content_language,target,created_at,updated_at) VALUES('p-fis','s-fis','Fisica 1','ready','it',0.75,1,1);
-    INSERT INTO plan_sources(plan_id,source_id) VALUES('p-fis','src-fis');
-  `);
+  seedSubjects(db, [{ id: "s-fis", name: "Fisica" }]);
+  seedSource(db, {
+    id: "src-fis",
+    title: "Appunti di fisica",
+    document: { id: "d-fis" },
+    passages: [
+      {
+        id: "pa1",
+        text: "Come si risolve un integrale per parti: la formula integrale per parti di u dv vale uv meno integrale di v du.",
+        locator: { chapter: 1, paragraph: "p1" },
+        section: "1. Integrali",
+      },
+    ],
+  });
+  seedPlan(db, {
+    id: "p-fis",
+    subjectId: "s-fis",
+    title: "Fisica 1",
+    language: "it",
+    target: 0.75,
+    sourceIds: ["src-fis"],
+  });
   db.close();
 }
 
