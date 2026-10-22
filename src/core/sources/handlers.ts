@@ -1,5 +1,5 @@
 import { fetchSnapshot, parseLinkUrl } from "./link";
-import { readBlob } from "../blobs";
+import { blobSize } from "../blobs";
 import { statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type Database from "better-sqlite3";
@@ -331,14 +331,8 @@ export function sourceHandlers(
          ORDER BY created_at DESC LIMIT 1`,
       );
       return listSources(db).map((source) => {
-        let bytes: number | null = null;
-        if (source.blobSha) {
-          try {
-            bytes = statSync(readBlob(workspace, source.blobSha).file).size;
-          } catch {
-            /* Missing original is shown without an invented size. */
-          }
-        }
+        // A missing original is shown without an invented size.
+        const bytes = source.blobSha ? blobSize(workspace, source.blobSha) : null;
         // Only a stored comparison is read: the list never embeds or recomputes anything.
         const off = source.planCount > 0
           ? (storedSyllabus(db, source.id) ?? []).reduce((sum, check) => sum + check.off, 0)

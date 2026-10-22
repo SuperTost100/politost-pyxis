@@ -7,6 +7,7 @@ import {
   lstatSync,
   openSync,
   closeSync,
+  statSync,
   fsyncSync,
   renameSync,
   rmSync,
@@ -118,6 +119,12 @@ export function removeBlob(workspace: string, sha: string): void {
   const { file, meta } = location(workspace, sha);
   rmSync(file, { force: true });
   rmSync(meta, { force: true });
+}
+
+/** The stored file's size in bytes, or null when it is missing. Reads no metadata, for listing many at once. */
+export function blobSize(workspace: string, sha: string): number | null {
+  const info = statSync(location(workspace, sha).file, { throwIfNoEntry: false });
+  return info?.isFile() ? info.size : null;
 }
 
 export function readBlob(workspace: string, sha: string): BlobRecord {

@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { putBlob, readBlob } from "./blobs";
+import { blobSize, putBlob, readBlob } from "./blobs";
 import { tempDir } from "./test-temp";
 
 describe("blobs", () => {
@@ -30,6 +30,14 @@ describe("blobs", () => {
     rmSync(join(workspace, "blobs", first.slice(0, 2), `${first}.json`));
     putBlob(workspace, bytes, "text/plain", "txt");
     expect(readBlob(workspace, first).mime).toBe("text/plain");
+  });
+
+  it("reports a stored file's size, and null once it is gone", () => {
+    const workspace = tempDir("pyxis-blob-");
+    const sha = putBlob(workspace, new TextEncoder().encode("dodici byte!"), "text/plain", "txt");
+    expect(blobSize(workspace, sha)).toBe(12);
+    rmSync(join(workspace, "blobs", sha.slice(0, 2), sha));
+    expect(blobSize(workspace, sha)).toBeNull();
   });
 
   it("rejects a hash that is not 64 hex characters", () => {
