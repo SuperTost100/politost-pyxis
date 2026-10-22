@@ -8,7 +8,7 @@ import { daysBetween, startOfDay } from "../../shared/local-day";
 import { suggestStep, topicSuggestion, type Stage, type TopicStatus } from "./path";
 import { finishedLessons, gradedActivities, readSteps } from "./steps";
 import { countDueCards } from "../study/cards";
-import { gapSeverity, planMastery, syncGaps, weightedPlanMastery } from "./progress";
+import { gapSeverity, planMastery, syncGaps, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
 import type { ExamSessionInput } from "../../shared/exam-sessions";
 import { hasSessions, readSessions, saveSessions, sessionsFromInput, syncExamDates } from "./sessions";
@@ -358,16 +358,7 @@ export function listPlans(db: Database.Database, now = Date.now()) {
   }>;
   return rows.map((row) => {
     const topics = planMastery(db, row.id, now);
-    const counts = new Map(
-      (
-        db
-          .prepare(
-            "SELECT t.id, count(tp.passage_id) AS n FROM topics t LEFT JOIN topic_passages tp ON tp.topic_id=t.id WHERE t.plan_id=? GROUP BY t.id",
-          )
-          .all(row.id) as { id: string; n: number }[]
-      ).map((t) => [t.id, t.n]),
-    );
-    const mastery = weightedPlanMastery(topics, counts);
+    const mastery = weightedPlanMastery(topics, topicPassageCounts(db, row.id));
     return {
       id: row.id,
       title: row.title,

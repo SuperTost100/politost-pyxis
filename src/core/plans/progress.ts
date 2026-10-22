@@ -164,6 +164,19 @@ export function gapSeverity(
   return proposed === "severe" || mastery < target / 2 ? "severe" : "minor";
 }
 
+/** Each topic of the plan with its number of passages, the weight weightedPlanMastery gives it. */
+export function topicPassageCounts(db: Database.Database, planId: string): Map<string, number> {
+  return new Map(
+    (
+      db
+        .prepare(
+          "SELECT t.id, count(tp.passage_id) AS n FROM topics t LEFT JOIN topic_passages tp ON tp.topic_id = t.id WHERE t.plan_id = ? GROUP BY t.id",
+        )
+        .all(planId) as Array<{ id: string; n: number }>
+    ).map((row) => [row.id, row.n]),
+  );
+}
+
 /** Topics weigh by passage count, untouched ones included. A topic without passages weighs 1, so a plan without any still shows progress. */
 export function weightedPlanMastery(
   topics: Array<{ id: string; mastery: number }>,
@@ -412,18 +425,7 @@ export function planSeries(
     { target: number } | undefined;
   const target = plan?.target ?? 0.8;
   const reached = reachableTarget(target);
-  const passageCounts = new Map(
-    (
-      db
-        .prepare(
-          `
-    SELECT t.id, count(tp.passage_id) AS count FROM topics t
-    LEFT JOIN topic_passages tp ON tp.topic_id=t.id WHERE t.plan_id=? GROUP BY t.id
-  `,
-        )
-        .all(planId) as Array<{ id: string; count: number }>
-    ).map((row) => [row.id, row.count]),
-  );
+  const passageCounts = topicPassageCounts(db, planId);
   const preparation = weightedPlanMastery(topics, passageCounts);
   const historicalAverage = (at: number) => {
     const scores = masteryFor(masteryEvidence(evidence, at), at);

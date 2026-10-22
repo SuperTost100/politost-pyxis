@@ -3,7 +3,7 @@ import { z } from "zod";
 import { suggestStep, stayActivities, type Activity, type Step, type TopicStatus } from "./path";
 import { pathState } from "./create";
 import { countDueCards, dueCards } from "../study/cards";
-import { weightedPlanMastery } from "./progress";
+import { topicPassageCounts, weightedPlanMastery } from "./progress";
 import { putSetting } from "../settings";
 import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
 
@@ -169,9 +169,6 @@ type PlanState = NonNullable<ReturnType<typeof pathState>>;
 function studyState(db: Database.Database, now: number) {
   const today = startOfDay(now);
   const rows = db.prepare(`${studyPlans} ORDER BY updated_at DESC`).all() as PlanRow[];
-  const passages = db.prepare(
-    "SELECT t.id, count(tp.passage_id) AS n FROM topics t LEFT JOIN topic_passages tp ON tp.topic_id = t.id WHERE t.plan_id = ? GROUP BY t.id",
-  );
   return rows.flatMap((row) => {
     // Today counts due cards per plan as one item, so the path's per-topic counts are not needed here.
     const state = pathState(db, row.id, now, { dueCards: false });
@@ -180,12 +177,7 @@ function studyState(db: Database.Database, now: number) {
     const remainingNow = remainingMinutes(state);
     const doneMinutes = doneToday.reduce((sum, step) => sum + stepMinutes[step.activity], 0);
     // The mastery the exam list shows, weighted by passages.
-    const mastery = weightedPlanMastery(
-      state.topics,
-      new Map(
-        (passages.all(row.id) as Array<{ id: string; n: number }>).map((topic) => [topic.id, topic.n]),
-      ),
-    );
+    const mastery = weightedPlanMastery(state.topics, topicPassageCounts(db, row.id));
     return [
       {
         row,
