@@ -21,6 +21,7 @@ import {
 } from "../../shared/plan-file";
 import { MAX_SOURCE_BYTES } from "../../shared/source-types";
 import { hasBlob, putBlob, readBlob, removeBlob } from "../blobs";
+import { latestReview } from "../study/cards";
 import { validateGraph, type ConceptGraph } from "../maps/graph";
 
 export type { PlanFile };
@@ -167,12 +168,9 @@ export function exportPlan(
   const cards = db
     .prepare(
       `SELECT c.id, c.front, c.back, c.topic_id, c.passage_id, c.grounding, c.suspended,
-              (SELECT cr.rating FROM card_reviews cr
-               WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS rating,
-              (SELECT cr.state_json FROM card_reviews cr
-               WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS state_json,
-              (SELECT cr.reviewed_at FROM card_reviews cr
-               WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS reviewed_at
+              ${latestReview("rating")} AS rating,
+              ${latestReview("state_json")} AS state_json,
+              ${latestReview("reviewed_at")} AS reviewed_at
        FROM cards c WHERE c.plan_id = ? AND c.removed = 0 ORDER BY c.created_at`,
     )
     .all(planId) as Array<{

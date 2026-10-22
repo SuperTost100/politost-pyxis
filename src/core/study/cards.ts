@@ -22,6 +22,17 @@ export type DueCard = {
   state: ScheduleState;
 };
 
+/**
+ * Which review of a card is its latest: the newest `reviewed_at`, and of two at the same time the one stored last
+ * (highest rowid). undoRating removes that same review. The `card_reviews_card` index serves this order.
+ */
+const LATEST_REVIEW_ORDER = "ORDER BY cr.reviewed_at DESC, cr.rowid DESC";
+
+/** A subquery reading `column` of the latest review of the card in `card` (an alias with `id`, or a `?` for the ID). */
+export function latestReview(column: "state_json" | "rating" | "reviewed_at" | "id", card = "c.id"): string {
+  return `(SELECT cr.${column} FROM card_reviews cr WHERE cr.card_id = ${card} ${LATEST_REVIEW_ORDER} LIMIT 1)`;
+}
+
 /** Cards that can come up for review: not suspended, not removed, not in an archived topic. */
 const ACTIVE = `c.suspended = 0
          AND c.removed = 0
@@ -38,11 +49,7 @@ const DUE_FROM = `FROM cards c
          AND (? IS NULL OR c.topic_id = ?)
          AND (? IS NULL OR c.id IN (SELECT value FROM json_each(?)))
          AND COALESCE(
-           CAST(json_extract(
-             (SELECT cr.state_json FROM card_reviews cr
-              WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1),
-             '$.dueAt'
-           ) AS INTEGER),
+           CAST(json_extract(${latestReview("state_json")}, '$.dueAt') AS INTEGER),
            ?
          ) <= ?
          AND (? IS NULL
@@ -173,14 +180,9 @@ export function dueCards(
         (SELECT p.section_path FROM passages p WHERE p.id = c.passage_id) AS section_path,
         (SELECT p.source_id FROM passages p WHERE p.id = c.passage_id) AS source_id,
         (SELECT json_extract(p.locator_json, '$.chapter') FROM passages p WHERE p.id = c.passage_id) AS chapter,
-        (SELECT cr.state_json FROM card_reviews cr
-         WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1) AS state_json,
+        ${latestReview("state_json")} AS state_json,
         COALESCE(
-          CAST(json_extract(
-            (SELECT cr.state_json FROM card_reviews cr
-             WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1),
-            '$.dueAt'
-          ) AS INTEGER),
+          CAST(json_extract(${latestReview("state_json")}, '$.dueAt') AS INTEGER),
           ?
         ) AS due_at
        ${DUE_FROM}
@@ -252,7 +254,7 @@ export function rateCard(
     if (card.suspended) throw new Error("card-suspended");
     const latest = db
       .prepare(
-        `SELECT state_json FROM card_reviews WHERE card_id = ? ORDER BY reviewed_at DESC LIMIT 1`,
+        `SELECT cr.state_json FROM card_reviews cr WHERE cr.card_id = ? ${LATEST_REVIEW_ORDER} LIMIT 1`,
       )
       .get(cardId) as { state_json: string } | undefined;
 
@@ -303,7 +305,7 @@ export function undoRating(
     if (!row) throw new Error("review-missing");
     const latest = db
       .prepare(
-        `SELECT id FROM card_reviews WHERE card_id = ? ORDER BY reviewed_at DESC, rowid DESC LIMIT 1`,
+        `SELECT ${latestReview("id", "?")} AS id`,
       )
       .get(row.card_id) as { id: string };
     if (latest.id !== reviewId) throw new Error("review-not-latest");
@@ -328,8 +330,7 @@ export function queueCounts(
   const rows = db
     .prepare(
       `SELECT
-        (SELECT cr.state_json FROM card_reviews cr
-         WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC LIMIT 1) AS state_json
+        ${latestReview("state_json")} AS state_json
        FROM cards c
        WHERE c.plan_id = ? AND c.topic_id = ? AND c.suspended = 0 AND c.removed = 0`,
     )

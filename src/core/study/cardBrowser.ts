@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { foldText } from "../../shared/fold-text";
 import { clozeAnswer } from "./cloze";
+import { latestReview } from "./cards";
 import type { ScheduleState } from "./schedule";
 
 export type CardStatus = "all" | "due" | "suspended" | "removed" | "leech";
@@ -116,8 +117,7 @@ export function browseCards(
     .split(/\s+/)
     .filter(Boolean);
   fillSearchText(db);
-  const latest = `(SELECT cr.state_json FROM card_reviews cr
-    WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1)`;
+  const latest = latestReview("state_json");
   // The status filter runs in SQL on the latest review's saved state, so only the page's rows are read and parsed.
   // A card never rated has no review: it is new, and due. A review without a due time keeps the card scheduled.
   const byStatus: Record<CardStatus, string> = {
