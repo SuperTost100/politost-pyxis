@@ -50,8 +50,8 @@ const DUE_FROM = `FROM cards c
            OR c.id IN (SELECT value FROM json_each(?)))`;
 
 const NEW_PER_DAY = "cards.newPerDay";
-export const defaultNewPerDay = 20;
-export const maxNewPerDay = 999;
+const defaultNewPerDay = 20;
+const maxNewPerDay = 999;
 
 /** How many never-reviewed cards each exam introduces per day. */
 export function newCardsPerDay(db: Database.Database): number {

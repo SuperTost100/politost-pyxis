@@ -14,7 +14,7 @@ const TEMPLATE = "gap.drill";
 export const REVIEW_SESSION_TTL = 24 * 3_600_000;
 const ACTIVE = "('queued', 'running', 'interrupted')";
 /** LES-03: a short explanation and five targeted questions. */
-export const DRILL_QUESTIONS = 5;
+const DRILL_QUESTIONS = 5;
 // Closed-form types only: the drill is graded locally and gives feedback after every question.
 const drillInput = (planId: string, topicId: string) => ({
   planId,
@@ -41,7 +41,7 @@ const explanationSchema = z.object({ explanation: z.string().trim().min(1).max(1
  * The open gap a drill is for: the one asked for, or when none is named the topic's top gap (severe first, then most
  * linked wrong answers, then oldest). A gap that has closed or whose topic was archived is not open.
  */
-export function openGap(db: Database.Database, planId: string, topicId: string, gapId?: string) {
+function openGap(db: Database.Database, planId: string, topicId: string, gapId?: string) {
   return db
     .prepare(
       `SELECT g.id, g.opened_at AS openedAt, g.misconception FROM gaps g

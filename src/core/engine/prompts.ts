@@ -27,7 +27,7 @@ import citationPartial from "../../../resources/prompts/partials/citation.md?raw
 import type Database from "better-sqlite3";
 
 /** Templates and partials are bundled as raw strings, so there is no runtime file path. */
-export const PARTIAL_SOURCES = {
+const PARTIAL_SOURCES = {
   citation: citationPartial,
 } as const;
 

@@ -28,7 +28,7 @@ export const DAY = 24 * HOUR;
  * Daily backups kept in the folder: the newest ones. Retention also keeps one weekly and one monthly backup (see
  * `retainedBackups`), so a computer holds at most KEEP + 2 of its own.
  */
-export const KEEP = 3;
+const KEEP = 3;
 /** shortcut: Settings lists only the newest 12 backups, since each one costs unpacking its database; add paging if folders hold more. */
 const MAX_LISTED = 12;
 /** A backup that keeps finding jobs runs anyway after this long, so a job stuck in the queue cannot stop backups. */

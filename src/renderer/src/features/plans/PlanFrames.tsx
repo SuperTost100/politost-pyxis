@@ -1,9 +1,8 @@
-import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StepLines } from "../../components/StepLines";
 import { Stepper } from "../../components/Stepper";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./PlanPage.css";
-import { Button, Input, Modal, Slider } from "antd";
+import { Button, Input, Slider } from "antd";
 import dayjs from "dayjs";
 import { WizardSources } from "./WizardSources";
 import "./PlanWizard.css";
@@ -124,7 +123,6 @@ export function WizardFrame() {
     build.data &&
     ["failed", "cancelled", "interrupted"].includes(build.data.state),
   );
-  const [topicTitles, setTopicTitles] = useState<Record<string, string>>({});
   const [startError, setStartError] = useState<string | null>(null);
   // An error belongs to the step and the attempt that raised it.
   function goTo(step: number) {
@@ -148,7 +146,6 @@ export function WizardFrame() {
         style,
         topicTitles: picked.map(
           (id) =>
-            topicTitles[id] ||
             (sources.data ?? []).find((source) => source.id === id)?.title ||
             "",
         ),

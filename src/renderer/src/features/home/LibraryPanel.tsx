@@ -17,7 +17,7 @@ import { SourceRow, sizeText } from "../../components/SourceRow";
 import "./LibraryPanel.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
@@ -91,7 +91,6 @@ export function LibraryPanel({
   onImported?: (sourceIds: string[]) => void;
 } = {}) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const client = useQueryClient();
   const [params] = useSearchParams();
   const list = useQuery({
@@ -140,9 +139,6 @@ export function LibraryPanel({
   useEffect(() => () => scanRun.current?.abort(), []);
   const [pickedPassage, setPickedPassage] = useState<string | null>(null);
   const [searchPicked, setSearchPicked] = useState(false);
-  const [preferOpened, setPreferOpened] = useState(
-    Boolean(params.get("passage")),
-  );
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
@@ -222,7 +218,6 @@ export function LibraryPanel({
     if (source) setSourceId(source);
     if (chapterParam) setChapter(Number(chapterParam));
     if (paragraphParam) setParagraph(paragraphParam);
-    if (params.get("passage")) setPreferOpened(true);
   }, [params]);
 
   useEffect(() => {
@@ -509,7 +504,6 @@ export function LibraryPanel({
     }
   }
   function select(source: LibrarySource) {
-    setPreferOpened(false);
     setSourceId(source.id);
     setRenameTo(source.title);
     setChapter(null);
@@ -647,13 +641,11 @@ export function LibraryPanel({
     setSearchPicked(true);
     setSourceId(hit.sourceId);
     if (hit.locator.chapter == null) {
-      setPreferOpened(true);
       setPickedPassage(hit.id);
       setChapter(null);
       setParagraph(undefined);
       return;
     }
-    setPreferOpened(false);
     setPickedPassage(null);
     setChapter(hit.locator.chapter);
     setParagraph(hit.locator.paragraph);
@@ -1548,7 +1540,6 @@ export function LibraryPanel({
                 item.number === chapter ? "choice is-selected" : "choice"
               }
               onClick={() => {
-                setPreferOpened(false);
                 openSourceViewer({
                   sourceId: sourceId ?? undefined,
                   chapter: item.number,

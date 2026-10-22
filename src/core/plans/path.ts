@@ -100,11 +100,11 @@ const middle = 0.5;
 /** Within this many days of the exam a simulation is worth suggesting whatever the mastery. */
 const examSoonDays = 3;
 /** After a lesson the path stays on its topic until the topic reaches this mastery (or the target, if lower)... */
-export const stayMastery = 0.6;
+const stayMastery = 0.6;
 /** ...or until the student has done this many graded activities on it, so a student who keeps missing moves on. */
 export const stayActivities = 3;
 /** A read topic below the target that nobody touched for this many days gets a review quiz before a new chapter. */
-export const reviewAfterDays = 7;
+const reviewAfterDays = 7;
 
 const weights = {
   due: 3,

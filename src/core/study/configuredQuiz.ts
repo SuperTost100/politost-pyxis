@@ -206,7 +206,7 @@ export function prepareQuiz(
 }
 
 /** Stems of questions the student marked wrong in this plan (or one topic of it), newest first. */
-export function rejectedStems(
+function rejectedStems(
   db: Database.Database,
   planId: string,
   topicId?: string,

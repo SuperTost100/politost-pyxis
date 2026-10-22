@@ -38,7 +38,7 @@ const localCheckSchema = z.object({
   failure: z.enum(["slow", "structured", "error"]).optional(),
 });
 
-export const JobState = z.enum([
+const JobState = z.enum([
   "queued",
   "running",
   "succeeded",
@@ -160,7 +160,7 @@ const reviewSessionSchema = z.object({
   ),
 });
 
-export const simulationViewSchema = z.object({
+const simulationViewSchema = z.object({
   attemptId: z.string(),
   planId: z.string(),
   deadline: z.number(),
@@ -200,7 +200,7 @@ export const simulationViewSchema = z.object({
     .optional(),
 });
 
-export const JobStepView = z.object({
+const JobStepView = z.object({
   name: z.string(),
   label: z.string(),
   state: z.enum(["pending", "running", "succeeded", "failed"]),
@@ -220,7 +220,7 @@ export const JobView = z.object({
 
 export type JobView = z.infer<typeof JobView>;
 
-export const IpcErrorBody = z.object({
+const IpcErrorBody = z.object({
   code: z.string(),
   messageKey: z.string(),
   params: z.record(z.string(), z.union([z.string(), z.number()])),
@@ -2756,9 +2756,7 @@ export const requests = {
   },
 } as const;
 
-export const streams = {} as const;
-
-export const broadcasts = {
+const broadcasts = {
   "job.updated": JobView,
   // A write changed the evidence mastery is computed from (an answer, a card rating, a flag).
   "plans.evidence": z.object({}),

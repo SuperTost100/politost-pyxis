@@ -8,9 +8,9 @@ import { finishSourceRebuild } from "./views";
 // and apply writes exactly the stored match. Nothing here recomputes after the review.
 
 /** Passage sets overlap above this Jaccard index. */
-export const JACCARD_MIN = 0.3;
+const JACCARD_MIN = 0.3;
 /** ponytail: cosine of e5 title vectors is compressed into 0.7 to 1, so 0.9 is a conservative "same title". Tune against real plans. */
-export const TITLE_SIMILARITY_MIN = 0.9;
+const TITLE_SIMILARITY_MIN = 0.9;
 
 export type RebuildMatch = {
   oldId: string;

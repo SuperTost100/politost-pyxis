@@ -32,7 +32,7 @@ export function plansUsing(db: Database.Database, sourceId: string): number {
   return row.n;
 }
 
-export function sourceInUse(db: Database.Database, sourceId: string): boolean {
+function sourceInUse(db: Database.Database, sourceId: string): boolean {
   return plansUsing(db, sourceId) > 0;
 }
 

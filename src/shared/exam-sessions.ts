@@ -11,7 +11,7 @@ export const SESSION_LABEL_MAX = 80;
 export const SESSION_DATE_MAX = Date.UTC(9999, 11, 30, 10) - 1;
 
 /** "09:30": 24-hour clock, minutes 00 to 59. */
-export const sessionTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+const sessionTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
 /**
  * One sitting of an exam. `date` is local noon of the day in milliseconds, as `exam_at` always was, so a day keeps its

@@ -134,7 +134,7 @@ export function readLinks(db: Database.Database, planId: string): Map<string, Se
   return links;
 }
 
-export const linkKey = (attemptId: string, questionId: string) => `${attemptId}\u0000${questionId}`;
+const linkKey = (attemptId: string, questionId: string) => `${attemptId}\u0000${questionId}`;
 
 /** The answers of one event that count for a gap: a wrong answer linked only to other gaps is left out. */
 export function scoresForGap(

@@ -1,7 +1,7 @@
 // Prior of 3 empty observations, so one fresh score cannot look like mastery.
 
 export const MASTERY_PRIOR_COUNT = 3;
-export const MASTERY_HALF_LIFE_DAYS = 14;
+const MASTERY_HALF_LIFE_DAYS = 14;
 export const MASTERY_WEIGHTS = {
   quiz: 1,
   open: 1.5,
@@ -42,7 +42,7 @@ const DEFAULT_HALF_LIFE_DAYS = MASTERY_HALF_LIFE_DAYS;
  * count once per question, the first one as the lesson shows it, and only for questions still in its current text, so
  * rewriting the lesson or reading it in another wording cannot add evidence. Returns the checks that count.
  */
-export function currentChecks<T extends { topicId: string; at: number; lessonCheck?: LessonCheck }>(
+function currentChecks<T extends { topicId: string; at: number; lessonCheck?: LessonCheck }>(
   rows: T[],
   now: number,
 ): Set<T> {

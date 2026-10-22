@@ -11,7 +11,7 @@ const isoDate = z
     return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
   }, "Invalid scheduler date");
 
-export const cardRatingSchema = z.enum(["again", "hard", "good", "easy"]);
+const cardRatingSchema = z.enum(["again", "hard", "good", "easy"]);
 export const cardScheduleSchema = z
   .object({
     intervalDays: finiteDays.int(),

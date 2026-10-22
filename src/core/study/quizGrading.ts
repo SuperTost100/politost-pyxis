@@ -59,7 +59,7 @@ export function quizDraft(db: Database.Database, attemptId: string) {
       })
     : undefined;
 }
-export function quizExpired(
+function quizExpired(
   db: Database.Database,
   attemptId: string,
   now = Date.now(),
@@ -78,7 +78,7 @@ export function timedPicks(
     ? (quizDraft(db, attemptId)?.draft.picks ?? {})
     : picks;
 }
-export function quizAttempt(db: Database.Database, attemptId: string) {
+function quizAttempt(db: Database.Database, attemptId: string) {
   const row = db
     .prepare(
       "SELECT a.submitted_at, i.kind, i.body_json FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.id = ?",

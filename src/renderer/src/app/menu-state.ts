@@ -32,7 +32,7 @@ const TEXT_INPUTS = new Set([
  * Text in the focused field that would be lost by leaving the page. The Ask composer keeps its draft per chat and says
  * so with `data-keeps-draft`, so Ctrl+N from a half-written message is fine.
  */
-export function draftAtRisk(active: Element | null): boolean {
+function draftAtRisk(active: Element | null): boolean {
   if (!(active instanceof HTMLElement)) return false;
   const field = active.closest(
     "input, textarea, [contenteditable]:not([contenteditable=false]), [role=textbox]",

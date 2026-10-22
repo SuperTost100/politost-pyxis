@@ -5,7 +5,7 @@ import { readSessions } from "../plans/sessions";
 export type CalendarLanguage = "en" | "it";
 
 /** A session without a time is an all-day event. One with a time lasts this long, as nothing records an end. */
-export const SESSION_MINUTES = 120;
+const SESSION_MINUTES = 120;
 
 export type CalendarExam = {
   planId: string;

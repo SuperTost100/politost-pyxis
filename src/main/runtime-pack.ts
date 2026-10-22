@@ -14,7 +14,7 @@ const states = new Map<string, RuntimeStatus>();
 const installs = new Map<string, Promise<string>>();
 const controllers = new Map<string, AbortController>();
 const totalBytes = manifest.files.reduce((sum, file) => sum + file.size, 0);
-export function runtimeStatus(workspace: string): RuntimeStatus {
+function runtimeStatus(workspace: string): RuntimeStatus {
   return states.get(workspace) ?? { phase: "idle", bytes: 0, totalBytes };
 }
 export async function verifiedRuntimeFile(

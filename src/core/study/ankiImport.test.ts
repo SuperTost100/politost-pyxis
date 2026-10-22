@@ -281,7 +281,7 @@ describe("Anki import", () => {
   });
 
   it("reads the newer .anki21b layout, preferring it to the stub beside it", () => {
-    const db = plan();
+    plan();
     const bytes = modernPackage({
       notes: [
         { id: 1, mid: BASIC, fields: ["domanda", "risposta"] },

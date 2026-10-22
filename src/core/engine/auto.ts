@@ -3,7 +3,6 @@ import { nearestEffort } from "../../shared/effort";
 import { modelCapability } from "./capabilities";
 
 export type Tier = "fast" | "mid" | "strong";
-export const tierNames: readonly Tier[] = ["fast", "mid", "strong"];
 export const autoFeatures = [
   "default",
   "chat",
@@ -45,7 +44,7 @@ type TierData = {
 };
 const data = tiers as unknown as TierData;
 
-export function featureTier(feature: string): Tier {
+function featureTier(feature: string): Tier {
   return (data.features[feature] ?? data.unknownFeature).tier;
 }
 

@@ -21,7 +21,7 @@ export const MAX_FILES = 8;
 export const MAX_FILE_BYTES = 15 * 1024 * 1024;
 export const MAX_TOTAL_BYTES = 30 * 1024 * 1024;
 /** One attached document may take this long to read. Past it the read is stopped and the file refused. */
-export const EXTRACT_TIMEOUT_MS = 120_000;
+const EXTRACT_TIMEOUT_MS = 120_000;
 
 /**
  * Reads a chat document with the same extractors as a library import, in the extract worker behind the decode gate, so

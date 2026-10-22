@@ -9,7 +9,7 @@ import { mapOutsideCode } from "./math-delimiters";
  * A block that cannot be repaired is dropped; raw block JSON never reaches the reader.
  */
 
-export const smartBlockKinds = [
+const smartBlockKinds = [
   "check",
   "try",
   "reveal",
@@ -149,7 +149,7 @@ const latexAfterN = new Set([
  * Makes model JSON parseable without changing what it meant: a single backslash before a LaTeX command is doubled
  * (JSON would read \frac as a form feed and \alpha as an error), and raw line breaks inside strings become \n.
  */
-export function repairJsonText(text: string): string {
+function repairJsonText(text: string): string {
   let out = "";
   let inString = false;
   for (let i = 0; i < text.length; i++) {

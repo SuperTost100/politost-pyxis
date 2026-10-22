@@ -30,7 +30,7 @@ export function unacknowledged<
  * Records the acknowledgement for every listed engine in one call. The notice appears at setup, in Settings and once at
  * launch, never while a task runs, because a task cannot reach an engine that was not acknowledged.
  */
-export function useAcknowledge(onDone: () => void) {
+function useAcknowledge(onDone: () => void) {
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -62,7 +62,7 @@ export function useAcknowledge(onDone: () => void) {
 }
 
 /** One panel for all engines: what leaves the computer, and where each engine sends it. */
-export function EngineNoticeBody({
+function EngineNoticeBody({
   engines,
   failed,
 }: {

@@ -62,7 +62,7 @@ const AUTO = "__auto__";
 const advancedKey = "pyxis.engines.advanced";
 type Engine = RequestOutput<"engines.overview">[number];
 type Model = RequestOutput<"engines.models">[number];
-export const docs = "https://github.com/SuperTost100/cli-funnel#quickstart";
+const docs = "https://github.com/SuperTost100/cli-funnel#quickstart";
 type Features = RequestOutput<"engines.features">;
 type SummaryInput = {
   t: TFunction;

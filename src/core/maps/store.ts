@@ -196,7 +196,7 @@ export function openTopicMap(
   });
   return graph;
 }
-export function saveTopicMap(
+function saveTopicMap(
   db: Database.Database,
   planId: string,
   topicId: string,

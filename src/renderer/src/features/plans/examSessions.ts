@@ -40,7 +40,7 @@ export function draftsFromSessions(sessions: ExamSession[]): SessionDraft[] {
 }
 
 /** Noon on the day, as `exam_at` always stored it, so a shared plan keeps its day in another time zone. */
-export function noonOf(date: string): number {
+function noonOf(date: string): number {
   return new Date(`${date}T12:00:00`).getTime();
 }
 

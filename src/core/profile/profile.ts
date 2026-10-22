@@ -11,7 +11,7 @@ export const educationLevels = [
   "other",
 ] as const;
 
-export const textSizes = ["sm", "md", "lg"] as const;
+const textSizes = ["sm", "md", "lg"] as const;
 
 export type EducationLevel = (typeof educationLevels)[number];
 export type TextSize = (typeof textSizes)[number];

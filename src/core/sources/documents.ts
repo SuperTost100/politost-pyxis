@@ -90,7 +90,7 @@ export async function extractPdf(
  * What a .docx or .pptx may inflate to. Both are XML text, so these are far above any real file and far below what
  * would exhaust the worker. A document that passes them is refused as `archive-too-large`, however small the file is.
  */
-export const OFFICE_ZIP_LIMITS: ZipLimits = {
+const OFFICE_ZIP_LIMITS: ZipLimits = {
   maxEntries: 20_000,
   maxEntryBytes: 64 * 1024 * 1024,
   maxTotalBytes: 128 * 1024 * 1024,
@@ -166,7 +166,7 @@ function partPath(dir: string, target: string): string {
 const NOTES_FURNITURE = /<p:ph\b[^<>]*\btype="(?:sldImg|sldNum|hdr|ftr|dt)"/;
 
 /** Marks the speaker notes inside a slide's passage. Section labels in stored passages are English, as `slide 3` is. */
-export const SPEAKER_NOTES_LABEL = "Speaker notes:";
+const SPEAKER_NOTES_LABEL = "Speaker notes:";
 
 /**
  * The speaker notes of the slide stored at `slidePath`, found through the slide's own relationships, or "" when it has

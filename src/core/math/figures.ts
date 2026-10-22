@@ -37,7 +37,7 @@ export async function figureRunner(
 }
 
 /** Figures are offered to the model only when the sandbox can draw them: the Python runtime is downloaded. */
-export async function figuresAvailable(): Promise<boolean> {
+async function figuresAvailable(): Promise<boolean> {
   try {
     const status = (await runtimeRequest("status", {}, 5000)) as {
       phase?: string;
@@ -49,7 +49,7 @@ export async function figuresAvailable(): Promise<boolean> {
 }
 
 /** The model's code between a fixed prologue and the `plt.show()` that hands the open figure to the sandbox. */
-export function figureProgram(code: string): string {
+function figureProgram(code: string): string {
   return [
     "import matplotlib",
     "matplotlib.use('Agg')",

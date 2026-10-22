@@ -1,12 +1,6 @@
 import type Database from "better-sqlite3";
 import { advanceOcr, applyOcrPage, canStartOcr, currentOcrRun, finishOcr, hasOcrPage, nextOcrPage, ownsOcrRun, requestOcr, stopOcr } from "./ocr";
 
-const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif"]);
-
-export function isImageExt(ext: string): boolean {
-  return IMAGE_EXT.has(ext.toLowerCase());
-}
-
 /**
  * OCR one rendered page. The PNG bytes are the pixels, not a caption. Pages arrive in order from 1 and the scan finishes
  * on `last`, so it cannot become `ready` with a page missing. Only page 1 can start a run, and a refused page changes

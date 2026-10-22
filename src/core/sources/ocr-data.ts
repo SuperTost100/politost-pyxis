@@ -11,7 +11,7 @@ import { sha256 } from "./quality";
  * the explicit `ocr-data-download` job after the student agrees, and every OCR run reads them back and checks them
  * against these hashes first. Sizes and hashes were taken from that commit's git tree and the downloaded bytes.
  */
-export const OCR_DATA_REVISION = "87416418657359cb625c412a48b6e1d6d41c29bd";
+const OCR_DATA_REVISION = "87416418657359cb625c412a48b6e1d6d41c29bd";
 export const OCR_DATA_BASE = `https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/${OCR_DATA_REVISION}/`;
 export type OcrDataFile = { sha256: string; size: number };
 export const OCR_DATA_FILES: Record<string, OcrDataFile> = {
@@ -25,10 +25,6 @@ export const OCR_DATA_FILES: Record<string, OcrDataFile> = {
   },
 };
 export const OCR_LANGUAGES = Object.keys(OCR_DATA_FILES);
-export const OCR_DATA_BYTES = Object.values(OCR_DATA_FILES).reduce(
-  (sum, file) => sum + file.size,
-  0,
-);
 
 const CONSENT_KEY = "ocr.consent";
 

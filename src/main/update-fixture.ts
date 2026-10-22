@@ -28,7 +28,7 @@ export function updateSeam(
  * to the release-asset host the way GitHub does, and that host serves files from `assets`. While the `hold` file
  * exists the last chunk of a file longer than one chunk waits, so a test can see a download in progress.
  */
-export function fixtureFetch(input: {
+function fixtureFetch(input: {
   release: unknown;
   assets?: string;
   hold?: string;

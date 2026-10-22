@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { sha256 } from "./quality";
 import { runSourceWorker } from "./worker-client";
 
-export const EMBEDDING_REVISION = "761b726dd34fb83930e26aab4e9ac3899aa1fa78";
+const EMBEDDING_REVISION = "761b726dd34fb83930e26aab4e9ac3899aa1fa78";
 export const MODEL_FILES = {
   "onnx/model_quantized.onnx": "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193",
   "config.json": "cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1",
@@ -13,15 +13,8 @@ export const MODEL_FILES = {
   "special_tokens_map.json": "d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7",
 } as const;
 
-export const EMBEDDING_URL =
+const EMBEDDING_URL =
   `https://huggingface.co/Xenova/multilingual-e5-small/resolve/${EMBEDDING_REVISION}/onnx/model_quantized.onnx`;
-
-/**
- * SHA-256 of Xenova multilingual-e5-small `onnx/model_quantized.onnx`.
- * Filled when the file is pinned. A download with a different hash is refused.
- */
-export const EMBEDDING_SHA256 =
-  "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193";
 
 const CONSENT_KEY = "embedding.consent";
 const MAX_BYTES = 200 * 1024 * 1024;

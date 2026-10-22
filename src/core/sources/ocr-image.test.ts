@@ -56,7 +56,7 @@ describe("a scanned-PDF page is read by the OCR worker behind the decode gate", 
           signal?.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError"))),
         ),
     );
-    const { handlers, state } = setup(work);
+    const { handlers } = setup(work);
     const controller = new AbortController();
     const running = handlers.ocrImage(input(page), controller.signal);
     controller.abort();
