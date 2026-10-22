@@ -57,7 +57,6 @@
 .px-plan-topics summary .px-mbar {
   flex: 0 0 140px;
 }
-.px-plan-topic-actions,
 .px-plan-settings-tools {
   display: flex;
   gap: var(--space-3);

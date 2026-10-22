@@ -177,7 +177,7 @@ export const downloadBytes = (operations: Operation[]) =>
  * Checks that `response` carries exactly bytes `[start, end)` of a file of `size` bytes: status 206 and a matching
  * Content-Range. A server that ignores Range answers 200 with the whole file, which is refused.
  */
-export async function rangeBody(
+async function rangeBody(
   response: Response,
   start: number,
   end: number,

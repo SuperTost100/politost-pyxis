@@ -358,8 +358,7 @@ html[data-platform="darwin"] .canvas-bar {
   background: var(--primary);
 }
 
-.focus-main,
-.canvas-main {
+.focus-main {
   flex: 1;
   padding: var(--space-8) 0 var(--space-12);
 }
@@ -470,11 +469,6 @@ html[data-platform="darwin"] .canvas-bar {
   overflow-wrap: anywhere;
 }
 
-.job-error {
-  margin: 4px 0 0;
-  color: var(--danger);
-}
-
 .core-notice {
   position: fixed;
   z-index: 20;
@@ -504,10 +498,6 @@ html[data-platform="darwin"] .canvas-bar {
     animation-duration: 0.01ms !important;
     transition: none !important;
   }
-}
-
-.px-map g:focus {
-  outline: 2px solid var(--focus-ring);
 }
 
 /* Study forms share the same controls and spacing as the composer. */
@@ -540,18 +530,6 @@ html[data-platform="darwin"] .canvas-bar {
   flex: 0 0 auto;
   white-space: nowrap;
 }
-.px-source-paste {
-  display: grid;
-  gap: var(--space-3);
-  margin-block: var(--space-4);
-}
-.px-source-paste > .ant-btn {
-  justify-self: start;
-  white-space: nowrap;
-}
-.px-source-paste .ant-input {
-  border-radius: var(--radius-md);
-}
 /* Multiline fields must not inherit the pill radius set for single-line inputs. */
 textarea.ant-input {
   border-radius: var(--radius-md);
@@ -583,15 +561,6 @@ ul.choice-list {
   }
 }
 
-.px-wizard-topic {
-  margin-block: var(--space-4);
-}
-.px-wizard-target {
-  width: 100%;
-  min-height: 32px;
-  margin: 0;
-  accent-color: var(--primary);
-}
 
 .px-settings-interests {
   margin-top: var(--space-3);

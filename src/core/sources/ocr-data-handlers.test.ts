@@ -156,7 +156,7 @@ describe("SRC-04 / ASK-04 local OCR data: consent, job, and clear refusals", () 
   it.skipIf(!haveData)(
     "finishes with the real pinned files, then reads photos and reports ready",
     async () => {
-      const { handlers, runner, fetchSpy, tess, db } = setup();
+      const { handlers, fetchSpy, tess, db } = setup();
       const urls: string[] = [];
       fetchSpy.mockImplementation((async (url: string) => {
         urls.push(url);

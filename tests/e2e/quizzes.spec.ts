@@ -794,7 +794,6 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
         window.pyxis.invoke("study.quizStart", {
           ...scope,
           count: 20,
-          feedback: true,
         }),
       scope,
     )) as { attemptId: string };

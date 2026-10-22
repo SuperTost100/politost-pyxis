@@ -20,7 +20,7 @@ import { addSmartbookVersion, storeSmartbook, type ParsedSmartbook } from "./sma
 import { imageMime, isHeicBytes, isHeicExt, MAX_HEIC_BYTES } from "./heic";
 import { runSourceWorker } from "./worker-client";
 import { loadVisionImage, type VisionImage } from "./vision-image";
-import { maxSourceBytes } from "../../shared/source-types";
+import { isImageExt, maxSourceBytes } from "../../shared/source-types";
 import { PDF_PASSWORD_ERRORS } from "../../shared/source-errors";
 import { generate, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
@@ -30,7 +30,6 @@ import { fetchSnapshot } from "./link";
 import { IMPORT_EXTENSIONS } from "./folder";
 import { extForMime, plansUsing } from "./manage";
 
-const IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif"];
 
 type ImportParams = {
   sourceId: string;
@@ -87,7 +86,7 @@ export function visionSelection(
   db: Database.Database,
   ext: string,
 ): StoredSelection | undefined {
-  if (!IMAGE_EXTS.includes(ext)) return undefined;
+  if (!isImageExt(ext)) return undefined;
   try {
     const selection = selectionFor(db, "vision");
     return engineSeesImages(selection) ? selection : undefined;
@@ -102,7 +101,7 @@ export function visionSelection(
  * A photo that a vision engine reads and then fails on can still fall back later, and that job fails with the same codes.
  */
 export async function assertLocalOcrReady(db: Database.Database, workspace: string, ext: string): Promise<void> {
-  if (!IMAGE_EXTS.includes(ext) || visionSelection(db, ext)) return;
+  if (!isImageExt(ext) || visionSelection(db, ext)) return;
   if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: OCR readiness start");
   const { state } = await ocrDataStatus(join(workspace, "runtimes", "tesseract"));
   if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: OCR readiness", state);
@@ -294,10 +293,10 @@ export function registerSourceJobs(
                 storeExtracted(db, workspace, {
                   sourceId: input.sourceId,
                   title: input.title,
-                  kind: IMAGE_EXTS.includes(input.ext)
+                  kind: isImageExt(input.ext)
                     ? "image"
                     : kindFor(input.ext),
-                  mime: IMAGE_EXTS.includes(input.ext)
+                  mime: isImageExt(input.ext)
                     ? imageMime(input.ext)
                     : mimeFor(input.ext),
                   ext: input.ext,
@@ -340,7 +339,7 @@ export function registerSourceJobs(
   /** A photo with no text read fails; a scan waits for OCR; anything else is ready. Its passages are already stored. */
   function doneStatus(input: ImportParams, extracted: Extraction): NonNullable<ImportParams["doneStatus"]> {
     const emptyImage =
-      IMAGE_EXTS.includes(input.ext) &&
+      isImageExt(input.ext) &&
       !db
         .prepare("SELECT 1 FROM passages WHERE source_id = ? AND version = ? LIMIT 1")
         .get(input.sourceId, input.version);
@@ -751,7 +750,7 @@ export function enqueueSourceData(
     ? "link"
     : ext === ".ptsb"
       ? "smartbook"
-      : IMAGE_EXTS.includes(ext)
+      : isImageExt(ext)
         ? "image"
         : kindFor(ext);
   const mime =

@@ -454,7 +454,7 @@ export function startReview(
   });
   if (cardIds.length === 0 && questions.length === 0 && drills.length === 0)
     return emptyReview;
-  const id = db.transaction(() => {
+  db.transaction(() => {
     let attemptId = "";
     // Drill questions join this attempt later, so it exists even while it is empty.
     if (questions.length > 0 || drills.length > 0) {

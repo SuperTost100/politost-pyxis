@@ -8,7 +8,7 @@ import {
 
 const MINUTE = 60 * 1000;
 /** A reminder is still sent this long after its time (the computer was asleep or Pyxis was just opened); later it waits for tomorrow. */
-export const REMINDER_GRACE = 60 * MINUTE;
+const REMINDER_GRACE = 60 * MINUTE;
 
 export type ReminderState = ReminderSettings & {
   /** The local date ("YYYY-MM-DD") the reminder last ran, whether or not it sent anything. */
@@ -65,7 +65,7 @@ const occurrence = (time: string, at: Date, daysBefore: number) =>
   );
 
 /** The date of the latest occurrence of `time` that has already started: today's, or yesterday's before it. */
-export function startedDay(time: string, at: Date): string {
+function startedDay(time: string, at: Date): string {
   return dayKey(occurrence(time, at, occurrence(time, at, 0) <= at ? 0 : 1));
 }
 
@@ -76,7 +76,7 @@ const laterDay = (a: string | null, b: string) => (a !== null && a > b ? a : b);
  * than REMINDER_GRACE past it. The grace runs across midnight, so a 23:30 reminder is still due at 00:10, and counts
  * for the day that began at 23:30.
  */
-export function reminderDay(state: ReminderState, at: Date): string | null {
+function reminderDay(state: ReminderState, at: Date): string | null {
   if (!state.enabled) return null;
   for (const daysBefore of [0, 1]) {
     const late =

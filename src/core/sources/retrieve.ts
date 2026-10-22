@@ -86,7 +86,7 @@ export function fuseRanks(lists: string[][], k = 60): string[] {
     .map(([id]) => id);
 }
 
-export function trimToBudget(
+function trimToBudget(
   hits: PassageHit[],
   maxTokens = 12_000,
 ): PassageHit[] {

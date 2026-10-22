@@ -6,7 +6,7 @@ export const IMPORT_EXTENSIONS = new Set(
   SOURCE_EXTENSIONS.map((extension) => `.${extension}`),
 );
 
-export { MAX_FOLDER_DEPTH, MAX_FOLDER_ENTRIES, MAX_FOLDER_FILES };
+export { MAX_FOLDER_DEPTH, MAX_FOLDER_FILES };
 
 /** What a walk found, and whether a cap cut it short. The student is told, so a silent cut never hides material. */
 export type FolderListing = {

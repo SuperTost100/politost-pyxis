@@ -14,9 +14,11 @@ import { openDatabase } from "../db/connection";
 import { hasBlob, readBlob } from "../blobs";
 import { sha256 } from "../sources/quality";
 import { IpcError } from "../../shared/ipc";
-import { extractPlain, manyPagePdf, storeExtracted } from "../sources/documents";
+import { extractPlain, storeExtracted } from "../sources/documents";
+import { manyPagePdf } from "../sources/test-pdf";
 import { setSourceWorkerDirectory } from "../sources/worker-client";
-import { extractInWorker, prepareFiles } from "./attach";
+import { extractInWorker } from "./attach";
+import { prepareFiles } from "./test-attach";
 
 const dirs: string[] = [];
 const scratch = () => {

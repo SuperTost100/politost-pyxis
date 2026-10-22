@@ -15,13 +15,13 @@ import {
   type VisionMime,
 } from "../sources/vision-image";
 import { IpcError, isAbort } from "../../shared/ipc";
+import { isImageExt } from "../../shared/source-types";
 
-const images = new Set([".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif"]);
 export const MAX_FILES = 8;
 export const MAX_FILE_BYTES = 15 * 1024 * 1024;
 export const MAX_TOTAL_BYTES = 30 * 1024 * 1024;
 /** One attached document may take this long to read. Past it the read is stopped and the file refused. */
-export const EXTRACT_TIMEOUT_MS = 120_000;
+const EXTRACT_TIMEOUT_MS = 120_000;
 
 /**
  * Reads a chat document with the same extractors as a library import, in the extract worker behind the decode gate, so
@@ -97,12 +97,6 @@ export type StagedFiles = Pick<PreparedFiles, "notes" | "images"> & {
 type StagedBlob = { sha: string; bytes: Uint8Array; mime: string; ext: string };
 type StagedDocument = { filePath: string; ext: string; bytes: Uint8Array; extracted: ExtractedDocument };
 
-/** Reads and extracts a set of files, then stores it. A caller with more to write in the same step uses `stageFiles` and `commitStaged`. */
-export async function prepareFiles(...args: Parameters<typeof stageFiles>): Promise<PreparedFiles> {
-  const staged = await stageFiles(...args);
-  return { sourceIds: commitStaged(args[0], args[1], staged).sourceIds, notes: staged.notes, images: staged.images };
-}
-
 export async function stageFiles(
   _db: Database.Database,
   workspace: string,
@@ -148,7 +142,7 @@ export async function stageFiles(
     const ext = extname(filePath).toLowerCase();
     // A file that grew since the size check above is refused instead of read whole.
     const bytes = readBoundedSync(filePath, MAX_FILE_BYTES);
-    if (images.has(ext)) {
+    if (isImageExt(ext)) {
       const heic = isHeicExt(ext);
       let fitted: VisionImage | undefined;
       if (seesImages) {

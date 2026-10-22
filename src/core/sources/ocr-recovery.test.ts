@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { PNG } from "pngjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
+import { createRunner } from "../jobs/runner";
 import { requests } from "../../shared/ipc";
 import { MAX_IMAGE_BASE64 } from "../../shared/source-types";
 import { sourceHandlers } from "./handlers";
@@ -37,7 +38,7 @@ function setup(
     sourceHandlers(
       db,
       workspace,
-      undefined,
+      createRunner(db, () => {}),
       undefined,
       work as unknown as typeof runSourceWorker,
     );

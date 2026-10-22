@@ -21,7 +21,7 @@ Pyxis is built on **Ant Design Pro**: antd v6 plus **ProComponents v3** (`@ant-d
 ```
 
 - `theme/pyxis-theme.ts`: `pyxisTheme(mode)` themes antd and every ProComponent; `pyxisProLayoutToken(mode)` themes ProLayout's header and page container.
-- `theme/AppShell.tsx`: the working shell (type-checked against antd 6.6.5 and pro-components 3.1.15-3).
+- `app/layouts/Shell.tsx`: the app shell, ProLayout with `pyxisProLayoutToken`.
 - `cssVar` with prefix `px` and `hashed: false`: antd emits `--px-*` variables beside the design-system variables. Set `<html data-theme>` on the same switch so custom components follow.
 - Once stable, switch antd to v6 zero-runtime mode for faster start-up in Electron.
 - Icons: `lucide-react`, passed into antd/Pro `icon` props. Do not mix in `@ant-design/icons`.

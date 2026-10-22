@@ -6,6 +6,7 @@ import {
 } from "../../shared/map-layout";
 import type { ConceptGraph, MapNode } from "./graph";
 import { readStoredMap } from "./store";
+import { safeFileName } from "../../shared/file-name";
 
 export type MapExportLanguage = "en" | "it";
 
@@ -334,12 +335,7 @@ export function exportMap(
     planTitle: string;
     topicTitle: string;
   };
-  const name =
-    map.title
-      .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 100) || labels[input.language].untitled;
+  const name = safeFileName(map.title, labels[input.language].untitled);
   return {
     filename: `${name}.md`,
     markdown: mapOutline(map.title, map.graph, context, input.language),

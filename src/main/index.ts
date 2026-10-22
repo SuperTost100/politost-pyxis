@@ -86,7 +86,6 @@ import {
   type Appearance,
   type AutoBackupStatus,
   type OpenDialogOptions,
-  type SaveDialogOptions,
   type ThemeSource,
 } from "../shared/bridge";
 
@@ -1149,22 +1148,6 @@ function registerIpc(): void {
     });
   });
   registerArtifactHandlers(() => mainWindow, e2eSeam);
-  ipcMain.handle(
-    mainChannels.saveDialog,
-    async (event, options: SaveDialogOptions) => {
-      requireMainSender(event, "save-untrusted-sender");
-      const dialogOptions = {
-        title: options.title,
-        defaultPath: options.defaultPath,
-        filters: options.filters,
-      };
-      const result = mainWindow
-        ? await dialog.showSaveDialog(mainWindow, dialogOptions)
-        : await dialog.showSaveDialog(dialogOptions);
-      if (result.canceled || !result.filePath) return null;
-      return result.filePath;
-    },
-  );
   function authorizeKeys(senderId: number): void {
     if (senderId !== mainWindow?.webContents.id)
       throw new Error("keys-untrusted-sender");

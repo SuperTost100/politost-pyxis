@@ -119,7 +119,7 @@ describe("SRC-04 photos read through vision, then local OCR", () => {
       sent: { mediaType: "image/png", bytes: png.length, width: 8, height: 8 },
     });
     expect(
-      sourceHandlers(db, workspace).meta({ sourceId: result.sourceId }),
+      sourceHandlers(db, workspace, createRunner(db, () => {})).meta({ sourceId: result.sourceId }),
     ).toMatchObject({
       extractor: { path: "vision", model: "claude-sonnet-4-6" },
     });
@@ -386,7 +386,7 @@ describe("SRC-04 vision import fits the image to provider limits", () => {
       path: "vision",
       sent: { mediaType: "image/jpeg", resizedFrom: { width: 3000, height: 2000, bytes: original.length } },
     });
-    expect(sourceHandlers(db, workspace).meta({ sourceId: result.sourceId })).toMatchObject({
+    expect(sourceHandlers(db, workspace, createRunner(db, () => {})).meta({ sourceId: result.sourceId })).toMatchObject({
       extractor: { sent: { resizedFrom: { width: 3000, height: 2000 } } },
     });
     db.close();
@@ -432,7 +432,7 @@ describe("SRC-04 vision import fits the image to provider limits", () => {
     expect(readFileSync(readBlob(workspace, second.blobSha).file)).toEqual(original);
     expect(second.extractor.sent).toMatchObject({ width: 200, height: 300, orientation: 6, resizedFrom: { width: 200, height: 300 } });
     expect(passages(db, first.sourceId)).toEqual([{ text: "reading 1" }, { text: "reading 2" }]);
-    expect(sourceHandlers(db, workspace).meta({ sourceId: first.sourceId })).toMatchObject({
+    expect(sourceHandlers(db, workspace, createRunner(db, () => {})).meta({ sourceId: first.sourceId })).toMatchObject({
       extractor: { sent: { orientation: 6 } },
     });
     db.close();

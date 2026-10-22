@@ -1,15 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { derivative, evalExpr, sample, secondDerivative, simpson, splitSeries } from "./plot";
+import { evalExpr, splitSeries } from "./plot";
+
+/** Points of the curve at n + 1 even steps, without the ones that are not finite. */
+function sample(
+  source: string,
+  a: number,
+  b: number,
+  n = 240,
+): Array<{ x: number; y: number }> {
+  const points: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i <= n; i += 1) {
+    const x = a + ((b - a) * i) / n;
+    const y = evalExpr(source, x);
+    if (Number.isFinite(y)) points.push({ x, y });
+  }
+  return points;
+}
 
 describe("plot", () => {
-  it("evaluates sin(x)/x and its derivatives", () => {
+  it("evaluates sin(x)/x", () => {
     expect(evalExpr("sin(x)/x", 1)).toBeCloseTo(Math.sin(1), 6);
     expect(evalExpr("-x^2", 3)).toBe(-9);
     expect(evalExpr("2^3^2", 0)).toBe(512);
     expect(evalExpr("2^-3", 0)).toBeCloseTo(0.125);
     expect(evalExpr("x^-2", 2)).toBeCloseTo(0.25);
-    expect(derivative("x^2", 3)).toBeCloseTo(6, 3);
-    expect(secondDerivative("x^2", 3)).toBeCloseTo(2, 2);
     const curve = sample("sin(x)/x", -8, 8);
     expect(curve.length).toBeGreaterThan(100);
     expect(curve.some((point) => Math.abs(point.x) < 0.1 && Math.abs(point.y) > 0.9)).toBe(true);
@@ -41,9 +55,5 @@ describe("plot", () => {
     expect(splitSeries(sample("1/(x-0.001)", -8, 8), at("1/(x-0.001)")).length).toBeGreaterThan(1);
     const cubic = "1000000000000*(x-0.02500025)*(x-0.02500125)*(x-0.02500225)";
     expect(splitSeries(sample(cubic, -8, 8), at(cubic))).toHaveLength(1);
-  });
-
-  it("integrates sin(x) from 0 to pi", () => {
-    expect(simpson("sin(x)", 0, Math.PI)).toBeCloseTo(2, 3);
   });
 });

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { suggestStep, stayActivities, type Activity, type Step, type TopicStatus } from "./path";
-import { daysUntil, pathState } from "./create";
+import { pathState } from "./create";
 import { countDueCards, dueCards } from "../study/cards";
 import { weightedPlanMastery } from "./progress";
 
@@ -13,7 +13,7 @@ import { weightedPlanMastery } from "./progress";
  */
 
 /** Minutes one step of each kind takes, for the estimate. Cards are review, outside the planned work. */
-export const stepMinutes: Record<Activity, number> = {
+const stepMinutes: Record<Activity, number> = {
   intro: 10,
   diagnostic: 15,
   lesson: 30,
@@ -40,7 +40,7 @@ type PlanRow = {
 
 const plannerKey = "planner";
 
-export const plannerSettings = z.object({
+const plannerSettings = z.object({
   weeklyHours: z.number().min(0).max(100).nullable(),
   /** Hours for one week, keyed by the date of its Monday (YYYY-MM-DD); they replace weeklyHours for that week. */
   weeks: z.record(z.string(), z.number().min(0).max(100)),
@@ -82,7 +82,7 @@ const addDays = (at: number, days: number) => {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days).getTime();
 };
 const monday = (at: number) => addDays(startOfDay(at), -((new Date(at).getDay() + 6) % 7));
-export const dayKey = (at: number) => {
+const dayKey = (at: number) => {
   const date = new Date(at);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };

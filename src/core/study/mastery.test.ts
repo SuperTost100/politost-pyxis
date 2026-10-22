@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  idleTopics,
   MASTERY_WEIGHTS,
   MASTERY_GROUPS,
   masteryDetail,
@@ -24,17 +23,6 @@ describe("masteryFor", () => {
     expect(m).toBeCloseTo(1 / (3 + 1 + old), 5);
     expect(m).toBeGreaterThan(0);
     expect(m).toBeLessThan(0.5);
-  });
-});
-
-describe("idleTopics", () => {
-  it("flags a topic silent for 8 days but not one reviewed today", () => {
-    const events: MasteryEvent[] = [
-      { topicId: "stale", kind: "card", score: 0.8, at: T0 - 8 * MS_PER_DAY },
-      { topicId: "fresh", kind: "quiz", score: 1, at: T0 },
-    ];
-
-    expect(idleTopics(events, T0, 7)).toEqual(["stale"]);
   });
 });
 

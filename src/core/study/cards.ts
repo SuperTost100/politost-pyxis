@@ -22,59 +22,6 @@ export type DueCard = {
   state: ScheduleState;
 };
 
-export function seedCards(
-  db: Database.Database,
-  input: {
-    planId: string;
-    topicId: string;
-    pairs: Array<{ front: string; back: string; passageId?: string | null }>;
-  },
-): string[] {
-  const exists = db.prepare(
-    `SELECT id, passage_id, back FROM cards
-     WHERE plan_id = ? AND topic_id = ? AND (seed_key = ? OR (seed_key IS NULL AND TRIM(front) = ?))
-     LIMIT 1`,
-  );
-  const link = db.prepare(
-    `UPDATE cards SET passage_id = ? WHERE id = ? AND passage_id IS NULL`,
-  );
-  const insert = db.prepare(
-    `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, passage_id, seed_key, created_at)
-     VALUES (?, ?, ?, ?, ?, 'sources', ?, ?, ?)`,
-  );
-  const ids: string[] = [];
-  for (const pair of input.pairs) {
-    const front = pair.front.trim();
-    const back = pair.back.trim();
-    const prior = exists.get(input.planId, input.topicId, front, front) as
-      { id: string; passage_id: string | null; back: string } | undefined;
-    if (prior) {
-      if (
-        prior.passage_id == null &&
-        pair.passageId &&
-        prior.back.trim() === back
-      ) {
-        link.run(pair.passageId, prior.id);
-      }
-      continue;
-    }
-    const now = Date.now();
-    const id = uuidv7(now);
-    insert.run(
-      id,
-      input.planId,
-      input.topicId,
-      front,
-      back,
-      pair.passageId ?? null,
-      front,
-      now,
-    );
-    ids.push(id);
-  }
-  return ids;
-}
-
 /** Cards that can come up for review: not suspended, not removed, not in an archived topic. */
 const ACTIVE = `c.suspended = 0
          AND c.removed = 0
@@ -103,8 +50,8 @@ const DUE_FROM = `FROM cards c
            OR c.id IN (SELECT value FROM json_each(?)))`;
 
 const NEW_PER_DAY = "cards.newPerDay";
-export const defaultNewPerDay = 20;
-export const maxNewPerDay = 999;
+const defaultNewPerDay = 20;
+const maxNewPerDay = 999;
 
 /** How many never-reviewed cards each exam introduces per day. */
 export function newCardsPerDay(db: Database.Database): number {

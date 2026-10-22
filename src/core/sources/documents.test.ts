@@ -6,19 +6,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import {
   addDocumentVersion,
-  blankPdf,
   extractPdf,
   extractPlain,
   extractPptx,
-  importDocumentFile,
-  lockedPdf,
-  manyPagePdf,
-  onePagePdf,
   storeExtracted,
   type ExtractedDocument,
 } from "./documents";
+import { onePagePdf, manyPagePdf, lockedPdf, blankPdf } from "./test-pdf";
 import { listSources } from "./smartbook";
 import { tempDir } from "../test-temp";
+import { sourceImports } from "./test-import";
 
 describe("document extract", () => {
   it("reads the text layer of a PDF", async () => {
@@ -171,8 +168,8 @@ describe("document extract", () => {
     const file = join(dir, "scan.pdf");
     writeFileSync(file, blankPdf());
     const db = openDatabase(":memory:");
-    const imported = await importDocumentFile(db, dir, file);
-    expect(imported.passages).toBe(0);
+    await sourceImports(db, dir).file(file);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM passages`).get()).toEqual({ n: 0 });
     expect(listSources(db)[0]?.status).toBe("needs-ocr");
   });
 

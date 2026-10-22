@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
-import { extractByExt, lockedPdf } from "./documents";
+import { extractByExt } from "./documents";
+import { lockedPdf } from "./test-pdf";
 import { sourceHandlers } from "./handlers";
 import { markStoppedImport, registerSourceJobs } from "./jobs";
 

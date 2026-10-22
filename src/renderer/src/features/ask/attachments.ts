@@ -1,3 +1,5 @@
+import { DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS } from "../../../../shared/source-types";
+
 /** Windows paths use `\`, so a `/` split alone shows the whole path. */
 export function fileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
@@ -75,19 +77,7 @@ export function addPendingFiles(current: string[], chosen: string[]): string[] {
 }
 
 /** What a chat message can carry, without the dot. The picker uses it, and a drop leaves out anything else. */
-export const ATTACH_EXTENSIONS = [
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-  "heic",
-  "heif",
-  "pdf",
-  "docx",
-  "pptx",
-  "txt",
-  "md",
-] as const;
+export const ATTACH_EXTENSIONS = [...IMAGE_EXTENSIONS, ...DOCUMENT_EXTENSIONS] as const;
 
 /** Splits granted paths into the ones a message can carry and a count of the rest (a smartbook, for example). */
 export function attachable(paths: string[]): { paths: string[]; skipped: number } {

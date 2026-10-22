@@ -9,7 +9,6 @@ import { partialText, templateVersion } from "../engine/prompts";
 import {
   editMap,
   enqueueMaps,
-  generateMaps,
   mapBuild,
   prepareMaps,
   registerMapJobs,
@@ -91,6 +90,17 @@ async function until(
     await new Promise((r) => setTimeout(r, 5));
   }
   throw new Error(JSON.stringify(mapBuild(db, input)));
+}
+/** Builds a topic's maps through the job, as the app does, and waits for it. */
+async function generateMaps(
+  db: ReturnType<typeof openDatabase>,
+  input: { planId: string; topicId: string },
+  model: GenerateInput["run"],
+) {
+  const runner = createRunner(db, () => {});
+  registerMapJobs(db, runner, model);
+  enqueueMaps(db, runner, input);
+  await until(db, input, "succeeded");
 }
 describe("M10 model maps", () => {
   it("splits all material into bounded maps without discarding an edited legacy outline", async () => {

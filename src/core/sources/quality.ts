@@ -4,7 +4,7 @@ import { stat } from "node:fs/promises";
 import type Database from "better-sqlite3";
 
 /** Below this Laplacian variance a photo is treated as blurry. */
-export const BLURRY_BELOW = 40;
+const BLURRY_BELOW = 40;
 
 export function laplacianVariance(
   gray: Uint8Array,

@@ -1005,7 +1005,6 @@ export function PlanPage() {
                       topicId,
                       count: 10,
                       types: quizKinds,
-                      feedback: true,
                     });
                     navigate(
                       `/plans/${planId}/quiz/${topicId}?attempt=${result.attemptId}`,

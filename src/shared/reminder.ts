@@ -10,7 +10,7 @@ export type ReminderSummary = {
 };
 
 /** The exam is mentioned from this many days out; a date months away only adds noise to a daily message. */
-export const EXAM_MENTION_DAYS = 30;
+const EXAM_MENTION_DAYS = 30;
 
 export const DEFAULT_REMINDER_TIME = "18:00";
 

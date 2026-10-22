@@ -45,7 +45,7 @@ describe("Anki package", () => {
     add("cloze", "{{c1::$x^2$}} e {{c3::energia::hint}}, ancora {{c1::massa}}", "\\(E=mc^2\\)", 1);
     add("removed", "Hidden", "Hidden", 0, 1);
     const output = exportAnki(db, "plan", { now: 1800000000000 });
-    expect(output.filename).toBe("Fisica   1.apkg");
+    expect(output.filename).toBe("Fisica 1.apkg");
     expect(output.noteCount).toBe(2);
     expect(output.cardCount).toBe(3);
     const col = unpack(output.bytes);

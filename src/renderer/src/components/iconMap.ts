@@ -27,7 +27,6 @@ import {
   KeyRound,
   Layers,
   ListChecks,
-  Lock,
   MessageCircle,
   Network,
   Paperclip,
@@ -46,7 +45,6 @@ import {
   Terminal,
   ThumbsDown,
   ThumbsUp,
-  Upload,
   X,
 } from "lucide-react";
 
@@ -63,7 +61,6 @@ export type IconName =
   | "square-split-horizontal"
   | "repeat"
   | "file-pen"
-  | "lock"
   | "paperclip"
   | "image"
   | "signature"
@@ -96,7 +93,6 @@ export type IconName =
   | "clock"
   | "circle-check"
   | "circle-x"
-  | "upload"
   | "loader-circle"
   | "circle";
 
@@ -113,7 +109,6 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   "square-split-horizontal": SquareSplitHorizontal,
   repeat: Repeat,
   "file-pen": FilePen,
-  lock: Lock,
   paperclip: Paperclip,
   image: Image,
   signature: Signature,
@@ -146,7 +141,6 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   clock: Clock,
   "circle-check": CircleCheck,
   "circle-x": CircleX,
-  upload: Upload,
   "loader-circle": LoaderCircle,
   circle: Circle,
 };

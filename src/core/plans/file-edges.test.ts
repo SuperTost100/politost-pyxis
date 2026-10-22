@@ -259,7 +259,6 @@ describe("source files in the export (#110, #126)", () => {
 
 describe("repeated passage IDs (#126)", () => {
   function embeddedFile() {
-    const dir = workspace();
     const db = openDatabase(":memory:");
     const source = book(db);
     const plan = createPlan(db, { title: "Twice", sourceIds: [source.sourceId] });

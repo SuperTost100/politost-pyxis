@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { PNG } from "pngjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
+import { createRunner } from "../jobs/runner";
 import { MAX_IMAGE_BASE64, MAX_IMAGE_BYTES } from "../../shared/source-types";
 import { requests } from "../../shared/ipc";
 import { sourceHandlers } from "./handlers";
@@ -25,7 +26,7 @@ function setup(work: ReturnType<typeof vi.fn>) {
     `INSERT INTO sources (id, kind, title, status, mime, created_at, updated_at) VALUES ('scan', 'pdf', 'Scan', 'needs-ocr', 'application/pdf', 1, 1)`,
   ).run();
   db.prepare(`INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES ('doc', 'scan', 1, '{"pages":1}', 1)`).run();
-  const handlers = sourceHandlers(db, workspace, undefined, undefined, work as unknown as typeof runSourceWorker);
+  const handlers = sourceHandlers(db, workspace, createRunner(db, () => {}), undefined, work as unknown as typeof runSourceWorker);
   const state = () => ({
     status: (db.prepare(`SELECT status FROM sources WHERE id = 'scan'`).get() as { status: string }).status,
     passages: (db.prepare(`SELECT COUNT(*) AS n FROM passages`).get() as { n: number }).n,
@@ -55,7 +56,7 @@ describe("a scanned-PDF page is read by the OCR worker behind the decode gate", 
           signal?.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError"))),
         ),
     );
-    const { handlers, state } = setup(work);
+    const { handlers } = setup(work);
     const controller = new AbortController();
     const running = handlers.ocrImage(input(page), controller.signal);
     controller.abort();

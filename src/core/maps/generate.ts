@@ -24,7 +24,6 @@ import {
   listTopicMaps,
   readStoredMap,
   storeMap,
-  type StoredMap,
 } from "./store";
 
 type Input = { planId: string; topicId: string };
@@ -266,22 +265,6 @@ export function enqueueMaps(
   const params = prepareMaps(db, input);
   const jobId = runner.start("map-build", params);
   return { jobId, maps };
-}
-export async function generateMaps(
-  db: Database.Database,
-  input: Input,
-  run?: GenerateInput["run"],
-) {
-  const maps = listTopicMaps(db, input.planId, input.topicId);
-  if (maps.some((map) => map.provider)) return { maps };
-  const params = prepareMaps(db, input);
-  const built: StoredMap[] = [];
-  for (const part of params.parts)
-    built.push(await buildPart(part, params, run));
-  db.transaction(() => {
-    for (const map of built) storeMap(db, input.planId, input.topicId, map);
-  })();
-  return { maps: listTopicMaps(db, input.planId, input.topicId) };
 }
 export async function editMap(
   db: Database.Database,

@@ -6,7 +6,7 @@ import type { ScheduleState } from "./schedule";
 export type CardStatus = "all" | "due" | "suspended" | "removed" | "leech";
 
 /** A card forgotten this many times (FSRS lapses) is a leech: the browser marks it and offers to rewrite or suspend it. */
-export const leechLapses = 6;
+const leechLapses = 6;
 
 export type BrowsedCard = {
   id: string;

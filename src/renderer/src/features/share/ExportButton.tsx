@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import "./ExportButton.css";
+import { safeFileName } from "@shared/file-name";
 
 type Kind = "plan" | "lesson" | "cards" | "quiz" | "simulation";
 type Format = "pyxis" | "pdf" | "markdown" | "anki" | "csv";
@@ -83,7 +84,7 @@ export function ExportButton({
             .filter((source) => source.data === undefined && source.bytes > 0)
             .map((source) => source.title);
         result = await window.pyxis.saveArtifact({
-          filename: `${file.title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ").trim() || "plan"}.pyxis`,
+          filename: `${safeFileName(file.title, "plan")}.pyxis`,
           base64: textBase64(JSON.stringify(file, null, 2)),
         });
       } else if (format === "anki") {

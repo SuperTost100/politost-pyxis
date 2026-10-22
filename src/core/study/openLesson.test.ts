@@ -6,7 +6,7 @@ import { setPlanEducation, snapshotPlanEducation } from "../plans/education";
 import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
 import { partialText, templateVersion } from "../engine/prompts";
-import { openLesson, readLesson, rewriteLessonSection, writeLesson } from "./openLesson";
+import { openLesson, readLesson, writeLesson } from "./openLesson";
 import { exportMarkdown } from "../share/markdown";
 
 function pack(files: Record<string, string>): Uint8Array {

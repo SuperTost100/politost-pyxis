@@ -1,6 +1,5 @@
 import { strToU8, zipSync } from "fflate";
 import { readdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { putBlob, readBlob } from "../blobs";

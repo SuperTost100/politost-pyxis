@@ -2,8 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { importSmartbook, passagesAround, searchPassages, smartbookMeta } from "./smartbook";
+import { importSmartbook, passagesAround, smartbookMeta } from "./smartbook";
 import { uuidv7 } from "../../shared/ids";
+import { retrieve } from "./retrieve";
 
 const book = "/Users/tost1/Documents/Personal/Vibecode/PoliTost/books/ptt-fisica1.ptsb";
 
@@ -45,7 +46,7 @@ describe("importSmartbook", () => {
     expect(hit.text).toContain("W = F");
     expect(hit.text, hit.text).toMatch(/\$\$[\s\S]*W = F[\s\S]*\$\$/);
     expect(JSON.parse(hit.locator_json)).toEqual({ chapter: 1, paragraph: "p1" });
-    expect(searchPassages(db, "vettore")).toHaveLength(1);
+    expect(retrieve(db, "vettore").hits).toHaveLength(1);
   });
 
   it("drops markup a book generator leaked into chapters and exercises (#35)", () => {

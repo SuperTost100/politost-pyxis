@@ -15,6 +15,7 @@ import {
   type SourceChoice,
 } from "./importPreview";
 import "./ImportReview.css";
+import { formatBytes } from "@shared/format-bytes";
 
 const COUNTS = [
   "topics",
@@ -24,12 +25,6 @@ const COUNTS = [
   "maps",
   "exercises",
 ] as const;
-
-function size(bytes: number, language: string): string {
-  return bytes >= 1048576
-    ? `${new Intl.NumberFormat(language, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / 1048576)} MB`
-    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
-}
 
 /** Shows what a validated plan file holds and how each missing original is handled. Nothing is written until Import. */
 export function ImportReview({
@@ -164,7 +159,7 @@ export function ImportReview({
               .filter((source) => source.embedded)
               .map((source) => (
                 <li key={source.index}>
-                  {source.title} · {size(source.bytes, i18n.language)}
+                  {source.title} · {formatBytes(source.bytes, i18n.language)}
                 </li>
               ))}
           </ul>
@@ -190,7 +185,7 @@ export function ImportReview({
             <fieldset key={source.index} className="px-import-source">
               <legend className="body-strong">{source.title}</legend>
               <p className="small ink-muted">
-                {size(source.bytes, i18n.language)} ·{" "}
+                {formatBytes(source.bytes, i18n.language)} ·{" "}
                 {t("shared.review.excerptCount", { count: source.excerpts })}
               </p>
               {options.map((option) => {

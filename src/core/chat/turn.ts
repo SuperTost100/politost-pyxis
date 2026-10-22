@@ -202,7 +202,7 @@ function startChecks(
 }
 
 /** Stops the chat's running math checks, or only the one for `messageId`. */
-export function cancelChecks(chatId: string, messageId?: string): void {
+function cancelChecks(chatId: string, messageId?: string): void {
   for (const [id, check] of runningChecks) {
     if (check.chatId === chatId && (!messageId || id === messageId))
       check.controller.abort();

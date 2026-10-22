@@ -7,7 +7,6 @@ import {
   type AutoBackupStatus,
   type OpenDialogOptions,
   type PyxisBridge,
-  type SaveDialogOptions,
   type ThemeSource,
 } from "../shared/bridge";
 import type { UpdateInstallView } from "../shared/updates";
@@ -214,8 +213,6 @@ const bridge: PyxisBridge = {
     ipcRenderer.invoke(mainChannels.openExternal, url),
   showOpenDialog: (options: OpenDialogOptions) =>
     ipcRenderer.invoke(mainChannels.openDialog, options),
-  showSaveDialog: (options: SaveDialogOptions) =>
-    ipcRenderer.invoke(mainChannels.saveDialog, options),
   grantDroppedFiles: (files: File[]) => {
     // A file built in script has no path on disk and comes back empty.
     const paths = Array.from(files, (file) => webUtils.getPathForFile(file));

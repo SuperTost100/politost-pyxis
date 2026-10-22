@@ -1,11 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
-import type { Embedder } from "./retrieve";
 import { sha256 } from "./quality";
 import { runSourceWorker } from "./worker-client";
 
-export const EMBEDDING_REVISION = "761b726dd34fb83930e26aab4e9ac3899aa1fa78";
+const EMBEDDING_REVISION = "761b726dd34fb83930e26aab4e9ac3899aa1fa78";
 export const MODEL_FILES = {
   "onnx/model_quantized.onnx": "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193",
   "config.json": "cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1",
@@ -14,15 +13,8 @@ export const MODEL_FILES = {
   "special_tokens_map.json": "d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7",
 } as const;
 
-export const EMBEDDING_URL =
+const EMBEDDING_URL =
   `https://huggingface.co/Xenova/multilingual-e5-small/resolve/${EMBEDDING_REVISION}/onnx/model_quantized.onnx`;
-
-/**
- * SHA-256 of Xenova multilingual-e5-small `onnx/model_quantized.onnx`.
- * Filled when the file is pinned. A download with a different hash is refused.
- */
-export const EMBEDDING_SHA256 =
-  "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193";
 
 const CONSENT_KEY = "embedding.consent";
 const MAX_BYTES = 200 * 1024 * 1024;
@@ -163,33 +155,3 @@ export async function indexModelVectors(db: Database.Database, dir: string, sign
   }
 }
 
-/** Write vectors for passages that do not have one yet. The caller owns the model. */
-export function indexVectors(db: Database.Database, embed: Embedder): number {
-  const rows = db
-    .prepare(
-      `SELECT p.rowid AS n, p.text FROM passages p
-       WHERE p.source_id IS NULL
-          OR p.document_id = (
-            SELECT id FROM source_documents
-            WHERE source_id = p.source_id
-            ORDER BY version DESC
-            LIMIT 1
-          )`,
-    )
-    .all() as Array<{ n: number; text: string }>;
-  const has = db.prepare(`SELECT 1 AS n FROM passages_vec WHERE passage_rowid = ?`);
-  const insert = db.prepare(
-    `INSERT INTO passages_vec (passage_rowid, embedding) VALUES (?, ?)`,
-  );
-  let count = 0;
-  for (const row of rows) {
-    const key = BigInt(row.n);
-    if (has.get(key)) continue;
-    const vector = embed(`passage: ${row.text}`);
-    if (vector.length !== 384) throw new Error("embed-dim");
-    const tight = new Float32Array(vector);
-    insert.run(key, Buffer.from(tight.buffer));
-    count += 1;
-  }
-  return count;
-}

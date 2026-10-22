@@ -44,7 +44,7 @@ export type LocalAdvice = {
  * The GPU a model would run on. Ollama uses NVIDIA and AMD cards with their own memory, and Apple Silicon's unified
  * memory. Intel graphics, and any GPU in an Intel Mac, leave the model on the processor, which is too slow.
  */
-export function usableGpu(hw: Hardware): Gpu | null {
+function usableGpu(hw: Hardware): Gpu | null {
   const candidates = hw.gpus.filter((gpu) =>
     gpu.unified
       ? gpu.vendor === "apple"
@@ -105,7 +105,7 @@ export function tierOf(model: string): LocalTier | undefined {
 }
 
 /** Version of the check prompts below. A new version asks for the check again. */
-export const LOCAL_CHECK_VERSION = 1;
+const LOCAL_CHECK_VERSION = 1;
 
 export type LocalCheck = {
   version: number;
@@ -157,7 +157,7 @@ const CHECK_PASSAGE =
   "Photosynthesis takes place in the chloroplasts. Light energy splits water molecules, releasing oxygen, and the energy is stored in ATP and NADPH. In the Calvin cycle these molecules fix carbon dioxide into sugars.";
 
 /** The same kind of answer Pyxis asks for in quizzes: a fixed shape with no extra fields. */
-export const checkSchema = z.object({
+const checkSchema = z.object({
   question: z.string().min(10),
   options: z
     .array(z.string().min(1))

@@ -5,7 +5,7 @@ import { PNG } from "pngjs";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { heicToPng, HEIC_PNG_EDGE, MAX_HEIC_PIXELS, type HeifApi } from "./heic";
-import { importImageFile } from "./intake";
+import { sourceImports } from "./test-import";
 import { sha256 } from "./quality";
 
 const dirs: string[] = [];
@@ -109,23 +109,25 @@ describe("SRC-04 HEIC import", () => {
     const path = join(workspace, "notes.heic");
     writeFileSync(path, bytes);
     let seen: Uint8Array | undefined;
-    const result = await importImageFile(
-      db,
-      workspace,
-      path,
-      async (pixels) => {
-        seen = pixels;
-        return "Energia cinetica";
-      },
-      (original) => heicToPng(original, fakeApi(4, 4, [])),
-    );
+    // The extract worker's HEIC read: decode the stored original, then OCR the pixels.
+    const imports = sourceImports(db, workspace, async (input) => {
+      seen = (await heicToPng(new Uint8Array(readFileSync(input.path)), fakeApi(4, 4, []))).png;
+      return {
+        document: {
+          pages: [{ text: "Energia cinetica", locator: { page: 1 }, section: "text" }],
+          scanned: false,
+          extractor: { path: "ocr" },
+        },
+      };
+    });
+    const result = await imports.file(path);
     expect(seen && PNG.sync.read(Buffer.from(seen)).width).toBe(4);
     expect(db.prepare(`SELECT mime, blob_sha, status FROM sources WHERE id = ?`).get(result.sourceId)).toEqual({
       mime: "image/heic",
       blob_sha: sha256(bytes),
       status: "ready",
     });
-    expect(result.passages).toBe(1);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM passages`).get()).toEqual({ n: 1 });
     db.close();
   });
 
@@ -135,7 +137,7 @@ describe("SRC-04 HEIC import", () => {
     const db = openDatabase(":memory:");
     const path = join(workspace, "fake.heic");
     writeFileSync(path, "not a heic file at all");
-    await expect(importImageFile(db, workspace, path, async () => "x")).rejects.toThrow("heic-invalid");
+    await expect(sourceImports(db, workspace).file(path)).rejects.toThrow("heic-invalid");
     expect(db.prepare(`SELECT COUNT(*) AS n FROM sources`).get()).toEqual({ n: 0 });
     db.close();
   });

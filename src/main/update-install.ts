@@ -36,7 +36,7 @@ import {
 import { latestRelease, newerStable, readCapped } from "./updates";
 
 /** The largest installer Pyxis downloads. The 0.2.3 AppImage is 528 MB. */
-export const MAX_INSTALLER_BYTES = 1024 * 1024 * 1024;
+const MAX_INSTALLER_BYTES = 1024 * 1024 * 1024;
 const MAX_SUMS_BYTES = 64 * 1024;
 /** A download that receives nothing for this long is stopped as a network failure. */
 const IDLE_TIMEOUT = 30_000;
@@ -46,7 +46,7 @@ const ASSET_HOSTS = new Set([
   "objects.githubusercontent.com",
 ]);
 
-export class InstallError extends Error {
+class InstallError extends Error {
   constructor(readonly code: UpdateInstallError) {
     super(`update-${code}`);
   }
@@ -90,7 +90,7 @@ export function installerAsset(
  * The Mac zip of a release. Pyxis updates a Mac from the zip rather than the disk image because it keeps the zip it
  * installed, and the next update downloads only the blocks that changed since then.
  */
-export function macZipAsset(tag: string, arch: string): string | null {
+function macZipAsset(tag: string, arch: string): string | null {
   const version = tag.replace(/^v/, "");
   if (arch === "arm64") return `PoliTost.Pyxis-${version}-arm64-mac.zip`;
   if (arch === "x64") return `PoliTost.Pyxis-${version}-mac.zip`;

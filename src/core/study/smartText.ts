@@ -91,7 +91,7 @@ export const markdownOf = (bodyJson: string, kind: string) => {
  * The questions whose answers finish the reading: the closing recap of a lesson. An introduction has only quick
  * checks, so answering all of them finishes it. Without these the student finishes with "Mark as done".
  */
-export function finishingQuestions(
+function finishingQuestions(
   segments: SmartSegment[],
   kind: "lesson" | "intro",
 ): string[] {
@@ -101,7 +101,7 @@ export function finishingQuestions(
 }
 
 /** Records the lesson or the introduction as read on the path, whichever topic it is on. */
-export function completeReading(
+function completeReading(
   db: Database.Database,
   planId: string,
   kind: "lesson" | "intro",

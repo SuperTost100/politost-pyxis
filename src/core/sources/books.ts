@@ -5,7 +5,7 @@ import { z } from "zod";
 import { fetchPublicResponse } from "./public-fetch";
 
 /** The free PoliTost smartbooks. The site is static: a catalog plus one package per book version. */
-export const BOOKS_ORIGIN = "https://books.politost.it";
+const BOOKS_ORIGIN = "https://books.politost.it";
 const CATALOG_URL = `${BOOKS_ORIGIN}/catalog.json`;
 const MAX_CATALOG_BYTES = 2 * 1024 * 1024;
 /** How long a request may wait for its next bytes. A slow download that keeps receiving is not cut off. */

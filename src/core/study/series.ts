@@ -248,8 +248,3 @@ export function replayGaps(
   return tracked;
 }
 
-export function openGaps(events: SeriesEvent[]): OpenGap[] {
-  return replayGaps(events)
-    .filter((gap) => gap.closedAt == null)
-    .map(({ topicId, openedAt }) => ({ topicId, openedAt }));
-}

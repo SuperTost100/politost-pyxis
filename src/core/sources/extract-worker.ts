@@ -6,7 +6,7 @@ import { heicToPng, isHeicExt } from "./heic";
 import { hashFiles, sha256 } from "./quality";
 import { imageVariance, recognizeImage } from "./recognize";
 import { normalizeForVision } from "./vision-image";
-import { maxSourceBytes } from "../../shared/source-types";
+import { isImageExt, maxSourceBytes } from "../../shared/source-types";
 
 type Input = {
   path: string;
@@ -60,7 +60,7 @@ try {
         : isHeicExt(input.ext)
           // Pixels go to OCR as a bounded PNG; the stored original stays HEIC.
           ? { document: { pages: [{ text: await ocr((await heicToPng(bytes)).png), locator: { page: 1 }, section: "text" }], scanned: false, extractor: { path: "ocr" as const } } }
-        : [".png", ".jpg", ".jpeg", ".webp"].includes(input.ext)
+        : isImageExt(input.ext)
           ? { document: { pages: [{ text: await ocr(bytes), locator: { page: 1 }, section: "text" }], scanned: false, extractor: { path: "ocr" as const } } }
           : { document: await extractByExt(bytes, input.ext, input.password) };
       parentPort?.postMessage({ value });

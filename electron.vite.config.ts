@@ -52,6 +52,21 @@ function cspMeta(): Plugin {
   };
 }
 
+// katex.min.css lists every font as woff2, woff and ttf. Chromium always takes the woff2, so the other two only made
+// the app bigger.
+function katexWoff2Only(): Plugin {
+  return {
+    name: "katex-woff2-only",
+    enforce: "pre",
+    transform(code, id) {
+      if (!/[\\/]katex[\\/]dist[\\/]katex\.min\.css$/.test(id)) return;
+      const next = code.replace(/,url\([^)]*\.(?:woff|ttf)\) format\("(?:woff|truetype)"\)/g, "");
+      if (next === code) this.warn("KaTeX's @font-face rules changed: the woff and ttf fonts ship again.");
+      return { code: next, map: null };
+    },
+  };
+}
+
 export default defineConfig({
   main: {
     resolve: { alias: { "@politost/smartbook-parser": parser } },
@@ -86,7 +101,7 @@ export default defineConfig({
         "@shared": resolve(root, "src/shared"),
       },
     },
-    plugins: [react(), copySandboxPage(), cspMeta()],
+    plugins: [react(), katexWoff2Only(), copySandboxPage(), cspMeta()],
     // electron-vite leaves the renderer unminified; minifying it shrinks what the window parses at startup.
     build: { minify: "esbuild" },
   },

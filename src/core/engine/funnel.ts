@@ -86,9 +86,6 @@ function apiProvider(id: ApiId): Provider {
     get displayName() {
       return target().displayName;
     },
-    get binary() {
-      return target().binary;
-    },
     get capabilities() {
       return target().capabilities;
     },

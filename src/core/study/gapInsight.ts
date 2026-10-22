@@ -213,7 +213,7 @@ type InsightParams = {
 };
 
 /** ponytail: e5 sentence vectors are compressed into roughly 0.7 to 1, so 0.9 means "the same idea". Tune against real misconceptions. */
-export const MISCONCEPTION_SIMILARITY_MIN = 0.9;
+const MISCONCEPTION_SIMILARITY_MIN = 0.9;
 
 export type Embed = (text: string, signal?: AbortSignal) => Promise<Float32Array | null>;
 

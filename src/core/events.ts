@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../shared/ids";
 
-export const eventKinds = [
+const eventKinds = [
   "answer_given",
   "card_rated",
   "lesson_opened",

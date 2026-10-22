@@ -1,7 +1,7 @@
 import { PNG } from "pngjs";
 
 /** The stored original stays HEIC. These pixels only feed OCR, quality and vision. */
-export const HEIC_EXT = new Set([".heic", ".heif"]);
+const HEIC_EXT = new Set([".heic", ".heif"]);
 export const MAX_HEIC_BYTES = 40 * 1024 * 1024;
 /** Decoded RGBA is 4 bytes a pixel, so this caps the one big allocation near 200 MB. */
 export const MAX_HEIC_PIXELS = 50_000_000;

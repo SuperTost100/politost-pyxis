@@ -23,7 +23,7 @@ import {
 } from "ts-fsrs";
 
 /** A card counts as mastered once its FSRS stability reaches this many days. */
-export const masteredAfterDays = 21;
+const masteredAfterDays = 21;
 
 export type RatingName = "again" | "hard" | "good" | "easy";
 export type Rating = RatingName;

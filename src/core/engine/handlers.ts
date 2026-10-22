@@ -817,16 +817,6 @@ export function engineHandlers(
       endConversations();
       return { ok: true as const };
     },
-    clearFeature(input: {
-      feature: Exclude<(typeof features)[number], "default">;
-    }) {
-      db.prepare(`DELETE FROM feature_engines WHERE feature = ?`).run(
-        input.feature,
-      );
-      endConversations();
-      reconfigureSoon();
-      return { ok: true as const };
-    },
     capability(input: { model: string; need: Need }) {
       return { warning: capabilityWarning(input.model, input.need) };
     },

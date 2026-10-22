@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
-import { extractByExt, extractPlain, onePagePdf, storeExtracted } from "./documents";
+import { extractByExt, extractPlain, storeExtracted } from "./documents";
+import { onePagePdf } from "./test-pdf";
 import { sourceHandlers } from "./handlers";
-import { enqueueRefresh, markStoppedImport, registerSourceJobs } from "./jobs";
+import { enqueueRefresh, enqueueSourceFile, markStoppedImport, registerSourceJobs } from "./jobs";
 import type { PageSnapshot } from "./link";
-import { replaceSourceFile } from "./manage";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -159,7 +159,8 @@ describe("check a link source for a new version", () => {
     const { db, runner, workspace, sourceId, fetched, page } = setup();
     const file = join(workspace, "Dispense.md");
     writeFileSync(file, "# Secondo principio\n\nL'entropia di un sistema isolato non diminuisce.");
-    await replaceSourceFile(db, workspace, sourceId, file);
+    const replaced = await enqueueSourceFile(db, workspace, runner, file, sourceId);
+    await expect.poll(state(db, replaced.jobId), { timeout: 15_000 }).toMatchObject({ state: "succeeded" });
     expect(sourceRow(db, sourceId)).toMatchObject({ url: null, fetchedAt: null, title: "Dispense" });
     await expect(enqueueRefresh(db, workspace, runner, sourceId, true, undefined, page({ markdown: "x" }))).rejects.toThrow(
       "refresh-unavailable",

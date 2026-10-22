@@ -24,15 +24,15 @@ import { acrossTopics } from "./topicQuiz";
 
 export const PAPER_TYPES = ["open", "choice", "numeric", "proof"] as const;
 export type PaperType = (typeof PAPER_TYPES)[number];
-export const PAPER_DIFFICULTIES = ["easy", "medium", "hard"] as const;
+const PAPER_DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export type PaperDifficulty = (typeof PAPER_DIFFICULTIES)[number];
 
 /** Files of one paper stay under this many, and the text sent to the model under this many characters. */
-export const PAPER_MAX_FILES = 12;
+const PAPER_MAX_FILES = 12;
 const PAPER_MAX_CHARS = 60_000;
 /** A simulation never builds fewer or more questions than this, whatever the papers hold. */
-export const STYLE_MIN_QUESTIONS = 3;
-export const STYLE_MAX_QUESTIONS = 20;
+const STYLE_MIN_QUESTIONS = 3;
+const STYLE_MAX_QUESTIONS = 20;
 
 const paperSchema = z.object({
   title: z.string().trim().max(200),

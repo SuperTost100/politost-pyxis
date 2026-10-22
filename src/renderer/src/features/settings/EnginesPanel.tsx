@@ -18,7 +18,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { automaticEffort, studentEffort } from "@shared/effort";
-import { engineProviders as providers, type RequestOutput } from "@shared/ipc";
+import type { RequestOutput } from "@shared/ipc";
+import { engineProviders as providers } from "@shared/limits";
 import {
   EngineNoticeModal,
   unacknowledged,
@@ -62,7 +63,7 @@ const AUTO = "__auto__";
 const advancedKey = "pyxis.engines.advanced";
 type Engine = RequestOutput<"engines.overview">[number];
 type Model = RequestOutput<"engines.models">[number];
-export const docs = "https://github.com/SuperTost100/cli-funnel#quickstart";
+const docs = "https://github.com/SuperTost100/cli-funnel#quickstart";
 type Features = RequestOutput<"engines.features">;
 type SummaryInput = {
   t: TFunction;

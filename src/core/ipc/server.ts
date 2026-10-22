@@ -234,14 +234,6 @@ async function dispatchValidated(
         signal,
       );
     }
-    case "engines.clearFeature":
-      return (
-        engines?.clearFeature(
-          requests["engines.clearFeature"].input.parse(input),
-        ) ?? {
-          ok: true as const,
-        }
-      );
     case "engines.setFeature": {
       const parsed = requests["engines.setFeature"].input.parse(input);
       return engines?.setFeature({
@@ -869,7 +861,7 @@ export function bindTools(workspace = "", runner?: Runner): void {
 
 export function bindMaps(
   db: Parameters<typeof mapHandlers>[0],
-  runner?: Runner,
+  runner: Runner,
   run?: Parameters<typeof mapHandlers>[2],
 ): void {
   maps = mapHandlers(db, runner, run);

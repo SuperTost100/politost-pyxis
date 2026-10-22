@@ -11,7 +11,6 @@ import {
 } from "../study/gapRows";
 import { retrievability, type ScheduleState } from "../study/schedule";
 import { questionPlaces } from "../study/smartText";
-import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import {
   MASTERY_GROUPS,

@@ -8,10 +8,7 @@ import { Chip } from "../../components/Chip";
 import { CitationChip } from "../../components/CitationChip";
 import { Composer } from "../../components/Composer";
 import { ContextBlock } from "../../components/ContextBlock";
-import { Dock } from "../../components/Dock";
 import { EngineRow } from "../../components/EngineRow";
-import { Flashcard } from "../../components/Flashcard";
-import { FocusBar } from "../../components/FocusBar";
 import { GapItem } from "../../components/GapItem";
 import { Icon } from "../../components/Icon";
 import { ICON_MAP, type IconName } from "../../components/iconMap";
@@ -29,7 +26,6 @@ import { StatTile } from "../../components/StatTile";
 import { StepLines } from "../../components/StepLines";
 import { Stepper } from "../../components/Stepper";
 import { Tag } from "../../components/Tag";
-import { TextField } from "../../components/TextField";
 
 function Section({
   eyebrow,
@@ -147,15 +143,6 @@ export function ComponentGallery() {
             { value: "prog", label: t("gallery.tabs.progress"), badge: "23 %" },
           ]}
         />
-      </Section>
-
-      <Section
-        eyebrow={t("gallery.sections.forms")}
-        title="TextField"
-        layout="col"
-      >
-        <TextField icon="search" placeholder={t("settings.title")} />
-        <TextField size="lg" placeholder="Analisi 2" defaultValue="Analisi 2" />
       </Section>
 
       <Section eyebrow={t("gallery.sections.actions")} title="Chip">
@@ -355,19 +342,6 @@ export function ComponentGallery() {
       </Section>
 
       <Section
-        eyebrow={t("gallery.sections.practice")}
-        title="Flashcard"
-        layout="col"
-      >
-        <Flashcard
-          flipped
-          front={t("components.flashcardSample.front")}
-          back={t("components.flashcardSample.back")}
-          source={t("components.flashcardSample.source")}
-        />
-      </Section>
-
-      <Section
         eyebrow={t("gallery.sections.engine")}
         title="EngineRow"
         layout="col"
@@ -392,31 +366,6 @@ export function ComponentGallery() {
           name="LM Studio"
           model="http://192.168.1.20:1234/v1"
           status="error"
-        />
-      </Section>
-
-      <Section
-        eyebrow={t("gallery.sections.layout")}
-        title="FocusBar"
-        layout="col"
-      >
-        <FocusBar
-          title={t("gallery.focusTitle")}
-          meta={t("gallery.focusMeta")}
-          closeLabel={t("nav.close")}
-          backLabel={t("nav.back")}
-          progress={30}
-          actions={[{ icon: "settings", label: t("nav.settings") }]}
-        />
-      </Section>
-
-      <Section eyebrow={t("gallery.sections.layout")} title="Dock" layout="col">
-        <Dock
-          eyebrow={t("gallery.dockEyebrow")}
-          title={t("gallery.dockTitle")}
-          reason={t("gallery.dockReason")}
-          continueLabel={t("gallery.dockContinue")}
-          anotherLabel={t("gallery.dockAnother")}
         />
       </Section>
 

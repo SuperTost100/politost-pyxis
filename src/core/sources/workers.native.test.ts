@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import jpeg from "jpeg-js";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { manyPagePdf, onePagePdf } from "./documents";
+import { onePagePdf, manyPagePdf } from "./test-pdf";
 import { embeddingReady, embedTexts } from "./embed";
 import { ocrDataDir } from "./ocr-data";
 import { hashFiles } from "./quality";

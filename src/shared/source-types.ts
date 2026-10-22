@@ -1,21 +1,12 @@
+/** Photos, without the dot. */
+export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "heic", "heif"] as const;
+/** Documents the extractors read, without the dot. */
+export const DOCUMENT_EXTENSIONS = ["pdf", "docx", "pptx", "txt", "md"] as const;
 /** Extensions the library imports, without the dot. The picker, a dropped file and a folder scan all use this list. */
-export const SOURCE_EXTENSIONS = [
-  "ptsb",
-  "pdf",
-  "docx",
-  "pptx",
-  "txt",
-  "md",
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-  "heic",
-  "heif",
-] as const;
+export const SOURCE_EXTENSIONS = ["ptsb", ...DOCUMENT_EXTENSIONS, ...IMAGE_EXTENSIONS] as const;
 
 /** Replacing a source needs a document the extractors can version, not a photo. */
-export const REPLACE_EXTENSIONS = ["pdf", "docx", "pptx", "txt", "md"] as const;
+export const REPLACE_EXTENSIONS = DOCUMENT_EXTENSIONS;
 
 /** A folder scan lists this many files, and does not open folders nested deeper. It says so when either cuts the list. */
 export const MAX_FOLDER_FILES = 2000;
@@ -32,9 +23,14 @@ export const MAX_SOURCE_BYTES = 256 * 1024 * 1024;
 export const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
 /** The longest base64 text of a photo at that cap, so a page sent as text is bounded before anything decodes it. */
 export const MAX_IMAGE_BASE64 = Math.ceil(MAX_IMAGE_BYTES / 3) * 4;
-const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif"]);
+const DOTTED_IMAGES = new Set<string>(IMAGE_EXTENSIONS.map((ext) => `.${ext}`));
+
+/** Whether an extension with the dot, in any case, names a photo. */
+export function isImageExt(ext: string): boolean {
+  return DOTTED_IMAGES.has(ext.toLowerCase());
+}
 
 /** Size cap for one imported file, from its extension with the dot. */
 export function maxSourceBytes(ext: string): number {
-  return IMAGE_EXTENSIONS.has(ext.toLowerCase()) ? MAX_IMAGE_BYTES : MAX_SOURCE_BYTES;
+  return isImageExt(ext) ? MAX_IMAGE_BYTES : MAX_SOURCE_BYTES;
 }

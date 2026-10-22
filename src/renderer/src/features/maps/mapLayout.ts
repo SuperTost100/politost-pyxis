@@ -1,15 +1,14 @@
 export {
   COLUMN_GAP,
-  NODE_MIN_HEIGHT,
   NODE_WIDTH,
   SIBLING_GAP,
   layoutTree,
 } from "../../../../shared/map-layout";
 
 // Maps larger than this open with everything below depth 2 folded.
-export const LARGE_MAP = 25;
-export const OPEN_DEPTH = 2;
-export const MIN_START_ZOOM = 0.6;
+const LARGE_MAP = 25;
+const OPEN_DEPTH = 2;
+const MIN_START_ZOOM = 0.6;
 
 type Item = { id: string; parent: string | null };
 

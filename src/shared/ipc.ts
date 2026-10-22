@@ -11,21 +11,26 @@ import {
   mapSummarySchema,
   mapEntrySchema,
 } from "./concept-map";
+import {
+  CHAT_SEED_BODY_MAX,
+  CHAT_TEXT_MAX,
+  CHAT_TITLE_MAX,
+  engineProviders,
+  PROFILE_LIMITS,
+} from "./limits";
+
+export {
+  CHAT_SEED_BODY_MAX,
+  CHAT_TEXT_MAX,
+  CHAT_TITLE_MAX,
+  engineProviders,
+  PROFILE_LIMITS,
+} from "./limits";
+export type { EngineProvider } from "./limits";
 
 /** The time limit of a simulation, in minutes. A past paper's duration is held within it. */
 export const SIMULATION_MIN_MINUTES = 10;
 export const SIMULATION_MAX_MINUTES = 240;
-
-/** Engines Pyxis offers. Each one runs in CLI Funnel's text-only mode. */
-export const engineProviders = [
-  "claude",
-  "codex",
-  "agent",
-  "antigravity",
-  "anthropic-api",
-  "openai-api",
-] as const;
-export type EngineProvider = (typeof engineProviders)[number];
 
 /** The short check of a local model after its download: speed and one structured answer. */
 const localCheckSchema = z.object({
@@ -38,7 +43,7 @@ const localCheckSchema = z.object({
   failure: z.enum(["slow", "structured", "error"]).optional(),
 });
 
-export const JobState = z.enum([
+const JobState = z.enum([
   "queued",
   "running",
   "succeeded",
@@ -160,7 +165,7 @@ const reviewSessionSchema = z.object({
   ),
 });
 
-export const simulationViewSchema = z.object({
+const simulationViewSchema = z.object({
   attemptId: z.string(),
   planId: z.string(),
   deadline: z.number(),
@@ -200,7 +205,7 @@ export const simulationViewSchema = z.object({
     .optional(),
 });
 
-export const JobStepView = z.object({
+const JobStepView = z.object({
   name: z.string(),
   label: z.string(),
   state: z.enum(["pending", "running", "succeeded", "failed"]),
@@ -220,7 +225,7 @@ export const JobView = z.object({
 
 export type JobView = z.infer<typeof JobView>;
 
-export const IpcErrorBody = z.object({
+const IpcErrorBody = z.object({
   code: z.string(),
   messageKey: z.string(),
   params: z.record(z.string(), z.union([z.string(), z.number()])),
@@ -229,25 +234,6 @@ export const IpcErrorBody = z.object({
 
 export type IpcErrorBody = z.infer<typeof IpcErrorBody>;
 
-/**
- * Longest text the tutor takes. A pasted page of notes is about 3,000 characters, so 20,000 leaves room for several,
- * and a longer paste is refused with a message in the chat instead of failing as a vague engine error. The same
- * numbers limit the Ask composer, so the student sees them before sending.
- */
-export const CHAT_TEXT_MAX = 20_000;
-/** The pinned body of a chat started from an answer or a passage. It is sent again with every turn. */
-export const CHAT_SEED_BODY_MAX = 20_000;
-export const CHAT_TITLE_MAX = 200;
-/** Profile text reaches every system prompt, so each field is short. */
-export const PROFILE_LIMITS = {
-  displayName: 100,
-  year: 60,
-  school: 120,
-  course: 120,
-  language: 40,
-  interest: 60,
-  interests: 20,
-} as const;
 
 export class IpcError extends Error {
   readonly params: Record<string, string | number>;
@@ -475,12 +461,6 @@ export const requests = {
       model: z.string(),
       inputTokens: z.number(),
     }),
-  },
-  "engines.clearFeature": {
-    input: z.object({
-      feature: z.enum(["chat", "plan", "lesson", "grading", "map", "vision"]),
-    }),
-    output: z.object({ ok: z.literal(true) }),
   },
   "engines.setFeature": {
     input: z.object({
@@ -780,8 +760,6 @@ export const requests = {
       sourceId: z.string().min(1).optional(),
       page: z.number().int().min(1).max(100000).optional(),
       timerMinutes: z.number().int().min(1).max(180).optional(),
-      // Ignored: every quiz now corrects each answer when it is checked.
-      feedback: z.boolean().optional(),
       // Core asks at most ten questions whatever is sent here.
       count: z.number().int().min(1).max(100).optional(),
       types: z
@@ -2764,9 +2742,7 @@ export const requests = {
   },
 } as const;
 
-export const streams = {} as const;
-
-export const broadcasts = {
+const broadcasts = {
   "job.updated": JobView,
   // A write changed the evidence mastery is computed from (an answer, a card rating, a flag).
   "plans.evidence": z.object({}),

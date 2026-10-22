@@ -11,12 +11,9 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../locales/i18n";
 import "./SourceRow.css";
+import { formatBytes } from "@shared/format-bytes";
 
-/** A file size the way the Library writes it: KB below a megabyte, MB above, one decimal at most. */
-export const sizeText = (bytes: number) =>
-  bytes >= 1024 * 1024
-    ? `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024)} MB`
-    : `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(bytes / 1024)} KB`;
+export const sizeText = (bytes: number) => formatBytes(bytes, i18n.language);
 
 const PROBLEM = new Set(["failed", "needs-ocr", "interrupted", "cancelled"]);
 

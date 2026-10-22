@@ -12,7 +12,7 @@ import { checkClaim, type CheckClaim } from "./check";
 import { runtimeRequest } from "./runtime-client";
 import { runPython } from "./python";
 
-export const RUNTIME_JOB = "local-runtime-download";
+const RUNTIME_JOB = "local-runtime-download";
 const MAX_PNG_BYTES = 3_000_000;
 const KEEP_STAGED = 20;
 const STAGED_MAX_AGE_MS = 60 * 60 * 1000;
