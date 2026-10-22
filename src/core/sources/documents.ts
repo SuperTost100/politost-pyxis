@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { basename, extname } from "node:path";
 import type Database from "better-sqlite3";
 import { strFromU8, zipSync } from "fflate";
 import { chunkText } from "./chunk";
@@ -524,24 +522,6 @@ export function addExtractionVersion(
     passages: kept.length,
     exercises: 0,
   };
-}
-
-export async function importDocumentFile(
-  db: Database.Database,
-  workspace: string,
-  filePath: string,
-): Promise<StoredSource> {
-  const bytes = new Uint8Array(readFileSync(filePath));
-  const ext = extname(filePath).toLowerCase();
-  const extracted = await extractByExt(bytes, ext);
-  return storeExtracted(db, workspace, {
-    title: basename(filePath, extname(filePath)),
-    kind: kindFor(ext),
-    mime: mimeFor(ext),
-    ext,
-    bytes,
-    extracted,
-  });
 }
 
 export async function extractByExt(

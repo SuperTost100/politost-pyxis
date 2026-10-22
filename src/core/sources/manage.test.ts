@@ -4,10 +4,10 @@ import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
-import { importDocumentFile } from "./documents";
-import { removeSource, renameSource, replaceSourceFile } from "./manage";
+import { removeSource, renameSource } from "./manage";
 import { importSmartbook, smartbookChapters, smartbookMeta, searchPassages } from "./smartbook";
 import { tempDir } from "../test-temp";
+import { sourceImports } from "./test-import";
 
 describe("rename and replace", () => {
   it("hides old smartbook chapters after a document replacement", async () => {
@@ -20,7 +20,7 @@ describe("rename and replace", () => {
     expect(smartbookChapters(db, source.sourceId)).toHaveLength(1);
     const path = join(dir, "new.txt");
     writeFileSync(path, "Il calore cambia l energia interna del sistema.");
-    await replaceSourceFile(db, dir, source.sourceId, path);
+    await sourceImports(db, dir).replace(source.sourceId, path);
     expect(smartbookChapters(db, source.sourceId)).toEqual([]);
     expect(smartbookMeta(db, source.sourceId)).toBeNull();
     expect(searchPassages(db, "calore")).toHaveLength(1);
@@ -33,11 +33,12 @@ describe("rename and replace", () => {
     writeFileSync(first, "la velocita e la derivata dello spazio rispetto al tempo");
     writeFileSync(second, "il calore aumenta l energia interna del sistema termodinamico");
     const db = openDatabase(":memory:");
-    const imported = await importDocumentFile(db, dir, first);
+    const imports = sourceImports(db, dir);
+    const imported = await imports.file(first);
     renameSource(db, imported.sourceId, "Lezione 1");
     const old = searchPassages(db, "velocita")[0];
     expect(old?.text).toContain("derivata");
-    await replaceSourceFile(db, dir, imported.sourceId, second);
+    await imports.replace(imported.sourceId, second);
     expect(searchPassages(db, "velocita")).toHaveLength(0);
     expect(searchPassages(db, "calore")[0]?.text).toContain("energia");
     const kept = db.prepare(`SELECT text FROM passages WHERE id = ?`).get(old?.id) as {
@@ -55,7 +56,7 @@ describe("rename and replace", () => {
     const file = join(dir, "note.txt");
     writeFileSync(file, "la velocita e la derivata dello spazio rispetto al tempo");
     const db = openDatabase(":memory:");
-    const imported = await importDocumentFile(db, dir, file);
+    const imported = await sourceImports(db, dir).file(file);
     const sourceId = imported.sourceId;
     const now = Date.now();
     const planId = uuidv7(now + 1);

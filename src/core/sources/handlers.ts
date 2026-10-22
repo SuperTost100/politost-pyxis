@@ -5,7 +5,7 @@ import { basename, extname, join } from "node:path";
 import type Database from "better-sqlite3";
 import { IpcError, isAbort } from "../../shared/ipc";
 import { sourceErrorKey } from "../../shared/source-errors";
-import { importDocumentFile, type Extractor } from "./documents";
+import type { Extractor } from "./documents";
 import {
   downloadModel,
   embeddingReady,
@@ -30,14 +30,13 @@ import {
 import { retrieveWithModel, setRetrievalModel } from "./retrieve";
 import { PASTE_MIN } from "./paste";
 import { listImportable, MAX_FOLDER_FILES } from "./folder";
-import { importImageFile, importLink, isImageExt, ocrPngPage } from "./intake";
+import { ocrPngPage } from "./intake";
 import {
   extForMime,
   plansUsing,
   promoteSource,
   removeSource,
   renameSource,
-  replaceSourceFile,
 } from "./manage";
 import { requestOcr, stopOcr } from "./ocr";
 import {
@@ -48,7 +47,6 @@ import {
   setOcrConsent,
   sweepStaleOcrScratch,
 } from "./ocr-data";
-import { importPastedText } from "./paste";
 import { runSourceWorker } from "./worker-client";
 import { sniffImage } from "./vision-image";
 import { existingSourceFor, isDuplicateBlob, qualityFlags } from "./quality";
@@ -65,10 +63,8 @@ import { compareToPlans, storedSyllabus, syllabusFor } from "./syllabus";
 import { maxSourceBytes, MAX_IMAGE_BASE64, MAX_IMAGE_BYTES, MAX_SOURCE_BYTES } from "../../shared/source-types";
 import {
   chapterPassages,
-  importSmartbookFile,
   listSources,
   passagesAround,
-  searchPassages,
   smartbookChapters,
   smartbookMeta,
   sourcePassages,
@@ -88,7 +84,7 @@ function sourceError(err: unknown): never {
 export function sourceHandlers(
   db: Database.Database,
   workspace: string,
-  runner?: Runner,
+  runner: Runner,
   /** Checks a listed file against the folder grant. Returns the path to read, or throws. */
   authorizeFile: (path: string) => string = (path) => path,
   work: typeof runSourceWorker = runSourceWorker,
@@ -106,86 +102,82 @@ export function sourceHandlers(
     if (!embeddingConsent(db) || !embeddingReady(modelDir)) return null;
     return (await embedTexts(modelDir, [text], signal, true))[0] ?? null;
   });
-  if (runner) {
-    registerSourceJobs(db, workspace, runner);
-    runner.register("source-index", {
-      jobClass: "local",
-      title: (params) => sourceTitle(db, params),
-      steps: [
-        {
-          name: "index",
-          label: "sources.jobs.vectors",
-          async run(ctx) {
-            if (!embeddingConsent(db) || !embeddingReady(modelDir))
-              return { count: 0 };
-            const { sourceId } = ctx.params as { sourceId: string };
-            const count = await indexModelVectors(db, modelDir, ctx.signal, sourceId);
-            await compareToPlans(db, modelDir, sourceId, ctx.signal);
-            return { count };
-          },
+  registerSourceJobs(db, workspace, runner);
+  runner.register("source-index", {
+    jobClass: "local",
+    title: (params) => sourceTitle(db, params),
+    steps: [
+      {
+        name: "index",
+        label: "sources.jobs.vectors",
+        async run(ctx) {
+          if (!embeddingConsent(db) || !embeddingReady(modelDir))
+            return { count: 0 };
+          const { sourceId } = ctx.params as { sourceId: string };
+          const count = await indexModelVectors(db, modelDir, ctx.signal, sourceId);
+          await compareToPlans(db, modelDir, sourceId, ctx.signal);
+          return { count };
         },
-      ],
-    });
-    // One step per language, so the job's progress moves as each file is verified and kept. Retry re-checks the files
-    // already on disk and fetches only what is missing or altered.
-    runner.register("ocr-data-download", {
-      jobClass: "local",
-      steps: OCR_LANGUAGES.map((lang) => ({
-        name: lang,
-        label: "sources.jobs.ocrData",
-        async run(ctx: { signal: AbortSignal }) {
-          if (!ocrConsent(db)) throw new Error("ocr-data-declined");
-          await downloadOcrLanguage(tess, lang, ctx.signal);
-          return { lang };
+      },
+    ],
+  });
+  // One step per language, so the job's progress moves as each file is verified and kept. Retry re-checks the files
+  // already on disk and fetches only what is missing or altered.
+  runner.register("ocr-data-download", {
+    jobClass: "local",
+    steps: OCR_LANGUAGES.map((lang) => ({
+      name: lang,
+      label: "sources.jobs.ocrData",
+      async run(ctx: { signal: AbortSignal }) {
+        if (!ocrConsent(db)) throw new Error("ocr-data-declined");
+        await downloadOcrLanguage(tess, lang, ctx.signal);
+        return { lang };
+      },
+    })),
+  });
+  runner.register("embedding-download", {
+    jobClass: "local",
+    steps: [
+      {
+        name: "download",
+        label: "sources.jobs.download",
+        async run(ctx) {
+          if (!embeddingConsent(db)) throw new Error("embed-declined");
+          await downloadModel(modelDir, ctx.signal);
+          return { ready: true };
         },
-      })),
-    });
-    runner.register("embedding-download", {
-      jobClass: "local",
-      steps: [
-        {
-          name: "download",
-          label: "sources.jobs.download",
-          async run(ctx) {
-            if (!embeddingConsent(db)) throw new Error("embed-declined");
-            await downloadModel(modelDir, ctx.signal);
-            return { ready: true };
-          },
+      },
+      {
+        name: "index",
+        label: "sources.jobs.vectors",
+        async run(ctx) {
+          const count = await indexModelVectors(db, modelDir, ctx.signal);
+          const sources = db.prepare("SELECT id FROM sources WHERE status != 'removed'").all() as Array<{ id: string }>;
+          for (const source of sources) {
+            ctx.signal.throwIfAborted();
+            await compareToPlans(db, modelDir, source.id, ctx.signal);
+          }
+          return { count };
         },
-        {
-          name: "index",
-          label: "sources.jobs.vectors",
-          async run(ctx) {
-            const count = await indexModelVectors(db, modelDir, ctx.signal);
-            const sources = db.prepare("SELECT id FROM sources WHERE status != 'removed'").all() as Array<{ id: string }>;
-            for (const source of sources) {
-              ctx.signal.throwIfAborted();
-              await compareToPlans(db, modelDir, source.id, ctx.signal);
-            }
-            return { count };
-          },
-        },
-      ],
-    });
-  }
-  if (runner) {
-    // Imports, indexing and downloads cut off by a quit or a crash cost no engine use, so they carry on by themselves.
-    // A photo waiting on its vision engine keeps waiting for the student. Only what is left still needs a Resume, and
-    // its source says it was interrupted.
-    runner.resumeLocal([
-      "source-import",
-      "source-import-vision",
-      "source-index",
-      "ocr-data-download",
-      "embedding-download",
-    ]);
-    markInterruptedImports(db);
-  }
+      },
+    ],
+  });
+  // Imports, indexing and downloads cut off by a quit or a crash cost no engine use, so they carry on by themselves.
+  // A photo waiting on its vision engine keeps waiting for the student. Only what is left still needs a Resume, and
+  // its source says it was interrupted.
+  runner.resumeLocal([
+    "source-import",
+    "source-import-vision",
+    "source-index",
+    "ocr-data-download",
+    "embedding-download",
+  ]);
+  markInterruptedImports(db);
   // A download cancelled because consent was withdrawn can still say running while its cancel unwinds. Agreeing again
   // in that moment must start a new download instead of joining the one that is stopping.
   const withdrawn = new Set<string>();
   const activeJob = (kind: string) =>
-    runner?.list().find((job) => job.kind === kind && ["queued", "running"].includes(job.state) && !withdrawn.has(job.id))?.id;
+    runner.list().find((job) => job.kind === kind && ["queued", "running"].includes(job.state) && !withdrawn.has(job.id))?.id;
   const activeOcrDownload = () => activeJob("ocr-data-download");
   // The catalog read last, so the Library can check for new versions each time its list changes without asking
   // books.politost.it again. A download (add or update) always reads it fresh.
@@ -241,7 +233,6 @@ export function sourceHandlers(
           promoteSource(db, existing);
           return { sourceId: existing, title: book.title, subject: book.subject };
         }
-        if (!runner) throw new Error("source-missing");
         const bytes = await downloadBook(
           book,
           booksTransport,
@@ -277,7 +268,6 @@ export function sourceHandlers(
      */
     async updateBook(input: { sourceId: string; confirmed: boolean }, signal?: AbortSignal) {
       try {
-        if (!runner) throw new Error("source-missing");
         const read = () => db
           .prepare(
             `SELECT catalog_id AS catalogId, catalog_version AS version, blob_sha AS sha FROM sources
@@ -368,54 +358,40 @@ export function sourceHandlers(
     },
     async importFile(input: { path: string }) {
       try {
-        const ext = extname(input.path).toLowerCase();
-        if (runner) {
-          await assertLocalOcrReady(db, workspace, ext);
-          return await enqueueSourceFile(db, workspace, runner, input.path);
-        }
-        if (ext === ".ptsb")
-          return importSmartbookFile(db, workspace, input.path);
-        if (isImageExt(ext))
-          return await importImageFile(db, workspace, input.path);
-        return await importDocumentFile(db, workspace, input.path);
+        await assertLocalOcrReady(db, workspace, extname(input.path).toLowerCase());
+        return await enqueueSourceFile(db, workspace, runner, input.path);
       } catch (err) {
         sourceError(err);
       }
     },
     paste(input: { title: string; text: string }) {
       try {
-        if (runner) {
-          const text = input.text.replace(/\r\n/g, "\n").trim();
-          if (text.length < PASTE_MIN) throw new Error("paste-short");
-          return enqueueSourceData(
-            db,
-            workspace,
-            runner,
-            new TextEncoder().encode(text),
-            ".txt",
-            input.title.trim() || "Notes",
-          );
-        }
-        return importPastedText(db, workspace, input.title, input.text);
+        const text = input.text.replace(/\r\n/g, "\n").trim();
+        if (text.length < PASTE_MIN) throw new Error("paste-short");
+        return enqueueSourceData(
+          db,
+          workspace,
+          runner,
+          new TextEncoder().encode(text),
+          ".txt",
+          input.title.trim() || "Notes",
+        );
       } catch (err) {
         sourceError(err);
       }
     },
     async link(input: { url: string }) {
       try {
-        if (runner) {
-          const url = parseLinkUrl(input.url);
-          return enqueueSourceData(
-            db,
-            workspace,
-            runner,
-            new Uint8Array(),
-            ".md",
-            url.hostname,
-            url.href,
-          );
-        }
-        return await importLink(db, workspace, input.url);
+        const url = parseLinkUrl(input.url);
+        return enqueueSourceData(
+          db,
+          workspace,
+          runner,
+          new Uint8Array(),
+          ".md",
+          url.hostname,
+          url.href,
+        );
       } catch (err) {
         sourceError(err);
       }
@@ -490,21 +466,13 @@ export function sourceHandlers(
     },
     async replace(input: { sourceId: string; path: string }) {
       try {
-        if (runner)
-          return await enqueueSourceFile(
-            db,
-            workspace,
-            runner,
-            input.path,
-            input.sourceId,
-          );
-        const result = await replaceSourceFile(
+        return await enqueueSourceFile(
           db,
           workspace,
-          input.sourceId,
+          runner,
           input.path,
+          input.sourceId,
         );
-        return result;
       } catch (err) {
         sourceError(err);
       }
@@ -512,7 +480,6 @@ export function sourceHandlers(
     /** SRC-12: read the stored original again as a new version. A source plans use needs `confirmed`. */
     async reextract(input: { sourceId: string; confirmed: boolean }) {
       try {
-        if (!runner) throw new Error("reextract-unavailable");
         const row = db
           .prepare(`SELECT mime FROM sources WHERE id = ? AND status != 'removed'`)
           .get(input.sourceId) as { mime: string | null } | undefined;
@@ -529,7 +496,6 @@ export function sourceHandlers(
      */
     async refresh(input: { sourceId: string; confirmed: boolean }, signal?: AbortSignal) {
       try {
-        if (!runner) throw new Error("refresh-unavailable");
         return await enqueueRefresh(db, workspace, runner, input.sourceId, input.confirmed, signal);
       } catch (err) {
         if (signal?.aborted || isAbort(err)) throw err;
@@ -539,7 +505,6 @@ export function sourceHandlers(
     /** Runs again an import that stopped on a locked PDF, with the password for that one read. Nothing keeps it. */
     unlockPdf(input: { jobId: string; password: string }) {
       try {
-        if (!runner) throw new Error("pdf-password-unavailable");
         return unlockPdfImport(db, runner, input.jobId, input.password);
       } catch (err) {
         sourceError(err);
@@ -561,7 +526,7 @@ export function sourceHandlers(
       try {
         const result = removeSource(db, input.sourceId, input.confirmed);
         // An import or index still working on the source stops, so it does not keep reading a file nobody sees.
-        if (result.removed && runner) {
+        if (result.removed) {
           const jobs = db
             .prepare(
               `SELECT id FROM jobs WHERE kind IN ('source-import', 'source-import-vision', 'source-index')
@@ -610,7 +575,6 @@ export function sourceHandlers(
           input.last,
         );
         if (
-          runner &&
           status === "ready" &&
           embeddingConsent(db) &&
           embeddingReady(modelDir)
@@ -636,12 +600,11 @@ export function sourceHandlers(
         const running = activeOcrDownload();
         if (running) {
           withdrawn.add(running);
-          runner?.cancel(running);
+          runner.cancel(running);
         }
         return { state: "off" as const };
       }
       if ((await ocrDataStatus(tess)).state === "ready") return { state: "ready" as const };
-      if (!runner) throw new IpcError("not-ready", "errors.notReady");
       return { state: "missing" as const, jobId: activeOcrDownload() ?? runner.start("ocr-data-download") };
     },
     embedState() {
@@ -655,11 +618,10 @@ export function sourceHandlers(
         const running = activeJob("embedding-download");
         if (running) {
           withdrawn.add(running);
-          runner?.cancel(running);
+          runner.cancel(running);
         }
         return { state: "off" as const };
       }
-      if (!runner) throw new IpcError("not-ready", "errors.notReady");
       // A second click joins the download already running instead of starting another.
       const jobId = activeJob("embedding-download") ?? runner.start("embedding-download");
       return { state: "missing" as const, jobId };

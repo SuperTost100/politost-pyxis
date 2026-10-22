@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { createRunner } from "../jobs/runner";
 import { MAX_IMAGE_BYTES } from "../../shared/source-types";
 import { listImportable, MAX_FOLDER_FILES } from "./folder";
 import { sourceHandlers } from "./handlers";
@@ -62,7 +63,7 @@ describe("source reads stay bounded and off the core thread", () => {
       if (path === outside) throw new Error("file-access-denied");
       return path;
     };
-    const handlers = sourceHandlers(db, dir, undefined, authorize, work);
+    const handlers = sourceHandlers(db, dir, createRunner(db, () => {}), authorize, work);
     const found = await handlers.scanFolder({ path: dir });
     expect(found).toEqual({
       files: [
@@ -86,7 +87,7 @@ describe("source reads stay bounded and off the core thread", () => {
     const db = openDatabase(":memory:");
     const work = (async (_name: string, input: { paths: string[] }) =>
       input.paths.map(() => null)) as unknown as typeof runSourceWorker;
-    const found = await sourceHandlers(db, dir, undefined, undefined, work).scanFolder({ path: dir });
+    const found = await sourceHandlers(db, dir, createRunner(db, () => {}), undefined, work).scanFolder({ path: dir });
     expect(found.files).toHaveLength(MAX_FOLDER_FILES);
     expect(found).toMatchObject({ cappedFiles: true, cappedDepth: false, limit: MAX_FOLDER_FILES });
     db.close();
@@ -105,7 +106,7 @@ describe("source reads stay bounded and off the core thread", () => {
       calls.push(input);
       return { sha: "f".repeat(64), variance: 3 };
     }) as unknown as typeof runSourceWorker;
-    const handlers = sourceHandlers(db, dir, undefined, undefined, work);
+    const handlers = sourceHandlers(db, dir, createRunner(db, () => {}), undefined, work);
     expect(await handlers.preview({ path: photo })).toEqual({ duplicate: false, blurry: true });
     expect(calls).toEqual([{ path: photo, ext: ".png", mode: "quality", maxBytes: MAX_IMAGE_BYTES }]);
     await expect(handlers.preview({ path: huge })).rejects.toMatchObject({ messageKey: "sources.tooBig" });
@@ -124,7 +125,7 @@ describe("source reads stay bounded and off the core thread", () => {
        VALUES (?, 'text', ?, ?, 'text/plain', ?, ?, ?)`,
     );
     const work = (async () => ({ sha, variance: null })) as unknown as typeof runSourceWorker;
-    const handlers = sourceHandlers(db, dir, undefined, undefined, work);
+    const handlers = sourceHandlers(db, dir, createRunner(db, () => {}), undefined, work);
     // Nothing yet: not a duplicate, nothing to reuse.
     expect(await handlers.preview({ path: file })).toEqual({ duplicate: false, blurry: false });
     insert.run("removed", "removed", sha, "removed", 4, 4);

@@ -7,7 +7,6 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "licensed-smartbook": "sources.encrypted",
   "smartbook-json-missing": "sources.smartbookBroken",
   "chapter-missing": "sources.smartbookBroken",
-  "not-smartbook": "sources.smartbookBroken",
   "archive-too-large": "sources.archiveTooLarge",
   "archive-corrupt": "sources.archiveUnreadable",
   "archive-unsupported": "sources.archiveUnreadable",

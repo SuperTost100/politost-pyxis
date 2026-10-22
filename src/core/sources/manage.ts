@@ -1,8 +1,4 @@
-import { readFileSync } from "node:fs";
-import { basename, extname } from "node:path";
 import type Database from "better-sqlite3";
-import { addDocumentVersion, extractByExt, mimeFor } from "./documents";
-import type { StoredSource } from "./documents";
 
 export function renameSource(
   db: Database.Database,
@@ -84,20 +80,3 @@ export function removeSource(
   return { removed: true, inUse };
 }
 
-export async function replaceSourceFile(
-  db: Database.Database,
-  workspace: string,
-  sourceId: string,
-  filePath: string,
-): Promise<StoredSource> {
-  const bytes = new Uint8Array(readFileSync(filePath));
-  const ext = extname(filePath).toLowerCase();
-  const extracted = await extractByExt(bytes, ext);
-  return addDocumentVersion(db, workspace, sourceId, {
-    title: basename(filePath, extname(filePath)),
-    mime: mimeFor(ext),
-    ext,
-    bytes,
-    extracted,
-  });
-}

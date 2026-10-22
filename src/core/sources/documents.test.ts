@@ -10,7 +10,6 @@ import {
   extractPdf,
   extractPlain,
   extractPptx,
-  importDocumentFile,
   lockedPdf,
   manyPagePdf,
   onePagePdf,
@@ -19,6 +18,7 @@ import {
 } from "./documents";
 import { listSources } from "./smartbook";
 import { tempDir } from "../test-temp";
+import { sourceImports } from "./test-import";
 
 describe("document extract", () => {
   it("reads the text layer of a PDF", async () => {
@@ -171,8 +171,8 @@ describe("document extract", () => {
     const file = join(dir, "scan.pdf");
     writeFileSync(file, blankPdf());
     const db = openDatabase(":memory:");
-    const imported = await importDocumentFile(db, dir, file);
-    expect(imported.passages).toBe(0);
+    await sourceImports(db, dir).file(file);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM passages`).get()).toEqual({ n: 0 });
     expect(listSources(db)[0]?.status).toBe("needs-ocr");
   });
 

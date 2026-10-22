@@ -123,7 +123,8 @@ describe("SRC-12 re-extract from the stored original", () => {
     expect(started.started).toBe(true);
     await expect.poll(done(db, started.jobId!), { timeout: 15_000 }).toEqual({ state: "succeeded" });
     await expect(handlers.reextract({ sourceId: "missing", confirmed: true })).rejects.toThrow(IpcError);
-    await expect(sourceHandlers(db, workspace).reextract({ sourceId, confirmed: true })).rejects.toMatchObject({
+    db.prepare(`INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('book', 'smartbook', 'Libro', 'ready', 1, 1)`).run();
+    await expect(handlers.reextract({ sourceId: "book", confirmed: true })).rejects.toMatchObject({
       messageKey: "sources.reextractUnavailable",
     });
     db.close();

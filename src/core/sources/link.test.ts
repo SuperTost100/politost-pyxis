@@ -4,13 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { articleFromHtml, fetchSnapshot } from "./link";
-import { importLink } from "./intake";
-import { searchPassages } from "./smartbook";
 import { createRunner } from "../jobs/runner";
 import { enqueueSourceData, registerSourceJobs } from "./jobs";
 import { extractPlain } from "./documents";
 import { sourceHandlers } from "./handlers";
-import { tempDir } from "../test-temp";
 
 type PinnedRequest = {
   dispatcher: {
@@ -101,9 +98,7 @@ describe("link import", () => {
     expect(page.markdown).not.toContain("SECRET_TOKEN");
   });
 
-  it("follows a few redirects and stores the snapshot", async () => {
-    const db = openDatabase(":memory:");
-    const dir = tempDir("pyxis-link-");
+  it("follows a few redirects to the page it saves", async () => {
     let calls = 0;
     const fetchImpl = (async (url: string) => {
       calls += 1;
@@ -112,19 +107,9 @@ describe("link import", () => {
       expect(url).toBe("https://example.com/final");
       return asResponse(article, 200, { "content-type": "text/html" });
     }) as typeof fetch;
-    const stored = await importLink(
-      db,
-      dir,
-      "https://example.com/start",
-      fetchImpl,
-      publicHost,
-    );
-    expect(stored.passages).toBeGreaterThan(0);
-    expect(searchPassages(db, "velocità")[0]?.text).toContain("derivata");
-    const row = db
-      .prepare(`SELECT origin_url FROM sources WHERE id = ?`)
-      .get(stored.sourceId) as { origin_url: string };
-    expect(row.origin_url).toBe("https://example.com/final");
+    const page = await fetchSnapshot("https://example.com/start", fetchImpl, publicHost);
+    expect(page.finalUrl).toBe("https://example.com/final");
+    expect(page.markdown).toContain("derivata");
   });
 
   it("refuses a page that is almost empty", async () => {

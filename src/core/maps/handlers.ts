@@ -6,7 +6,6 @@ import {
   editMap,
   mapBuild,
   enqueueMaps,
-  generateMaps,
   registerMapJobs,
 } from "./generate";
 import {
@@ -22,10 +21,10 @@ import { listAllMaps } from "./library";
 import { exportMap, type MapExportLanguage } from "./export";
 export function mapHandlers(
   db: Database.Database,
-  runner?: Runner,
+  runner: Runner,
   run?: GenerateInput["run"],
 ) {
-  if (runner) registerMapJobs(db, runner, run);
+  registerMapJobs(db, runner, run);
   return {
     build(input: { planId: string; topicId: string }) {
       return mapBuild(db, input);
@@ -45,9 +44,7 @@ export function mapHandlers(
       return listTopicMaps(db, input.planId, input.topicId);
     },
     generate(input: { planId: string; topicId: string }) {
-      return runner
-        ? enqueueMaps(db, runner, input)
-        : generateMaps(db, input, run);
+      return enqueueMaps(db, runner, input);
     },
     edit(input: {
       planId: string;

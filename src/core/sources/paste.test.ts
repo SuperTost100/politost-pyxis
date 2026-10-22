@@ -1,23 +1,27 @@
-import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { PASTE_MIN, importPastedText } from "./paste";
+import { createRunner } from "../jobs/runner";
+import { sourceHandlers } from "./handlers";
+import { PASTE_MIN } from "./paste";
+import { sourceImports } from "./test-import";
 import { searchPassages } from "./smartbook";
 import { tempDir } from "../test-temp";
 
 describe("pasted text", () => {
   it("refuses a note shorter than one page", () => {
     const db = openDatabase(":memory:");
-    expect(() => importPastedText(db, tmpdir(), "Note", "troppo corto")).toThrow(/paste-short/);
+    const handlers = sourceHandlers(db, tempDir("pyxis-paste-short-"), createRunner(db, () => {}));
+    expect(() => handlers.paste({ title: "Note", text: "troppo corto" })).toThrow(
+      expect.objectContaining({ messageKey: "sources.pasteShort" }),
+    );
   });
 
-  it("stores a long paste as searchable passages", () => {
+  it("stores a long paste as searchable passages", async () => {
     const db = openDatabase(":memory:");
     const dir = tempDir("pyxis-paste-");
     const body = `${"La velocità è la derivata dello spazio. ".repeat(80)}`;
     expect(body.length).toBeGreaterThan(PASTE_MIN);
-    const stored = importPastedText(db, dir, "Cinematica", body);
-    expect(stored.passages).toBeGreaterThan(0);
+    await sourceImports(db, dir).data(new TextEncoder().encode(body), ".txt", "Cinematica");
     expect(searchPassages(db, "velocità")[0]?.text).toContain("derivata");
   });
 });

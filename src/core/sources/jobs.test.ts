@@ -81,7 +81,7 @@ it("SRC-12 replacement preserves the original document format and blob for citat
   writeFileSync(path, "Replacement text");
   const next = await enqueueSourceFile(db, workspace, runner, path, original.sourceId);
   await expect.poll(() => db.prepare(`SELECT state FROM jobs WHERE id = ?`).get(next.jobId)).toEqual({ state: "succeeded" });
-  const handlers = sourceHandlers(db, workspace);
+  const handlers = sourceHandlers(db, workspace, createRunner(db, () => {}));
   expect(handlers.viewerDocument({ passageId: oldId })?.kind).toBe("pdf");
   expect(handlers.viewerDocument({ passageId: oldId })?.blobSha).toBeTruthy();
   expect(handlers.viewerDocument({ sourceId: original.sourceId })?.kind).toBe("text");
