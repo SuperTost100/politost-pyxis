@@ -392,6 +392,48 @@ describe("plan file", () => {
     expect(() => readBlob(workspace, firstSha)).toThrow();
   });
 
+  it("reads a version 1 file with the version 2 rules", () => {
+    const db = openDatabase(":memory:");
+    const planId = importPlan(
+      db,
+      {
+        version: 1,
+        title: "Vecchio",
+        topics: [{ title: "Moti", position: 0, grounding: "general" }],
+        nodes: [{ title: "Studio", kind: "learn", position: 0, topic: 0 }],
+        cards: [
+          { front: "F", back: "B", topic: 0, schedule: { rating: "good", state: { intervalDays: 1, ease: 2.5, dueAt: 5 }, at: 4 } },
+          { front: "G", back: "C", topic: 0, grounding: "mixed" },
+        ],
+        progress: [
+          // IDs from the exporter's database name nothing here, and its gap events are replayed instead.
+          { kind: "answer_given", topic: 0, payload: { score: 1, cardId: "elsewhere", attemptId: "old" }, at: 2 },
+          { kind: "gap_opened", topic: 0, payload: { gapId: "old" }, at: 3 },
+          { kind: "lesson_completed", topic: 0, payload: { nodeId: 0 }, at: 4 },
+        ],
+      },
+      1_000,
+    );
+    // PLAN-11: only general-knowledge topics keep the plan a draft.
+    expect(db.prepare(`SELECT status FROM plans WHERE id = ?`).get(planId)).toEqual({ status: "draft" });
+    expect(db.prepare(`SELECT front, grounding FROM cards ORDER BY front`).all()).toEqual([
+      { front: "F", grounding: "general" },
+      { front: "G", grounding: "mixed" },
+    ]);
+    expect(db.prepare(`SELECT state_json, reviewed_at FROM card_reviews`).get()).toEqual({
+      state_json: JSON.stringify({ intervalDays: 1, ease: 2.5, dueAt: 5 }),
+      reviewed_at: 4,
+    });
+    const events = db
+      .prepare(`SELECT kind, payload_json FROM learning_events WHERE plan_id = ? ORDER BY created_at`)
+      .all(planId) as Array<{ kind: string; payload_json: string }>;
+    const node = db.prepare(`SELECT id FROM path_nodes WHERE plan_id = ?`).get(planId) as { id: string };
+    expect(events.map((event) => [event.kind, JSON.parse(event.payload_json)])).toEqual([
+      ["answer_given", { score: 1 }],
+      ["lesson_completed", { nodeId: node.id }],
+    ]);
+  });
+
   it("refuses a node that points past the topic list", () => {
     const db = openDatabase(":memory:");
     expect(() =>
