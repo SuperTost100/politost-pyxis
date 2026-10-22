@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -11,6 +10,8 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 
 // Stand-ins for the two engine CLIs. They report a version and a sign-in state, nothing more, so no model is called.
 function fakeBins(options: { claude: boolean | null; codex: boolean | null }) {
@@ -58,27 +59,8 @@ async function launch(
 
 async function noAxeViolations(page: Page) {
   // A dialog that is still fading in can measure as low contrast, so wait for finite animations to end first.
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          document
-            .getAnimations()
-            .filter(
-              (animation) =>
-                animation.playState === "running" &&
-                animation.effect?.getTiming().iterations !== Infinity,
-            ).length,
-      ),
-    )
-    .toBe(0);
-  const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-    .violations;
-  expect(
-    found.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-    ),
-  ).toEqual([]);
+  await animationsSettled(page);
+  await expectNoAxeViolations(page);
 }
 
 const profile = (page: Page) =>

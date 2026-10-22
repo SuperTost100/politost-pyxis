@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -12,6 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
 
 /** Set PYXIS_SHOTS to a folder to save screenshots of the dialog. */
 const SHOTS = process.env.PYXIS_SHOTS;
@@ -149,11 +149,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     ).toBeEnabled();
     // The buttons that just changed state are still fading to their new colours; axe would measure a colour halfway.
     await animationsSettled(page);
-    expect(
-      (
-        await new AxeBuilder({ page }).setLegacyMode(true).analyze()
-      ).violations.map((v) => v.id),
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
 
     if (SHOTS) {
       for (const theme of ["light", "dark"] as const) {

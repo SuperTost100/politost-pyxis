@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 import { mkdtempSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
 
 test("route failure shows a plain recovery page without stack details", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-route-error-"));
@@ -23,7 +23,7 @@ test("route failure shows a plain recovery page without stack details", async ()
     expect(message!.x).toBeGreaterThanOrEqual(shellColumn!.x);
     expect(message!.x + message!.width).toBeLessThanOrEqual(shellColumn!.x + shellColumn!.width);
     await expect(page.locator("pre")).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.screenshot({ path: ".shots/route-error-it.png" });
     await page.getByRole("button", { name: "Torna a Esami" }).click();
     await expect(page).toHaveURL(/#\/exams$/);

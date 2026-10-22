@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { lockedPdf } from "../../src/core/sources/test-pdf";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 const PASSWORD = "Carnot-1824";
 
@@ -77,7 +77,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("Password di Dispense").fill("sbagliata");
     await shoot(page, "pdf-password-dialog");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await dialog.getByRole("button", { name: "Apri" }).click();
     await expect(dialog).toBeHidden();
     await expect(page.getByText("Questa password non apre il PDF. Riprova.")).toBeVisible();
@@ -123,7 +123,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     await expect(details.getByText(/Salvata da appunti\.invalid il/)).toBeVisible();
     await expect(details.getByRole("button", { name: "Controlla se c'è una nuova versione" })).toBeVisible();
     await shoot(page, "source-refresh-details");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

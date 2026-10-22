@@ -1,9 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-composer-"));
@@ -70,7 +70,7 @@ test("Ask composer: a formula sits inline in the text, leaves as $...$ and rende
     // No LaTeX anywhere in the field.
     expect(await box.innerText()).not.toMatch(/[$^\\]/);
     await shoot(page, "text-and-chip");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // From the text, the first Backspace selects the formula and the second removes it; undo brings it back.
     for (let i = 0; i < " se x vale 3?".length; i += 1) await page.keyboard.press("Backspace");

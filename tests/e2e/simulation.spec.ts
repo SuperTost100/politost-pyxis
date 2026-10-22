@@ -1,5 +1,4 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 test("LES-20 through LES-23 exam timer restart, auto-submit and named grading model", async () => {
   test.setTimeout(240000);
@@ -106,9 +106,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       page.getByRole("button", { name: "Inizia", exact: true }),
     ).toBeEnabled();
     await page.screenshot({ path: ".shots/m11-setup-it-dark.png" });
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Inizia", exact: true }).click();
     await expect(
       page.getByRole("textbox", { name: "La tua risposta" }),
@@ -196,10 +194,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       await page.screenshot({
         path: `.shots/m11-run-${language}-${theme}-${width}.png`,
       });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page);
     }
     // Advance only this temporary exam's stored start; exercise core's real expiry path.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
@@ -299,9 +294,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       page.getByRole("heading", { name: "Reference solution" }),
     ).toBeVisible();
     await page.screenshot({ path: ".shots/m11-results-en-light.png" });
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     if (process.env.PYXIS_LIVE_SIMULATION)
       console.log(
         "Live simulation graders",

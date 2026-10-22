@@ -1,5 +1,4 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -7,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 // Seeded responses only: the app runs its real jobs against recorded replies, no model is called.
 
@@ -299,9 +299,7 @@ test("PLAN-13 rebuild is reviewed, durable across restart, and applies exactly w
       .click();
     await expect(dialog.getByText("Energia", { exact: true })).toBeVisible();
     await page.waitForTimeout(300); // Let the modal finish its entrance before measuring contrast.
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.screenshot({ path: ".shots/m13-rebuild-review.png", animations: "disabled" });
     await dialog.getByRole("button", { name: "Applica le modifiche" }).click();
     await expect(dialog).toBeHidden();

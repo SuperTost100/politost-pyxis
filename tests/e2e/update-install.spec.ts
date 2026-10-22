@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -14,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -105,14 +105,7 @@ test("update: download and install checks SHA256SUMS, replaces the AppImage, and
     await expect(banner.getByRole("progressbar")).toBeVisible();
     await expect(panel.getByRole("status").last()).toContainText("%");
     await expect.poll(downloads).toEqual([`${assetName}.part`]);
-    expect(
-      (
-        await new AxeBuilder({ page })
-          .setLegacyMode(true)
-          .include(".px-updates")
-          .analyze()
-      ).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page, { include: [".px-updates"] });
     await panel.getByRole("button", { name: "Annulla il download" }).click();
     await expect(start).toBeVisible();
     await expect.poll(downloads).toEqual([]);
@@ -155,15 +148,7 @@ test("update: download and install checks SHA256SUMS, replaces the AppImage, and
     await expect(panel.getByRole("button", { name: "Riprova" })).toBeVisible();
     expect(downloads()).toEqual([]);
     expect(readFileSync(appImage, "utf8")).toBe("the installed AppImage");
-    expect(
-      (
-        await new AxeBuilder({ page })
-          .setLegacyMode(true)
-          .include(".px-updates")
-          .include(".px-update-notice")
-          .analyze()
-      ).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page, { include: [".px-updates", ".px-update-notice"] });
   } finally {
     await app.close();
     rmSync(root, { recursive: true, force: true });

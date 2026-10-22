@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { parseSmartText, smartQuestions } from "../../src/shared/smart-text";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { expectNoAxeViolations } from "./axe";
 
 const mcq = (id: string, topicId: string, stem: string) => ({
   id,
@@ -277,11 +277,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
       "Correct answerFalse",
     );
     await expect(entry("velocità…")).toContainText("Quick check");
-    expect(
-      (
-        await new AxeBuilder({ page }).setLegacyMode(true).analyze()
-      ).violations.map((v) => v.id),
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // The source opens on the passage the question came from.
     await entry("Che cosa causa")

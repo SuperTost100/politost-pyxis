@@ -1,11 +1,11 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async () => {
   test.setTimeout(240_000);
@@ -275,10 +275,7 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       await page.screenshot({
         path: `.shots/map-large-${total}-${language}-${theme}-1280.png`,
       });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page);
     }
     expect(errors).toEqual([]);
   } finally {

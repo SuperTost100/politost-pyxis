@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -17,11 +16,10 @@ import { join } from "node:path";
 import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 async function clean(page: Page) {
-  expect(
-    (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-  ).toEqual([]);
+  await expectNoAxeViolations(page);
 }
 
 // The window loads index.html from pyxis-app://app. CI also runs this against the packaged app.

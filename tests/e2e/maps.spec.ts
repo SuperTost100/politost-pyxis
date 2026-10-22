@@ -1,5 +1,4 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import {
   copyFileSync,
@@ -16,6 +15,7 @@ import { PNG } from "pngjs";
 import type { ConceptGraph } from "../../src/shared/concept-map";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PNG", async () => {
   test.setTimeout(240_000);
@@ -281,10 +281,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       await page.screenshot({
         path: `.shots/m10-map-${language}-${theme}-${width}.png`,
       });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page);
       const output = join(userData, `map-${theme}-${language}.png`);
       await app.evaluate(({ session }, path) => {
         session.defaultSession.once("will-download", (_, item) =>

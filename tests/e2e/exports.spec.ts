@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import {
   mkdirSync,
@@ -13,6 +12,8 @@ import { DatabaseSync } from "node:sqlite";
 import { unzipSync } from "fflate";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 
 test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export modal", async () => {
   const root = mkdtempSync(join(tmpdir(), "pyxis-export-check-"));
@@ -137,21 +138,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       await expect(
         modal.getByRole("radio", { name: "Markdown", exact: true }),
       ).toBeChecked();
-      await expect
-        .poll(() =>
-          modal.evaluate(
-            (element) =>
-              element
-                .getAnimations({ subtree: true })
-                .filter((a) => a.playState === "running").length,
-          ),
-        )
-        .toBe(0);
-      const audit = await new AxeBuilder({ page })
-        .setLegacyMode()
-        .include('[role="dialog"]')
-        .analyze();
-      expect(audit.violations).toEqual([]);
+      await animationsSettled(page, modal);
+      await expectNoAxeViolations(page, { include: ['[role="dialog"]'] });
       await page.screenshot({
         path: `.shots/m13-export-${language}-${theme}-${width}.png`,
       });

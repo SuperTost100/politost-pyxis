@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource } from "./seed";
+import { expectNoAxeViolations } from "./axe";
 
 /** One topic with three cards Pyxis wrote (one from a passage), one hand-made card, and a finished card build. */
 function seed(db: DatabaseSync) {
@@ -71,11 +71,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await page.keyboard.press("Space");
     await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations.map(
-        (violation) => violation.id,
-      ),
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // A rating can be taken back: the card shows again and its review and event are gone.
     await page.keyboard.press("3");

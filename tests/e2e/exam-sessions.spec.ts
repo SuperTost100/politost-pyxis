@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -112,8 +112,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await snap("plan-header-sessions", "en", "dark");
     await page.getByRole("button", { name: "Plan settings" }).click();
     await snap("plan-settings-sessions", "en", "dark");
-    const audit = await new AxeBuilder({ page }).setLegacyMode().analyze();
-    expect(audit.violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // Remove the second session again: one session left, no frame around it.
     await dialog.getByRole("button", { name: "Remove session 2" }).click();

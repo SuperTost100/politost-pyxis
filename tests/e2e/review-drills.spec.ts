@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 const dbPath = (userData: string) => join(userData, "workspace", "pyxis.db");
 
@@ -163,7 +163,7 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     await expect(page.locator(".px-review-progress .small")).toContainText("in preparazione");
     mkdirSync(".shots", { recursive: true });
     await page.screenshot({ path: ".shots/review-drills-failed-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     const before = (await invoke<Session>(page, "study.reviewSession", { planId }))!;
     expect(before.next).toBe("waiting");
@@ -193,7 +193,7 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     await page.reload();
     await expect(page.getByRole("button", { name: "Continua il ripasso" })).toBeEnabled();
     await page.screenshot({ path: ".shots/review-drills-adopted-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     // Reloading and restarting never add the questions again or start another model call.
     const again = (await invoke<Session>(page, "study.review", { planId }))!;
     expect(again.questions.map((question) => question.id)).toEqual(adopted.questions.map((question) => question.id));
@@ -317,7 +317,7 @@ test("LES-13 a failed drill can be skipped for good, a closed gap stops being wa
     await expect(page.getByText(/Hai saltato le domande su/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Inizia il ripasso" })).toBeVisible();
     await page.screenshot({ path: ".shots/review-drills-closed-gap-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -343,7 +343,7 @@ test("LES-03 a single gap drill started from the progress page opens its quiz wi
     await expect(page.locator(".px-quiz-question")).toBeVisible();
     mkdirSync(".shots", { recursive: true });
     await page.screenshot({ path: ".shots/progress-drill-explanation-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

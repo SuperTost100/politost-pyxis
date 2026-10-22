@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -195,7 +195,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       await page.screenshot({ path: `${shots}/intro-${lang}-${theme}.png` });
     }
     await language(page, "it", "light");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByRole("button", { name: /La velocità/ }).click();
     await expect(page.getByText("Giusto.", { exact: true })).toBeVisible();
     // Answering the introduction's only check completes it.
@@ -233,7 +233,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(display).toHaveCount(1);
     expect(await display.evaluate((element) => getComputedStyle(element).textAlign)).toBe("center");
     await expect(page.getByText("pyxis-")).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     for (const [lang, theme] of [["it", "light"], ["it", "dark"], ["en", "light"], ["en", "dark"]] as const) {
       await language(page, lang, theme);

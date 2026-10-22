@@ -1,11 +1,11 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 test("PLAN-21 document tree and build resume after cancel and restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-plan-check-"));
@@ -137,9 +137,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
       page.getByText("Studierai velocità e accelerazione", { exact: false }),
     ).toBeVisible();
     await expect(page.getByText("[P1]", { exact: false })).toHaveCount(0);
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Fatto", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${created.planId}$`));
     const diagnostic = (await page.evaluate(

@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import {
   cpSync,
@@ -15,6 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 // The built app can be pointed at another output folder so a test run never races a rebuild of out/.
 
@@ -154,9 +154,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     await goto(`/plans/${planId}/review`);
     await expect(page.getByText("Hai un ripasso in corso")).toBeVisible();
     await expect(progress).toHaveText(new RegExp(`^5 di ${total} fatti`));
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Continua il ripasso" }).click();
     await expect(page).toHaveURL(/\/diagnostic\?attempt=/);
     // The question screen continues the same queue: card count first, then the question.
@@ -233,9 +231,7 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
     // The captured output scrolls by keyboard, so it must take focus.
     await output.focus();
     await expect(output).toBeFocused();
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     // Output belongs to the code that produced it: editing hides it, restoring brings it back.
     await code.fill("print(1)");
     await expect(output).toHaveCount(0);

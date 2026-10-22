@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import {
   cpSync,
@@ -13,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MathCheck } from "../../src/shared/math-check";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 async function launch(reply?: string) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -78,10 +78,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
       await expect(page.locator(".px-python pre").last()).toContainText(
         "example error",
       );
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page);
       await page.screenshot({
         path: `.shots/m9-python-${language}-${theme}-${width}.png`,
       });
@@ -101,9 +98,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     });
     await page.locator(".px-check-badge.is-failed").focus();
     await expect(page.locator(".px-check-badge.is-failed")).toBeFocused();
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.screenshot({ path: ".shots/m9-failed-light.png" });
   } finally {
     await app.close();
@@ -139,9 +134,7 @@ test("Graph several functions and mark where they meet", async () => {
     await page.getByRole("button", { name: "Rimuovi g" }).click();
     await expect(page.getByRole("textbox", { name: "Funzione g" })).toHaveCount(0);
     await expect(page.locator(".px-graph-meets")).toHaveCount(0);
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

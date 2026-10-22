@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   type ElectronApplication,
   expect,
@@ -20,6 +19,7 @@ import { quitPyxis } from "./app-exit";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
 
 const automatic =
   /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}(?:-[0-9a-f]{8})?\.zip$/;
@@ -293,14 +293,7 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
       // The first check waits for core to start and its queue to empty, which can take a while on a slow runner.
       { timeout: 60_000 },
     );
-    expect(
-      (
-        await new AxeBuilder({ page })
-          .setLegacyMode()
-          .include(".px-backup-notice")
-          .analyze()
-      ).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page, { include: [".px-backup-notice"] });
     mkdirSync(".shots", { recursive: true });
     await page.screenshot({ path: ".shots/auto-backup-notice.png" });
     await page.getByRole("button", { name: "Salta" }).click();
@@ -480,11 +473,7 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
         { exact: true },
       ),
     ).toBeVisible();
-    const axe = await new AxeBuilder({ page })
-      .setLegacyMode()
-      .include(".px-settings-danger")
-      .analyze();
-    expect(axe.violations).toEqual([]);
+    await expectNoAxeViolations(page, { include: [".px-settings-danger"] });
     mkdirSync(".shots", { recursive: true });
     await page
       .locator(".px-settings-danger")

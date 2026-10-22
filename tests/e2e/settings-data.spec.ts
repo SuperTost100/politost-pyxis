@@ -1,5 +1,4 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import {
   existsSync,
@@ -15,6 +14,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
 
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -130,14 +130,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       await expect(notice.locator("pre")).toBeVisible();
       const box = await notice.boundingBox();
       expect(box!.height).toBeLessThanOrEqual(680);
-      expect(
-        (
-          await new AxeBuilder({ page })
-            .setLegacyMode()
-            .include(".px-update-notice")
-            .analyze()
-        ).violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page, { include: [".px-update-notice"] });
       mkdirSync(".shots", { recursive: true });
       await page.screenshot({
         path: `.shots/m14-update-${language}-${theme}-${width}.png`,
@@ -160,14 +153,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       const license = page.locator(".px-about-license pre");
       await license.focus();
       await expect(license).toBeFocused();
-      expect(
-        (
-          await new AxeBuilder({ page })
-            .setLegacyMode()
-            .include(".px-about")
-            .analyze()
-        ).violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page, { include: [".px-about"] });
       await page.locator(".px-about").scrollIntoViewIfNeeded();
       await page.screenshot({
         path: `.shots/m14-about-${language}-${theme}-${width}.png`,
@@ -288,9 +274,7 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
       await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
       await button.scrollIntoViewIfNeeded();
       await page.screenshot({ path: `.shots/free-space-${theme}.png` });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode().include(".px-settings-subpage").analyze()).violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page, { include: [".px-settings-subpage"] });
     }
   } finally {
     await app.close();

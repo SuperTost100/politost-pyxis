@@ -1,5 +1,4 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -12,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 /** Ten diagnostic questions over the book's two chapters; each explanation cites a passage by ID. */
 const diagnosticReply = {
@@ -89,7 +89,7 @@ async function go(page: Page, hash: string) {
 }
 
 async function axe(page: Page) {
-  expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+  await expectNoAxeViolations(page);
 }
 
 const score = (page: Page) => page.locator(".px-quiz-score");

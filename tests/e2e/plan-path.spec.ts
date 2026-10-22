@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -197,7 +197,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
       await shoot(page, `${shots}/new-plan-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // The chooser lets the student skip the introduction and the diagnostic.
     await next.getByRole("button", { name: "Altre attività" }).click();
@@ -294,7 +294,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expect(planned.getByRole("listitem")).toHaveCount(2);
     await expect(page.locator(".px-node.is-locked, .lucide-lock")).toHaveCount(0);
     expect((await linesClear(page)).hits).toEqual([]);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
       await shoot(page, `${shots}/mid-way-${lang}-${theme}.png`);
@@ -477,7 +477,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText(/^Le tue risposte del /)).toBeVisible();
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
     await expect(page.locator(".px-quiz-question")).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme] of [
       ["it", "light"],
       ["it", "dark"],
@@ -535,7 +535,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText("Hai già finito questi esercizi.", { exact: false })).toBeVisible();
     await expect(page.getByText("Quanto vale la forza", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await shoot(page, `${shots}/practice-review-it-light.png`);
     await page.getByRole("button", { name: "Torna al percorso" }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
@@ -562,7 +562,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText("Hai già fatto queste flashcard.", { exact: false })).toBeVisible();
     await expect(page.getByText("Nessuna flashcard in scadenza.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await shoot(page, `${shots}/cards-review-it-light.png`);
     // The focus bar's X is the only way out of a card session.
     await page.getByRole("button", { name: "Chiudi", exact: true }).click();
@@ -588,7 +588,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.locator(".px-quiz-question")).toHaveCount(0);
     await expect(page.locator(".px-quiz-score")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme] of [
       ["it", "light"],
       ["it", "dark"],

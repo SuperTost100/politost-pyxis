@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -14,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 async function draw(page: Page) {
   // A freshly routed board has no layout box yet; measuring it earlier throws "canvas-missing".
@@ -119,10 +119,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
         await expect(
           page.getByRole("button", { name: /Save|Salva/, exact: true }),
         ).toBeEnabled();
-        expect(
-          (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-            .violations,
-        ).toEqual([]);
+        await expectNoAxeViolations(page);
         await page.screenshot({
           path: `.shots/m15-whiteboard-${language}-${theme}.png`,
         });

@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 test("selected source text opens a scoped tutor context and Escape dismisses its actions", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-selection-"));
@@ -38,7 +38,7 @@ test("selected source text opens a scoped tutor context and Escape dismisses its
     await page.evaluate(() => window.getSelection()?.removeAllRanges());
     await select();
     await expect(menu).toBeVisible();
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.screenshot({ path: ".shots/selection-menu-it.png" });
     // Hosted Linux and Windows lose the menu somewhere after the audit; a scroll, resize or cleared selection closes it by design, so select again.
     await select();

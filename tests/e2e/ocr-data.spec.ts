@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -19,6 +18,7 @@ import { join } from "node:path";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
+import { expectNoAxeViolations } from "./axe";
 
 const HEIC = join(process.cwd(), "tests/fixtures/synthetic-note.heic");
 const totalBytes = Object.values(OCR_DATA_FILES).reduce(
@@ -86,23 +86,8 @@ function expectPinned(userData: string) {
 
 async function noAxeViolations(page: Page) {
   // A dialog that is still fading in has translucent text, which axe reports as low contrast.
-  // Spinners loop forever, so only animations that end are waited for.
-  await page.waitForFunction(() =>
-    document
-      .getAnimations()
-      .every(
-        (animation) =>
-          animation.playState !== "running" ||
-          animation.effect?.getTiming().iterations === Infinity,
-      ),
-  );
-  const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-    .violations;
-  expect(
-    found.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-    ),
-  ).toEqual([]);
+  await animationsSettled(page);
+  await expectNoAxeViolations(page);
 }
 
 test("OCR data: a refused photo asks first, the app downloads the pinned files on consent, and the choice survives a restart", async () => {

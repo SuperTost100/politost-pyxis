@@ -1,5 +1,4 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 test("PRO-01 through PRO-06 preparation layout, flagged content, activity and progress tabs", async () => {
   test.setTimeout(90000);
@@ -194,10 +194,7 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
         path: `.shots/m12-preparation-${language}-${theme}-${width}.png`,
         fullPage: true,
       });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page);
       await expect(page.locator(".px-plan-progress .ant-segmented")).toHaveCount(0);
       await expect(
         page.getByRole("heading", {
@@ -224,10 +221,7 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
         path: `.shots/m12-pace-${language}-${theme}-${width}.png`,
         fullPage: true,
       });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page);
       // A topic row opens to the evidence behind its bar, and the parts add up to the bar's number.
       const breakdown = (await page.evaluate(
         (planId) => window.pyxis.invoke("plans.masteryBreakdown", { planId }),
@@ -261,10 +255,7 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
         path: `.shots/quiz-mastery-evidence-${language}-${theme}-${width}.png`,
         fullPage: true,
       });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page);
       await toggle.click();
       await expect(panel).toHaveCount(0);
     }

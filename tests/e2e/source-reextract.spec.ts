@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +7,7 @@ import { blobParts } from "../../src/shared/blob-path";
 import { importPickedSource } from "./picked-source";
 import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 /** Reads the workspace database next to the running app; WAL lets a second reader see committed rows. */
 function rows<T>(userData: string, sql: string, ...args: string[]): T[] {
@@ -116,7 +116,7 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
     await page.waitForTimeout(300); // Let the popover finish its entrance before measuring contrast.
     mkdirSync(".shots", { recursive: true });
     await page.screenshot({ path: ".shots/source-reextract-no-text-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

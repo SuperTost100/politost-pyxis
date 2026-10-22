@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -9,6 +8,7 @@ import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 const both = (it: string, en: string) => new RegExp(`^(${it}|${en})$`);
 
@@ -181,9 +181,7 @@ test("practice: rate two exercises, change one, finish, and mastery moves by two
     await page.reload();
     await expect(got(work)).toHaveAttribute("aria-pressed", "true");
     await expect(got(power)).toHaveAttribute("aria-pressed", "true");
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // Finish: both exercises count once, each with weight 0.5. A third observation for the changed one would give 0.222.
     await page

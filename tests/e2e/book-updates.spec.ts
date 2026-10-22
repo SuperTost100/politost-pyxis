@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -11,6 +10,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 const SPEED =
   "La velocità media è lo spazio percorso diviso il tempo impiegato.";
@@ -106,13 +106,7 @@ const invoke = <T>(page: Page, channel: string, input: object) =>
 
 async function noAxeViolations(page: Page) {
   await page.waitForTimeout(300); // Let a modal finish its entrance before measuring contrast.
-  const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-    .violations;
-  expect(
-    found.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-    ),
-  ).toEqual([]);
+  await expectNoAxeViolations(page);
 }
 
 test("Book updates: a newer free book updates the same source in place, flags changed citations and offers its new chapter", async () => {

@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -10,6 +9,8 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSubjects } from "./seed";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 
 /** Two subjects, one exam with no subject, and cards that need the folding, the math and the cloze. */
 function seed(db: DatabaseSync) {
@@ -126,25 +127,8 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
         .locator("strong"),
     ).toHaveText("Elettroni");
     // Cards fade in; contrast measured mid-fade reads too low on a slow runner.
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            document
-              .getAnimations()
-              .filter(
-                (animation) =>
-                  animation.playState === "running" &&
-                  animation.effect?.getTiming().iterations !== Infinity,
-              ).length,
-        ),
-      )
-      .toBe(0);
-    expect(
-      (
-        await new AxeBuilder({ page }).setLegacyMode(true).analyze()
-      ).violations.map((v) => v.id),
-    ).toEqual([]);
+    await animationsSettled(page);
+    await expectNoAxeViolations(page);
 
     // An accent-less search finds the accented card, in any case.
     const search = page.getByRole("textbox", { name: "Search flashcards" });

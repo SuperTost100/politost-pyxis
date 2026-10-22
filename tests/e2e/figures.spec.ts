@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -18,6 +17,7 @@ import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 const figure = (caption: string, code: string) =>
   ["```pyxis-figure", JSON.stringify({ caption, code }), "```"].join("\n");
@@ -211,9 +211,7 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
     await expect(
       page.getByText("Se raddoppi il tempo, la posizione…"),
     ).toBeVisible();
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme, width] of [
       ["it", "light", 1280],
       ["it", "dark", 1280],
@@ -246,9 +244,7 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
     await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(1);
     await expect(page.getByText("Il massimo è in")).toBeVisible();
     await expect(page.getByText("pyxis-")).toHaveCount(0);
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme, width] of [
       ["it", "dark", 1280],
       ["en", "light", 1280],

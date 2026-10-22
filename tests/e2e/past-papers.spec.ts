@@ -1,10 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 const shots = process.env.PYXIS_SHOTS ?? ".shots/past-papers";
 
@@ -128,7 +128,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     )) as { sources: unknown[] };
     expect(read.sources).toEqual([]);
     await shoot(page, "sources-paper-it-dark");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     await look(page, "en", "dark");
     await expect(page.getByText(/6 questions · 150 min · open 2, numeric 2, multiple choice 1, proof 1/)).toBeVisible();
@@ -140,7 +140,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await page.setViewportSize({ width: 1280, height: 900 });
     await look(page, "en", "light");
     await shoot(page, "sources-paper-en-light");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // Practise one paper: intro, first question, a graded answer.
     await page.getByRole("button", { name: "Practise", exact: true }).click();
@@ -169,7 +169,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await expect(page.getByText("Like your past exams")).toBeVisible();
     await page.waitForTimeout(600);
     await shoot(page, "simulation-setup-en-light");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByText("Standard", { exact: true }).click();
     await expect(page.getByText(/in the style of your past exam/)).toHaveCount(0);
 
@@ -192,7 +192,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await shoot(page, "sources-failed-en-light");
     await look(page, "it", "dark");
     await shoot(page, "sources-failed-it-dark");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await look(page, "en", "light");
 
     // Removing the papers brings the plain setup back.

@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import {
   existsSync,
@@ -12,6 +11,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -163,8 +163,7 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
       await page.setViewportSize({ width: 960, height: 700 });
       await page.reload();
       await expect(headerButton()).toBeEnabled();
-      const audit = await new AxeBuilder({ page }).setLegacyMode().analyze();
-      expect(audit.violations).toEqual([]);
+      await expectNoAxeViolations(page);
       await page.screenshot({
         path: `.shots/calendar-plan-header-${language}-${theme}.png`,
       });

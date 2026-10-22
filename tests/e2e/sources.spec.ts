@@ -1,5 +1,4 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +7,7 @@ import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
@@ -95,10 +95,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
           path: `.shots/m4-viewer-it-${theme}-${width}.png`,
           animations: "disabled",
         });
-        const results = await new AxeBuilder({ page })
-          .setLegacyMode(true)
-          .analyze();
-        expect(results.violations).toEqual([]);
+        await expectNoAxeViolations(page);
       }
     }
     await page.keyboard.press("Escape");

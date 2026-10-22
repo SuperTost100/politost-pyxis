@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
   expect,
   test,
@@ -10,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 // A folder laid out like books.politost.it: the catalog and one package. `tamper` lists a checksum that does not match.
 function booksSite(options: { tamper?: boolean } = {}) {
@@ -51,16 +51,6 @@ async function launch(userData: string, books: string) {
   return launchPyxis({ userData, env });
 }
 
-async function noAxeViolations(page: Page) {
-  const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-    .violations;
-  expect(
-    found.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-    ),
-  ).toEqual([]);
-}
-
 const button = (page: Page, name: string | RegExp) =>
   page.getByRole("button", { name, exact: typeof name === "string" });
 
@@ -97,7 +87,7 @@ test("Free books: from the end of setup a book goes into a new exam, and the Lib
     await expect(
       dialog.getByText("Fisica · 1 capitolo · ", { exact: false }),
     ).toBeVisible();
-    await noAxeViolations(page);
+    await expectNoAxeViolations(page);
     await dialog.getByRole("button", { name: "Aggiungi Fisica di prova" }).click();
     await expect(dialog.getByText("Aggiunto")).toBeVisible({ timeout: 30000 });
     await dialog.getByRole("button", { name: /Close|Chiudi/ }).click();

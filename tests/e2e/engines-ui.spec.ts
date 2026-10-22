@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import {
   chmodSync,
@@ -10,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
 
 test("ENG-10 engine details, add paths and secure key-storage notice in both themes and languages", async () => {
   test.setTimeout(180000);
@@ -95,11 +95,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
               name: language === "en" ? "Model" : "Modello",
             }),
           ).toBeVisible();
-          const audit = await new AxeBuilder({ page })
-            .setLegacyMode(true)
-            .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-            .analyze();
-          expect(audit.violations).toEqual([]);
+          await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
           await page.screenshot({
             path: `.shots/m15-engine-details-${language}-${theme}.png`,
             fullPage: true,
@@ -171,11 +167,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
               ),
             ).toBeVisible();
           }
-          const modalAudit = await new AxeBuilder({ page })
-            .setLegacyMode(true)
-            .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-            .analyze();
-          expect(modalAudit.violations).toEqual([]);
+          await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
           await page.screenshot({
             path: `.shots/m15-engine-add-${canSave ? "form-" : ""}${language}-${theme}.png`,
             fullPage: true,
