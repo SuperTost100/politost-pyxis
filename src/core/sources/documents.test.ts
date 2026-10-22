@@ -6,16 +6,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import {
   addDocumentVersion,
-  blankPdf,
   extractPdf,
   extractPlain,
   extractPptx,
-  lockedPdf,
-  manyPagePdf,
-  onePagePdf,
   storeExtracted,
   type ExtractedDocument,
 } from "./documents";
+import { onePagePdf, manyPagePdf, lockedPdf, blankPdf } from "./test-pdf";
 import { listSources } from "./smartbook";
 import { tempDir } from "../test-temp";
 import { sourceImports } from "./test-import";

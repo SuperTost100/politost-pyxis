@@ -4,7 +4,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { manyPagePdf } from "../../src/core/sources/documents";
+import { manyPagePdf } from "../../src/core/sources/test-pdf";
 
 test("PLAN-21 document tree and build resume after cancel and restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-plan-check-"));

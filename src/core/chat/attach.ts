@@ -97,12 +97,6 @@ export type StagedFiles = Pick<PreparedFiles, "notes" | "images"> & {
 type StagedBlob = { sha: string; bytes: Uint8Array; mime: string; ext: string };
 type StagedDocument = { filePath: string; ext: string; bytes: Uint8Array; extracted: ExtractedDocument };
 
-/** Reads and extracts a set of files, then stores it. A caller with more to write in the same step uses `stageFiles` and `commitStaged`. */
-export async function prepareFiles(...args: Parameters<typeof stageFiles>): Promise<PreparedFiles> {
-  const staged = await stageFiles(...args);
-  return { sourceIds: commitStaged(args[0], args[1], staged).sourceIds, notes: staged.notes, images: staged.images };
-}
-
 export async function stageFiles(
   _db: Database.Database,
   workspace: string,

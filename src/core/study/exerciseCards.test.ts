@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { seedCards } from "./cards";
+import { seedCards } from "./test-study";
 import { retireExerciseCards } from "./exerciseCards";
 
 const LONG = `Determinare il dominio naturale della funzione f(x)=sqrt(ln(x+2))/(x-1). ${"Spiega ogni passaggio. ".repeat(30)}`;

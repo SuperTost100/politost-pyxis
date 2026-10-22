@@ -10,7 +10,8 @@ import { mixQuestions } from "./mix";
 import { writeLesson } from "./openLesson";
 import { readQuiz, saveQuizDraft } from "./quizJobs";
 import { startReview } from "./review";
-import { startTopicQuiz, submitAttempt } from "./topicQuiz";
+import { submitAttempt } from "./topicQuiz";
+import { startTopicQuiz } from "./test-study";
 
 function pack(files: Record<string, string>): Uint8Array {
   return zipSync(

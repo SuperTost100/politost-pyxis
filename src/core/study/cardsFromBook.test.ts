@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
 import { templateVersion } from "../engine/prompts";
-import { seedCards } from "./cards";
+import { seedCards } from "./test-study";
 import { generateTopicCards, readCardsBuild } from "./cardsFromBook";
 import { studyHandlers } from "./handlers";
 

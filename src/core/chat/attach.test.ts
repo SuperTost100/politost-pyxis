@@ -8,7 +8,8 @@ import { openDatabase } from "../db/connection";
 import { putBlob, readBlob } from "../blobs";
 import { heicToPng } from "../sources/heic";
 import { normalizeForVision, VISION_MAX_BYTES } from "../sources/vision-image";
-import { ORIGINAL_SUFFIX, prepareFiles, savedImages } from "./attach";
+import { ORIGINAL_SUFFIX, savedImages } from "./attach";
+import { prepareFiles } from "./test-attach";
 
 it("SRC-04 sends HEIC pixels to vision or OCR and preserves the original", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "pyxis-heic-chat-"));

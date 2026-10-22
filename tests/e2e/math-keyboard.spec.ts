@@ -3,7 +3,7 @@ import { _electron as electron, expect, test, type Page } from "@playwright/test
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { manyPagePdf } from "../../src/core/sources/documents";
+import { manyPagePdf } from "../../src/core/sources/test-pdf";
 
 const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 

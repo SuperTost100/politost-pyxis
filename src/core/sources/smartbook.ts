@@ -7,7 +7,7 @@ import {
 } from "@politost/smartbook-parser";
 import { chunkText } from "./chunk";
 import { uuidv7 } from "../../shared/ids";
-import { retrieve, type Embedder, type PassageHit } from "./retrieve";
+import type { PassageHit } from "./retrieve";
 import { suggestSourceRebuild } from "../plans/views";
 
 /**
@@ -354,15 +354,6 @@ function isEncrypted(bytes: Uint8Array): boolean {
 }
 
 export type { PassageHit };
-
-export function searchPassages(
-  db: Database.Database,
-  query: string,
-  limit = 8,
-  embed?: Embedder | null,
-): PassageHit[] {
-  return retrieve(db, query, { limit, embed }).hits;
-}
 
 export function listSources(db: Database.Database) {
   return db

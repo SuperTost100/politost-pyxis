@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { lockedPdf } from "../../src/core/sources/documents";
+import { lockedPdf } from "../../src/core/sources/test-pdf";
 import { importPickedSource } from "./picked-source";
 
 const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");

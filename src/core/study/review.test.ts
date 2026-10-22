@@ -7,7 +7,7 @@ import { createPlan } from "../plans/create";
 import { recordStep } from "../plans/steps";
 import { importSmartbook } from "../sources/smartbook";
 import { saveQuiz, startAttempt } from "./attempt";
-import { dueCards, rateCard, seedCards } from "./cards";
+import { dueCards, rateCard } from "./cards";
 import { studyHandlers } from "./handlers";
 import { saveQuizDraft } from "./quizJobs";
 import { finalizeAttempt } from "./quizGrading";
@@ -15,7 +15,7 @@ import { readGapDrill } from "./gapDrill";
 import { discardReview, readReview, reviewWaiting, skipDrill, startReview } from "./review";
 import { insertGap } from "./gapRows";
 import { topicExercises } from "./exercises";
-import { startTopicQuiz } from "./topicQuiz";
+import { seedCards, startTopicQuiz } from "./test-study";
 
 /** Three chapters with three exercises each, and a fourth chapter with none. */
 function setup() {

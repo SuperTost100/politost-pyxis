@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { hasBlob, putBlob } from "../blobs";
 import { openDatabase } from "../db/connection";
 import { extractPlain, storeExtracted } from "../sources/documents";
-import { indexVectors } from "../sources/embed";
+import { indexVectors } from "../sources/test-import";
 import { promoteSource } from "../sources/manage";
 import { sha256 } from "../sources/quality";
 import { commitStaged } from "./attach";

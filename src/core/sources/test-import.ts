@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { expect } from "vitest";
 import { createRunner } from "../jobs/runner";
 import { extractByExt } from "./documents";
+import type { Embedder } from "./retrieve";
 import { enqueueSourceData, enqueueSourceFile, registerSourceJobs, type Extraction } from "./jobs";
 
 type Queued = { sourceId: string; jobId: string };
@@ -34,4 +35,35 @@ export function sourceImports(
     data: (bytes: Uint8Array, ext: string, title: string) =>
       settle(enqueueSourceData(db, workspace, runner, bytes, ext, title)),
   };
+}
+
+/** Write vectors for passages that do not have one yet. `embed` stands in for the model. */
+export function indexVectors(db: Database.Database, embed: Embedder): number {
+  const rows = db
+    .prepare(
+      `SELECT p.rowid AS n, p.text FROM passages p
+       WHERE p.source_id IS NULL
+          OR p.document_id = (
+            SELECT id FROM source_documents
+            WHERE source_id = p.source_id
+            ORDER BY version DESC
+            LIMIT 1
+          )`,
+    )
+    .all() as Array<{ n: number; text: string }>;
+  const has = db.prepare(`SELECT 1 AS n FROM passages_vec WHERE passage_rowid = ?`);
+  const insert = db.prepare(
+    `INSERT INTO passages_vec (passage_rowid, embedding) VALUES (?, ?)`,
+  );
+  let count = 0;
+  for (const row of rows) {
+    const key = BigInt(row.n);
+    if (has.get(key)) continue;
+    const vector = embed(`passage: ${row.text}`);
+    if (vector.length !== 384) throw new Error("embed-dim");
+    const tight = new Float32Array(vector);
+    insert.run(key, Buffer.from(tight.buffer));
+    count += 1;
+  }
+  return count;
 }

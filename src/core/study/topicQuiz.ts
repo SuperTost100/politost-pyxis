@@ -8,15 +8,13 @@ import {
   submitAttempt,
   type StoredQuestion,
 } from "./attempt";
-import { mixQuestions } from "./mix";
 import { topicExercises } from "./exercises";
 import { flaggedIds } from "./flags";
-import { requireTopic } from "./openLesson";
 import { uuidv7 } from "../../shared/ids";
 import { quizMinutes } from "../../shared/quiz";
 
 /** Free answers are model-graded at submit; exact text must not decide credit. */
-function openGrade(reference: string) {
+export function openGrade(reference: string) {
   return { kind: "open" as const, answer: "", reference };
 }
 
@@ -225,45 +223,6 @@ function usableDiagnostic(
     item.id,
     stored.filter((question) => order.has(question.id)),
   );
-}
-
-export function startTopicQuiz(
-  db: Database.Database,
-  planId: string,
-  topicId: string,
-) {
-  requireTopic(db, planId, topicId);
-  const blocked = flaggedIds(db, "exercise");
-  const exercises = topicExercises(db, topicId).filter(
-    (row) => row.answer && row.answer.trim() && !blocked.has(row.id),
-  );
-  if (exercises.length === 0) throw new Error("quiz-empty");
-  const mixed = mixQuestions(
-    exercises.map((row) => ({
-      id: row.id,
-      prompt: row.prompt,
-      answer: row.answer ?? "",
-    })),
-    QUIZ_MAX_QUESTIONS,
-  );
-  const itemId = saveQuiz(
-    db,
-    planId,
-    mixed.length > 0
-      ? mixed.map((row) =>
-          row.grade.kind === "completion"
-            ? { ...row, grade: openGrade(row.grade.accepted[0]?.[0] ?? "") }
-            : row,
-        )
-      : exercises.slice(0, QUIZ_MAX_QUESTIONS).map((row) => ({
-          id: row.id,
-          stem: row.prompt,
-          explanation: row.answer ?? "",
-          grade: openGrade(row.answer ?? ""),
-        })),
-  );
-  db.prepare(`UPDATE items SET topic_id = ? WHERE id = ?`).run(topicId, itemId);
-  return startAttempt(db, planId, itemId);
 }
 
 export { submitAttempt };

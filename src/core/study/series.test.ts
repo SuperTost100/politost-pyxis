@@ -4,10 +4,16 @@ import { describe, expect, it } from "vitest";
 import {
   activeMinutes,
   chartPoints,
-  openGaps,
   paceFacts,
+  replayGaps,
   weeklyCounts,
 } from "./series";
+
+/** The gaps still open after replaying the history. */
+const openGaps = (events: Parameters<typeof replayGaps>[0]) =>
+  replayGaps(events)
+    .filter((gap) => gap.closedAt == null)
+    .map(({ topicId, openedAt }) => ({ topicId, openedAt }));
 
 const DAY = 86_400_000;
 

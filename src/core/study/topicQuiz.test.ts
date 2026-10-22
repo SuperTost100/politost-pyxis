@@ -6,7 +6,8 @@ import { recordStep } from "../plans/steps";
 import { importSmartbook } from "../sources/smartbook";
 import { studyHandlers } from "./handlers";
 import { readQuiz } from "./quizJobs";
-import { startTopicQuiz, submitAttempt } from "./topicQuiz";
+import { submitAttempt } from "./topicQuiz";
+import { startTopicQuiz } from "./test-study";
 import { flagTarget } from "./flags";
 
 function pack(files: Record<string, string>): Uint8Array {

@@ -255,25 +255,3 @@ export function masteryDetail(
   return out;
 }
 
-export function idleTopics(
-  events: MasteryEvent[],
-  now: number,
-  idleDays = 7,
-): string[] {
-  const latestByTopic = new Map<string, number>();
-
-  for (const e of events) {
-    const prev = latestByTopic.get(e.topicId);
-    if (prev === undefined || e.at > prev) latestByTopic.set(e.topicId, e.at);
-  }
-
-  const thresholdMs = idleDays * MS_PER_DAY;
-  const idle: string[] = [];
-
-  for (const [topicId, latestAt] of latestByTopic) {
-    if (now - latestAt > thresholdMs) idle.push(topicId);
-  }
-
-  idle.sort();
-  return idle;
-}

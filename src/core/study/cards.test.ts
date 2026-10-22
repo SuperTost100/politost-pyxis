@@ -10,12 +10,12 @@ import {
   queueCounts,
   rateCard,
   saveCard,
-  seedCards,
   setNewCardsPerDay,
   setSuspended,
   undoRating,
 } from "./cards";
 import { planGuide } from "../plans/create";
+import { seedCards } from "./test-study";
 
 const T0 = Date.UTC(2026, 2, 15, 10, 0, 0);
 

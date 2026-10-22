@@ -6,9 +6,9 @@ import {
   rateCard,
   restoreCard,
   saveCard,
-  seedCards,
   setSuspended,
 } from "./cards";
+import { seedCards } from "./test-study";
 
 const T0 = Date.UTC(2026, 2, 15, 10, 0, 0);
 

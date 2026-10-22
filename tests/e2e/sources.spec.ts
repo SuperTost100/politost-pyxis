@@ -5,7 +5,7 @@ import { strToU8, zipSync } from "fflate";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { manyPagePdf } from "../../src/core/sources/documents";
+import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { appUnderTest } from "./app-under-test";
 import { animationsSettled } from "./settled";
 

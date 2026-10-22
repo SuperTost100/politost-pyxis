@@ -88,45 +88,6 @@ export function evalExpr(source: string, x: number): number {
   return value;
 }
 
-export function derivative(source: string, x: number, h = 1e-4): number {
-  return (evalExpr(source, x + h) - evalExpr(source, x - h)) / (2 * h);
-}
-
-export function secondDerivative(source: string, x: number, h = 1e-4): number {
-  return (
-    (evalExpr(source, x + h) -
-      2 * evalExpr(source, x) +
-      evalExpr(source, x - h)) /
-    (h * h)
-  );
-}
-
-export function simpson(source: string, a: number, b: number, n = 200): number {
-  const steps = n % 2 === 0 ? n : n + 1;
-  const h = (b - a) / steps;
-  let sum = evalExpr(source, a) + evalExpr(source, b);
-  for (let i = 1; i < steps; i += 1) {
-    const weight = i % 2 === 0 ? 2 : 4;
-    sum += weight * evalExpr(source, a + i * h);
-  }
-  return (sum * h) / 3;
-}
-
-export function sample(
-  source: string,
-  a: number,
-  b: number,
-  n = 240,
-): Array<{ x: number; y: number }> {
-  const points: Array<{ x: number; y: number }> = [];
-  for (let i = 0; i <= n; i += 1) {
-    const x = a + ((b - a) * i) / n;
-    const y = evalExpr(source, x);
-    if (Number.isFinite(y)) points.push({ x, y });
-  }
-  return points;
-}
-
 export function splitSeries(
   points: Array<{ x: number; y: number }>,
   at?: (x: number) => number,
