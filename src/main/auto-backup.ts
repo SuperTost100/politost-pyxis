@@ -6,10 +6,8 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { basename, dirname, isAbsolute, join } from "node:path";
@@ -19,6 +17,7 @@ import type {
   AutoBackupFile,
   AutoBackupStatus,
 } from "../shared/bridge";
+import { writeFileAtomic } from "../core/atomic-write";
 import { inside } from "./workspace-move";
 
 const MINUTE = 60 * 1000;
@@ -137,9 +136,7 @@ export function writeAutoBackupState(
   file: string,
   state: AutoBackupState,
 ): void {
-  const temporary = `${file}.tmp`;
-  writeFileSync(temporary, JSON.stringify(state, null, 2));
-  renameSync(temporary, file);
+  writeFileAtomic(file, JSON.stringify(state, null, 2));
 }
 
 /** Whether an automatic backup should run now: on, a day after the last success, and not right after a failure. */

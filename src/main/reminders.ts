@@ -1,4 +1,5 @@
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { writeFileAtomic } from "../core/atomic-write";
 import type { ReminderSettings } from "../shared/bridge";
 import {
   DEFAULT_REMINDER_TIME,
@@ -45,9 +46,7 @@ export function readReminderState(file: string): ReminderState {
 }
 
 export function writeReminderState(file: string, state: ReminderState): void {
-  const temporary = `${file}.tmp`;
-  writeFileSync(temporary, JSON.stringify(state, null, 2));
-  renameSync(temporary, file);
+  writeFileAtomic(file, JSON.stringify(state, null, 2));
 }
 
 const two = (n: number) => String(n).padStart(2, "0");

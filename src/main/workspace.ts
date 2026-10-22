@@ -1,16 +1,8 @@
-import {
-  closeSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { app } from "electron";
-import { recoverInterruptedRestore, syncDirectory } from "../core/share/backup";
+import { writeFileAtomic } from "../core/atomic-write";
+import { recoverInterruptedRestore } from "../core/share/backup";
 
 type ConfigFile = { workspacePath?: unknown };
 
@@ -46,17 +38,7 @@ function savedWorkspacePath(cfgPath: string): string | null {
 
 /** Records the workspace path so that a power cut leaves the old config.json or the new one, never an empty file. */
 export function saveWorkspacePath(path: string): void {
-  const cfgPath = userFile("config.json");
-  const temporary = `${cfgPath}.tmp`;
-  const fd = openSync(temporary, "w");
-  try {
-    writeFileSync(fd, JSON.stringify({ workspacePath: path }, null, 2));
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  renameSync(temporary, cfgPath);
-  syncDirectory(dirname(cfgPath));
+  writeFileAtomic(userFile("config.json"), JSON.stringify({ workspacePath: path }, null, 2));
 }
 
 export function ensureWorkspace(): string {

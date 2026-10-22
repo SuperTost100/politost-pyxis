@@ -23,6 +23,7 @@ import { dirname, join, relative, sep } from "node:path";
 import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import { getLoadablePath } from "sqlite-vec";
+import { syncDirectory } from "../atomic-write";
 import { Inflate, Zip, ZipDeflate } from "fflate";
 import { closeDatabase, openDatabase } from "../db/connection";
 
@@ -844,17 +845,6 @@ function matches(path: string, expected: DirectoryIdentity): boolean {
   if (!existsSync(path)) return false;
   const info = identity(path);
   return info.dev === expected.dev && info.ino === expected.ino;
-}
-
-export function syncDirectory(path: string): void {
-  // Windows does not support opening a directory for fsync. Journal files still sync.
-  if (process.platform === "win32") return;
-  const fd = openSync(path, "r");
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
 }
 
 function journalPath(workspace: string): string {

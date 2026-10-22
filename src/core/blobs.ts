@@ -1,19 +1,15 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   readFileSync,
-  writeFileSync,
   lstatSync,
-  openSync,
-  closeSync,
   statSync,
-  fsyncSync,
-  renameSync,
   rmSync,
 } from "node:fs";
-import { basename, dirname, join, sep } from "node:path";
+import { join, sep } from "node:path";
 import { blobParts } from "../shared/blob-path";
+import { writeFileAtomic } from "./atomic-write";
 
 export type BlobRecord = {
   sha: string;
@@ -38,33 +34,6 @@ function regularFile(path: string): boolean {
   if (!info.isFile() || info.isSymbolicLink())
     throw new Error("blob-unsafe-path");
   return true;
-}
-
-function atomicWrite(path: string, bytes: Uint8Array | string): void {
-  const temporary = join(
-    dirname(path),
-    `.${basename(path)}.${randomUUID()}.tmp`,
-  );
-  const fd = openSync(temporary, "wx", 0o600);
-  try {
-    try {
-      writeFileSync(fd, bytes);
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
-    renameSync(temporary, path);
-    if (process.platform !== "win32") {
-      const directory = openSync(dirname(path), "r");
-      try {
-        fsyncSync(directory);
-      } finally {
-        closeSync(directory);
-      }
-    }
-  } finally {
-    rmSync(temporary, { force: true });
-  }
 }
 
 function validMetadata(path: string): boolean {
@@ -101,8 +70,8 @@ export function putBlob(
     !regularFile(file) ||
     createHash("sha256").update(readFileSync(file)).digest("hex") !== sha
   )
-    atomicWrite(file, bytes);
-  if (!validMetadata(meta)) atomicWrite(meta, JSON.stringify({ mime, ext }));
+    writeFileAtomic(file, bytes);
+  if (!validMetadata(meta)) writeFileAtomic(meta, JSON.stringify({ mime, ext }));
   return sha;
 }
 

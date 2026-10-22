@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFileAtomic } from "../atomic-write";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { sha256 } from "./quality";
@@ -94,8 +95,7 @@ export async function downloadEmbedding(options: {
   options.signal?.throwIfAborted();
   const file = join(options.dir, options.fileName ?? "model_quantized.onnx");
   mkdirSync(join(file, ".."), { recursive: true });
-  writeFileSync(`${file}.part`, bytes);
-  renameSync(`${file}.part`, file);
+  writeFileAtomic(file, bytes);
   return "ready";
 }
 
