@@ -6,11 +6,13 @@ import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
 import { setFallbackListener } from "../engine/generate";
 import { setUsageRecorder, storeUsage } from "../engine/usage";
+import type { z } from "zod";
 import {
   IpcError,
   requests,
   toIpcError,
   type PortMessage,
+  type RequestName,
 } from "../../shared/ipc";
 import { engineHandlers } from "../engine/handlers";
 import { chatHandlers } from "../chat/handlers";
@@ -190,6 +192,253 @@ async function dispatch(
   }
 }
 
+/** The handler groups a request can be routed to, by name. */
+type Handlers = {
+  jobs: HandlerMap;
+  engines: ReturnType<typeof engineHandlers>;
+  sources: ReturnType<typeof sourceHandlers>;
+  chats: ReturnType<typeof chatHandlers>;
+  profile: ReturnType<typeof profileHandlers>;
+  plans: ReturnType<typeof planHandlers>;
+  study: ReturnType<typeof studyHandlers>;
+  maps: ReturnType<typeof mapHandlers>;
+  tools: ReturnType<typeof toolHandlers>;
+};
+
+function boundHandlers(): { [K in keyof Handlers]: Handlers[K] | null } {
+  return { jobs: handlers, engines, sources, chats, profile, plans, study, maps, tools };
+}
+
+/**
+ * Requests that only parse their input and pass it to one handler method: as is, with the request's abort signal
+ * after it (`signal`), or with no argument after checking it (`bare`).
+ */
+type Route = readonly [keyof Handlers, string, ("signal" | "bare")?];
+const routes = {
+  "jobs.list": ["jobs", "list", "bare"],
+  "jobs.startDemo": ["jobs", "startDemo"],
+  "jobs.cancel": ["jobs", "cancel"],
+  "jobs.retry": ["jobs", "retry"],
+  "jobs.resume": ["jobs", "resume"],
+  "jobs.dismiss": ["jobs", "dismiss"],
+  "engines.overview": ["engines", "overview", "bare"],
+  "engines.acknowledge": ["engines", "acknowledge"],
+  "engines.setEffort": ["engines", "setEffort"],
+  "engines.features": ["engines", "features", "bare"],
+  "engines.usage": ["engines", "usage"],
+  "engines.autoConfigure": ["engines", "autoConfigure"],
+  "engines.capability": ["engines", "capability"],
+  "engines.local": ["engines", "local", "bare"],
+  "engines.localPull": ["engines", "localPull", "bare"],
+  "engines.localCancel": ["engines", "localCancel", "bare"],
+  "engines.localCheck": ["engines", "localCheck", "bare"],
+  "engines.localEnable": ["engines", "localEnable"],
+  "study.lessonSection": ["study", "lessonSection", "signal"],
+  "study.lessonAnswer": ["study", "lessonAnswer"],
+  "study.markdown": ["study", "markdown"],
+  "study.anki": ["study", "anki"],
+  "study.ankiPreview": ["study", "ankiPreview"],
+  "study.ankiImport": ["study", "ankiImport"],
+  "study.csv": ["study", "csv"],
+  "study.diagnosticStart": ["study", "diagnosticStart"],
+  "study.quizStart": ["study", "quizStart"],
+  "study.quizDraft": ["study", "quizDraft"],
+  "study.quizRead": ["study", "quizRead"],
+  "study.quizCheck": ["study", "quizCheck"],
+  "study.quizCheckCancel": ["study", "quizCheckCancel"],
+  "study.quizWrong": ["study", "quizWrong"],
+  "study.diagnosticPreview": ["study", "diagnosticPreview"],
+  "study.quizSubmit": ["study", "quizSubmit"],
+  "study.quizGrading": ["study", "quizGrading"],
+  "study.rateExercise": ["study", "rateExercise"],
+  "study.flag": ["study", "flag"],
+  "study.review": ["study", "review"],
+  "study.reviewDiscard": ["study", "reviewDiscard"],
+  "study.reviewSkipDrill": ["study", "reviewSkipDrill"],
+  "study.activeSimulation": ["study", "activeSimulation", "bare"],
+  "study.simulationStart": ["study", "simulationStart"],
+  "study.simulationPrepare": ["study", "simulationPrepare"],
+  "study.pastPapers": ["study", "pastPapers"],
+  "study.pastPaperAdd": ["study", "pastPaperAdd"],
+  "study.pastPaperRemove": ["study", "pastPaperRemove"],
+  "study.pastPracticeStart": ["study", "pastPracticeStart"],
+  "study.simulationBuild": ["study", "simulationBuild"],
+  "study.simulationSubmit": ["study", "simulationSubmit"],
+  "study.simulationRead": ["study", "simulationRead"],
+  "study.simulationDraft": ["study", "simulationDraft"],
+  "study.cardsGenerate": ["study", "cardsGenerate"],
+  "study.cardsBuild": ["study", "cardsBuild"],
+  "study.cardsPlaces": ["study", "cardsPlaces"],
+  "study.cardsPropose": ["study", "cardsPropose", "signal"],
+  "study.cardsSaveProposed": ["study", "cardsSaveProposed"],
+  "study.gapDrillStart": ["study", "gapDrillStart"],
+  "study.gapDrillRead": ["study", "gapDrillRead"],
+  "study.queue": ["study", "queue"],
+  "study.cardSettings": ["study", "cardSettings", "bare"],
+  "study.saveCardSettings": ["study", "saveCardSettings"],
+  "study.save": ["study", "save"],
+  "study.remove": ["study", "remove"],
+  "study.suspend": ["study", "suspend"],
+  "study.browse": ["study", "browse"],
+  "study.mistakes": ["study", "mistakes"],
+  "study.mistakesRedo": ["study", "mistakesRedo"],
+  "study.restore": ["study", "restore"],
+  "study.rate": ["study", "rate"],
+  "study.undoRate": ["study", "undoRate"],
+  "study.active": ["study", "active"],
+  "tools.check": ["tools", "check"],
+  "tools.runtime": ["tools", "runtime", "bare"],
+  "tools.runtimeDownload": ["tools", "runtimeDownload", "bare"],
+  "tools.python": ["tools", "python"],
+  "maps.list": ["maps", "list"],
+  "maps.export": ["maps", "export"],
+  "maps.build": ["maps", "build"],
+  "maps.generate": ["maps", "generate"],
+  "maps.edit": ["maps", "edit", "signal"],
+  "maps.open": ["maps", "open"],
+  "maps.layout": ["maps", "layout"],
+  "maps.move": ["maps", "move"],
+  "maps.patch": ["maps", "patch"],
+  "maps.redo": ["maps", "redo"],
+  "maps.undo": ["maps", "undo"],
+  "plans.build": ["plans", "build"],
+  "plans.intro": ["plans", "intro"],
+  "plans.calendar": ["plans", "calendar"],
+  "subjects.add": ["plans", "addSubject"],
+  "subjects.reorder": ["plans", "reorderSubjects"],
+  "subjects.rename": ["plans", "renameSubject"],
+  "subjects.remove": ["plans", "removeSubject"],
+  "plans.archive": ["plans", "archive"],
+  "plans.delete": ["plans", "delete"],
+  "plans.export": ["plans", "export"],
+  "plans.import": ["plans", "import"],
+  "plans.series": ["plans", "series"],
+  "plans.planner": ["plans", "planner", "bare"],
+  "plans.plannerHours": ["plans", "plannerHours"],
+  "plans.complete": ["plans", "complete"],
+  "plans.attachSources": ["plans", "attachSources"],
+  "plans.removeSource": ["plans", "removeSource"],
+  "plans.item": ["plans", "item"],
+  "plans.openQuiz": ["plans", "openQuiz"],
+  "plans.settings": ["plans", "settings"],
+  "plans.create": ["plans", "create", "signal"],
+  "plans.proposeModules": ["plans", "proposeModules", "signal"],
+  "plans.proposeTree": ["plans", "proposeTree", "signal"],
+  "plans.rebuildStart": ["plans", "rebuildStart"],
+  "plans.rebuildApply": ["plans", "rebuildApply"],
+  "plans.rebuildDiscard": ["plans", "rebuildDiscard"],
+  "plans.education": ["plans", "education"],
+  "plans.setEducation": ["plans", "setEducation"],
+  "profile.save": ["profile", "save"],
+  "chats.list": ["chats", "list", "bare"],
+  "chats.read": ["chats", "read"],
+  "chats.seed": ["chats", "seed"],
+  "chats.leave": ["chats", "leave"],
+  "chats.clearContext": ["chats", "clearContext"],
+  "chats.rate": ["chats", "rate"],
+  "chats.rename": ["chats", "rename"],
+  "chats.delete": ["chats", "remove"],
+  "chats.search": ["chats", "search"],
+  "chats.export": ["chats", "exportChat"],
+  "sources.list": ["sources", "list", "bare"],
+  "sources.import": ["sources", "importFile"],
+  "sources.search": ["sources", "search", "signal"],
+  "sources.chapters": ["sources", "chapters"],
+  "sources.meta": ["sources", "meta"],
+  "sources.ocr": ["sources", "ocr"],
+  "sources.paste": ["sources", "paste"],
+  "sources.linkPreview": ["sources", "linkPreview", "signal"],
+  "sources.link": ["sources", "link"],
+  "sources.importBook": ["sources", "importBook", "signal"],
+  "sources.updateBook": ["sources", "updateBook", "signal"],
+  "sources.scanFolder": ["sources", "scanFolder", "signal"],
+  "sources.preview": ["sources", "preview", "signal"],
+  "sources.rename": ["sources", "rename"],
+  "sources.replace": ["sources", "replace"],
+  "sources.syllabus": ["sources", "syllabus", "signal"],
+  "sources.reextract": ["sources", "reextract"],
+  "sources.refresh": ["sources", "refresh", "signal"],
+  "sources.unlockPdf": ["sources", "unlockPdf"],
+  "sources.remove": ["sources", "remove"],
+  "sources.promote": ["sources", "promote"],
+  "sources.ocrImage": ["sources", "ocrImage", "signal"],
+  "sources.ocrStop": ["sources", "ocrStop"],
+  "sources.ocrDataState": ["sources", "ocrDataState", "bare"],
+  "sources.ocrData": ["sources", "ocrData"],
+  "sources.embedState": ["sources", "embedState", "bare"],
+  "sources.embed": ["sources", "embed"],
+  "sources.passage": ["sources", "passage"],
+  "sources.viewerDocument": ["sources", "viewerDocument"],
+  "sources.chapter": ["sources", "chapter"],
+} as const;
+type RoutedRequest = keyof typeof routes;
+
+/** Requests that need more than a plain route: a stream, file grants, a fallback value or a narrowed type. */
+const explicitRequests = [
+  "engines.models",
+  "engines.test",
+  "engines.setFeature",
+  "engines.remove",
+  "engines.logout",
+  "engines.update",
+  "engines.login",
+  "engines.install",
+  "engines.cancelInstall",
+  "engines.cancelLogin",
+  "engines.sendCode",
+  "study.lesson",
+  "study.reviewSession",
+  "study.simulationOpen",
+  "study.cards",
+  "study.suspended",
+  "study.exercises",
+  "tools.stagePng",
+  "maps.all",
+  "plans.list",
+  "subjects.list",
+  "plans.usage",
+  "plans.freeSpace",
+  "plans.importedFile",
+  "plans.mastery",
+  "plans.masteryBreakdown",
+  "plans.simulations",
+  "plans.recommend",
+  "plans.today",
+  "study.dueEverywhere",
+  "plans.read",
+  "plans.rebuildState",
+  "profile.get",
+  "chats.ask",
+  "chats.regenerate",
+  "sources.books",
+] as const;
+type ExplicitRequest = (typeof explicitRequests)[number];
+
+/** Every request the contract names, for the test that each one is dispatched. */
+export const dispatchedRequests: ReadonlySet<string> = new Set<string>([...Object.keys(routes), ...explicitRequests]);
+
+// Each route names a method of its handler group that takes the request's parsed input (and the signal, if it asks).
+type RouteFits<R extends RoutedRequest> = (typeof routes)[R] extends readonly [infer S extends keyof Handlers, infer M, ...infer Mode]
+  ? M extends keyof Handlers[S]
+    ? Handlers[S][M] extends (...args: infer A) => unknown
+      ? Mode extends ["bare"]
+        ? true
+        : z.output<(typeof requests)[R]["input"]> extends A[0]
+          ? Mode extends ["signal"]
+            ? AbortSignal | undefined extends A[1] ? true : false
+            : true
+          : false
+      : false
+    : false
+  : false;
+type MisroutedRequest = { [R in RoutedRequest]: RouteFits<R> extends true ? never : R }[RoutedRequest];
+type UndispatchedRequest = Exclude<RequestName, RoutedRequest | ExplicitRequest>;
+type DoublyDispatched = RoutedRequest & ExplicitRequest;
+const routesFit: [MisroutedRequest, UndispatchedRequest, DoublyDispatched] extends [never, never, never]
+  ? true
+  : [MisroutedRequest, UndispatchedRequest, DoublyDispatched] = true;
+void routesFit;
+
 async function dispatchValidated(
   name: string,
   input: unknown,
@@ -197,31 +446,27 @@ async function dispatchValidated(
   emit?: (event: unknown) => void,
 ): Promise<unknown> {
   if (!handlers) throw new IpcError("not-ready", "errors.notReady");
-  switch (name) {
-    case "jobs.list":
-      requests["jobs.list"].input.parse(input);
-      return handlers.list();
-    case "jobs.startDemo":
-      return handlers.startDemo(requests["jobs.startDemo"].input.parse(input));
-    case "jobs.cancel":
-      return handlers.cancel(requests["jobs.cancel"].input.parse(input));
-    case "jobs.retry":
-      return handlers.retry(requests["jobs.retry"].input.parse(input));
-    case "jobs.resume":
-      return handlers.resume(requests["jobs.resume"].input.parse(input));
-    case "jobs.dismiss":
-      return handlers.dismiss(requests["jobs.dismiss"].input.parse(input));
-    case "engines.overview":
-      requests["engines.overview"].input.parse(input);
-      return engines?.overview();
+  // Own keys only: a name such as "toString" from the renderer is an unknown request, not a route.
+  const route = Object.hasOwn(routes, name) ? (routes[name as RoutedRequest] as Route) : undefined;
+  if (route) {
+    const [space, method, mode] = route;
+    const schema = requests[name as RoutedRequest].input;
+    // A handler not bound yet answers undefined, as optional chaining on it did. A bare request still checks its input.
+    const target = boundHandlers()[space] as unknown as Record<string, (...args: unknown[]) => unknown> | null;
+    if (mode === "bare") {
+      schema.parse(input);
+      return target?.[method]!();
+    }
+    if (!target) return undefined;
+    const parsed = schema.parse(input);
+    return mode === "signal" ? target[method]!(parsed, signal) : target[method]!(parsed);
+  }
+  const request = name as ExplicitRequest;
+  switch (request) {
     case "engines.models": {
       const parsed = requests["engines.models"].input.parse(input);
       return engines?.models({ provider: parsed.provider as ProviderId });
     }
-    case "engines.acknowledge":
-      return engines?.acknowledge(
-        requests["engines.acknowledge"].input.parse(input),
-      );
     case "engines.test": {
       const parsed = requests["engines.test"].input.parse(input);
       return engines?.test(
@@ -241,19 +486,6 @@ async function dispatchValidated(
         provider: parsed.provider as ProviderId,
       });
     }
-    case "engines.setEffort":
-      return engines?.setEffort(
-        requests["engines.setEffort"].input.parse(input),
-      );
-    case "engines.features":
-      requests["engines.features"].input.parse(input);
-      return engines?.features();
-    case "engines.usage":
-      return engines?.usage(requests["engines.usage"].input.parse(input));
-    case "engines.autoConfigure":
-      return engines?.autoConfigure(
-        requests["engines.autoConfigure"].input.parse(input),
-      );
     case "engines.remove": {
       const parsed = requests["engines.remove"].input.parse(input);
       return engines?.remove({ provider: parsed.provider as ProviderId });
@@ -270,10 +502,6 @@ async function dispatchValidated(
       const parsed = requests["engines.login"].input.parse(input);
       return engines?.login({ provider: parsed.provider as ProviderId });
     }
-    case "engines.capability":
-      return engines?.capability(
-        requests["engines.capability"].input.parse(input),
-      );
     case "engines.install": {
       const parsed = requests["engines.install"].input.parse(input);
       return engines?.install({ provider: parsed.provider });
@@ -286,22 +514,6 @@ async function dispatchValidated(
       const parsed = requests["engines.cancelLogin"].input.parse(input);
       return engines?.cancelLogin({ provider: parsed.provider as ProviderId });
     }
-    case "engines.local":
-      requests["engines.local"].input.parse(input);
-      return engines?.local();
-    case "engines.localPull":
-      requests["engines.localPull"].input.parse(input);
-      return engines?.localPull();
-    case "engines.localCancel":
-      requests["engines.localCancel"].input.parse(input);
-      return engines?.localCancel();
-    case "engines.localCheck":
-      requests["engines.localCheck"].input.parse(input);
-      return engines?.localCheck();
-    case "engines.localEnable":
-      return engines?.localEnable(
-        requests["engines.localEnable"].input.parse(input),
-      );
     case "engines.sendCode": {
       const parsed = requests["engines.sendCode"].input.parse(input);
       return engines?.sendCode({
@@ -315,190 +527,24 @@ async function dispatchValidated(
         onDelta: (text) => emit?.({ type: "text", text }),
         onPassages: (passageIds, citations) => emit?.({ type: "sources", passageIds, citations }),
       });
-    case "study.lessonSection":
-      return study?.lessonSection(
-        requests["study.lessonSection"].input.parse(input),
-        signal,
-      );
-    case "study.lessonAnswer":
-      return study?.lessonAnswer(
-        requests["study.lessonAnswer"].input.parse(input),
-      );
-    case "study.markdown":
-      return study?.markdown(requests["study.markdown"].input.parse(input));
-    case "study.anki":
-      return study?.anki(requests["study.anki"].input.parse(input));
-    case "study.ankiPreview":
-      return study?.ankiPreview(
-        requests["study.ankiPreview"].input.parse(input),
-      );
-    case "study.ankiImport":
-      return study?.ankiImport(
-        requests["study.ankiImport"].input.parse(input),
-      );
-    case "study.csv":
-      return study?.csv(requests["study.csv"].input.parse(input));
-    case "study.diagnosticStart":
-      return study?.diagnosticStart(
-        requests["study.diagnosticStart"].input.parse(input),
-      );
-    case "study.quizStart":
-      return study?.quizStart(requests["study.quizStart"].input.parse(input));
-    case "study.quizDraft":
-      return study?.quizDraft(requests["study.quizDraft"].input.parse(input));
-    case "study.quizRead":
-      return study?.quizRead(requests["study.quizRead"].input.parse(input));
-    case "study.quizCheck":
-      return study?.quizCheck(requests["study.quizCheck"].input.parse(input));
-    case "study.quizCheckCancel":
-      return study?.quizCheckCancel(
-        requests["study.quizCheckCancel"].input.parse(input),
-      );
-    case "study.quizWrong":
-      return study?.quizWrong(requests["study.quizWrong"].input.parse(input));
-    case "study.diagnosticPreview":
-      return study?.diagnosticPreview(
-        requests["study.diagnosticPreview"].input.parse(input),
-      );
-    case "study.quizSubmit":
-      return study?.quizSubmit(requests["study.quizSubmit"].input.parse(input));
-    case "study.quizGrading":
-      return study?.quizGrading(
-        requests["study.quizGrading"].input.parse(input),
-      );
-    case "study.rateExercise":
-      return study?.rateExercise(
-        requests["study.rateExercise"].input.parse(input),
-      );
-    case "study.flag":
-      return study?.flag(requests["study.flag"].input.parse(input));
-    case "study.review":
-      return study?.review(requests["study.review"].input.parse(input));
     case "study.reviewSession":
       return (
         study?.reviewSession(
           requests["study.reviewSession"].input.parse(input),
         ) ?? null
       );
-    case "study.reviewDiscard":
-      return study?.reviewDiscard(
-        requests["study.reviewDiscard"].input.parse(input),
-      );
-    case "study.reviewSkipDrill":
-      return study?.reviewSkipDrill(
-        requests["study.reviewSkipDrill"].input.parse(input),
-      );
-    case "study.activeSimulation":
-      requests["study.activeSimulation"].input.parse(input);
-      return study?.activeSimulation();
     case "study.simulationOpen":
       return (
         study?.simulationOpen(
           requests["study.simulationOpen"].input.parse(input),
         ) ?? null
       );
-    case "study.simulationStart":
-      return study?.simulationStart(
-        requests["study.simulationStart"].input.parse(input),
-      );
-    case "study.simulationPrepare":
-      return study?.simulationPrepare(
-        requests["study.simulationPrepare"].input.parse(input),
-      );
-    case "study.pastPapers":
-      return study?.pastPapers(requests["study.pastPapers"].input.parse(input));
-    case "study.pastPaperAdd":
-      return study?.pastPaperAdd(
-        requests["study.pastPaperAdd"].input.parse(input),
-      );
-    case "study.pastPaperRemove":
-      return study?.pastPaperRemove(
-        requests["study.pastPaperRemove"].input.parse(input),
-      );
-    case "study.pastPracticeStart":
-      return study?.pastPracticeStart(
-        requests["study.pastPracticeStart"].input.parse(input),
-      );
-    case "study.simulationBuild":
-      return study?.simulationBuild(
-        requests["study.simulationBuild"].input.parse(input),
-      );
-    case "study.simulationSubmit":
-      return study?.simulationSubmit(
-        requests["study.simulationSubmit"].input.parse(input),
-      );
-    case "study.simulationRead":
-      return study?.simulationRead(
-        requests["study.simulationRead"].input.parse(input),
-      );
-    case "study.simulationDraft":
-      return study?.simulationDraft(
-        requests["study.simulationDraft"].input.parse(input),
-      );
     case "study.cards":
       return study?.cards(requests["study.cards"].input.parse(input)) ?? [];
-    case "study.cardsGenerate":
-      return study?.cardsGenerate(
-        requests["study.cardsGenerate"].input.parse(input),
-      );
-    case "study.cardsBuild":
-      return study?.cardsBuild(requests["study.cardsBuild"].input.parse(input));
-    case "study.cardsPlaces":
-      return study?.cardsPlaces(
-        requests["study.cardsPlaces"].input.parse(input),
-      );
-    case "study.cardsPropose":
-      return study?.cardsPropose(
-        requests["study.cardsPropose"].input.parse(input),
-        signal,
-      );
-    case "study.cardsSaveProposed":
-      return study?.cardsSaveProposed(
-        requests["study.cardsSaveProposed"].input.parse(input),
-      );
-    case "study.gapDrillStart":
-      return study?.gapDrillStart(
-        requests["study.gapDrillStart"].input.parse(input),
-      );
-    case "study.gapDrillRead":
-      return study?.gapDrillRead(
-        requests["study.gapDrillRead"].input.parse(input),
-      );
-    case "study.queue":
-      return study?.queue(requests["study.queue"].input.parse(input));
-    case "study.cardSettings":
-      requests["study.cardSettings"].input.parse(input);
-      return study?.cardSettings();
-    case "study.saveCardSettings":
-      return study?.saveCardSettings(
-        requests["study.saveCardSettings"].input.parse(input),
-      );
-    case "study.save":
-      return study?.save(requests["study.save"].input.parse(input));
-    case "study.remove":
-      return study?.remove(requests["study.remove"].input.parse(input));
-    case "study.suspend":
-      return study?.suspend(requests["study.suspend"].input.parse(input));
-    case "study.browse":
-      return study?.browse(requests["study.browse"].input.parse(input));
-    case "study.mistakes":
-      return study?.mistakes(requests["study.mistakes"].input.parse(input));
-    case "study.mistakesRedo":
-      return study?.mistakesRedo(
-        requests["study.mistakesRedo"].input.parse(input),
-      );
-    case "study.restore":
-      return study?.restore(requests["study.restore"].input.parse(input));
     case "study.suspended":
       return (
         study?.suspended(requests["study.suspended"].input.parse(input)) ?? []
       );
-    case "study.rate":
-      return study?.rate(requests["study.rate"].input.parse(input));
-    case "study.undoRate":
-      return study?.undoRate(requests["study.undoRate"].input.parse(input));
-    case "study.active":
-      return study?.active(requests["study.active"].input.parse(input));
     case "study.exercises":
       return (
         study?.exercises(requests["study.exercises"].input.parse(input)) ?? {
@@ -506,16 +552,6 @@ async function dispatchValidated(
           job: null,
         }
       );
-    case "tools.check":
-      return tools?.check(requests["tools.check"].input.parse(input));
-    case "tools.runtime":
-      requests["tools.runtime"].input.parse(input);
-      return tools?.runtime();
-    case "tools.runtimeDownload":
-      requests["tools.runtimeDownload"].input.parse(input);
-      return tools?.runtimeDownload();
-    case "tools.python":
-      return tools?.python(requests["tools.python"].input.parse(input));
     case "tools.stagePng": {
       const staged = tools?.stagePng(
         requests["tools.stagePng"].input.parse(input),
@@ -523,53 +559,11 @@ async function dispatchValidated(
       if (staged) fileGrants.add(pickedFileGrant(staged.path));
       return staged;
     }
-    case "maps.list":
-      return maps?.list(requests["maps.list"].input.parse(input));
     case "maps.all":
       return maps?.all(requests["maps.all"].input.parse(input)) ?? [];
-    case "maps.export":
-      return maps?.export(requests["maps.export"].input.parse(input));
-    case "maps.build":
-      return maps?.build(requests["maps.build"].input.parse(input));
-    case "maps.generate":
-      return maps?.generate(requests["maps.generate"].input.parse(input));
-    case "maps.edit":
-      return maps?.edit(requests["maps.edit"].input.parse(input), signal);
-    case "maps.open":
-      return maps?.open(requests["maps.open"].input.parse(input));
-    case "maps.layout":
-      return maps?.layout(requests["maps.layout"].input.parse(input));
-    case "maps.move":
-      return maps?.move(requests["maps.move"].input.parse(input));
-    case "maps.patch":
-      return maps?.patch(requests["maps.patch"].input.parse(input));
-    case "maps.redo":
-      return maps?.redo(requests["maps.redo"].input.parse(input));
-    case "maps.undo":
-      return maps?.undo(requests["maps.undo"].input.parse(input));
-    case "plans.build":
-      return plans?.build(requests["plans.build"].input.parse(input));
-    case "plans.intro":
-      return plans?.intro(requests["plans.intro"].input.parse(input));
-    case "plans.calendar":
-      return plans?.calendar(requests["plans.calendar"].input.parse(input));
     case "plans.list":
       requests["plans.list"].input.parse(input);
       return plans?.list() ?? [];
-    case "subjects.add":
-      return plans?.addSubject(requests["subjects.add"].input.parse(input));
-    case "subjects.reorder":
-      return plans?.reorderSubjects(
-        requests["subjects.reorder"].input.parse(input),
-      );
-    case "subjects.rename":
-      return plans?.renameSubject(
-        requests["subjects.rename"].input.parse(input),
-      );
-    case "subjects.remove":
-      return plans?.removeSubject(
-        requests["subjects.remove"].input.parse(input),
-      );
     case "subjects.list":
       requests["subjects.list"].input.parse(input);
       return plans?.subjects() ?? [];
@@ -579,14 +573,6 @@ async function dispatchValidated(
     case "plans.freeSpace":
       requests["plans.freeSpace"].input.parse(input);
       return plans?.freeSpace() ?? { bytes: 0 };
-    case "plans.archive":
-      return plans?.archive(requests["plans.archive"].input.parse(input));
-    case "plans.delete":
-      return plans?.delete(requests["plans.delete"].input.parse(input));
-    case "plans.export":
-      return plans?.export(requests["plans.export"].input.parse(input));
-    case "plans.import":
-      return plans?.import(requests["plans.import"].input.parse(input));
     case "plans.importedFile":
       return plans?.importedFile(requests["plans.importedFile"].input.parse(input)) ?? null;
     case "plans.mastery":
@@ -597,8 +583,6 @@ async function dispatchValidated(
           requests["plans.masteryBreakdown"].input.parse(input),
         ) ?? []
       );
-    case "plans.series":
-      return plans?.series(requests["plans.series"].input.parse(input));
     case "plans.simulations":
       return (
         plans?.simulations(requests["plans.simulations"].input.parse(input)) ??
@@ -611,95 +595,19 @@ async function dispatchValidated(
     case "plans.today":
       requests["plans.today"].input.parse(input);
       return plans?.today() ?? { planned: false, behind: [], cards: null, items: [] };
-    case "plans.planner":
-      requests["plans.planner"].input.parse(input);
-      return plans?.planner();
-    case "plans.plannerHours":
-      return plans?.plannerHours(requests["plans.plannerHours"].input.parse(input));
     case "study.dueEverywhere":
       requests["study.dueEverywhere"].input.parse(input);
       return plans?.dueEverywhere() ?? [];
-    case "plans.complete":
-      return plans?.complete(requests["plans.complete"].input.parse(input));
-    case "plans.attachSources":
-      return plans?.attachSources(
-        requests["plans.attachSources"].input.parse(input),
-      );
-    case "plans.removeSource":
-      return plans?.removeSource(
-        requests["plans.removeSource"].input.parse(input),
-      );
-    case "plans.item":
-      return plans?.item(requests["plans.item"].input.parse(input));
-    case "plans.openQuiz":
-      return plans?.openQuiz(requests["plans.openQuiz"].input.parse(input));
-    case "plans.settings":
-      return plans?.settings(requests["plans.settings"].input.parse(input));
     case "plans.read":
       return plans?.read(requests["plans.read"].input.parse(input)) ?? null;
-    case "plans.create":
-      return plans?.create(requests["plans.create"].input.parse(input), signal);
-    case "plans.proposeModules":
-      return plans?.proposeModules(
-        requests["plans.proposeModules"].input.parse(input),
-        signal,
-      );
-    case "plans.proposeTree":
-      return plans?.proposeTree(
-        requests["plans.proposeTree"].input.parse(input),
-        signal,
-      );
     case "plans.rebuildState":
       return (
         plans?.rebuildState(requests["plans.rebuildState"].input.parse(input)) ??
         null
       );
-    case "plans.rebuildStart":
-      return plans?.rebuildStart(
-        requests["plans.rebuildStart"].input.parse(input),
-      );
-    case "plans.rebuildApply":
-      return plans?.rebuildApply(
-        requests["plans.rebuildApply"].input.parse(input),
-      );
-    case "plans.rebuildDiscard":
-      return plans?.rebuildDiscard(
-        requests["plans.rebuildDiscard"].input.parse(input),
-      );
-    case "plans.education":
-      return plans?.education(requests["plans.education"].input.parse(input));
-    case "plans.setEducation":
-      return plans?.setEducation(
-        requests["plans.setEducation"].input.parse(input),
-      );
     case "profile.get":
       requests["profile.get"].input.parse(input);
       return profile?.get() ?? null;
-    case "profile.save":
-      return profile?.save(requests["profile.save"].input.parse(input));
-    case "chats.list":
-      requests["chats.list"].input.parse(input);
-      return chats?.list();
-    case "chats.read":
-      return chats?.read(requests["chats.read"].input.parse(input));
-    case "chats.seed":
-      return chats?.seed(requests["chats.seed"].input.parse(input));
-    case "chats.leave":
-      return chats?.leave(requests["chats.leave"].input.parse(input));
-    case "chats.clearContext":
-      return chats?.clearContext(
-        requests["chats.clearContext"].input.parse(input),
-      );
-    case "chats.rate":
-      return chats?.rate(requests["chats.rate"].input.parse(input));
-    case "chats.rename":
-      return chats?.rename(requests["chats.rename"].input.parse(input));
-    case "chats.delete":
-      return chats?.remove(requests["chats.delete"].input.parse(input));
-    case "chats.search":
-      return chats?.search(requests["chats.search"].input.parse(input));
-    case "chats.export":
-      return chats?.exportChat(requests["chats.export"].input.parse(input));
     case "chats.ask":
       return chats?.ask({
         ...requests["chats.ask"].input.parse(input),
@@ -715,97 +623,14 @@ async function dispatchValidated(
         onDelta: (text) => emit?.({ type: "text", text }),
         onPassages: (passages) => emit?.({ type: "passages", passages }),
       });
-    case "sources.list":
-      requests["sources.list"].input.parse(input);
-      return sources?.list();
-    case "sources.import":
-      return sources?.importFile(requests["sources.import"].input.parse(input));
-    case "sources.search":
-      return sources?.search(
-        requests["sources.search"].input.parse(input),
-        signal,
-      );
-    case "sources.chapters":
-      return sources?.chapters(requests["sources.chapters"].input.parse(input));
-    case "sources.meta":
-      return sources?.meta(requests["sources.meta"].input.parse(input));
-    case "sources.ocr":
-      return sources?.ocr(requests["sources.ocr"].input.parse(input));
-    case "sources.paste":
-      return sources?.paste(requests["sources.paste"].input.parse(input));
-    case "sources.linkPreview":
-      return sources?.linkPreview(
-        requests["sources.linkPreview"].input.parse(input),
-        signal,
-      );
-    case "sources.link":
-      return sources?.link(requests["sources.link"].input.parse(input));
     case "sources.books":
       requests["sources.books"].input.parse(input);
       return sources?.books(signal);
-    case "sources.importBook":
-      return sources?.importBook(
-        requests["sources.importBook"].input.parse(input),
-        signal,
-      );
-    case "sources.updateBook":
-      return sources?.updateBook(
-        requests["sources.updateBook"].input.parse(input),
-        signal,
-      );
-    case "sources.scanFolder":
-      return sources?.scanFolder(
-        requests["sources.scanFolder"].input.parse(input),
-        signal,
-      );
-    case "sources.preview":
-      return sources?.preview(
-        requests["sources.preview"].input.parse(input),
-        signal,
-      );
-    case "sources.rename":
-      return sources?.rename(requests["sources.rename"].input.parse(input));
-    case "sources.replace":
-      return sources?.replace(requests["sources.replace"].input.parse(input));
-    case "sources.syllabus":
-      return sources?.syllabus(requests["sources.syllabus"].input.parse(input), signal);
-    case "sources.reextract":
-      return sources?.reextract(requests["sources.reextract"].input.parse(input));
-    case "sources.refresh":
-      return sources?.refresh(requests["sources.refresh"].input.parse(input), signal);
-    case "sources.unlockPdf":
-      return sources?.unlockPdf(requests["sources.unlockPdf"].input.parse(input));
-    case "sources.remove":
-      return sources?.remove(requests["sources.remove"].input.parse(input));
-    case "sources.promote":
-      return sources?.promote(requests["sources.promote"].input.parse(input));
-    case "sources.ocrImage":
-      return sources?.ocrImage(
-        requests["sources.ocrImage"].input.parse(input),
-        signal,
-      );
-    case "sources.ocrStop":
-      return sources?.ocrStop(requests["sources.ocrStop"].input.parse(input));
-    case "sources.ocrDataState":
-      requests["sources.ocrDataState"].input.parse(input);
-      return sources?.ocrDataState();
-    case "sources.ocrData":
-      return sources?.ocrData(requests["sources.ocrData"].input.parse(input));
-    case "sources.embedState":
-      requests["sources.embedState"].input.parse(input);
-      return sources?.embedState();
-    case "sources.embed":
-      return sources?.embed(requests["sources.embed"].input.parse(input));
-    case "sources.passage":
-      return sources?.passage(requests["sources.passage"].input.parse(input));
-    case "sources.viewerDocument":
-      return sources?.viewerDocument(
-        requests["sources.viewerDocument"].input.parse(input),
-      );
-    case "sources.chapter":
-      return sources?.chapter(requests["sources.chapter"].input.parse(input));
-    default:
+    default: {
+      const unhandled: never = request;
+      void unhandled;
       throw new IpcError("unknown-request", "errors.unknownRequest");
+    }
   }
 }
 
