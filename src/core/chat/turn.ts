@@ -835,7 +835,7 @@ async function answer(
       profile?.followups !== false,
       python != null,
     ),
-    profileContext(db, planId),
+    profileContext(db, planId, profile),
     where.planLine,
     subjectLine,
   ]
@@ -1268,12 +1268,37 @@ export function readChat(
     error: string | null;
   }>;
   const chips = readProfile(db)?.followups !== false;
-  const links = db.prepare(
-    `SELECT mp.label, mp.passage_id, p.source_id, p.section_path, p.locator_json
-     FROM message_passages mp
-     JOIN passages p ON p.id = mp.passage_id
-     WHERE mp.message_id = ?`,
-  );
+  // Every message's citations in one read, in the primary key's order, which one read per message also had.
+  const links = new Map<string, ChatCitation[]>();
+  for (const link of db
+    .prepare(
+      `SELECT mp.message_id, mp.label, mp.passage_id, p.source_id, p.section_path, p.locator_json
+       FROM message_passages mp
+       JOIN passages p ON p.id = mp.passage_id
+       WHERE mp.message_id IN (SELECT id FROM messages WHERE chat_id = ?)
+       ORDER BY mp.message_id, mp.passage_id`,
+    )
+    .all(chatId) as Array<{
+    message_id: string;
+    label: string;
+    passage_id: string;
+    source_id: string | null;
+    section_path: string | null;
+    locator_json: string | null;
+  }>) {
+    const list = links.get(link.message_id) ?? [];
+    list.push({
+      label: link.section_path || link.label,
+      index: Number(link.label.replace("P", "")) || 0,
+      passageId: link.passage_id,
+      sourceId: link.source_id ?? "",
+      sectionPath: link.section_path,
+      locator: link.locator_json
+        ? (JSON.parse(link.locator_json) as PassageHit["locator"])
+        : {},
+    });
+    links.set(link.message_id, list);
+  }
   return rows.map((row) => {
     const metadata =
       row.role === "assistant"
@@ -1283,24 +1308,7 @@ export function readChat(
       row.role === "assistant"
         ? splitFollowups(metadata.body)
         : { body: metadata.body, followups: [] };
-    const citations = (
-      links.all(row.id) as Array<{
-        label: string;
-        passage_id: string;
-        source_id: string | null;
-        section_path: string | null;
-        locator_json: string | null;
-      }>
-    ).map((link) => ({
-      label: link.section_path || link.label,
-      index: Number(link.label.replace("P", "")) || 0,
-      passageId: link.passage_id,
-      sourceId: link.source_id ?? "",
-      sectionPath: link.section_path,
-      locator: link.locator_json
-        ? (JSON.parse(link.locator_json) as PassageHit["locator"])
-        : {},
-    }));
+    const citations = links.get(row.id) ?? [];
     return {
       id: row.id,
       role: row.role,

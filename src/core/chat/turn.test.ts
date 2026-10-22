@@ -301,6 +301,8 @@ describe("askTurn", () => {
     expect(result.message?.citations).toHaveLength(1);
     expect(result.message?.body).toContain("[P1]");
     const stored = readChat(db, result.chatId);
+    // Citations are read for the whole chat at once and each lands on its own message.
+    expect(stored.map((message) => message.citations.length)).toEqual([0, 1]);
     expect(stored.at(-1)?.citations[0]?.locator).toEqual({
       chapter: 1,
       paragraph: "p1",

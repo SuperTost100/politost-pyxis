@@ -151,6 +151,17 @@ describe("searchChats limits", () => {
     expect(search(db, "   ")).toEqual({ hits: [], capped: false });
   });
 
+  it("folds a message again once it grows, as a continued reply does", () => {
+    const { db, chat, message } = setup();
+    chat("c", null, 1);
+    message("c", "assistant", "La entropia cresce.");
+    expect(searchChats(db, "termodinamica")).toEqual([]);
+    db.prepare(`UPDATE messages SET body = body || ' Secondo principio della termodinamica.'`).run();
+    expect(searchChats(db, "termodinamica")).toEqual([
+      expect.objectContaining({ id: "c", snippet: expect.objectContaining({ text: expect.stringContaining("termodinamica") }) }),
+    ]);
+  });
+
   it("caps within the subject asked for, so older chats in it are not cut by newer ones elsewhere", () => {
     const { db, chat, message } = setup();
     for (let i = 0; i < MAX_HITS + 5; i += 1) {
