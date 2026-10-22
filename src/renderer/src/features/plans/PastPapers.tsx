@@ -10,6 +10,7 @@ import { invoke } from "../../lib/ipc";
 import { jobErrorKey } from "../jobs/jobErrors";
 import { LibraryPanel } from "../home/LibraryPanel";
 import "./PastPapers.css";
+import { pastPapersQuery } from "../../lib/queries";
 
 type Papers = RequestOutput<"study.pastPapers">;
 type Paper = Papers["papers"][number];
@@ -39,8 +40,7 @@ export function PastPapers({ planId }: { planId: string }) {
   const [several, setSeveral] = useState<string[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const papers = useQuery({
-    queryKey: ["past-papers", planId],
-    queryFn: () => invoke("study.pastPapers", { planId }),
+    ...pastPapersQuery(planId),
     refetchInterval: (query) =>
       query.state.data?.papers.some((paper) => paper.status === "reading") ? 1000 : false,
   });

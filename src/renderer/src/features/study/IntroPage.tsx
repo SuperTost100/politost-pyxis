@@ -8,6 +8,7 @@ import { invoke } from "../../lib/ipc";
 import { Notice } from "../../components/Notice";
 import { SmartText } from "../../components/SmartText";
 import { ReaderEnd, ReaderLayout, ReaderProgress, useOpenNext } from "./Reader";
+import { usePlan } from "../../lib/queries";
 
 type Intro = RequestOutput<"plans.intro">;
 
@@ -23,11 +24,7 @@ export function IntroPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.intro", { planId }),
   });
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId }),
-  });
+  const plan = usePlan(planId);
   const done = plan.data?.steps.some((step) => step.activity === "intro");
   const refreshPlan = () =>
     Promise.all(

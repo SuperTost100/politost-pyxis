@@ -17,6 +17,7 @@ import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { ActivityChoice, ActivityIntro } from "./ActivityIntro";
 import "./SimulationPage.css";
+import { pastPapersQuery, usePlan } from "../../lib/queries";
 
 /** How long typing pauses before the answers are saved. */
 const DRAFT_DELAY_MS = 500;
@@ -53,11 +54,7 @@ export function SimulationPage() {
         .catch(() => setNotice(t("simulation.saveFailed")));
     return drafts.current;
   }
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    queryFn: () => invoke("plans.read", { planId }),
-    enabled: Boolean(planId),
-  });
+  const plan = usePlan(planId);
   const open = useQuery({
     queryKey: ["simulation", planId, started],
     enabled: Boolean(planId),
@@ -92,9 +89,8 @@ export function SimulationPage() {
   });
   const building = build.data;
   const papers = useQuery({
-    queryKey: ["past-papers", planId],
+    ...pastPapersQuery(planId),
     enabled: Boolean(planId) && !started,
-    queryFn: () => invoke("study.pastPapers", { planId }),
   });
   // The past papers' structure, when the plan has any; the setup offers to copy it.
   const style = papers.data?.style ?? null;

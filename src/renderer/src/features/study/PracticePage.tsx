@@ -12,6 +12,7 @@ import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import "./PracticePage.css";
+import { usePlan } from "../../lib/queries";
 
 type Exercise = Awaited<ReturnType<typeof invoke<"study.exercises">>>["exercises"][number];
 
@@ -182,11 +183,7 @@ export function PracticePage() {
   // Opened from a finished step on the path: looking again records nothing, so there is no "Mark as done".
   const [searchParams] = useSearchParams();
   const reviewing = searchParams.get("review") === "1";
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
-  });
+  const plan = usePlan(planId);
   const exercises = useQuery({
     queryKey: ["exercises", planId, topicId],
     enabled: Boolean(topicId),

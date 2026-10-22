@@ -46,6 +46,7 @@ import { activePlans, starterPrompts, type Starter } from "./starters";
 import { formatTokens } from "../../lib/tokens";
 import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
+import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources } from "../../lib/queries";
 
 function errorKey(err: unknown): string {
   return err && typeof err === "object" && "messageKey" in err
@@ -241,10 +242,7 @@ export function AskPage() {
   const [draft, setDraft] = useState(
     () => sessionStorage.getItem(draftKey(chatId)) ?? "",
   );
-  const profile = useQuery({
-    queryKey: ["profile"],
-    queryFn: () => invoke("profile.get", {}),
-  });
+  const profile = useProfile();
   const defaultMode = profile.data?.tutorMode ?? "solver";
   const [mode, setMode] = useState<"solver" | "socratic">(defaultMode);
   const [picked, setPicked] = useState<string[]>([]);
@@ -314,14 +312,8 @@ export function AskPage() {
   // Saved photos the last answer did not see, so a shorter context is never silent.
   const [skipped, setSkipped] = useState<Skipped>([]);
 
-  const sources = useQuery({
-    queryKey: ["sources"],
-    queryFn: () => invoke("sources.list", {}),
-  });
-  const plans = useQuery({
-    queryKey: ["plans"],
-    queryFn: () => invoke("plans.list", {}),
-  });
+  const sources = useSources();
+  const plans = usePlans();
 
   const thread = useQuery({
     queryKey: ["chat", chatId],
@@ -386,19 +378,12 @@ export function AskPage() {
   /** Sources of every plan filed under a subject: choosing the subject uses them. */
   async function subjectSourceIds(name: string): Promise<string[]> {
     if (!name) return [];
-    const list = await client.ensureQueryData({
-      queryKey: ["plans"],
-      queryFn: () => invoke("plans.list", {}),
-    });
+    const list = await client.ensureQueryData(plansQuery);
     const found = await Promise.all(
       list
         .filter((plan) => plan.subject === name)
         .map((plan) =>
-          client.fetchQuery({
-            queryKey: ["plan", plan.id],
-            queryFn: () => invoke("plans.read", { planId: plan.id }),
-            staleTime: 15_000,
-          }),
+          client.fetchQuery({ ...planQuery(plan.id), staleTime: 15_000 }),
         ),
     );
     return found.flatMap((plan) => plan?.sources.map((source) => source.id) ?? []);
@@ -422,11 +407,7 @@ export function AskPage() {
   }
 
   async function addPlan(id: string) {
-    const plan = await client.fetchQuery({
-      queryKey: ["plan", id],
-      queryFn: () => invoke("plans.read", { planId: id }),
-      staleTime: 15_000,
-    });
+    const plan = await client.fetchQuery({ ...planQuery(id), staleTime: 15_000 });
     // Set here too, so a message sent right after (a starter prompt) carries the plan's sources.
     pickedNow.current = addIds(
       pickedNow.current,
@@ -824,8 +805,7 @@ export function AskPage() {
   const starterPlans = activePlans(plans.data ?? []);
   const starterReads = useQueries({
     queries: starterPlans.map((plan) => ({
-      queryKey: ["plan", plan.id],
-      queryFn: () => invoke("plans.read", { planId: plan.id }),
+      ...planQuery(plan.id),
       enabled: !conversation,
     })),
   });
@@ -856,10 +836,7 @@ export function AskPage() {
     });
   }
 
-  const chats = useQuery({
-    queryKey: ["chats"],
-    queryFn: () => invoke("chats.list", {}),
-  });
+  const chats = useChats();
   const title = chatId
     ? chats.data?.find((chat) => chat.id === chatId)?.title
     : undefined;

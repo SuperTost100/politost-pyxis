@@ -51,6 +51,7 @@ import { MistakesNotebook } from "../study/MistakesNotebook";
 import { SourceRow } from "../../components/SourceRow";
 import { PastPapers } from "./PastPapers";
 import "./PlanPage.css";
+import { pastPapersQuery, sourcesQuery, usePlan, useRecommend } from "../../lib/queries";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
 
@@ -83,26 +84,14 @@ export function PlanPage() {
   const { planId = "", view } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: !!planId,
-    queryFn: () => invoke("plans.read", { planId }),
-  });
-  const recommended = useQuery({
-    queryKey: ["recommend", planId],
-    enabled: !!planId,
-    queryFn: () => invoke("plans.recommend", { planId }),
-  });
+  const plan = usePlan(planId);
+  const recommended = useRecommend(planId);
   const simulations = useQuery({
     queryKey: ["simulations", planId],
     enabled: !!planId,
     queryFn: () => invoke("plans.simulations", { planId }),
   });
-  const pastPapers = useQuery({
-    queryKey: ["past-papers", planId],
-    enabled: !!planId,
-    queryFn: () => invoke("study.pastPapers", { planId }),
-  });
+  const pastPapers = useQuery({ ...pastPapersQuery(planId), enabled: !!planId });
   const series = useQuery({
     queryKey: ["series", planId],
     enabled: !!planId,
@@ -115,10 +104,9 @@ export function PlanPage() {
     useState<RequestOutput<"plans.item"> | null>(null);
   // The Sources tab reads the library too, for the file sizes its rows show.
   const library = useQuery({
-    queryKey: ["sources"],
+    ...sourcesQuery,
     enabled: pickerOpen || view === "sources",
     refetchInterval: pickerOpen ? 1000 : false,
-    queryFn: () => invoke("sources.list", {}),
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rebuildOpen, setRebuildOpen] = useState(false);

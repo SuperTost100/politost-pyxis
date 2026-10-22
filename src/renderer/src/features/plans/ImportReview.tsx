@@ -16,6 +16,7 @@ import {
 } from "./importPreview";
 import "./ImportReview.css";
 import { formatBytes } from "@shared/format-bytes";
+import { useSources } from "../../lib/queries";
 
 const COUNTS = [
   "topics",
@@ -37,10 +38,7 @@ export function ImportReview({
   onCancel: () => void;
 }) {
   const { t, i18n } = useTranslation();
-  const library = useQuery({
-    queryKey: ["sources"],
-    queryFn: () => invoke("sources.list", {}),
-  });
+  const library = useSources();
   const preview = useMemo(
     () => previewPlan(file, library.data ?? []),
     [file, library.data],

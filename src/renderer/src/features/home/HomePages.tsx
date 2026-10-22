@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Button, Modal, Segmented, Select } from "antd";
 import { useTranslation } from "react-i18next";
@@ -20,6 +20,7 @@ import { parsePlanText } from "../plans/importPreview";
 import { examDaysLabel } from "../plans/examDays";
 import { OggiBlock } from "./OggiBlock";
 import "./HomePages.css";
+import { usePlans } from "../../lib/queries";
 
 // Cards and mistakes render Markdown and math, which load with their tab rather than with the window.
 const CardBrowser = lazy(() =>
@@ -42,10 +43,7 @@ export function ExamsHome() {
   const navigate = useNavigate();
   const location = useLocation();
   const client = useQueryClient();
-  const plans = useQuery({
-    queryKey: ["plans"],
-    queryFn: () => invoke("plans.list", {}),
-  });
+  const plans = usePlans();
   const [query, setQuery] = useState("");
   const [picked, setSubject] = useState("");
   const [shownStatus, setStatus] = useState<"active" | "archived">("active");

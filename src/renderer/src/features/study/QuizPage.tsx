@@ -34,6 +34,7 @@ import {
   type QuizAnswer,
 } from "./quizText";
 import "./QuizPage.css";
+import { pastPapersQuery, usePlan, useSources } from "../../lib/queries";
 
 const KINDS = ["mcq", "completion", "matching", "tf", "open"] as const;
 type Kind = (typeof KINDS)[number];
@@ -136,11 +137,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const [page, setPage] = useState<number | null>(1);
   const [timerOn, setTimerOn] = useState(false);
   const [timerMinutes, setTimerMinutes] = useState<number | null>(20);
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
-  });
+  const plan = usePlan(planId);
   const preview = useQuery({
     queryKey: ["diagnostic-preview", planId],
     enabled: diagnostic && !savedAttempt && Boolean(planId),
@@ -148,15 +145,10 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
       invoke("study.diagnosticPreview", { planId: planId ?? "" }),
   });
   const papers = useQuery({
-    queryKey: ["past-papers", planId],
+    ...pastPapersQuery(planId ?? ""),
     enabled: past && !savedAttempt && Boolean(planId),
-    queryFn: () => invoke("study.pastPapers", { planId: planId ?? "" }),
   });
-  const library = useQuery({
-    queryKey: ["sources"],
-    queryFn: () => invoke("sources.list", {}),
-    enabled: scope === "page",
-  });
+  const library = useSources(scope === "page");
   const pageReady = scope !== "page" || (Boolean(pageSource) && Boolean(page));
   const timerReady = !timerOn || Boolean(timerMinutes);
   const [index, setIndex] = useState(0);

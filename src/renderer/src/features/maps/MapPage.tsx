@@ -51,6 +51,7 @@ import {
 } from "./mapLayout";
 import { MapExport } from "./MapExport";
 import "./MapPage.css";
+import { usePlan } from "../../lib/queries";
 
 type FlowNode = Node<
   {
@@ -215,10 +216,7 @@ export function MapPage() {
     setNotice("");
     setInstruction("");
   }, [planId, topicId, openMap]);
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    queryFn: () => invoke("plans.read", { planId }),
-  });
+  const plan = usePlan(planId);
   const topic = plan.data?.topics.find((item) => item.id === topicId);
   const mapKey = ["map", planId, topicId, activeId];
   const map = useQuery({

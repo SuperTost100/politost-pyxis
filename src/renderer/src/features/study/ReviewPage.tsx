@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
+import { usePlan, useRecommend } from "../../lib/queries";
 
 const COUNTS = [5, 10, 20];
 
@@ -43,16 +44,8 @@ export function ReviewPage() {
   const client = useQueryClient();
   const [count, setCount] = useState(20);
   const saved = useReviewSession(planId);
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId }),
-  });
-  const guide = useQuery({
-    queryKey: ["recommend", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.recommend", { planId }),
-  });
+  const plan = usePlan(planId);
+  const guide = useRecommend(planId);
   const start = useMutation({
     mutationFn: () => invoke("study.review", { planId, count }),
     onSuccess: (session) => {

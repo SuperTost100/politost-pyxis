@@ -29,14 +29,14 @@ import {
 } from "./wizardSeed";
 import { ExamSessionsField } from "./ExamSessionsField";
 import { emptyDraft, sessionsFromDrafts, type SessionDraft } from "./examSessions";
+import { sourcesQuery, usePlan, useSubjects } from "../../lib/queries";
 
 export function WizardFrame() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
   const sources = useQuery({
-    queryKey: ["sources"],
-    queryFn: () => invoke("sources.list", {}),
+    ...sourcesQuery,
     // A source just imported is still being read. Its status follows until it settles.
     refetchInterval: (query) =>
       query.state.data?.some((source) =>
@@ -47,10 +47,7 @@ export function WizardFrame() {
         ? 1000
         : false,
   });
-  const subjects = useQuery({
-    queryKey: ["subjects"],
-    queryFn: () => invoke("subjects.list", {}),
-  });
+  const subjects = useSubjects();
   // Back from the guided flow returns here with the answers already given.
   const location = useLocation();
   const back =
@@ -104,11 +101,7 @@ export function WizardFrame() {
         ? false
         : 500,
   });
-  const buildingPlan = useQuery({
-    queryKey: ["plan", buildPlanId],
-    queryFn: () => invoke("plans.read", { planId: buildPlanId! }),
-    enabled: Boolean(buildPlanId),
-  });
+  const buildingPlan = usePlan(buildPlanId);
   const busy =
     starting ||
     Boolean(

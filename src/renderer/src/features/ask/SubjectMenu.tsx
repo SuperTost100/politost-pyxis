@@ -1,13 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
 import { Input, Popover } from "antd";
 import { Check, ChevronDown, GraduationCap, Settings2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke } from "../../lib/ipc";
 import { searchMatcher } from "../../lib/search";
 import { focusMenu, menuKeys } from "./menuKeys";
 import { SubjectManagerModal } from "./SubjectPicker";
 import "./AskMenus.css";
+import { useSubjects } from "../../lib/queries";
 
 /** The one subject control: a chip in the composer that opens the subjects, "no subject" and the manager. */
 export function SubjectMenu({
@@ -20,10 +19,7 @@ export function SubjectMenu({
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
-  const subjects = useQuery({
-    queryKey: ["subjects"],
-    queryFn: () => invoke("subjects.list", {}),
-  });
+  const subjects = useSubjects();
   const [open, setOpen] = useState(false);
   const [managing, setManaging] = useState(false);
   const [query, setQuery] = useState("");

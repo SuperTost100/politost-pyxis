@@ -1,13 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
 import { App } from "antd";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { MAX_OPENED_PLAN_BYTES } from "@shared/bridge";
 import { menuCommandAllowed } from "./menu-guard";
 import { readMenuContext } from "./menu-state";
-import { invoke } from "../lib/ipc";
 import { router } from "./router";
 import { offerPlanText, onPlanTextOffered, planTextWaiting } from "../features/plans/openedPlan";
+import { useProfile } from "../lib/queries";
 
 const PLAN_NAME = /\.pyxis(\.json)?$/i;
 
@@ -20,7 +19,7 @@ export function OpenedPlans() {
   const { t } = useTranslation();
   const { message } = App.useApp();
   // Until the profile is known the shell may still send a first-time student to onboarding, which would drop the review.
-  const profile = useQuery({ queryKey: ["profile"], queryFn: () => invoke("profile.get", {}) });
+  const profile = useProfile();
   const ready = profile.isSuccess && profile.data != null;
 
   useEffect(() => {

@@ -41,6 +41,7 @@ import {
   SOURCE_EXTENSIONS,
 } from "@shared/source-types";
 import { i18n } from "../../locales/i18n";
+import { useSources } from "../../lib/queries";
 
 const messageKeyOf = (err: unknown): string =>
   err && typeof err === "object" && "messageKey" in err
@@ -94,10 +95,7 @@ export function LibraryPanel({
   const { t } = useTranslation();
   const client = useQueryClient();
   const [params] = useSearchParams();
-  const list = useQuery({
-    queryKey: ["sources"],
-    queryFn: () => invoke("sources.list", {}),
-  });
+  const list = useSources();
   const [addOpen, setAddOpen] = useState(importOnly);
   const [booksOpen, setBooksOpen] = useState(false);
   const [addTab, setAddTab] = useState("file");

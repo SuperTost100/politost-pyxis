@@ -7,9 +7,9 @@ import { useLocation, useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { CitationChip } from "../../components/CitationChip";
 import { openSourceViewer } from "../../components/SourceViewer";
-import { invoke } from "../../lib/ipc";
 import { stepPath } from "../plans/reopen";
 import "./Reader.css";
+import { recommendQuery } from "../../lib/queries";
 
 /**
  * The reading page shared by lessons and the course introduction: a slim sticky bar (back, title once the heading has
@@ -120,10 +120,7 @@ export function useOpenNext(planId: string) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   return async () => {
-    const guide = await client.fetchQuery({
-      queryKey: ["recommend", planId],
-      queryFn: () => invoke("plans.recommend", { planId }),
-    });
+    const guide = await client.fetchQuery(recommendQuery(planId));
     const next = guide?.next;
     const to = next ? stepPath(planId, next.activity, next.topicId) : null;
     navigate(to && to.split("?")[0] !== pathname ? to : `/plans/${planId}`);

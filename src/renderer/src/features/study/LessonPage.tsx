@@ -38,6 +38,7 @@ import {
   useOpenNext,
 } from "./Reader";
 import { showsLiveText } from "./lessonLive";
+import { usePlan } from "../../lib/queries";
 
 type Wording = "simple" | "balanced" | "technical";
 type Lesson = RequestOutput<"study.lesson">;
@@ -106,11 +107,7 @@ export function LessonPage() {
       }
     },
   });
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId }),
-  });
+  const plan = usePlan(planId);
   const refreshPlan = () =>
     Promise.all(
       [["plan", planId], ["series", planId], ["recommend", planId], ["progress", planId]].map(

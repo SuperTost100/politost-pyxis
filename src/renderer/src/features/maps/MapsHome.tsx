@@ -10,6 +10,7 @@ import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import "./MapsHome.css";
+import { usePlan, usePlans } from "../../lib/queries";
 
 /** Where a map opens full screen; its close button comes back here. */
 export const mapPath = (map: {
@@ -38,10 +39,7 @@ export function MapsHome() {
     queryFn: () => invoke("maps.all", query ? { query } : {}),
     placeholderData: keepPreviousData,
   });
-  const plans = useQuery({
-    queryKey: ["plans"],
-    queryFn: () => invoke("plans.list", {}),
-  });
+  const plans = usePlans();
 
   const data = maps.data;
   const dialog = (
@@ -224,11 +222,7 @@ function NewMapDialog(props: {
   const navigate = useNavigate();
   const [planId, setPlanId] = useState<string>();
   const [topicId, setTopicId] = useState<string>();
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: props.open && Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId: planId! }),
-  });
+  const plan = usePlan(planId, props.open);
   // How many maps each topic holds already, so the student sees which topics are mapped.
   const existing = useQuery({
     queryKey: ["maps-all", ""],

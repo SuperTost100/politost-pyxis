@@ -21,7 +21,7 @@ import { JobsSync } from "../features/jobs/queries";
 import { AppStateContext } from "./app-state";
 import { router } from "./router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "../lib/ipc";
+import { profileQuery } from "../lib/queries";
 
 // Only the print window shows it, and it waits for the page to say it is ready.
 const PrintPage = lazy(() =>
@@ -56,12 +56,7 @@ function StudyApp() {
   });
   const [ready, setReady] = useState(false);
   const client = useQueryClient();
-  const profile = useQuery({
-    queryKey: ["profile"],
-    queryFn: () => invoke("profile.get", {}),
-    retry: 10,
-    retryDelay: 300,
-  });
+  const profile = useQuery({ ...profileQuery, retry: 10, retryDelay: 300 });
   useEffect(
     () =>
       window.pyxis.onPort(() => {
