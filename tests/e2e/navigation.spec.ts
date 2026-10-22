@@ -24,6 +24,7 @@ test("the window stays on the app page and refuses device permissions", async ()
     await page.evaluate((url) => {
       location.href = url;
     }, foreign);
+    // Main refuses the navigation without an event the page can see, so give a wrong one a fixed second to happen.
     await page.waitForTimeout(1000);
     expect(page.url().split("#")[0]).toBe(appPage);
     expect(await page.title()).not.toBe("foreign");

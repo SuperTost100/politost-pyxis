@@ -82,6 +82,7 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
     // Declining the plan-use confirmation starts nothing.
     const message = await readAgain(page, "La mia fisica", "dismiss");
     expect(message).toMatch(/1 piano usa questa fonte/);
+    // Declining must start nothing. A job that never starts has no signal to wait for, so this is a fixed wait.
     await page.waitForTimeout(500);
     expect(jobs()).toEqual([]);
     expect(versions()).toEqual([1]);
@@ -113,7 +114,8 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
     expect(rows<{ status: string }>(userData, "SELECT status FROM sources WHERE id = ?", sourceId)).toEqual([{ status: "ready" }]);
     await page.getByRole("button", { name: /attività|background tasks|jobs running|1 attività/i }).first().click();
     await expect(page.getByText("Rileggendo il file non è uscito testo, quindi è rimasta la lettura precedente.")).toBeVisible();
-    await page.waitForTimeout(300); // Let the popover finish its entrance before measuring contrast.
+    // Let the popover finish its entrance before measuring contrast.
+    await animationsSettled(page);
     mkdirSync(".shots", { recursive: true });
     await page.screenshot({ path: ".shots/source-reextract-no-text-it.png", animations: "disabled" });
     await expectNoAxeViolations(page);

@@ -333,6 +333,7 @@ test("First setup: cancelling a sign-in before its page opens is not a failure, 
     // Starting again is not undone by the answer to the cancelled attempt.
     await signIn.click();
     await expect(button(setup, "Annulla")).toBeVisible();
+    // The cancelled attempt's answer would undo this within moments; its absence has no signal, so this waits a fixed time.
     await page.waitForTimeout(500);
     await expect(button(setup, "Annulla")).toBeVisible();
     await expect(setup.getByText(/Accesso non completato/)).toHaveCount(0);
@@ -658,6 +659,7 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
     await expect(
       page.getByRole("heading", { name: "Esami", level: 1 }),
     ).toBeVisible();
+    // The notice would open once the engine check ends. A notice that never opens has no signal, so this is a fixed wait.
     await page.waitForTimeout(2000);
     await expect(notice(page)).toHaveCount(0);
   } finally {

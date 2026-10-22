@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 
 test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async () => {
   test.setTimeout(240_000);
@@ -271,7 +272,7 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       await page.reload();
       await page.setViewportSize({ width: 1280, height: 800 });
       await expect(page.locator(".react-flow__node")).toHaveCount(before);
-      await page.waitForTimeout(400);
+      await animationsSettled(page);
       await page.screenshot({
         path: `.shots/map-large-${total}-${language}-${theme}-1280.png`,
       });

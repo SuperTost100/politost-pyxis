@@ -7,6 +7,7 @@ import { lockedPdf } from "../../src/core/sources/test-pdf";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 
 const PASSWORD = "Carnot-1824";
 
@@ -35,7 +36,7 @@ async function shoot(page: Page, name: string) {
   ] as const) {
     await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
     await page.setViewportSize({ width, height: 800 });
-    await page.waitForTimeout(300);
+    await animationsSettled(page);
     await page.screenshot({ path: `.shots/${name}-it-${theme}-${width}.png`, animations: "disabled" });
   }
   await page.setViewportSize({ width: 1280, height: 800 });

@@ -11,6 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 
 const SPEED =
   "La velocità media è lo spazio percorso diviso il tempo impiegato.";
@@ -105,7 +106,8 @@ const invoke = <T>(page: Page, channel: string, input: object) =>
   ) as Promise<T>;
 
 async function noAxeViolations(page: Page) {
-  await page.waitForTimeout(300); // Let a modal finish its entrance before measuring contrast.
+  // Let a modal finish its entrance before measuring contrast.
+  await animationsSettled(page);
   await expectNoAxeViolations(page);
 }
 
@@ -229,6 +231,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     await update.click();
     await expect.poll(() => asked.length).toBe(1);
     expect(asked[0]).toMatch(/1 piano usa questo libro/);
+    // Declining must start nothing. A job that never starts has no signal to wait for, so this is a fixed wait.
     await page.waitForTimeout(500);
     const versions = () =>
       rows<{ version: number }>(

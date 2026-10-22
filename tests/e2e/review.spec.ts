@@ -220,13 +220,9 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
     // Pyodide's first start takes over a minute on the hosted macOS x64 runner (each python.spec case there takes ~20 s).
     // A notice under the block (setup, unavailable, slow) means no output will come, so fail on it at once.
     const notice = page.locator(".px-python-block p.small");
-    for (const deadline = Date.now() + 150000; Date.now() < deadline; ) {
-      if (await output.isVisible()) break;
-      const shown = await notice.allInnerTexts();
-      if (shown.length > 0)
-        throw new Error(`The Python block showed a notice instead of output: ${shown.join(" | ")}`);
-      await page.waitForTimeout(250);
-    }
+    await expect(output.or(notice).first()).toBeVisible({ timeout: 150000 });
+    if (!(await output.isVisible()))
+      throw new Error(`The Python block showed a notice instead of output: ${(await notice.allInnerTexts()).join(" | ")}`);
     await expect(output).toHaveText("42\n", { timeout: 5000 });
     // The captured output scrolls by keyboard, so it must take focus.
     await output.focus();

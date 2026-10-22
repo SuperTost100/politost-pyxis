@@ -373,7 +373,7 @@ test("a gap drill opened from the path is requested once: Back from its quiz doe
     await page.evaluate(() => window.history.back());
     await expect(page).toHaveURL(/#\/plans\/[^/]+\/progress$/);
     await expect(page.getByRole("button", { name: /^Colma la lacuna ·/ }).first()).toBeVisible();
-    // Give a wrongly repeated request time to show itself.
+    // Give a wrongly repeated request time to show itself. A request that is not repeated has no signal to wait for.
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/#\/plans\/[^/]+\/progress$/);
     expect(drills()).toBe(1);

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { animationsSettled } from "./settled";
 
 /** Set to a folder to also save screenshots of the reply action, the selection menu and the review dialog. */
 const SHOTS = process.env.PYXIS_SHOTS_DIR;
@@ -87,7 +88,7 @@ async function shot(page: Page, name: string) {
   if (!SHOTS) return;
   mkdirSync(SHOTS, { recursive: true });
   await page.mouse.move(1, 1);
-  await page.waitForTimeout(400);
+  await animationsSettled(page);
   await page.screenshot({ path: join(SHOTS, `${name}.png`) });
 }
 
@@ -206,7 +207,7 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
 
     if (SHOTS) {
       await page.evaluate(() => window.pyxis.setAppearance("dark"));
-      await page.waitForTimeout(600);
+      await animationsSettled(page);
       await select();
       await shot(page, "5-selection-menu-dark");
       await menu.getByRole("button", { name: "Make flashcards" }).click();
@@ -219,7 +220,7 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
       await dialog.getByRole("button", { name: "Cancel" }).click();
       await page.evaluate(() => window.getSelection()?.removeAllRanges());
       await page.locator(".ant-drawer").getByRole("button", { name: "Close" }).click();
-      await page.waitForTimeout(600);
+      await animationsSettled(page);
       await shot(page, "8-reply-action-dark");
     }
   } finally {

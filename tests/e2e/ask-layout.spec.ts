@@ -466,6 +466,7 @@ test("Ask: a student who scrolled up is not pulled back down by new content", as
       late.style.height = "300px";
       document.querySelector(".ask-page")!.append(late);
     });
+    // The page must not follow the new content. Nothing signals that it chose not to, so this waits a fixed time.
     await page.waitForTimeout(500);
     expect(await top()).toBe(scrolled);
     expect(await gap()).toBe(before + 300);

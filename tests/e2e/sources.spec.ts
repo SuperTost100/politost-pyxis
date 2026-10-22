@@ -90,7 +90,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
           height: width === 960 ? 640 : 832,
         });
         await expect(drawer).toBeVisible();
-        await page.waitForTimeout(250);
+        await animationsSettled(page);
         await page.screenshot({
           path: `.shots/m4-viewer-it-${theme}-${width}.png`,
           animations: "disabled",

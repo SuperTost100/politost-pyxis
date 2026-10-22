@@ -189,10 +189,13 @@ test("PLAN-10 Back while the modules load returns to the period step and the lat
     await page.evaluate(() => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: "md" }));
     await reach(page, "modules");
     await expectState(page, "loading-modules");
+    // The call is in flight, so it started before now, and the fixture holds it 10 s at most.
+    const answered = Date.now() + 10_000;
     await page.getByRole("button", { name: "Indietro" }).click();
     await expect(page.getByRole("group", { name: "Periodo" })).toBeVisible();
-    // The held call finishes after ten seconds; its modules must not appear on the period step.
-    await page.waitForTimeout(11000);
+    // Its modules must not appear on the period step. An ignored answer has no signal, so wait until the latest moment
+    // it can arrive, plus a second for the page to show it.
+    await page.waitForTimeout(Math.max(0, answered + 1000 - Date.now()));
     await expect(page.getByRole("group", { name: "Periodo" })).toBeVisible();
     await expect(page.getByRole("checkbox")).toHaveCount(0);
   } finally {

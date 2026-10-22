@@ -49,7 +49,8 @@ test("failed core startup stops retrying and can recover after explicit retry", 
       page.getByText(/Il motore interno non riesce ad avviarsi/),
     ).toBeVisible({ timeout: 15000 });
     expect(exits).toBe(5);
-    await page.waitForTimeout(2000); // Verify the bounded restart loop remains stopped.
+    // Verify the bounded restart loop remains stopped: a restart that does not happen has no signal to wait for.
+    await page.waitForTimeout(2000);
     expect(exits).toBe(5);
     rmSync(dbPath); // Remove only this test's deliberately corrupt synthetic file.
     await page.getByRole("button", { name: "Riprova", exact: true }).click();

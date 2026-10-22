@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 
 const shots = process.env.PYXIS_SHOTS ?? ".shots/past-papers";
 
@@ -163,11 +164,11 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await expect(page.getByText("Come i tuoi appelli passati")).toBeVisible();
     await expect(page.getByText("6 domande nello stile del tuo appello passato.")).toBeVisible();
     await expect(page.getByRole("button", { name: "150 minuti", pressed: true })).toBeVisible();
-    await page.waitForTimeout(600);
+    await animationsSettled(page);
     await shoot(page, "simulation-setup-it-dark");
     await look(page, "en", "light");
     await expect(page.getByText("Like your past exams")).toBeVisible();
-    await page.waitForTimeout(600);
+    await animationsSettled(page);
     await shoot(page, "simulation-setup-en-light");
     await expectNoAxeViolations(page);
     await page.getByText("Standard", { exact: true }).click();

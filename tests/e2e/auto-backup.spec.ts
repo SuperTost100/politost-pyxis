@@ -128,6 +128,7 @@ test("automatic backups: not while empty, then once a day with retention of this
     // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
     await expect(page).toHaveURL(/#\/exams$/);
     const workspace = await page.evaluate(() => window.pyxis.workspacePath());
+    // Two checks or more pass in 5 s. A check that backs up nothing leaves no trace to wait for.
     await page.waitForTimeout(5000);
     expect(backupsIn(folder)).toEqual([]);
     expect(
@@ -158,7 +159,8 @@ test("automatic backups: not while empty, then once a day with retention of this
       location.hash = "/settings/data";
     });
     await expect(page.getByText(/^Ultima copia: .+\.$/)).toBeVisible();
-    // The first check runs a second after core starts; give it time to do nothing.
+    // The first check runs a second after core starts; give it time to do nothing. Doing nothing leaves no trace to
+    // wait for, so this is a fixed wait.
     await page.waitForTimeout(4000);
     expect(backupsIn(folder)).toEqual([first]);
     await quitPyxis(app);

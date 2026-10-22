@@ -42,7 +42,10 @@ async function pick(app: ElectronApplication, id: string) {
   expect(found, `menu item ${id}`).toBe(true);
 }
 
-/** Time for a command that must do nothing to have done something. */
+/**
+ * Time for a command that must do nothing to have done something. A fixed wait on purpose: nothing signals that a
+ * menu command was ignored.
+ */
 async function settle(page: Page) {
   await page.waitForTimeout(400);
 }

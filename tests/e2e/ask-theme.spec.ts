@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { animationsSettled } from "./settled";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -154,7 +155,7 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
     const settle = async () => {
       await page.mouse.move(1, 1);
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      await page.waitForTimeout(800);
+      await animationsSettled(page);
     };
     const reloaded = async () => {
       await page.reload();

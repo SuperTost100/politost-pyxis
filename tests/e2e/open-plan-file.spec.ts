@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { animationsSettled } from "./settled";
 
 // Set PYXIS_SHOTS to a folder to keep screenshots of the import review in both themes.
 const SHOTS = process.env["PYXIS_SHOTS"];
@@ -38,7 +39,7 @@ async function shoot(page: Page, name: string) {
     for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate((source) => window.pyxis.setAppearance(source), theme);
-      await page.waitForTimeout(400);
+      await animationsSettled(page);
       await page.screenshot({ path: join(SHOTS, `${name}-${width}-${theme}.png`), fullPage: true });
     }
 }

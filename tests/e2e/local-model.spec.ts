@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeOllama } from "../../src/core/engine/fake-ollama";
 import { launchPyxis } from "./app-under-test";
+import { animationsSettled } from "./settled";
 
 const GIB = 1024 ** 3;
 // Screenshots for review go here when set. The checks run either way.
@@ -90,8 +91,8 @@ async function shoot(page: Page, name: string, locator?: string) {
   for (const width of [1280, 420]) {
     await page.setViewportSize({ width, height: 900 });
     if (locator) await page.locator(locator).first().scrollIntoViewIfNeeded();
-    // Let the resized page finish painting before the picture.
-    await page.waitForTimeout(400);
+    // Let the resized page finish its transitions before the picture.
+    await animationsSettled(page);
     await page.screenshot({
       path: join(shots, `${name}-${width}.png`),
       fullPage: false,

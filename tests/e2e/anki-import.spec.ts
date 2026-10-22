@@ -129,7 +129,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     );
     if (SHOTS) {
       mkdirSync(SHOTS, { recursive: true });
-      await page.waitForTimeout(500);
+      await animationsSettled(page);
       await page.screenshot({ path: join(SHOTS, "en-light-refused.png") });
     }
 
@@ -154,7 +154,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     if (SHOTS) {
       for (const theme of ["light", "dark"] as const) {
         await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
-        await page.waitForTimeout(400);
+        await animationsSettled(page);
         await page.screenshot({ path: join(SHOTS, `en-${theme}-dialog.png`) });
       }
       await page.evaluate(() => window.pyxis.setAppearance("light"));
@@ -174,11 +174,11 @@ test("an Anki package imports into a topic with its history, in both themes", as
     if (SHOTS) {
       for (const theme of ["light", "dark"] as const) {
         await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
-        await page.waitForTimeout(400);
+        await animationsSettled(page);
         await page.screenshot({ path: join(SHOTS, `en-${theme}-result.png`) });
       }
       await page.setViewportSize({ width: 560, height: 800 });
-      await page.waitForTimeout(300);
+      await animationsSettled(page);
       await page.screenshot({ path: join(SHOTS, "en-dark-result-narrow.png") });
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.evaluate(() => window.pyxis.setAppearance("light"));
@@ -225,7 +225,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     const exporting = page.getByRole("dialog", { name: "Export to Anki" });
     await expect(exporting.getByRole("checkbox")).not.toBeChecked();
     if (SHOTS) {
-      await page.waitForTimeout(500);
+      await animationsSettled(page);
       await page.screenshot({ path: join(SHOTS, "en-light-export.png") });
     }
     // A click while the dialog still zooms in is lost; let it open fully first.

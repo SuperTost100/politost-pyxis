@@ -166,6 +166,8 @@ test("MATH-02 MATH-06 complete solve sets, own-request queue clock and crashed-r
     expect(await solve("[-1, 1]")).toMatchObject({ state: "verified" });
     const began = Date.now();
     const running = page.evaluate(() => window.pyxis.invoke("tools.python", { code: "while True:\n    pass" })) as Promise<{ stdout: string; stderr: string; timedOut: boolean }>;
+    // Let the endless loop start before the crash. The runtime window already exists for the checks, and nothing
+    // signals that the loop is running, so this is a fixed wait.
     await page.waitForTimeout(3000);
     await crash();
     // The failure comes back as a runtime error well before the 10 s run limit.
