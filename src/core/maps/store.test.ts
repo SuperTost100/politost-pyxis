@@ -62,5 +62,28 @@ describe("openTopicMap", () => {
     const radial = setTopicLayout(db, plan.planId, topic.id, "radial");
     expect(radial.layout).toBe("radial");
     expect(undoTopicMap(db, plan.planId, topic.id).layout).toBe("tree");
+    // An edit reads the topic's map row once.
+    const prepare = db.prepare.bind(db);
+    let reads = 0;
+    db.prepare = ((sql: string) => {
+      if (/FROM maps/.test(sql)) reads += 1;
+      return prepare(sql);
+    }) as typeof db.prepare;
+    setTopicLayout(db, plan.planId, topic.id, "radial");
+    db.prepare = prepare;
+    expect(reads).toBe(1);
+  });
+
+  it("gives a topic without a map the outline before the first edit, and refuses an unknown map", () => {
+    const db = openDatabase(":memory:");
+    const plan = createPlan(db, { title: "Vuoto", sourceIds: [] });
+    db.prepare(
+      `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t', ?, 'Moti', 0, 1)`,
+    ).run(plan.planId);
+    expect(setTopicLayout(db, plan.planId, "t", "radial")).toMatchObject({
+      layout: "radial",
+      nodes: [expect.objectContaining({ label: "Moti" })],
+    });
+    expect(() => setTopicLayout(db, plan.planId, "t", "tree", "nope")).toThrow("map-missing");
   });
 });

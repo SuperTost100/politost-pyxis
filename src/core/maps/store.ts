@@ -23,11 +23,12 @@ export type StoredMap = {
   grounding?: "sources" | "general";
 };
 type Collection = { version: 1; maps: StoredMap[] };
-function collection(
+/** The topic's maps and the ID of the row that holds them (null before the first map), in one read. */
+function collectionRow(
   db: Database.Database,
   planId: string,
   topicId: string,
-): Collection {
+): { rowId: string | null; value: Collection } {
   requireTopic(db, planId, topicId);
   const row = db
     .prepare(
@@ -35,8 +36,15 @@ function collection(
     )
     .get(planId, topicId) as
     { id: string; graph_json: string; grounding: string } | undefined;
-  if (!row) return { version: 1, maps: [] };
-  return parseCollection(row);
+  if (!row) return { rowId: null, value: { version: 1, maps: [] } };
+  return { rowId: row.id, value: parseCollection(row) };
+}
+function collection(
+  db: Database.Database,
+  planId: string,
+  topicId: string,
+): Collection {
+  return collectionRow(db, planId, topicId).value;
 }
 /** The maps one topic's row holds. Rows saved before collections hold one bare graph. */
 export function parseCollection(row: {
@@ -85,25 +93,23 @@ export function storeMap(
   map: StoredMap,
 ): void {
   db.transaction(() => {
-    const value = collection(db, planId, topicId);
+    const { rowId, value } = collectionRow(db, planId, topicId);
     const index = value.maps.findIndex((item) => item.id === map.id);
     if (index < 0) value.maps.push(map);
     else value.maps[index] = map;
-    save(db, planId, topicId, value, map.grounding, map.prompt);
+    save(db, planId, topicId, rowId, value, map.grounding, map.prompt);
   })();
 }
 function save(
   db: Database.Database,
   planId: string,
   topicId: string,
+  rowId: string | null,
   value: Collection,
   grounding?: string,
   prompt?: { template: string; version: string },
 ): void {
-  const row = db
-    .prepare("SELECT id FROM maps WHERE plan_id = ? AND topic_id = ?")
-    .get(planId, topicId) as { id: string } | undefined;
-  if (row)
+  if (rowId)
     db.prepare(
       "UPDATE maps SET graph_json = ?, grounding = COALESCE(?, grounding), prompt_template = COALESCE(?, prompt_template), prompt_version = COALESCE(?, prompt_version) WHERE id = ?",
     ).run(
@@ -111,7 +117,7 @@ function save(
       grounding ?? null,
       prompt?.template ?? null,
       prompt?.version ?? null,
-      row.id,
+      rowId,
     );
   else
     db.prepare(
@@ -196,18 +202,32 @@ export function openTopicMap(
   });
   return graph;
 }
-function saveTopicMap(
+/**
+ * Changes one map and saves it laid out, reading the topic's row once. A topic with no map yet gets the offline outline
+ * `openTopicMap` makes first. `change` may throw, and then nothing is saved.
+ */
+function editTopicMap(
   db: Database.Database,
   planId: string,
   topicId: string,
-  graph: ConceptGraph,
-  mapId?: string,
+  mapId: string | undefined,
+  change: (graph: ConceptGraph) => ConceptGraph,
 ): ConceptGraph {
-  const stored = readStoredMap(db, planId, topicId, mapId);
-  if (!stored) throw new Error("map-missing");
-  const next = layoutGraph(graph);
-  storeMap(db, planId, topicId, { ...stored, graph: next });
-  return next;
+  return db.transaction(() => {
+    let { rowId, value } = collectionRow(db, planId, topicId);
+    let index = mapId ? value.maps.findIndex((map) => map.id === mapId) : 0;
+    if (index < 0) throw new Error("map-missing");
+    if (!value.maps[index]) {
+      openTopicMap(db, planId, topicId);
+      ({ rowId, value } = collectionRow(db, planId, topicId));
+      index = 0;
+    }
+    const stored = value.maps[index]!;
+    const next = layoutGraph(change(stored.graph));
+    value.maps[index] = { ...stored, graph: next };
+    save(db, planId, topicId, rowId, value, stored.grounding, stored.prompt);
+    return next;
+  })();
 }
 function snapshot(graph: ConceptGraph): NonNullable<ConceptGraph["undo"]> {
   return {
@@ -227,23 +247,18 @@ export function moveTopicNode(
 ): ConceptGraph {
   if (!Number.isFinite(x) || !Number.isFinite(y))
     throw new Error("map-position");
-  const graph = openTopicMap(db, planId, topicId, Date.now(), mapId);
-  if (!graph.nodes.some((node) => node.id === nodeId))
-    throw new Error("map-missing");
-  return saveTopicMap(
-    db,
-    planId,
-    topicId,
-    {
+  return editTopicMap(db, planId, topicId, mapId, (graph) => {
+    if (!graph.nodes.some((node) => node.id === nodeId))
+      throw new Error("map-missing");
+    return {
       ...graph,
       nodes: graph.nodes.map((node) =>
         node.id === nodeId ? { ...node, x, y, pinned: true } : node,
       ),
       undo: snapshot(graph),
       redo: null,
-    },
-    mapId,
-  );
+    };
+  });
 }
 export function setTopicLayout(
   db: Database.Database,
@@ -252,14 +267,12 @@ export function setTopicLayout(
   layout: ConceptGraph["layout"],
   mapId?: string,
 ): ConceptGraph {
-  const graph = openTopicMap(db, planId, topicId, Date.now(), mapId);
-  return saveTopicMap(
-    db,
-    planId,
-    topicId,
-    { ...graph, layout, undo: snapshot(graph), redo: null },
-    mapId,
-  );
+  return editTopicMap(db, planId, topicId, mapId, (graph) => ({
+    ...graph,
+    layout,
+    undo: snapshot(graph),
+    redo: null,
+  }));
 }
 export function patchTopicMap(
   db: Database.Database,
@@ -268,13 +281,7 @@ export function patchTopicMap(
   ops: MapOp[],
   mapId?: string,
 ): ConceptGraph {
-  return saveTopicMap(
-    db,
-    planId,
-    topicId,
-    applyOps(openTopicMap(db, planId, topicId, Date.now(), mapId), ops),
-    mapId,
-  );
+  return editTopicMap(db, planId, topicId, mapId, (graph) => applyOps(graph, ops));
 }
 export function undoTopicMap(
   db: Database.Database,
@@ -282,13 +289,7 @@ export function undoTopicMap(
   topicId: string,
   mapId?: string,
 ): ConceptGraph {
-  return saveTopicMap(
-    db,
-    planId,
-    topicId,
-    undoGraph(openTopicMap(db, planId, topicId, Date.now(), mapId)),
-    mapId,
-  );
+  return editTopicMap(db, planId, topicId, mapId, undoGraph);
 }
 
 export function redoTopicMap(
@@ -297,11 +298,5 @@ export function redoTopicMap(
   topicId: string,
   mapId?: string,
 ): ConceptGraph {
-  return saveTopicMap(
-    db,
-    planId,
-    topicId,
-    redoGraph(openTopicMap(db, planId, topicId, Date.now(), mapId)),
-    mapId,
-  );
+  return editTopicMap(db, planId, topicId, mapId, redoGraph);
 }
