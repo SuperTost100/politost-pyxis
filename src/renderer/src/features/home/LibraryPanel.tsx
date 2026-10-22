@@ -15,7 +15,7 @@ import {
 } from "../../components/ListToolbar";
 import { SourceRow, sizeText } from "../../components/SourceRow";
 import "./LibraryPanel.css";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
@@ -32,6 +32,7 @@ import {
 } from "../../components/FreeBooks";
 import { jobErrorKey } from "../jobs/jobErrors";
 import { PdfPasswordDialog } from "../../components/PdfPassword";
+import type { RequestOutput } from "@shared/ipc";
 import { isPdfPasswordError } from "@shared/source-errors";
 import {
   MAX_DROPPED_FILES,
@@ -134,6 +135,8 @@ export function LibraryPanel({
     stopping: boolean;
   } | null>(null);
   const scanRun = useRef<AbortController | null>(null);
+  // The rows' actions, read when a row's button is used, so the rows can skip renders the list does not need.
+  const rowHandlers = useRef<RowHandlers | null>(null);
   // Leaving the Library stops the scan between pages. The pages already read are kept.
   useEffect(() => () => scanRun.current?.abort(), []);
   const [pickedPassage, setPickedPassage] = useState<string | null>(null);
@@ -477,7 +480,6 @@ export function LibraryPanel({
     queryFn: () => invoke("sources.embedState", {}),
   });
   const sources = list.data ?? [];
-  type LibrarySource = (typeof sources)[number];
   // New versions of free books are checked only while the Library is open, and only when it holds a smartbook.
   const freeBooks = useFreeBooks(
     !importOnly && sources.some((source) => source.kind === "smartbook"),
@@ -647,67 +649,6 @@ export function LibraryPanel({
     setPickedPassage(null);
     setChapter(hit.locator.chapter);
     setParagraph(hit.locator.paragraph);
-  }
-  function rowNotes(source: LibrarySource) {
-    return (
-      <>
-        {source.syllabusOff ? (
-          <p className="small px-library-flag">
-            {t("sources.offSyllabusListed", { count: source.syllabusOff })}
-          </p>
-        ) : null}
-        {source.error ? (
-          <p className="small px-library-flag">
-            {t(jobErrorKey(source.error))}
-          </p>
-        ) : null}
-        {source.errorJobId && isPdfPasswordError(source.error) ? (
-          <p className="small px-library-unlock">
-            <Button
-              shape="round"
-              size="small"
-              aria-label={t("sources.pdfPassword.enterNamed", {
-                title: source.title,
-              })}
-              onClick={() =>
-                setUnlocking({
-                  jobId: source.errorJobId!,
-                  title: source.title,
-                })
-              }
-            >
-              {t("sources.pdfPassword.enter")}
-            </Button>
-          </p>
-        ) : null}
-        {newVersions.has(source.id) ? (
-          <p className="small px-library-update">
-            <span>
-              {t("books.newVersionNamed", {
-                version: newVersions.get(source.id),
-              })}
-            </span>
-            <Button
-              shape="round"
-              size="small"
-              loading={bookUpdate.busy === source.id}
-              disabled={
-                bookUpdate.busy !== null && bookUpdate.busy !== source.id
-              }
-              aria-label={t(
-                bookUpdate.busy === source.id
-                  ? "books.updatingNamed"
-                  : "books.updateNamed",
-                { title: source.title },
-              )}
-              onClick={() => void updateBook(source)}
-            >
-              {t("books.update")}
-            </Button>
-          </p>
-        ) : null}
-      </>
-    );
   }
   function closeAdd() {
     setAddOpen(false);
@@ -1100,31 +1041,12 @@ export function LibraryPanel({
   const loadFailed = list.isError && !list.data;
   const empty = list.isSuccess && sources.length === 0;
   const showHits = contentQuery.length > 0;
-  const actions = (source: LibrarySource) => ({
-    items: [
-      { key: "details", label: t("sources.details") },
-      { key: "rename", label: t("sources.rename") },
-      { key: "replace", label: t("sources.replace") },
-      {
-        key: "reextract",
-        label: t("sources.reextract"),
-        // A smartbook is read from its package and has no stored file to read again.
-        disabled: source.kind === "smartbook" || !source.blobSha,
-      },
-      // Only a source saved from a link has a page to fetch again.
-      ...(source.originUrl
-        ? [
-            {
-              key: "refresh",
-              label: t("sources.refresh"),
-              disabled: refreshing !== null,
-            },
-          ]
-        : []),
-      { type: "divider" as const },
-      { key: "remove", label: t("sources.remove"), danger: true },
-    ],
-    onSelect: (key: string) => {
+  rowHandlers.current = {
+    open(source) {
+      select(source);
+      setDetailsOpen(true);
+    },
+    act(source, key) {
       select(source);
       if (key === "replace") void replace(source.id).catch(fail);
       else if (key === "reextract") void reextract(source).catch(fail);
@@ -1132,7 +1054,11 @@ export function LibraryPanel({
       else if (key === "remove") void remove(source).catch(fail);
       else setDetailsOpen(true);
     },
-  });
+    unlock: setUnlocking,
+    updateBook(source) {
+      void updateBook(source);
+    },
+  };
   return (
     <div className="px-library">
       {addModal}
@@ -1257,16 +1183,14 @@ export function LibraryPanel({
       ) : (
         <ul className="px-list-surface" aria-label={t("exams.sources")}>
           {shown.map((source) => (
-            <SourceRow
+            <LibraryRow
               key={source.id}
               source={source}
               selected={source.id === sourceId}
-              onOpen={() => {
-                select(source);
-                setDetailsOpen(true);
-              }}
-              notes={rowNotes(source)}
-              actions={actions(source)}
+              newVersion={newVersions.get(source.id)}
+              bookBusy={bookUpdate.busy}
+              refreshBusy={refreshing !== null}
+              handlers={rowHandlers}
             />
           ))}
         </ul>
@@ -1554,3 +1478,128 @@ export function LibraryPanel({
     </div>
   );
 }
+
+type LibrarySource = RequestOutput<"sources.list">[number];
+type RowHandlers = {
+  open: (source: LibrarySource) => void;
+  act: (source: LibrarySource, key: string) => void;
+  unlock: (target: { jobId: string; title: string }) => void;
+  updateBook: (source: LibrarySource) => void;
+};
+
+/**
+ * One Library row. It renders again only when its source, its selection or a busy state it shows changes, so typing
+ * in the search or opening a source does not redraw the whole list.
+ */
+const LibraryRow = memo(function LibraryRow({
+  source,
+  selected,
+  newVersion,
+  bookBusy,
+  refreshBusy,
+  handlers,
+}: {
+  source: LibrarySource;
+  selected: boolean;
+  /** The free book's new version, when one is out. */
+  newVersion: string | undefined;
+  /** The source whose book update is starting, if any. */
+  bookBusy: string | null;
+  /** A link source is being fetched again, so no other can start. */
+  refreshBusy: boolean;
+  handlers: RefObject<RowHandlers | null>;
+}) {
+  const { t } = useTranslation();
+  const notes = (
+    <>
+      {source.syllabusOff ? (
+        <p className="small px-library-flag">
+          {t("sources.offSyllabusListed", { count: source.syllabusOff })}
+        </p>
+      ) : null}
+      {source.error ? (
+        <p className="small px-library-flag">
+          {t(jobErrorKey(source.error))}
+        </p>
+      ) : null}
+      {source.errorJobId && isPdfPasswordError(source.error) ? (
+        <p className="small px-library-unlock">
+          <Button
+            shape="round"
+            size="small"
+            aria-label={t("sources.pdfPassword.enterNamed", {
+              title: source.title,
+            })}
+            onClick={() =>
+              handlers.current?.unlock({
+                jobId: source.errorJobId!,
+                title: source.title,
+              })
+            }
+          >
+            {t("sources.pdfPassword.enter")}
+          </Button>
+        </p>
+      ) : null}
+      {newVersion !== undefined ? (
+        <p className="small px-library-update">
+          <span>
+            {t("books.newVersionNamed", {
+              version: newVersion,
+            })}
+          </span>
+          <Button
+            shape="round"
+            size="small"
+            loading={bookBusy === source.id}
+            disabled={bookBusy !== null && bookBusy !== source.id}
+            aria-label={t(
+              bookBusy === source.id
+                ? "books.updatingNamed"
+                : "books.updateNamed",
+              { title: source.title },
+            )}
+            onClick={() => handlers.current?.updateBook(source)}
+          >
+            {t("books.update")}
+          </Button>
+        </p>
+      ) : null}
+    </>
+  );
+  const actions = {
+    items: [
+      { key: "details", label: t("sources.details") },
+      { key: "rename", label: t("sources.rename") },
+      { key: "replace", label: t("sources.replace") },
+      {
+        key: "reextract",
+        label: t("sources.reextract"),
+        // A smartbook is read from its package and has no stored file to read again.
+        disabled: source.kind === "smartbook" || !source.blobSha,
+      },
+      // Only a source saved from a link has a page to fetch again.
+      ...(source.originUrl
+        ? [
+            {
+              key: "refresh",
+              label: t("sources.refresh"),
+              disabled: refreshBusy,
+            },
+          ]
+        : []),
+      { type: "divider" as const },
+      { key: "remove", label: t("sources.remove"), danger: true },
+    ],
+    onSelect: (key: string) => handlers.current?.act(source, key),
+  };
+  return (
+    <SourceRow
+      source={source}
+      selected={selected}
+      onOpen={() => handlers.current?.open(source)}
+      notes={notes}
+      actions={actions}
+    />
+  );
+});
