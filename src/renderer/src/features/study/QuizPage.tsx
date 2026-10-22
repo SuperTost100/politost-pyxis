@@ -19,6 +19,7 @@ import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
+import { useDeadlinePassed, useNow } from "./clock";
 import { useReviewSession } from "./ReviewProgress";
 import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
@@ -44,6 +45,62 @@ function clock(ms: number): string {
   return total >= 3600
     ? `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`
     : `${Math.floor(total / 60)}:${pad(total % 60)}`;
+}
+
+/** A timed quiz's countdown. It ticks on its own, so the page re-renders only when time is up. */
+function QuizClock({
+  deadlineAt,
+  running,
+  expired,
+}: {
+  deadlineAt: number;
+  running: boolean;
+  expired: boolean;
+}) {
+  const { t } = useTranslation();
+  const now = useNow(1000, running && !expired);
+  const msLeft = expired ? 0 : Math.max(0, deadlineAt - now);
+  return (
+    <div className="px-quiz-timer">
+      <output role="timer" aria-label={t("quiz.timer")}>
+        {clock(msLeft)}
+      </output>
+      {expired || msLeft <= 60000 ? (
+        <p className="small" role="status">
+          {t(expired ? "quiz.timeUp" : "quiz.timeLow")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const SOFT_SECONDS = 10;
+
+/**
+ * The pace a true/false question suggests: a bar that empties in ten seconds and never locks the answer. It starts
+ * when it mounts, so it takes a key per question. The bar moves every 100 ms; its value changes once a second.
+ */
+function SoftTimer({ running }: { running: boolean }) {
+  const { t } = useTranslation();
+  const [deadline] = useState(() => Date.now() + SOFT_SECONDS * 1000);
+  const passed = useDeadlinePassed(deadline, running);
+  const now = useNow(100, running && !passed);
+  const remaining = passed ? 0 : Math.max(0, (deadline - now) / 1000);
+  return (
+    <div className="px-quiz-soft-time">
+      <div
+        className="px-quiz-soft-track"
+        role="progressbar"
+        aria-label={t("quiz.softTimer")}
+        aria-valuemin={0}
+        aria-valuemax={SOFT_SECONDS}
+        aria-valuenow={Math.ceil(remaining)}
+      >
+        <span style={{ width: `${(remaining / SOFT_SECONDS) * 100}%` }} />
+      </div>
+      <p className="meta">{t("quiz.softHint")}</p>
+    </div>
+  );
 }
 
 /** `redo`: notebook questions asked again; the attempt comes in the URL and closing goes back to the notebook. */
@@ -305,16 +362,8 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   // The deadline is persisted by main; the page only renders it and submits through the normal grading job.
   const deadlineAt = session.data?.deadlineAt;
   const timed = Boolean(session.data?.timerMinutes);
-  const [now, setNow] = useState(() => Date.now());
   const running = Boolean(deadlineAt) && !finalResult && !gradingStarted;
-  useEffect(() => {
-    if (!running) return;
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [running]);
-  const msLeft = deadlineAt ? Math.max(0, deadlineAt - now) : undefined;
-  const expired = msLeft === 0;
+  const expired = useDeadlinePassed(deadlineAt || undefined, running);
   const autoSubmitted = useRef(false);
   useEffect(() => {
     if (
@@ -389,19 +438,6 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     // A timed quiz's clock starts once every question exists; until then it takes no answers.
     (timed && session.data?.state !== "succeeded") ||
     (Boolean(attemptId) && hydratedAttempt !== attemptId);
-  const [remaining, setRemaining] = useState(10);
-  useEffect(() => {
-    setRemaining(10);
-  }, [question?.id]);
-  useEffect(() => {
-    if (question?.grade.kind !== "tf" || result || finalResult) return;
-    const deadline = Date.now() + 10000;
-    const timer = window.setInterval(
-      () => setRemaining(Math.max(0, (deadline - Date.now()) / 1000)),
-      100,
-    );
-    return () => window.clearInterval(timer);
-  }, [question?.id, question?.grade.kind, result, finalResult]);
   // A new question takes focus for screen readers; the stem shows no focus box for it.
   useEffect(() => {
     if (question) heading.current?.focus({ preventScroll: false });
@@ -1127,17 +1163,12 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         </section>
       ) : question ? (
         <section className="px-quiz-question" aria-labelledby="quiz-stem">
-          {msLeft !== undefined ? (
-            <div className="px-quiz-timer">
-              <output role="timer" aria-label={t("quiz.timer")}>
-                {clock(msLeft)}
-              </output>
-              {expired || msLeft <= 60000 ? (
-                <p className="small" role="status">
-                  {t(expired ? "quiz.timeUp" : "quiz.timeLow")}
-                </p>
-              ) : null}
-            </div>
+          {deadlineAt ? (
+            <QuizClock
+              deadlineAt={deadlineAt}
+              running={running}
+              expired={expired}
+            />
           ) : null}
           {index === 0 && drillNotes.length ? (
             <section className="px-quiz-explain" aria-labelledby="quiz-explain">
@@ -1167,19 +1198,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             <MarkdownView>{stemText(question.stem)}</MarkdownView>
           </div>
           {kind === "tf" && !result ? (
-            <div className="px-quiz-soft-time">
-              <div
-                className="px-quiz-soft-track"
-                role="progressbar"
-                aria-label={t("quiz.softTimer")}
-                aria-valuemin={0}
-                aria-valuemax={10}
-                aria-valuenow={Math.ceil(remaining)}
-              >
-                <span style={{ width: `${remaining * 10}%` }} />
-              </div>
-              <p className="meta">{t("quiz.softHint")}</p>
-            </div>
+            <SoftTimer key={question.id} running={!finalResult} />
           ) : null}
           {kind === "mcq" || kind === "tf" ? (
             <div className="px-quiz-options-list">
