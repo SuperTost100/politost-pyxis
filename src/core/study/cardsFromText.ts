@@ -5,7 +5,7 @@ import { uuidv7 } from "../../shared/ids";
 import { generate, type GenerateInput } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
-import { cardOf, faces, norm, solutionLike } from "./cardsFromBook";
+import { cardIssues, cardOf, faces, norm } from "./cardsFromBook";
 import { requireTopic } from "./openLesson";
 
 const TEMPLATE = "cards.text";
@@ -155,22 +155,7 @@ function proposalSchema(passages: Passage[], text: string) {
           ctx.addIssue({ code: "custom", message, path: ["cards", i] });
         if (row.passageId !== null && !known.has(row.passageId))
           issue("Unknown passage ID");
-        const { front, back } = faces(row);
-        for (const face of [front, back]) {
-          const reason = solutionLike(face);
-          if (reason) issue(reason);
-        }
-        const key = norm(front);
-        if (seen.has(key)) issue("Repeated front");
-        seen.add(key);
-        if (row.kind === "cloze") {
-          if (!/\{\{c\d{1,2}::[\s\S]+?\}\}/.test(front))
-            issue("Cloze needs a {{c1::answer}} deletion");
-        } else if (
-          key.length >= 30 &&
-          (norm(back).startsWith(key) || norm(text).startsWith(key))
-        )
-          issue("The front must not be the start of the back or the text");
+        for (const message of cardIssues(row, seen, text, "text")) issue(message);
       });
     });
 }
