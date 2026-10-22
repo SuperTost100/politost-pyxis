@@ -7,13 +7,17 @@ export const NODE_MIN_HEIGHT = 64;
 export const COLUMN_GAP = 140;
 export const SIBLING_GAP = 28;
 
-type Item = { id: string; parent: string | null };
+export type Item = { id: string; parent: string | null };
 
-function childrenOf<T extends Item>(nodes: T[]) {
+/** Each parent's children, in the order the nodes come. */
+export function childrenOf<T extends Item>(nodes: T[]): Map<string, T[]> {
   const children = new Map<string, T[]>();
-  for (const node of nodes)
-    if (node.parent !== null)
-      children.set(node.parent, [...(children.get(node.parent) ?? []), node]);
+  for (const node of nodes) {
+    if (node.parent === null) continue;
+    const siblings = children.get(node.parent);
+    if (siblings) siblings.push(node);
+    else children.set(node.parent, [node]);
+  }
   return children;
 }
 
