@@ -231,14 +231,6 @@
   }
 }
 
-.px-plan-export-options {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
-}
-
 .px-plan-progress .px-gap-body > .px-tag {
   align-self: flex-start;
 }

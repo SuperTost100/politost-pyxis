@@ -140,16 +140,6 @@
   justify-self: start;
   margin-top: var(--space-2);
 }
-.engines-terminal {
-  display: grid;
-  gap: var(--space-2);
-}
-.engines-terminal code {
-  overflow-wrap: anywhere;
-}
-.engines-terminal .ant-btn {
-  justify-self: start;
-}
 .engines-result {
   margin: var(--space-3) 0 !important;
   overflow-wrap: anywhere;
