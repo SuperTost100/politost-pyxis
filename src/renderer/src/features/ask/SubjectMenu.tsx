@@ -4,6 +4,7 @@ import { Check, ChevronDown, GraduationCap, Settings2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
+import { searchMatcher } from "../../lib/search";
 import { focusMenu, menuKeys } from "./menuKeys";
 import { SubjectManagerModal } from "./SubjectPicker";
 import "./AskMenus.css";
@@ -31,9 +32,7 @@ export function SubjectMenu({
   if (value && !names.includes(value)) names.push(value);
   const searchable = names.length > 6;
   const shown = searchable
-    ? names.filter((name) =>
-        name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
-      )
+    ? names.filter(searchMatcher(query))
     : names;
 
   function close(returnFocus = true) {

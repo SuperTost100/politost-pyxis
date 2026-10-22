@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
+import { searchMatcher } from "../../lib/search";
 import { LibraryPanel } from "./LibraryPanel";
 import { PlanCard } from "../../components/PlanCard";
 import { Notice } from "../../components/Notice";
@@ -64,11 +65,10 @@ export function ExamsHome() {
   // The filter appears with the first archived exam, and falls back to Active when the last one is restored.
   const hasArchived = (plans.data ?? []).some((plan) => plan.archived);
   const status = hasArchived ? shownStatus : "active";
+  const queryMatches = searchMatcher(query);
   const shown = (plans.data ?? []).filter((plan) => {
     if (plan.archived !== (status === "archived")) return false;
-    const needle = query.trim().toLocaleLowerCase();
-    const haystack = `${plan.title} ${plan.subject ?? ""}`.toLocaleLowerCase();
-    if (needle && !haystack.includes(needle)) return false;
+    if (!queryMatches(`${plan.title} ${plan.subject ?? ""}`)) return false;
     if (subject && plan.subject !== subject) return false;
     return true;
   });

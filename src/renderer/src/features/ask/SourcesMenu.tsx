@@ -2,6 +2,7 @@ import { Input, Popover } from "antd";
 import { ArrowLeft, BookOpen, ChevronDown, Plus, X } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { searchMatcher } from "../../lib/search";
 import { focusMenu, menuKeys } from "./menuKeys";
 import type { ScopeItem } from "./scope";
 import "./AskMenus.css";
@@ -42,9 +43,8 @@ export function SourcesMenu({
       : t("ask.sourcesChip", { count: items.length });
 
   const used = new Set(items.map((item) => item.id));
-  const needle = query.trim().toLocaleLowerCase();
-  const matches = (entry: Entry) =>
-    entry.title.toLocaleLowerCase().includes(needle);
+  const titleMatches = searchMatcher(query);
+  const matches = (entry: Entry) => titleMatches(entry.title);
   const addableSources = library.filter((entry) => !used.has(entry.id));
   const addablePlans = plans.filter((entry) => !used.has(entry.id));
   const searchable = addableSources.length + addablePlans.length > 8;

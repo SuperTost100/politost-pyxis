@@ -24,6 +24,7 @@ import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
+import { searchMatcher } from "../../lib/search";
 import {
   FreeBooks,
   useBookUpdate,
@@ -623,12 +624,11 @@ export function LibraryPanel({
     placeholderData: keepPreviousData,
   });
   const kindOf = new Map(sources.map((source) => [source.id, source.kind]));
-  const titleNeedle =
-    scope === "titles" ? searchText.trim().toLocaleLowerCase() : "";
+  const titleMatches = searchMatcher(scope === "titles" ? searchText : "");
   const shown = sources.filter(
     (source) =>
       (filterType === "all" || source.kind === filterType) &&
-      source.title.toLocaleLowerCase().includes(titleNeedle),
+      titleMatches(source.title),
   );
   // A hit whose source was removed since the search would open nothing.
   const hits = (passages.data ?? []).filter(
