@@ -107,6 +107,7 @@ describe("hot queries", () => {
       const { reviewId } = rateCard(db, "c2", "good", now);
       undoRating(db, reviewId);
       browseCards(db, { status: "leech" }, now);
+      browseCards(db, { status: "due", offset: 1 }, now);
     });
     const scans = [...sql].flatMap((text) =>
       fullScans(db, text).map(

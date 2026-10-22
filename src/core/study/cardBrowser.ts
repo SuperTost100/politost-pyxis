@@ -116,15 +116,19 @@ export function browseCards(
     .split(/\s+/)
     .filter(Boolean);
   fillSearchText(db);
-  const rows = db
-    .prepare(
-      `SELECT c.id, c.front, c.back, c.plan_id, p.title AS plan_title,
-        c.topic_id, t.title AS topic_title, s.id AS subject_id, s.name AS subject_name,
-        c.suspended, c.removed, c.seed_key, c.passage_id,
-        (SELECT ps.source_id FROM passages ps WHERE ps.id = c.passage_id) AS source_id,
-        (SELECT cr.state_json FROM card_reviews cr
-         WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS state_json
-       FROM cards c
+  const latest = `(SELECT cr.state_json FROM card_reviews cr
+    WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1)`;
+  // The status filter runs in SQL on the latest review's saved state, so only the page's rows are read and parsed.
+  // A card never rated has no review: it is new, and due. A review without a due time keeps the card scheduled.
+  const byStatus: Record<CardStatus, string> = {
+    all: "c.removed = 0",
+    removed: "c.removed = 1",
+    suspended: "c.removed = 0 AND c.suspended = 1",
+    due: `c.removed = 0 AND c.suspended = 0
+      AND json_extract(COALESCE(${latest}, '{"dueAt":0}'), '$.dueAt') <= ?`,
+    leech: `c.removed = 0 AND COALESCE(json_extract(${latest}, '$.fsrs.lapses'), 0) >= ${leechLapses}`,
+  };
+  const from = `FROM cards c
        JOIN plans p ON p.id = c.plan_id
        LEFT JOIN topics t ON t.id = c.topic_id
        LEFT JOIN subjects s ON s.id = p.subject_id
@@ -133,33 +137,47 @@ export function browseCards(
          AND (? IS NULL OR c.plan_id = ?)
          AND (? IS NULL OR c.topic_id = ?)
          AND NOT EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(c.search_text, w.value) = 0)
-       ORDER BY s.id IS NULL, s.position, s.name COLLATE NOCASE, s.id,
+         AND ${byStatus[status]}`;
+  const subjectOrder = "s.id IS NULL, s.position, s.name COLLATE NOCASE, s.id";
+  const params = [
+    input.planId ?? null,
+    input.planId ?? null,
+    input.topicId ?? null,
+    input.topicId ?? null,
+    JSON.stringify(words),
+    ...(status === "due" ? [now] : []),
+  ];
+  const groups = db
+    .prepare(
+      `SELECT s.id AS subjectId, s.name AS subject, COUNT(*) AS count ${from}
+       GROUP BY s.id ORDER BY ${subjectOrder}`,
+    )
+    .all(...params) as BrowseResult["groups"];
+  const offset = Math.max(0, input.offset ?? 0);
+  const limit = Math.min(PAGE_MAX, Math.max(1, input.limit ?? 25));
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.front, c.back, c.plan_id, p.title AS plan_title,
+        c.topic_id, t.title AS topic_title, s.id AS subject_id, s.name AS subject_name,
+        c.suspended, c.removed, c.seed_key, c.passage_id,
+        (SELECT ps.source_id FROM passages ps WHERE ps.id = c.passage_id) AS source_id,
+        ${latest} AS state_json
+       ${from}
+       ORDER BY ${subjectOrder},
          p.title COLLATE NOCASE, p.id,
          t.id IS NULL, t.position, t.id,
-         c.created_at, c.rowid`,
+         c.created_at, c.rowid
+       LIMIT ? OFFSET ?`,
     )
-    .all(
-      input.planId ?? null,
-      input.planId ?? null,
-      input.topicId ?? null,
-      input.topicId ?? null,
-      JSON.stringify(words),
-    ) as Row[];
+    .all(...params, limit, offset) as Row[];
 
-  const matches: BrowsedCard[] = [];
-  for (const row of rows) {
-    if (status === "removed" ? !row.removed : row.removed) continue;
-    if (status === "suspended" && !row.suspended) continue;
+  const cards = rows.map((row): BrowsedCard => {
     const saved = row.state_json
       ? (JSON.parse(row.state_json) as ScheduleState)
       : null;
     const dueAt = saved ? Number(saved.dueAt) : null;
-    const state = dueAt == null ? "new" : dueAt <= now ? "due" : "scheduled";
-    if (status === "due" && (row.suspended || state === "scheduled")) continue;
     const lapses = saved?.fsrs?.lapses ?? 0;
-    const leech = lapses >= leechLapses;
-    if (status === "leech" && !leech) continue;
-    matches.push({
+    return {
       id: row.id,
       front: row.front,
       back: row.back,
@@ -172,32 +190,18 @@ export function browseCards(
       suspended: row.suspended === 1,
       removed: row.removed === 1,
       handMade: row.seed_key == null,
-      state,
+      state: dueAt == null ? "new" : dueAt <= now ? "due" : "scheduled",
       dueAt,
       lapses,
-      leech,
+      leech: lapses >= leechLapses,
       passageId: row.passage_id,
       sourceId: row.source_id,
-    });
-  }
+    };
+  });
 
-  const groups: BrowseResult["groups"] = [];
-  for (const card of matches) {
-    const last = groups.at(-1);
-    if (last && last.subjectId === card.subjectId) last.count += 1;
-    else
-      groups.push({
-        subjectId: card.subjectId,
-        subject: card.subjectName,
-        count: 1,
-      });
-  }
-
-  const offset = Math.max(0, input.offset ?? 0);
-  const limit = Math.min(PAGE_MAX, Math.max(1, input.limit ?? 25));
   return {
-    total: matches.length,
-    cards: matches.slice(offset, offset + limit),
+    total: groups.reduce((sum, group) => sum + group.count, 0),
+    cards,
     groups,
     ...browseFilters(db),
   };

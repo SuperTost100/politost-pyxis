@@ -384,6 +384,24 @@ describe("card browser", () => {
     expect(browseCards(db, { offset: 50 }, T0).cards).toEqual([]);
   });
 
+  it("pages and counts only the cards the status filter keeps", () => {
+    const db = library();
+    rateCard(db, idOf(db, "Velocità media?"), "easy", T0);
+    rateCard(db, idOf(db, "Numero atomico?"), "easy", T0);
+    setSuspended(db, idOf(db, "Sparsa"), true);
+    const page = browseCards(db, { status: "due", offset: 1, limit: 2 }, T0);
+    expect(page.total).toBe(3);
+    expect(page.groups).toEqual([
+      { subjectId: "s-phys", subject: "Fisica", count: 2 },
+      { subjectId: "s-chem", subject: "Chimica", count: 1 },
+    ]);
+    expect(page.cards.map((card) => card.front)).toEqual([
+      "Unità della forza?",
+      "{{c1::Elettroni}} orbitano il nucleo.",
+    ]);
+    expect(page.cards.every((card) => card.state === "new")).toBe(true);
+  });
+
   it("keeps the review schedule when a card is edited", () => {
     const db = library();
     const id = idOf(db, "Numero atomico?");
