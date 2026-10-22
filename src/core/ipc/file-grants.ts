@@ -56,9 +56,10 @@ export function droppedFileGrant(
 
 /**
  * The most grants kept. Every pick and drop adds one, and main sends them all to each new core, so a long session would
- * otherwise keep every path it ever saw. The oldest goes first, and picking a path again makes it the newest.
+ * otherwise keep every path it ever saw. The cap is far above one pick or drop, so files waiting to import keep
+ * theirs. The oldest goes first, and picking a path again makes it the newest.
  */
-export const MAX_FILE_GRANTS = 1_000;
+export const MAX_FILE_GRANTS = 10_000;
 
 /** Adds or refreshes a grant in a list keyed by path, dropping the oldest past MAX_FILE_GRANTS. */
 export function keepGrant(grants: Map<string, FileGrant>, grant: FileGrant): void {
