@@ -18,7 +18,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { automaticEffort, studentEffort } from "@shared/effort";
-import { engineProviders as providers, type RequestOutput } from "@shared/ipc";
+import type { RequestOutput } from "@shared/ipc";
+import { engineProviders as providers } from "@shared/limits";
 import {
   EngineNoticeModal,
   unacknowledged,

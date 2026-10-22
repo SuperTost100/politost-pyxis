@@ -7,7 +7,7 @@ import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { Stepper } from "../../components/Stepper";
-import { PROFILE_LIMITS } from "@shared/ipc";
+import { PROFILE_LIMITS } from "@shared/limits";
 import { invoke } from "../../lib/ipc";
 import { useMenuLock } from "../../app/menu-state";
 import { useJobs } from "../jobs/queries";

@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { EngineProvider } from "@shared/ipc";
+import type { EngineProvider } from "@shared/limits";
 import { invoke } from "../lib/ipc";
 import "./EngineNotice.css";
 

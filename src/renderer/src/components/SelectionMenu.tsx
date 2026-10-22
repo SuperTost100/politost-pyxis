@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { CHAT_SEED_BODY_MAX } from "@shared/ipc";
+import { CHAT_SEED_BODY_MAX } from "@shared/limits";
 import { invoke } from "../lib/ipc";
 import { openMakeCards } from "./MakeCardsDialog";
 import "./SelectionMenu.css";

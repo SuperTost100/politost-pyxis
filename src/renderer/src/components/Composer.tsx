@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import { CHAT_TEXT_MAX } from "@shared/ipc";
+import { CHAT_TEXT_MAX } from "@shared/limits";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
 import { FormulaDock } from "./math/FormulaDock";
