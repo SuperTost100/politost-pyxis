@@ -22,7 +22,7 @@ import { engineSeesImages } from "../engine/capabilities";
 import { selectionFor, strongestSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
-import { contentWords, retrieveWithModel } from "../sources/retrieve";
+import { contentWords, queryEmbedder, retrieveWithModel } from "../sources/retrieve";
 import { sha256 } from "../sources/quality";
 import { readingOrder } from "../sources/smartbook";
 import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
@@ -501,15 +501,17 @@ function requireChat(db: Database.Database, chatId: string) {
     throw new DOMException("chat-deleted", "AbortError");
 }
 
+/** `question` embeds `text` alone; `embed` is the turn's own embedder, for the wider search a follow-up may need. */
 async function gather(
   db: Database.Database,
   chatId: string,
   text: string,
   sourceIds: string[],
   embed: AskInput["embed"],
+  question: AskInput["embed"],
 ) {
   const options = { sourceIds, embed, limit: CHAT_PASSAGES };
-  const found = await retrieveWithModel(db, text, options);
+  const found = await retrieveWithModel(db, text, { ...options, embed: question });
   if (found.covered || !isFollowUp(text)) return found;
   const earlier = db
     .prepare(
@@ -766,18 +768,26 @@ async function answer(
   const kept = input.resumeFrom?.passages
     ? keptPassages(db, input.resumeFrom.passages)
     : undefined;
-  const gathered = kept
-    ? { hits: kept.hits, covered: true, usedVectors: false }
-    : input.allowGeneral ||
+  const searches = !kept && !(
+    input.allowGeneral ||
     (thisTurnFile && sourceIds.length === 0) ||
     (planId && sourceIds.length === 0)
+  );
+  // The question is embedded once, for its own search and for the search within each attached document.
+  const questionEmbed =
+    searches || (!kept && attachedIds.length > 0)
+      ? await queryEmbedder(input.text, input.embed)
+      : input.embed;
+  const gathered = kept
+    ? { hits: kept.hits, covered: true, usedVectors: false }
+    : !searches
       ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
-      : await gather(db, chatId, input.text, sourceIds, input.embed);
+      : await gather(db, chatId, input.text, sourceIds, input.embed, questionEmbed);
   const found = {
     ...gathered,
     hits: [
       ...gathered.hits,
-      ...(kept ? [] : await attachedPassages(db, input.text, attachedIds, gathered.hits, input.embed)),
+      ...(kept ? [] : await attachedPassages(db, input.text, attachedIds, gathered.hits, questionEmbed)),
     ],
   };
   const selected = sourceIds.length > 0 || Boolean(planId) || Boolean(subject);

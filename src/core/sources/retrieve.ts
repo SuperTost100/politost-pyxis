@@ -32,6 +32,20 @@ export async function embedWithModel(
   return modelEmbed ? modelEmbed(text, signal) : null;
 }
 
+/**
+ * The embedder for searches of this one query: the one given, or the local model's vector for it, computed once so
+ * several searches of the same text share it. Undefined when there is neither.
+ */
+export async function queryEmbedder(
+  query: string,
+  embed: Embedder | null | undefined,
+  signal?: AbortSignal,
+): Promise<Embedder | null | undefined> {
+  if (embed !== undefined || !modelEmbed) return embed;
+  const vector = await modelEmbed(`query: ${query}`, signal);
+  return vector ? () => vector : null;
+}
+
 export async function retrieveWithModel(
   db: Database.Database,
   query: string,
@@ -42,12 +56,9 @@ export async function retrieveWithModel(
     signal?: AbortSignal;
   },
 ) {
-  if (options?.embed !== undefined || !modelEmbed)
-    return retrieve(db, query, options);
-  const vector = await modelEmbed(`query: ${query}`, options?.signal);
   return retrieve(db, query, {
     ...options,
-    embed: vector ? () => vector : null,
+    embed: await queryEmbedder(query, options?.embed, options?.signal),
   });
 }
 
