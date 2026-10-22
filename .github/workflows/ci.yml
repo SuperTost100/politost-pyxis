@@ -7,11 +7,6 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-    inputs:
-      windows_trace:
-        description: Run only Windows OCR/release diagnostics, without units or packaging
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -37,7 +32,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.windows_trace && '[{"target":"windows-x64","runner":"windows-2025"}]' || '[{"target":"mac-arm64","runner":"macos-15"},{"target":"mac-x64","runner":"macos-15-intel"},{"target":"windows-x64","runner":"windows-2025"},{"target":"linux-x64","runner":"ubuntu-24.04"}]') }}
+        include:
+          - { target: mac-arm64, runner: macos-15 }
+          - { target: mac-x64, runner: macos-15-intel }
+          - { target: windows-x64, runner: windows-2025 }
+          - { target: linux-x64, runner: ubuntu-24.04 }
     defaults:
       run:
         shell: bash
@@ -55,64 +54,11 @@ jobs:
       - name: Markdown formatting
         if: runner.os == 'Linux'
         run: npx prettier --check "**/*.md"
-      - name: Packaging script checks
-        if: runner.os == 'Linux' && !inputs.windows_trace
-        run: node --test scripts/gen-notices.test.mjs scripts/after-pack.test.mjs scripts/release-sums.test.mjs
+      - name: Script checks
+        if: runner.os == 'Linux'
+        run: npm run test:scripts
       - name: Unit checks
-        if: ${{ !inputs.windows_trace }}
         run: npm test -- --maxWorkers=2
-      - name: Focused source worker checks
-        if: inputs.windows_trace
-        run: npm test -- workers.native.test.ts documents.test.ts heic.test.ts --maxWorkers=2
-      - name: Fetch Sysinternals ProcDump
-        if: runner.os == 'Windows' && inputs.windows_trace
-        shell: pwsh
-        run: |
-          # Pinned to the zip published 2026-07-09; a newer upload fails here and prints its hash.
-          $expected = '68E057587B0FD654EFA095F76D80D633C0E5C60EA26FD3E7C0011C076BB2D00C'
-          $zip = Join-Path $env:RUNNER_TEMP 'Procdump.zip'
-          Invoke-WebRequest -Uri 'https://download.sysinternals.com/files/Procdump.zip' -OutFile $zip
-          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
-          if ($actual -ne $expected) { throw "Procdump.zip SHA-256 is $actual" }
-          Expand-Archive $zip -DestinationPath .tmp/procdump -Force
-          $signature = Get-AuthenticodeSignature .tmp/procdump/procdump64.exe
-          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { throw "procdump64.exe signature: $($signature.Status)" }
-      - name: Windows core sequence with ProcDump on the utility process
-        if: runner.os == 'Windows' && inputs.windows_trace
-        continue-on-error: true
-        timeout-minutes: 6
-        run: |
-          # Up to three attempts, stopping at the first crash; the dump stays on this runner and only module+offset values are printed.
-          status=0
-          for attempt in 1 2 3; do
-            echo "::group::attempt $attempt"
-            status=0
-            node scripts/procdump-run.mjs .tmp/procdump/procdump64.exe "$PYXIS_CRASH_DIR/procdump" scripts/repro-core-sequence.mjs --runs=10 --force-worker-canvas=true || status=$?
-            echo "::endgroup::"
-            echo "attempt $attempt: exit $status"
-            [ "$status" = 0 ] || break
-          done
-          node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR/procdump"
-          exit "$status"
-      - name: Windows core sequence one-variable arms
-        if: runner.os == 'Windows' && inputs.windows_trace
-        continue-on-error: true
-        timeout-minutes: 12
-        run: |
-          # Each arm changes one thing from the default (download=full, stop=terminate) and runs three times. The utility's own
-          # progress goes to a file, because its stdout is not captured here; the last lines of a crashed attempt are printed.
-          for arm in "--download=full" "--force-worker-canvas=true"; do
-            for attempt in 1 2 3; do
-              export PYXIS_REPRO_LOG="$RUNNER_TEMP/arm.log"
-              rm -f "$PYXIS_REPRO_LOG"
-              if npx electron scripts/repro-core-sequence.mjs --runs=10 $arm > /dev/null; then
-                echo "ARM $arm attempt $attempt: pass"
-              else
-                echo "ARM $arm attempt $attempt: CRASH, last steps:"
-                tail -n 4 "$PYXIS_REPRO_LOG" | cut -c1-200
-              fi
-            done
-          done
       - name: Recorded Electron end-to-end checks
         run: |
           run_e2e() {
@@ -122,11 +68,7 @@ jobs:
               npx playwright test "$@" --workers=1
             fi
           }
-          if [ "${{ inputs.windows_trace }}" = true ]; then
-            run_e2e tests/e2e/ocr-data.spec.ts --grep "OCR data: a refused photo" --repeat-each=10
-          fi
           run_e2e tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
-          if [ "${{ inputs.windows_trace }}" = true ]; then exit 0; fi
           run_e2e --grep-invert 'M14 every application|OCR data:|release loop:'
       - name: Preserve failed test report
         if: failure()
@@ -151,7 +93,6 @@ jobs:
   # One job per platform and language; each covers both themes and widths (and large text on macOS arm64).
   audit:
     name: route audit ${{ matrix.target }} ${{ matrix.language }}
-    if: ${{ !inputs.windows_trace }}
     # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
     runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
     # macOS arm64 also audits large text and took 35-40 minutes in October 2026, close to the old 45.
@@ -217,7 +158,6 @@ jobs:
 
   package:
     name: package ${{ matrix.target }}
-    if: ${{ !inputs.windows_trace }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
@@ -336,7 +276,6 @@ jobs:
   checksums:
     name: Release checksums
     needs: package
-    if: ${{ !inputs.windows_trace }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -364,7 +303,7 @@ jobs:
     name: Attest packaged artifacts
     needs: package
     # Only builds from main get provenance. docs/releasing.md verifies it with --source-ref refs/heads/main.
-    if: github.ref == 'refs/heads/main' && !inputs.windows_trace
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

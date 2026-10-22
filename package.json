@@ -12,14 +12,14 @@
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "node scripts/test-electron.mjs",
     "test:e2e": "npm run build && playwright test",
-    "shoot": "npm run build && tsx scripts/shoot.ts",
     "shoot:readme": "npm run build && tsx scripts/readme-shots.ts",
     "dist": "npm run build && node scripts/package.mjs",
     "postinstall": "node node_modules/electron/install.js && electron-builder install-app-deps",
     "notices": "node scripts/gen-notices.mjs",
     "prebuild": "npm run notices",
     "predev": "npm run notices",
-    "test:fixtures": "tsx scripts/prepare-fixtures.ts"
+    "test:fixtures": "tsx scripts/prepare-fixtures.ts",
+    "test:scripts": "node --test scripts/*.test.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
