@@ -5,6 +5,7 @@ import type Database from "better-sqlite3";
 import { idleTimeout, readCapped } from "./public-fetch";
 import { sha256 } from "./quality";
 import { putSetting } from "../settings";
+import { latestDocument } from "./documents";
 import { runSourceWorker } from "./worker-client";
 
 const EMBEDDING_REVISION = "761b726dd34fb83930e26aab4e9ac3899aa1fa78";
@@ -105,15 +106,13 @@ export async function indexModelVectors(db: Database.Database, dir: string, sign
   const pending = db.prepare(`SELECT p.rowid AS n, p.text FROM passages p
     LEFT JOIN sources s ON s.id = p.source_id
     WHERE p.rowid > ? AND (? IS NULL OR p.source_id = ?) AND (p.source_id IS NULL OR s.status != 'removed')
-      AND (p.source_id IS NULL OR p.document_id = (SELECT id FROM source_documents
-        WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1))
+      AND (p.source_id IS NULL OR p.document_id = ${latestDocument("p.source_id")})
       AND NOT EXISTS (SELECT 1 FROM passages_vec v WHERE v.passage_rowid = p.rowid)
     ORDER BY p.rowid LIMIT 32`);
   const insert = db.prepare(`INSERT INTO passages_vec (passage_rowid, embedding) VALUES (?, ?)`);
   const indexed = db.prepare(`SELECT 1 FROM passages_vec WHERE passage_rowid = ?`);
   const stillLatest = db.prepare(`SELECT 1 FROM passages p LEFT JOIN sources s ON s.id = p.source_id
-    WHERE p.rowid = ? AND (p.source_id IS NULL OR (s.status != 'removed' AND p.document_id = (SELECT id FROM source_documents
-      WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))`);
+    WHERE p.rowid = ? AND (p.source_id IS NULL OR (s.status != 'removed' AND p.document_id = ${latestDocument("p.source_id")}))`);
   let count = 0;
   let after = 0;
   for (;;) {

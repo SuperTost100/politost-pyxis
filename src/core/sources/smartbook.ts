@@ -6,6 +6,7 @@ import {
   parseExercises,
 } from "@politost/smartbook-parser";
 import { chunkText } from "./chunk";
+import { latestDocument } from "./documents";
 import { uuidv7 } from "../../shared/ids";
 import type { PassageHit } from "./retrieve";
 import { suggestSourceRebuild } from "../plans/views";
@@ -414,12 +415,7 @@ export function sourcePassages(db: Database.Database, sourceId: string) {
     .prepare(
       `SELECT id, text, section_path, locator_json, char_start, char_end FROM passages
        WHERE source_id = ?
-         AND document_id = (
-           SELECT id FROM source_documents
-           WHERE source_id = passages.source_id
-           ORDER BY version DESC
-           LIMIT 1
-         )
+         AND document_id = ${latestDocument("passages.source_id")}
        ORDER BY ${readingOrder()}`,
     )
     .all(sourceId) as Array<{
@@ -445,12 +441,7 @@ export function chapterPassages(
     .prepare(
       `SELECT id, text, section_path, locator_json, char_start, char_end FROM passages
        WHERE source_id = ? AND json_extract(locator_json, '$.chapter') = ?
-         AND document_id = (
-           SELECT id FROM source_documents
-           WHERE source_id = passages.source_id
-           ORDER BY version DESC
-           LIMIT 1
-         )
+         AND document_id = ${latestDocument("passages.source_id")}
        ORDER BY rowid`,
     )
     .all(sourceId, chapter) as Array<{

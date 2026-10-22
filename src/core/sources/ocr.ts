@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { chunkText } from "./chunk";
+import { latestDocument } from "./documents";
 import { uuidv7 } from "../../shared/ids";
 
 export type OcrPage = { page: number; text: string };
@@ -77,7 +78,7 @@ export function requestOcr(db: Database.Database, sourceId: string): void {
     setNextPage(db, sourceId, 1);
     db.prepare(
       `UPDATE source_documents SET tree_json = json_set(tree_json, '$.ocrRun', ?)
-       WHERE id = (SELECT id FROM source_documents WHERE source_id = ? ORDER BY version DESC LIMIT 1)`,
+       WHERE id = ${latestDocument("?")}`,
     ).run(uuidv7(), sourceId);
   })();
 }
@@ -121,7 +122,7 @@ export function ownsOcrRun(db: Database.Database, sourceId: string, mine: OcrRun
 function setNextPage(db: Database.Database, sourceId: string, page: number): void {
   db.prepare(
     `UPDATE source_documents SET tree_json = json_set(tree_json, '$.ocrNext', ?)
-     WHERE id = (SELECT id FROM source_documents WHERE source_id = ? ORDER BY version DESC LIMIT 1)`,
+     WHERE id = ${latestDocument("?")}`,
   ).run(page, sourceId);
 }
 

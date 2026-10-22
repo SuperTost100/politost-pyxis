@@ -5,6 +5,14 @@ import { uuidv7 } from "../../shared/ids";
 import { putBlob } from "../blobs";
 import { openZip, type BoundedZip, type ZipLimits } from "./zip-bounded";
 
+/**
+ * SQL for the ID of the latest extraction version of a source: `source` is a column such as `p.source_id`, or `?`. A
+ * passage is current when its document_id is this.
+ */
+export function latestDocument(source: string): string {
+  return `(SELECT id FROM source_documents WHERE source_id = ${source} ORDER BY version DESC LIMIT 1)`;
+}
+
 export type ExtractedPage = {
   text: string;
   locator: { page?: number; slide?: number; heading?: string };

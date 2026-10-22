@@ -27,6 +27,7 @@ import { sha256 } from "../sources/quality";
 import { readingOrder } from "../sources/smartbook";
 import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
 import { chatListedSources, deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
+import { latestDocument } from "../sources/documents";
 import { contentLanguage, planLanguage } from "../engine/prompts";
 import { oneLine, profileContext } from "../profile/context";
 import { readProfile } from "../profile/profile";
@@ -298,9 +299,7 @@ async function attachedPassages(
 ): Promise<PassageHit[]> {
   const opening = db.prepare(
     `SELECT p.id, p.source_id, p.text, p.section_path, p.locator_json FROM passages p
-     WHERE p.source_id = ? AND p.document_id = (
-       SELECT id FROM source_documents WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1
-     )
+     WHERE p.source_id = ? AND p.document_id = ${latestDocument("p.source_id")}
      ORDER BY ${readingOrder("p")} LIMIT ?`,
   );
   const taken = new Set(found.map((hit) => hit.id));

@@ -3,6 +3,7 @@ import type { Runner } from "../jobs/runner";
 import { embedTexts, embeddingConsent, embeddingReady } from "./embed";
 import { sha256 } from "./quality";
 import { putSetting } from "../settings";
+import { latestDocument } from "./documents";
 
 /**
  * SRC-08: a section whose mean passage vector sits below this cosine similarity to every plan text (title, subject,
@@ -55,7 +56,7 @@ export function sectionVectors(
       `SELECT p.section_path AS section, v.embedding AS embedding
        FROM passages p JOIN passages_vec v ON v.passage_rowid = p.rowid
        WHERE p.source_id = ?
-         AND p.document_id = (SELECT id FROM source_documents WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)`,
+         AND p.document_id = ${latestDocument("p.source_id")}`,
     )
     .iterate(sourceId) as IterableIterator<{ section: string | null; embedding: Buffer }>;
   for (const row of rows) {

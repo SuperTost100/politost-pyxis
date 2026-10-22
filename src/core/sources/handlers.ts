@@ -1,5 +1,6 @@
 import { fetchSnapshot, parseLinkUrl } from "./link";
 import { blobSize } from "../blobs";
+import { latestDocument } from "./documents";
 import { statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type Database from "better-sqlite3";
@@ -692,7 +693,7 @@ export function sourceHandlers(
         (SELECT MAX(version) FROM source_documents WHERE source_id = s.id) AS latest
         FROM sources s LEFT JOIN source_documents d ON d.id = COALESCE(
           (SELECT document_id FROM passages WHERE id = ?),
-          (SELECT id FROM source_documents WHERE source_id = s.id ORDER BY version DESC LIMIT 1))
+          ${latestDocument("s.id")})
         WHERE s.id = COALESCE((SELECT source_id FROM passages WHERE id = ?), ?)`,
         )
         .get(

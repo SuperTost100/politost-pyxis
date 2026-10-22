@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { latestDocument } from "./documents";
 
 export type PassageLocator = {
   chapter?: number;
@@ -197,12 +198,7 @@ function lexical(
          AND (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted'))
          AND (
            p.source_id IS NULL
-           OR p.document_id = (
-             SELECT id FROM source_documents
-             WHERE source_id = p.source_id
-             ORDER BY version DESC
-             LIMIT 1
-           )
+           OR p.document_id = ${latestDocument("p.source_id")}
          )
        ORDER BY rank
        LIMIT 30`,
@@ -234,8 +230,7 @@ function vectorHits(
          WHERE embedding MATCH ? AND k = 30 AND passage_rowid IN (
            SELECT p.rowid FROM passages p LEFT JOIN sources s ON s.id = p.source_id
            WHERE (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')) ${scope}
-           AND (p.source_id IS NULL OR p.document_id = (SELECT id FROM source_documents
-             WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))
+           AND (p.source_id IS NULL OR p.document_id = ${latestDocument("p.source_id")}))
        ) v
        JOIN passages p ON p.rowid = v.passage_rowid
        ORDER BY v.distance`,
