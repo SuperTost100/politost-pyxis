@@ -1,5 +1,6 @@
 import { lookup } from "node:dns/promises";
-import { allowed, fetchPinned, idleTimeout, publicAddresses, readCapped } from "./public-fetch";
+import { idleTimeout, readCapped } from "./capped-body";
+import { allowed, fetchPinned, publicAddresses } from "./public-fetch";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_REDIRECTS = 5;

@@ -3,7 +3,7 @@ import type { BigIntStats } from "node:fs";
 import { mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import manifest from "../../resources/pyodide-manifest.json";
-import { readCapped } from "../core/sources/public-fetch";
+import { readCapped } from "../core/sources/capped-body";
 import { sha256 } from "../core/sources/quality";
 
 export const runtimeManifest = manifest;

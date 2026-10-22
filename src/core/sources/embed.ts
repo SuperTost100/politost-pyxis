@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { writeFileAtomic } from "../atomic-write";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
-import { idleTimeout, readCapped } from "./public-fetch";
+import { idleTimeout, readCapped } from "./capped-body";
 import { sha256 } from "./quality";
 import { putSetting } from "../settings";
 import { latestDocument } from "./documents";

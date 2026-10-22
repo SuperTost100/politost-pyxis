@@ -3,7 +3,7 @@ import { lstatSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import { readCapped } from "./public-fetch";
+import { readCapped } from "./capped-body";
 import { sha256 } from "./quality";
 import { putSetting } from "../settings";
 

@@ -1,7 +1,7 @@
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { UpdateView } from "../shared/updates";
-import { readCapped as readBody } from "../core/sources/public-fetch";
+import { readCapped as readBody } from "../core/sources/capped-body";
 
 const DAY = 24 * 60 * 60 * 1000;
 // GitHub allows 60 unauthenticated requests an hour per address, which a shared campus network uses up. A failed check

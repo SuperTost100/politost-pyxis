@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { fetchPublicResponse, idleTimeout, readCapped } from "./public-fetch";
+import { idleTimeout, readCapped } from "./capped-body";
+import { fetchPublicResponse } from "./public-fetch";
 import { sha256 } from "./quality";
 
 /** The free PoliTost smartbooks. The site is static: a catalog plus one package per book version. */

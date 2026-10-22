@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { readCapped } from "./public-fetch";
+import { readCapped } from "./capped-body";
 
 function stream(parts: number[][], onCancel?: () => void): ReadableStream<Uint8Array> {
   const queue = parts.map((part) => new Uint8Array(part));

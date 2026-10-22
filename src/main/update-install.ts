@@ -34,7 +34,7 @@ import {
   readRange,
 } from "./update-diff";
 import { latestRelease, newerStable, readCapped } from "./updates";
-import { idleTimeout } from "../core/sources/public-fetch";
+import { idleTimeout } from "../core/sources/capped-body";
 
 /** The largest installer Pyxis downloads. The 0.2.3 AppImage is 528 MB. */
 const MAX_INSTALLER_BYTES = 1024 * 1024 * 1024;

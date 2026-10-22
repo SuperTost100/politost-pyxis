@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { open, rename, rm, type FileHandle } from "node:fs/promises";
 import { gunzipSync, inflateRawSync } from "node:zlib";
-import { readCapped } from "../core/sources/public-fetch";
+import { readCapped } from "../core/sources/capped-body";
 
 // Block-level differential downloads, adapted from electron-updater's differential downloader (MIT, Copyright (c) 2015
 // Loopline Systems; see docs/notices.md). electron-builder cuts an installer into content-defined blocks and lists each
