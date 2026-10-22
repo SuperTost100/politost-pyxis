@@ -4840,11 +4840,11 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ========================================================================
 
-cli-funnel 0.5.0
+cli-funnel 0.5.1
 License metadata: MIT
 
 --- LICENSE ---
-Source: https://raw.githubusercontent.com/SuperTost100/cli-funnel/16d186c34741e086ab3d71f389390ea5484b2a91/LICENSE
+Source: https://raw.githubusercontent.com/SuperTost100/cli-funnel/6f6b04650e18fea40c7b10ae0a393f8db78f0a17/LICENSE
 SHA-256: 9388c0c8e9a16013ddb24abccf14464ba93da95689c501c20fe2e2213c53a25e
 
 MIT License
