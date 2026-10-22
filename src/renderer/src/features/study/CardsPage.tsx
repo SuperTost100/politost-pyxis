@@ -21,6 +21,7 @@ import { Notice } from "../../components/Notice";
 import { LoadError } from "../../components/LoadError";
 import { usePlan } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
+import { CardFaceFields } from "../../components/CardFaceFields";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
 type RatingName = (typeof RATINGS)[number];
@@ -637,23 +638,12 @@ export function CardsPage() {
             </div>
             {editing ? (
               <div className="px-card-edit">
-                <label className="label" htmlFor="card-front">
-                  {t("cards.front")}
-                </label>
-                <Input.TextArea
-                  autoSize={{ minRows: 2, maxRows: 8 }}
-                  id="card-front"
-                  value={draftFront}
-                  onChange={(event) => setDraftFront(event.target.value)}
-                />
-                <label className="label" htmlFor="card-back">
-                  {t("cards.back")}
-                </label>
-                <Input.TextArea
-                  autoSize={{ minRows: 2, maxRows: 8 }}
-                  id="card-back"
-                  value={draftBack}
-                  onChange={(event) => setDraftBack(event.target.value)}
+                <CardFaceFields
+                  idPrefix="card"
+                  front={draftFront}
+                  back={draftBack}
+                  onFront={setDraftFront}
+                  onBack={setDraftBack}
                 />
                 <div className="px-card-edit-actions">
                   <Button
