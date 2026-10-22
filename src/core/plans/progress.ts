@@ -445,10 +445,19 @@ export function planSeries(
         .all(planId) as { id: string; created_at: number }[]
     ).map((row) => [row.id, row.created_at]),
   );
+  // Events and finished lessons by topic, so each topic does not read through every plan event.
+  const eventsByTopic = new Map<string, typeof events>();
+  for (const event of events) {
+    if (event.at > now) continue;
+    const list = eventsByTopic.get(event.topicId);
+    if (list) list.push(event);
+    else eventsByTopic.set(event.topicId, [event]);
+  }
+  const lessonsByTopic = new Map<string, number>();
+  for (const row of completed)
+    if (row.at <= now) lessonsByTopic.set(row.topicId, (lessonsByTopic.get(row.topicId) ?? 0) + 1);
   const skillTopics = topics.map((topic) => {
-    const rows = events.filter(
-      (event) => event.topicId === topic.id && event.at <= now,
-    );
+    const rows = eventsByTopic.get(topic.id) ?? [];
     const lastStudied = rows.length
       ? rows.reduce((latest, event) => Math.max(latest, event.at), 0)
       : null;
@@ -463,9 +472,7 @@ export function planSeries(
               .length,
           0,
         ),
-      lessons: completed.filter(
-        (row) => row.topicId === topic.id && row.at <= now,
-      ).length,
+      lessons: lessonsByTopic.get(topic.id) ?? 0,
       lastStudied,
       idle:
         now - (lastStudied ?? topicDates.get(topic.id) ?? now) >=

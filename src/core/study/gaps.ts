@@ -29,13 +29,29 @@ export function shouldClose(
   gap: OpenGap,
   later: AttemptScore[],
 ): boolean {
+  let days = 0;
+  for (const step of goodDays(gap, later)) days = step.days;
+  return days >= 2;
+}
+
+/**
+ * When the closing rule of `shouldClose` first held: the time of the attempt after which the answers so far close the
+ * gap, or null. One pass over the attempts, where asking `shouldClose` of every prefix would read them again each time.
+ */
+export function firstClose(gap: OpenGap, later: AttemptScore[]): number | null {
+  for (const step of goodDays(gap, later)) if (step.days >= 2) return step.at;
+  return null;
+}
+
+/** The gap's later attempts in time order, each with the number of days of correct answers since the last miss. */
+function* goodDays(gap: OpenGap, later: AttemptScore[]): Generator<{ at: number; days: number }> {
   const after = later
     .filter((attempt) => attempt.topicId === gap.topicId && attempt.at > gap.openedAt)
     .sort((a, b) => a.at - b.at);
-  const lastMiss = after.findLastIndex((attempt) => attempt.scores.some((score) => score < 1));
-  const goodDays = new Set<number>();
-  for (const attempt of after.slice(lastMiss + 1)) {
-    if (attempt.scores.length > 0) goodDays.add(day(attempt.at));
+  let days = new Set<number>();
+  for (const attempt of after) {
+    if (attempt.scores.some((score) => score < 1)) days = new Set();
+    else if (attempt.scores.length > 0) days.add(day(attempt.at));
+    yield { at: attempt.at, days: days.size };
   }
-  return goodDays.size >= 2;
 }

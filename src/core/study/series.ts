@@ -1,4 +1,4 @@
-import { shouldClose, shouldOpen, type OpenGap } from "./gaps";
+import { firstClose, shouldOpen, type OpenGap } from "./gaps";
 import { currentRatings, masteryFor, type LessonCheck, type MasteryEvent } from "./mastery";
 
 export type SeriesEvent = {
@@ -204,7 +204,9 @@ export function replayGaps(
   const byTopic = new Map<string, SeriesEvent[]>();
   for (const event of events) {
     if (event.kind !== "quiz" || isLightEvidence(event)) continue;
-    byTopic.set(event.topicId, [...(byTopic.get(event.topicId) ?? []), event]);
+    const list = byTopic.get(event.topicId);
+    if (list) list.push(event);
+    else byTopic.set(event.topicId, [event]);
   }
   for (const gap of known) if (!byTopic.has(gap.topicId)) byTopic.set(gap.topicId, []);
   const tracked: TrackedGap[] = [];
@@ -213,12 +215,7 @@ export function replayGaps(
     const attemptsFor = (gap: TrackedGap) =>
       list.map((event) => ({ topicId, at: event.at, scores: scoresFor(gap, event) }));
     /** When the gap first satisfied the closing rule, or null. */
-    const closeTime = (gap: TrackedGap) => {
-      const attempts = attemptsFor(gap);
-      for (let index = 0; index < attempts.length; index++)
-        if (shouldClose(gap, attempts.slice(0, index + 1))) return attempts[index]!.at;
-      return null;
-    };
+    const closeTime = (gap: TrackedGap) => firstClose(gap, attemptsFor(gap));
     const mine: TrackedGap[] = known
       .filter((gap) => gap.topicId === topicId)
       .map((gap) => {
