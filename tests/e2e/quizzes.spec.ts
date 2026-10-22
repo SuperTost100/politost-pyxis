@@ -1,7 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -12,8 +11,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
 
 /** Ten diagnostic questions over the book's two chapters; each explanation cites a passage by ID. */
 const diagnosticReply = {
@@ -57,14 +55,10 @@ async function launch(replies: Record<string, unknown>, delay = 0) {
     }),
   );
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app: ElectronApplication = await electron.launch({ args: [MAIN], env });
+  const app: ElectronApplication = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
@@ -698,13 +692,7 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
   );
   test.setTimeout(480000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-live-study-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  delete (env as NodeJS.ProcessEnv).PYXIS_E2E_PLAN_REPLIES;
-  const app = await electron.launch({
-    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: undefined } });
   const startedAt = Date.now();
   try {
     const page = await app.firstWindow();

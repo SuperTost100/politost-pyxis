@@ -1,12 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
 
 // Guided plan loading and failure (PLAN-10 to PLAN-12). The recorded-reply fixture answers every call the
 // same way for a whole launch, so each failing step gets its own launch. No model is called.
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 const LARGE = Boolean(process.env.PYXIS_UI_LARGE);
 
 const modules = { modules: [{ title: "Cinematica", summary: "Il moto dei corpi" }, { title: "Dinamica", summary: "Le forze" }] };
@@ -26,14 +26,10 @@ const next = (page: Page) => page.getByRole("button", { name: /^(Continua|Contin
 
 function launch(userData: string, state: State) {
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(FIXTURES[state].replies),
     PYXIS_E2E_PLAN_DELAY: String(FIXTURES[state].delay),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  return launchPyxis({ userData, env });
 }
 
 /** Through the wizard to the guided flow, then to the step that calls the model. */

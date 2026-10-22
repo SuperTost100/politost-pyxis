@@ -1,10 +1,11 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -91,18 +92,11 @@ test("a quick check can be answered while the lesson is still being written, and
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     // Each model call waits first, so there is a moment where a lesson is being written and no text has arrived.
     PYXIS_E2E_PLAN_DELAY: "1500",
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });

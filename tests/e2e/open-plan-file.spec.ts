@@ -1,9 +1,9 @@
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
 
-const MAIN = join(process.cwd(), "out/main/index.js");
 // Set PYXIS_SHOTS to a folder to keep screenshots of the import review in both themes.
 const SHOTS = process.env["PYXIS_SHOTS"];
 
@@ -21,9 +21,7 @@ const plan = (title: string, extra: object = {}) =>
 
 async function start(args: string[]) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-open-plan-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN, ...args], env });
+  const app = await launchPyxis({ userData, args });
   const page = await app.firstWindow();
   return { app, page, userData };
 }

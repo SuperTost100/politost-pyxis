@@ -1,10 +1,11 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
+import { launchPyxis } from "./app-under-test";
 
 test("PLAN-21 document tree and build resume after cancel and restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-plan-check-"));
@@ -42,17 +43,10 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: "2000",
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  let app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  let app = await launchPyxis({ userData, env });
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -106,10 +100,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
       page.getByRole("button", { name: "Riprova", exact: true }),
     ).toBeVisible();
     await app.close();
-    app = await electron.launch({
-      args: [join(process.cwd(), "out/main/index.js")],
-      env,
-    });
+    app = await launchPyxis({ userData, env });
     page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.evaluate((id) => {
@@ -169,13 +160,7 @@ test("PLAN-21 live Claude builds the owner's smartbook plan", async () => {
   );
   test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-live-plan-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  delete (env as NodeJS.ProcessEnv).PYXIS_E2E_PLAN_REPLIES;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: undefined } });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

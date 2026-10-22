@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
@@ -9,12 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
 
 /** Two subjects, one exam with no subject, and cards that need the folding, the math and the cloze. */
 function seed(db: DatabaseSync) {
@@ -73,9 +67,7 @@ async function choose(page: Page, label: string, option: string) {
 test("the flashcard browser groups, searches, edits, suspends, deletes and restores", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-browser-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -243,9 +235,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
 
 test("the flashcard browser says when there are no cards", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-browser-empty-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

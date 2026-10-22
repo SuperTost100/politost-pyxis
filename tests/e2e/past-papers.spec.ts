@@ -1,9 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
 
 const shots = process.env.PYXIS_SHOTS ?? ".shots/past-papers";
 
@@ -55,9 +56,6 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
       paper.questions.map((q, i) => `${i + 1}. ${q.text}`).join("\n\n"),
   );
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       paper,
       markdown: { markdown: "## Ripasso\nUn riepilogo del piano." },
@@ -74,8 +72,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
       score: { score: 0.8, explanation: "Corretto, manca un passaggio." },
     }),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

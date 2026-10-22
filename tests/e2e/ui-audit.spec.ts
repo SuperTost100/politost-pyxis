@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -22,6 +21,7 @@ import { PNG } from "pngjs";
 import { putBlob } from "../../src/core/blobs";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { imageOnlyPdf } from "./scanned-pdf-fixture";
+import { launchPyxis } from "./app-under-test";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -2569,10 +2569,7 @@ test("M14 every application route in both languages, themes and supported widths
     }),
   );
   const env = {
-    ...process.env,
     PYXIS_E2E_BOOKS: booksSite,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_FILE: importFolder,
     ...updateEnv(),
     PYXIS_E2E_REPLY: "La forza è $F=ma$ [P1].",
@@ -2598,13 +2595,7 @@ test("M14 every application route in both languages, themes and supported widths
       },
     }),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [
-      join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"),
-    ],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   auditApp = app;
   auditPicked = importFolder;
   const records: unknown[] = [];

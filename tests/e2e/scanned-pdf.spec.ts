@@ -1,5 +1,4 @@
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -9,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { appUnderTest } from "./app-under-test";
+import { launchPyxis } from "./app-under-test";
 import { importPickedSource } from "./picked-source";
 import {
   drawScanPages,
@@ -41,9 +40,7 @@ type Run = {
 /** Launches a fresh workspace and imports the generated scanned PDF through the native picker. */
 async function openScan(): Promise<Run> {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-scanned-pdf-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch(appUnderTest(env));
+  const app = await launchPyxis({ userData });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.

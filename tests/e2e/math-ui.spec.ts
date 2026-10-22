@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   cpSync,
   existsSync,
@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MathCheck } from "../../src/shared/math-check";
+import { launchPyxis } from "./app-under-test";
 
 async function launch(reply?: string) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -21,14 +22,7 @@ async function launch(reply?: string) {
   const pack = join(userData, "workspace/runtimes/pyodide", version);
   mkdirSync(pack, { recursive: true });
   cpSync(".tmp/pyodide", pack, { recursive: true });
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  delete (env as NodeJS.ProcessEnv).PYXIS_E2E_REPLY;
-  if (reply) (env as NodeJS.ProcessEnv).PYXIS_E2E_REPLY = reply;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: reply || undefined } });
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();

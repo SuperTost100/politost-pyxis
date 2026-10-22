@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   type ElectronApplication,
   expect,
   test,
@@ -18,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { quitPyxis } from "./app-exit";
+import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 
 const automatic =
@@ -42,13 +42,8 @@ test.beforeEach(() => {
   mainLog.length = 0;
 });
 
-async function launch(env: Record<string, string | undefined>) {
-  const full = { ...process.env, PYXIS_E2E: "1", ...env };
-  delete (full as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env: full as Record<string, string>,
-  });
+async function launch(env: { PYXIS_USER_DATA: string } & Record<string, string>) {
+  const app = await launchPyxis({ userData: env.PYXIS_USER_DATA, env });
   for (const stream of [app.process().stdout, app.process().stderr])
     stream?.on("data", (chunk) =>
       mainLog.push(

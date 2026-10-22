@@ -1,16 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-composer-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1", PYXIS_E2E_REPLY: "Ecco." };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: "Ecco." } });
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();

@@ -1,6 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   existsSync,
   mkdirSync,
@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
 
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -31,9 +32,6 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
   const sourcePath = join(userData, "energy.txt");
   writeFileSync(sourcePath, text);
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_MOVE: parent,
     PYXIS_E2E_RELEASE: JSON.stringify({
       tag_name: newerTag,
@@ -42,11 +40,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       prerelease: false,
     }),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  let app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  let app = await launchPyxis({ userData, env });
   try {
     let page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -184,10 +178,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       expect(update.current).toBe(packageVersion);
     }
     await app.close();
-    app = await electron.launch({
-      args: [join(process.cwd(), "out/main/index.js")],
-      env,
-    });
+    app = await launchPyxis({ userData, env });
     page = await app.firstWindow();
     await expect
       .poll(() => page.evaluate(() => window.pyxis.workspacePath()))
@@ -212,17 +203,10 @@ test("a manual backup saved over the live database is refused and the data stays
   const userData = mkdtempSync(join(tmpdir(), "pyxis-backup-inside-"));
   const database = join(userData, "workspace", "pyxis.db");
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     // A Linux save dialog keeps the name as typed, so "pyxis.db" in the workspace reaches main unchanged.
     PYXIS_E2E_SAVE: database,
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -256,12 +240,7 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
   const userData = mkdtempSync(join(tmpdir(), "pyxis-free-space-"));
   const sourcePath = join(userData, "lavoro.txt");
   writeFileSync(sourcePath, "Il lavoro di una forza costante è il prodotto scalare di forza e spostamento.");
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });

@@ -1,5 +1,4 @@
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -9,20 +8,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
 
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
 const mac = process.platform === "darwin";
 
 async function launch(options: { onboarded: boolean }) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-app-menu-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_RELEASE: JSON.stringify({
       tag_name: "v9.9.9",
       body: "Fixture release.",
@@ -30,8 +22,7 @@ async function launch(options: { onboarded: boolean }) {
       prerelease: false,
     }),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   if (options.onboarded) {
     await page.getByRole("button", { name: "Salta" }).click();

@@ -1,11 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -142,13 +143,9 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const app = await launchPyxis({ userData, env });
   const shots = ".shots/plan-path";
   mkdirSync(shots, { recursive: true });
   const combos = [
@@ -381,13 +378,9 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const app = await launchPyxis({ userData, env });
   const shots = ".shots/plan-path";
   mkdirSync(shots, { recursive: true });
   try {

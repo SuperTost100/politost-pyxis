@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { unzipSync } from "fflate";
+import { launchPyxis } from "./app-under-test";
 
 test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export modal", async () => {
   const root = mkdtempSync(join(tmpdir(), "pyxis-export-check-"));
@@ -19,17 +20,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
   mkdirSync(".tmp", { recursive: true });
   mkdirSync(".shots", { recursive: true });
   const saved = join(root, "export.bin");
-  const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
-    PYXIS_E2E_SAVE: saved,
-  };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const env = { PYXIS_E2E_SAVE: saved };
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -224,9 +216,9 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       page.evaluate(() => window.pyxis.backupWorkspace()),
     ).resolves.toBe("saved");
     const freshData = mkdtempSync(join(tmpdir(), "pyxis-export-restore-"));
-    const fresh = await electron.launch({
-      args: [join(process.cwd(), "out/main/index.js")],
-      env: { ...env, PYXIS_USER_DATA: freshData, PYXIS_E2E_ZIP: saved },
+    const fresh = await launchPyxis({
+      userData: freshData,
+      env: { ...env, PYXIS_E2E_ZIP: saved },
     });
     try {
       const freshPage = await fresh.firstWindow();

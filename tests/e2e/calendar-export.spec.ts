@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   existsSync,
   mkdirSync,
@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -35,16 +36,9 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
   mkdirSync(".shots", { recursive: true });
   const saved = join(userData, "exams.ics");
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_SAVE: saved,
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });

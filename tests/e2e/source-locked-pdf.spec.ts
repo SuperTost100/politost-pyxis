@@ -1,13 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { lockedPdf } from "../../src/core/sources/test-pdf";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
 
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 const PASSWORD = "Carnot-1824";
 
 function database(userData: string, readOnly = true) {
@@ -48,9 +48,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
   writeFileSync(pdf, lockedPdf("Il rendimento di una macchina termica", PASSWORD));
   const notes = join(userData, "Appunti.txt");
   writeFileSync(notes, "Il primo principio della termodinamica lega calore, lavoro ed energia interna.\n");
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

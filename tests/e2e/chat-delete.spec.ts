@@ -1,9 +1,10 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
 
 for (const libraryCopy of [false, true]) {
   test(`chat deletion after a later document attachment keeps library copy: ${libraryCopy}`, async () => {
@@ -14,21 +15,9 @@ for (const libraryCopy of [false, true]) {
       "Velocity is displacement divided by elapsed time.\n".repeat(20),
     );
     const env = {
-      ...process.env,
-      PYXIS_E2E: "1",
-      PYXIS_USER_DATA: userData,
       PYXIS_E2E_REPLY: "Velocity is displacement divided by elapsed time [P1].",
     };
-    delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-    const app = await electron.launch(
-      process.env.PYXIS_DIST_APP
-        ? {
-            executablePath: process.env.PYXIS_DIST_APP,
-            args: ["--use-mock-keychain"],
-            env,
-          }
-        : { args: [join(process.cwd(), "out/main/index.js")], env },
-    );
+    const app = await launchPyxis({ userData, env });
     try {
       const page = await app.firstWindow();
       await page.getByRole("button", { name: "Salta", exact: true }).click();

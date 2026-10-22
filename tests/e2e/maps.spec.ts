@@ -1,6 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   copyFileSync,
   existsSync,
@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { PNG } from "pngjs";
 import { strToU8, zipSync } from "fflate";
 import type { ConceptGraph } from "../../src/shared/concept-map";
+import { launchPyxis } from "./app-under-test";
 
 test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PNG", async () => {
   test.setTimeout(240_000);
@@ -97,19 +98,12 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies),
     PYXIS_E2E_MAP_REPLIES: process.env.PYXIS_LIVE_MAP
       ? undefined
       : JSON.stringify(mapReplies),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
-    env: env as Record<string, string>,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     // Hidden windows on Windows and Linux can stall CSS/JS motion mid-way (stuck modal leave, half-faded colors); the app honors this setting.

@@ -1,14 +1,9 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
 
 const CONTINUATION = " ha un massimo e un minimo su un intervallo chiuso.";
 
@@ -34,15 +29,11 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-replies-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: CONTINUATION,
     // The recorded reply waits before its first piece, so the moments right after Continue can be checked.
     PYXIS_E2E_REPLY_DELAY: "4000",
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -113,14 +104,10 @@ test("Ask: Continue keeps the cut reply's citation chips while it waits for the 
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-replies-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: CONTINUATION,
     PYXIS_E2E_REPLY_DELAY: "4000",
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

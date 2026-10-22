@@ -1,5 +1,4 @@
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -10,7 +9,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeOllama } from "../../src/core/engine/fake-ollama";
-import { appUnderTest } from "./app-under-test";
+import { launchPyxis } from "./app-under-test";
 
 const GIB = 1024 ** 3;
 // Screenshots for review go here when set. The checks run either way.
@@ -57,16 +56,11 @@ async function launch(
   userData: string,
   env: Record<string, string>,
 ): Promise<{ app: ElectronApplication; page: Page }> {
-  const merged: Record<string, string | undefined> = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
+  const app = await launchPyxis({
+    userData,
     // No real Ollama, engine CLI or graphics card takes part.
-    CLI_FUNNEL_NO_SHELL_PATH: "1",
-    ...env,
-  };
-  delete merged.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch(appUnderTest(merged));
+    env: { CLI_FUNNEL_NO_SHELL_PATH: "1", ...env },
+  });
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();

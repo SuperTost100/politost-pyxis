@@ -1,23 +1,18 @@
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-remount-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
     // No signed-in AI command-line tools from the machine running the test: their notice would cover the page.
     HOME: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: "Ecco la risposta.\n<followups>\nUn esempio?\n</followups>",
     PYXIS_E2E_REPLY_DELAY: "8000",
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   await expect(page).toHaveURL(/#\/exams$/);

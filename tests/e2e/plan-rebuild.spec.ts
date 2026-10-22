@@ -1,27 +1,21 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
+import { launchPyxis } from "./app-under-test";
 
 // Seeded responses only: the app runs its real jobs against recorded replies, no model is called.
 
 // A hidden window never finishes a modal's leave animation, so every page here asks for reduced motion.
 function launch(userData: string, replies: unknown) {
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  return electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  return launchPyxis({ userData, env });
 }
 
 const intro = { markdown: "## Introduzione\n\nStudierai la fisica." };

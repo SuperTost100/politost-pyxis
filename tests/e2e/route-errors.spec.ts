@@ -1,15 +1,14 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mkdtempSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
 
 test("route failure shows a plain recovery page without stack details", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-route-error-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -36,9 +35,7 @@ test("route failure shows a plain recovery page without stack details", async ()
 
 test("a failed plan build says so in the title and steps, shows its message under Details and retries", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-error-state-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

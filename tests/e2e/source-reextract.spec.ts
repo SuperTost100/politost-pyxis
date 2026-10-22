@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,8 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { blobParts } from "../../src/shared/blob-path";
 import { importPickedSource } from "./picked-source";
 import { animationsSettled } from "./settled";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
 
 /** Reads the workspace database next to the running app; WAL lets a second reader see committed rows. */
 function rows<T>(userData: string, sql: string, ...args: string[]): T[] {
@@ -42,9 +41,8 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
   const file = join(userData, "fisica.txt");
   writeFileSync(file, "La velocità descrive lo spostamento nel tempo.\n\nL'energia cinetica dipende dalla velocità.\n");
   // The recorded-reply seam also selects the fixture engine plan creation requires; no model is called.
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1", PYXIS_E2E_PLAN_REPLIES: "{}" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const env = { PYXIS_E2E_PLAN_REPLIES: "{}" };
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

@@ -1,12 +1,12 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
-import { appUnderTest } from "./app-under-test";
+import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
@@ -35,13 +35,9 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     }),
   );
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_FILE: file,
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch(appUnderTest(env));
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -187,10 +183,8 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
   const userData = mkdtempSync(join(tmpdir(), "pyxis-e5-check-"));
   const modelDir = join(userData, "workspace", "models", "e5");
   cpSync(resolve(model!), modelDir, { recursive: true });
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   // CI repeats this check on the packaged app, whose workers load the packaged node_modules.
-  let app = await electron.launch(appUnderTest(env));
+  let app = await launchPyxis({ userData });
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -233,7 +227,7 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
     )) as Array<{ sourceId: string }>;
     expect(hits.some((hit) => hit.sourceId === source.sourceId)).toBe(true);
     await app.close();
-    app = await electron.launch(appUnderTest(env));
+    app = await launchPyxis({ userData });
     page = await app.firstWindow();
     const restored = (await page.evaluate(
       (query) => window.pyxis.invoke("sources.search", { query }),

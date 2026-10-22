@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -18,7 +17,7 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
-import { appUnderTest } from "./app-under-test";
+import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 
 const HEIC = join(process.cwd(), "tests/fixtures/synthetic-note.heic");
@@ -35,14 +34,7 @@ async function launch(
   userData: string,
   extra: Record<string, string> = {},
 ): Promise<ElectronApplication> {
-  const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
-    ...extra,
-  };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch(appUnderTest(env));
+  const app = await launchPyxis({ userData, env: extra });
   // Keep core failure and port diagnostics in the recorded run log.
   app.process().stderr?.on("data", (chunk) => {
     console.error(String(chunk));

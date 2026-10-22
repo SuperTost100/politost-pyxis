@@ -1,14 +1,9 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
 
 /** Two dated exams and one without a date, with one due card in each dated plan. */
 function seed(db: DatabaseSync) {
@@ -29,9 +24,7 @@ function seed(db: DatabaseSync) {
 
 test("Oggi lists due cards from every plan as one item, then each exam's next step, and ticks them off", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-oggi-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

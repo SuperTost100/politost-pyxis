@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -11,12 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { animationsSettled } from "./settled";
+import { launchPyxis } from "./app-under-test";
 
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
 /** Set PYXIS_SHOTS to a folder to save screenshots of the dialog. */
 const SHOTS = process.env.PYXIS_SHOTS;
 
@@ -94,9 +89,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
   const userData = mkdtempSync(join(tmpdir(), "pyxis-anki-import-"));
   const fixtures = mkdtempSync(join(tmpdir(), "pyxis-anki-fixture-"));
   const archive = packageFile(fixtures);
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

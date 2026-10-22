@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
@@ -10,12 +9,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
 
 // A folder laid out like books.politost.it: the catalog and one package. `tamper` lists a checksum that does not match.
 function booksSite(options: { tamper?: boolean } = {}) {
@@ -60,13 +54,9 @@ function booksSite(options: { tamper?: boolean } = {}) {
 
 async function launch(userData: string, books: string) {
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_BOOKS: books,
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  return launchPyxis({ userData, env });
 }
 
 async function noAxeViolations(page: Page) {

@@ -1,5 +1,4 @@
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -10,8 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
 
 function smartbook() {
   return zipSync({
@@ -44,17 +42,13 @@ async function launch(delay = 0) {
   mkdirSync(".shots", { recursive: true });
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ui-states-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       markdown: { markdown: "## Ripasso\nUsa le formule [P1]." },
       questions: diagnostic,
     }),
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   page.setDefaultTimeout(30000);
   await page.emulateMedia({ reducedMotion: "reduce" });

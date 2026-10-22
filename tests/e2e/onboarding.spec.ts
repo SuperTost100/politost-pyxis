@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -11,12 +10,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
 
 // Stand-ins for the two engine CLIs. They report a version and a sign-in state, nothing more, so no model is called.
 function fakeBins(options: { claude: boolean | null; codex: boolean | null }) {
@@ -59,14 +53,7 @@ async function launch(
   userData: string,
   extra: Record<string, string>,
 ): Promise<ElectronApplication> {
-  const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
-    ...extra,
-  };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  return launchPyxis({ userData, env: extra });
 }
 
 async function noAxeViolations(page: Page) {

@@ -1,8 +1,9 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MathCheck } from "../../src/shared/math-check";
+import { launchPyxis } from "./app-under-test";
 const manifest = JSON.parse(readFileSync(join(process.cwd(), "resources/pyodide-manifest.json"), "utf8")) as { version: string };
 
 test("MATH-02 MATH-06 Pyodide limits, network isolation and independent SymPy verification", async () => {
@@ -14,12 +15,7 @@ test("MATH-02 MATH-06 Pyodide limits, network isolation and independent SymPy ve
   const pack = join(userData, "workspace/runtimes/pyodide", manifest.version);
   mkdirSync(pack, { recursive: true });
   cpSync(join(process.cwd(), ".tmp/pyodide"), pack, { recursive: true });
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -141,12 +137,7 @@ test("MATH-02 MATH-06 complete solve sets, own-request queue clock and crashed-r
   const pack = join(userData, "workspace/runtimes/pyodide", manifest.version);
   mkdirSync(pack, { recursive: true });
   cpSync(join(process.cwd(), ".tmp/pyodide"), pack, { recursive: true });
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

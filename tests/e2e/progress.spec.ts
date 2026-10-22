@@ -1,11 +1,12 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
 
 test("PRO-01 through PRO-06 preparation layout, flagged content, activity and progress tabs", async () => {
   test.setTimeout(90000);
@@ -61,16 +62,9 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(fixture),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     const errors: string[] = [];

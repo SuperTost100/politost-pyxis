@@ -1,13 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
 
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 const dbPath = (userData: string) => join(userData, "workspace", "pyxis.db");
 
 type Session = {
@@ -74,14 +74,10 @@ const diagnostic = {
 
 function launch(userData: string, replies: object, delay = 0) {
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ markdown: { markdown: "## Ripasso\nUsa le formule [P1]." }, questions: diagnostic, ...replies }),
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  return launchPyxis({ userData, env });
 }
 
 const invoke = <T>(page: Page, channel: string, input: object) =>

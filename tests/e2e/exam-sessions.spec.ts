@@ -1,9 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -20,12 +21,7 @@ const shots = process.env["PYXIS_SHOTS_DIR"] ?? "";
 test("EXAM-01 an exam holds a written and an oral session, and a finished exam can be archived and restored", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-sessions-check-"));
   if (shots) mkdirSync(shots, { recursive: true });
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });

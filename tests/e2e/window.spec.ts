@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
@@ -17,6 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { animationsSettled } from "./settled";
+import { launchPyxis } from "./app-under-test";
 
 async function clean(page: Page) {
   expect(
@@ -28,14 +28,7 @@ async function clean(page: Page) {
 test("window CSP: no string eval and no remote images in the main window", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-csp-"));
   const image = "https://tracker.example.com/pixel.png";
-  const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const packaged = process.env.PYXIS_DIST_APP;
-  const app = await electron.launch(
-    packaged
-      ? { executablePath: packaged, args: ["--use-mock-keychain"], env }
-      : { args: [join(process.cwd(), "out/main/index.js")], env },
-  );
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await expect(
@@ -98,10 +91,8 @@ test("window CSP: no string eval and no remote images in the main window", async
 // belongs to that origin. The update copies it once.
 test("an update from the file:// window keeps what the renderer stored", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-storage-"));
-  const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const launch = () =>
-    electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  // A stylesheet in out/ stands in for the old file:// page, so this runs that build even when CI checks the packaged app.
+  const launch = () => launchPyxis({ userData, packaged: false });
   const assets = join(process.cwd(), "out/renderer/assets");
   const stylesheet = join(
     assets,
@@ -214,9 +205,6 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
   const started = Date.now();
   let selectedModel: string | undefined;
   const env = {
-    ...process.env,
-    PYXIS_E2E: "1",
-    PYXIS_USER_DATA: userData,
     PYXIS_E2E_FILE: book,
     PYXIS_E2E_SAVE: backup,
     PYXIS_E2E_ZIP: backup,
@@ -234,13 +222,8 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       ? undefined
       : "Velocity is displacement divided by time [P1].",
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const packaged = process.env.PYXIS_DIST_APP;
-  const app = await electron.launch(
-    packaged
-      ? { executablePath: packaged, args: ["--use-mock-keychain"], env: env as Record<string, string> }
-      : { args: [join(process.cwd(), "out/main/index.js")], env: env as Record<string, string> },
-  );
+  const app = await launchPyxis({ userData, env });
   if (!live)
     app.process().stderr?.on("data", (chunk) => console.error(String(chunk)));
   try {
@@ -624,13 +607,7 @@ test("the packaged app reports the same GPU features as Electron's build", async
   test.skip(!packaged, "Set PYXIS_DIST_APP to the packaged executable.");
   async function features(executablePath?: string) {
     const userData = mkdtempSync(join(tmpdir(), "pyxis-gpu-"));
-    const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
-    delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-    const app = await electron.launch(
-      executablePath
-        ? { executablePath, args: ["--use-mock-keychain"], env }
-        : { args: [join(process.cwd(), "out/main/index.js")], env },
-    );
+    const app = await launchPyxis({ userData, packaged: executablePath ?? false });
     try {
       const page = await app.firstWindow();
       await page.waitForLoadState("load");

@@ -1,6 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
@@ -11,12 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
 
 const SPEED =
   "La velocità media è lo spazio percorso diviso il tempo impiegato.";
@@ -89,9 +83,6 @@ function publish(dir: string, version: string) {
 function launch(userData: string, books: string) {
   // Recorded replies for the plan's introduction and diagnostic; no model is called.
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_BOOKS: books,
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       markdown: { markdown: "## Introduzione\n\nStudierai il moto." },
@@ -107,8 +98,7 @@ function launch(userData: string, books: string) {
       },
     }),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  return launchPyxis({ userData, env });
 }
 
 /** Reads the workspace database next to the running app; WAL lets a second reader see committed rows. */

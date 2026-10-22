@@ -1,16 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { parseSmartText, smartQuestions } from "../../src/shared/smart-text";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
 
 const mcq = (id: string, topicId: string, stem: string) => ({
   id,
@@ -221,9 +216,7 @@ function seed(db: DatabaseSync) {
 test("the mistakes notebook collects misses by exam and topic and asks them again", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-mistakes-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

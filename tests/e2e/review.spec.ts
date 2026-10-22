@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import {
   cpSync,
@@ -14,9 +14,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
 
 // The built app can be pointed at another output folder so a test run never races a rebuild of out/.
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 
 const exercise = (id: string, chapter: number, n: number) =>
   `:::exercise{id="${id}" chapter="${chapter}"}\nDomanda ${id}?\n:::solution\nrisposta ${n}\n:::\n:::\n`;
@@ -61,13 +61,9 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -208,13 +204,9 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
   mkdirSync(pack, { recursive: true });
   cpSync(".tmp/pyodide", pack, { recursive: true });
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: "Prova così:\n\n```python\nprint(6 * 7)\n```\n",
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page: Page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

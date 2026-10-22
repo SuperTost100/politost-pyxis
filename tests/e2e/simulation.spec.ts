@@ -1,11 +1,12 @@
 import { importPickedSource } from "./picked-source";
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
 
 test("LES-20 through LES-23 exam timer restart, auto-submit and named grading model", async () => {
   test.setTimeout(240000);
@@ -61,9 +62,6 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies),
     PYXIS_E2E_SIMULATION_REPLIES: process.env.PYXIS_LIVE_SIMULATION
       ? undefined
@@ -76,9 +74,8 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
         }),
     PYXIS_E2E_SIMULATION_DELAY: "1500",
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
   const launch = () =>
-    electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env: env as Record<string, string> });
+    launchPyxis({ userData, env });
   let app = await launch();
   try {
     let page = await app.firstWindow();

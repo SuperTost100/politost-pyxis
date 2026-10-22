@@ -1,16 +1,13 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(process.cwd(), "out/main/index.js");
+import { launchPyxis } from "./app-under-test";
 
 test("the running copy holds the single-instance lock for its profile", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-single-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -36,9 +33,7 @@ test("the running copy holds the single-instance lock for its profile", async ()
 test("answers outside a plan follow the interface language", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-language-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

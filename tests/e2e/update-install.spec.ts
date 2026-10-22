@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { createHash, randomBytes } from "node:crypto";
 import {
   existsSync,
@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
 
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -46,9 +47,6 @@ test("update: download and install checks SHA256SUMS, replaces the AppImage, and
   const download = (name: string) =>
     `https://github.com/PoliTost/pyxis-test/releases/download/${newerTag}/${name}`;
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_RELEASE: JSON.stringify({
       tag_name: newerTag,
       body: "New study tools.",
@@ -71,11 +69,7 @@ test("update: download and install checks SHA256SUMS, replaces the AppImage, and
     PYXIS_E2E_UPDATE_HOLD: hold,
     PYXIS_E2E_APPIMAGE: appImage,
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   const downloads = () =>
     existsSync(join(userData, "updates"))
       ? readdirSync(join(userData, "updates"))

@@ -1,10 +1,10 @@
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
 
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 /** Set to a folder to also save screenshots of the reply action, the selection menu and the review dialog. */
 const SHOTS = process.env.PYXIS_SHOTS_DIR;
 
@@ -83,14 +83,10 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-make-cards-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: REPLY,
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ cards: { cards: CARDS } }),
   };
-  delete (env as NodeJS.ProcessEnv).ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
