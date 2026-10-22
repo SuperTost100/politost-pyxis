@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { educationLevels, readProfile, type EducationLevel } from "../profile/profile";
+import { putSetting } from "../settings";
 
 // ASK-09: a plan answers at its own education level. It is copied from the profile when the plan
 // is made and never follows later profile edits. A settings row, not a column: only this
@@ -17,10 +18,7 @@ function stored(db: Database.Database, planId: string): EducationLevel | null {
 }
 
 function put(db: Database.Database, planId: string, level: EducationLevel, now: number) {
-  db.prepare(
-    `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-  ).run(key(planId), JSON.stringify({ level }), now);
+  putSetting(db, key(planId), { level }, now);
 }
 
 /** Copies the profile's level onto the plan. Call when the plan is created. */

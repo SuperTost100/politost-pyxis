@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { startOfDay } from "../../shared/local-day";
+import { putSetting } from "../settings";
 import {
   isMastered,
   newCard,
@@ -78,10 +79,7 @@ export function setNewCardsPerDay(
   now = Date.now(),
 ): number {
   const value = Math.min(maxNewPerDay, Math.max(0, Math.round(count)));
-  db.prepare(
-    `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-  ).run(NEW_PER_DAY, JSON.stringify(value), now);
+  putSetting(db, NEW_PER_DAY, value, now);
   return value;
 }
 

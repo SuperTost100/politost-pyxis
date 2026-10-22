@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { putSetting } from "../settings";
 
 /** Thrown, never awaited on: a task does not wait for the student to read a notice. */
 export const DISCLOSURE_REQUIRED = "engine-disclosure-required";
@@ -20,11 +21,8 @@ export function createDisclosure(db: Database.Database) {
     isAcknowledged,
     acknowledge(providers: readonly string[]) {
       const now = Date.now();
-      const insert = db.prepare(
-        "INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES (?, 'true', ?)",
-      );
       db.transaction(() => {
-        for (const provider of providers) insert.run(key(provider), now);
+        for (const provider of providers) putSetting(db, key(provider), true, now);
       })();
     },
     ensure(provider: string, signal?: AbortSignal) {

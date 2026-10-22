@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { idleTimeout, readCapped } from "./public-fetch";
 import { sha256 } from "./quality";
+import { putSetting } from "../settings";
 import { runSourceWorker } from "./worker-client";
 
 const EMBEDDING_REVISION = "761b726dd34fb83930e26aab4e9ac3899aa1fa78";
@@ -24,10 +25,7 @@ const MAX_BYTES = 200 * 1024 * 1024;
 const IDLE_MS = 120_000;
 
 export function setEmbeddingConsent(db: Database.Database, accepted: boolean): void {
-  db.prepare(
-    `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-  ).run(CONSENT_KEY, JSON.stringify(accepted), Date.now());
+  putSetting(db, CONSENT_KEY, accepted);
 }
 
 export function embeddingConsent(db: Database.Database): boolean {

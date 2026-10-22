@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { putSetting } from "../settings";
 
 export const educationLevels = [
   "primary",
@@ -57,13 +58,6 @@ function setting(db: Database.Database, key: string): unknown {
     | { value_json: string }
     | undefined;
   return row ? JSON.parse(row.value_json) : undefined;
-}
-
-function putSetting(db: Database.Database, key: string, value: unknown, now: number): void {
-  db.prepare(
-    `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-  ).run(key, JSON.stringify(value), now);
 }
 
 export function readProfile(db: Database.Database): Profile | null {

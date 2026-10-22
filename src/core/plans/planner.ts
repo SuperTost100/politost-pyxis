@@ -4,6 +4,7 @@ import { suggestStep, stayActivities, type Activity, type Step, type TopicStatus
 import { pathState } from "./create";
 import { countDueCards, dueCards } from "../study/cards";
 import { weightedPlanMastery } from "./progress";
+import { putSetting } from "../settings";
 import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
 
 /**
@@ -70,10 +71,7 @@ export function savePlannerHours(
   // Weeks already over are not read again.
   const thisWeek = dayKey(startOfWeek(now));
   next.weeks = Object.fromEntries(Object.entries(next.weeks).filter(([week]) => week >= thisWeek));
-  db.prepare(
-    `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-  ).run(plannerKey, JSON.stringify(plannerSettings.parse(next)), now);
+  putSetting(db, plannerKey, plannerSettings.parse(next), now);
   return { ok: true };
 }
 

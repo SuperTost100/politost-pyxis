@@ -4,6 +4,7 @@ import tiers from "../../../resources/model-tiers.json";
 import { jsonSchema } from "./generate";
 import { getFunnel, runTurn, type ProviderId } from "./funnel";
 import type { Gpu, Hardware } from "./hardware";
+import { putSetting } from "../settings";
 
 export type LocalTier = {
   id: string;
@@ -135,9 +136,7 @@ export function readLocal(db: Database.Database): LocalSettings | undefined {
 }
 
 export function writeLocal(db: Database.Database, value: LocalSettings): void {
-  db.prepare(
-    "INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-  ).run(SETTINGS_KEY, JSON.stringify(value), Date.now());
+  putSetting(db, SETTINGS_KEY, value);
 }
 
 /** True when the local model may take tasks: the student turned it on and the current check passed. */

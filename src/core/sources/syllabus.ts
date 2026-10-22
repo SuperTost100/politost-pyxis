@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { Runner } from "../jobs/runner";
 import { embedTexts, embeddingConsent, embeddingReady } from "./embed";
 import { sha256 } from "./quality";
+import { putSetting } from "../settings";
 
 /**
  * SRC-08: a section whose mean passage vector sits below this cosine similarity to every plan text (title, subject,
@@ -197,10 +198,7 @@ export async function syllabusFor(
   signal?.throwIfAborted();
   const keep = checks.length > 0 && checks.every((check) => check.state === "checked");
   if (keep)
-    db.prepare(
-      `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-    ).run(storeKey(sourceId), JSON.stringify({ key, checks }), Date.now());
+    putSetting(db, storeKey(sourceId), { key, checks });
   else if (row) db.prepare(`DELETE FROM settings WHERE key = ?`).run(storeKey(sourceId));
   return checks;
 }

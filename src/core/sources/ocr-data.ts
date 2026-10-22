@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { readCapped } from "./public-fetch";
 import { sha256 } from "./quality";
+import { putSetting } from "../settings";
 
 /**
  * Local OCR language data (SRC-04, ASK-04). Pyxis never lets tesseract.js fetch it: the files are the Apache-2.0
@@ -90,10 +91,7 @@ export async function createOcrScratch(tess: string, scratch: string): Promise<v
 }
 
 export function setOcrConsent(db: Database.Database, accepted: boolean): void {
-  db.prepare(
-    `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-  ).run(CONSENT_KEY, JSON.stringify(accepted), Date.now());
+  putSetting(db, CONSENT_KEY, accepted);
 }
 
 export function ocrConsent(db: Database.Database): boolean {
