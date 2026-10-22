@@ -13,6 +13,7 @@ import { join } from "node:path";
 import type { MathCheck } from "../../src/shared/math-check";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 async function launch(reply?: string) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -41,7 +42,6 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
   const reply = `${step}\n\n\`\`\`check\n${JSON.stringify({ kind: "derivative", expr: "x**2*sin(x)", claimed: "x", step })}\n\`\`\``;
   const { app, page, userData } = await launch(reply);
   try {
-    mkdirSync(".shots", { recursive: true });
     for (const [language, theme, width] of [
       ["it", "dark", 1280],
       ["it", "light", 960],
@@ -79,9 +79,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
         "example error",
       );
       await expectNoAxeViolations(page);
-      await page.screenshot({
-        path: `.shots/m9-python-${language}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `m9-python-${language}-${theme}-${width}.png`);
     }
     const result = (await page.evaluate(() =>
       window.pyxis.invoke("chats.ask", {
@@ -99,7 +97,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     await page.locator(".px-check-badge.is-failed").focus();
     await expect(page.locator(".px-check-badge.is-failed")).toBeFocused();
     await expectNoAxeViolations(page);
-    await page.screenshot({ path: ".shots/m9-failed-light.png" });
+    await saveShot(page, "m9-failed-light.png");
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -201,7 +199,7 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
     await expect(
       page.locator(".px-check-badge.is-verified").first(),
     ).toBeVisible({ timeout: 30000 });
-    await page.screenshot({ path: ".shots/m9-live-verified.png" });
+    await saveShot(page, "m9-live-verified.png");
     await page.evaluate(() => {
       window.location.hash = "/tools/graph";
     });
@@ -212,7 +210,7 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
       3,
     );
     await expect(page.getByText(/Integrale da/)).toBeVisible();
-    await page.screenshot({ path: ".shots/m9-graph.png" });
+    await saveShot(page, "m9-graph.png");
     await page.evaluate(() => {
       window.location.hash = "/tools/whiteboard";
     });

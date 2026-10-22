@@ -1,12 +1,13 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("LES-20 through LES-23 exam timer restart, auto-submit and named grading model", async () => {
   test.setTimeout(240000);
@@ -101,11 +102,10 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await page.evaluate((planId) => {
       window.location.hash = `/plans/${planId}/simulation`;
     }, plan.planId);
-    mkdirSync(".shots", { recursive: true });
     await expect(
       page.getByRole("button", { name: "Inizia", exact: true }),
     ).toBeEnabled();
-    await page.screenshot({ path: ".shots/m11-setup-it-dark.png" });
+    await saveShot(page, "m11-setup-it-dark.png");
     await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Inizia", exact: true }).click();
     await expect(
@@ -191,9 +191,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       await expect(
         page.getByRole("textbox", { name: /La tua risposta|Your answer/ }),
       ).toBeVisible();
-      await page.screenshot({
-        path: `.shots/m11-run-${language}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `m11-run-${language}-${theme}-${width}.png`);
       await expectNoAxeViolations(page);
     }
     // Advance only this temporary exam's stored start; exercise core's real expiry path.
@@ -293,7 +291,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await expect(
       page.getByRole("heading", { name: "Reference solution" }),
     ).toBeVisible();
-    await page.screenshot({ path: ".shots/m11-results-en-light.png" });
+    await saveShot(page, "m11-results-en-light.png");
     await expectNoAxeViolations(page);
     if (process.env.PYXIS_LIVE_SIMULATION)
       console.log(

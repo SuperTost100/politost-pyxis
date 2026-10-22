@@ -16,6 +16,7 @@ import type { ConceptGraph } from "../../src/shared/concept-map";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { SHOTS, saveShot } from "./shots";
 
 test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PNG", async () => {
   test.setTimeout(240_000);
@@ -259,7 +260,6 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       .getByRole("dialog")
       .getByRole("button", { name: "Annulla" })
       .click();
-    mkdirSync(".shots", { recursive: true });
     for (const [language, theme, width] of [
       ["it", "dark", 1280],
       ["it", "light", 960],
@@ -278,9 +278,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       await expect(page.locator(".react-flow__node")).toHaveCount(
         initial.nodes.length,
       );
-      await page.screenshot({
-        path: `.shots/m10-map-${language}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `m10-map-${language}-${theme}-${width}.png`);
       await expectNoAxeViolations(page);
       const output = join(userData, `map-${theme}-${language}.png`);
       await app.evaluate(({ session }, path) => {
@@ -303,10 +301,10 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
         }
       };
       await expect.poll(readPng, { timeout: 20000 }).not.toBeNull();
-      copyFileSync(
-        output,
-        `.shots/m10-export-${language}-${theme}-${width}.png`,
-      );
+      if (SHOTS) {
+        mkdirSync(SHOTS, { recursive: true });
+        copyFileSync(output, join(SHOTS, `m10-export-${language}-${theme}-${width}.png`));
+      }
       const png = readPng()!;
       const bounds = await page.locator(".px-map-canvas").boundingBox();
       expect(png.width).toBe(Math.round(bounds!.width * 2));

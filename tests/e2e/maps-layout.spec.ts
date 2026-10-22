@@ -1,12 +1,13 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async () => {
   test.setTimeout(240_000);
@@ -255,7 +256,6 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     expect((await boxes()).length).toBeLessThan(before);
     await fold.dispatchEvent("click");
     await expect(page.locator(".react-flow__node")).toHaveCount(before);
-    mkdirSync(".shots", { recursive: true });
     for (const [language, theme] of [
       ["it", "dark"],
       ["it", "light"],
@@ -273,9 +273,7 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       await page.setViewportSize({ width: 1280, height: 800 });
       await expect(page.locator(".react-flow__node")).toHaveCount(before);
       await animationsSettled(page);
-      await page.screenshot({
-        path: `.shots/map-large-${total}-${language}-${theme}-1280.png`,
-      });
+      await saveShot(page, `map-large-${total}-${language}-${theme}-1280.png`);
       await expectNoAxeViolations(page);
     }
     expect(errors).toEqual([]);

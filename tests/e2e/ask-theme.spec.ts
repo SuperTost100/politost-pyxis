@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -176,7 +177,7 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
       // The switch the issue describes: the API call, with the chat on screen.
       await page.evaluate((theme) => window.pyxis.setAppearance(theme), to);
       await settle();
-      await page.screenshot({ path: `.shots/ask-theme-${from}-to-${to}.png` });
+      await saveShot(page, `ask-theme-${from}-to-${to}.png`);
       const live = await paint(page);
       const after = await landmarks(page);
       expect(after.theme).toBe(to);

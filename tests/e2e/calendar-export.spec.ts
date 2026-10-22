@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -12,6 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -34,7 +34,6 @@ function unfold(ics: string): string[] {
 
 test("CAL-01 one exam's date exports to an .ics file from the plan header and from plan settings", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-calendar-check-"));
-  mkdirSync(".shots", { recursive: true });
   const saved = join(userData, "exams.ics");
   const env = {
     PYXIS_E2E_SAVE: saved,
@@ -164,9 +163,7 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
       await page.reload();
       await expect(headerButton()).toBeEnabled();
       await expectNoAxeViolations(page);
-      await page.screenshot({
-        path: `.shots/calendar-plan-header-${language}-${theme}.png`,
-      });
+      await saveShot(page, `calendar-plan-header-${language}-${theme}.png`);
     }
 
     // Plan settings, English: only that exam, and the summary follows the interface language.
@@ -178,9 +175,7 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     const settingsButton = () =>
       dialog.getByRole("button", { name: calendarName });
     await expect(settingsButton()).toBeEnabled();
-    await page.screenshot({
-      path: ".shots/calendar-plan-settings-en-light.png",
-    });
+    await saveShot(page, "calendar-plan-settings-en-light.png");
     rmSync(saved, { force: true });
     await settingsButton().click();
     await expect(settingsButton()).toBeEnabled();

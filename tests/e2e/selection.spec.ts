@@ -6,6 +6,7 @@ import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("selected source text opens a scoped tutor context and Escape dismisses its actions", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-selection-"));
@@ -39,7 +40,7 @@ test("selected source text opens a scoped tutor context and Escape dismisses its
     await select();
     await expect(menu).toBeVisible();
     await expectNoAxeViolations(page);
-    await page.screenshot({ path: ".shots/selection-menu-it.png" });
+    await saveShot(page, "selection-menu-it.png");
     // Hosted Linux and Windows lose the menu somewhere after the audit; a scroll, resize or cleared selection closes it by design, so select again.
     await select();
     await expect(menu).toBeVisible();

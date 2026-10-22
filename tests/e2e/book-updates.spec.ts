@@ -12,6 +12,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 const SPEED =
   "La velocità media è lo spazio percorso diviso il tempo impiegato.";
@@ -321,11 +322,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     await rebuild.getByRole("button", { name: "Applica le modifiche" }).click();
     await expect(rebuild).toBeHidden();
     expect(await titles()).toEqual(["1. Moti", "2. Forze", "3. Energia"]);
-    mkdirSync(".shots", { recursive: true });
-    await page.screenshot({
-      path: ".shots/book-update-rebuilt-it.png",
-      animations: "disabled",
-    });
+    await saveShot(page, "book-update-rebuilt-it.png", { animations: "disabled" });
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

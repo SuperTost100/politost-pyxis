@@ -1,13 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
-const shots = process.env.PYXIS_SHOTS ?? ".shots/past-papers";
 
 const paper = {
   title: "Analisi 1, appello di giugno",
@@ -43,12 +43,11 @@ async function look(page: Page, language: "it" | "en", theme: "light" | "dark") 
 
 async function shoot(page: Page, name: string) {
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: join(shots, `${name}.png`), fullPage: true });
+  await saveShot(page, `past-papers/${name}.png`, { fullPage: true });
 }
 
 test("past exams: add one, see what was read, practise it and follow it in a simulation", async () => {
   test.setTimeout(240000);
-  mkdirSync(shots, { recursive: true });
   const userData = mkdtempSync(join(tmpdir(), "pyxis-past-papers-"));
   const file = join(userData, "appello-giugno.md");
   writeFileSync(

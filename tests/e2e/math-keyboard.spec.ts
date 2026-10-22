@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
+import { saveShot } from "./shots";
 
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-keyboard-"));
@@ -259,7 +260,7 @@ test("Quiz: an open answer takes a formula from the keyboard inline", async () =
     await expect(answer).toHaveText(/^La velocità vale /);
     await expect(answer.locator(".px-mathchip .katex .mfrac")).toBeVisible();
     expect(await answer.innerText()).not.toContain("frac");
-    await page.locator(".px-mathinput").screenshot({ path: ".shots/math-input-quiz.png" });
+    await saveShot(page.locator(".px-mathinput"), "math-input-quiz.png");
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

@@ -15,6 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -131,10 +132,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       const box = await notice.boundingBox();
       expect(box!.height).toBeLessThanOrEqual(680);
       await expectNoAxeViolations(page, { include: [".px-update-notice"] });
-      mkdirSync(".shots", { recursive: true });
-      await page.screenshot({
-        path: `.shots/m14-update-${language}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `m14-update-${language}-${theme}-${width}.png`);
       await notice
         .getByRole("button", { name: /^(Chiudi avviso|Dismiss notice)$/ })
         .click();
@@ -155,9 +153,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       await expect(license).toBeFocused();
       await expectNoAxeViolations(page, { include: [".px-about"] });
       await page.locator(".px-about").scrollIntoViewIfNeeded();
-      await page.screenshot({
-        path: `.shots/m14-about-${language}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `m14-about-${language}-${theme}-${width}.png`);
       const update = await page.evaluate(() => window.pyxis.checkUpdates());
       expect(update.state).toBe("available");
       expect(update.current).toBe(packageVersion);
@@ -269,11 +265,10 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
     await expect(
       page.getByText("Niente da liberare. Tutti i file salvati sono ancora in uso.", { exact: true }),
     ).toBeVisible();
-    mkdirSync(".shots", { recursive: true });
     for (const theme of ["light", "dark"] as const) {
       await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
       await button.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: `.shots/free-space-${theme}.png` });
+      await saveShot(page, `free-space-${theme}.png`);
       await expectNoAxeViolations(page, { include: [".px-settings-subpage"] });
     }
   } finally {

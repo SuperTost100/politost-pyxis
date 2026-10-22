@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 /** Ten diagnostic questions over the book's two chapters; each explanation cites a passage by ID. */
 const diagnosticReply = {
@@ -285,15 +286,11 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
       })),
     },
   });
-  mkdirSync(".shots", { recursive: true });
   const shoot = async (name: string, lang: string) => {
     for (const theme of ["light", "dark"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       await page.evaluate(() => document.fonts.ready);
-      await page.screenshot({
-        path: `.shots/quiz-mastery-${name}-${lang}-${theme}.png`,
-        animations: "disabled",
-      });
+      await saveShot(page, `quiz-mastery-${name}-${lang}-${theme}.png`, { animations: "disabled" });
     }
   };
   try {
@@ -567,7 +564,6 @@ test("open answer: checked right away, the check can be cancelled and the answer
 test("quiz screens in both languages and themes", async () => {
   test.setTimeout(240000);
   const { page, planId, topics, done } = await launch(openReplies(), 2500);
-  mkdirSync(".shots", { recursive: true });
   await page.setViewportSize({ width: 1280, height: 800 });
   try {
     for (const lang of ["it", "en"] as const) {
@@ -577,11 +573,7 @@ test("quiz screens in both languages and themes", async () => {
         for (const theme of ["light", "dark"] as const) {
           await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
           await page.evaluate(() => document.fonts.ready);
-          await page.screenshot({
-            path: `.shots/v021-quiz-${name}-${lang}-${theme}.png`,
-            animations: "disabled",
-            fullPage,
-          });
+          await saveShot(page, `v021-quiz-${name}-${lang}-${theme}.png`, { animations: "disabled", fullPage });
         }
       };
       await go(page, `/plans/${planId}/diagnostic`);

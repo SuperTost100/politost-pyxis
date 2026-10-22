@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -7,6 +7,7 @@ import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const dbPath = (userData: string) => join(userData, "workspace", "pyxis.db");
 
@@ -161,8 +162,7 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     const failed = page.getByRole("button", { name: "Riprova", exact: true });
     await expect(failed).toHaveCount(2);
     await expect(page.locator(".px-review-progress .small")).toContainText("in preparazione");
-    mkdirSync(".shots", { recursive: true });
-    await page.screenshot({ path: ".shots/review-drills-failed-it.png", animations: "disabled" });
+    await saveShot(page, "review-drills-failed-it.png", { animations: "disabled" });
     await expectNoAxeViolations(page);
 
     const before = (await invoke<Session>(page, "study.reviewSession", { planId }))!;
@@ -192,7 +192,7 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     expect(adopted.drills[0]!.state).toBe("cancelled");
     await page.reload();
     await expect(page.getByRole("button", { name: "Continua il ripasso" })).toBeEnabled();
-    await page.screenshot({ path: ".shots/review-drills-adopted-it.png", animations: "disabled" });
+    await saveShot(page, "review-drills-adopted-it.png", { animations: "disabled" });
     await expectNoAxeViolations(page);
     // Reloading and restarting never add the questions again or start another model call.
     const again = (await invoke<Session>(page, "study.review", { planId }))!;
@@ -285,7 +285,7 @@ test("LES-13 a failed drill can be skipped for good, a closed gap stops being wa
     await expect(page.getByText(/Non sono riuscito a preparare le domande su/)).toHaveCount(2, { timeout: 60000 });
     const skip = page.getByRole("button", { name: "Salta", exact: true });
     await expect(skip).toHaveCount(2);
-    await page.screenshot({ path: ".shots/review-drills-skip-offered-it.png", animations: "disabled" });
+    await saveShot(page, "review-drills-skip-offered-it.png", { animations: "disabled" });
     // Skipping one drill ends the wait for that one only; the other still blocks the finish.
     const before = (await invoke<Session>(page, "study.reviewSession", { planId }))!;
     await skip.first().click();
@@ -316,7 +316,7 @@ test("LES-13 a failed drill can be skipped for good, a closed gap stops being wa
     expect(await invoke(page, "study.reviewSession", { planId })).toBeNull();
     await expect(page.getByText(/Hai saltato le domande su/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Inizia il ripasso" })).toBeVisible();
-    await page.screenshot({ path: ".shots/review-drills-closed-gap-it.png", animations: "disabled" });
+    await saveShot(page, "review-drills-closed-gap-it.png", { animations: "disabled" });
     await expectNoAxeViolations(page);
   } finally {
     await app.close();
@@ -341,8 +341,7 @@ test("LES-03 a single gap drill started from the progress page opens its quiz wi
     await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
     await expect(page.getByText(EXPLANATION)).toBeVisible();
     await expect(page.locator(".px-quiz-question")).toBeVisible();
-    mkdirSync(".shots", { recursive: true });
-    await page.screenshot({ path: ".shots/progress-drill-explanation-it.png", animations: "disabled" });
+    await saveShot(page, "progress-drill-explanation-it.png", { animations: "disabled" });
     await expectNoAxeViolations(page);
   } finally {
     await app.close();

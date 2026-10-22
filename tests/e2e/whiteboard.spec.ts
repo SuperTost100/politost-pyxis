@@ -4,7 +4,6 @@ import {
   type Page,
 } from "@playwright/test";
 import {
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -14,6 +13,7 @@ import { join } from "node:path";
 import { PNG } from "pngjs";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 async function draw(page: Page) {
   // A freshly routed board has no layout box yet; measuring it earlier throws "canvas-missing".
@@ -52,7 +52,6 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
-    mkdirSync(".shots", { recursive: true });
     for (const language of ["en", "it"] as const)
       for (const theme of ["light", "dark"] as const) {
         await page.evaluate(
@@ -120,9 +119,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
           page.getByRole("button", { name: /Save|Salva/, exact: true }),
         ).toBeEnabled();
         await expectNoAxeViolations(page);
-        await page.screenshot({
-          path: `.shots/m15-whiteboard-${language}-${theme}.png`,
-        });
+        await saveShot(page, `m15-whiteboard-${language}-${theme}.png`);
         await page
           .getByRole("button", { name: /Close|Chiudi/, exact: true })
           .click();

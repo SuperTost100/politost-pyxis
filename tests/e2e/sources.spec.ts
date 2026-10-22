@@ -1,6 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
@@ -81,7 +82,6 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     await expect(drawer.locator(".is-current")).toContainText(
       "energia cinetica",
     );
-    mkdirSync(".shots", { recursive: true });
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       for (const width of [1280, 960]) {
@@ -91,10 +91,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
         });
         await expect(drawer).toBeVisible();
         await animationsSettled(page);
-        await page.screenshot({
-          path: `.shots/m4-viewer-it-${theme}-${width}.png`,
-          animations: "disabled",
-        });
+        await saveShot(page, `m4-viewer-it-${theme}-${width}.png`, { animations: "disabled" });
         await expectNoAxeViolations(page);
       }
     }
@@ -151,10 +148,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     await expect(
       page.getByText("Pagina 2 di 600", { exact: true }),
     ).toBeVisible();
-    await page.screenshot({
-      path: ".shots/m4-pdf-it-light-960.png",
-      animations: "disabled",
-    });
+    await saveShot(page, "m4-pdf-it-light-960.png", { animations: "disabled" });
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

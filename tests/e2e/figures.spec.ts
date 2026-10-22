@@ -18,6 +18,7 @@ import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const figure = (caption: string, code: string) =>
   ["```pyxis-figure", JSON.stringify({ caption, code }), "```"].join("\n");
@@ -128,8 +129,6 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
     PYXIS_E2E_REPLY: answer,
   };
   const app = await launchPyxis({ userData, env });
-  const shots = ".shots/figures";
-  mkdirSync(shots, { recursive: true });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -222,13 +221,9 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
       // Reopening reads the cached lesson and its images; nothing runs again.
       await expect(figures).toHaveCount(2);
       await figures.first().scrollIntoViewIfNeeded();
-      await page.screenshot({
-        path: `${shots}/lesson-${lang}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `figures/lesson-${lang}-${theme}-${width}.png`);
       await figures.nth(1).scrollIntoViewIfNeeded();
-      await page.screenshot({
-        path: `${shots}/lesson-vectors-${lang}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `figures/lesson-vectors-${lang}-${theme}-${width}.png`);
     }
 
     const asked = (await page.evaluate(() =>
@@ -251,9 +246,7 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
     ] as const) {
       await look(page, lang, theme, width);
       await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(1);
-      await page.screenshot({
-        path: `${shots}/ask-${lang}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `figures/ask-${lang}-${theme}-${width}.png`);
     }
   } finally {
     await app.close();

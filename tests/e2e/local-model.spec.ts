@@ -4,17 +4,16 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeOllama } from "../../src/core/engine/fake-ollama";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
+import { SHOTS, saveShot } from "./shots";
 
 const GIB = 1024 ** 3;
-// Screenshots for review go here when set. The checks run either way.
-const shots = process.env.PYXIS_LOCAL_SHOTS;
 
 const capable = {
   platform: "linux",
@@ -86,17 +85,13 @@ async function openEngines(
 }
 
 async function shoot(page: Page, name: string, locator?: string) {
-  if (!shots) return;
-  mkdirSync(shots, { recursive: true });
+  if (!SHOTS) return;
   for (const width of [1280, 420]) {
     await page.setViewportSize({ width, height: 900 });
     if (locator) await page.locator(locator).first().scrollIntoViewIfNeeded();
     // Let the resized page finish its transitions before the picture.
     await animationsSettled(page);
-    await page.screenshot({
-      path: join(shots, `${name}-${width}.png`),
-      fullPage: false,
-    });
+    await saveShot(page, `${name}-${width}.png`, { fullPage: false });
   }
   await page.setViewportSize({ width: 1280, height: 900 });
 }

@@ -23,6 +23,7 @@ import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { saveShot } from "./shots";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -2650,7 +2651,6 @@ test("M14 every application route in both languages, themes and supported widths
     ? routes.filter(([name]) => selectedStates.includes(name))
     : routes;
   expect(auditRoutes.length).toBeGreaterThan(0);
-  mkdirSync(".shots/m14", { recursive: true });
   mkdirSync(".tmp", { recursive: true });
   mkdirSync(dirname(recordFile), { recursive: true });
   try {
@@ -2790,17 +2790,9 @@ test("M14 every application route in both languages, themes and supported widths
               const violations = (
                 await new AxeBuilder({ page }).setLegacyMode(true).analyze()
               ).violations;
-              await page.screenshot({
-                path: `.shots/m14/${key}.png`,
-                fullPage: true,
-                animations: "disabled",
-              });
+              await saveShot(page, `m14/${key}.png`, { fullPage: true, animations: "disabled" });
               // Fixed headers and modal backdrops are viewport-bound; keep a real viewport capture alongside the full-page image.
-              await page.screenshot({
-                path: `.shots/m14/${key}.viewport.png`,
-                fullPage: false,
-                animations: "disabled",
-              });
+              await saveShot(page, `m14/${key}.viewport.png`, { fullPage: false, animations: "disabled" });
               const errors = pageErrors.slice(before);
               const untranslated = (await page.locator("body").innerText())
                 .match(untranslatedKey)

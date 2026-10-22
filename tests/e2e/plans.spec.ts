@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("PLAN-21 document tree and build resume after cancel and restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-plan-check-"));
@@ -80,7 +81,6 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await expect(
       page.getByRole("button", { name: "Annulla", exact: true }),
     ).toBeVisible();
-    mkdirSync(".shots", { recursive: true });
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       for (const width of [1280, 960]) {
@@ -89,10 +89,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
           height: width === 960 ? 640 : 800,
         });
         await page.emulateMedia({ reducedMotion: "reduce" });
-        await page.screenshot({
-          path: `.shots/m7-building-it-${theme}-${width}.png`,
-          animations: "disabled",
-        });
+        await saveShot(page, `m7-building-it-${theme}-${width}.png`, { animations: "disabled" });
       }
     }
     await page.getByRole("button", { name: "Annulla", exact: true }).click();

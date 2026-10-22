@@ -14,13 +14,13 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export modal", async () => {
   const root = mkdtempSync(join(tmpdir(), "pyxis-export-check-"));
   // Saved files go next to the app's data: Pyxis refuses to save a backup inside it.
   const userData = join(root, "userData");
   mkdirSync(".tmp", { recursive: true });
-  mkdirSync(".shots", { recursive: true });
   const saved = join(root, "export.bin");
   const env = { PYXIS_E2E_SAVE: saved };
   const app = await launchPyxis({ userData, env });
@@ -140,9 +140,7 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       ).toBeChecked();
       await animationsSettled(page, modal);
       await expectNoAxeViolations(page, { include: ['[role="dialog"]'] });
-      await page.screenshot({
-        path: `.shots/m13-export-${language}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `m13-export-${language}-${theme}-${width}.png`);
       if (!(language === "en" && theme === "light"))
         await modal.getByRole("button", { name: /^(Annulla|Cancel)$/ }).click();
     }

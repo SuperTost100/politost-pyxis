@@ -4,7 +4,7 @@ import {
   type ElectronApplication,
 } from "@playwright/test";
 import { zipSync, strToU8 } from "fflate";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -12,9 +12,8 @@ import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { SHOTS, saveShot } from "./shots";
 
-/** Set PYXIS_SHOTS to a folder to save screenshots of the dialog. */
-const SHOTS = process.env.PYXIS_SHOTS;
 
 const DAY = 86_400_000;
 
@@ -128,9 +127,8 @@ test("an Anki package imports into a topic with its history, in both themes", as
       "not an Anki package",
     );
     if (SHOTS) {
-      mkdirSync(SHOTS, { recursive: true });
       await animationsSettled(page);
-      await page.screenshot({ path: join(SHOTS, "en-light-refused.png") });
+      await saveShot(page, "en-light-refused.png");
     }
 
     await pick(app, archive);
@@ -155,7 +153,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
       for (const theme of ["light", "dark"] as const) {
         await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
         await animationsSettled(page);
-        await page.screenshot({ path: join(SHOTS, `en-${theme}-dialog.png`) });
+        await saveShot(page, `en-${theme}-dialog.png`);
       }
       await page.evaluate(() => window.pyxis.setAppearance("light"));
     }
@@ -175,11 +173,11 @@ test("an Anki package imports into a topic with its history, in both themes", as
       for (const theme of ["light", "dark"] as const) {
         await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
         await animationsSettled(page);
-        await page.screenshot({ path: join(SHOTS, `en-${theme}-result.png`) });
+        await saveShot(page, `en-${theme}-result.png`);
       }
       await page.setViewportSize({ width: 560, height: 800 });
       await animationsSettled(page);
-      await page.screenshot({ path: join(SHOTS, "en-dark-result-narrow.png") });
+      await saveShot(page, "en-dark-result-narrow.png");
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.evaluate(() => window.pyxis.setAppearance("light"));
     }
@@ -226,7 +224,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     await expect(exporting.getByRole("checkbox")).not.toBeChecked();
     if (SHOTS) {
       await animationsSettled(page);
-      await page.screenshot({ path: join(SHOTS, "en-light-export.png") });
+      await saveShot(page, "en-light-export.png");
     }
     // A click while the dialog still zooms in is lost; let it open fully first.
     await animationsSettled(page);

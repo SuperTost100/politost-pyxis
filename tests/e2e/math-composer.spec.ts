@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-composer-"));
@@ -21,11 +22,10 @@ async function launch() {
 const draft = (page: Page) => page.evaluate(() => sessionStorage.getItem("pyxis-draft"));
 
 async function shoot(page: Page, name: string) {
-  mkdirSync(".shots", { recursive: true });
   for (const theme of ["light", "dark"] as const) {
     await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await page.locator(".px-composer").screenshot({ path: `.shots/math-composer-${name}-${theme}.png` });
+    await saveShot(page.locator(".px-composer"), `math-composer-${name}-${theme}.png`);
   }
 }
 
@@ -100,7 +100,7 @@ test("Ask composer: a formula sits inline in the text, leaves as $...$ and rende
         return still;
       }, { intervals: [100] })
       .toBe(true);
-    await bubble.screenshot({ path: ".shots/math-composer-bubble-dark.png" });
+    await saveShot(bubble, "math-composer-bubble-dark.png");
     const stored = (await page.evaluate(() =>
       window.pyxis.invoke("chats.read", { chatId: location.hash.split("/").at(-1)! }),
     )) as { messages: Array<{ role: string; body: string }> };

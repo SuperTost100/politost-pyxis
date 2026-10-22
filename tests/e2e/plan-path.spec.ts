@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -7,6 +7,7 @@ import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -67,9 +68,9 @@ async function showDone(page: Page) {
 }
 
 /** A full-page shot from the top, so the sticky app bar stays at the top of the image. */
-async function shoot(page: Page, path: string) {
+async function shoot(page: Page, name: string) {
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path, fullPage: true });
+  await saveShot(page, name, { fullPage: true });
 }
 
 /** No connector line may run through a box or a label: each stops at least a few pixels short of them. */
@@ -132,8 +133,6 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
   const app = await launchPyxis({ userData, env });
-  const shots = ".shots/plan-path";
-  mkdirSync(shots, { recursive: true });
   const combos = [
     ["it", "light"],
     ["it", "dark"],
@@ -194,7 +193,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     expect((await linesClear(page)).hits).toEqual([]);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
-      await shoot(page, `${shots}/new-plan-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/new-plan-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
     await expectNoAxeViolations(page);
@@ -246,7 +245,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
       await language(page, lang, theme);
       await next.getByRole("button", { name: /^(Altre attività|Other activities)$/ }).click();
       await next.getByRole("button", { name: /^(Cambia argomento|Change topic)$/ }).click();
-      await shoot(page, `${shots}/topic-picker-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/topic-picker-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
     await next.getByRole("button", { name: "Altre attività" }).click();
@@ -297,17 +296,17 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expectNoAxeViolations(page);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
-      await shoot(page, `${shots}/mid-way-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/mid-way-${lang}-${theme}.png`);
       await next.getByRole("button", { name: /^(Altre attività|Other activities)$/ }).click();
       expect((await linesClear(page)).hits).toEqual([]);
-      await shoot(page, `${shots}/chooser-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/chooser-${lang}-${theme}.png`);
     }
     // Narrow window.
     await language(page, "it", "light");
     await page.setViewportSize({ width: 560, height: 900 });
     await next.getByRole("button", { name: "Altre attività" }).click();
     expect((await linesClear(page)).hits).toEqual([]);
-    await shoot(page, `${shots}/chooser-narrow-it-light.png`);
+    await shoot(page, `plan-path/chooser-narrow-it-light.png`);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -358,8 +357,6 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
   const app = await launchPyxis({ userData, env });
-  const shots = ".shots/plan-path";
-  mkdirSync(shots, { recursive: true });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -493,7 +490,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       );
       await page.reload();
       await expect(page.getByRole("button", { name: /^(Rifai|Redo)$/ })).toBeVisible();
-      await shoot(page, `${shots}/quiz-review-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/quiz-review-${lang}-${theme}.png`);
     }
     await page.evaluate(async () => {
       localStorage.setItem("pyxis.lang", "it");
@@ -536,7 +533,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText("Quanto vale la forza", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
     await expectNoAxeViolations(page);
-    await shoot(page, `${shots}/practice-review-it-light.png`);
+    await shoot(page, `plan-path/practice-review-it-light.png`);
     await page.getByRole("button", { name: "Torna al percorso" }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
     expect((await read()).steps).toEqual(after);
@@ -563,7 +560,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText("Nessuna flashcard in scadenza.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
     await expectNoAxeViolations(page);
-    await shoot(page, `${shots}/cards-review-it-light.png`);
+    await shoot(page, `plan-path/cards-review-it-light.png`);
     // The focus bar's X is the only way out of a card session.
     await page.getByRole("button", { name: "Chiudi", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
@@ -607,7 +604,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       await expect(
         page.getByText(/^(Le risposte di questo tentativo non erano incluse|The answers of this attempt weren't included)/),
       ).toBeVisible();
-      await shoot(page, `${shots}/quiz-imported-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/quiz-imported-${lang}-${theme}.png`);
     }
     await page.evaluate(async () => {
       localStorage.setItem("pyxis.lang", "it");

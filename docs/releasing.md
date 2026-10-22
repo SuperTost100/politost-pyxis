@@ -32,7 +32,7 @@ For desktop checks while using the computer, run `PYXIS_E2E_HIDDEN=1 npm run tes
 2. Run `npm run dist -- --publish never` on the release machine. Verify the app's native modules and downloaded-runtime license notices.
 3. Install the result into a fresh profile. Complete onboarding, import a smartbook, create a plan with a real engine, read a lesson, take a quiz, review cards, chat with citations, run a simulation and inspect progress.
 4. Export and reopen a plan, open an Anki deck in Anki, then back up and restore the workspace. Confirm OS key storage works; keep keys out of backups and diagnostics.
-5. Inspect screenshots for every route in both themes/languages, keyboard behavior and axe results. Run the required full-repository reviews and fix their findings before sign-off.
+5. Inspect screenshots for every route in both themes/languages (run the route audit with `PYXIS_SHOTS=.shots`), keyboard behavior and axe results. Run the required full-repository reviews and fix their findings before sign-off.
 6. Record platform coverage, skipped checks, unresolved choices and review outcomes in the resources build log. Do not call an untested OS installer verified.
 7. Publish only reviewed artifacts with checksums and provenance. Verify provenance with `gh attestation verify FILE --repo SuperTost100/politost-pyxis --source-ref refs/heads/main`. Without `--source-ref`, a build from any branch of the repository passes.
 

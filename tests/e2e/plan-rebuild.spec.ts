@@ -8,6 +8,7 @@ import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 // Seeded responses only: the app runs its real jobs against recorded replies, no model is called.
 
@@ -302,7 +303,7 @@ test("PLAN-13 rebuild is reviewed, durable across restart, and applies exactly w
     // Let the modal finish its entrance before measuring contrast.
     await animationsSettled(page);
     await expectNoAxeViolations(page);
-    await page.screenshot({ path: ".shots/m13-rebuild-review.png", animations: "disabled" });
+    await saveShot(page, "m13-rebuild-review.png", { animations: "disabled" });
     await dialog.getByRole("button", { name: "Applica le modifiche" }).click();
     await expect(dialog).toBeHidden();
     const after = (await page.evaluate(

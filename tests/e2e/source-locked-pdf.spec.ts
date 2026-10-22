@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +8,7 @@ import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 const PASSWORD = "Carnot-1824";
 
@@ -26,9 +27,8 @@ function everything(userData: string): string {
   }
 }
 
-/** Both themes at the desktop width, and the dark one narrow, saved for review in `.shots/`. */
+/** Both themes at the desktop width, and the dark one narrow, saved for review under PYXIS_SHOTS. */
 async function shoot(page: Page, name: string) {
-  mkdirSync(".shots", { recursive: true });
   for (const [theme, width] of [
     ["light", 1280],
     ["dark", 1280],
@@ -37,7 +37,7 @@ async function shoot(page: Page, name: string) {
     await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
     await page.setViewportSize({ width, height: 800 });
     await animationsSettled(page);
-    await page.screenshot({ path: `.shots/${name}-it-${theme}-${width}.png`, animations: "disabled" });
+    await saveShot(page, `${name}-it-${theme}-${width}.png`, { animations: "disabled" });
   }
   await page.setViewportSize({ width: 1280, height: 800 });
 }

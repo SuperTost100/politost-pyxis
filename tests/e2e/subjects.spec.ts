@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by keyboard, remove", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-subject-check-"));
@@ -58,7 +59,6 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     }).toPass({ timeout: 15000 });
     await page.keyboard.press("Space");
     await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("subjects.list", {})) as Array<{ name: string }>).map((row) => row.name)).toEqual(["Analisi", "Fisica"]);
-    mkdirSync(".shots", { recursive: true });
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       for (const width of [1280, 960]) {
@@ -66,7 +66,7 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
         // Under xvfb the first capture after a resize can fail; let two frames paint, then retry until it takes.
         await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
         await expect(async () => {
-          await page.screenshot({ path: `.shots/m5-subjects-it-${theme}-${width}.png`, animations: "disabled" });
+          await saveShot(page, `m5-subjects-it-${theme}-${width}.png`, { animations: "disabled" });
         }).toPass({ timeout: 10000 });
       }
     }

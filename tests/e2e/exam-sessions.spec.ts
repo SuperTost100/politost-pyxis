@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -17,11 +18,9 @@ function noonIn(days: number): Date {
 const dmy = (date: Date) =>
   `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 const unfold = (ics: string) => ics.replace(/\r\n[ \t]/g, "").split("\r\n");
-const shots = process.env["PYXIS_SHOTS_DIR"] ?? "";
 
 test("EXAM-01 an exam holds a written and an oral session, and a finished exam can be archived and restored", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-sessions-check-"));
-  if (shots) mkdirSync(shots, { recursive: true });
   const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
@@ -55,8 +54,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
       await page.reload();
     };
     const snap = async (name: string, language: string, theme: string) => {
-      if (shots)
-        await page.screenshot({ path: join(shots, `${name}-${language}-${theme}.png`) });
+      await saveShot(page, `${name}-${language}-${theme}.png`);
     };
     await setLook("en", "light");
     await page.setViewportSize({ width: 1280, height: 860 });

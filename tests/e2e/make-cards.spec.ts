@@ -1,14 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { animationsSettled } from "./settled";
+import { SHOTS, saveShot } from "./shots";
 
-/** Set to a folder to also save screenshots of the reply action, the selection menu and the review dialog. */
-const SHOTS = process.env.PYXIS_SHOTS_DIR;
 
 const PASSAGE =
   "L'integrale per parti si usa quando l'integrando è un prodotto: la formula vale uv meno l'integrale di v du.";
@@ -86,10 +85,9 @@ const rows = (userData: string) => {
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
-  mkdirSync(SHOTS, { recursive: true });
   await page.mouse.move(1, 1);
   await animationsSettled(page);
-  await page.screenshot({ path: join(SHOTS, `${name}.png`) });
+  await saveShot(page, `${name}.png`);
 }
 
 test("flashcards from an Ask answer and from selected text: pick a place, review, then save", async () => {

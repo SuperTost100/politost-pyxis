@@ -1,9 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { saveShot } from "./shots";
 
 // Guided plan loading and failure (PLAN-10 to PLAN-12). The recorded-reply fixture answers every call the
 // same way for a whole launch, so each failing step gets its own launch. No model is called.
@@ -101,7 +102,6 @@ for (const state of Object.keys(FIXTURES) as State[]) {
       await page.evaluate((size) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size }), LARGE ? ("lg" as const) : ("md" as const));
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      mkdirSync(".shots/m14", { recursive: true });
       for (const language of ["it", "en"] as const)
         for (const theme of ["dark", "light"] as const)
           for (const width of [1280, 960]) {
@@ -120,7 +120,7 @@ for (const state of Object.keys(FIXTURES) as State[]) {
               await page.evaluate(() => document.fonts.ready);
               await tabWalk(page);
               const violations = (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations;
-              await page.screenshot({ path: `.shots/m14/${key}.png`, fullPage: true, animations: "disabled" });
+              await saveShot(page, `m14/${key}.png`, { fullPage: true, animations: "disabled" });
               const body = await page.locator("body").innerText();
               const untranslated = body.match(/\b(?:plans|quiz|wizard|jobs|sources)\.[A-Za-z][\w.-]+/g);
               const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);

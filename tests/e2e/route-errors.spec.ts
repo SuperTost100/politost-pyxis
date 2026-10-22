@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("route failure shows a plain recovery page without stack details", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-route-error-"));
@@ -24,7 +25,7 @@ test("route failure shows a plain recovery page without stack details", async ()
     expect(message!.x + message!.width).toBeLessThanOrEqual(shellColumn!.x + shellColumn!.width);
     await expect(page.locator("pre")).toHaveCount(0);
     await expectNoAxeViolations(page);
-    await page.screenshot({ path: ".shots/route-error-it.png" });
+    await saveShot(page, "route-error-it.png");
     await page.getByRole("button", { name: "Torna a Esami" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(page.getByRole("heading", { name: "Non è stato possibile aprire questa pagina" })).toHaveCount(0);

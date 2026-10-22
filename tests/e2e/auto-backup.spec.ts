@@ -20,6 +20,7 @@ import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const automatic =
   /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}(?:-[0-9a-f]{8})?\.zip$/;
@@ -296,8 +297,7 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
       { timeout: 60_000 },
     );
     await expectNoAxeViolations(page, { include: [".px-backup-notice"] });
-    mkdirSync(".shots", { recursive: true });
-    await page.screenshot({ path: ".shots/auto-backup-notice.png" });
+    await saveShot(page, "auto-backup-notice.png");
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
     await expect(page).toHaveURL(/#\/exams$/);
@@ -476,10 +476,7 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
       ),
     ).toBeVisible();
     await expectNoAxeViolations(page, { include: [".px-settings-danger"] });
-    mkdirSync(".shots", { recursive: true });
-    await page
-      .locator(".px-settings-danger")
-      .screenshot({ path: ".shots/wipe-backups.png" });
+    await saveShot(page.locator(".px-settings-danger"), "wipe-backups.png");
     await tick.uncheck();
     await expect(
       page.getByText(/^Le copie automatiche restano nella tua cartella/),

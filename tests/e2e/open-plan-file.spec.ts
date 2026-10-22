@@ -4,9 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
+import { SHOTS, saveShot } from "./shots";
 
-// Set PYXIS_SHOTS to a folder to keep screenshots of the import review in both themes.
-const SHOTS = process.env["PYXIS_SHOTS"];
 
 const plan = (title: string, extra: object = {}) =>
   JSON.stringify({
@@ -34,13 +33,12 @@ async function skipSetup(page: Page) {
 
 async function shoot(page: Page, name: string) {
   if (!SHOTS) return;
-  mkdirSync(SHOTS, { recursive: true });
   for (const width of [1280, 640])
     for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate((source) => window.pyxis.setAppearance(source), theme);
       await animationsSettled(page);
-      await page.screenshot({ path: join(SHOTS, `${name}-${width}-${theme}.png`), fullPage: true });
+      await saveShot(page, `${name}-${width}-${theme}.png`, { fullPage: true });
     }
 }
 

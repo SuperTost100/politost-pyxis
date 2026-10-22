@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
   chmodSync,
-  mkdirSync,
   mkdtempSync,
   rmSync,
   writeFileSync,
@@ -10,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("ENG-10 engine details, add paths and secure key-storage notice in both themes and languages", async () => {
   test.setTimeout(180000);
@@ -28,7 +28,6 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
       }),
     );
     // Exercise both keyring states without entering, storing or sending any key.
-    mkdirSync(".shots", { recursive: true });
     for (const language of ["en", "it"] as const)
       for (const theme of ["light", "dark"] as const)
         for (const canSave of [false, true]) {
@@ -96,10 +95,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
             }),
           ).toBeVisible();
           await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
-          await page.screenshot({
-            path: `.shots/m15-engine-details-${language}-${theme}.png`,
-            fullPage: true,
-          });
+          await saveShot(page, `m15-engine-details-${language}-${theme}.png`, { fullPage: true });
           await drawer
             .getByRole("button", { name: /Close|Chiudi/, exact: true })
             .click();
@@ -168,10 +164,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
             ).toBeVisible();
           }
           await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
-          await page.screenshot({
-            path: `.shots/m15-engine-add-${canSave ? "form-" : ""}${language}-${theme}.png`,
-            fullPage: true,
-          });
+          await saveShot(page, `m15-engine-add-${canSave ? "form-" : ""}${language}-${theme}.png`, { fullPage: true });
           await page.locator(".ant-modal-close").click();
         }
   } finally {
@@ -362,7 +355,7 @@ esac`,
     await expect(lines.filter({ hasText: "Antigravity" })).toContainText(
       "chat",
     );
-    await page.screenshot({ path: ".shots/engines-four-en.png" });
+    await saveShot(page, "engines-four-en.png");
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
