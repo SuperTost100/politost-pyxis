@@ -4,6 +4,7 @@ import { suggestStep, stayActivities, type Activity, type Step, type TopicStatus
 import { pathState } from "./create";
 import { countDueCards, dueCards } from "../study/cards";
 import { weightedPlanMastery } from "./progress";
+import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
 
 /**
  * The session planner and Oggi. See "Session planner" in docs/mastery.md: remaining work is an estimate in minutes from
@@ -67,7 +68,7 @@ export function savePlannerHours(
   else if (input.hours == null) delete next.weeks[input.week];
   else next.weeks[input.week] = input.hours;
   // Weeks already over are not read again.
-  const thisWeek = dayKey(monday(now));
+  const thisWeek = dayKey(startOfWeek(now));
   next.weeks = Object.fromEntries(Object.entries(next.weeks).filter(([week]) => week >= thisWeek));
   db.prepare(
     `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
@@ -76,16 +77,6 @@ export function savePlannerHours(
   return { ok: true };
 }
 
-const startOfDay = (at: number) => new Date(at).setHours(0, 0, 0, 0);
-const addDays = (at: number, days: number) => {
-  const date = new Date(at);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days).getTime();
-};
-const monday = (at: number) => addDays(startOfDay(at), -((new Date(at).getDay() + 6) % 7));
-const dayKey = (at: number) => {
-  const date = new Date(at);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
 
 /**
  * The minutes of work a plan has left, from the path's view of it: the introduction and diagnostic while nothing was
@@ -231,7 +222,7 @@ function layout(db: Database.Database, plans: Studied[], now: number) {
   };
   const planned = settings.weeklyHours != null || Object.keys(settings.weeks).length > 0;
   const result = planned
-    ? spread(exams, (day) => ((weekHours(monday(addDays(today, day))) ?? 0) * 60) / 7)
+    ? spread(exams, (day) => ((weekHours(startOfWeek(addDays(today, day))) ?? 0) * 60) / 7)
     : null;
   return { settings, dated, exams, weekHours, result, today };
 }
@@ -301,7 +292,7 @@ export function sessionPlan(db: Database.Database, now = Date.now()) {
     exams: string[];
   }> = [];
   if (result)
-    for (let start = monday(today); start <= addDays(today, last); start = addDays(start, 7)) {
+    for (let start = startOfWeek(today); start <= addDays(today, last); start = addDays(start, 7)) {
       const minutes = new Map<string, number>();
       const examsInWeek: string[] = [];
       for (let day = 0; day <= last; day += 1) {

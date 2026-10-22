@@ -18,6 +18,7 @@ import type {
   AutoBackupStatus,
 } from "../shared/bridge";
 import { writeFileAtomic } from "../core/atomic-write";
+import { two } from "../shared/local-day";
 import { inside } from "./workspace-move";
 
 const MINUTE = 60 * 1000;
@@ -158,7 +159,6 @@ export function backupDue(state: AutoBackupState, now: number): boolean {
 
 /** `pyxis-auto-backup-2026-10-13-210512-1a2b3c4d.zip`, in local time so the student can read it. */
 export function autoBackupName(at: Date, backupId: string): string {
-  const two = (n: number) => String(n).padStart(2, "0");
   return `pyxis-auto-backup-${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}-${two(at.getHours())}${two(at.getMinutes())}${two(at.getSeconds())}-${backupId}.zip`;
 }
 

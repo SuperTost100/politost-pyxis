@@ -1,5 +1,6 @@
 import { firstClose, shouldOpen, type OpenGap } from "./gaps";
 import { currentRatings, masteryFor, type LessonCheck, type MasteryEvent } from "./mastery";
+import { addDays, startOfDay, startOfWeek } from "../../shared/local-day";
 
 export type SeriesEvent = {
   topicId: string;
@@ -46,27 +47,6 @@ export function withoutReplacedRatings(events: SeriesEvent[]): SeriesEvent[] {
   return events.filter((event) => event.evidenceKind !== "self" || kept.has(event));
 }
 
-function dayStart(at: number): number {
-  const date = new Date(at);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
-function addDays(at: number, days: number): number {
-  const date = new Date(at);
-  date.setDate(date.getDate() + days);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
-function weekStart(at: number): number {
-  const date = new Date(dayStart(at));
-  const weekday = date.getDay();
-  date.setDate(date.getDate() - ((weekday + 6) % 7));
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
 function isStudied(
   event: SeriesEvent,
 ): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } {
@@ -80,7 +60,7 @@ export function chartPoints(
   /** The mastery of a day; by default the mean topic mastery these events give at the day's end. */
   masteryOn?: (day: number) => number,
 ) {
-  const end = dayStart(now);
+  const end = startOfDay(now);
   const points = [];
   const studied = events.filter(isStudied);
   for (let i = days - 1; i >= 0; i--) {
@@ -130,7 +110,7 @@ export function weeklyCounts(
   now: number,
   weeks = 5,
 ) {
-  const end = weekStart(now);
+  const end = startOfWeek(now);
   const starts = Array.from({ length: weeks }, (_, index) =>
     addDays(end, (index - (weeks - 1)) * 7),
   );
@@ -140,7 +120,7 @@ export function weeklyCounts(
     if (event.kind === "active") continue;
     const row = counts[event.topicId];
     if (!row) continue;
-    const index = starts.indexOf(weekStart(event.at));
+    const index = starts.indexOf(startOfWeek(event.at));
     if (index >= 0) row[index] = (row[index] ?? 0) + 1;
   }
   return { weeks: starts, counts };
@@ -151,7 +131,7 @@ export function paceFacts(
   now: number,
   active: Array<{ day: number; seconds: number }> = [],
 ) {
-  const start = weekStart(now);
+  const start = startOfWeek(now);
   const week = bars
     .filter((bar) => bar.day >= start)
     .reduce((sum, bar) => sum + bar.count, 0);
@@ -160,13 +140,13 @@ export function paceFacts(
   const source = timed ? peakBars : bars;
   const peak = source.reduce(
     (best, bar) => (bar.count > best.count ? bar : best),
-    source[0] ?? { day: dayStart(now), count: 0 },
+    source[0] ?? { day: startOfDay(now), count: 0 },
   );
   return { week, peakDay: peak.day, peakCount: peak.count };
 }
 
 export function activeMinutes(events: SeriesEvent[], now: number, days = 14) {
-  const end = dayStart(now);
+  const end = startOfDay(now);
   const bars = [];
   for (let i = days - 1; i >= 0; i--) {
     const day = addDays(end, -i);
@@ -179,7 +159,7 @@ export function activeMinutes(events: SeriesEvent[], now: number, days = 14) {
       .reduce((sum, event) => sum + (event.seconds ?? 0), 0);
     bars.push({ day, seconds });
   }
-  const start = weekStart(now);
+  const start = startOfWeek(now);
   const week = bars
     .filter((bar) => bar.day >= start)
     .reduce((sum, bar) => sum + bar.seconds, 0);

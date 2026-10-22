@@ -12,6 +12,7 @@ import {
 import { retrievability, type ScheduleState } from "../study/schedule";
 import { questionPlaces } from "../study/smartText";
 import { reachableTarget } from "../../shared/plan-file";
+import { addDays, startOfWeek } from "../../shared/local-day";
 import {
   MASTERY_GROUPS,
   MASTERY_PRIOR_COUNT,
@@ -432,10 +433,7 @@ export function planSeries(
     );
   };
   const chart = chartPoints(events, now, 14, (day) => {
-    const end = new Date(day);
-    end.setDate(end.getDate() + 1);
-    end.setHours(0, 0, 0, 0);
-    return historicalAverage(Math.min(now, end.getTime() - 1));
+    return historicalAverage(Math.min(now, addDays(day, 1) - 1));
   });
   const completed = finishedLessons(db, planId);
   const topicDates = new Map(
@@ -539,9 +537,7 @@ export function planSeries(
         b.wrongAnswers - a.wrongAnswers ||
         a.openedAt - b.openedAt,
     );
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  const start = new Date(startOfWeek(now));
   const weekdaySeconds = Array<number>(7).fill(0);
   for (const bar of activity.bars)
     weekdaySeconds[new Date(bar.day).getDay()]! += bar.seconds;

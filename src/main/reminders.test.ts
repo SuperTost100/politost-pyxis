@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { dayKey } from "../shared/local-day";
 import type { ReminderSummary } from "../shared/reminder";
 import {
-  dayKey,
   initialReminders,
   readReminderState,
   reminderDue,

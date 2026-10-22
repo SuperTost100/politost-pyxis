@@ -1,3 +1,5 @@
+import { startOfDay } from "../../shared/local-day";
+
 export type AttemptScore = {
   topicId: string;
   at: number;
@@ -7,11 +9,6 @@ export type AttemptScore = {
 
 export type OpenGap = { topicId: string; openedAt: number };
 
-function day(at: number): number {
-  const date = new Date(at);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
 
 export function shouldOpen(attempt: AttemptScore, alreadyOpen: boolean): boolean {
   if (alreadyOpen) return false;
@@ -51,7 +48,7 @@ function* goodDays(gap: OpenGap, later: AttemptScore[]): Generator<{ at: number;
   let days = new Set<number>();
   for (const attempt of after) {
     if (attempt.scores.some((score) => score < 1)) days = new Set();
-    else if (attempt.scores.length > 0) days.add(day(attempt.at));
+    else if (attempt.scores.length > 0) days.add(startOfDay(attempt.at));
     yield { at: attempt.at, days: days.size };
   }
 }

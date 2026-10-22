@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { MAX_EXAM_AT } from "../../shared/plan-file";
 import { readSessions } from "../plans/sessions";
 import { safeFileName } from "../../shared/file-name";
+import { startOfDay, two } from "../../shared/local-day";
 
 export type CalendarLanguage = "en" | "it";
 
@@ -85,7 +86,6 @@ export function foldLine(line: string): string {
   return parts.join("\r\n ");
 }
 
-const two = (n: number) => String(n).padStart(2, "0");
 const dateValue = (year: number, month: number, day: number) =>
   `${year}${two(month)}${two(day)}`;
 
@@ -127,14 +127,14 @@ export function buildCalendar(
   now = Date.now(),
 ): { ics: string; count: number } {
   const w = words[language];
-  const today = new Date(now).setHours(0, 0, 0, 0);
+  const today = startOfDay(now);
   const upcoming = exams
     .filter(
       (e): e is CalendarExam & { examAt: number } =>
         e.examAt != null &&
         // An older version could store a date after year 9999, which no calendar date can write.
         e.examAt <= MAX_EXAM_AT &&
-        new Date(e.examAt).setHours(0, 0, 0, 0) >= today,
+        startOfDay(e.examAt) >= today,
     )
     .sort(
       (a, b) =>

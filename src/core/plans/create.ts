@@ -4,6 +4,7 @@ import { planEducation } from "./education";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
+import { daysBetween, startOfDay } from "../../shared/local-day";
 import { suggestStep, topicSuggestion, type Stage, type TopicStatus } from "./path";
 import { finishedLessons, gradedActivities, readSteps } from "./steps";
 import { countDueCards } from "../study/cards";
@@ -331,11 +332,7 @@ export function readPlan(db: Database.Database, planId: string, now = Date.now()
 }
 
 export function daysUntil(examAt: number, now: number): number {
-  const exam = new Date(examAt);
-  exam.setHours(0, 0, 0, 0);
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  return Math.round((exam.getTime() - today.getTime()) / 86_400_000);
+  return daysBetween(now, examAt);
 }
 
 export function listPlans(db: Database.Database, now = Date.now()) {
@@ -349,7 +346,7 @@ export function listPlans(db: Database.Database, now = Date.now()) {
        ORDER BY CASE WHEN p.exam_at < ? THEN 2 WHEN p.exam_at IS NULL THEN 1 ELSE 0 END,
                 p.exam_at ASC, p.updated_at DESC`,
     )
-    .all(new Date(now).setHours(0, 0, 0, 0)) as Array<{
+    .all(startOfDay(now)) as Array<{
     id: string;
     title: string;
     status: string;

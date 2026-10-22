@@ -21,6 +21,7 @@ import {
   State as FsrsState,
   type Card,
 } from "ts-fsrs";
+import { daysBetween } from "../../shared/local-day";
 
 /** A card counts as mastered once its FSRS stability reaches this many days. */
 const masteredAfterDays = 21;
@@ -62,11 +63,7 @@ export function examMaxInterval(
   now: number,
 ): number | null {
   if (examAt == null) return null;
-  const exam = new Date(examAt);
-  exam.setHours(0, 0, 0, 0);
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  const days = Math.round((exam.getTime() - today.getTime()) / MS_PER_DAY);
+  const days = daysBetween(now, examAt);
   return days < 0 ? null : Math.max(1, days);
 }
 

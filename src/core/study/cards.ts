@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { startOfDay } from "../../shared/local-day";
 import {
   isMastered,
   newCard,
@@ -91,15 +92,14 @@ export function newCardsLeftToday(
   now: number,
 ): { limit: number; left: number } {
   const limit = newCardsPerDay(db);
-  const midnight = new Date(now);
-  midnight.setHours(0, 0, 0, 0);
+
   const { n } = db
     .prepare(
       `SELECT COUNT(*) AS n FROM cards c
        WHERE c.plan_id = ?
          AND (SELECT MIN(cr.reviewed_at) FROM card_reviews cr WHERE cr.card_id = c.id) >= ?`,
     )
-    .get(planId, midnight.getTime()) as { n: number };
+    .get(planId, startOfDay(now)) as { n: number };
   return { limit, left: Math.max(0, limit - n) };
 }
 

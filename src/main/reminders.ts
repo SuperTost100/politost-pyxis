@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { writeFileAtomic } from "../core/atomic-write";
+import { dayKey } from "../shared/local-day";
 import type { ReminderSettings } from "../shared/bridge";
 import {
   DEFAULT_REMINDER_TIME,
@@ -49,9 +50,6 @@ export function writeReminderState(file: string, state: ReminderState): void {
   writeFileAtomic(file, JSON.stringify(state, null, 2));
 }
 
-const two = (n: number) => String(n).padStart(2, "0");
-export const dayKey = (at: Date) =>
-  `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}`;
 
 /** The moment `time` falls on the local date `daysBefore` days before `at`. */
 const occurrence = (time: string, at: Date, daysBefore: number) =>
