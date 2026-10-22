@@ -6,7 +6,7 @@ import { generate, type GenerateInput } from "../engine/generate";
 import { promptProvenance, systemPrompt } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
-import { recordStep, stepResult } from "../plans/steps";
+import { recordStep, stepResult, topicActive } from "../plans/steps";
 import { syncGaps } from "../plans/progress";
 import { enqueueGapInsights } from "./gapInsight";
 import {
@@ -354,9 +354,7 @@ export function finalizeAttempt(
       );
       syncGaps(db, row.plan_id);
       // A topic quiz, or a gap drill on one, is a step on that topic's path. A topic archived meanwhile gets none.
-      const live = db
-        .prepare("SELECT 1 FROM topics WHERE id = ? AND plan_id = ? AND archived_at IS NULL")
-        .get(row.topic_id, row.plan_id);
+      const live = topicActive(db, row.plan_id, row.topic_id);
       if (row.kind === "quiz" && live) {
         const drill = db
           .prepare("SELECT 1 FROM gap_items WHERE item_id = (SELECT item_id FROM attempts WHERE id = ?)")

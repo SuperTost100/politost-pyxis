@@ -10,6 +10,19 @@ import {
   type StepResult,
 } from "./path";
 
+/** Whether the topic belongs to the plan and a rebuild has not set it aside. */
+export function topicActive(db: Database.Database, planId: string, topicId: string | null): boolean {
+  return (
+    db.prepare("SELECT 1 FROM topics WHERE id = ? AND plan_id = ? AND archived_at IS NULL").get(topicId, planId) !=
+    null
+  );
+}
+
+/** Throws `topic-missing` unless the topic belongs to the plan and is not archived. */
+export function requireActiveTopic(db: Database.Database, planId: string, topicId: string | null): void {
+  if (!topicActive(db, planId, topicId)) throw new Error("topic-missing");
+}
+
 type StepPayload = {
   activity?: string;
   nodeId?: string;
@@ -149,10 +162,7 @@ export function recordStep(
 ): boolean {
   const topicId = topicActivities.has(step.activity) ? (step.topicId ?? null) : null;
   if (topicActivities.has(step.activity)) {
-    const topic = db
-      .prepare("SELECT 1 FROM topics WHERE id = ? AND plan_id = ? AND archived_at IS NULL")
-      .get(topicId, planId);
-    if (!topic) throw new Error("topic-missing");
+    requireActiveTopic(db, planId, topicId);
   } else if (!db.prepare("SELECT 1 FROM plans WHERE id = ?").get(planId)) {
     throw new Error("plan-missing");
   }
