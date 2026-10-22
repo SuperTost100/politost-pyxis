@@ -8,8 +8,45 @@ import {
   rmSync,
 } from "node:fs";
 import { join, sep } from "node:path";
+import type Database from "better-sqlite3";
 import { blobParts } from "../shared/blob-path";
 import { writeFileAtomic } from "./atomic-write";
+
+/**
+ * Every place a row names a stored file: the table, and the SQL that reads the hash from one of its rows. Backup copies
+ * the files these name and deleting a chat or plan keeps them, so a place missing here loses the file.
+ */
+export const BLOB_REFERENCES = [
+  { table: "sources", sha: "blob_sha" },
+  { table: "attachments", sha: "blob_sha" },
+  { table: "whiteboards", sha: "blob_sha" },
+  { table: "source_documents", sha: "json_extract(tree_json, '$.blobSha')" },
+  { table: "source_documents", sha: "json_extract(tree_json, '$.sourceSha')" },
+] as const;
+
+const SHA = /^[a-f0-9]{64}$/;
+
+/** Every blob hash a row names now. */
+export function namedBlobs(db: Database.Database): Set<string> {
+  const rows = db
+    .prepare(BLOB_REFERENCES.map((place) => `SELECT ${place.sha} AS sha FROM ${place.table}`).join(" UNION "))
+    .all() as Array<{ sha: unknown }>;
+  return new Set(
+    rows.flatMap((row) => (typeof row.sha === "string" && SHA.test(row.sha) ? [row.sha] : [])),
+  );
+}
+
+/** Whether any row names this blob hash now. */
+export function blobNamed(db: Database.Database, sha: string): boolean {
+  return (
+    db
+      .prepare(
+        `${BLOB_REFERENCES.map((place) => `SELECT 1 FROM ${place.table} WHERE ${place.sha} = ?`).join(" UNION ALL ")}
+         LIMIT 1`,
+      )
+      .get(...BLOB_REFERENCES.map(() => sha)) !== undefined
+  );
+}
 
 export type BlobRecord = {
   sha: string;

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { removeBlob } from "../blobs";
+import { namedBlobs, removeBlob } from "../blobs";
 
 /**
  * What deleting a chat or a plan takes with it besides its own rows: the hidden documents it brought and their files.
@@ -235,23 +235,12 @@ export function deleteLoosePassages(db: Database.Database, candidates: string[])
   }
 }
 
-/** Every place a row names a stored file. */
-const NAMED_BLOBS = `SELECT blob_sha AS sha FROM sources
-  UNION ALL SELECT blob_sha FROM attachments
-  UNION ALL SELECT blob_sha FROM whiteboards
-  UNION ALL SELECT json_extract(tree_json, '$.blobSha') FROM source_documents
-  UNION ALL SELECT json_extract(tree_json, '$.sourceSha') FROM source_documents`;
-
 /**
  * The hashes rows name now, and the text of jobs that may still run, for checking many files at once. Read it and
  * remove files with no await in between, so no other core code can add a row in the meantime.
  */
 export function blobUse(db: Database.Database): (sha: string) => boolean {
-  const named = new Set(
-    (db.prepare(NAMED_BLOBS).all() as Array<{ sha: unknown }>).flatMap((row) =>
-      typeof row.sha === "string" ? [row.sha] : [],
-    ),
-  );
+  const named = namedBlobs(db);
   const jobs = (db.prepare(OPEN_JOBS).all() as Array<{ text: string }>).map((row) => row.text);
   return (sha) => named.has(sha) || jobs.some((text) => text.includes(sha));
 }

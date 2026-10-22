@@ -24,6 +24,7 @@ import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import { getLoadablePath } from "sqlite-vec";
 import { syncDirectory } from "../atomic-write";
+import { blobNamed, namedBlobs } from "../blobs";
 import { Inflate, Zip, ZipDeflate } from "fflate";
 import { closeDatabase, openDatabase } from "../db/connection";
 
@@ -636,42 +637,6 @@ function addBlobPair(
   }
 }
 
-/** Every blob hash the database refers to. */
-function referencedBlobs(db: Database.Database): Set<string> {
-  const rows = db
-    .prepare(
-      `SELECT blob_sha AS sha FROM sources
-       UNION SELECT blob_sha FROM attachments
-       UNION SELECT blob_sha FROM whiteboards
-       UNION SELECT json_extract(tree_json, '$.blobSha') FROM source_documents
-       UNION SELECT json_extract(tree_json, '$.sourceSha') FROM source_documents`,
-    )
-    .all() as Array<{ sha: unknown }>;
-  return new Set(
-    rows
-      .map((row) => row.sha)
-      .filter(
-        (sha): sha is string =>
-          typeof sha === "string" && /^[a-f0-9]{64}$/.test(sha),
-      ),
-  );
-}
-
-/** Whether the live database still refers to a blob. */
-function stillReferenced(db: Database.Database, sha: string): boolean {
-  return (
-    db
-      .prepare(
-        `SELECT 1 FROM sources WHERE blob_sha = ?
-         UNION ALL SELECT 1 FROM attachments WHERE blob_sha = ?
-         UNION ALL SELECT 1 FROM whiteboards WHERE blob_sha = ?
-         UNION ALL SELECT 1 FROM source_documents WHERE json_extract(tree_json, '$.blobSha') = ? OR json_extract(tree_json, '$.sourceSha') = ?
-         LIMIT 1`,
-      )
-      .get(sha, sha, sha, sha, sha) !== undefined
-  );
-}
-
 /** A read-only connection to a database another process (core) keeps writing. It never migrates or writes. */
 function openLiveDatabase(file: string): Database.Database {
   const db = new Database(file, { readonly: true, fileMustExist: true });
@@ -763,8 +728,8 @@ export function backupWorkspace(
       try {
         const source = db;
         live = {
-          referenced: referencedBlobs(snapshot),
-          stillUsed: (sha) => stillReferenced(source, sha),
+          referenced: namedBlobs(snapshot),
+          stillUsed: (sha) => blobNamed(source, sha),
         };
       } finally {
         snapshot.close();
