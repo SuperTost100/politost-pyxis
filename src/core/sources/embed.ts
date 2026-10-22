@@ -123,30 +123,35 @@ export async function embedTexts(dir: string, texts: string[], signal?: AbortSig
 
 // SRC-21: committed batches survive a cancelled or interrupted indexing job.
 export async function indexModelVectors(db: Database.Database, dir: string, signal: AbortSignal, sourceId?: string): Promise<number> {
+  // Each batch starts after the last rowid the previous one read, so a long index does not re-scan what it already passed.
+  const pending = db.prepare(`SELECT p.rowid AS n, p.text FROM passages p
+    LEFT JOIN sources s ON s.id = p.source_id
+    WHERE p.rowid > ? AND (? IS NULL OR p.source_id = ?) AND (p.source_id IS NULL OR s.status != 'removed')
+      AND (p.source_id IS NULL OR p.document_id = (SELECT id FROM source_documents
+        WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1))
+      AND NOT EXISTS (SELECT 1 FROM passages_vec v WHERE v.passage_rowid = p.rowid)
+    ORDER BY p.rowid LIMIT 32`);
+  const insert = db.prepare(`INSERT INTO passages_vec (passage_rowid, embedding) VALUES (?, ?)`);
+  const indexed = db.prepare(`SELECT 1 FROM passages_vec WHERE passage_rowid = ?`);
+  const stillLatest = db.prepare(`SELECT 1 FROM passages p LEFT JOIN sources s ON s.id = p.source_id
+    WHERE p.rowid = ? AND (p.source_id IS NULL OR (s.status != 'removed' AND p.document_id = (SELECT id FROM source_documents
+      WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))`);
   let count = 0;
+  let after = 0;
   for (;;) {
     signal.throwIfAborted();
     // Turning local search off stops indexing after the batch in progress.
     if (!embeddingConsent(db)) return count;
-    const rows = db.prepare(`SELECT p.rowid AS n, p.text FROM passages p
-      LEFT JOIN sources s ON s.id = p.source_id
-      WHERE (? IS NULL OR p.source_id = ?) AND (p.source_id IS NULL OR s.status != 'removed')
-        AND (p.source_id IS NULL OR p.document_id = (SELECT id FROM source_documents
-          WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1))
-        AND NOT EXISTS (SELECT 1 FROM passages_vec v WHERE v.passage_rowid = p.rowid)
-      ORDER BY p.rowid LIMIT 32`).all(sourceId ?? null, sourceId ?? null) as Array<{ n: number; text: string }>;
+    const rows = pending.all(after, sourceId ?? null, sourceId ?? null) as Array<{ n: number; text: string }>;
     if (rows.length === 0) return count;
+    after = rows.at(-1)!.n;
     const vectors = await embedTexts(dir, rows.map((row) => `passage: ${row.text}`), signal);
     signal.throwIfAborted();
     db.transaction(() => {
-      const insert = db.prepare(`INSERT INTO passages_vec (passage_rowid, embedding) VALUES (?, ?)`);
-      const indexed = db.prepare(`SELECT 1 FROM passages_vec WHERE passage_rowid = ?`);
       rows.forEach((row, index) => {
         // A source may have been removed, or replaced or read again, while inference was running. A batch that was read
         // from a version that is no longer the latest writes nothing, so a late job never indexes superseded text.
-        if (!indexed.get(BigInt(row.n)) && db.prepare(`SELECT 1 FROM passages p LEFT JOIN sources s ON s.id = p.source_id
-          WHERE p.rowid = ? AND (p.source_id IS NULL OR (s.status != 'removed' AND p.document_id = (SELECT id FROM source_documents
-            WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))`).get(row.n)) {
+        if (!indexed.get(BigInt(row.n)) && stillLatest.get(row.n)) {
           insert.run(BigInt(row.n), Buffer.from(vectors[index]!.buffer));
         }
       });
@@ -154,4 +159,3 @@ export async function indexModelVectors(db: Database.Database, dir: string, sign
     count += rows.length;
   }
 }
-
