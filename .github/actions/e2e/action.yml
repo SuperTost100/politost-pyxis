@@ -1,0 +1,28 @@
+name: Report end-to-end results
+description: Keeps the Playwright report and test results when the job failed, and prints Windows crash metadata.
+
+inputs:
+  name:
+    description: Name of the artifact that holds playwright-report/ and test-results/
+    required: true
+  failed:
+    description: "'true' when an earlier step of the job failed, from job.status == 'failure'"
+    required: true
+
+# Call this step with `if: always()`. Each step below names its own condition, so a failed job does not skip it.
+runs:
+  using: composite
+  steps:
+    - name: Preserve failed test report
+      if: always() && inputs.failed == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: ${{ inputs.name }}
+        path: |
+          playwright-report/
+          test-results/
+        retention-days: 7
+    - name: Report local crash fault metadata
+      if: always() && runner.os == 'Windows'
+      shell: bash
+      run: node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR"
