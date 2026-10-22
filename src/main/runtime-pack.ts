@@ -1,8 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { BigIntStats } from "node:fs";
 import { mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import manifest from "../../resources/pyodide-manifest.json";
+import { sha256 } from "../core/sources/quality";
 
 export const runtimeManifest = manifest;
 export type RuntimeStatus = {
@@ -46,7 +47,7 @@ export async function verifiedRuntimeFile(
       if (
         bytes.length === file.size &&
         (verified.get(path) === before ||
-          createHash("sha256").update(bytes).digest("hex") === file.sha256)
+          sha256(bytes) === file.sha256)
       ) {
         verified.set(path, before);
         return new Uint8Array(bytes);
@@ -182,7 +183,7 @@ async function install(
           const bytes = Buffer.concat(chunks);
           if (
             size !== file.size ||
-            createHash("sha256").update(bytes).digest("hex") !== file.sha256
+            sha256(bytes) !== file.sha256
           )
             throw new Error("runtime-integrity-failed");
           const staging = join(root, `${file.name}.${randomUUID()}.tmp`);

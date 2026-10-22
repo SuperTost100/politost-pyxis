@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { Runner } from "../jobs/runner";
 import { embedTexts, embeddingConsent, embeddingReady } from "./embed";
+import { sha256 } from "./quality";
 
 /**
  * SRC-08: a section whose mean passage vector sits below this cosine similarity to every plan text (title, subject,
@@ -156,9 +156,7 @@ function fingerprint(db: Database.Database, sourceId: string): string {
   const plans = db
     .prepare(`SELECT ps.plan_id AS id FROM plan_sources ps WHERE ps.source_id = ? AND ps.role = 'material' ORDER BY ps.plan_id`)
     .all(sourceId) as Array<{ id: string }>;
-  return createHash("sha256")
-    .update(JSON.stringify([version, plans.map((plan) => [plan.id, planContextTexts(db, plan.id)])]))
-    .digest("hex");
+  return sha256(JSON.stringify([version, plans.map((plan) => [plan.id, planContextTexts(db, plan.id)])]));
 }
 
 /**

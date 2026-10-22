@@ -86,6 +86,7 @@ import {
 import { startConfiguredQuiz, type QuizInput } from "./configuredQuiz";
 
 import type { Runner } from "../jobs/runner";
+import { base64 } from "../sources/quality";
 import type { GenerateInput } from "../engine/generate";
 import {
   enqueueQuiz,
@@ -218,7 +219,7 @@ export function studyHandlers(
       const result = exportAnki(db, input.planId, input);
       return {
         filename: result.filename,
-        base64: Buffer.from(result.bytes).toString("base64"),
+        base64: base64(result.bytes),
         noteCount: result.noteCount,
         cardCount: result.cardCount,
       };

@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { uuidv7 } from "../../shared/ids";
-import { laplacianVariance, qualityFlags, isDuplicateBlob } from "./quality";
+import { base64, laplacianVariance, qualityFlags, isDuplicateBlob, sha256 } from "./quality";
 
 describe("source quality", () => {
+  it("encodes only a view's own bytes, and hashes text as its UTF-8", () => {
+    const whole = new TextEncoder().encode("xxhelloxx");
+    expect(base64(whole.subarray(2, 7))).toBe(Buffer.from("hello").toString("base64"));
+    expect(sha256("perché")).toBe(sha256(new TextEncoder().encode("perché")));
+  });
+
   it("treats a flat photo as blurry and a checker as sharp", () => {
     const flat = new Uint8Array(32 * 32).fill(180);
     const sharp = new Uint8Array(32 * 32);

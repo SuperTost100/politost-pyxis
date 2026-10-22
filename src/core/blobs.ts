@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -11,6 +10,7 @@ import { join, sep } from "node:path";
 import type Database from "better-sqlite3";
 import { blobParts } from "../shared/blob-path";
 import { writeFileAtomic } from "./atomic-write";
+import { sha256 } from "./sources/quality";
 
 /**
  * Every place a row names a stored file: the table, and the SQL that reads the hash from one of its rows. Backup copies
@@ -100,12 +100,12 @@ export function putBlob(
   mime: string,
   ext: string,
 ): string {
-  const sha = createHash("sha256").update(bytes).digest("hex");
+  const sha = sha256(bytes);
   const { file, meta } = location(workspace, sha);
   mkdirSync(join(file, ".."), { recursive: true });
   if (
     !regularFile(file) ||
-    createHash("sha256").update(readFileSync(file)).digest("hex") !== sha
+    sha256(readFileSync(file)) !== sha
   )
     writeFileAtomic(file, bytes);
   if (!validMetadata(meta)) writeFileAtomic(meta, JSON.stringify({ mime, ext }));

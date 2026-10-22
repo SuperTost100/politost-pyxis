@@ -29,6 +29,7 @@ import { isAbort, type JobView } from "../../shared/ipc";
 import { fetchSnapshot } from "./link";
 import { IMPORT_EXTENSIONS } from "./folder";
 import { extForMime, plansUsing } from "./manage";
+import { base64 } from "./quality";
 
 
 type ImportParams = {
@@ -419,7 +420,7 @@ export function registerSourceJobs(
                     {
                       type: "image",
                       mediaType: image.mediaType,
-                      data: Buffer.from(image.bytes).toString("base64"),
+                      data: base64(image.bytes),
                     },
                   ],
                   signal: ctx.signal,

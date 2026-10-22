@@ -23,6 +23,7 @@ import { dirname, join, relative, sep } from "node:path";
 import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import { getLoadablePath } from "sqlite-vec";
+import { crc32 } from "node:zlib";
 import { syncDirectory } from "../atomic-write";
 import { blobNamed, namedBlobs } from "../blobs";
 import { Inflate, Zip, ZipDeflate } from "fflate";
@@ -150,23 +151,6 @@ function classify(name: string): EntryKind {
   const match = /^blobs\/([a-f0-9]{2})\/([a-f0-9]{64})(\.json)?$/.exec(name);
   if (!match || match[1] !== match[2]!.slice(0, 2)) corrupt();
   return match[3] ? "meta" : "blob";
-}
-
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c >>> 0;
-  }
-  return table;
-})();
-
-function crc32(previous: number, data: Uint8Array): number {
-  let c = ~previous;
-  for (let i = 0; i < data.length; i++)
-    c = CRC_TABLE[(c ^ data[i]!) & 0xff]! ^ (c >>> 8);
-  return ~c >>> 0;
 }
 
 function writeAll(fd: number, data: Uint8Array): void {
@@ -348,7 +332,7 @@ function extractEntry(
       emitted += chunk.length;
       budget.total += chunk.length;
       if (emitted > entry.size || budget.total > MAX_EXPANDED) corrupt();
-      crc = crc32(crc, chunk);
+      crc = crc32(chunk, crc);
       hash?.update(chunk);
       writeAll(out, chunk);
     };

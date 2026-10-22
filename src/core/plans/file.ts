@@ -2,7 +2,6 @@ import { planEducation, snapshotPlanEducation } from "./education";
 import { markPlanImported } from "./views";
 import { readSessions, saveSessions, syncExamDates } from "./sessions";
 import type Database from "better-sqlite3";
-import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { uuidv7 } from "../../shared/ids";
 import { cardReviewSchema } from "../../shared/card-schedule";
@@ -21,6 +20,7 @@ import {
 } from "../../shared/plan-file";
 import { MAX_SOURCE_BYTES } from "../../shared/source-types";
 import { hasBlob, putBlob, readBlob, removeBlob } from "../blobs";
+import { sha256 } from "../sources/quality";
 import { latestReview } from "../study/cards";
 import { validateGraph, type ConceptGraph } from "../maps/graph";
 
@@ -730,9 +730,7 @@ function portableQuestionIds(itemId: string, body: unknown): unknown {
         return question;
       const value = question as Record<string, unknown>;
       if (value.id !== undefined) return question;
-      const digest = createHash("sha256")
-        .update(JSON.stringify([itemId, index]))
-        .digest("hex");
+      const digest = sha256(JSON.stringify([itemId, index]));
       return { ...value, id: `pyxis-question-${digest.slice(0, 32)}` };
     }),
   };
@@ -991,7 +989,7 @@ function exportContent(
       section: p.section_path,
       charStart: p.char_start,
       charEnd: p.char_end,
-      textSha: createHash("sha256").update(p.text).digest("hex"),
+      textSha: sha256(p.text),
       sourceSha: p.blob_sha,
     })),
     documents,
@@ -1114,7 +1112,7 @@ function importPortablePlan(
       const bytes = decodeSource(source.data, source.bytes);
       if (
         source.sha &&
-        createHash("sha256").update(bytes).digest("hex") !== source.sha
+        sha256(bytes) !== source.sha
       )
         throw new PlanFileError("source-mismatch");
       embedded.set(i, bytes);
@@ -1125,7 +1123,7 @@ function importPortablePlan(
   const originalSha = new Map<string, string | null>();
   (file.sources ?? []).forEach((s, i) => {
     const bytes = embedded.get(i);
-    if (s.id) originalSha.set(s.id, bytes ? createHash("sha256").update(bytes).digest("hex") : s.sha);
+    if (s.id) originalSha.set(s.id, bytes ? sha256(bytes) : s.sha);
   });
   function remap(value: unknown, key = ""): unknown {
     if (Array.isArray(value)) return value.map((item) => remap(item, key));
@@ -1241,7 +1239,7 @@ function importPortablePlan(
   const sourcesById = firstById(file.sources ?? []);
   const documentsById = firstById(file.documents ?? []);
   const passages = (file.passages ?? []).map((p) => {
-    if (createHash("sha256").update(p.text).digest("hex") !== p.textSha)
+    if (sha256(p.text) !== p.textSha)
       throw new PlanFileError("passage-text");
     const source = p.sourceId == null ? undefined : sourcesById.get(p.sourceId);
     if (p.sourceSha && source?.sha !== p.sourceSha)
@@ -1431,7 +1429,7 @@ function importPortablePlan(
   for (const g of gapRows)
     if (!opened.has(g.id) || (g.closedAt != null && !closed.has(g.id))) throw new PlanFileError("bad-progress");
   if (options.check) return planId;
-  const embeddedShas = [...embedded.values()].map((bytes) => createHash("sha256").update(bytes).digest("hex"));
+  const embeddedShas = [...embedded.values()].map((bytes) => sha256(bytes));
   return undoingNewBlobs(workspace, embeddedShas, db.transaction(() => {
     db.prepare(
       "INSERT INTO plans(id,title,status,content_language,exam_at,target,style,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",

@@ -34,8 +34,14 @@ export function laplacianVariance(
   return sumSq / count - mean * mean;
 }
 
-export function sha256(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
+/** Bytes as base64, read in place rather than copied first. */
+export function base64(bytes: Uint8Array): string {
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
+}
+
+/** SHA-256 of bytes, or of a string's UTF-8, as hex. */
+export function sha256(data: Uint8Array | string): string {
+  return createHash("sha256").update(data).digest("hex");
 }
 
 /**

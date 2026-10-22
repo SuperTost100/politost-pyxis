@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { fetchPublicResponse } from "./public-fetch";
+import { sha256 } from "./quality";
 
 /** The free PoliTost smartbooks. The site is static: a catalog plus one package per book version. */
 const BOOKS_ORIGIN = "https://books.politost.it";
@@ -171,7 +171,7 @@ export async function downloadBook(
       throw new Error("books-integrity");
     throw new Error("books-offline");
   }
-  const sha = createHash("sha256").update(bytes).digest("hex");
+  const sha = sha256(bytes);
   if (bytes.byteLength !== book.bytes || sha !== book.sha256)
     throw new Error("books-integrity");
   return bytes;
