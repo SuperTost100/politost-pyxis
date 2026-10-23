@@ -48,6 +48,12 @@ export function registerOcrJob(
   runner.register("source-ocr", {
     jobClass: "local",
     title: (params) => sourceTitle(db, params),
+    // A scan stopped before its step ran, or while it waited for a slot, must not keep showing as reading. Another run
+    // the student started for the same source keeps it.
+    onCancelled: (params) => {
+      const { sourceId } = params as ScanParams;
+      if (!activeScanJob(db, sourceId)) stopOcr(db, sourceId);
+    },
     steps: [
       {
         name: "read",
@@ -84,11 +90,13 @@ export function registerOcrJob(
               count = batch.count;
               // A new file or a new run took the source over while this batch was read: its pages are not ours to store.
               if (!ownsOcrRun(db, sourceId, mine)) throw new Error("ocr-stale");
-              for (const page of batch.pages) applyOcrPage(db, sourceId, page);
+              let stored = 0;
+              for (const page of batch.pages) if (applyOcrPage(db, sourceId, page)) stored += 1;
               next = (pages.at(-1) ?? next) + 1;
               ctx.progress(count > 0 ? Math.min(1, (next - 1) / count) : 1);
-              // A run that stores pages is making headway, so a later quit may resume it again by itself.
-              if (!progressed && batch.pages.length > 0 && params.autoResumedAt) {
+              // A run that stores text is making headway, so a later quit may resume it again by itself. Blank pages are
+              // read again on every run, so they are not headway.
+              if (!progressed && stored > 0 && params.autoResumedAt) {
                 ctx.setParams({ ...params, autoResumedAt: undefined });
                 progressed = true;
               }

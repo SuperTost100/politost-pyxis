@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { putBlob } from "../blobs";
-import { createRunner } from "../jobs/runner";
+import { createRunner, type Limits } from "../jobs/runner";
 import { tempDir } from "../test-temp";
 import { registerOcrJob, startScan, stopOrphanScans, waitingScans, type ScanDeps } from "./ocr-job";
 import { requestOcr } from "./ocr";
@@ -65,11 +65,16 @@ function start(
   fixture: ReturnType<typeof scan>,
   readPages: ScanDeps["readPages"],
   extra: Partial<ScanDeps> = {},
+  limits?: Limits,
 ) {
   const progress: number[] = [];
-  const runner = createRunner(fixture.db, (job) => {
-    if (job.kind === "source-ocr") progress.push(job.progress);
-  });
+  const runner = createRunner(
+    fixture.db,
+    (job) => {
+      if (job.kind === "source-ocr") progress.push(job.progress);
+    },
+    limits,
+  );
   const ready: string[] = [];
   registerOcrJob(fixture.db, fixture.workspace, runner, {
     readPages,
@@ -202,6 +207,48 @@ describe("reading a scan in core", () => {
     expect(fixture.pages()).toEqual([]);
     // The newer run still owns the source.
     expect(fixture.status()).toBe("ocr-queued");
+  });
+
+  it("a scan stopped before it started, or while paused, does not stay looking as if it were reading", async () => {
+    const fixture = scan(20);
+    // No free slot for local work, so the job waits in the queue and its step never runs.
+    const queued = start(fixture, reader(20).readPages, {}, { "model-cli": 1, "model-api": 1, local: 0, demo: 1 });
+    const jobId = startScan(fixture.db, queued.runner, "scan");
+    expect(fixture.status()).toBe("ocr-queued");
+    queued.runner.cancel(jobId);
+    expect(queued.state(jobId)).toBe("cancelled");
+    expect(fixture.status()).toBe("needs-ocr");
+    // A paused scan: a quit during the first batch, then a second one before any page was stored.
+    const hang = () => new Promise<void>(() => {});
+    const first = start(fixture, reader(20, hang).readPages);
+    const paused = startScan(fixture.db, first.runner, "scan");
+    await until(() => first.state(paused) === "running");
+    const second = start(fixture, reader(20, hang).readPages);
+    second.runner.resumeLocal(["source-ocr"]);
+    await until(() => second.state(paused) === "running");
+    const third = start(fixture, reader(20).readPages);
+    expect(third.runner.resumeLocal(["source-ocr"])).toEqual([]);
+    expect(fixture.status()).toBe("ocr-queued");
+    third.runner.cancel(paused);
+    expect(fixture.status()).toBe("needs-ocr");
+  });
+
+  it("blank pages do not count as headway, so a crash after them still waits for the student", async () => {
+    const fixture = scan(20);
+    const blank: ScanDeps["readPages"] = async (_path, pages, signal) => {
+      // The first batch is blank; the second never returns, as when the page crashes the worker.
+      if (pages[0] !== 1) await new Promise<void>(() => {});
+      signal.throwIfAborted();
+      return { count: 20, pages: pages.map((page) => ({ page, text: "" })) };
+    };
+    const first = start(fixture, blank);
+    const jobId = startScan(fixture.db, first.runner, "scan");
+    await until(() => first.state(jobId) === "running");
+    const second = start(fixture, blank);
+    expect(second.runner.resumeLocal(["source-ocr"])).toEqual([jobId]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const third = start(fixture, blank);
+    expect(third.runner.resumeLocal(["source-ocr"])).toEqual([]);
   });
 
   it("joins the run already going instead of starting a second one", () => {

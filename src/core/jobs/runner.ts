@@ -33,6 +33,11 @@ export type JobSpec = {
   retryParams?: (params: unknown) => unknown;
   /** What the job works on, such as a file's name, for the jobs list. */
   title?: (params: unknown) => string | null;
+  /**
+   * Runs when a job of this kind ends cancelled, however it got there: while a step ran, while it waited for a slot, or
+   * before it started at all. A step's own cleanup only covers the first.
+   */
+  onCancelled?: (params: unknown) => void;
 };
 
 export type Limits = Record<JobClass, number>;
@@ -284,6 +289,13 @@ export function createRunner(
     db.prepare(
       `UPDATE jobs SET state = 'cancelled', updated_at = ? WHERE id = ?`,
     ).run(Date.now(), jobId);
+    cancelled(jobId);
+  }
+
+  function cancelled(jobId: string): void {
+    const job = jobStmt.get(jobId) as JobRow | undefined;
+    const hook = job ? specs.get(job.kind)?.onCancelled : undefined;
+    if (job && hook) hook(JSON.parse(job.params_json) as unknown);
   }
 
   function kick(): void {
@@ -359,7 +371,10 @@ export function createRunner(
           `UPDATE jobs SET state = 'cancelled', updated_at = ? WHERE id = ? AND state IN ('queued', 'interrupted')`,
         )
         .run(Date.now(), jobId);
-      if (changed.changes > 0) publish(jobId);
+      if (changed.changes > 0) {
+        cancelled(jobId);
+        publish(jobId);
+      }
     },
     retry(jobId) {
       const job = db

@@ -44,6 +44,21 @@ afterEach(() => {
 });
 
 describe("job runner", () => {
+  it("tells a job kind its job ended cancelled, also when it was cancelled before its step ran", async () => {
+    const database = db();
+    const seen: unknown[] = [];
+    const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 0, demo: 1 });
+    runner.register("waits", {
+      jobClass: "local",
+      onCancelled: (params) => seen.push(params),
+      steps: [{ name: "run", label: "run", run: async () => null }],
+    });
+    const jobId = runner.start("waits", { sourceId: "s" });
+    runner.cancel(jobId);
+    expect(stateOf(database, jobId)).toBe("cancelled");
+    expect(seen).toEqual([{ sourceId: "s" }]);
+  });
+
   it("moves a job's progress within a long step, inside that step's share", async () => {
     const database = db();
     const seen: number[] = [];

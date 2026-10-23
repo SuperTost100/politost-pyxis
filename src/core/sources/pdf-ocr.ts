@@ -10,11 +10,19 @@ const PAGE_SCALE = 1.5;
  */
 export const MAX_PAGE_PIXELS = 16_000_000;
 
-/** The scale that draws a page of `width` x `height` points at the normal size, or smaller to stay in the pixel cap. */
+/** The longest side a page is drawn at, so a very long, thin page cannot slip past the pixel cap through rounding. */
+export const MAX_PAGE_SIDE = 8_192;
+
+/**
+ * The scale that draws a page of `width` x `height` points at the normal size, or smaller so that the canvas, with each
+ * side rounded up, stays within both caps.
+ */
 export function pageScale(width: number, height: number): number {
-  const area = width * height;
-  if (!(area > 0)) return PAGE_SCALE;
-  return Math.min(PAGE_SCALE, Math.sqrt(MAX_PAGE_PIXELS / area));
+  if (!(width > 0 && height > 0)) return PAGE_SCALE;
+  let scale = Math.min(PAGE_SCALE, Math.sqrt(MAX_PAGE_PIXELS / (width * height)), MAX_PAGE_SIDE / width, MAX_PAGE_SIDE / height);
+  // Rounding each side up can add almost a whole row and column; shrink until the drawn size fits.
+  while (scale > 0 && Math.ceil(width * scale) * Math.ceil(height * scale) > MAX_PAGE_PIXELS) scale *= 0.99;
+  return scale;
 }
 
 type Canvas = {
