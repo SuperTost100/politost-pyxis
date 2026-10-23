@@ -114,6 +114,8 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     }, file);
     await look(page, "en", "light");
     await page.getByRole("button", { name: "Add a past exam" }).click();
+    // A click on a dialog still zooming in is lost on a slow runner, and the import never starts.
+    await animationsSettled(page, page.getByRole("dialog"));
     await page.getByRole("button", { name: "Choose files" }).click();
     await expect(page.getByText("Analisi 1, appello di giugno")).toBeVisible();
     await expect(page.getByRole("button", { name: "Add a past exam" })).toBeVisible();
