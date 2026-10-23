@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { animationsSettled } from "./settled";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -234,6 +235,9 @@ test("Ask: panel, automatic titles, rename and delete, greeting and the thinking
     const dialog = page.getByRole("dialog", { name: "Eliminare questa chat?" });
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(list.getByRole("button", { name: "Teorema fondamentale", exact: true })).toBeVisible();
+    // The cancelled dialog and the first menu are still closing; a click now can land on the menu that is going away.
+    await expect(dialog).toHaveCount(0);
+    await animationsSettled(page);
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
     await page.getByRole("menuitem", { name: "Elimina" }).click();
     await page.getByRole("button", { name: "Elimina per sempre" }).click();
@@ -440,6 +444,22 @@ test("Ask: a student who scrolled up is not pulled back down by new content", as
     await expect
       .poll(() => page.evaluate(() => document.scrollingElement!.scrollHeight - document.scrollingElement!.clientHeight))
       .toBeGreaterThan(3 * 300);
+    await expect.poll(gap).toBeLessThan(4);
+    // Content that arrives after the reply (its chips, the math checks) still grows the page on a slow runner. The wheel
+    // scrolls in small steps, and a growth while the page is still within 96 px of the end pins it back down, as it
+    // should for a student who has not scrolled up yet. So wait until the height holds before turning the wheel.
+    let height = -1;
+    await expect
+      .poll(
+        async () => {
+          const now = await page.evaluate(() => document.scrollingElement!.scrollHeight);
+          const held = now === height;
+          height = now;
+          return held;
+        },
+        { intervals: [500] },
+      )
+      .toBe(true);
     await expect.poll(gap).toBeLessThan(4);
     const top = () => page.evaluate(() => document.scrollingElement!.scrollTop);
     const end = await top();
