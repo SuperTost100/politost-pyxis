@@ -62,7 +62,7 @@ export function ScanNotice({
   const headingId = useId();
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const { data: jobs = [] } = useJobs();
+  const { data: jobs = [], isPending: jobsLoading } = useJobs();
   const job = source.scanJobId ? jobs.find((item) => item.id === source.scanJobId) : undefined;
   const refresh = () => {
     void client.invalidateQueries({ queryKey: ["sources"] });
@@ -119,7 +119,8 @@ export function ScanNotice({
     );
 
   const percent = Math.round((job?.progress ?? 0) * 100);
-  if (source.status === "ocr-queued") {
+  // A scan marked reading with no job behind it (one left by an older version, say) is offered again; Read joins or restarts it.
+  if (source.status === "ocr-queued" && (job || jobsLoading)) {
     const paused = job?.state === "interrupted";
     return (
       <div className="px-ocr" role="group" aria-labelledby={headingId}>

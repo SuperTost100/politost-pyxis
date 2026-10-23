@@ -233,6 +233,19 @@ describe("reading a scan in core", () => {
     expect(fixture.status()).toBe("needs-ocr");
   });
 
+  it("dismissing a paused scan from the jobs list puts it back to needs-ocr", async () => {
+    const fixture = scan(20);
+    const hang = () => new Promise<void>(() => {});
+    const first = start(fixture, reader(20, hang).readPages);
+    const jobId = startScan(fixture.db, first.runner, "scan");
+    await until(() => first.state(jobId) === "running");
+    const second = start(fixture, reader(20).readPages);
+    expect(second.state(jobId)).toBe("interrupted");
+    second.runner.dismiss(jobId);
+    expect(second.state(jobId)).toBeUndefined();
+    expect(fixture.status()).toBe("needs-ocr");
+  });
+
   it("blank pages do not count as headway, so a crash after them still waits for the student", async () => {
     const fixture = scan(20);
     const blank: ScanDeps["readPages"] = async (_path, pages, signal) => {

@@ -34,8 +34,8 @@ export type JobSpec = {
   /** What the job works on, such as a file's name, for the jobs list. */
   title?: (params: unknown) => string | null;
   /**
-   * Runs when a job of this kind ends cancelled, however it got there: while a step ran, while it waited for a slot, or
-   * before it started at all. A step's own cleanup only covers the first.
+   * Runs when a job of this kind ends without finishing, however it got there: cancelled while a step ran, while it
+   * waited for a slot or before it started, or dismissed while interrupted. A step's own cleanup only covers the first.
    */
   onCancelled?: (params: unknown) => void;
 };
@@ -293,7 +293,10 @@ export function createRunner(
   }
 
   function cancelled(jobId: string): void {
-    const job = jobStmt.get(jobId) as JobRow | undefined;
+    abandoned(jobStmt.get(jobId) as JobRow | undefined);
+  }
+
+  function abandoned(job: JobRow | undefined): void {
     const hook = job ? specs.get(job.kind)?.onCancelled : undefined;
     if (job && hook) hook(JSON.parse(job.params_json) as unknown);
   }
@@ -461,13 +464,17 @@ export function createRunner(
         publish(jobId);
         return;
       }
+      // An interrupted job was still going to finish; dismissing it gives it up, as a cancel does.
+      const unfinished = view?.state === "interrupted" ? (jobStmt.get(jobId) as JobRow | undefined) : undefined;
       const changed = db
         .prepare(
           `DELETE FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled', 'succeeded', 'interrupted')`,
         )
         .run(jobId);
-      if (changed.changes > 0 && view)
+      if (changed.changes > 0 && view) {
+        abandoned(unfinished);
         onUpdate({ ...view, state: "cancelled" });
+      }
     },
     list() {
       const rows = db

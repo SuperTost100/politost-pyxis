@@ -59,6 +59,27 @@ describe("job runner", () => {
     expect(seen).toEqual([{ sourceId: "s" }]);
   });
 
+  it("treats dismissing an interrupted job as giving it up, and a finished one as not", async () => {
+    const database = db();
+    const seen: unknown[] = [];
+    const runner = createRunner(database, () => {});
+    runner.register("long", {
+      jobClass: "local",
+      onCancelled: (params) => seen.push(params),
+      steps: [{ name: "run", label: "run", run: async () => null }],
+    });
+    const now = Date.now();
+    for (const [id, state] of [["cut", "interrupted"], ["done", "failed"]] as const)
+      database
+        .prepare(
+          `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES (?, 'long', ?, ?, 0, ?, ?)`,
+        )
+        .run(id, JSON.stringify({ sourceId: id }), state, now, now);
+    runner.dismiss("cut");
+    runner.dismiss("done");
+    expect(seen).toEqual([{ sourceId: "cut" }]);
+  });
+
   it("moves a job's progress within a long step, inside that step's share", async () => {
     const database = db();
     const seen: number[] = [];

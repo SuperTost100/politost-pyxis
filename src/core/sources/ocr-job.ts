@@ -48,8 +48,8 @@ export function registerOcrJob(
   runner.register("source-ocr", {
     jobClass: "local",
     title: (params) => sourceTitle(db, params),
-    // A scan stopped before its step ran, or while it waited for a slot, must not keep showing as reading. Another run
-    // the student started for the same source keeps it.
+    // A scan stopped before its step ran, while it waited for a slot, or dismissed while paused must not keep showing
+    // as reading. Another run the student started for the same source keeps it.
     onCancelled: (params) => {
       const { sourceId } = params as ScanParams;
       if (!activeScanJob(db, sourceId)) stopOcr(db, sourceId);
