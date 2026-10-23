@@ -12,6 +12,8 @@ export type StepContext = {
   signal: AbortSignal;
   params: unknown;
   setParams: (params: unknown) => void;
+  /** How far this step is, from 0 to 1. The job's progress moves within the step's share; one long step can show it. */
+  progress: (fraction: number) => void;
 };
 
 export type StepSpec = {
@@ -31,6 +33,11 @@ export type JobSpec = {
   retryParams?: (params: unknown) => unknown;
   /** What the job works on, such as a file's name, for the jobs list. */
   title?: (params: unknown) => string | null;
+  /**
+   * Runs when a job of this kind ends without finishing, however it got there: cancelled while a step ran, while it
+   * waited for a slot or before it started, or dismissed while interrupted. A step's own cleanup only covers the first.
+   */
+  onCancelled?: (params: unknown) => void;
 };
 
 export type Limits = Record<JobClass, number>;
@@ -207,6 +214,15 @@ export function createRunner(
               signal: entry.controller.signal,
               params: readParams(jobId),
               setParams: (params) => setParams(jobId, params),
+              progress: (fraction) => {
+                const share = Math.min(1, Math.max(0, Number.isFinite(fraction) ? fraction : 0));
+                db.prepare(`UPDATE jobs SET progress = ?, updated_at = ? WHERE id = ?`).run(
+                  (done + share) / steps.length,
+                  Date.now(),
+                  jobId,
+                );
+                publish(jobId);
+              },
             }),
           );
           if (entry.controller.signal.aborted) {
@@ -273,6 +289,16 @@ export function createRunner(
     db.prepare(
       `UPDATE jobs SET state = 'cancelled', updated_at = ? WHERE id = ?`,
     ).run(Date.now(), jobId);
+    cancelled(jobId);
+  }
+
+  function cancelled(jobId: string): void {
+    abandoned(jobStmt.get(jobId) as JobRow | undefined);
+  }
+
+  function abandoned(job: JobRow | undefined): void {
+    const hook = job ? specs.get(job.kind)?.onCancelled : undefined;
+    if (job && hook) hook(JSON.parse(job.params_json) as unknown);
   }
 
   function kick(): void {
@@ -348,7 +374,10 @@ export function createRunner(
           `UPDATE jobs SET state = 'cancelled', updated_at = ? WHERE id = ? AND state IN ('queued', 'interrupted')`,
         )
         .run(Date.now(), jobId);
-      if (changed.changes > 0) publish(jobId);
+      if (changed.changes > 0) {
+        cancelled(jobId);
+        publish(jobId);
+      }
     },
     retry(jobId) {
       const job = db
@@ -435,13 +464,17 @@ export function createRunner(
         publish(jobId);
         return;
       }
+      // An interrupted job was still going to finish; dismissing it gives it up, as a cancel does.
+      const unfinished = view?.state === "interrupted" ? (jobStmt.get(jobId) as JobRow | undefined) : undefined;
       const changed = db
         .prepare(
           `DELETE FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled', 'succeeded', 'interrupted')`,
         )
         .run(jobId);
-      if (changed.changes > 0 && view)
+      if (changed.changes > 0 && view) {
+        abandoned(unfinished);
         onUpdate({ ...view, state: "cancelled" });
+      }
     },
     list() {
       const rows = db

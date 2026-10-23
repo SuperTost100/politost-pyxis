@@ -94,6 +94,22 @@ export function lockedPdf(label: string, password: string): Uint8Array {
   return pdfBytes(objects, `/Encrypt 6 0 R /ID [<${id.toString("hex")}> <${id.toString("hex")}>]`);
 }
 
+/**
+ * A PDF of `count` pages with no text layer: each page draws "HI" in block letters as filled rectangles, the way a book
+ * whose text was turned into outlines does. Only OCR can read it.
+ */
+export function drawnPdf(count: number): Uint8Array {
+  // H at x 40 to 140 and I at x 180, on a 300 x 200 page, ink 20 units thick and 120 tall.
+  const stream = "0 g 40 40 20 120 re f 120 40 20 120 re f 40 90 100 20 re f 180 40 20 120 re f";
+  const kids = Array.from({ length: count }, (_, index) => `${index + 3} 0 R`).join(" ");
+  const contentId = count + 3;
+  const objects = ["<< /Type /Catalog /Pages 2 0 R >>", `<< /Type /Pages /Count ${count} /Kids [${kids}] >>`];
+  for (let page = 1; page <= count; page += 1)
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents ${contentId} 0 R >>`);
+  objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  return pdfBytes(objects);
+}
+
 export function blankPdf(): Uint8Array {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",

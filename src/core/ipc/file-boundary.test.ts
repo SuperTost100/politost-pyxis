@@ -18,7 +18,7 @@ const importFile = vi.hoisted(() =>
   })),
 );
 vi.mock("../sources/handlers", () => ({
-  sourceHandlers: () => ({ importFile, ocrStopAll() {} }),
+  sourceHandlers: () => ({ importFile }),
 }));
 import {
   addFileGrants,

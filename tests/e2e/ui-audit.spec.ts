@@ -1129,7 +1129,7 @@ function prepareState(name: string) {
         ).run(now);
       db.exec(`DELETE FROM sources WHERE id = 'audit-scan'`);
       if (name.startsWith("library-ocr") || noFile) {
-        // The stored file is what the renderer reads page by page, so the OCR states keep a real one-page image-only PDF.
+        // The stored file is what core reads page by page, so the OCR states keep a real one-page image-only PDF.
         const sha = noFile ? null : auditScanBlob();
         db.prepare(
           "INSERT INTO sources(id,kind,title,status,library,blob_sha,created_at,updated_at) VALUES('audit-scan','pdf','Dispensa scansionata','needs-ocr',1,?,1,1)",
@@ -1918,19 +1918,22 @@ async function openState(page: Page, name: string) {
       await expect(
         page.getByRole("button", { name: /^(Scarica|Download) [\d.,]+ MB$/ }),
       ).toBeVisible();
-      // A refused read is not left looking queued.
-      await expect(page.getByText(/OCR in coda|OCR is queued/)).toHaveCount(0);
+      // A refused read is not left looking as if it were reading.
+      await expect(
+        page.getByText(/Lettura delle pagine scansionate|Reading the scanned pages/),
+      ).toHaveCount(0);
       if (name === "library-ocr-ready") {
         // The files appear on disk (as if another window had finished the download); Download then finds them ready.
         stageOcrData();
         await page
           .getByRole("button", { name: /^(Scarica|Download) [\d.,]+ MB$/ })
           .click();
+        // The scan's notice turned into the download card, so its one Read button is the card's.
         await expect(
           page.getByRole("button", {
             name: both("Leggi la scansione", "Read the scan"),
           }),
-        ).toHaveCount(2);
+        ).toHaveCount(1);
       }
       break;
     case "ask-ocr-refused":

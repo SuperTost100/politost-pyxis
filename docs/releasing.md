@@ -17,7 +17,7 @@ On Windows, CI keeps crash dumps on the ephemeral runner and prints only excepti
 Recorded import and release-loop checks run first to expose core failures early. After packaging, each target checks its packaged executable. `scripts/packaged-fuses.mjs` fails unless the binary has the Electron fuses that `build/after-pack.cjs` sets: RunAsNode, `NODE_OPTIONS` and `--inspect` off, embedded asar integrity validation and load-app-only-from-asar on. Playwright attaches through `--inspect`, so the script then turns that one fuse back on in the unpacked copy; the installers are built by then and keep it off. The executable then runs these specs (`PYXIS_DIST_APP`):
 
 - `window.spec.ts`: the recorded release loop, the window CSP check (no string `eval`, no remote images), and a check that the packaged app reports the same `app.getGPUFeatureStatus()` as Electron's own build.
-- `ocr-data.spec.ts` and `scanned-pdf.spec.ts`: the OCR data download and Tesseract reading photos and scanned PDFs.
+- `ocr-data.spec.ts` and `scanned-pdf.spec.ts`: the OCR data download and Tesseract reading photos and scanned PDFs. The scans load `@napi-rs/canvas` from the packaged `node_modules`.
 - `sources.spec.ts`: a 600-page PDF import and the real e5 indexing check, which loads `@huggingface/transformers` from the packaged `node_modules`.
 
 These load the files the packaging rules thin out, so a rule that drops a needed file fails here. macOS also verifies the bundle signature before the fuse change, and verifies the converted disk image and the app mounted from it. Linux grants the packaged executable its own scoped namespace-sandbox profile. Only packages that pass these checks are collected for attestation.
@@ -93,7 +93,7 @@ The `node_modules` exclusions drop:
 - source maps, declaration files, Markdown other than license and notice files, and `test`, `docs` and `example` folders;
 - onnxruntime-web and the packages only it depends on (protobufjs, flatbuffers, guid-typescript, long, platform), and every transformers bundle except `dist/transformers.node.mjs`, which the ESM embed worker loads, plus its `src/`;
 - tesseract.js-core's `*.wasm.js` browser builds and its `-lstm` cores, and zlibjs, which only tesseract.js' browser code imports;
-- pdf.js' legacy build, `cmaps`, `standard_fonts`, `image_decoders`, `web`, minified and sandbox builds, and `@napi-rs/canvas`;
+- pdf.js' legacy build, `cmaps`, `standard_fonts`, `image_decoders`, `web`, and minified and sandbox builds. `@napi-rs/canvas` ships: core draws scanned pages with it for OCR;
 - unused libheif builds, zod's TypeScript sources, better-sqlite3's C sources, and the build leftovers in `@mixmark-io/domino/.yarn` and `css-what/src`.
 
 tesseract.js 7.0.0 hands its Node worker a boolean `lstmOnly`, and `getCore` compares it with OEM numbers, so the `-lstm` cores never load. `package.json` pins tesseract.js to that exact version. Before you update it, run `node --test scripts/after-pack.test.mjs` with the pinned tessdata in place: it starts a real Tesseract worker and fails if the new version loads a file that does not ship.

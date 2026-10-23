@@ -77,9 +77,10 @@ describe("ocr queue", () => {
     requestOcr(db, emptyId);
     expect(listSources(db).find((s) => s.id === emptyId)?.status).toBe("ocr-queued");
     expect(finishOcr(db, emptyId)).toBe("failed");
-    // The renderer's page-by-page scan starts the run with its first page.
-    const { ocrPngPage } = await import("./intake");
-    expect(await ocrPngPage(db, emptyId, 1, new Uint8Array(), async () => "testo letto", true)).toBe("ready");
+    // A run that finds text this time ends ready.
+    requestOcr(db, emptyId);
+    applyOcrPage(db, emptyId, { page: 1, text: "testo letto" });
+    expect(finishOcr(db, emptyId)).toBe("ready");
     // A failed import that never stored a document has nothing for OCR to write into.
     const now = Date.now();
     const noDocument = uuidv7(now);

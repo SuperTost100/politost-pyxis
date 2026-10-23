@@ -4,6 +4,7 @@ import { extractByExt } from "./documents";
 import { parseSmartbook } from "./smartbook";
 import { heicToPng, isHeicExt } from "./heic";
 import { hashFiles, sha256 } from "./quality";
+import { ocrPdfPages } from "./pdf-ocr";
 import { imageVariance, recognizeImage } from "./recognize";
 import { normalizeForVision } from "./vision-image";
 import { isImageExt, maxSourceBytes } from "../../shared/source-types";
@@ -13,7 +14,9 @@ type Input = {
   ext: string;
   tess: string;
   /** `extract` is a document read for a chat attachment: the same extractors as an import, behind the decode gate. */
-  mode?: "quality" | "pixels" | "vision" | "hash" | "ocr" | "extract";
+  mode?: "quality" | "pixels" | "vision" | "hash" | "ocr" | "extract" | "ocr-pdf";
+  /** `ocr-pdf` mode: the pages of the PDF at `path` to draw and read. */
+  pages?: number[];
   /** Files to hash in `hash` mode. */
   paths?: string[];
   /** Largest file the worker will read, by extension when unset. Checked from the size, before any buffer exists. */
@@ -39,7 +42,10 @@ try {
     const bytes = (input.mode === "ocr" || input.mode === "extract") && input.bytes
       ? input.bytes
       : await readBounded(input.path, input.maxBytes ?? maxSourceBytes(input.ext));
-    if (input.mode === "ocr") {
+    if (input.mode === "ocr-pdf") {
+      // A scanned book, a batch of pages at a time, for the `source-ocr` job.
+      parentPort?.postMessage({ value: await ocrPdfPages(bytes, input.pages ?? [], input.tess, input.scratch) });
+    } else if (input.mode === "ocr") {
       // Local OCR for chat and the direct image import: the one recognizer, turned upright inside it, off the core thread.
       const pixels = !input.bytes && isHeicExt(input.ext) ? (await heicToPng(bytes)).png : bytes;
       parentPort?.postMessage({ value: await ocr(pixels) });

@@ -44,6 +44,69 @@ afterEach(() => {
 });
 
 describe("job runner", () => {
+  it("tells a job kind its job ended cancelled, also when it was cancelled before its step ran", async () => {
+    const database = db();
+    const seen: unknown[] = [];
+    const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 0, demo: 1 });
+    runner.register("waits", {
+      jobClass: "local",
+      onCancelled: (params) => seen.push(params),
+      steps: [{ name: "run", label: "run", run: async () => null }],
+    });
+    const jobId = runner.start("waits", { sourceId: "s" });
+    runner.cancel(jobId);
+    expect(stateOf(database, jobId)).toBe("cancelled");
+    expect(seen).toEqual([{ sourceId: "s" }]);
+  });
+
+  it("treats dismissing an interrupted job as giving it up, and a finished one as not", async () => {
+    const database = db();
+    const seen: unknown[] = [];
+    const runner = createRunner(database, () => {});
+    runner.register("long", {
+      jobClass: "local",
+      onCancelled: (params) => seen.push(params),
+      steps: [{ name: "run", label: "run", run: async () => null }],
+    });
+    const now = Date.now();
+    for (const [id, state] of [["cut", "interrupted"], ["done", "failed"]] as const)
+      database
+        .prepare(
+          `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES (?, 'long', ?, ?, 0, ?, ?)`,
+        )
+        .run(id, JSON.stringify({ sourceId: id }), state, now, now);
+    runner.dismiss("cut");
+    runner.dismiss("done");
+    expect(seen).toEqual([{ sourceId: "cut" }]);
+  });
+
+  it("moves a job's progress within a long step, inside that step's share", async () => {
+    const database = db();
+    const seen: number[] = [];
+    const runner = createRunner(database, (job) => seen.push(job.progress));
+    runner.register("pages", {
+      jobClass: "local",
+      steps: [
+        { name: "first", label: "first", run: async () => null },
+        {
+          name: "read",
+          label: "read",
+          run: async (ctx) => {
+            ctx.progress(0.5);
+            ctx.progress(7);
+            return null;
+          },
+        },
+      ],
+    });
+    const jobId = runner.start("pages");
+    expect(await until(database, jobId, ["succeeded"])).toBe("succeeded");
+    // Half of the second step is three quarters of the job, and a fraction past 1 stops at the step's end.
+    expect(seen).toContain(0.75);
+    expect(seen).toContain(1);
+    expect(seen.every((value) => value <= 1)).toBe(true);
+  });
+
   it("does not start queued work before initial credentials are applied", async () => {
     const database = db();
     const runner = createRunner(database, () => {}, undefined, true);

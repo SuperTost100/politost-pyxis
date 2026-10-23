@@ -31,7 +31,6 @@ import {
 import { retrieveWithModel, setRetrievalModel } from "./retrieve";
 import { PASTE_MIN } from "./paste";
 import { listImportable, MAX_FOLDER_FILES } from "./folder";
-import { ocrPngPage } from "./intake";
 import {
   extForMime,
   plansUsing,
@@ -39,7 +38,7 @@ import {
   removeSource,
   renameSource,
 } from "./manage";
-import { requestOcr, stopOcr } from "./ocr";
+import { registerOcrJob, startScan, stopOrphanScans, waitingScans } from "./ocr-job";
 import {
   downloadOcrLanguage,
   OCR_LANGUAGES,
@@ -49,7 +48,6 @@ import {
   sweepStaleOcrScratch,
 } from "./ocr-data";
 import { runSourceWorker } from "./worker-client";
-import { sniffImage } from "./vision-image";
 import { existingSourceFor, isDuplicateBlob, qualityFlags } from "./quality";
 import {
   downloadBook,
@@ -61,7 +59,7 @@ import {
 } from "./books";
 import { bookState, linkCatalogBooks, linkedBookSource } from "./book-update";
 import { compareToPlans, storedSyllabus, syllabusFor } from "./syllabus";
-import { maxSourceBytes, MAX_IMAGE_BASE64, MAX_IMAGE_BYTES, MAX_SOURCE_BYTES } from "../../shared/source-types";
+import { maxSourceBytes, MAX_SOURCE_BYTES } from "../../shared/source-types";
 import {
   chapterPassages,
   listSources,
@@ -96,14 +94,38 @@ export function sourceHandlers(
   const tess = join(workspace, "runtimes", "tesseract");
   // Folders an earlier process left while reading a photo, from a crash or a quit mid-OCR.
   sweepStaleOcrScratch(tess);
-  // A scan reads one page per request from the renderer, so no run can outlive this process. One still queued was cut off
-  // by a quit or a crash; it goes back to needs-ocr with its pages kept, so it can be started again.
-  stopOcr(db);
+  // A scan whose job a quit interrupted resumes below. One queued without a job goes back to needs-ocr, pages kept.
+  stopOrphanScans(db);
   setRetrievalModel(async (text, signal) => {
     if (!embeddingConsent(db) || !embeddingReady(modelDir)) return null;
     return (await embedTexts(modelDir, [text], signal, true))[0] ?? null;
   });
-  registerSourceJobs(db, workspace, runner);
+  /** Starts reading a scan for the student when they already agreed to local OCR and its data is on this computer. */
+  const autoScan = async (sourceIds: string[]) => {
+    if (!sourceIds.length || !ocrConsent(db) || (await ocrDataStatus(tess)).state !== "ready") return;
+    for (const sourceId of sourceIds) {
+      try {
+        startScan(db, runner, sourceId);
+      } catch {
+        // Removed or read meanwhile. The Library still offers the scan if it waits for text.
+      }
+    }
+  };
+  registerSourceJobs(db, workspace, runner, undefined, {
+    onScan: (sourceId) => void autoScan([sourceId]),
+  });
+  registerOcrJob(db, workspace, runner, {
+    readPages: (path, pages, signal) =>
+      work<{ count: number; pages: Array<{ page: number; text: string }> }>(
+        "extract-worker",
+        { path, ext: ".pdf", tess, mode: "ocr-pdf", pages },
+        signal,
+      ),
+    requireData: () => requireOcrData(),
+    onReady: (sourceId) => {
+      if (embeddingConsent(db) && embeddingReady(modelDir)) runner.start("source-index", { sourceId });
+    },
+  });
   runner.register("source-index", {
     jobClass: "local",
     title: (params) => sourceTitle(db, params),
@@ -132,6 +154,8 @@ export function sourceHandlers(
       async run(ctx: { signal: AbortSignal }) {
         if (!ocrConsent(db)) throw new Error("ocr-data-declined");
         await downloadOcrLanguage(tess, lang, ctx.signal);
+        // The last language makes the data ready: scans that waited for it start now, without another press.
+        await autoScan(waitingScans(db));
         return { lang };
       },
     })),
@@ -172,6 +196,7 @@ export function sourceHandlers(
     "source-index",
     "ocr-data-download",
     "embedding-download",
+    "source-ocr",
   ]);
   markInterruptedImports(db);
   // A download cancelled because consent was withdrawn can still say running while its cancel unwinds. Agreeing again
@@ -331,6 +356,12 @@ export function sourceHandlers(
          AND error IS NOT NULL AND json_extract(params_json, '$.sourceId') = ?
          ORDER BY created_at DESC LIMIT 1`,
       );
+      // The scan job the jobs list still shows for this source: reading, interrupted, failed or cancelled.
+      const scanJob = db.prepare(
+        `SELECT id FROM jobs WHERE kind = 'source-ocr' AND dismissed = 0
+         AND state IN ('queued', 'running', 'interrupted', 'failed', 'cancelled')
+         AND json_extract(params_json, '$.sourceId') = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      );
       return listSources(db).map((source) => {
         // A missing original is shown without an invented size.
         const bytes = source.blobSha ? blobSize(workspace, source.blobSha) : null;
@@ -343,11 +374,16 @@ export function sourceHandlers(
           source.status === "failed"
             ? (failure.get(source.id) as { id: string; error: string } | undefined)
             : undefined;
+        const scan =
+          source.status === "needs-ocr" || source.status === "ocr-queued" || source.status === "failed"
+            ? (scanJob.get(source.id) as { id: string } | undefined)
+            : undefined;
         return {
           ...source,
           bytes,
           ...(off > 0 ? { syllabusOff: off } : {}),
           ...(failed ? { error: failed.error, errorJobId: failed.id } : {}),
+          ...(scan ? { scanJobId: scan.id } : {}),
         };
       });
     },
@@ -524,7 +560,7 @@ export function sourceHandlers(
         if (result.removed) {
           const jobs = db
             .prepare(
-              `SELECT id FROM jobs WHERE kind IN ('source-import', 'source-import-vision', 'source-index')
+              `SELECT id FROM jobs WHERE kind IN ('source-import', 'source-import-vision', 'source-index', 'source-ocr')
                AND json_extract(params_json, '$.sourceId') = ? AND state IN ('queued', 'running', 'interrupted')`,
             )
             .all(input.sourceId) as Array<{ id: string }>;
@@ -532,52 +568,6 @@ export function sourceHandlers(
         }
         return result;
       } catch (err) {
-        sourceError(err);
-      }
-    },
-    async ocrImage(
-      input: {
-        sourceId: string;
-        pngBase64: string;
-        page: number;
-        last: boolean;
-      },
-      signal?: AbortSignal,
-    ) {
-      try {
-        let png: Buffer;
-        try {
-          signal?.throwIfAborted();
-          // The text length is bounded before it is decoded, and the page must be a PNG, so nothing oversize or foreign
-          // reaches a decode, the worker or a row.
-          if (input.pngBase64.length > MAX_IMAGE_BASE64) throw new Error("source-too-big");
-          png = Buffer.from(input.pngBase64, "base64");
-          if (png.length > MAX_IMAGE_BYTES) throw new Error("source-too-big");
-          if (sniffImage(png) !== "image/png") throw new Error("vision-image-unsupported");
-        } catch (err) {
-          // A refused page must not leave the scan queued. Only a queued row changes, so a scan that already finished stays.
-          stopOcr(db, input.sourceId);
-          throw err;
-        }
-        // The same worker and decode gate as chat and photo import, so a rotated or hostile page never decodes on core.
-        const status = await ocrPngPage(
-          db,
-          input.sourceId,
-          input.page,
-          png,
-          (bytes) =>
-            work<string>("extract-worker", { path: "", ext: "", tess, mode: "ocr", bytes }, signal),
-          input.last,
-        );
-        if (
-          status === "ready" &&
-          embeddingConsent(db) &&
-          embeddingReady(modelDir)
-        )
-          runner.start("source-index", { sourceId: input.sourceId });
-        return { status };
-      } catch (err) {
-        if (signal?.aborted || isAbort(err)) throw err;
         sourceError(err);
       }
     },
@@ -653,35 +643,26 @@ export function sourceHandlers(
           }
         : null;
     },
+    /**
+     * Reads a scan in core, page by page, as a job the window only watches: closing or reloading it does not stop the
+     * reading. A second press joins the run already going and resumes an interrupted one.
+     */
     async ocr(input: { sourceId: string }) {
-      // Pages come from the stored file. A source without one has nothing to send, so it is refused before it is queued.
+      // Pages come from the stored file. A source without one has nothing to read, so it is refused before it is queued.
       const stored = db.prepare(`SELECT blob_sha FROM sources WHERE id = ?`).get(input.sourceId) as
         { blob_sha: string | null } | undefined;
       if (stored && !stored.blob_sha) sourceError(new Error("source-file-missing"));
-      // The pages are rendered and sent one by one, so a missing language file is reported before any of that starts.
+      // A missing language file is reported now, with the download card, rather than as a failed job.
       try {
         await requireOcrData();
       } catch (err) {
         sourceError(err);
       }
       try {
-        requestOcr(db, input.sourceId);
+        return { status: "ocr-queued" as const, jobId: startScan(db, runner, input.sourceId) };
       } catch (err) {
         sourceError(err);
       }
-      return { status: "ocr-queued" as const };
-    },
-    /**
-     * The renderer stops a page-by-page scan that it cannot finish (a page failed to render, the student cancelled). The
-     * scan returns to needs-ocr with its pages kept. Idempotent: a source that is not queued, or is gone, is left alone.
-     */
-    ocrStop(input: { sourceId: string }) {
-      stopOcr(db, input.sourceId);
-      return { ok: true as const };
-    },
-    /** The window that drove any scan is gone, and its core replies with it, so every queued scan is stopped. */
-    ocrStopAll() {
-      stopOcr(db);
     },
     passage(input: { passageId: string }) {
       return passagesAround(db, input.passageId);
