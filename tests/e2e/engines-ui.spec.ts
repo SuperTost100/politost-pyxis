@@ -32,7 +32,12 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
       for (const theme of ["light", "dark"] as const)
         for (const canSave of [false, true]) {
           await app.evaluate(({ safeStorage }, enabled) => {
-            safeStorage.isEncryptionAvailable = () => enabled;
+            const probes = globalThis as { keyringProbes?: number };
+            probes.keyringProbes = 0;
+            safeStorage.isEncryptionAvailable = () => {
+              probes.keyringProbes! += 1;
+              return enabled;
+            };
             // Linux also refuses the plain-text fallback, which is what a runner without a keyring reports.
             if (process.platform === "linux")
               safeStorage.getSelectedStorageBackend = () =>
@@ -144,7 +149,13 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
               name: language === "en" ? "API key" : "Chiave API",
             })
             .click();
-          if (canSave) {
+          // macOS always has a Keychain, and asking it would bring up the password prompt, so the form shows unasked.
+          const darwin = process.platform === "darwin";
+          if (darwin)
+            expect(
+              await app.evaluate(() => (globalThis as { keyringProbes?: number }).keyringProbes),
+            ).toBe(0);
+          if (canSave || darwin) {
             await expect(modal.locator("input[type=password]")).toBeVisible();
             await expect(modal.getByRole("combobox")).toBeVisible();
             await expect(modal.locator("button[type=submit]")).toBeDisabled();
