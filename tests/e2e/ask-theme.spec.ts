@@ -140,6 +140,11 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
       timeout: 30000,
     });
     const chatHash = await page.evaluate(() => location.hash);
+    // The formula can be on screen a moment before the reply's paragraph on a slow runner; the colours read both.
+    const replyShown = async () => {
+      await expect(page.locator(".katex").first()).toBeVisible();
+      await expect(page.locator(".px-msg:not(.px-msg-user) .px-msg-text p").first()).toBeVisible();
+    };
     const open = async () => {
       await page.evaluate(() => {
         location.hash = "/exams";
@@ -148,7 +153,7 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
       await page.evaluate((hash) => {
         location.hash = hash;
       }, chatHash);
-      await expect(page.locator(".katex").first()).toBeVisible();
+      await replyShown();
     };
     // Transitions are still running a moment after a switch; a reload paints the settled colours.
     // The pointer rests in a corner and nothing keeps focus, so no hover or focus state differs between a live page and
@@ -160,7 +165,7 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
     };
     const reloaded = async () => {
       await page.reload();
-      await expect(page.locator(".katex").first()).toBeVisible();
+      await replyShown();
       await settle();
       return paint(page);
     };
