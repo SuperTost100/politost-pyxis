@@ -1,12 +1,10 @@
+import { startOfDay, startOfWeek } from "../../../../shared/local-day";
+
 export type ChatGroup = "today" | "week" | "older";
 
 /** Start of the local day, and of the week on Monday, so "This week" means the calendar week. */
 function boundaries(now: number) {
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  const week = new Date(today);
-  week.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-  return { today: today.getTime(), week: week.getTime() };
+  return { today: startOfDay(now), week: startOfWeek(now) };
 }
 
 /** Splits chats, newest first, under Today, This week and Older. Empty groups are left out and each keeps its order. */

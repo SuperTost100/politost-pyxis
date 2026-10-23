@@ -11,6 +11,7 @@ import { Notice } from "../../components/Notice";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
+import { addDays, dayKey } from "../../../../shared/local-day";
 import { examDaysLabel } from "../plans/examDays";
 import { behindText, formatMinutes, plannerDate } from "./plannerFormat";
 import "./PlannerPage.css";
@@ -51,8 +52,7 @@ export function PlannerPage() {
   });
   const range = (start: string) => {
     const from = plannerDate(start);
-    const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 6);
-    return short.formatRange(from, to);
+    return short.formatRange(from, new Date(addDays(from, 6)));
   };
   const data = planner.data;
   const titles = new Map(data?.exams.map((exam) => [exam.planId, exam.title]));
@@ -62,7 +62,8 @@ export function PlannerPage() {
   const studyDays = (data?.days ?? []).slice(0, -1).map((day) => day.date);
   const freeMinutes = (item: Planner["weeks"][number]) => {
     const start = plannerDate(item.start).getTime();
-    const end = start + 7 * 86_400_000;
+    // A week with a clock change is 167 or 169 hours long.
+    const end = addDays(start, 7);
     const count = studyDays.filter((date) => {
       const at = plannerDate(date).getTime();
       return at >= start && at < end;
@@ -234,11 +235,7 @@ function DayView(props: {
 }) {
   const { t } = useTranslation();
   const start = props.week.start;
-  const end = (() => {
-    const date = plannerDate(start);
-    date.setDate(date.getDate() + 7);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  })();
+  const end = dayKey(addDays(plannerDate(start), 7));
   const days = props.planner.days.filter((day) => day.date >= start && day.date < end);
   const today = props.planner.days[0]?.date;
   return (

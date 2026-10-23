@@ -53,7 +53,7 @@ const DISPLAY_MATH = /\$\$|\\\[|\\begin\{/;
 const LIST_LINE = /^\s*(?:\d+[.)]|[-*\u2022])\s/;
 
 /** Why a face is a worked solution rather than one fact, or null when it is fine. */
-export function solutionLike(face: string): string | null {
+function solutionLike(face: string): string | null {
   if (DISPLAY_MATH.test(face)) return "A card holds no display-math derivation";
   if (/\n\s*\n/.test(face)) return "A card holds one paragraph";
   const lines = face.split("\n").filter((line) => line.trim());

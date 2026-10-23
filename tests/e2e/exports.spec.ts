@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -20,7 +19,6 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
   const root = mkdtempSync(join(tmpdir(), "pyxis-export-check-"));
   // Saved files go next to the app's data: Pyxis refuses to save a backup inside it.
   const userData = join(root, "userData");
-  mkdirSync(".tmp", { recursive: true });
   const saved = join(root, "export.bin");
   const env = { PYXIS_E2E_SAVE: saved };
   const app = await launchPyxis({ userData, env });
@@ -92,7 +90,6 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     ).resolves.toBe("saved");
     const pdf = readFileSync(saved);
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
-    writeFileSync(".tmp/m13-quiz.pdf", pdf);
     expect(await page.evaluate(() => window.pyxis.printData())).toBeNull();
     await expect(
       page.evaluate(() => window.pyxis.printReady()),
