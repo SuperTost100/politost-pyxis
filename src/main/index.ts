@@ -1,4 +1,4 @@
-import { decryptKeys } from "./decrypt-keys";
+import { canSaveKeys, readStoredKeys } from "./decrypt-keys";
 import { writeKeyStore } from "./key-store";
 import { randomUUID } from "node:crypto";
 import {
@@ -523,8 +523,7 @@ function createWindow(route?: string): void {
 
 function storedKeys(): { anthropic?: string; openai?: string } {
   const stored = readJson<Record<string, string>>(userFile("keys.json")) ?? {};
-  if (!safeStorage.isEncryptionAvailable()) return {};
-  return decryptKeys(stored, (cipher) => safeStorage.decryptString(cipher));
+  return readStoredKeys(stored, safeStorage);
 }
 
 let keysChain: Promise<void> = Promise.resolve();
@@ -1150,9 +1149,11 @@ function registerIpc(): void {
         : process.platform === "darwin"
           ? "keychain"
           : "dpapi";
-    const canSave =
-      safeStorage.isEncryptionAvailable() &&
-      (process.platform !== "linux" || backend !== "basic_text");
+    const canSave = canSaveKeys(
+      process.platform,
+      () => safeStorage.isEncryptionAvailable(),
+      backend,
+    );
     const keys = storedKeys();
     return {
       backend,
