@@ -6,7 +6,8 @@ import { pathToFileURL } from "node:url";
 import jpeg from "jpeg-js";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { onePagePdf, manyPagePdf } from "./test-pdf";
+import { drawnPdf, onePagePdf, manyPagePdf } from "./test-pdf";
+import { extractPdf } from "./documents";
 import { embeddingReady, embedTexts } from "./embed";
 import { ocrDataDir } from "./ocr-data";
 import { hashFiles } from "./quality";
@@ -249,6 +250,29 @@ describe.skipIf(!haveOcrData)("built extract worker, OCR language data", () => {
     expect(await ocrBytes(word(), tess)).toMatch(/H/i);
     writeFileSync(join(ocrDataDir(tess), "ita.traineddata"), "altered");
     await expect(ocrBytes(word(), tess)).rejects.toThrow("ocr-data-integrity");
+  }, 120_000);
+});
+
+// A build from before scans were read in core has no ocr-pdf mode.
+const havePdfOcr = have && haveTessdata && readFileSync(join(built, "extract-worker.js"), "utf8").includes("ocr-pdf");
+describe.skipIf(!havePdfOcr)("built extract worker, reading a scanned PDF", () => {
+  it("draws pages that have no text layer and reads them, skips pages past the end and reports the count", async () => {
+    const tess = join(dir, "pdf-ocr");
+    mkdirSync(ocrDataDir(tess), { recursive: true });
+    for (const lang of ["eng", "ita"]) copyFileSync(join(tessdata, `${lang}.traineddata`), join(ocrDataDir(tess), `${lang}.traineddata`));
+    const path = join(dir, "drawn.pdf");
+    writeFileSync(path, drawnPdf(2));
+    // The import sees no text, so the file waits for OCR. pdf.js takes over the bytes it reads, so it gets its own.
+    expect((await extractPdf(drawnPdf(2))).scanned).toBe(true);
+    const read = await runSourceWorker<{ count: number; pages: Array<{ page: number; text: string }> }>(
+      "extract-worker",
+      { path, ext: ".pdf", tess, mode: "ocr-pdf", pages: [1, 2, 3] },
+    );
+    expect(read.count).toBe(2);
+    expect(read.pages.map((page) => page.page)).toEqual([1, 2]);
+    for (const page of read.pages) expect(page.text).toMatch(/H/i);
+    // No copy of the language files is left behind.
+    expect(existsSync(join(tess, "scratch")) ? readdirSync(join(tess, "scratch")) : []).toEqual([]);
   }, 120_000);
 });
 

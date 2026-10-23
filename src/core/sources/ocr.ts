@@ -66,8 +66,8 @@ export function canStartOcr(db: Database.Database, sourceId: string, status: str
 }
 
 /**
- * Queue OCR on this machine. Only a source `canStartOcr` allows may enter the queue. A new run starts at page 1 and gets
- * its own token, so a page still being read for an earlier run (a reloaded window) can tell it no longer owns the row.
+ * Queue OCR on this machine. Only a source `canStartOcr` allows may enter the queue. A new run gets its own token, so a
+ * batch still being read for an earlier run (a replaced file, say) can tell it no longer owns the row.
  */
 export function requestOcr(db: Database.Database, sourceId: string): void {
   const row = sourceStatus(db, sourceId);
@@ -75,7 +75,6 @@ export function requestOcr(db: Database.Database, sourceId: string): void {
   if (!canStartOcr(db, sourceId, row.status)) throw new Error("invalid-ocr-state");
   db.transaction(() => {
     touchSource(db, sourceId, "ocr-queued", Date.now());
-    setNextPage(db, sourceId, 1);
     db.prepare(
       `UPDATE source_documents SET tree_json = json_set(tree_json, '$.ocrRun', ?)
        WHERE id = ${latestDocument("?")}`,
@@ -83,51 +82,25 @@ export function requestOcr(db: Database.Database, sourceId: string): void {
   })();
 }
 
-/**
- * The run a queued scan belongs to: the document version it writes into, the token `requestOcr` gave it, and the page
- * it expects next.
- */
-export type OcrRun = { documentId: string; run: string | null; next: number };
+/** The run a queued scan belongs to: the document version it writes into and the token `requestOcr` gave it. */
+export type OcrRun = { documentId: string; run: string | null };
 
 /** The run that owns this source right now, or null when it is not queued (or gone). */
 export function currentOcrRun(db: Database.Database, sourceId: string): OcrRun | null {
   const row = db
     .prepare(
-      `SELECT s.status AS status, d.id AS documentId, json_extract(d.tree_json, '$.ocrRun') AS run,
-         json_extract(d.tree_json, '$.ocrNext') AS next
+      `SELECT s.status AS status, d.id AS documentId, json_extract(d.tree_json, '$.ocrRun') AS run
        FROM sources s JOIN source_documents d ON d.source_id = s.id
        WHERE s.id = ? ORDER BY d.version DESC LIMIT 1`,
     )
-    .get(sourceId) as { status: string; documentId: string; run: string | null; next: number | null } | undefined;
-  return row?.status === "ocr-queued"
-    ? { documentId: row.documentId, run: row.run, next: row.next ?? 1 }
-    : null;
+    .get(sourceId) as { status: string; documentId: string; run: string | null } | undefined;
+  return row?.status === "ocr-queued" ? { documentId: row.documentId, run: row.run } : null;
 }
 
-/**
- * Whether `mine` is still the run that owns the row, and with `page`, whether that page is still the one it expects. A
- * stopped run, a newer run and a replaced document all say no.
- */
-export function ownsOcrRun(db: Database.Database, sourceId: string, mine: OcrRun, page?: number): boolean {
+/** Whether `mine` is still the run that owns the row. A stopped run, a newer run and a replaced document all say no. */
+export function ownsOcrRun(db: Database.Database, sourceId: string, mine: OcrRun): boolean {
   const now = currentOcrRun(db, sourceId);
-  return (
-    now != null &&
-    now.documentId === mine.documentId &&
-    now.run === mine.run &&
-    (page === undefined || now.next === page)
-  );
-}
-
-/** The page a queued run expects next. Pages go in order from 1, so a scan can only finish after every page was handled. */
-function setNextPage(db: Database.Database, sourceId: string, page: number): void {
-  db.prepare(
-    `UPDATE source_documents SET tree_json = json_set(tree_json, '$.ocrNext', ?)
-     WHERE id = ${latestDocument("?")}`,
-  ).run(page, sourceId);
-}
-
-export function advanceOcr(db: Database.Database, sourceId: string, page: number): void {
-  setNextPage(db, sourceId, page + 1);
+  return now != null && now.documentId === mine.documentId && now.run === mine.run;
 }
 
 /**

@@ -42,6 +42,7 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "ocr-not-active": "sources.ocrInterrupted",
   "ocr-stale": "sources.ocrInterrupted",
   "invalid-ocr-state": "sources.ocrNotScan",
+  "ocr-not-scan": "sources.ocrNotScan",
   "source-busy": "sources.busy",
   "pdf-password-required": "sources.pdfPassword.required",
   "pdf-password-wrong": "sources.pdfPassword.wrong",

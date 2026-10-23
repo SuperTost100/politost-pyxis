@@ -19,11 +19,16 @@ import {
 } from "./scanned-pdf-fixture";
 
 /*
- * A generated two-page image-only PDF goes through the real path: the renderer's pdf.js draws each page on a canvas, sends
- * the PNG with sources.ocrImage, and core's worker reads it with the pinned Tesseract files. Nothing is mocked in the IPC,
- * and no network or model is called. Failures are made in the page itself (the canvas export), in core's worker (a bad
- * PNG) and by reloading the window, and each must leave the scan startable with its finished pages kept.
+ * A generated image-only PDF goes through the real path: core's job draws each page with pdf.js and reads it with the
+ * pinned Tesseract files, a batch of pages at a time, while the window only watches. Nothing is mocked in the IPC, and no
+ * network or model is called. The window leaving, reloading, the student stopping and the app quitting must each keep
+ * the pages read, and none but Stop may end the reading.
  */
+
+/** Enough pages for three batches, so a test can act after the first and still find the scan reading. */
+const PAGE_COUNT = 20;
+/** Pages core reads per batch (`OCR_BATCH` in `src/core/sources/ocr-job.ts`). */
+const BATCH = 8;
 
 const scanButton = (page: Page) =>
   page.getByRole("button", { name: /^(Leggi la scansione|Read the scan)$/ });
@@ -34,27 +39,35 @@ type Run = {
   page: Page;
   userData: string;
   sourceId: string;
-  pngs: Buffer[];
 };
 
-/** Launches a fresh workspace and imports the generated scanned PDF through the native picker. */
-async function openScan(): Promise<Run> {
+/**
+ * Launches a fresh workspace and imports the generated scanned PDF through the native picker. With `data`, the OCR
+ * language files are there before the import, as after an earlier download.
+ */
+async function openScan({ data = false } = {}): Promise<Run> {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-scanned-pdf-"));
+  if (data) installTessdata(userData, staged!);
   const app = await launchPyxis({ userData });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
   await expect(page).toHaveURL(/#\/exams$/);
-  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-  const pngs = await drawScanPages(page);
+  if (data) {
+    // Consent was given with that download.
+    await page.evaluate(() => window.pyxis.invoke("sources.ocrData", { consent: true }));
+  }
+  const drawn = await drawScanPages(page);
   const pdf = join(userData, "scan.pdf");
-  writeScanPdf(pdf, pngs);
+  writeScanPdf(pdf, Array.from({ length: PAGE_COUNT }, (_, index) => drawn[index % drawn.length]!));
   const { sourceId } = (await importPickedSource(page, app, pdf)) as {
     sourceId: string;
   };
-  const run = { app, page, userData, sourceId, pngs };
-  // The import extracts in the background; an image-only PDF has no text layer, so it ends as needs-ocr.
-  await expect.poll(() => status(run), { timeout: 60000 }).toBe("needs-ocr");
+  const run = { app, page, userData, sourceId };
+  // The import extracts in the background; an image-only PDF has no text layer, so it waits for OCR.
+  await expect
+    .poll(() => status(run), { timeout: 60000 })
+    .toMatch(data ? /^(ocr-queued|ready)$/ : /^needs-ocr$/);
   await page.evaluate(() => {
     location.hash = "/exams/library";
   });
@@ -76,7 +89,7 @@ const status = async ({ page, sourceId }: Pick<Run, "page" | "sourceId">) =>
 function passages({
   userData,
   sourceId,
-}: Run): { page: number; text: string }[] {
+}: Pick<Run, "userData" | "sourceId">): { page: number; text: string }[] {
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
     readOnly: true,
     timeout: 10000,
@@ -92,27 +105,21 @@ function passages({
   }
 }
 
-/** Both pages are stored exactly once, each with its own words. */
-function expectBothPagesOnce(run: Run) {
+const pagesRead = (run: Pick<Run, "userData" | "sourceId">) => new Set(passages(run).map((row) => row.page)).size;
+
+/** Every page is stored exactly once, each with its own words. */
+function expectEveryPageOnce(run: Run) {
   const rows = passages(run);
-  expect(rows.map((row) => row.page)).toEqual([1, 2]);
-  SCAN_PAGES.forEach(([, word], index) => {
-    expect(rows[index]!.text.toUpperCase()).toContain(word);
-    expect(rows[1 - index]!.text.toUpperCase()).not.toContain(word);
+  expect(rows.map((row) => row.page)).toEqual(
+    Array.from({ length: PAGE_COUNT }, (_, index) => index + 1),
+  );
+  rows.forEach((row, index) => {
+    const [, word] = SCAN_PAGES[index % SCAN_PAGES.length]!;
+    const [, other] = SCAN_PAGES[(index + 1) % SCAN_PAGES.length]!;
+    expect(row.text.toUpperCase()).toContain(word);
+    expect(row.text.toUpperCase()).not.toContain(other);
   });
 }
-
-/** Makes the canvas export of page 2 fail or hang, the way a renderer that cannot finish a page does. */
-const breakSecondPage = (page: Page, how: "fail" | "hang") =>
-  page.evaluate((mode) => {
-    const original = HTMLCanvasElement.prototype.toBlob;
-    let calls = 0;
-    HTMLCanvasElement.prototype.toBlob = function (callback, ...rest) {
-      calls += 1;
-      if (calls !== 2) return original.call(this, callback, ...rest);
-      if (mode === "fail") callback(null);
-    };
-  }, how);
 
 test("a scanned PDF without OCR data is refused with the consent card, stays startable, and stores nothing", async () => {
   test.setTimeout(120000);
@@ -124,8 +131,10 @@ test("a scanned PDF without OCR data is refused with the consent card, stays sta
     await expect(
       run.page.getByRole("button", { name: /^Scarica [\d.,]+ MB$/ }),
     ).toBeVisible();
-    // The refusal is the first page's, so core stopped the scan and the row never stays on "OCR queued".
+    // Core refused before queuing, so the row never shows the scan reading.
     await expect.poll(() => status(run)).toBe("needs-ocr");
+    // Later keeps the scan startable.
+    await run.page.getByRole("button", { name: /^(Non ora|Not now)$/ }).click();
     await expect(scanButton(run.page).first()).toBeVisible();
     expect(passages(run)).toEqual([]);
   } finally {
@@ -180,174 +189,73 @@ test.describe("with the pinned OCR data", () => {
     "the pinned tessdata (.tmp/tessdata-fast, hash-checked) is not on this machine and no test downloads it",
   );
 
-  test("pdf.js renders both pages, core reads them in order, and the source becomes ready after a refusal", async () => {
-    test.setTimeout(240000);
-    const run = await openScan();
+  test("an imported scan starts reading by itself, and leaving the Library or reloading the window does not stop it", async () => {
+    test.setTimeout(300000);
+    const run = await openScan({ data: true });
     try {
-      // Refused first, then the data is installed the way the consented download would leave it, and the student presses Read again.
-      await scanButton(run.page).click();
-      await expect(run.page.locator(".px-ocr")).toBeVisible();
-      await expect.poll(() => status(run)).toBe("needs-ocr");
-      installTessdata(run.userData, staged!);
-      await scanButton(run.page).first().click();
-      await expect.poll(() => status(run), { timeout: 180000 }).toBe("ready");
-      expectBothPagesOnce(run);
-      await expect(scanButton(run.page)).toHaveCount(0);
-    } finally {
-      await close(run);
-    }
-  });
-
-  test("a page that cannot be rendered stops the scan with page 1 kept, and Read again adds page 2 only", async () => {
-    test.setTimeout(240000);
-    const run = await openScan();
-    try {
-      installTessdata(run.userData, staged!);
-      await breakSecondPage(run.page, "fail");
-      await scanButton(run.page).click();
-      await expect(scanButton(run.page).first()).toBeVisible({
-        timeout: 120000,
-      });
-      await expect.poll(() => status(run)).toBe("needs-ocr");
-      expect(passages(run).map((row) => row.page)).toEqual([1]);
-      const first = passages(run)[0]!;
-      // No reload: the row has to show needs-ocr again by itself, not the stale "OCR queued".
-      await scanButton(run.page).first().click();
-      await expect.poll(() => status(run), { timeout: 180000 }).toBe("ready");
-      expectBothPagesOnce(run);
-      expect(passages(run)[0]).toEqual(first);
-    } finally {
-      await close(run);
-    }
-  });
-
-  /** Page 2 takes five seconds to export, a window in which the student can cancel or leave. */
-  const slowSecondPage = (page: Page) =>
-    page.evaluate(() => {
-      const original = HTMLCanvasElement.prototype.toBlob;
-      let calls = 0;
-      HTMLCanvasElement.prototype.toBlob = function (callback, ...rest) {
-        calls += 1;
-        if (calls !== 2) return original.call(this, callback, ...rest);
-        setTimeout(() => original.call(this, callback, ...rest), 5000);
-      };
-    });
-
-  test("Cancel stops a running scan between pages with page 1 kept, and Read again finishes it", async () => {
-    test.setTimeout(240000);
-    const run = await openScan();
-    try {
-      installTessdata(run.userData, staged!);
-      await slowSecondPage(run.page);
-      await scanButton(run.page).click();
-      await expect
-        .poll(() => passages(run).map((row) => row.page), { timeout: 120000 })
-        .toEqual([1]);
-      const cancel = run.page.getByRole("button", {
-        name: /^(Annulla la lettura|Cancel the scan)$/,
-      });
-      await cancel.click();
-      await expect(scanButton(run.page).first()).toBeVisible({
-        timeout: 30000,
-      });
-      await expect.poll(() => status(run)).toBe("needs-ocr");
-      // Page 2 was never sent, and a stopped scan shows no error.
-      expect(passages(run).map((row) => row.page)).toEqual([1]);
-      await expect(run.page.getByRole("alert")).toHaveCount(0);
-      await scanButton(run.page).first().click();
-      await expect.poll(() => status(run), { timeout: 180000 }).toBe("ready");
-      expectBothPagesOnce(run);
-      await expect(scanButton(run.page)).toHaveCount(0);
-      await expect(cancel).toHaveCount(0);
-    } finally {
-      await close(run);
-    }
-  });
-
-  test("leaving the Library mid-scan stops it with page 1 kept", async () => {
-    test.setTimeout(240000);
-    const run = await openScan();
-    try {
-      installTessdata(run.userData, staged!);
-      await slowSecondPage(run.page);
-      await scanButton(run.page).click();
-      await expect
-        .poll(() => passages(run).map((row) => row.page), { timeout: 120000 })
-        .toEqual([1]);
-      expect(await status(run)).toBe("ocr-queued");
+      // No button to find: the reading shows with its progress and a way to stop it.
+      await expect(
+        run.page.getByText(/Lettura delle pagine scansionate|Reading the scanned pages/).first(),
+      ).toBeVisible();
+      await expect(run.page.getByRole("progressbar").first()).toBeVisible();
+      await expect(
+        run.page.getByRole("button", { name: /^(Interrompi la lettura|Stop reading)$/ }),
+      ).toBeVisible();
+      await expect.poll(() => pagesRead(run), { timeout: 120000 }).toBeGreaterThanOrEqual(BATCH);
+      // The old window-driven scan stopped on both of these.
       await run.page.evaluate(() => {
         location.hash = "/exams";
       });
-      await expect
-        .poll(() => status(run), { timeout: 30000 })
-        .toBe("needs-ocr");
-      expect(passages(run).map((row) => row.page)).toEqual([1]);
-      await run.page.evaluate(() => {
-        location.hash = "/exams/library";
-      });
-      await scanButton(run.page).first().click();
-      await expect.poll(() => status(run), { timeout: 180000 }).toBe("ready");
-      expectBothPagesOnce(run);
+      await run.page.reload();
+      await expect(run.page.locator("h1:visible").first()).toBeVisible();
+      await expect.poll(() => status(run), { timeout: 240000 }).toBe("ready");
+      expectEveryPageOnce(run);
     } finally {
       await close(run);
     }
   });
 
-  test("a window reloaded between pages returns the scan to needs-ocr, and Read again does not duplicate page 1", async () => {
-    test.setTimeout(240000);
+  test("a quit mid-scan resumes at the next start and reads only the pages left", async () => {
+    test.setTimeout(300000);
+    const run = await openScan({ data: true });
+    try {
+      await expect.poll(() => pagesRead(run), { timeout: 120000 }).toBeGreaterThanOrEqual(BATCH);
+      await run.app.close();
+      const kept = pagesRead(run);
+      expect(kept).toBeLessThan(PAGE_COUNT);
+      const reopened = await launchPyxis({ userData: run.userData });
+      const page = await reopened.firstWindow();
+      const again = { ...run, app: reopened, page };
+      try {
+        await expect.poll(() => status(again), { timeout: 240000 }).toBe("ready");
+        expectEveryPageOnce(again);
+      } finally {
+        await reopened.close();
+      }
+    } finally {
+      rmSync(run.userData, { recursive: true, force: true });
+    }
+  });
+
+  test("Stop keeps the pages read and returns the scan to Read the scan, which finishes it", async () => {
+    test.setTimeout(300000);
+    // The data arrives after the import, so this scan waits for the student's press.
     const run = await openScan();
     try {
       installTessdata(run.userData, staged!);
-      await breakSecondPage(run.page, "hang");
       await scanButton(run.page).click();
-      await expect
-        .poll(() => passages(run).map((row) => row.page), { timeout: 120000 })
-        .toEqual([1]);
-      expect(await status(run)).toBe("ocr-queued");
-      await run.page.reload();
-      await expect
-        .poll(() => status(run), { timeout: 30000 })
-        .toBe("needs-ocr");
-      expect(passages(run).map((row) => row.page)).toEqual([1]);
-      await expect(scanButton(run.page).first()).toBeVisible();
+      await expect.poll(() => pagesRead(run), { timeout: 120000 }).toBeGreaterThanOrEqual(BATCH);
+      await run.page
+        .getByRole("button", { name: /^(Interrompi la lettura|Stop reading)$/ })
+        .click();
+      await expect.poll(() => status(run), { timeout: 60000 }).toBe("needs-ocr");
+      const kept = pagesRead(run);
+      expect(kept).toBeGreaterThanOrEqual(BATCH);
+      expect(kept).toBeLessThan(PAGE_COUNT);
       await scanButton(run.page).first().click();
-      await expect.poll(() => status(run), { timeout: 180000 }).toBe("ready");
-      expectBothPagesOnce(run);
-    } finally {
-      await close(run);
-    }
-  });
-
-  test("a page core's worker cannot read stops the scan with page 1 kept, and the real render finishes it", async () => {
-    test.setTimeout(240000);
-    const run = await openScan();
-    try {
-      installTessdata(run.userData, staged!);
-      const send = (pageNumber: number, bytes: Buffer, last: boolean) =>
-        run.page.evaluate(
-          ([sourceId, base64, number, end]) =>
-            window.pyxis
-              .invoke("sources.ocrImage", {
-                sourceId: sourceId as string,
-                pngBase64: base64 as string,
-                page: number as number,
-                last: end as boolean,
-              })
-              .then(
-                () => "ok",
-                (error: { messageKey?: string }) => error.messageKey ?? "error",
-              ),
-          [run.sourceId, bytes.toString("base64"), pageNumber, last] as const,
-        );
-      expect(await send(1, run.pngs[0]!, false)).toBe("ok");
-      // A PNG signature followed by a cut-off body passes core's format check and fails inside the worker's decode.
-      expect(await send(2, run.pngs[1]!.subarray(0, 200), true)).not.toBe("ok");
-      expect(await status(run)).toBe("needs-ocr");
-      expect(passages(run).map((row) => row.page)).toEqual([1]);
-      await run.page.reload();
-      await scanButton(run.page).first().click();
-      await expect.poll(() => status(run), { timeout: 180000 }).toBe("ready");
-      expectBothPagesOnce(run);
+      await expect.poll(() => status(run), { timeout: 240000 }).toBe("ready");
+      expectEveryPageOnce(run);
+      await expect(scanButton(run.page)).toHaveCount(0);
     } finally {
       await close(run);
     }

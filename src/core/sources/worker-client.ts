@@ -47,6 +47,22 @@ function pinInferenceAddon(): void {
 }
 
 /**
+ * Holds the canvas addon that draws scanned pages open on this thread for the life of the process. A worker that loaded
+ * it and then stopped could otherwise leave the addon's own thread running after the library was unloaded, which ends
+ * the process on Windows; with this reference the library stays loaded. It only maps the addon.
+ */
+let pinnedCanvas = false;
+function pinCanvasAddon(): void {
+  if (pinnedCanvas) return;
+  try {
+    createRequire(join(workerDirectory, "extract-worker.js"))("@napi-rs/canvas");
+    pinnedCanvas = true;
+  } catch {
+    // Not installed here; the worker reports its own load error.
+  }
+}
+
+/**
  * Caps how many one-shot workers of a kind run at once, so a burst of requests queues instead of spawning a thread
  * and a model or a decoded photo for each. A waiting call can be cancelled.
  */
@@ -112,6 +128,11 @@ export function runSourceWorker<T>(name: "extract-worker" | "embed-worker", inpu
     return embedder.run({ dir, texts }, signal, urgent) as Promise<T>;
   }
   const mode = (input as { mode?: string }).mode;
+  if (name === "extract-worker" && mode === "ocr-pdf") {
+    pinCanvasAddon();
+    // A batch of pages holds its worker for many seconds, so it waits with imports, not ahead of a chat photo.
+    return importGate.hold(() => oneShot<T>(name, input, signal), signal);
+  }
   if (name === "extract-worker" && (mode === "vision" || mode === "pixels" || mode === "quality" || mode === "ocr" || mode === "extract"))
     return decodeGate.hold(() => oneShot<T>(name, input, signal), signal);
   // A folder hash streams each file, so only the read of a whole file waits for the import gate.

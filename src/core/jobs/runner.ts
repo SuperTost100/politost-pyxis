@@ -12,6 +12,8 @@ export type StepContext = {
   signal: AbortSignal;
   params: unknown;
   setParams: (params: unknown) => void;
+  /** How far this step is, from 0 to 1. The job's progress moves within the step's share; one long step can show it. */
+  progress: (fraction: number) => void;
 };
 
 export type StepSpec = {
@@ -207,6 +209,15 @@ export function createRunner(
               signal: entry.controller.signal,
               params: readParams(jobId),
               setParams: (params) => setParams(jobId, params),
+              progress: (fraction) => {
+                const share = Math.min(1, Math.max(0, Number.isFinite(fraction) ? fraction : 0));
+                db.prepare(`UPDATE jobs SET progress = ?, updated_at = ? WHERE id = ?`).run(
+                  (done + share) / steps.length,
+                  Date.now(),
+                  jobId,
+                );
+                publish(jobId);
+              },
             }),
           );
           if (entry.controller.signal.aborted) {

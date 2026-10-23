@@ -21,8 +21,6 @@ export const MAX_DROPPED_FILES = 20;
 export const MAX_SOURCE_BYTES = 256 * 1024 * 1024;
 /** Photos are capped lower. A decoded phone photo takes about 4 bytes a pixel. */
 export const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
-/** The longest base64 text of a photo at that cap, so a page sent as text is bounded before anything decodes it. */
-export const MAX_IMAGE_BASE64 = Math.ceil(MAX_IMAGE_BYTES / 3) * 4;
 const DOTTED_IMAGES = new Set<string>(IMAGE_EXTENSIONS.map((ext) => `.${ext}`));
 
 /** Whether an extension with the dot, in any case, names a photo. */

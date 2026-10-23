@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useJobs } from "../features/jobs/queries";
 import { i18n } from "../locales/i18n";
 import "./SourceRow.css";
 import { formatBytes } from "@shared/format-bytes";
@@ -26,7 +27,17 @@ export type SourceRowData = {
   bytes?: number | null;
   sections?: number;
   planCount?: number;
+  /** The job reading this scan, whose progress the row shows. */
+  scanJobId?: string;
 };
+
+/** How far a scan's reading is. Only a row being read renders it, so the other rows skip job updates. */
+function ScanPercent({ jobId }: { jobId: string }) {
+  const { data: jobs = [] } = useJobs();
+  const job = jobs.find((item) => item.id === jobId);
+  if (!job || job.state !== "running") return null;
+  return <> · {Math.round(job.progress * 100)}%</>;
+}
 
 /** One source in a list: the Library and a plan's Sources tab show the same row. */
 export function SourceRow(props: {
@@ -95,9 +106,12 @@ export function SourceRow(props: {
         ) : problem ? (
           <AlertCircle size={16} strokeWidth={1.75} aria-hidden />
         ) : (
-          <LoaderCircle size={16} strokeWidth={1.75} aria-hidden />
+          <LoaderCircle className="px-spin" size={16} strokeWidth={1.75} aria-hidden />
         )}
         {t(`sources.status.${source.status}`, { defaultValue: source.status })}
+        {source.status === "ocr-queued" && source.scanJobId ? (
+          <ScanPercent jobId={source.scanJobId} />
+        ) : null}
       </span>
       <Dropdown
         trigger={["click"]}

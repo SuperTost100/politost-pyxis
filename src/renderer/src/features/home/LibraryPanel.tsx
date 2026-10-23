@@ -22,6 +22,7 @@ import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
+import { ScanNotice, scanPending } from "../../components/ScanNotice";
 import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
 import { searchMatcher } from "../../lib/search";
@@ -62,26 +63,6 @@ type ImportResult = {
   failed: Array<{ name: string; key: string }>;
   skipped: number;
 };
-
-/**
- * A scanned PDF whose OCR found no text is marked failed with no sections. It can be read again, so it keeps the scan
- * notice. A failed import names its error, and has nothing to read.
- */
-function scanFoundNothing(source: {
-  status: string;
-  kind: string;
-  sections: number;
-  blobSha: string | null;
-  error?: string;
-}): boolean {
-  return (
-    source.status === "failed" &&
-    source.kind === "pdf" &&
-    source.sections === 0 &&
-    !!source.blobSha &&
-    !source.error
-  );
-}
 
 export function LibraryPanel({
   importOnly = false,
@@ -129,16 +110,8 @@ export function LibraryPanel({
     title: string;
   } | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);
-  // The scan being read page by page, and whether the student has asked it to stop.
-  const [ocrFor, setOcrFor] = useState<{
-    id: string;
-    stopping: boolean;
-  } | null>(null);
-  const scanRun = useRef<AbortController | null>(null);
   // The rows' actions, read when a row's button is used, so the rows can skip renders the list does not need.
   const rowHandlers = useRef<RowHandlers | null>(null);
-  // Leaving the Library stops the scan between pages. The pages already read are kept.
-  useEffect(() => () => scanRun.current?.abort(), []);
   const [pickedPassage, setPickedPassage] = useState<string | null>(null);
   const [searchPicked, setSearchPicked] = useState(false);
   const [pasteTitle, setPasteTitle] = useState("");
@@ -387,69 +360,6 @@ export function LibraryPanel({
     } finally {
       setScanning(false);
     }
-  }
-
-  async function readScan(
-    source: { id: string; kind: string; blobSha: string | null },
-    signal: AbortSignal,
-  ): Promise<void> {
-    if (source.kind === "pdf" && source.blobSha) {
-      const { ocrPdfBlob } = await import("./ocrScan");
-      await ocrPdfBlob(source.id, source.blobSha, signal);
-      return;
-    }
-    if (source.kind === "image" && source.blobSha) {
-      const response = await fetch(`pyxis-blob://${source.blobSha}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      let binary = "";
-      for (let index = 0; index < bytes.length; index += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-      }
-      await invoke("sources.ocrImage", {
-        sourceId: source.id,
-        pngBase64: btoa(binary),
-        page: 1,
-        last: true,
-      });
-      return;
-    }
-    await invoke("sources.ocr", { sourceId: source.id });
-  }
-
-  /** Reads a scan with local OCR. A refusal for missing data leaves the scan listed, with a way to run this again. */
-  function scan(source: {
-    id: string;
-    kind: string;
-    blobSha: string | null;
-  }): void {
-    // One scan at a time, and a new one only after the last has fully stopped, so a late stop cannot cut it short.
-    if (scanRun.current) return;
-    setError(null);
-    setAgain(null);
-    const run = new AbortController();
-    scanRun.current = run;
-    setOcrFor({ id: source.id, stopping: false });
-    void (async () => {
-      try {
-        await readScan(source, run.signal);
-      } catch (err) {
-        // A stop the student asked for is not an error.
-        if (!run.signal.aborted)
-          fail(err, { label: t("sources.offerOcr"), run: () => scan(source) });
-      } finally {
-        // The list is read again before the marker goes, so the row never shows a stale state in between.
-        await client
-          .invalidateQueries({ queryKey: ["sources"] })
-          .catch(() => undefined);
-        scanRun.current = null;
-        setOcrFor(null);
-      }
-    })();
-  }
-
-  function cancelScan(): void {
-    scanRun.current?.abort();
-    setOcrFor((current) => (current ? { ...current, stopping: true } : null));
   }
 
   const linkPreview = useMutation({
@@ -1214,55 +1124,13 @@ export function LibraryPanel({
       {warning ? <Notice tone="warning">{warning}</Notice> : null}
       {errorView}
       {info ? <Notice tone="info">{info}</Notice> : null}
-      {sources
-        .filter(
-          (source) =>
-            source.status === "needs-ocr" ||
-            scanFoundNothing(source) ||
-            (source.status === "ocr-queued" && ocrFor?.id === source.id),
-        )
-        .map((source) => (
-          <Notice key={source.id} tone="warning">
-            {!source.blobSha ? (
-              <>
-                {t("sources.scannedNoFile", { title: source.title })}{" "}
-                <button
-                  type="button"
-                  onClick={() => void replace(source.id).catch(fail)}
-                >
-                  {t("sources.replace")}
-                </button>
-              </>
-            ) : (
-              <>
-                {t(
-                  scanFoundNothing(source) ? "sources.scanEmpty" : "sources.scanned",
-                  { title: source.title },
-                )}{" "}
-                {ocrFor?.id === source.id ? (
-                  <>
-                    {t(
-                      ocrFor.stopping
-                        ? "sources.ocrCancelling"
-                        : "sources.ocrQueued",
-                    )}{" "}
-                    <button
-                      type="button"
-                      disabled={ocrFor.stopping}
-                      onClick={cancelScan}
-                    >
-                      {t("sources.ocrCancel")}
-                    </button>
-                  </>
-                ) : (
-                  <button type="button" onClick={() => scan(source)}>
-                    {t("sources.offerOcr")}
-                  </button>
-                )}
-              </>
-            )}
-          </Notice>
-        ))}
+      {sources.filter(scanPending).map((source) => (
+        <ScanNotice
+          key={source.id}
+          source={source}
+          onReplace={() => void replace(source.id).catch(fail)}
+        />
+      ))}
       <Drawer
         open={detailsOpen}
         onClose={() => setDetailsOpen(false)}

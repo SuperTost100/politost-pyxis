@@ -28,6 +28,23 @@ export async function recognizeImage(
   if (!mime) throw new Error("vision-image-unsupported");
   assertDecodable(bytes, mime);
   const pixels = uprightForOcr(bytes);
+  return withOcrWorker(tess, (read) => read(pixels), { parameters, langs, scratch });
+}
+
+/**
+ * One Tesseract worker over the verified language files, for every image `use` reads, so a scanned book loads the
+ * languages once per batch of pages instead of once per page. The worker and its scratch folder go when `use` ends.
+ * The pixels handed to `read` are this app's own: the caller bounds and decodes them.
+ */
+export async function withOcrWorker<T>(
+  tess: string,
+  use: (read: (pixels: Uint8Array) => Promise<string>) => Promise<T>,
+  {
+    parameters,
+    langs = "eng+ita",
+    scratch = join(ocrScratchRoot(tess), randomUUID()),
+  }: { parameters?: Record<string, string>; langs?: string; scratch?: string } = {},
+): Promise<T> {
   const data = await readVerifiedOcrData(tess, langs.split("+"));
   const langPath = scratch;
   await createOcrScratch(tess, langPath);
@@ -44,8 +61,10 @@ export async function recognizeImage(
         user_defined_dpi: "300",
         ...parameters,
       });
-      const result = await worker.recognize(Buffer.from(pixels));
-      return result.data.text.replace(/\s+/g, " ").trim();
+      return await use(async (pixels) => {
+        const result = await worker.recognize(Buffer.from(pixels));
+        return result.data.text.replace(/\s+/g, " ").trim();
+      });
     } finally {
       await worker.terminate();
     }

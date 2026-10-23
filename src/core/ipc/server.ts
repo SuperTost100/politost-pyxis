@@ -69,8 +69,6 @@ export function attachRendererPort(next: CorePort): void {
     // The previous renderer port is already gone after a reload.
   }
   port = next;
-  // A reload drops the page-by-page scan the old window drove, and its replies are lost with its port.
-  sources?.ocrStopAll();
   next.start();
   next.on("message", (event) => {
     void onRendererMessage(next, event.data);
@@ -361,8 +359,6 @@ const routes = {
   "sources.unlockPdf": ["sources", "unlockPdf"],
   "sources.remove": ["sources", "remove"],
   "sources.promote": ["sources", "promote"],
-  "sources.ocrImage": ["sources", "ocrImage", "signal"],
-  "sources.ocrStop": ["sources", "ocrStop"],
   "sources.ocrDataState": ["sources", "ocrDataState", "bare"],
   "sources.ocrData": ["sources", "ocrData"],
   "sources.embedState": ["sources", "embedState", "bare"],

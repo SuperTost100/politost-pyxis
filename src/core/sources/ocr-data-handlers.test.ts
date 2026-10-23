@@ -16,6 +16,7 @@ import { createRunner } from "../jobs/runner";
 import { IpcError } from "../../shared/ipc";
 import { sourceHandlers } from "./handlers";
 import { OCR_DATA_FILES, ocrDataDir } from "./ocr-data";
+import { putBlob } from "../blobs";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -196,6 +197,37 @@ describe("SRC-04 / ASK-04 local OCR data: consent, job, and clear refusals", () 
       expect(db.prepare(`SELECT COUNT(*) AS n FROM jobs`).get()).toEqual({
         n: 1,
       });
+    },
+    30_000,
+  );
+
+  it.skipIf(!haveData)(
+    "a finished download starts reading the scans that waited for it, without another press",
+    async () => {
+      const { workspace, db, fetchSpy } = setup();
+      fetchSpy.mockImplementation((async (url: string) =>
+        new Response(readFileSync(join(pinned, url.slice(url.lastIndexOf("/") + 1))))) as never);
+      const sha = putBlob(workspace, new TextEncoder().encode("%PDF-1.7 synthetic"), "application/pdf", ".pdf");
+      db.prepare(
+        `INSERT INTO sources (id, kind, title, status, mime, blob_sha, created_at, updated_at) VALUES ('scan', 'pdf', 'Scan', 'needs-ocr', 'application/pdf', ?, 1, 1)`,
+      ).run(sha);
+      db.prepare(
+        `INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES ('doc', 'scan', 1, '{}', 1)`,
+      ).run();
+      // Pages are read by a stand-in for the worker; the download and the job are real.
+      const work = vi.fn(async (_name: string, input: { mode?: string; pages?: number[] }) => {
+        if (input.mode !== "ocr-pdf") throw new Error("unexpected worker call");
+        return { count: 2, pages: (input.pages ?? []).filter((page) => page <= 2).map((page) => ({ page, text: `pagina ${page}` })) };
+      });
+      const handlers = sourceHandlers(db, workspace, createRunner(db, () => {}), undefined, work as never);
+      await handlers.ocrData({ consent: true });
+      await expect
+        .poll(() => (db.prepare(`SELECT status FROM sources WHERE id = 'scan'`).get() as { status: string }).status, {
+          timeout: 20_000,
+        })
+        .toBe("ready");
+      expect(work).toHaveBeenCalledTimes(1);
+      expect(db.prepare(`SELECT COUNT(*) AS n FROM jobs WHERE kind = 'source-ocr'`).get()).toEqual({ n: 1 });
     },
     30_000,
   );

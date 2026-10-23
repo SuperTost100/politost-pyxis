@@ -44,6 +44,33 @@ afterEach(() => {
 });
 
 describe("job runner", () => {
+  it("moves a job's progress within a long step, inside that step's share", async () => {
+    const database = db();
+    const seen: number[] = [];
+    const runner = createRunner(database, (job) => seen.push(job.progress));
+    runner.register("pages", {
+      jobClass: "local",
+      steps: [
+        { name: "first", label: "first", run: async () => null },
+        {
+          name: "read",
+          label: "read",
+          run: async (ctx) => {
+            ctx.progress(0.5);
+            ctx.progress(7);
+            return null;
+          },
+        },
+      ],
+    });
+    const jobId = runner.start("pages");
+    expect(await until(database, jobId, ["succeeded"])).toBe("succeeded");
+    // Half of the second step is three quarters of the job, and a fraction past 1 stops at the step's end.
+    expect(seen).toContain(0.75);
+    expect(seen).toContain(1);
+    expect(seen.every((value) => value <= 1)).toBe(true);
+  });
+
   it("does not start queued work before initial credentials are applied", async () => {
     const database = db();
     const runner = createRunner(database, () => {}, undefined, true);

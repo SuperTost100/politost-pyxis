@@ -1,6 +1,6 @@
 import type { JobView } from "../../../../shared/ipc";
 
-const sourceKinds = new Set(["source-import", "source-import-vision", "source-index"]);
+const sourceKinds = new Set(["source-import", "source-import-vision", "source-index", "source-ocr"]);
 const planKinds = new Set(["plan-build", "plan-rebuild"]);
 const finished = new Set<JobView["state"]>(["succeeded", "failed", "cancelled", "interrupted"]);
 

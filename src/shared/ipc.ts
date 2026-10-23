@@ -2,7 +2,6 @@ import { z } from "zod";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { MAX_EXAM_AT, PLAN_FILE_PARTS, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { examSessionsSchema } from "./exam-sessions";
-import { MAX_IMAGE_BASE64 } from "./source-types";
 import { installableProviders } from "./installers";
 
 import {
@@ -2174,6 +2173,8 @@ export const requests = {
         error: z.string().optional(),
         /** The job that stopped with `error`, so the row can answer it (a locked PDF's password). */
         errorJobId: z.string().optional(),
+        /** The `source-ocr` job reading this scan, or the one that stopped, while the jobs list still shows it. */
+        scanJobId: z.string().optional(),
         /** The address a source imported from a link came from, and when its saved copy was fetched. */
         originUrl: z.string().nullable(),
         fetchedAt: z.number().nullable(),
@@ -2426,7 +2427,7 @@ export const requests = {
   },
   "sources.ocr": {
     input: z.object({ sourceId: z.string() }),
-    output: z.object({ status: z.literal("ocr-queued") }),
+    output: z.object({ status: z.literal("ocr-queued"), jobId: z.string() }),
   },
   "sources.paste": {
     input: z.object({ title: z.string(), text: z.string() }),
@@ -2568,19 +2569,6 @@ export const requests = {
     output: z.object({ ok: z.literal(true) }),
   },
   /** Stops a scan the renderer cannot finish. The source goes back to `needs-ocr`, its pages kept. Never throws for a source that is not queued. */
-  "sources.ocrStop": {
-    input: z.object({ sourceId: z.string() }),
-    output: z.object({ ok: z.literal(true) }),
-  },
-  "sources.ocrImage": {
-    input: z.object({
-      sourceId: z.string(),
-      pngBase64: z.string().max(MAX_IMAGE_BASE64),
-      page: z.number(),
-      last: z.boolean(),
-    }),
-    output: z.object({ status: z.enum(["ready", "failed", "ocr-queued"]) }),
-  },
   /**
    * Local OCR language data (English and Italian, one pinned download). Disk truth: `ready` only when every file matches
    * its pinned hash, `integrity` when a file is there but altered or cut short, `missing` otherwise. `consent` is the

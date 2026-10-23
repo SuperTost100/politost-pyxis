@@ -151,6 +151,8 @@ type Deps = {
     ext: string,
     signal: AbortSignal,
   ) => Promise<VisionImage>;
+  /** A file that turned out to be a scan without text, so its reading can start. */
+  onScan?: (sourceId: string) => void;
 };
 
 export function registerSourceJobs(
@@ -332,6 +334,7 @@ export function registerSourceJobs(
               JSON.parse(await readFile(readBlob(workspace, input.extractedSha!).file, "utf8")) as Extraction,
             );
           setStatusIfHeld(db, input, status);
+          if (status === "needs-ocr") deps.onScan?.(input.sourceId);
           return { sourceId: input.sourceId };
         },
       },

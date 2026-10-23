@@ -2,6 +2,7 @@ import { Button, Input, Modal } from "antd";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ScanNotice, scanPending } from "../../components/ScanNotice";
 import { searchMatcher } from "../../lib/search";
 import { LibraryPanel } from "../home/LibraryPanel";
 
@@ -10,6 +11,11 @@ export type WizardSource = {
   title: string;
   kind: string;
   status: string;
+  /** From the library list. A scan waiting for text shows how to read it here, without going to the Library. */
+  sections?: number;
+  blobSha?: string | null;
+  scanJobId?: string;
+  error?: string;
 };
 
 /** Smartbooks first, then by title, so the books a student studies from lead the picker. */
@@ -106,6 +112,10 @@ export function WizardSources({
           </Button>
         </p>
       ) : null}
+      {inPlan.map((source) => {
+        const scan = { ...source, sections: source.sections ?? 0, blobSha: source.blobSha ?? null };
+        return scanPending(scan) ? <ScanNotice key={source.id} source={scan} /> : null;
+      })}
       {blocked ? (
         <p className="small" role="alert">
           {t("wizard.sourceNotReady")}
