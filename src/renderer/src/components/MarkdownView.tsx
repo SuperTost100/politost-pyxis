@@ -11,7 +11,7 @@ import { createContext, isValidElement, memo, useContext, useMemo } from "react"
 import { useTranslation } from "react-i18next";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import { citedPassage, linkCitations, type CitationResolver } from "../markdown/citations";
-import { displayMathLines, normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
+import { displayMathLines, normalizeMathDelimiters } from "../../../shared/math-delimiters";
 import { rehypePlugins, remarkPlugins } from "../markdown/plugins";
 import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
