@@ -29,10 +29,10 @@ files:
   - "!**/node_modules/libheif-js/libheif-wasm/{libheif.js,libheif.wasm,libheif-bundle.mjs}"
   # zod's TypeScript sources are for its "@zod/source" export condition, which nothing here sets.
   - "!**/node_modules/zod/src/**"
-  # Main reads PDFs through the modern build. The legacy build loads @napi-rs/canvas, which main does not use. Main reads
-  # text only and passes neither cMapUrl nor standardFontDataUrl, so the font, cmap, viewer and minified files go too.
+  # Core reads PDFs through the modern build. It draws scanned pages for OCR with @napi-rs/canvas, which ships; the
+  # legacy build would load it eagerly in every text-only read. Core passes neither cMapUrl nor standardFontDataUrl, so
+  # the font, cmap, viewer and minified files go too.
   - "!**/node_modules/pdfjs-dist/legacy/**"
-  - "!**/node_modules/@napi-rs/canvas{,-*}/**"
   - "!**/node_modules/pdfjs-dist/{cmaps,standard_fonts,image_decoders,web}/**"
   - "!**/node_modules/pdfjs-dist/build/{*.min.mjs,pdf.sandbox*}"
   # Node's tesseract.js loads tesseract-core*.js, which reads its .wasm file. The .wasm.js files are browser builds with
@@ -54,6 +54,7 @@ asarUnpack:
   - "**/node_modules/sqlite-vec/**"
   - "**/node_modules/sqlite-vec-*/**"
   - "**/node_modules/onnxruntime-node/**"
+  - "**/node_modules/@napi-rs/canvas{,-*}/**"
 # A double-click on a plan file opens Pyxis with it (src/main/plan-open.ts). The type is the one the app writes.
 fileAssociations:
   - ext: pyxis

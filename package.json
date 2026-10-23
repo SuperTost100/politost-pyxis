@@ -24,6 +24,7 @@
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "@mozilla/readability": "^0.6.0",
+    "@napi-rs/canvas": "0.1.100",
     "better-sqlite3": "^13.0.3",
     "cli-funnel": "0.5.1",
     "d3-hierarchy": "^3.1.2",
