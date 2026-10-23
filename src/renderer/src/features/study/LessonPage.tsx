@@ -38,6 +38,8 @@ import {
   useOpenNext,
 } from "./Reader";
 import { showsLiveText } from "./lessonLive";
+import { usePlan } from "../../lib/queries";
+import { refreshPlan } from "../../lib/refreshPlan";
 
 type Wording = "simple" | "balanced" | "technical";
 type Lesson = RequestOutput<"study.lesson">;
@@ -106,17 +108,7 @@ export function LessonPage() {
       }
     },
   });
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId }),
-  });
-  const refreshPlan = () =>
-    Promise.all(
-      [["plan", planId], ["series", planId], ["recommend", planId], ["progress", planId]].map(
-        (queryKey) => client.invalidateQueries({ queryKey }),
-      ),
-    );
+  const plan = usePlan(planId);
   const rewritePart = useMutation({
     mutationFn: () =>
       invoke("study.lessonSection", {
@@ -140,7 +132,7 @@ export function LessonPage() {
       return then;
     },
     onSuccess: async (then) => {
-      await refreshPlan();
+      await refreshPlan(client, planId);
       if (then === "continue") await openNext();
       else navigate(`/plans/${planId}`);
     },
@@ -193,7 +185,7 @@ export function LessonPage() {
         : current,
     );
     void client.invalidateQueries({ queryKey: ["series", planId] });
-    if (result.finished) await refreshPlan();
+    if (result.finished) await refreshPlan(client, planId);
   }
 
   // While the lesson is written, a pick has no saved lesson to count against: the reader sees the result at once and

@@ -2,7 +2,7 @@ import { Button, Input, Modal } from "antd";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { foldText } from "@shared/fold-text";
+import { searchMatcher } from "../../lib/search";
 import { LibraryPanel } from "../home/LibraryPanel";
 
 export type WizardSource = {
@@ -150,9 +150,9 @@ function LibraryPicker({
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<string[]>([]);
   const free = library.filter((source) => !picked.includes(source.id));
-  const needle = foldText(query.trim());
+  const titleMatches = searchMatcher(query);
   const shown = free
-    .filter((source) => foldText(source.title).includes(needle))
+    .filter((source) => titleMatches(source.title))
     .sort(byKindThenTitle(i18n.language));
   const count = chosen.filter((id) => free.some((s) => s.id === id)).length;
   const reset = () => {

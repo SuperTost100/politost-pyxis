@@ -20,6 +20,7 @@ import {
   type StoredProfile,
 } from "./setup";
 import "./OnboardingPage.css";
+import { profileQuery } from "../../lib/queries";
 
 /** The numbered setup steps. A welcome screen comes before them and a "ready" screen after. */
 const stepIds = ["profile", "engines", "photos", "privacy"] as const;
@@ -33,11 +34,7 @@ type ScreenId = (typeof screens)[number];
 export function OnboardingPage() {
   const [params] = useSearchParams();
   const again = params.get("again") === "1";
-  const profile = useQuery({
-    queryKey: ["profile"],
-    queryFn: () => invoke("profile.get", {}),
-    enabled: again,
-  });
+  const profile = useQuery({ ...profileQuery, enabled: again });
   if (again && profile.isPending) return null;
   // A rerun link without a profile is a first setup.
   return <Setup stored={again ? (profile.data ?? null) : null} />;

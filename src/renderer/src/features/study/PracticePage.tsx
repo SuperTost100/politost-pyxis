@@ -12,6 +12,8 @@ import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import "./PracticePage.css";
+import { usePlan } from "../../lib/queries";
+import { refreshPlan } from "../../lib/refreshPlan";
 
 type Exercise = Awaited<ReturnType<typeof invoke<"study.exercises">>>["exercises"][number];
 
@@ -37,9 +39,7 @@ function SelfRating({
       invoke("study.rateExercise", { planId, topicId, exerciseId, rating: next }),
     onSuccess: () =>
       Promise.all([
-        ...["series", "plan", "recommend"].map((key) =>
-          client.invalidateQueries({ queryKey: [key, planId] }),
-        ),
+        refreshPlan(client, planId),
         // The exercise list holds each rating; left stale it would show the old one on the next visit.
         client.invalidateQueries({ queryKey: ["exercises", planId, topicId] }),
       ]),
@@ -182,11 +182,7 @@ export function PracticePage() {
   // Opened from a finished step on the path: looking again records nothing, so there is no "Mark as done".
   const [searchParams] = useSearchParams();
   const reviewing = searchParams.get("review") === "1";
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId: planId ?? "" }),
-  });
+  const plan = usePlan(planId);
   const exercises = useQuery({
     queryKey: ["exercises", planId, topicId],
     enabled: Boolean(topicId),
@@ -200,11 +196,7 @@ export function PracticePage() {
     mutationFn: () =>
       invoke("plans.complete", { planId: planId ?? "", activity: "practice", topicId: topicId ?? null }),
     onSuccess: async () => {
-      await Promise.all(
-        [["plan", planId], ["recommend", planId]].map((queryKey) =>
-          client.invalidateQueries({ queryKey }),
-        ),
-      );
+      await refreshPlan(client, planId ?? "");
       navigate(`/plans/${planId ?? ""}`);
     },
   });

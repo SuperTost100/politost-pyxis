@@ -7,6 +7,7 @@ import { invoke } from "../../lib/ipc";
 import { textBase64 } from "../share/ExportButton";
 import { chatSubjects, filterBySubject, groupChats, type ChatGroup } from "./chatList";
 import "./ChatPanel.css";
+import { useChats, useSubjects } from "../../lib/queries";
 
 /**
  * The saved chats as a drawer from the left, newest first under Today, This week and Older. A search box narrows them
@@ -32,14 +33,8 @@ export function ChatPanel({
   const { t, i18n } = useTranslation();
   const { message } = App.useApp();
   const client = useQueryClient();
-  const history = useQuery({
-    queryKey: ["chats"],
-    queryFn: () => invoke("chats.list", {}),
-  });
-  const subjects = useQuery({
-    queryKey: ["subjects"],
-    queryFn: () => invoke("subjects.list", {}),
-  });
+  const history = useChats();
+  const subjects = useSubjects();
   const [query, setQuery] = useState("");
   const [subject, setSubject] = useState("");
   const [asked, setAsked] = useState("");

@@ -19,6 +19,9 @@ import { nextLearningDue, trackLearning, type LearningCards } from "./learningCa
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
 import { Notice } from "../../components/Notice";
 import { LoadError } from "../../components/LoadError";
+import { usePlan } from "../../lib/queries";
+import { refreshPlan } from "../../lib/refreshPlan";
+import { CardFaceFields } from "../../components/CardFaceFields";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
 type RatingName = (typeof RATINGS)[number];
@@ -155,11 +158,7 @@ export function CardsPage() {
   const [ratedIn, setRatedIn] = useState<
     Array<{ planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
   >([]);
-  const plan = useQuery({
-    queryKey: ["plan", cardPlanId],
-    enabled: Boolean(cardPlanId),
-    queryFn: () => invoke("plans.read", { planId: cardPlanId ?? "" }),
-  });
+  const plan = usePlan(cardPlanId);
   // Until the deck arrives (and the topic's build is known) "No cards are due." would be a guess.
   const shown = everywhere ? dueEverywhere : reviewing ? reviewQueue : cards;
   const deckLoading = shown.isLoading || (!reviewing && build.isLoading);
@@ -192,11 +191,7 @@ export function CardsPage() {
           : {}),
       });
       setRecorded(true);
-      await Promise.all(
-        [["plan", planId], ["recommend", planId]].map((queryKey) =>
-          client.invalidateQueries({ queryKey }),
-        ),
-      );
+      await refreshPlan(client, planId);
       return true;
     } catch {
       setFinishFailed(true);
@@ -225,11 +220,7 @@ export function CardsPage() {
           },
         });
       setRecorded(true);
-      await Promise.all(
-        [["plans"], ["plan"], ["recommend"]].map((queryKey) =>
-          client.invalidateQueries({ queryKey }),
-        ),
-      );
+      await refreshPlan(client, ...ratedIn.map((entry) => entry.planId));
       return true;
     } catch {
       setFinishFailed(true);
@@ -647,23 +638,12 @@ export function CardsPage() {
             </div>
             {editing ? (
               <div className="px-card-edit">
-                <label className="label" htmlFor="card-front">
-                  {t("cards.front")}
-                </label>
-                <Input.TextArea
-                  autoSize={{ minRows: 2, maxRows: 8 }}
-                  id="card-front"
-                  value={draftFront}
-                  onChange={(event) => setDraftFront(event.target.value)}
-                />
-                <label className="label" htmlFor="card-back">
-                  {t("cards.back")}
-                </label>
-                <Input.TextArea
-                  autoSize={{ minRows: 2, maxRows: 8 }}
-                  id="card-back"
-                  value={draftBack}
-                  onChange={(event) => setDraftBack(event.target.value)}
+                <CardFaceFields
+                  idPrefix="card"
+                  front={draftFront}
+                  back={draftBack}
+                  onFront={setDraftFront}
+                  onBack={setDraftBack}
                 />
                 <div className="px-card-edit-actions">
                   <Button

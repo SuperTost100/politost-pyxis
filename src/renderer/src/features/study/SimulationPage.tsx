@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "antd";
 import { Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
@@ -14,8 +14,11 @@ import { StepLines } from "../../components/StepLines";
 import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
+import { useDeadlinePassed, useNow } from "./clock";
+import { useDraftSaver } from "./draftSaver";
 import { ActivityChoice, ActivityIntro } from "./ActivityIntro";
 import "./SimulationPage.css";
+import { pastPapersQuery, usePlan } from "../../lib/queries";
 
 /** How long typing pauses before the answers are saved. */
 const DRAFT_DELAY_MS = 500;
@@ -26,7 +29,8 @@ export function SimulationPage() {
   useActiveTime(planId, null);
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [started, setStarted] = useState<string | null>(attemptId ?? null);
+  // The attempt in the address; starting one or finding one running navigates there.
+  const started = attemptId ?? null;
   const [length, setLength] = useState(30);
   const [format, setFormat] = useState<"past" | "generic">("past");
   const [source, setSource] = useState<"exam" | "mixed">("exam");
@@ -36,35 +40,22 @@ export function SimulationPage() {
   const [notice, setNotice] = useState("");
   const [noEngine, setNoEngine] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const [now, setNow] = useState(Date.now());
-  const drafts = useRef<Promise<unknown>>(Promise.resolve());
   // Typing saves at most every DRAFT_DELAY_MS; time-up, submit and leaving the page save at once.
-  const pending = useRef<{ attemptId: string; picks: Record<string, string> } | null>(null);
-  const saveTimer = useRef<number | undefined>(undefined);
-  function flushDraft() {
-    window.clearTimeout(saveTimer.current);
-    const next = pending.current;
-    pending.current = null;
-    if (next)
-      drafts.current = drafts.current
-        .catch(() => undefined)
-        .then(() => invoke("study.simulationDraft", next))
-        .catch(() => setNotice(t("simulation.saveFailed")));
-    return drafts.current;
-  }
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    queryFn: () => invoke("plans.read", { planId }),
-    enabled: Boolean(planId),
-  });
+  const drafts = useDraftSaver(
+    (draft: { attemptId: string; picks: Record<string, string> }) =>
+      invoke("study.simulationDraft", draft),
+    () => setNotice(t("simulation.saveFailed")),
+    DRAFT_DELAY_MS,
+  );
+  const plan = usePlan(planId);
   const open = useQuery({
     queryKey: ["simulation", planId, started],
     enabled: Boolean(planId),
-    // The clock runs here, so a running exam is read every second for the time-up freeze and the grading job. Once
-    // handed in, or when grading has stopped (Retry invalidates this query), there is nothing left to watch.
+    // A running exam is read every second for the time-up freeze and the grading job. Before an attempt starts,
+    // once handed in, or when grading has stopped (Retry invalidates this query), there is nothing left to watch.
     refetchInterval: (query) => {
       const read = query.state.data;
-      if (read?.submitted) return false;
+      if (!started || read?.submitted) return false;
       if (
         read?.grading &&
         ["failed", "cancelled", "interrupted"].includes(read.grading.state)
@@ -91,9 +82,8 @@ export function SimulationPage() {
   });
   const building = build.data;
   const papers = useQuery({
-    queryKey: ["past-papers", planId],
+    ...pastPapersQuery(planId),
     enabled: Boolean(planId) && !started,
-    queryFn: () => invoke("study.pastPapers", { planId }),
   });
   // The past papers' structure, when the plan has any; the setup offers to copy it.
   const style = papers.data?.style ?? null;
@@ -121,7 +111,6 @@ export function SimulationPage() {
     setNoEngine(false);
     return request
       .then(async ({ attemptId: next }) => {
-        setStarted(next);
         navigate(`/plans/${planId}/exam/${next}`, { replace: true });
         await client.invalidateQueries({
           queryKey: ["simulation-build", planId],
@@ -149,34 +138,21 @@ export function SimulationPage() {
   }, [style?.minutes, building == null]);
   useEffect(() => {
     if (run && !started) {
-      setStarted(run.attemptId);
       navigate(`/plans/${planId}/exam/${run.attemptId}`, { replace: true });
     }
   }, [run?.attemptId, started, planId, navigate]);
   useEffect(() => {
-    setStarted(attemptId ?? null);
-  }, [attemptId, planId]);
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  useEffect(() => {
     setPicks({});
     setIndex(0);
   }, [run?.attemptId]);
-  useEffect(() => () => void flushDraft(), []);
-  const seconds = run?.locked
-    ? 0
-    : run
-      ? Math.max(0, Math.ceil((run.deadline - now) / 1000))
-      : length * 60;
+  const timeUp = useDeadlinePassed(run?.deadline, Boolean(run && !run.submitted));
   const locked = Boolean(
-    run && (run.submitted || run.grading || seconds === 0),
+    run && (run.submitted || run.grading || run.locked || timeUp),
   );
   // The menu leaves a running simulation alone.
   useMenuLock(Boolean(run) && !locked);
   useEffect(() => {
-    if (locked) void flushDraft();
+    if (locked) void drafts.flush();
   }, [locked]);
   // The shell asks core whether an exam is running when it opens and when told; starting, time-up and handing in tell it.
   useEffect(() => {
@@ -188,9 +164,6 @@ export function SimulationPage() {
   const question = run?.questions[index];
   const unanswered =
     run?.questions.filter((q) => !(shown[q.id] ?? "").trim()).length ?? 0;
-  const time = `${Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
   const provenance = [
     ...new Set(
       run?.results
@@ -206,7 +179,7 @@ export function SimulationPage() {
     setBusy(true);
     setNotice("");
     try {
-      await flushDraft();
+      await drafts.flush();
       await invoke("study.simulationSubmit", {
         attemptId: run.attemptId,
         picks: shown,
@@ -247,7 +220,6 @@ export function SimulationPage() {
     })
       .then(async (next) => {
         if (next.attemptId) {
-          setStarted(next.attemptId);
           navigate(`/plans/${planId}/exam/${next.attemptId}`, {
             replace: true,
           });
@@ -296,13 +268,10 @@ export function SimulationPage() {
       headerRight={
         run && !run.submitted ? (
           <div className="px-sim-header-actions">
-            <span
-              className="code px-sim-timer"
-              role="timer"
-              aria-label={t("simulation.timeLeft")}
-            >
-              {time}
-            </span>
+            <SimulationClock
+              deadline={run.deadline}
+              stopped={Boolean(run.locked) || timeUp}
+            />
             {!locked && (
               <Button
                 shape="round"
@@ -621,9 +590,7 @@ export function SimulationPage() {
                 onChange={(answer) => {
                   const next = { ...shown, [question.id]: answer };
                   setPicks(next);
-                  pending.current = { attemptId: run.attemptId, picks: next };
-                  window.clearTimeout(saveTimer.current);
-                  saveTimer.current = window.setTimeout(flushDraft, DRAFT_DELAY_MS);
+                  drafts.schedule({ attemptId: run.attemptId, picks: next });
                 }}
               />
             </>
@@ -654,5 +621,20 @@ export function SimulationPage() {
         <p className="body">{t("simulation.confirm", { count: unanswered })}</p>
       </Modal>
     </FocusLayout>
+  );
+}
+
+/** The exam's time left. It ticks on its own, so the page re-renders only when time is up. */
+function SimulationClock({ deadline, stopped }: { deadline: number; stopped: boolean }) {
+  const { t } = useTranslation();
+  const now = useNow(1000, !stopped);
+  const seconds = stopped ? 0 : Math.max(0, Math.ceil((deadline - now) / 1000));
+  const time = `${Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+  return (
+    <span className="code px-sim-timer" role="timer" aria-label={t("simulation.timeLeft")}>
+      {time}
+    </span>
   );
 }

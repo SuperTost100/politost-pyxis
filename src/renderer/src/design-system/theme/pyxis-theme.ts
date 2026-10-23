@@ -1,69 +1,57 @@
-// PoliTost Pyxis — Ant Design v6 + Ant Design Pro (ProComponents v3) theme. Values mirror tokens.json; change them there first.
+// PoliTost Pyxis — Ant Design v6 + Ant Design Pro (ProComponents v3) theme. The colours come from tokens.json.
 // Usage:
 //   import { ConfigProvider, App as AntApp } from 'antd';
 //   import { pyxisTheme } from './pyxis-theme';
 //   <ConfigProvider theme={pyxisTheme(mode)}><AntApp>…</AntApp></ConfigProvider>
 import { theme, type ThemeConfig } from "antd";
 import type { ProTokenType } from "@ant-design/pro-components";
+import { color } from "../tokens/tokens.json";
 
 export type PyxisMode = "dark" | "light";
 
-export const pyxisColors = {
-  dark: {
-    bg: "#0d1015",
-    surface: "#151920",
-    surfaceRaised: "#1c212a",
-    surfaceOverlay: "#232935",
-    border: "#262c37",
-    borderControl: "#6b7385",
-    ink: "#eceef3",
-    inkMuted: "#a4abb8",
-    inkSubtle: "#8a91a0",
-    onInk: "#0d1015",
-    primary: "#3262db",
-    primaryHover: "#3a6ae4",
-    primaryActive: "#2854c4",
-    primaryText: "#7ea2ff",
-    primarySoft: "#1b2744",
-    star: "#f4b942",
-    starText: "#f4b942",
-    starSoft: "#2d2412",
-    mastery: "#4fd1a1",
-    masteryText: "#4fd1a1",
-    masterySoft: "#12291f",
-    danger: "#f26d6d",
-    dangerSoft: "#2e1618",
-    focusRing: "#f4b942",
-    scrim: "rgba(5, 7, 10, 0.72)",
-  },
-  light: {
-    bg: "#f6f5f1",
-    surface: "#ffffff",
-    surfaceRaised: "#efede7",
-    surfaceOverlay: "#ffffff",
-    border: "#e4e2db",
-    borderControl: "#7e8492",
-    ink: "#15181e",
-    inkMuted: "#50576a",
-    inkSubtle: "#5f6675",
-    onInk: "#ffffff",
-    primary: "#3262db",
-    primaryHover: "#2a56c8",
-    primaryActive: "#2249b0",
-    primaryText: "#2451c7",
-    primarySoft: "#e5ecfc",
-    star: "#b7790c",
-    starText: "#8a5a00",
-    starSoft: "#fbf0d6",
-    mastery: "#1a9165",
-    masteryText: "#0f7a55",
-    masterySoft: "#dcf3e9",
-    danger: "#c0343c",
-    dangerSoft: "#fbe3e3",
-    focusRing: "#2451c7",
-    scrim: "rgba(21, 24, 30, 0.40)",
-  },
-} as const;
+// The colours Ant Design takes from tokens.json, the one place their values are set.
+const COLOR_NAMES = [
+  "bg",
+  "surface",
+  "surfaceRaised",
+  "surfaceOverlay",
+  "border",
+  "borderControl",
+  "ink",
+  "inkMuted",
+  "inkSubtle",
+  "onInk",
+  "primary",
+  "primaryHover",
+  "primaryActive",
+  "primaryText",
+  "primarySoft",
+  "star",
+  "starText",
+  "starSoft",
+  "mastery",
+  "masteryText",
+  "masterySoft",
+  "danger",
+  "dangerSoft",
+  "focusRing",
+  "scrim",
+] as const;
+
+function readColors(mode: PyxisMode): Record<(typeof COLOR_NAMES)[number], string> {
+  const values = new Map(color.tokens.map((token) => [token.name, token.value[mode]]));
+  return Object.fromEntries(
+    COLOR_NAMES.map((name) => {
+      // tokens.json names colours in kebab case: surfaceRaised is surface-raised.
+      const key = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+      const value = values.get(key);
+      if (!value) throw new Error(`tokens.json has no ${mode} colour ${key}`);
+      return [name, value];
+    }),
+  ) as Record<(typeof COLOR_NAMES)[number], string>;
+}
+
+export const pyxisColors = { dark: readColors("dark"), light: readColors("light") };
 
 const FONT_SANS = 'Figtree, system-ui, -apple-system, "Segoe UI", sans-serif';
 const FONT_MONO =

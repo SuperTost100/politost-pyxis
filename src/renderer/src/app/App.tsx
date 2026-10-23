@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { RouterProvider } from "react-router";
 import type { Appearance, ThemeSource } from "@shared/bridge";
 import { pyxisTheme } from "../design-system/theme/pyxis-theme";
-import { i18n, type Locale } from "../locales/i18n";
+import type { Locale } from "../locales/i18n";
 import { CoreNotice } from "./CoreNotice";
 import { EngineFallbackNotice } from "./EngineFallbackNotice";
 import { MenuCommands } from "./MenuCommands";
@@ -21,7 +21,7 @@ import { JobsSync } from "../features/jobs/queries";
 import { AppStateContext } from "./app-state";
 import { router } from "./router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "../lib/ipc";
+import { profileQuery } from "../lib/queries";
 
 // Only the print window shows it, and it waits for the page to say it is ready.
 const PrintPage = lazy(() =>
@@ -48,20 +48,15 @@ const dateIcons = {
 };
 
 function StudyApp() {
-  const { i18n: i18nInstance } = useTranslation();
-  const locale: Locale = i18nInstance.language === "en" ? "en" : "it";
+  const { i18n } = useTranslation();
+  const locale: Locale = i18n.language === "en" ? "en" : "it";
   const [appearance, setAppearance] = useState<Appearance>({
     source: "system",
     resolved: "dark",
   });
   const [ready, setReady] = useState(false);
   const client = useQueryClient();
-  const profile = useQuery({
-    queryKey: ["profile"],
-    queryFn: () => invoke("profile.get", {}),
-    retry: 10,
-    retryDelay: 300,
-  });
+  const profile = useQuery({ ...profileQuery, retry: 10, retryDelay: 300 });
   useEffect(
     () =>
       window.pyxis.onPort(() => {
@@ -103,14 +98,6 @@ function StudyApp() {
   async function setTheme(source: ThemeSource) {
     applyTheme(await window.pyxis.setAppearance(source));
   }
-
-  useEffect(() => {
-    const onLanguage = () => {
-      document.documentElement.lang = i18n.language === "en" ? "en" : "it";
-    };
-    i18n.on("languageChanged", onLanguage);
-    return () => i18n.off("languageChanged", onLanguage);
-  }, []);
 
   if (!ready) return null;
 

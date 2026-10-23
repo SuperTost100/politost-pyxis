@@ -8,6 +8,7 @@ import {
   layoutTree,
   visibleNodes,
 } from "./mapLayout";
+import { childrenOf } from "../../../../shared/map-layout";
 
 const wide = (count: number) => [
   { id: "r", parent: null },
@@ -111,5 +112,20 @@ describe("startViewport", () => {
     expect(view.x).toBeGreaterThan(0);
     expect(view.x).toBeLessThan(200);
     expect(view.y + 32 * 0.6).toBeCloseTo(300);
+  });
+});
+
+describe("childrenOf", () => {
+  it("lists each parent's children in the order the nodes come", () => {
+    const children = childrenOf([
+      { id: "r", parent: null },
+      { id: "a", parent: "r" },
+      { id: "a1", parent: "a" },
+      { id: "b", parent: "r" },
+      { id: "a2", parent: "a" },
+    ]);
+    expect([...children.keys()]).toEqual(["r", "a"]);
+    expect(children.get("r")?.map((node) => node.id)).toEqual(["a", "b"]);
+    expect(children.get("a")?.map((node) => node.id)).toEqual(["a1", "a2"]);
   });
 });

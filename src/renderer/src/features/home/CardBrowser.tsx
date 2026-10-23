@@ -6,7 +6,6 @@ import {
 import {
   Button,
   Dropdown,
-  Input,
   Modal,
   Pagination,
   Select,
@@ -32,6 +31,7 @@ import { invoke } from "../../lib/ipc";
 import { i18n } from "../../locales/i18n";
 import { AnkiModal } from "./AnkiModal";
 import "./CardBrowser.css";
+import { CardFaceFields } from "../../components/CardFaceFields";
 
 const PAGE_SIZE = 25;
 
@@ -646,23 +646,12 @@ export function CardBrowser() {
       >
         <div className="px-cardbrowser-edit">
           <p className="small">{t("cardBrowser.editHint")}</p>
-          <label className="label" htmlFor="browse-front">
-            {t("cards.front")}
-          </label>
-          <Input.TextArea
-            id="browse-front"
-            autoSize={{ minRows: 2, maxRows: 8 }}
-            value={draftFront}
-            onChange={(event) => setDraftFront(event.target.value)}
-          />
-          <label className="label" htmlFor="browse-back">
-            {t("cards.back")}
-          </label>
-          <Input.TextArea
-            id="browse-back"
-            autoSize={{ minRows: 2, maxRows: 8 }}
-            value={draftBack}
-            onChange={(event) => setDraftBack(event.target.value)}
+          <CardFaceFields
+            idPrefix="browse"
+            front={draftFront}
+            back={draftBack}
+            onFront={setDraftFront}
+            onBack={setDraftBack}
           />
           {saveFailed ? (
             <Notice tone="danger">{t("cards.actionFailed")}</Notice>

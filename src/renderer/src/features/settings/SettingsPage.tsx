@@ -35,6 +35,7 @@ import { invoke } from "../../lib/ipc";
 import { i18n, setLanguage, type Locale } from "../../locales/i18n";
 import { EnginesPanel } from "./EnginesPanel";
 import { formatBytes } from "@shared/format-bytes";
+import { useProfile } from "../../lib/queries";
 
 const levels = [
   "primary",
@@ -73,10 +74,7 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const twoPane = useTwoPane();
   const client = useQueryClient();
-  const profile = useQuery({
-    queryKey: ["profile"],
-    queryFn: () => invoke("profile.get", {}),
-  });
+  const profile = useProfile();
 
   const cardSettings = useQuery({
     queryKey: ["card-settings"],

@@ -6,7 +6,7 @@ import {
   unacknowledged,
   type NoticeEngine,
 } from "../components/EngineNotice";
-import { invoke } from "../lib/ipc";
+import { enginesQuery } from "../lib/queries";
 
 /** The launch check runs once per app start, and a reload of the window does not count as a start. */
 const SETTLED_KEY = "pyxis.engineNoticeChecked";
@@ -24,11 +24,7 @@ export function LaunchEngineNotice({ ready }: { ready: boolean }) {
   const ownNotice =
     pathname.startsWith("/onboarding") || pathname.startsWith("/settings");
   const run = ready && !ownNotice && !isSettled();
-  const overview = useQuery({
-    queryKey: ["engines"],
-    queryFn: () => invoke("engines.overview", {}),
-    enabled: run,
-  });
+  const overview = useQuery({ ...enginesQuery, enabled: run });
   const [pending, setPending] = useState<NoticeEngine[]>([]);
   useEffect(() => {
     if (!run || !overview.isSuccess) return;

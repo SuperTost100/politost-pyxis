@@ -8,6 +8,8 @@ import { invoke } from "../../lib/ipc";
 import { Notice } from "../../components/Notice";
 import { SmartText } from "../../components/SmartText";
 import { ReaderEnd, ReaderLayout, ReaderProgress, useOpenNext } from "./Reader";
+import { usePlan } from "../../lib/queries";
+import { refreshPlan } from "../../lib/refreshPlan";
 
 type Intro = RequestOutput<"plans.intro">;
 
@@ -23,18 +25,8 @@ export function IntroPage() {
     enabled: Boolean(planId),
     queryFn: () => invoke("plans.intro", { planId }),
   });
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId }),
-  });
+  const plan = usePlan(planId);
   const done = plan.data?.steps.some((step) => step.activity === "intro");
-  const refreshPlan = () =>
-    Promise.all(
-      [["plan", planId], ["recommend", planId]].map((queryKey) =>
-        client.invalidateQueries({ queryKey }),
-      ),
-    );
   const openNext = useOpenNext(planId);
   // "Done" goes back to the plan; "Done, continue" opens the next step. A page already done only moves on.
   const markDone = useMutation({
@@ -43,7 +35,7 @@ export function IntroPage() {
       return then;
     },
     onSuccess: async (then) => {
-      await refreshPlan();
+      await refreshPlan(client, planId);
       if (then === "continue") await openNext();
       else navigate(`/plans/${planId}`);
     },
@@ -67,7 +59,7 @@ export function IntroPage() {
         ? { ...current, answers: { ...current.answers, [blockId]: result.pick } }
         : current,
     );
-    if (result.finished) await refreshPlan();
+    if (result.finished) await refreshPlan(client, planId);
   }
 
   return (

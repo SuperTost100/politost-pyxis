@@ -13,6 +13,7 @@ import { invoke } from "../../lib/ipc";
 import { useAppState } from "../app-state";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
 import { useMenuLock } from "../menu-state";
+import { profileQuery } from "../../lib/queries";
 
 type Door = "ask" | "exams" | "maps";
 
@@ -82,12 +83,7 @@ export function Shell() {
   const { appearance } = useAppState();
   const mode = appearance.resolved;
   const activeDoor = doorForPath(target.pathname);
-  const profile = useQuery({
-    queryKey: ["profile"],
-    queryFn: () => invoke("profile.get", {}),
-    retry: 10,
-    retryDelay: 300,
-  });
+  const profile = useQuery({ ...profileQuery, retry: 10, retryDelay: 300 });
 
   // Setup is a closed flow: no section and no Settings until it ends. A profile-less launch is already on its way there.
   const inSetup =

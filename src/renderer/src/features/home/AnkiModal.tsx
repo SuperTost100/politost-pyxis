@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { App, Button, Checkbox, Modal, Select } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -6,6 +5,7 @@ import type { RequestOutput } from "@shared/ipc";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import "./AnkiModal.css";
+import { usePlan, usePlans } from "../../lib/queries";
 
 type Preview = RequestOutput<"study.ankiPreview">;
 type Result = RequestOutput<"study.ankiImport">;
@@ -47,16 +47,8 @@ export function AnkiModal({
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
 
-  const plans = useQuery({
-    queryKey: ["plans"],
-    enabled: open,
-    queryFn: () => invoke("plans.list", {}),
-  });
-  const plan = useQuery({
-    queryKey: ["plan", planId],
-    enabled: open && Boolean(planId),
-    queryFn: () => invoke("plans.read", { planId }),
-  });
+  const plans = usePlans(open);
+  const plan = usePlan(planId, open);
   const topics = plan.data?.topics ?? [];
 
   // Opening starts from the browser's filters, or the first exam.

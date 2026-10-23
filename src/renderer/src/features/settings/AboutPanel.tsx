@@ -1,6 +1,7 @@
 import { Input } from "antd";
 import { useState } from "react";
 import build from "../../generated/build-info.json";
+import { searchMatcher } from "../../lib/search";
 import "./AboutPanel.css";
 
 type Notice = {
@@ -26,10 +27,9 @@ export function AboutPanel({ labels }: { labels: AboutLabels }) {
   const [query, setQuery] = useState("");
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(false);
+  const queryMatches = searchMatcher(query);
   const filtered = notices?.filter((notice) =>
-    `${notice.name} ${notice.version} ${notice.license}`
-      .toLocaleLowerCase()
-      .includes(query.trim().toLocaleLowerCase()),
+    queryMatches(`${notice.name} ${notice.version} ${notice.license}`),
   );
   async function load() {
     if (notices || loading) return;

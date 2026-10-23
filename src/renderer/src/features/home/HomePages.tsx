@@ -1,10 +1,11 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Button, Modal, Segmented, Select } from "antd";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { invoke } from "../../lib/ipc";
+import { searchMatcher } from "../../lib/search";
 import { LibraryPanel } from "./LibraryPanel";
 import { PlanCard } from "../../components/PlanCard";
 import { Notice } from "../../components/Notice";
@@ -14,12 +15,12 @@ import {
   ToolbarSearch,
 } from "../../components/ListToolbar";
 import type { PlanFile } from "@shared/plan-file";
-import { SubjectManagerModal } from "../ask/SubjectPicker";
 import { ImportReview } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
 import { examDaysLabel } from "../plans/examDays";
 import { OggiBlock } from "./OggiBlock";
 import "./HomePages.css";
+import { usePlans } from "../../lib/queries";
 
 // Cards and mistakes render Markdown and math, which load with their tab rather than with the window.
 const CardBrowser = lazy(() =>
@@ -30,20 +31,25 @@ const MistakesNotebook = lazy(() =>
     default: module.MistakesNotebook,
   })),
 );
+// The subject list's drag and drop loads the first time the student opens it.
+const SubjectManagerModal = lazy(() =>
+  import("../ask/SubjectPicker").then((module) => ({
+    default: module.SubjectManagerModal,
+  })),
+);
 
 export function ExamsHome() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const client = useQueryClient();
-  const plans = useQuery({
-    queryKey: ["plans"],
-    queryFn: () => invoke("plans.list", {}),
-  });
+  const plans = usePlans();
   const [query, setQuery] = useState("");
   const [picked, setSubject] = useState("");
   const [shownStatus, setStatus] = useState<"active" | "archived">("active");
   const [managing, setManaging] = useState(false);
+  // Stays mounted after the first open, so the dialog can animate closed.
+  const [managerOpened, setManagerOpened] = useState(false);
   const [failed, setFailed] = useState(false);
   const tab = location.pathname.startsWith("/exams/library")
     ? "sources"
@@ -64,11 +70,10 @@ export function ExamsHome() {
   // The filter appears with the first archived exam, and falls back to Active when the last one is restored.
   const hasArchived = (plans.data ?? []).some((plan) => plan.archived);
   const status = hasArchived ? shownStatus : "active";
+  const queryMatches = searchMatcher(query);
   const shown = (plans.data ?? []).filter((plan) => {
     if (plan.archived !== (status === "archived")) return false;
-    const needle = query.trim().toLocaleLowerCase();
-    const haystack = `${plan.title} ${plan.subject ?? ""}`.toLocaleLowerCase();
-    if (needle && !haystack.includes(needle)) return false;
+    if (!queryMatches(`${plan.title} ${plan.subject ?? ""}`)) return false;
     if (subject && plan.subject !== subject) return false;
     return true;
   });
@@ -88,8 +93,10 @@ export function ExamsHome() {
         { key: "subjects", label: t("ask.manageSubjects") },
       ]}
       onSelect={(key) => {
-        if (key === "subjects") setManaging(true);
-        else planImport.choose(key);
+        if (key === "subjects") {
+          setManaging(true);
+          setManagerOpened(true);
+        } else planImport.choose(key);
       }}
     />
   );
@@ -124,12 +131,16 @@ export function ExamsHome() {
           ]}
         />
       </div>
-      <SubjectManagerModal
-        open={managing}
-        onClose={() => setManaging(false)}
-        value=""
-        onChange={() => undefined}
-      />
+      {managerOpened ? (
+        <Suspense fallback={null}>
+          <SubjectManagerModal
+            open={managing}
+            onClose={() => setManaging(false)}
+            value=""
+            onChange={() => undefined}
+          />
+        </Suspense>
+      ) : null}
       {tab === "plans" ? planImport.element : null}
       {/* Plans show nothing until the list arrives, so "No plans yet" never flashes first. */}
       {tab === "sources" ? (

@@ -8,7 +8,7 @@ The implementation lives under `src/renderer/src/design-system/`. Tokens are in 
 
 [Foundations](foundations.md) covers colors, typography, spacing and voice. [Components](components.md) describes shared controls. [Ant Design mapping](ant-design-pro.md) explains use of Ant Design v6 and Pro components without the Umi application template. The gallery at `#/dev/gallery` displays reusable states in development.
 
-Change tokens before introducing a new arbitrary value. Mirror token changes in CSS and theme mappings. Preserve visible focus, readable contrast and English/Italian copy. The UI audit checks routes at 1280 and 960 pixels in both themes and languages; manual screenshot inspection checks composition and text wrapping.
+Change tokens before introducing a new arbitrary value. The Ant Design theme reads its colours from `tokens.json`; mirror each change in `tokens.css` by hand, and `tokens.test.ts` fails when the two differ. Preserve visible focus, readable contrast and English/Italian copy. The UI audit checks routes at 1280 and 960 pixels in both themes and languages; manual screenshot inspection checks composition and text wrapping.
 
 ## Bundled resources
 

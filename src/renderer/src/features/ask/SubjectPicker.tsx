@@ -1,7 +1,7 @@
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Modal, Popconfirm } from "antd";
 import { GripVertical } from "lucide-react";
 import { useState } from "react";
@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import "./SubjectPicker.css";
+import { useSubjects } from "../../lib/queries";
 
 type Subject = { id: string; name: string };
 function SubjectRow({ item, disabled, remove, rename }: { item: Subject; disabled: boolean; remove: () => void; rename: (name: string) => Promise<void> }) {
@@ -51,7 +52,7 @@ function SubjectRow({ item, disabled, remove, rename }: { item: Subject; disable
 export function SubjectManagerModal({ open, onClose, value, onChange }: { open: boolean; onClose: () => void; value: string; onChange: (value: string) => void }) {
   const { t } = useTranslation();
   const client = useQueryClient();
-  const subjects = useQuery({ queryKey: ["subjects"], queryFn: () => invoke("subjects.list", {}) });
+  const subjects = useSubjects();
   const [name, setName] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const change = useMutation({

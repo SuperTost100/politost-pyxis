@@ -1,3 +1,5 @@
+import { childrenOf, type Item } from "../../../../shared/map-layout";
+
 export {
   COLUMN_GAP,
   NODE_WIDTH,
@@ -9,16 +11,6 @@ export {
 const LARGE_MAP = 25;
 const OPEN_DEPTH = 2;
 const MIN_START_ZOOM = 0.6;
-
-type Item = { id: string; parent: string | null };
-
-function childrenOf<T extends Item>(nodes: T[]) {
-  const children = new Map<string, T[]>();
-  for (const node of nodes)
-    if (node.parent !== null)
-      children.set(node.parent, [...(children.get(node.parent) ?? []), node]);
-  return children;
-}
 
 /** Ids of nodes that have at least one child. */
 export function parentIds(nodes: Item[]): Set<string> {

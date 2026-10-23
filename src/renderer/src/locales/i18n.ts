@@ -1,5 +1,4 @@
 import dayjs from "dayjs";
-import "dayjs/locale/en";
 import "dayjs/locale/it";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
@@ -16,6 +15,7 @@ function storedLocale(): Locale {
   return window.pyxis.systemLanguage;
 }
 
+// The one place that sets the page language; English is dayjs's built-in locale.
 function applyLocale(lng: string): void {
   const locale: Locale = lng === "en" ? "en" : "it";
   document.documentElement.lang = locale;
