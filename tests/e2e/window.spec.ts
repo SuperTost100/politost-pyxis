@@ -607,7 +607,11 @@ test("the packaged app reports the same GPU features as Electron's build", async
     try {
       const page = await app.firstWindow();
       await page.waitForLoadState("load");
-      return await app.evaluate(({ app }) => app.getGPUFeatureStatus());
+      const status = await app.evaluate(({ app }) => app.getGPUFeatureStatus());
+      // Chromium picks the raster thread count from the machine's CPUs at launch, not from the files that ship. On the
+      // macOS Intel runners two launches in one job disagree on it, so it says nothing about the package.
+      const { multiple_raster_threads: _threads, ...rest } = status;
+      return rest;
     } finally {
       await app.close();
       rmSync(userData, { recursive: true, force: true });

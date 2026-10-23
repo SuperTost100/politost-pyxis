@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { normalizeMathDelimiters } from "../../markdown/normalizeMathDelimiters";
+import { normalizeMathDelimiters } from "../../../../shared/math-delimiters";
 import { rehypePlugins, remarkPlugins } from "../../markdown/plugins";
 import "./PrintPage.css";
 

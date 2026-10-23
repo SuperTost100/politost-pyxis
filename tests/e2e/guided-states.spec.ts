@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
@@ -140,7 +140,6 @@ for (const state of Object.keys(FIXTURES) as State[]) {
       await app.close();
       rmSync(userData, { recursive: true, force: true });
     }
-    writeFileSync(`.tmp/guided-states-${state}${LARGE ? "-large" : ""}.json`, JSON.stringify({ state, failures }, null, 2));
     expect(failures, failures.join("\n")).toEqual([]);
   });
 }

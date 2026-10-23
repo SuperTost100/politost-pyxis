@@ -1,5 +1,5 @@
 import { splitCitationGroups } from "../../../shared/smart-text";
-import { mapOutsideCode } from "./normalizeMathDelimiters";
+import { mapOutsideCode } from "../../../shared/math-delimiters";
 
 export type CitationResolver = (passageId: number) => string | undefined;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayMathLines, normalizeMathDelimiters } from "./normalizeMathDelimiters";
+import { displayMathLines, normalizeMathDelimiters } from "./math-delimiters";
 
 describe("normalizeMathDelimiters", () => {
   it("converts inline \\( \\) to dollar math", () => {

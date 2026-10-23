@@ -218,7 +218,6 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
           )) as {
             grading?: { progress: number; state: string; error: string | null };
           };
-          writeFileSync(".tmp/m15-simulation-grading-poll.json", JSON.stringify(next, null, 2));
           return (
             (next.grading?.progress ?? 0) >= 0.5 ||
             next.grading?.state === "failed"

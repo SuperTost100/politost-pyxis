@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import {
   NODE_MIN_HEIGHT,
   NODE_WIDTH,
+  childrenOf,
   layoutTree,
 } from "../../shared/map-layout";
 import type { ConceptGraph, MapNode } from "./graph";
@@ -73,17 +74,6 @@ export function wrapText(text: string, chars: number): string[] {
   }
   if (line || !lines.length) lines.push(line);
   return lines;
-}
-
-function childrenOf(nodes: MapNode[]): Map<string, MapNode[]> {
-  const children = new Map<string, MapNode[]>();
-  for (const node of nodes) {
-    if (node.parent === null) continue;
-    const list = children.get(node.parent);
-    if (list) list.push(node);
-    else children.set(node.parent, [node]);
-  }
-  return children;
 }
 
 /** Edges that are not a parent-child line of the tree. */
