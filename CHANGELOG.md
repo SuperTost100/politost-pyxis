@@ -2,6 +2,80 @@
 
 Each release lists what changed for students, in English and Italian. The GitHub release page uses the same text.
 
+## 0.4.1
+
+### English
+
+Pyxis 0.4.1 is a small alpha release. Scanned books are now read in the background, so leaving the page or quitting no longer loses the reading. Search ignores accents, and Pyxis loads less code at startup. Your workspace stays as it is, so 0.4.0 can still open it.
+
+#### Scanned books
+
+- Reading a scanned PDF now runs in Pyxis's background. Leaving the Library, closing the window or quitting used to stop it without a message, and the book went back to "No text layer". Now it keeps going, and after a quit it picks up at the next start from the first page without text.
+- A scanned PDF starts reading by itself when you add it, once the scan-reading data is on your computer. If the data is not there yet, reading starts when its download finishes.
+- The Library and New plan show how far the reading is, with a way to stop it. If reading stops, they say why and offer to read again. New plan used to ask you to finish the OCR without a button to start it.
+- In a test with a 333-page scanned book, reading took 5 and a half minutes instead of 7, and Pyxis's window no longer grew in memory while it read.
+- The loading circle next to a source being read now turns.
+
+#### Changed
+
+- Search ignores accents and apostrophes in the Library, the Exams list, the Ask menus and the license list in Settings, under About. "perche" finds "Perché".
+- File sizes read the same on every screen, in decimal units such as "1.5 MB". The Library used to count kilobytes in 1,024s.
+- Exported file names turn runs of spaces into one and stop at 100 characters.
+- Plan files in the old version 1 format now go through the same import checks as current ones.
+
+#### Speed
+
+- The first window loads 16% less code: 1,774 kB instead of 2,123 kB. The math renderer and the subject manager load the first time you need them.
+- Local search indexes a large library much faster. Before, each batch of 32 passages read the library again from the start.
+- The card browser counts and filters cards in the database, instead of reading every card to show 25.
+- The Python tool no longer rereads its 31 MB runtime before every run. It checks it again only when the files change.
+- Quizzes and simulations redraw only their clock while it runs, not the whole page.
+
+#### Fixed
+
+- On a Mac, Pyxis asked for your password to use its Keychain item, even if you never saved an API key. It now opens the Keychain only when you save a key or have one saved.
+- After a plan's introduction, the progress chart and the Exams list didn't update.
+- In a week with the spring clock change, the session plan also counted the next Monday's study time.
+- A power cut while Pyxis saved your reminders or the automatic backup state could leave that file empty. These files and your settings are now written safely, and on macOS and Linux only your user account can read them.
+- A very long error from an AI engine could stall Pyxis's background work for several seconds.
+- An engine sign-in that timed out or was cancelled could leave the engine's program running.
+
+### Italiano
+
+Pyxis 0.4.1 è una piccola versione alpha. I libri scansionati ora vengono letti in background, quindi uscire dalla pagina o chiudere Pyxis non fa più perdere la lettura. La ricerca ignora gli accenti e Pyxis carica meno codice all'avvio. Il tuo spazio di lavoro resta com'è, quindi la 0.4.0 lo apre ancora.
+
+#### Libri scansionati
+
+- La lettura di un PDF scansionato ora avviene in background. Uscire dalla Libreria, chiudere la finestra o chiudere Pyxis la fermava senza dire niente, e il libro tornava "Senza testo". Ora continua, e dopo una chiusura riprende all'avvio successivo dalla prima pagina senza testo.
+- Un PDF scansionato inizia a essere letto da solo quando lo aggiungi, se i dati di lettura delle scansioni sono già sul tuo computer. Se non ci sono ancora, la lettura parte quando il loro download finisce.
+- La Libreria e Nuovo piano mostrano a che punto è la lettura, con un modo per fermarla. Se la lettura si ferma, dicono perché e propongono di leggere di nuovo. Nuovo piano chiedeva di completare l'OCR senza un pulsante per avviarlo.
+- In una prova con un libro scansionato di 333 pagine, la lettura ha richiesto 5 minuti e mezzo invece di 7, e la finestra di Pyxis non cresceva più in memoria durante la lettura.
+- Il cerchio di caricamento accanto a una fonte in lettura ora gira.
+
+#### Cambiati
+
+- La ricerca ignora accenti e apostrofi nella Libreria, nell'elenco Esami, nei menu di Chiedi e nell'elenco delle licenze in Impostazioni, sotto Informazioni. "perche" trova "Perché".
+- Le dimensioni dei file si leggono allo stesso modo in ogni schermata, in unità decimali come "1,5 MB". La Libreria contava i kilobyte a gruppi di 1.024.
+- I nomi dei file esportati riducono più spazi di fila a uno solo e si fermano a 100 caratteri.
+- I file di piano nel vecchio formato versione 1 passano dagli stessi controlli di importazione di quelli attuali.
+
+#### Velocità
+
+- La prima finestra carica il 16% di codice in meno: 1.774 kB invece di 2.123 kB. Il motore delle formule e la gestione delle materie si caricano la prima volta che servono.
+- La ricerca locale indicizza molto più in fretta una libreria grande. Prima, ogni gruppo di 32 brani rileggeva la libreria dall'inizio.
+- L'elenco delle flashcard conta e filtra le carte nel database, invece di leggerle tutte per mostrarne 25.
+- Lo strumento Python non rilegge più i suoi 31 MB di runtime prima di ogni esecuzione. Li ricontrolla solo quando i file cambiano.
+- Nei quiz e nelle simulazioni, mentre il tempo scorre, si ridisegna solo l'orologio e non tutta la pagina.
+
+#### Corretti
+
+- Sul Mac, Pyxis chiedeva la password per usare il suo elemento nel Portachiavi, anche se non avevi mai salvato una chiave API. Ora apre il Portachiavi solo quando salvi una chiave o ne hai una salvata.
+- Dopo l'introduzione di un piano, il grafico dei progressi e l'elenco Esami non si aggiornavano.
+- In una settimana con il passaggio all'ora legale, il piano della sessione contava anche il tempo di studio del lunedì successivo.
+- Un calo di corrente mentre Pyxis salvava i promemoria o lo stato delle copie automatiche poteva lasciare il file vuoto. Ora questi file e le impostazioni vengono scritti in modo sicuro, e su macOS e Linux solo il tuo account utente può leggerli.
+- Un errore molto lungo da un motore AI poteva bloccare per alcuni secondi il lavoro in background di Pyxis.
+- Un accesso a un motore scaduto o annullato poteva lasciare in esecuzione il programma del motore.
+
 ## 0.4.0
 
 ### English

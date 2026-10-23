@@ -1,4 +1,4 @@
-PoliTost Pyxis 0.4.0
+PoliTost Pyxis 0.4.1
 
 MIT License
 
@@ -445,7 +445,7 @@ THE SOFTWARE.
 
 ========================================================================
 
-@babel/runtime 7.29.7
+@babel/runtime 7.29.10
 License metadata: MIT
 
 --- LICENSE ---
@@ -475,7 +475,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-@babel/runtime 8.0.5
+@babel/runtime 8.0.7
 License metadata: MIT
 
 --- LICENSE ---
@@ -535,7 +535,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-@babel/traverse 7.29.8
+@babel/traverse 7.29.10
 License metadata: MIT
 
 --- LICENSE ---
@@ -3984,7 +3984,7 @@ License metadata: MIT
 
 ========================================================================
 
-@types/node 26.6.3
+@types/node 26.6.5
 License metadata: MIT
 
 --- LICENSE ---
@@ -6277,7 +6277,7 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
 
-dompurify 3.4.16
+dompurify 3.4.17
 License metadata: (MPL-2.0 OR Apache-2.0)
 
 --- LICENSE ---
@@ -8208,13 +8208,13 @@ SOFTWARE.
 
 ========================================================================
 
-html-to-image 1.11.11
+html-to-image 1.11.13
 License metadata: MIT
 
 --- LICENSE ---
 MIT License
 
-Copyright (c) 2017-2023 W.Y.
+Copyright (c) 2017-2025 W.Y.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -9738,7 +9738,7 @@ SOFTWARE.
 
 ========================================================================
 
-libheif-js 1.23.2
+libheif-js 1.23.5
 License metadata: LGPL-3.0
 
 --- LICENSE ---
@@ -9910,7 +9910,7 @@ Library.
 
 
 --- COPYING ---
-Source: https://raw.githubusercontent.com/strukturag/libheif/ac1cb05c39008f01525c991ff8b88f84ddf70fd2/COPYING
+Source: https://raw.githubusercontent.com/strukturag/libheif/413e2a87e6a70b3eccc3a3adc5801179dd2d9e00/COPYING
 SHA-256: fa81ce652315b013359d6e8e4744335f31a50c7c192907176d3632f78a3b4596
 
 * The library `libheif` is distributed under the terms of the GNU Lesser General Public License.
@@ -11664,8 +11664,8 @@ SOFTWARE.
 
 
 --- libheif build-emscripten.sh ---
-Source: https://raw.githubusercontent.com/strukturag/libheif/ac1cb05c39008f01525c991ff8b88f84ddf70fd2/build-emscripten.sh
-SHA-256: 6a8c8c06e2a640844459db109bc11b697b073864be4cec84e18dcc7c5bb7b74a
+Source: https://raw.githubusercontent.com/strukturag/libheif/413e2a87e6a70b3eccc3a3adc5801179dd2d9e00/build-emscripten.sh
+SHA-256: 30bb603cea13ecb9fe05883f16b85a3d22e9b418fe6b961e89042ef80a536087
 
 #!/bin/bash
 set -e
@@ -11749,6 +11749,7 @@ if [ "$ENABLE_AOM" = "1" ]; then
         emcmake cmake aom-source \
             -DENABLE_CCACHE=1 \
             -DAOM_TARGET_CPU=generic \
+            -DENABLE_APPS=0 \
             -DENABLE_DOCS=0 \
             -DENABLE_TESTS=0 \
             -DENABLE_EXAMPLES=0 \
@@ -11872,8 +11873,8 @@ emcc -Wl,--whole-archive "$LIBHEIFA" -Wl,--no-whole-archive \
 
 
 --- libheif-js build scripts/install.js ---
-Source: https://raw.githubusercontent.com/catdad-experiments/libheif-js/6ca00b818c0ff51cb2a5c75b9ce97d708083335a/scripts/install.js
-SHA-256: 389fca752737ae4fa00078843335a8974d57d89ca07b2f4fde20537c17902d99
+Source: https://raw.githubusercontent.com/catdad-experiments/libheif-js/d8ec4bc3bc5bf8055975577bccbbc7e1d7313c2d/scripts/install.js
+SHA-256: 544a3fe9fc953294f3db075f6258dc57e2bc4ed6a513e7c3ecd15ef66ce5d37d
 
 /* eslint-disable no-console */
 const path = require('path');
@@ -11886,7 +11887,7 @@ const gunzip = require('gunzip-maybe');
 const esbuild = require('esbuild');
 const { nodeModulesPolyfillPlugin } = require('esbuild-plugins-node-modules-polyfill');
 
-const version = 'v1.23.2';
+const version = 'v1.23.5';
 
 const tarball = `https://github.com/catdad-experiments/libheif-emscripten/releases/download/${version}/libheif.tar.gz`;
 const file = process.argv[2];
@@ -12625,7 +12626,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ========================================================================
 
-mathlive 0.111.0
+mathlive 0.111.1
 License metadata: MIT
 
 --- LICENSE.txt ---
@@ -12652,7 +12653,7 @@ DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-mdast-util-find-and-replace 3.0.2
+mdast-util-find-and-replace 3.0.3
 License metadata: MIT
 
 --- license ---
@@ -63337,7 +63338,7 @@ SOFTWARE.
 
 ========================================================================
 
-resolve 1.22.12
+resolve 1.22.13
 License metadata: MIT
 
 --- LICENSE ---
@@ -65157,7 +65158,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-undici 7.30.0
+undici 7.30.1
 License metadata: MIT
 
 --- LICENSE ---
