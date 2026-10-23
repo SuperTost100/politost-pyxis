@@ -24,6 +24,7 @@ import {
   seedChat,
   splitFollowups,
 } from "./turn";
+import { setRetrievalModel } from "../sources/retrieve";
 import { tempDir } from "../test-temp";
 
 describe("replyGrounding", () => {
@@ -300,6 +301,8 @@ describe("askTurn", () => {
     expect(result.message?.citations).toHaveLength(1);
     expect(result.message?.body).toContain("[P1]");
     const stored = readChat(db, result.chatId);
+    // Citations are read for the whole chat at once and each lands on its own message.
+    expect(stored.map((message) => message.citations.length)).toEqual([0, 1]);
     expect(stored.at(-1)?.citations[0]?.locator).toEqual({
       chapter: 1,
       paragraph: "p1",
@@ -717,6 +720,30 @@ describe("askTurn", () => {
     });
     expect(aside.covered).toBe(true);
     expect(aside.message?.grounding).toBe("general");
+  });
+
+  it("embeds the question once for its own search and each attached document", async () => {
+    const dir = tempDir("pyxis-attach-");
+    const files = ["a.txt", "b.txt"].map((name, index) => {
+      const file = join(dir, name);
+      writeFileSync(file, `documento ${index}: la velocita e la derivata dello spazio`);
+      return file;
+    });
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const embedded: string[] = [];
+    setRetrievalModel(async (text) => {
+      embedded.push(text);
+      return new Float32Array(384).fill(0.05);
+    });
+    try {
+      await askTurn(db, { text: "velocita", files, workspace: dir, run: async () => reply });
+    } finally {
+      setRetrievalModel(undefined);
+    }
+    expect(embedded).toEqual(["query: velocita"]);
   });
 
   it("reads an image with local OCR when the model cannot see it", async () => {

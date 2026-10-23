@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { appendEvent } from "../events";
+import { requireActiveTopic } from "../plans/steps";
 import { topicExercises } from "./exercises";
 import { SELF_RATING_WINDOW_MS } from "./mastery";
 
@@ -53,12 +54,7 @@ export function rateExercise(
   },
   now = Date.now(),
 ): { rating: SelfRating } {
-  const topic = db
-    .prepare(
-      "SELECT 1 FROM topics WHERE id = ? AND plan_id = ? AND archived_at IS NULL",
-    )
-    .get(input.topicId, input.planId);
-  if (!topic) throw new Error("topic-missing");
+  requireActiveTopic(db, input.planId, input.topicId);
   if (
     !topicExercises(db, input.topicId).some(
       (exercise) => exercise.id === input.exerciseId,

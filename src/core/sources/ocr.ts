@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { chunkText } from "./chunk";
+import { latestDocument } from "./documents";
 import { uuidv7 } from "../../shared/ids";
 
 export type OcrPage = { page: number; text: string };
@@ -77,47 +78,52 @@ export function requestOcr(db: Database.Database, sourceId: string): void {
     setNextPage(db, sourceId, 1);
     db.prepare(
       `UPDATE source_documents SET tree_json = json_set(tree_json, '$.ocrRun', ?)
-       WHERE id = (SELECT id FROM source_documents WHERE source_id = ? ORDER BY version DESC LIMIT 1)`,
+       WHERE id = ${latestDocument("?")}`,
     ).run(uuidv7(), sourceId);
   })();
 }
 
-/** The run a queued scan belongs to: the document version it writes into and the token `requestOcr` gave it. */
-export type OcrRun = { documentId: string; run: string | null };
+/**
+ * The run a queued scan belongs to: the document version it writes into, the token `requestOcr` gave it, and the page
+ * it expects next.
+ */
+export type OcrRun = { documentId: string; run: string | null; next: number };
 
 /** The run that owns this source right now, or null when it is not queued (or gone). */
 export function currentOcrRun(db: Database.Database, sourceId: string): OcrRun | null {
   const row = db
     .prepare(
-      `SELECT s.status AS status, d.id AS documentId, json_extract(d.tree_json, '$.ocrRun') AS run
+      `SELECT s.status AS status, d.id AS documentId, json_extract(d.tree_json, '$.ocrRun') AS run,
+         json_extract(d.tree_json, '$.ocrNext') AS next
        FROM sources s JOIN source_documents d ON d.source_id = s.id
        WHERE s.id = ? ORDER BY d.version DESC LIMIT 1`,
     )
-    .get(sourceId) as { status: string; documentId: string; run: string | null } | undefined;
-  return row?.status === "ocr-queued" ? { documentId: row.documentId, run: row.run } : null;
+    .get(sourceId) as { status: string; documentId: string; run: string | null; next: number | null } | undefined;
+  return row?.status === "ocr-queued"
+    ? { documentId: row.documentId, run: row.run, next: row.next ?? 1 }
+    : null;
 }
 
-/** Whether `mine` is still the run that owns the row. A stopped run, a newer run and a replaced document all say no. */
-export function ownsOcrRun(db: Database.Database, sourceId: string, mine: OcrRun): boolean {
+/**
+ * Whether `mine` is still the run that owns the row, and with `page`, whether that page is still the one it expects. A
+ * stopped run, a newer run and a replaced document all say no.
+ */
+export function ownsOcrRun(db: Database.Database, sourceId: string, mine: OcrRun, page?: number): boolean {
   const now = currentOcrRun(db, sourceId);
-  return now != null && now.documentId === mine.documentId && now.run === mine.run;
+  return (
+    now != null &&
+    now.documentId === mine.documentId &&
+    now.run === mine.run &&
+    (page === undefined || now.next === page)
+  );
 }
 
 /** The page a queued run expects next. Pages go in order from 1, so a scan can only finish after every page was handled. */
 function setNextPage(db: Database.Database, sourceId: string, page: number): void {
   db.prepare(
     `UPDATE source_documents SET tree_json = json_set(tree_json, '$.ocrNext', ?)
-     WHERE id = (SELECT id FROM source_documents WHERE source_id = ? ORDER BY version DESC LIMIT 1)`,
+     WHERE id = ${latestDocument("?")}`,
   ).run(page, sourceId);
-}
-
-export function nextOcrPage(db: Database.Database, sourceId: string): number {
-  const row = db
-    .prepare(
-      `SELECT json_extract(tree_json, '$.ocrNext') AS next FROM source_documents WHERE source_id = ? ORDER BY version DESC LIMIT 1`,
-    )
-    .get(sourceId) as { next: number | null } | undefined;
-  return row?.next ?? 1;
 }
 
 export function advanceOcr(db: Database.Database, sourceId: string, page: number): void {
@@ -137,24 +143,28 @@ export function stopOcr(db: Database.Database, sourceId?: string): number {
     .run(Date.now(), sourceId ?? null, sourceId ?? null).changes;
 }
 
-/** Whether this page of the latest document already has text from an earlier run. */
-export function hasOcrPage(db: Database.Database, sourceId: string, page: number): boolean {
-  return pagePassageId(db, sourceId, documentId(db, sourceId), page) != null;
+/** Whether this page of the run's document already has text from an earlier run. */
+export function hasOcrPage(db: Database.Database, sourceId: string, run: OcrRun, page: number): boolean {
+  return pagePassageId(db, sourceId, run.documentId, page) != null;
 }
 
 /** Store one OCR page as a passage. Skips empty text and pages that already have a passage. */
 export function applyOcrPage(db: Database.Database, sourceId: string, page: OcrPage): boolean {
-  const row = sourceStatus(db, sourceId);
+  // The source's status with its latest document, in one read.
+  const row = db
+    .prepare(
+      `SELECT s.status, d.id AS document_id, d.version FROM sources s
+       LEFT JOIN source_documents d ON d.source_id = s.id
+       WHERE s.id = ? ORDER BY d.version DESC LIMIT 1`,
+    )
+    .get(sourceId) as { status: string; document_id: string | null; version: number | null } | undefined;
   if (!row) throw new Error("source-missing");
   if (row.status !== "ocr-queued") throw new Error("ocr-not-active");
+  if (!row.document_id) throw new Error("document-missing");
   const now = Date.now();
-  const document_id = documentId(db, sourceId);
+  const document_id = row.document_id;
   if (pagePassageId(db, sourceId, document_id, page.page)) return false;
-  const version = (
-    db.prepare(`SELECT version FROM source_documents WHERE id = ?`).get(document_id) as
-      | { version: number }
-      | undefined
-  )?.version ?? 1;
+  const version = row.version ?? 1;
   const text = page.text.replace(/\s+/g, " ").trim();
   if (!text) return false;
   db.transaction(() => {
@@ -185,7 +195,7 @@ export function finishOcr(db: Database.Database, sourceId: string): "ready" | "f
   if (status === "ready") {
     db.prepare(
       `UPDATE source_documents SET tree_json = json_set(tree_json, '$.pages', ?) WHERE id = ?`,
-    ).run(count.n, documentId(db, sourceId));
+    ).run(count.n, current);
   }
   return status;
 }

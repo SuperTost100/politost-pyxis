@@ -1,18 +1,53 @@
-import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   readFileSync,
-  writeFileSync,
   lstatSync,
-  openSync,
-  closeSync,
-  fsyncSync,
-  renameSync,
+  statSync,
   rmSync,
 } from "node:fs";
-import { basename, dirname, join, sep } from "node:path";
+import { join } from "node:path";
+import { strictlyInside } from "./path-inside";
+import type Database from "better-sqlite3";
 import { blobParts } from "../shared/blob-path";
+import { writeFileAtomic } from "./atomic-write";
+import { sha256 } from "./sources/quality";
+
+/**
+ * Every place a row names a stored file: the table, and the SQL that reads the hash from one of its rows. Backup copies
+ * the files these name and deleting a chat or plan keeps them, so a place missing here loses the file.
+ */
+export const BLOB_REFERENCES = [
+  { table: "sources", sha: "blob_sha" },
+  { table: "attachments", sha: "blob_sha" },
+  { table: "whiteboards", sha: "blob_sha" },
+  { table: "source_documents", sha: "json_extract(tree_json, '$.blobSha')" },
+  { table: "source_documents", sha: "json_extract(tree_json, '$.sourceSha')" },
+] as const;
+
+const SHA = /^[a-f0-9]{64}$/;
+
+/** Every blob hash a row names now. */
+export function namedBlobs(db: Database.Database): Set<string> {
+  const rows = db
+    .prepare(BLOB_REFERENCES.map((place) => `SELECT ${place.sha} AS sha FROM ${place.table}`).join(" UNION "))
+    .all() as Array<{ sha: unknown }>;
+  return new Set(
+    rows.flatMap((row) => (typeof row.sha === "string" && SHA.test(row.sha) ? [row.sha] : [])),
+  );
+}
+
+/** Whether any row names this blob hash now. */
+export function blobNamed(db: Database.Database, sha: string): boolean {
+  return (
+    db
+      .prepare(
+        `${BLOB_REFERENCES.map((place) => `SELECT 1 FROM ${place.table} WHERE ${place.sha} = ?`).join(" UNION ALL ")}
+         LIMIT 1`,
+      )
+      .get(...BLOB_REFERENCES.map(() => sha)) !== undefined
+  );
+}
 
 export type BlobRecord = {
   sha: string;
@@ -27,7 +62,7 @@ function location(
   const [folder, dir, name] = blobParts(sha);
   const blobsRoot = join(workspace, folder);
   const file = join(blobsRoot, dir, name);
-  if (!file.startsWith(blobsRoot + sep)) throw new Error("path-escape");
+  if (!strictlyInside(blobsRoot, file)) throw new Error("path-escape");
   return { file, meta: `${file}.json` };
 }
 
@@ -37,33 +72,6 @@ function regularFile(path: string): boolean {
   if (!info.isFile() || info.isSymbolicLink())
     throw new Error("blob-unsafe-path");
   return true;
-}
-
-function atomicWrite(path: string, bytes: Uint8Array | string): void {
-  const temporary = join(
-    dirname(path),
-    `.${basename(path)}.${randomUUID()}.tmp`,
-  );
-  const fd = openSync(temporary, "wx", 0o600);
-  try {
-    try {
-      writeFileSync(fd, bytes);
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
-    renameSync(temporary, path);
-    if (process.platform !== "win32") {
-      const directory = openSync(dirname(path), "r");
-      try {
-        fsyncSync(directory);
-      } finally {
-        closeSync(directory);
-      }
-    }
-  } finally {
-    rmSync(temporary, { force: true });
-  }
 }
 
 function validMetadata(path: string): boolean {
@@ -93,15 +101,15 @@ export function putBlob(
   mime: string,
   ext: string,
 ): string {
-  const sha = createHash("sha256").update(bytes).digest("hex");
+  const sha = sha256(bytes);
   const { file, meta } = location(workspace, sha);
   mkdirSync(join(file, ".."), { recursive: true });
   if (
     !regularFile(file) ||
-    createHash("sha256").update(readFileSync(file)).digest("hex") !== sha
+    sha256(readFileSync(file)) !== sha
   )
-    atomicWrite(file, bytes);
-  if (!validMetadata(meta)) atomicWrite(meta, JSON.stringify({ mime, ext }));
+    writeFileAtomic(file, bytes);
+  if (!validMetadata(meta)) writeFileAtomic(meta, JSON.stringify({ mime, ext }));
   return sha;
 }
 
@@ -118,6 +126,12 @@ export function removeBlob(workspace: string, sha: string): void {
   const { file, meta } = location(workspace, sha);
   rmSync(file, { force: true });
   rmSync(meta, { force: true });
+}
+
+/** The stored file's size in bytes, or null when it is missing. Reads no metadata, for listing many at once. */
+export function blobSize(workspace: string, sha: string): number | null {
+  const info = statSync(location(workspace, sha).file, { throwIfNoEntry: false });
+  return info?.isFile() ? info.size : null;
 }
 
 export function readBlob(workspace: string, sha: string): BlobRecord {

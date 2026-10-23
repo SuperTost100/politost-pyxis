@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { latestDocument } from "./documents";
 
 export type PassageLocator = {
   chapter?: number;
@@ -32,6 +33,20 @@ export async function embedWithModel(
   return modelEmbed ? modelEmbed(text, signal) : null;
 }
 
+/**
+ * The embedder for searches of this one query: the one given, or the local model's vector for it, computed once so
+ * several searches of the same text share it. Undefined when there is neither.
+ */
+export async function queryEmbedder(
+  query: string,
+  embed: Embedder | null | undefined,
+  signal?: AbortSignal,
+): Promise<Embedder | null | undefined> {
+  if (embed !== undefined || !modelEmbed) return embed;
+  const vector = await modelEmbed(`query: ${query}`, signal);
+  return vector ? () => vector : null;
+}
+
 export async function retrieveWithModel(
   db: Database.Database,
   query: string,
@@ -42,23 +57,22 @@ export async function retrieveWithModel(
     signal?: AbortSignal;
   },
 ) {
-  if (options?.embed !== undefined || !modelEmbed)
-    return retrieve(db, query, options);
-  const vector = await modelEmbed(`query: ${query}`, options?.signal);
   return retrieve(db, query, {
     ...options,
-    embed: vector ? () => vector : null,
+    embed: await queryEmbedder(query, options?.embed, options?.signal),
   });
 }
 
-type Row = {
+/** The passage columns a hit is made from. */
+export type PassageRow = {
   id: string;
   source_id: string | null;
   text: string;
   section_path: string | null;
   locator_json: string | null;
-  rank: number;
 };
+
+type Row = PassageRow & { rank: number };
 
 /** Passages this near (L2 on normalized e5 vectors) join the fused ranking. Recall only; coverage uses the stricter bound below. */
 const VECTOR_MAX_DISTANCE = 0.8;
@@ -149,7 +163,7 @@ export function contentWords(query: string): string[] {
   return (kept.length > 0 ? kept : words).slice(0, 8);
 }
 
-function hitOf(row: Row): PassageHit {
+export function hitOf(row: PassageRow): PassageHit {
   return {
     id: row.id,
     sourceId: row.source_id ?? "",
@@ -186,12 +200,7 @@ function lexical(
          AND (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted'))
          AND (
            p.source_id IS NULL
-           OR p.document_id = (
-             SELECT id FROM source_documents
-             WHERE source_id = p.source_id
-             ORDER BY version DESC
-             LIMIT 1
-           )
+           OR p.document_id = ${latestDocument("p.source_id")}
          )
        ORDER BY rank
        LIMIT 30`,
@@ -215,53 +224,27 @@ function vectorHits(
   const scope = sourceIds?.length
     ? `AND p.source_id IN (${sourceIds.map(() => "?").join(",")})`
     : "AND (p.source_id IS NULL OR s.library = 1)";
+  // The scope already keeps only live, latest-version passages in the chosen sources, so each hit only needs its ID.
   const rows = db
     .prepare(
-      `SELECT passage_rowid AS n, distance FROM passages_vec
-       WHERE embedding MATCH ? AND k = 30 AND passage_rowid IN (
-         SELECT p.rowid FROM passages p LEFT JOIN sources s ON s.id = p.source_id
-         WHERE (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')) ${scope}
-         AND (p.source_id IS NULL OR p.document_id = (SELECT id FROM source_documents
-           WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)))
-       ORDER BY distance`,
+      `SELECT p.id, v.distance FROM (
+         SELECT passage_rowid, distance FROM passages_vec
+         WHERE embedding MATCH ? AND k = 30 AND passage_rowid IN (
+           SELECT p.rowid FROM passages p LEFT JOIN sources s ON s.id = p.source_id
+           WHERE (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')) ${scope}
+           AND (p.source_id IS NULL OR p.document_id = ${latestDocument("p.source_id")}))
+       ) v
+       JOIN passages p ON p.rowid = v.passage_rowid
+       ORDER BY v.distance`,
     )
     .all(bytes, ...(sourceIds ?? [])) as Array<{
-    n: number | bigint;
+    id: string;
     distance: number;
   }>;
-  const ids: string[] = [];
-  let bestDistance: number | null = null;
-  const lookup = db.prepare(
-    `SELECT p.id, p.source_id FROM passages p
-     LEFT JOIN sources s ON s.id = p.source_id
-     WHERE p.rowid = ?
-       AND (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted'))
-       AND (
-         p.source_id IS NULL
-         OR p.document_id = (
-           SELECT id FROM source_documents
-           WHERE source_id = p.source_id
-           ORDER BY version DESC
-           LIMIT 1
-         )
-       )`,
-  );
-  for (const row of rows) {
-    const found = lookup.get(Number(row.n)) as
-      { id: string; source_id: string | null } | undefined;
-    if (!found) continue;
-    if (
-      sourceIds &&
-      sourceIds.length > 0 &&
-      !sourceIds.includes(found.source_id ?? "")
-    ) {
-      continue;
-    }
-    if (bestDistance == null || row.distance < bestDistance)
-      bestDistance = row.distance;
-    if (row.distance <= VECTOR_MAX_DISTANCE) ids.push(found.id);
-  }
-  return { ids, bestDistance };
+  const ids = rows
+    .filter((row) => row.distance <= VECTOR_MAX_DISTANCE)
+    .map((row) => row.id);
+  return { ids, bestDistance: rows[0]?.distance ?? null };
 }
 
 export function retrieve(

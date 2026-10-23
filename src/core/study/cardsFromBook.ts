@@ -73,6 +73,37 @@ export function faces(row: CardFaces): { front: string; back: string } {
   return { front: row.text, back: row.extra };
 }
 
+/**
+ * What is wrong with one generated card, as repair messages for the model: a worked solution on either face, a front
+ * already used in the same reply (`seen` collects them), a cloze without a deletion, or a long front that is only the
+ * start of its back or of the `source` it was written from (`sourceName` names that in the message).
+ */
+export function cardIssues(
+  row: CardFaces,
+  seen: Set<string>,
+  source: string,
+  sourceName: "passage" | "text",
+): string[] {
+  const issues: string[] = [];
+  const { front, back } = faces(row);
+  for (const face of [front, back]) {
+    const reason = solutionLike(face);
+    if (reason) issues.push(reason);
+  }
+  const key = norm(front);
+  if (seen.has(key)) issues.push("Repeated front");
+  seen.add(key);
+  if (row.kind === "cloze") {
+    if (!/\{\{c\d{1,2}::[\s\S]+?\}\}/.test(front))
+      issues.push("Cloze needs a {{c1::answer}} deletion");
+  } else if (
+    key.length >= 30 &&
+    (norm(back).startsWith(key) || norm(source).startsWith(key))
+  )
+    issues.push(`The front must not be the start of the back or the ${sourceName}`);
+  return issues;
+}
+
 /** Passages that no generated card (kept, edited or deleted) points to yet. */
 function pendingPassages(
   db: Database.Database,
@@ -114,22 +145,7 @@ function batchSchema(batch: Passage[]) {
         const passage = byId.get(row.passageId);
         if (!passage) return issue("Unknown passage ID");
         covered.add(row.passageId);
-        const { front, back } = faces(row);
-        for (const face of [front, back]) {
-          const reason = solutionLike(face);
-          if (reason) issue(reason);
-        }
-        const key = norm(front);
-        if (seen.has(key)) issue("Repeated front");
-        seen.add(key);
-        if (row.kind === "cloze") {
-          if (!/\{\{c\d{1,2}::[\s\S]+?\}\}/.test(front))
-            issue("Cloze needs a {{c1::answer}} deletion");
-        } else if (
-          key.length >= 30 &&
-          (norm(back).startsWith(key) || norm(passage.text).startsWith(key))
-        )
-          issue("The front must not be the start of the back or the passage");
+        for (const message of cardIssues(row, seen, passage.text, "passage")) issue(message);
       });
       for (const row of batch)
         if (!covered.has(row.id))

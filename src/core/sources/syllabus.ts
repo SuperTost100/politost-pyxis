@@ -1,7 +1,9 @@
-import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { Runner } from "../jobs/runner";
 import { embedTexts, embeddingConsent, embeddingReady } from "./embed";
+import { sha256 } from "./quality";
+import { putSetting } from "../settings";
+import { latestDocument } from "./documents";
 
 /**
  * SRC-08: a section whose mean passage vector sits below this cosine similarity to every plan text (title, subject,
@@ -54,7 +56,7 @@ export function sectionVectors(
       `SELECT p.section_path AS section, v.embedding AS embedding
        FROM passages p JOIN passages_vec v ON v.passage_rowid = p.rowid
        WHERE p.source_id = ?
-         AND p.document_id = (SELECT id FROM source_documents WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1)`,
+         AND p.document_id = ${latestDocument("p.source_id")}`,
     )
     .iterate(sourceId) as IterableIterator<{ section: string | null; embedding: Buffer }>;
   for (const row of rows) {
@@ -156,9 +158,7 @@ function fingerprint(db: Database.Database, sourceId: string): string {
   const plans = db
     .prepare(`SELECT ps.plan_id AS id FROM plan_sources ps WHERE ps.source_id = ? AND ps.role = 'material' ORDER BY ps.plan_id`)
     .all(sourceId) as Array<{ id: string }>;
-  return createHash("sha256")
-    .update(JSON.stringify([version, plans.map((plan) => [plan.id, planContextTexts(db, plan.id)])]))
-    .digest("hex");
+  return sha256(JSON.stringify([version, plans.map((plan) => [plan.id, planContextTexts(db, plan.id)])]));
 }
 
 /**
@@ -199,10 +199,7 @@ export async function syllabusFor(
   signal?.throwIfAborted();
   const keep = checks.length > 0 && checks.every((check) => check.state === "checked");
   if (keep)
-    db.prepare(
-      `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-    ).run(storeKey(sourceId), JSON.stringify({ key, checks }), Date.now());
+    putSetting(db, storeKey(sourceId), { key, checks });
   else if (row) db.prepare(`DELETE FROM settings WHERE key = ?`).run(storeKey(sourceId));
   return checks;
 }

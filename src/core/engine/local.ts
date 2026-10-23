@@ -1,29 +1,12 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
-import tiers from "../../../resources/model-tiers.json";
-import { jsonSchema } from "./generate";
-import { getFunnel, runTurn, type ProviderId } from "./funnel";
+import { jsonSchema, tryJson } from "./generate";
+import { getFunnel, runTurn } from "./funnel";
 import type { Gpu, Hardware } from "./hardware";
+import { putSetting } from "../settings";
+import { tierData, type LocalTier } from "./tiers";
 
-export type LocalTier = {
-  id: string;
-  model: string;
-  name: string;
-  downloadBytes: number;
-  contextWindow: number;
-  minVramGb: number;
-  minUnifiedGb: number;
-};
-type LocalData = {
-  provider: ProviderId;
-  installUrl: string;
-  minRamGb: number;
-  diskMarginGb: number;
-  minTokensPerSecond: number;
-  strictFeatures: string[];
-  tiers: LocalTier[];
-};
-export const localData = (tiers as unknown as { local: LocalData }).local;
+export const localData = tierData.local;
 export const LOCAL_PROVIDER = localData.provider;
 
 const GIB = 1024 ** 3;
@@ -135,9 +118,7 @@ export function readLocal(db: Database.Database): LocalSettings | undefined {
 }
 
 export function writeLocal(db: Database.Database, value: LocalSettings): void {
-  db.prepare(
-    "INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-  ).run(SETTINGS_KEY, JSON.stringify(value), Date.now());
+  putSetting(db, SETTINGS_KEY, value);
 }
 
 /** True when the local model may take tasks: the student turned it on and the current check passed. */
@@ -239,7 +220,7 @@ export async function checkLocalModel(
       signal: within(options.signal, STRUCTURED_TIMEOUT_MS),
     });
     structured = checkSchema.safeParse(
-      reply.structured ?? json(reply.text),
+      reply.structured ?? tryJson(reply.text),
     ).success;
   } catch (err) {
     if (options.signal?.aborted) throw err;
@@ -266,14 +247,6 @@ function timedOut(err: unknown): boolean {
       err.name === "AbortError" ||
       /timed? ?out/i.test(err.message))
   );
-}
-
-function json(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
 }
 
 export type PullProgress = {

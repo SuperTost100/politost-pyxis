@@ -14,7 +14,7 @@ import {
   setSuspended,
   undoRating,
 } from "./cards";
-import { planGuide } from "../plans/create";
+import { pathState, planGuide } from "../plans/create";
 import { seedCards } from "./test-study";
 
 const T0 = Date.UTC(2026, 2, 15, 10, 0, 0);
@@ -95,6 +95,23 @@ describe("cards", () => {
     });
     expect(dueCards(db, planId, T0)).toHaveLength(20);
     expect(planGuide(db, planId, T0)?.topics[0]?.dueCards).toBe(25);
+    // Today's list counts them per plan instead, so it asks the path not to.
+    expect(pathState(db, planId, T0, { dueCards: false })?.topics[0]?.dueCards).toBe(0);
+  });
+
+  it("takes the review stored last as the latest when two share a time, here and in undo", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    seedCards(db, { planId, topicId, pairs: [{ front: "F", back: "B" }] });
+    const cardId = (db.prepare(`SELECT id FROM cards`).get() as { id: string }).id;
+    const review = db.prepare(
+      `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at) VALUES (?, ?, 'good', ?, ?)`,
+    );
+    // Inserted in reverse ID order, so neither the ID nor chance picks the second one.
+    review.run("z-first", cardId, JSON.stringify({ intervalDays: 30, ease: 2.5, dueAt: T0 + 30 * 86_400_000 }), T0 - 1);
+    review.run("a-second", cardId, JSON.stringify({ intervalDays: 0, ease: 2.5, dueAt: T0 - 1 }), T0 - 1);
+    expect(dueCards(db, planId, T0).map((card) => card.id)).toEqual([cardId]);
+    expect(() => undoRating(db, "z-first")).toThrow("review-not-latest");
   });
 
   it("treats a new card as due now", () => {

@@ -227,8 +227,9 @@ export function normalizeForVision(bytes: Uint8Array): VisionImage {
   const source = decode(bytes, mime);
   let edge = Math.min(VISION_MAX_EDGE, Math.max(source.width, source.height));
   let quality = 85;
+  // Lower quality at the same edge encodes the same pixels again, so they are shrunk only when the edge changes.
+  let small = orient(shrink(source.data, source.width, source.height, edge), source.orientation);
   for (;;) {
-    const small = orient(shrink(source.data, source.width, source.height, edge), source.orientation);
     const encoded = jpeg.encode({ data: small.data, width: small.width, height: small.height }, quality).data;
     if (encoded.length <= VISION_MAX_BYTES)
       return {
@@ -247,6 +248,7 @@ export function normalizeForVision(bytes: Uint8Array): VisionImage {
     else if (edge > MIN_EDGE) {
       edge = Math.max(MIN_EDGE, Math.floor(edge * 0.8));
       quality = 75;
+      small = orient(shrink(source.data, source.width, source.height, edge), source.orientation);
     } else throw new Error("vision-image-too-large");
   }
 }

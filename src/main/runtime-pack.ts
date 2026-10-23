@@ -1,7 +1,10 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import type { BigIntStats } from "node:fs";
+import { mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import manifest from "../../resources/pyodide-manifest.json";
+import { readCapped } from "../core/sources/capped-body";
+import { sha256 } from "../core/sources/quality";
 
 export const runtimeManifest = manifest;
 export type RuntimeStatus = {
@@ -17,23 +20,62 @@ const totalBytes = manifest.files.reduce((sum, file) => sum + file.size, 0);
 function runtimeStatus(workspace: string): RuntimeStatus {
   return states.get(workspace) ?? { phase: "idle", bytes: 0, totalBytes };
 }
+/**
+ * Runtime files whose hash matched, by path, with the size, modification time and inode they had then. Every Python run
+ * loads the whole runtime again (about 31 MB), so a file is hashed again only when one of those changes: a rewrite in
+ * place moves the modification time, and a replacement brings a new inode.
+ */
+const verified = new Map<string, string>();
+function stamp(stats: BigIntStats): string {
+  return `${stats.size}:${stats.mtimeNs}:${stats.ino}`;
+}
+function runtimePath(workspace: string, name: string): string {
+  return join(workspace, "runtimes", "pyodide", manifest.version, name);
+}
 export async function verifiedRuntimeFile(
   workspace: string,
   name: string,
 ): Promise<Uint8Array | undefined> {
   const file = manifest.files.find((file) => file.name === name);
   if (!file) return undefined;
+  const path = runtimePath(workspace, name);
   try {
-    const bytes = await readFile(
-      join(workspace, "runtimes", "pyodide", manifest.version, name),
-    );
-    return bytes.length === file.size &&
-      createHash("sha256").update(bytes).digest("hex") === file.sha256
-      ? new Uint8Array(bytes)
-      : undefined;
+    const handle = await open(path, "r");
+    try {
+      // Read before the bytes, so a write during the read leaves a stamp that no longer matches and the next load hashes.
+      const before = stamp(await handle.stat({ bigint: true }));
+      const bytes = await handle.readFile();
+      if (
+        bytes.length === file.size &&
+        (verified.get(path) === before ||
+          sha256(bytes) === file.sha256)
+      ) {
+        verified.set(path, before);
+        return new Uint8Array(bytes);
+      }
+      verified.delete(path);
+      return undefined;
+    } finally {
+      await handle.close();
+    }
   } catch {
+    verified.delete(path);
     return undefined;
   }
+}
+/** Whether a runtime file is in place and verified, without reading it again when it is unchanged since its last check. */
+async function runtimeFileReady(workspace: string, name: string): Promise<boolean> {
+  const path = runtimePath(workspace, name);
+  const known = verified.get(path);
+  if (known) {
+    try {
+      if (stamp(await stat(path, { bigint: true })) === known) return true;
+    } catch {
+      verified.delete(path);
+      return false;
+    }
+  }
+  return Boolean(await verifiedRuntimeFile(workspace, name));
 }
 /** Disk truth: every manifest file present and hash-verified. Never downloads. */
 export async function currentRuntimeStatus(
@@ -42,7 +84,7 @@ export async function currentRuntimeStatus(
   const state = runtimeStatus(workspace);
   if (state.phase === "downloading") return state;
   const files = await Promise.all(
-    manifest.files.map((file) => verifiedRuntimeFile(workspace, file.name)),
+    manifest.files.map((file) => runtimeFileReady(workspace, file.name)),
   );
   if (files.every(Boolean)) {
     const ready: RuntimeStatus = {
@@ -109,6 +151,8 @@ export async function invalidateRuntime(workspace: string): Promise<void> {
   installs.delete(workspace);
   controllers.delete(workspace);
   states.delete(workspace);
+  for (const name of manifest.files.map((file) => file.name))
+    verified.delete(runtimePath(workspace, name));
 }
 async function install(
   workspace: string,
@@ -123,24 +167,18 @@ async function install(
     const batch = await Promise.allSettled(
       manifest.files.slice(offset, offset + 4).map(async (file) => {
         signal.throwIfAborted();
-        if (!(await verifiedRuntimeFile(workspace, file.name))) {
+        if (!(await runtimeFileReady(workspace, file.name))) {
           const response = await fetch(manifest.baseURL + file.name, {
             signal: AbortSignal.any([signal, AbortSignal.timeout(60000)]),
           });
           if (!response.ok || !response.body)
             throw new Error(`runtime-download-${response.status}`);
-          const chunks: Uint8Array[] = [];
-          let size = 0;
-          for await (const chunk of response.body) {
-            signal.throwIfAborted();
-            size += chunk.length;
-            if (size > file.size) throw new Error("runtime-file-too-large");
-            chunks.push(chunk);
-          }
-          const bytes = Buffer.concat(chunks);
+          const bytes = await readCapped(response.body, file.size, () => new Error("runtime-file-too-large"), {
+            signal,
+          });
           if (
-            size !== file.size ||
-            createHash("sha256").update(bytes).digest("hex") !== file.sha256
+            bytes.byteLength !== file.size ||
+            sha256(bytes) !== file.sha256
           )
             throw new Error("runtime-integrity-failed");
           const staging = join(root, `${file.name}.${randomUUID()}.tmp`);

@@ -2,24 +2,6 @@ import { lookup } from "node:dns/promises";
 
 // Kept apart from link.ts, which parses HTML: main fetches plan files with these and should not load those parsers.
 
-/**
- * An abort that fires when nothing arrives for `ms`. `touch` restarts the wait: call it on each response and each part of
- * a body, so a large file on a slow connection takes as long as it needs and a stalled one still ends, as `books.ts` does.
- */
-export function idleTimeout(
-  ms: number,
-  reason?: unknown,
-): { signal: AbortSignal; touch: () => void; clear: () => void } {
-  const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const touch = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => controller.abort(reason), ms);
-  };
-  touch();
-  return { signal: controller.signal, touch, clear: () => clearTimeout(timer) };
-}
-
 export function allowed(url: URL): void {
   if (url.protocol !== "http:" && url.protocol !== "https:")
     throw new Error("link-scheme");

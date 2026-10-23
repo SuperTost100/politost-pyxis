@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { IpcError } from "../../shared/ipc";
 import { startAttempt } from "../study/attempt";
+import { putSetting } from "../settings";
 
 const materialKey = (planId: string) => `plan-material:${planId}`;
 const importKey = (planId: string) => `plan-import:${planId}`;
@@ -24,9 +25,7 @@ function savePending(
   ids: string[],
   now: number,
 ) {
-  db.prepare(
-    "INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
-  ).run(materialKey(planId), JSON.stringify(ids), now);
+  putSetting(db, materialKey(planId), ids, now);
 }
 export type ImportedFrom = {
   author: string | null;

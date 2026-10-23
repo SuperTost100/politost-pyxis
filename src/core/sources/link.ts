@@ -1,5 +1,6 @@
 import { lookup } from "node:dns/promises";
-import { allowed, fetchPinned, idleTimeout, publicAddresses } from "./public-fetch";
+import { idleTimeout, readCapped } from "./capped-body";
+import { allowed, fetchPinned, publicAddresses } from "./public-fetch";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
@@ -53,33 +54,13 @@ function decodeHtml(bytes: Uint8Array, contentType: string): string {
   }
 }
 
-async function readCapped(response: Response, onPart: () => void): Promise<Uint8Array> {
-  const reader = response.body?.getReader();
-  if (!reader) {
+async function readLinkBody(response: Response, onPart: () => void): Promise<Uint8Array> {
+  if (!response.body) {
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (bytes.byteLength > MAX_BYTES) throw new Error("link-too-big");
     return bytes;
   }
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const step = await reader.read();
-    if (step.done) break;
-    onPart();
-    size += step.value.byteLength;
-    if (size > MAX_BYTES) {
-      await reader.cancel();
-      throw new Error("link-too-big");
-    }
-    chunks.push(step.value);
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+  return readCapped(response.body, MAX_BYTES, () => new Error("link-too-big"), { onPart });
 }
 
 /**
@@ -147,7 +128,7 @@ export async function fetchSnapshot(
     }
     let bytes: Uint8Array;
     try {
-      bytes = await readCapped(response, idle.touch);
+      bytes = await readLinkBody(response, idle.touch);
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError")
         throw new Error("link-timeout");

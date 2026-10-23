@@ -22,17 +22,17 @@ import { engineSeesImages } from "../engine/capabilities";
 import { selectionFor, strongestSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
-import { contentWords, retrieveWithModel } from "../sources/retrieve";
+import { contentWords, hitOf, queryEmbedder, retrieveWithModel, type PassageRow } from "../sources/retrieve";
 import { sha256 } from "../sources/quality";
 import { readingOrder } from "../sources/smartbook";
 import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
-import { deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
-import { contentLanguage, planLanguage } from "../engine/prompts";
+import { chatListedSources, deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
+import { latestDocument } from "../sources/documents";
+import { contentLanguage, planLanguage, promptProvenance } from "../engine/prompts";
 import { oneLine, profileContext } from "../profile/context";
 import { readProfile } from "../profile/profile";
 import {
   type ChatTemplateId,
-  chatProvenance,
   chatSystemPrompt,
   chatTemplateId,
   dataBlock,
@@ -126,17 +126,9 @@ function keptPassages(
   const hits: PassageHit[] = [];
   const numbers: number[] = [];
   for (const passage of kept) {
-    const row = read.get(passage.passageId) as
-      | { id: string; source_id: string | null; text: string; section_path: string | null; locator_json: string | null }
-      | undefined;
+    const row = read.get(passage.passageId) as PassageRow | undefined;
     if (!row) continue;
-    hits.push({
-      id: row.id,
-      sourceId: row.source_id ?? "",
-      text: row.text,
-      sectionPath: row.section_path,
-      locator: row.locator_json ? (JSON.parse(row.locator_json) as PassageHit["locator"]) : {},
-    });
+    hits.push(hitOf(row));
     numbers.push(passage.index);
   }
   return { hits, numbers };
@@ -298,30 +290,14 @@ async function attachedPassages(
 ): Promise<PassageHit[]> {
   const opening = db.prepare(
     `SELECT p.id, p.source_id, p.text, p.section_path, p.locator_json FROM passages p
-     WHERE p.source_id = ? AND p.document_id = (
-       SELECT id FROM source_documents WHERE source_id = p.source_id ORDER BY version DESC LIMIT 1
-     )
+     WHERE p.source_id = ? AND p.document_id = ${latestDocument("p.source_id")}
      ORDER BY ${readingOrder("p")} LIMIT ?`,
   );
   const taken = new Set(found.map((hit) => hit.id));
   const added: PassageHit[] = [];
   for (const sourceId of sourceIds) {
     const within = await retrieveWithModel(db, text, { sourceIds: [sourceId], embed, limit: ATTACHED_PASSAGES });
-    const first = (
-      opening.all(sourceId, ATTACHED_PASSAGES) as Array<{
-        id: string;
-        source_id: string;
-        text: string;
-        section_path: string | null;
-        locator_json: string | null;
-      }>
-    ).map((row) => ({
-      id: row.id,
-      sourceId: row.source_id,
-      text: row.text,
-      sectionPath: row.section_path,
-      locator: row.locator_json ? (JSON.parse(row.locator_json) as PassageHit["locator"]) : {},
-    }));
+    const first = (opening.all(sourceId, ATTACHED_PASSAGES) as PassageRow[]).map(hitOf);
     let have = found.filter((hit) => hit.sourceId === sourceId).length;
     for (const hit of [...within.hits, ...first]) {
       if (have >= ATTACHED_PASSAGES || added.length >= ATTACHED_TOTAL) break;
@@ -440,13 +416,7 @@ function priorPassages(
        ORDER BY m.created_at DESC
        LIMIT 8`,
     )
-    .all(chatId) as Array<{
-    id: string;
-    source_id: string | null;
-    text: string;
-    section_path: string | null;
-    locator_json: string | null;
-  }>;
+    .all(chatId) as PassageRow[];
   const seen = new Set<string>();
   const hits: PassageHit[] = [];
   for (const row of rows) {
@@ -454,15 +424,7 @@ function priorPassages(
     if (sourceIds.length > 0 && !sourceIds.includes(row.source_id ?? ""))
       continue;
     seen.add(row.id);
-    hits.push({
-      id: row.id,
-      sourceId: row.source_id ?? "",
-      text: row.text,
-      sectionPath: row.section_path,
-      locator: row.locator_json
-        ? (JSON.parse(row.locator_json) as PassageHit["locator"])
-        : {},
-    });
+    hits.push(hitOf(row));
   }
   return hits;
 }
@@ -501,15 +463,17 @@ function requireChat(db: Database.Database, chatId: string) {
     throw new DOMException("chat-deleted", "AbortError");
 }
 
+/** `question` embeds `text` alone; `embed` is the turn's own embedder, for the wider search a follow-up may need. */
 async function gather(
   db: Database.Database,
   chatId: string,
   text: string,
   sourceIds: string[],
   embed: AskInput["embed"],
+  question: AskInput["embed"],
 ) {
   const options = { sourceIds, embed, limit: CHAT_PASSAGES };
-  const found = await retrieveWithModel(db, text, options);
+  const found = await retrieveWithModel(db, text, { ...options, embed: question });
   if (found.covered || !isFollowUp(text)) return found;
   const earlier = db
     .prepare(
@@ -766,18 +730,26 @@ async function answer(
   const kept = input.resumeFrom?.passages
     ? keptPassages(db, input.resumeFrom.passages)
     : undefined;
-  const gathered = kept
-    ? { hits: kept.hits, covered: true, usedVectors: false }
-    : input.allowGeneral ||
+  const searches = !kept && !(
+    input.allowGeneral ||
     (thisTurnFile && sourceIds.length === 0) ||
     (planId && sourceIds.length === 0)
+  );
+  // The question is embedded once, for its own search and for the search within each attached document.
+  const questionEmbed =
+    searches || (!kept && attachedIds.length > 0)
+      ? await queryEmbedder(input.text, input.embed)
+      : input.embed;
+  const gathered = kept
+    ? { hits: kept.hits, covered: true, usedVectors: false }
+    : !searches
       ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
-      : await gather(db, chatId, input.text, sourceIds, input.embed);
+      : await gather(db, chatId, input.text, sourceIds, input.embed, questionEmbed);
   const found = {
     ...gathered,
     hits: [
       ...gathered.hits,
-      ...(kept ? [] : await attachedPassages(db, input.text, attachedIds, gathered.hits, input.embed)),
+      ...(kept ? [] : await attachedPassages(db, input.text, attachedIds, gathered.hits, questionEmbed)),
     ],
   };
   const selected = sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
@@ -825,7 +797,7 @@ async function answer(
       profile?.followups !== false,
       python != null,
     ),
-    profileContext(db, planId),
+    profileContext(db, planId, profile),
     where.planLine,
     subjectLine,
   ]
@@ -927,47 +899,20 @@ async function answer(
 
   // The reply is saved once its figures are drawn. Its math check runs afterwards (startChecks), so it does not hold the turn.
   requireTutorAvailable(db);
-  requireChat(db, chatId);
-  const stored = `${parsed.body}${
-    parsed.followups.length > 0
-      ? `\n<followups>\n${parsed.followups.join("\n")}\n</followups>`
-      : ""
-  }`;
-  const used = new Set(
-    [...splitCitationGroups(parsed.body).matchAll(/\[P(\d+)\]/g)].map((match) =>
-      Number(match[1]),
-    ),
-  );
-  const linked = citations.filter((cite) => used.has(cite.index));
-  const grounding = replyGrounding({
-    selected,
-    cited: linked.length,
-    attached: thisTurnFile,
-    question: mode === "socratic" && parsed.body.trim().endsWith("?"),
-    passages: citations.length,
-  });
-  db.prepare(
-    `INSERT INTO messages
-      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, figures_json, created_at)
-     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?)`,
-  ).run(
+  const reply = saveReply(db, chatId, parsed, {
     messageId,
-    chatId,
-    stored,
-    result.provider,
-    result.model,
+    provider: result.provider,
+    model: result.model,
+    selected,
+    attached: thisTurnFile,
+    mode,
     template,
-    chatProvenance(template).version,
-    grounding,
-    figures ? JSON.stringify(figures) : null,
-    now + 1,
-  );
-  const link = db.prepare(
-    `INSERT INTO message_passages (message_id, passage_id, label) VALUES (?, ?, ?)`,
-  );
-  for (const cite of linked) {
-    link.run(messageId, cite.passageId, `P${cite.index}`);
-  }
+    citations,
+    stopped: false,
+    error: null,
+    figures,
+    now,
+  });
   // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer.
   const checking = mode !== "socratic" && needsSolverChecks(parsed.body);
   if (checking)
@@ -976,52 +921,54 @@ async function answer(
       { chatId, messageId, body: parsed.body },
       { selection: selectionFor(db, "chat"), run: input.run },
     );
-  return {
-    chatId,
-    covered: true,
-    message: {
-      id: messageId,
-      role: "assistant",
-      body: parsed.body,
-      modelId: result.model,
-      provider: result.provider,
-      grounding,
-      followups: parsed.followups,
-      citations: linked,
-      reaction: null,
-      stopped: false,
-      error: null,
-      checks: splitChecks(parsed.body).checks,
-      checking,
-      ...(figures ? { figures } : {}),
-    },
-    ...skippedImages,
-  };
+  return { ...reply, message: { ...reply.message!, checking }, ...skippedImages };
 }
 
+/** A reply that stopped early: what arrived is kept, marked stopped or with the failure, and offers Continue. */
 function finishReply(
   db: Database.Database,
   chatId: string,
   text: string,
-  meta: {
-    messageId: string;
-    provider: string;
-    model: string;
-    selected: boolean;
-    attached: boolean;
-    mode: string;
-    template: string;
-    citations: ChatCitation[];
-    stopped: boolean;
-    error: string | null;
-    now: number;
-  },
+  meta: Omit<SavedReply, "figures">,
 ): AskResult {
-  requireChat(db, chatId);
   const parsed = splitFollowups(text);
   // Nothing draws a stopped reply's figures, so their blocks go.
   parsed.body = mapFigureBlocks(parsed.body, () => "");
+  return saveReply(db, chatId, { body: parsed.body, followups: [] }, meta);
+}
+
+type SavedReply = {
+  messageId: string;
+  provider: string;
+  model: string;
+  selected: boolean;
+  attached: boolean;
+  mode: string;
+  template: string;
+  citations: ChatCitation[];
+  stopped: boolean;
+  error: string | null;
+  figures?: Record<string, string>;
+  now: number;
+};
+
+/**
+ * Stores an assistant reply with the passages it cites, and returns its view. A stopped reply also records every passage
+ * it was given, cited or not, so Continue can answer from the same ones in the same numbering.
+ */
+function saveReply(
+  db: Database.Database,
+  chatId: string,
+  parsed: { body: string; followups: string[] },
+  meta: SavedReply,
+): AskResult {
+  requireChat(db, chatId);
   const { messageId } = meta;
+  const stored = `${parsed.body}${
+    parsed.followups.length > 0
+      ? `\n<followups>\n${parsed.followups.join("\n")}\n</followups>`
+      : ""
+  }`;
   const used = new Set(
     [...splitCitationGroups(parsed.body).matchAll(/\[P(\d+)\]/g)].map((match) =>
       Number(match[1]),
@@ -1037,23 +984,27 @@ function finishReply(
   });
   db.prepare(
     `INSERT INTO messages
-      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding, stopped, error, passages_json, created_at)
-     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?, ?)`,
+      (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding,
+       stopped, error, passages_json, figures_json, created_at)
+     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     messageId,
     chatId,
-    parsed.body,
+    stored,
     meta.provider,
     meta.model,
     meta.template,
-    chatProvenance(meta.template as ChatTemplateId).version,
+    // Stored with each assistant message: the template ID and its own version.
+    promptProvenance(meta.template as ChatTemplateId).version,
     grounding,
     meta.stopped ? 1 : 0,
     meta.error,
-    // Every passage the reply was given, cited or not, so Continue can answer from the same ones in the same numbering.
-    JSON.stringify(
-      meta.citations.map((cite): KeptPassage => ({ passageId: cite.passageId, index: cite.index })),
-    ),
+    meta.stopped
+      ? JSON.stringify(
+          meta.citations.map((cite): KeptPassage => ({ passageId: cite.passageId, index: cite.index })),
+        )
+      : null,
+    meta.figures ? JSON.stringify(meta.figures) : null,
     meta.now + 1,
   );
   const link = db.prepare(
@@ -1071,13 +1022,14 @@ function finishReply(
       modelId: meta.model || null,
       provider: meta.provider || null,
       grounding,
-      followups: [],
+      followups: parsed.followups,
       citations: linked,
       reaction: null,
       stopped: meta.stopped,
       error: meta.error,
       checks: splitChecks(parsed.body).checks,
       checking: false,
+      ...(meta.figures ? { figures: meta.figures } : {}),
     },
   };
 }
@@ -1177,11 +1129,7 @@ export function deleteChat(db: Database.Database, workspace: string, chatId: str
   cancelChecks(chatId);
   const hashes = db.transaction(() => {
     const mine = readScope(db, chatId).ids;
-    const shared = new Set(
-      (db.prepare(`SELECT id FROM chats WHERE id != ?`).all(chatId) as Array<{ id: string }>).flatMap(
-        (row) => readScope(db, row.id).ids,
-      ),
-    );
+    const shared = chatListedSources(db, chatId);
     const photos = db
       .prepare(`SELECT a.blob_sha AS sha FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.chat_id = ?`)
       .all(chatId) as Array<{ sha: string }>;
@@ -1262,12 +1210,37 @@ export function readChat(
     error: string | null;
   }>;
   const chips = readProfile(db)?.followups !== false;
-  const links = db.prepare(
-    `SELECT mp.label, mp.passage_id, p.source_id, p.section_path, p.locator_json
-     FROM message_passages mp
-     JOIN passages p ON p.id = mp.passage_id
-     WHERE mp.message_id = ?`,
-  );
+  // Every message's citations in one read, in the primary key's order, which one read per message also had.
+  const links = new Map<string, ChatCitation[]>();
+  for (const link of db
+    .prepare(
+      `SELECT mp.message_id, mp.label, mp.passage_id, p.source_id, p.section_path, p.locator_json
+       FROM message_passages mp
+       JOIN passages p ON p.id = mp.passage_id
+       WHERE mp.message_id IN (SELECT id FROM messages WHERE chat_id = ?)
+       ORDER BY mp.message_id, mp.passage_id`,
+    )
+    .all(chatId) as Array<{
+    message_id: string;
+    label: string;
+    passage_id: string;
+    source_id: string | null;
+    section_path: string | null;
+    locator_json: string | null;
+  }>) {
+    const list = links.get(link.message_id) ?? [];
+    list.push({
+      label: link.section_path || link.label,
+      index: Number(link.label.replace("P", "")) || 0,
+      passageId: link.passage_id,
+      sourceId: link.source_id ?? "",
+      sectionPath: link.section_path,
+      locator: link.locator_json
+        ? (JSON.parse(link.locator_json) as PassageHit["locator"])
+        : {},
+    });
+    links.set(link.message_id, list);
+  }
   return rows.map((row) => {
     const metadata =
       row.role === "assistant"
@@ -1277,24 +1250,7 @@ export function readChat(
       row.role === "assistant"
         ? splitFollowups(metadata.body)
         : { body: metadata.body, followups: [] };
-    const citations = (
-      links.all(row.id) as Array<{
-        label: string;
-        passage_id: string;
-        source_id: string | null;
-        section_path: string | null;
-        locator_json: string | null;
-      }>
-    ).map((link) => ({
-      label: link.section_path || link.label,
-      index: Number(link.label.replace("P", "")) || 0,
-      passageId: link.passage_id,
-      sourceId: link.source_id ?? "",
-      sectionPath: link.section_path,
-      locator: link.locator_json
-        ? (JSON.parse(link.locator_json) as PassageHit["locator"])
-        : {},
-    }));
+    const citations = links.get(row.id) ?? [];
     return {
       id: row.id,
       role: row.role,

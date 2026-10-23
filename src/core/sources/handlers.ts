@@ -1,5 +1,6 @@
 import { fetchSnapshot, parseLinkUrl } from "./link";
-import { readBlob } from "../blobs";
+import { blobSize } from "../blobs";
+import { latestDocument } from "./documents";
 import { statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type Database from "better-sqlite3";
@@ -331,14 +332,8 @@ export function sourceHandlers(
          ORDER BY created_at DESC LIMIT 1`,
       );
       return listSources(db).map((source) => {
-        let bytes: number | null = null;
-        if (source.blobSha) {
-          try {
-            bytes = statSync(readBlob(workspace, source.blobSha).file).size;
-          } catch {
-            /* Missing original is shown without an invented size. */
-          }
-        }
+        // A missing original is shown without an invented size.
+        const bytes = source.blobSha ? blobSize(workspace, source.blobSha) : null;
         // Only a stored comparison is read: the list never embeds or recomputes anything.
         const off = source.planCount > 0
           ? (storedSyllabus(db, source.id) ?? []).reduce((sum, check) => sum + check.off, 0)
@@ -698,7 +693,7 @@ export function sourceHandlers(
         (SELECT MAX(version) FROM source_documents WHERE source_id = s.id) AS latest
         FROM sources s LEFT JOIN source_documents d ON d.id = COALESCE(
           (SELECT document_id FROM passages WHERE id = ?),
-          (SELECT id FROM source_documents WHERE source_id = s.id ORDER BY version DESC LIMIT 1))
+          ${latestDocument("s.id")})
         WHERE s.id = COALESCE((SELECT source_id FROM passages WHERE id = ?), ?)`,
         )
         .get(

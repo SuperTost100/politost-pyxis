@@ -10,7 +10,7 @@ import {
   type QuizInput,
   type QuizSnapshot,
 } from "./configuredQuiz";
-import { DRAFT_GRACE_MS, startAttempt, type AttemptResult } from "./attempt";
+import { DRAFT_GRACE_MS, startAttempt, withoutAnswer, type AttemptResult } from "./attempt";
 import { checkedAnswer } from "./quizGrading";
 
 type Params = {
@@ -149,10 +149,7 @@ export function readQuiz(
     deadlineAt: savedBody?.deadlineAt,
     submittedAt: row.submitted_at ?? undefined,
     result,
-    questions: body.questions.map(({ answer, ...question }) => ({
-      ...question,
-      grade: { kind: answer.kind },
-    })),
+    questions: body.questions.map(withoutAnswer),
     jobId: job?.id,
     // The quiz screen shows the whole-review progress line for a mixed review's questions.
     review: row.kind === "review" ? true : undefined,

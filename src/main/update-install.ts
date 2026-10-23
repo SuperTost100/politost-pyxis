@@ -34,6 +34,7 @@ import {
   readRange,
 } from "./update-diff";
 import { latestRelease, newerStable, readCapped } from "./updates";
+import { idleTimeout } from "../core/sources/capped-body";
 
 /** The largest installer Pyxis downloads. The 0.2.3 AppImage is 528 MB. */
 const MAX_INSTALLER_BYTES = 1024 * 1024 * 1024;
@@ -425,15 +426,9 @@ export function updateInstaller(deps: {
     // The idle limit covers network reads only. Every response and every chunk of one restarts it; local file work
     // keeps it from running. The differential attempt and the whole-file download each get their own controller, so an
     // idle stop of the first still leaves the second a live signal.
-    let idle = new AbortController();
+    let idle = idleTimeout(IDLE_TIMEOUT);
     let both = AbortSignal.any([signal, idle.signal]);
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const touch = () => {
-      clearTimeout(timer);
-      const current = idle;
-      timer = setTimeout(() => current.abort(), IDLE_TIMEOUT);
-    };
-    touch();
+    const touch = () => idle.touch();
     const dest = join(deps.dir, asset.name);
     // At most one progress update per interval, and the latest count always arrives, even when the bytes pause. The
     // total is the bytes this download fetches: the changed blocks, or the whole file.
@@ -568,9 +563,9 @@ export function updateInstaller(deps: {
           // Only the user's cancel ends the update here. An idle stop of the differential path falls back to the
           // whole file, which starts with a fresh idle signal and timer.
           if (signal.aborted) throw error;
-          idle = new AbortController();
+          idle.clear();
+          idle = idleTimeout(IDLE_TIMEOUT);
           both = AbortSignal.any([signal, idle.signal]);
-          touch();
           const code = (error as { code?: unknown } | null)?.code;
           const reason =
             typeof code === "string"
@@ -603,7 +598,7 @@ export function updateInstaller(deps: {
         throw new InstallError("network");
       throw error;
     } finally {
-      clearTimeout(timer);
+      idle.clear();
       clearTimeout(pending);
     }
     verified = { path: dest, kind };

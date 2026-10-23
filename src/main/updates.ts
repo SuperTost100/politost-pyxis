@@ -1,6 +1,7 @@
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { UpdateView } from "../shared/updates";
+import { readCapped as readBody } from "../core/sources/capped-body";
 
 const DAY = 24 * 60 * 60 * 1000;
 // GitHub allows 60 unauthenticated requests an hour per address, which a shared campus network uses up. A failed check
@@ -57,21 +58,8 @@ export async function readCapped(
   cap: number,
 ): Promise<Buffer> {
   if (!response.body) throw new Error("update-fetch");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.length;
-      if (size > cap) throw new Error("update-size");
-      chunks.push(value);
-    }
-  } finally {
-    await reader.cancel();
-  }
-  return Buffer.concat(chunks);
+  const bytes = await readBody(response.body, cap, () => new Error("update-size"));
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
 export type ReleaseAsset = { name: string; size: number; url: string };

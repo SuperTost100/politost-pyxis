@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldClose, shouldOpen, type OpenGap } from "./gaps";
+import { firstClose, shouldClose, shouldOpen, type OpenGap } from "./gaps";
 
 const DAY = 86_400_000;
 
@@ -42,5 +42,22 @@ describe("gaps", () => {
     expect(shouldClose(gap, [miss, clean(2), { ...clean(2), at: at(2) + 60_000 }])).toBe(false);
     // Another topic's attempts never count.
     expect(shouldClose(gap, [clean(1), { topicId: "other", at: at(2), scores: [1] }])).toBe(false);
+  });
+
+  it("finds the first close in one pass, as asking every prefix would", () => {
+    const gap: OpenGap = { topicId: "t", openedAt: Date.UTC(2026, 2, 2, 12) };
+    // A fixed pseudo-random run of sessions: hits, misses, empty ones, same-day repeats and an earlier one.
+    let seed = 7;
+    const next = () => (seed = (seed * 48_271) % 2_147_483_647) / 2_147_483_647;
+    for (let run = 0; run < 50; run += 1) {
+      const attempts = Array.from({ length: 12 }, (_, index) => ({
+        topicId: "t",
+        at: gap.openedAt + Math.floor(index * 0.6 - 1) * DAY + Math.floor(next() * 1000),
+        scores: next() < 0.15 ? [] : next() < 0.3 ? [0, 1] : [1],
+      })).sort((a, b) => a.at - b.at);
+      const byPrefix = attempts.find((_attempt, index) => shouldClose(gap, attempts.slice(0, index + 1)))?.at ?? null;
+      expect(firstClose(gap, attempts)).toBe(byPrefix);
+    }
+    expect(firstClose(gap, [])).toBeNull();
   });
 });

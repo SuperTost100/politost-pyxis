@@ -12,8 +12,9 @@ import {
   rm,
   rmdir,
 } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import Database from "better-sqlite3";
+import { inside } from "../core/path-inside";
 
 export type WorkspaceMove = {
   path: string;
@@ -25,13 +26,6 @@ export type WorkspaceMove = {
   recoveryPath(): Promise<string>;
 };
 
-export function inside(parent: string, child: string): boolean {
-  const part = relative(parent, child);
-  return (
-    part === "" ||
-    (!part.startsWith(`..${sep}`) && part !== ".." && !isAbsolute(part))
-  );
-}
 
 type Identity = Pick<Stats, "dev" | "ino" | "birthtimeMs">;
 
@@ -106,6 +100,8 @@ async function copyTree(source: string, destination: string): Promise<void> {
     if (!info.isFile()) throw new Error("workspace-move-special-file");
     const input = await open(from, constants.O_RDONLY | constants.O_NOFOLLOW);
     let output: Awaited<ReturnType<typeof open>> | undefined;
+    // The source is hashed as it is copied, so it is read once; the copy is read back to compare.
+    const hash = createHash("sha256");
     try {
       const initial = await input.stat();
       if (!initial.isFile() || !sameFile(initial, info))
@@ -117,6 +113,7 @@ async function copyTree(source: string, destination: string): Promise<void> {
         const { bytesRead } = await input.read(buffer);
         if (bytesRead === 0) break;
         await output.writeFile(buffer.subarray(0, bytesRead));
+        hash.update(buffer.subarray(0, bytesRead));
         copied += bytesRead;
       }
       await output.sync();
@@ -131,7 +128,7 @@ async function copyTree(source: string, destination: string): Promise<void> {
       await input.close();
       await output?.close();
     }
-    if ((await hashFile(from)) !== (await hashFile(to)))
+    if (hash.digest("hex") !== (await hashFile(to)))
       throw new Error("workspace-move-copy-mismatch");
   }
   if (JSON.stringify(names) !== JSON.stringify((await readdir(source)).sort()))

@@ -1,4 +1,4 @@
-import { evalExpr, splitSeries } from "./plot";
+import { compileExpr, evalExpr, splitSeries } from "./plot";
 export type GraphPoint = { x: number; y: number };
 export type GraphRange = [number, number];
 
@@ -70,13 +70,13 @@ export function graphLatex(source: string): string {
     .replace(/\bpi\b/g, "\\pi ")
     .replace(/\b(abs|sqrt)\b/g, "\\operatorname{$1}");
 }
-function finiteAt(source: string, x: number): number {
-  const value = evalExpr(source, x);
+function finiteAt(curve: (x: number) => number, x: number): number {
+  const value = curve(x);
   if (Number.isFinite(value)) return value;
   // A removable hole, such as sin(x)/x at zero, has matching finite one-sided limits.
   const h = Math.max(1, Math.abs(x)) * 1e-7;
-  const a = evalExpr(source, x - h),
-    b = evalExpr(source, x + h);
+  const a = curve(x - h),
+    b = curve(x + h);
   return Number.isFinite(a) &&
     Number.isFinite(b) &&
     Math.abs(a - b) < 1e-5 * Math.max(1, Math.abs(a), Math.abs(b))
@@ -97,7 +97,8 @@ export function analyzeGraph(
     b - a < 1e-7
   )
     throw new Error("graph-range");
-  const at = (x: number) => finiteAt(source, x);
+  const curve = compileExpr(source);
+  const at = (x: number) => finiteAt(curve, x);
   const d1At = (x: number) => {
     const h = Math.max(1, Math.abs(x)) * 1e-4;
     return (at(x + h) - at(x - h)) / (2 * h);

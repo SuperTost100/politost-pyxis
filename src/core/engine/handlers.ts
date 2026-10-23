@@ -103,6 +103,8 @@ function textOnly(id: string, access: readonly string[] = []): boolean {
 /** How long Test waits for the one-word answer. A CLI that starts cold can take half a minute. */
 const TEST_DEADLINE_MS = 90_000;
 
+const invalidSelection = () => new IpcError("invalid-selection", "engines.errors.invalid-selection");
+
 /** CLIs with no sign-out command: CLI Funnel throws "unsupported" for them, so the student signs out in the program itself. */
 const NO_SIGN_OUT = new Set(["antigravity"]);
 
@@ -390,6 +392,19 @@ export function engineHandlers(
   function emitLocal(event: LocalEvent) {
     options.onLocal?.(event);
   }
+  /** Records how a local download or check ended without a result and tells the screen. */
+  function localStopped(err: unknown, abort: AbortController): { cancelled: boolean; detail: string } {
+    const cancelled = abort.signal.aborted;
+    const detail = cancelled ? "" : err instanceof Error ? err.message : String(err);
+    localLast = { outcome: cancelled ? "cancelled" : "failed", detail };
+    emitLocal({ phase: cancelled ? "cancelled" : "failed" });
+    return { cancelled, detail };
+  }
+  /** Signing in, out and updating are for the subscription CLIs this build offers. */
+  function requireCli(provider: ProviderId): void {
+    if (!providers.has(provider) || disabled(provider) || provider.endsWith("-api"))
+      throw new IpcError("unsupported", "engines.disabled");
+  }
   async function localState() {
     const hw = await readHardware();
     const ollama = getFunnel().providers[LOCAL_PROVIDER];
@@ -551,24 +566,10 @@ export function engineHandlers(
         return check;
       })()
         .catch((err: unknown) => {
-          const cancelled = abort.signal.aborted;
-          localLast = {
-            outcome: cancelled ? "cancelled" : "failed",
-            detail: cancelled
-              ? ""
-              : err instanceof Error
-                ? err.message
-                : String(err),
-          };
-          emitLocal({ phase: cancelled ? "cancelled" : "failed" });
+          const { cancelled, detail } = localStopped(err, abort);
           if (cancelled)
             throw new IpcError("aborted", "engines.local.cancelled");
-          throw new IpcError(
-            "local-failed",
-            "engines.local.pullFailed",
-            {},
-            localLast.detail,
-          );
+          throw new IpcError("local-failed", "engines.local.pullFailed", {}, detail);
         })
         .finally(() => {
           if (localRun?.promise === promise) localRun = null;
@@ -603,16 +604,7 @@ export function engineHandlers(
         reconfigureSoon();
         return check;
       } catch (err) {
-        const cancelled = abort.signal.aborted;
-        localLast = {
-          outcome: cancelled ? "cancelled" : "failed",
-          detail: cancelled
-            ? ""
-            : err instanceof Error
-              ? err.message
-              : String(err),
-        };
-        emitLocal({ phase: cancelled ? "cancelled" : "failed" });
+        const { cancelled } = localStopped(err, abort);
         throw new IpcError(
           cancelled ? "aborted" : "local-failed",
           cancelled ? "engines.local.cancelled" : "engines.local.pullFailed",
@@ -721,10 +713,7 @@ export function engineHandlers(
     }) {
       const local = input.provider === LOCAL_PROVIDER;
       if (!providers.has(input.provider) && !local) {
-        throw new IpcError(
-          "invalid-selection",
-          "engines.errors.invalid-selection",
-        );
+        throw invalidSelection();
       }
       if (local) {
         // Only the checked model, and only while it is on.
@@ -749,10 +738,7 @@ export function engineHandlers(
         (input.effort && !capability.effort) ||
         (input.fast && !capability.fast)
       )
-        throw new IpcError(
-          "invalid-selection",
-          "engines.errors.invalid-selection",
-        );
+        throw invalidSelection();
       const warning =
         input.feature === "vision"
           ? capabilityWarning(input.model, "vision")
@@ -782,10 +768,7 @@ export function engineHandlers(
         .prepare(`SELECT selection_json FROM feature_engines WHERE feature = ?`)
         .get(input.feature) as { selection_json: string } | undefined;
       if (!row)
-        throw new IpcError(
-          "invalid-selection",
-          "engines.errors.invalid-selection",
-        );
+        throw invalidSelection();
       const {
         effort: _old,
         effortChoice: _choice,
@@ -793,10 +776,7 @@ export function engineHandlers(
       } = JSON.parse(row.selection_json) as StoredSelection;
       const listed = effortsOf(rest.provider, rest.model);
       if (input.effort && listed && !listed.includes(input.effort))
-        throw new IpcError(
-          "invalid-selection",
-          "engines.errors.invalid-selection",
-        );
+        throw invalidSelection();
       // Pyxis's own rows keep the pick beside the effort it works out; a pinned row stores the pick as its effort.
       const effort =
         input.effort ??
@@ -831,10 +811,7 @@ export function engineHandlers(
     },
     remove(input: { provider: ProviderId }) {
       if (!providers.has(input.provider))
-        throw new IpcError(
-          "invalid-selection",
-          "engines.errors.invalid-selection",
-        );
+        throw invalidSelection();
       db.prepare(
         "DELETE FROM feature_engines WHERE json_extract(selection_json, '$.provider') = ?",
       ).run(input.provider);
@@ -843,12 +820,7 @@ export function engineHandlers(
       return { ok: true as const };
     },
     async logout(input: { provider: ProviderId }) {
-      if (
-        !providers.has(input.provider) ||
-        disabled(input.provider) ||
-        input.provider.endsWith("-api")
-      )
-        throw new IpcError("unsupported", "engines.disabled");
+      requireCli(input.provider);
       if (NO_SIGN_OUT.has(input.provider))
         throw new IpcError("unsupported", "engines.signOutUnsupported");
       loginSessions.get(input.provider)?.cancel();
@@ -861,12 +833,7 @@ export function engineHandlers(
       return { ok: true as const };
     },
     async update(input: { provider: ProviderId }) {
-      if (
-        !providers.has(input.provider) ||
-        disabled(input.provider) ||
-        input.provider.endsWith("-api")
-      )
-        throw new IpcError("unsupported", "engines.disabled");
+      requireCli(input.provider);
       await shellPathReady();
       const result = await getFunnel().update(input.provider);
       if (result.changed && options.auto) await reconfigure();
@@ -876,12 +843,7 @@ export function engineHandlers(
       };
     },
     async login(input: { provider: ProviderId }) {
-      if (
-        !providers.has(input.provider) ||
-        disabled(input.provider) ||
-        input.provider.endsWith("-api")
-      )
-        throw new IpcError("unsupported", "engines.disabled");
+      requireCli(input.provider);
       loginSessions.get(input.provider)?.cancel();
       const session = getFunnel().login(input.provider);
       loginSessions.set(input.provider, session);

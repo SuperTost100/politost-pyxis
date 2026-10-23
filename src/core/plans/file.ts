@@ -2,7 +2,6 @@ import { planEducation, snapshotPlanEducation } from "./education";
 import { markPlanImported } from "./views";
 import { readSessions, saveSessions, syncExamDates } from "./sessions";
 import type Database from "better-sqlite3";
-import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { uuidv7 } from "../../shared/ids";
 import { cardReviewSchema } from "../../shared/card-schedule";
@@ -21,6 +20,8 @@ import {
 } from "../../shared/plan-file";
 import { MAX_SOURCE_BYTES } from "../../shared/source-types";
 import { hasBlob, putBlob, readBlob, removeBlob } from "../blobs";
+import { sha256 } from "../sources/quality";
+import { latestReview } from "../study/cards";
 import { validateGraph, type ConceptGraph } from "../maps/graph";
 
 export type { PlanFile };
@@ -167,12 +168,9 @@ export function exportPlan(
   const cards = db
     .prepare(
       `SELECT c.id, c.front, c.back, c.topic_id, c.passage_id, c.grounding, c.suspended,
-              (SELECT cr.rating FROM card_reviews cr
-               WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS rating,
-              (SELECT cr.state_json FROM card_reviews cr
-               WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS state_json,
-              (SELECT cr.reviewed_at FROM card_reviews cr
-               WHERE cr.card_id = c.id ORDER BY cr.reviewed_at DESC, cr.rowid DESC LIMIT 1) AS reviewed_at
+              ${latestReview("rating")} AS rating,
+              ${latestReview("state_json")} AS state_json,
+              ${latestReview("reviewed_at")} AS reviewed_at
        FROM cards c WHERE c.plan_id = ? AND c.removed = 0 ORDER BY c.created_at`,
     )
     .all(planId) as Array<{
@@ -646,128 +644,56 @@ export function importPlan(
   const checked = planFileSchema.safeParse(file);
   if (!checked.success) throw new PlanFileError(planFileReason(checked.error.issues));
   const parsed = checked.data;
-  if (parsed.version === 2)
-    return importPortablePlan(db, parsed, now, workspace, options);
-  const planId = uuidv7(now);
-  const topicIds = parsed.topics.map((_, i) => uuidv7(now + i + 1));
-  const nodeIds = parsed.nodes.map((_, i) => uuidv7(now + 100 + i));
-  const embedded = (parsed.sources ?? []).flatMap((source) => {
-    if (source.data === undefined) return [];
-    const bytes = decodeSource(source.data, source.bytes);
-    if (!workspace) throw new PlanFileError("no-workspace");
-    const sha = createHash("sha256").update(bytes).digest("hex");
-    if (source.sha && source.sha !== sha) throw new PlanFileError("source-mismatch");
-    return [{ title: source.title, mime: source.mime ?? null, bytes, sha }];
-  });
-  const run = db.transaction(() => {
-    db.prepare(
-      `INSERT INTO plans (id, title, status, content_language, exam_at, target, style, created_at, updated_at)
-       VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      planId,
-      parsed.title.slice(0, PLAN_TITLE_MAX),
-      parsed.language ?? null,
-      null,
-      parsed.target ?? 0.75,
-      parsed.style ?? "decide",
-      now,
-      now,
-    );
-    saveSessions(db, planId, fileSessions(parsed), now);
-    markPlanImported(db, planId, now, {
-      ...(parsed.author ? { author: parsed.author } : {}),
-      ...(parsed.createdAt != null ? { exportedAt: parsed.createdAt } : {}),
-      ...(parsed.id ? { fileId: parsed.id } : {}),
-    });
-    snapshotPlanEducation(db, planId, parsed.educationLevel, now);
-    parsed.topics.forEach((topic, i) => {
-      db.prepare(
-        `INSERT INTO topics (id, plan_id, title, position, grounding, archived_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        topicIds[i],
-        planId,
-        topic.title,
-        topic.position,
-        topic.grounding ?? null,
-        topic.archived ? now : null,
-        now,
-      );
-    });
-    parsed.nodes.forEach((node, i) => {
-      const topicId = topicRef(topicIds, node.topic);
-      db.prepare(
-        `INSERT INTO path_nodes (id, plan_id, topic_id, kind, position, title, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        nodeIds[i],
-        planId,
-        topicId,
-        node.kind,
-        node.position,
-        node.title,
-        now,
-      );
-    });
-    parsed.cards.forEach((card, i) => {
-      const topicId = topicRef(topicIds, card.topic);
-      const cardId = uuidv7(now + 200 + i);
-      db.prepare(
-        `INSERT INTO cards (id, plan_id, topic_id, front, back, grounding, created_at)
-         VALUES (?, ?, ?, ?, ?, 'sources', ?)`,
-      ).run(cardId, planId, topicId, card.front, card.back, now);
-      if (card.schedule) {
-        db.prepare(
-          `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at)
-           VALUES (?, ?, ?, ?, ?)`,
-        ).run(
-          uuidv7(now + 400 + i),
-          cardId,
-          card.schedule.rating,
-          JSON.stringify(
-            card.schedule.state && typeof card.schedule.state === "object"
-              ? card.schedule.state
-              : {},
-          ),
-          card.schedule.at,
-        );
-      }
-    });
-    // A version 1 file carries neither gap rows nor attempts: gap events are dropped and replayed from the answers.
-    (parsed.progress ?? []).filter((event) => !isGapEvent(event.kind)).forEach((event, i) => {
-      const topicId = topicRef(topicIds, event.topic);
-      db.prepare(
-        `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      ).run(
-        uuidv7(now + 300 + i),
-        event.kind,
-        planId,
-        topicId,
-        JSON.stringify(
-          withoutLegacyRefs(importedPayload(event.kind, event.payload, nodeIds)) ?? {},
-        ),
-        event.at,
-      );
-    });
-    embedded.forEach((source, i) => {
-      putBlob(
-        workspace,
-        source.bytes,
-        source.mime ?? "application/octet-stream",
-        "bin",
-      );
-      const sourceId = uuidv7(now + 500 + i);
-      db.prepare(
-        `INSERT INTO sources (id, kind, title, blob_sha, mime, status, created_at, updated_at)
-         VALUES (?, 'file', ?, ?, ?, 'ready', ?, ?)`,
-      ).run(sourceId, source.title, source.sha, source.mime, now, now);
-      db.prepare(
-        `INSERT INTO plan_sources (plan_id, source_id) VALUES (?, ?)`,
-      ).run(planId, sourceId);
-    });
-  });
-  undoingNewBlobs(workspace, embedded.map((source) => source.sha), run);
-  return planId;
+  return importPortablePlan(
+    db,
+    parsed.version === 2 ? parsed : fromVersion1(parsed),
+    now,
+    workspace,
+    options,
+  );
+}
+
+/**
+ * A version 1 file in version 2 shape, so one importer reads both. Version 1 was read for its plan settings, topics,
+ * path, cards with their schedules, progress and embedded originals, so only those move over; any other field such a
+ * file holds was never read. Its IDs point into the exporter's database: rows get new ones, gap events are dropped and
+ * replayed from the answers, and the IDs a progress payload names are dropped, since the file carries none of their rows.
+ */
+function fromVersion1(file: PlanFile): PlanFile {
+  return {
+    version: 2,
+    title: file.title,
+    ...(file.id !== undefined ? { id: file.id } : {}),
+    ...(file.createdAt !== undefined ? { createdAt: file.createdAt } : {}),
+    ...(file.author !== undefined ? { author: file.author } : {}),
+    ...(file.examAt !== undefined ? { examAt: file.examAt } : {}),
+    ...(file.sessions !== undefined ? { sessions: file.sessions } : {}),
+    ...(file.target !== undefined ? { target: file.target } : {}),
+    ...(file.language !== undefined ? { language: file.language } : {}),
+    ...(file.style !== undefined ? { style: file.style } : {}),
+    ...(file.educationLevel !== undefined ? { educationLevel: file.educationLevel } : {}),
+    topics: file.topics.map(({ title, position, grounding, archived }) => ({ title, position, grounding, archived })),
+    nodes: file.nodes.map(({ title, kind, position, topic }) => ({ title, kind, position, topic })),
+    cards: file.cards.map(({ front, back, topic, grounding, suspended, schedule }) => ({
+      front,
+      back,
+      topic,
+      grounding,
+      suspended,
+      schedule,
+    })),
+    progress: (file.progress ?? [])
+      .filter((event) => !isGapEvent(event.kind))
+      .map(({ kind, topic, payload, at }) => ({
+        kind,
+        topic,
+        payload: dropUnknownRefs(withoutLegacyRefs(payload), new Set()),
+        at,
+      })),
+    sources: (file.sources ?? []).flatMap(({ title, sha, bytes, mime, data }) =>
+      data === undefined ? [] : [{ title, sha, bytes, mime, data }],
+    ),
+  };
 }
 
 /**
@@ -804,9 +730,7 @@ function portableQuestionIds(itemId: string, body: unknown): unknown {
         return question;
       const value = question as Record<string, unknown>;
       if (value.id !== undefined) return question;
-      const digest = createHash("sha256")
-        .update(JSON.stringify([itemId, index]))
-        .digest("hex");
+      const digest = sha256(JSON.stringify([itemId, index]));
       return { ...value, id: `pyxis-question-${digest.slice(0, 32)}` };
     }),
   };
@@ -1065,7 +989,7 @@ function exportContent(
       section: p.section_path,
       charStart: p.char_start,
       charEnd: p.char_end,
-      textSha: createHash("sha256").update(p.text).digest("hex"),
+      textSha: sha256(p.text),
       sourceSha: p.blob_sha,
     })),
     documents,
@@ -1188,7 +1112,7 @@ function importPortablePlan(
       const bytes = decodeSource(source.data, source.bytes);
       if (
         source.sha &&
-        createHash("sha256").update(bytes).digest("hex") !== source.sha
+        sha256(bytes) !== source.sha
       )
         throw new PlanFileError("source-mismatch");
       embedded.set(i, bytes);
@@ -1199,7 +1123,7 @@ function importPortablePlan(
   const originalSha = new Map<string, string | null>();
   (file.sources ?? []).forEach((s, i) => {
     const bytes = embedded.get(i);
-    if (s.id) originalSha.set(s.id, bytes ? createHash("sha256").update(bytes).digest("hex") : s.sha);
+    if (s.id) originalSha.set(s.id, bytes ? sha256(bytes) : s.sha);
   });
   function remap(value: unknown, key = ""): unknown {
     if (Array.isArray(value)) return value.map((item) => remap(item, key));
@@ -1315,7 +1239,7 @@ function importPortablePlan(
   const sourcesById = firstById(file.sources ?? []);
   const documentsById = firstById(file.documents ?? []);
   const passages = (file.passages ?? []).map((p) => {
-    if (createHash("sha256").update(p.text).digest("hex") !== p.textSha)
+    if (sha256(p.text) !== p.textSha)
       throw new PlanFileError("passage-text");
     const source = p.sourceId == null ? undefined : sourcesById.get(p.sourceId);
     if (p.sourceSha && source?.sha !== p.sourceSha)
@@ -1505,7 +1429,7 @@ function importPortablePlan(
   for (const g of gapRows)
     if (!opened.has(g.id) || (g.closedAt != null && !closed.has(g.id))) throw new PlanFileError("bad-progress");
   if (options.check) return planId;
-  const embeddedShas = [...embedded.values()].map((bytes) => createHash("sha256").update(bytes).digest("hex"));
+  const embeddedShas = [...embedded.values()].map((bytes) => sha256(bytes));
   return undoingNewBlobs(workspace, embeddedShas, db.transaction(() => {
     db.prepare(
       "INSERT INTO plans(id,title,status,content_language,exam_at,target,style,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",

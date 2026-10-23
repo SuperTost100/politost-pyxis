@@ -23,6 +23,9 @@ import { dirname, join, relative, sep } from "node:path";
 import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import { getLoadablePath } from "sqlite-vec";
+import { crc32 } from "node:zlib";
+import { syncDirectory } from "../atomic-write";
+import { blobNamed, namedBlobs } from "../blobs";
 import { Inflate, Zip, ZipDeflate } from "fflate";
 import { closeDatabase, openDatabase } from "../db/connection";
 
@@ -148,23 +151,6 @@ function classify(name: string): EntryKind {
   const match = /^blobs\/([a-f0-9]{2})\/([a-f0-9]{64})(\.json)?$/.exec(name);
   if (!match || match[1] !== match[2]!.slice(0, 2)) corrupt();
   return match[3] ? "meta" : "blob";
-}
-
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c >>> 0;
-  }
-  return table;
-})();
-
-function crc32(previous: number, data: Uint8Array): number {
-  let c = ~previous;
-  for (let i = 0; i < data.length; i++)
-    c = CRC_TABLE[(c ^ data[i]!) & 0xff]! ^ (c >>> 8);
-  return ~c >>> 0;
 }
 
 function writeAll(fd: number, data: Uint8Array): void {
@@ -346,7 +332,7 @@ function extractEntry(
       emitted += chunk.length;
       budget.total += chunk.length;
       if (emitted > entry.size || budget.total > MAX_EXPANDED) corrupt();
-      crc = crc32(crc, chunk);
+      crc = crc32(chunk, crc);
       hash?.update(chunk);
       writeAll(out, chunk);
     };
@@ -635,42 +621,6 @@ function addBlobPair(
   }
 }
 
-/** Every blob hash the database refers to. */
-function referencedBlobs(db: Database.Database): Set<string> {
-  const rows = db
-    .prepare(
-      `SELECT blob_sha AS sha FROM sources
-       UNION SELECT blob_sha FROM attachments
-       UNION SELECT blob_sha FROM whiteboards
-       UNION SELECT json_extract(tree_json, '$.blobSha') FROM source_documents
-       UNION SELECT json_extract(tree_json, '$.sourceSha') FROM source_documents`,
-    )
-    .all() as Array<{ sha: unknown }>;
-  return new Set(
-    rows
-      .map((row) => row.sha)
-      .filter(
-        (sha): sha is string =>
-          typeof sha === "string" && /^[a-f0-9]{64}$/.test(sha),
-      ),
-  );
-}
-
-/** Whether the live database still refers to a blob. */
-function stillReferenced(db: Database.Database, sha: string): boolean {
-  return (
-    db
-      .prepare(
-        `SELECT 1 FROM sources WHERE blob_sha = ?
-         UNION ALL SELECT 1 FROM attachments WHERE blob_sha = ?
-         UNION ALL SELECT 1 FROM whiteboards WHERE blob_sha = ?
-         UNION ALL SELECT 1 FROM source_documents WHERE json_extract(tree_json, '$.blobSha') = ? OR json_extract(tree_json, '$.sourceSha') = ?
-         LIMIT 1`,
-      )
-      .get(sha, sha, sha, sha, sha) !== undefined
-  );
-}
-
 /** A read-only connection to a database another process (core) keeps writing. It never migrates or writes. */
 function openLiveDatabase(file: string): Database.Database {
   const db = new Database(file, { readonly: true, fileMustExist: true });
@@ -762,8 +712,8 @@ export function backupWorkspace(
       try {
         const source = db;
         live = {
-          referenced: referencedBlobs(snapshot),
-          stillUsed: (sha) => stillReferenced(source, sha),
+          referenced: namedBlobs(snapshot),
+          stillUsed: (sha) => blobNamed(source, sha),
         };
       } finally {
         snapshot.close();
@@ -844,17 +794,6 @@ function matches(path: string, expected: DirectoryIdentity): boolean {
   if (!existsSync(path)) return false;
   const info = identity(path);
   return info.dev === expected.dev && info.ino === expected.ino;
-}
-
-export function syncDirectory(path: string): void {
-  // Windows does not support opening a directory for fsync. Journal files still sync.
-  if (process.platform === "win32") return;
-  const fd = openSync(path, "r");
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
 }
 
 function journalPath(workspace: string): string {

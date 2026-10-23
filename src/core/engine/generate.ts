@@ -85,7 +85,8 @@ function parsed(schema: z.ZodType, result: EngineResult): unknown {
   return check.success ? check.data : null;
 }
 
-function tryJson(text: string): unknown {
+/** The value a text holds as JSON, or undefined when it holds none. */
+export function tryJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {

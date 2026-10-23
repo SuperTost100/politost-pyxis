@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
 import { openZip } from "../sources/zip-bounded";
+import { requireActiveTopic } from "../plans/steps";
 import { saveCard, setSuspended } from "./cards";
 import { clozeAnswer } from "./cloze";
 import { newCard, review, type Rating } from "./schedule";
@@ -347,10 +348,7 @@ export function importApkg(
   input: { planId: string; topicId: string; history: boolean },
   now = Date.now(),
 ): AnkiImportResult {
-  const topic = db
-    .prepare("SELECT 1 FROM topics WHERE id = ? AND plan_id = ? AND archived_at IS NULL")
-    .get(input.topicId, input.planId);
-  if (!topic) throw new Error("topic-missing");
+  requireActiveTopic(db, input.planId, input.topicId);
   const parsed = readApkg(bytes, { history: input.history, now });
   const result: AnkiImportResult = {
     imported: 0,

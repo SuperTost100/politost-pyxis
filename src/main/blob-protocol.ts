@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { join } from "node:path";
+import { inside } from "../core/path-inside";
 import { Readable } from "node:stream";
 import { protocol } from "electron";
 import { blobParts } from "../shared/blob-path";
@@ -45,10 +46,7 @@ export async function blobResponse(workspace: string, url: string): Promise<Resp
   try {
     const resolvedRoot = await realpath(root);
     const resolved = await realpath(file);
-    if (
-      resolved !== resolvedRoot &&
-      !resolved.startsWith(resolvedRoot + sep)
-    ) {
+    if (!inside(resolvedRoot, resolved)) {
       return new Response("forbidden", { status: 403 });
     }
     const info = await stat(resolved);

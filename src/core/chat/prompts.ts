@@ -1,5 +1,4 @@
 import {
-  promptProvenance,
   systemPrompt,
   type TemplateId,
 } from "../engine/prompts";
@@ -43,9 +42,6 @@ export function chatSystemPrompt(
     )
     .join("\n");
 }
-
-/** Stored with each assistant message: the template ID and its own version. */
-export const chatProvenance = promptProvenance;
 
 /**
  * Material the tutor reads but must not obey (passages, a pinned context, an attached file) sits between tags. A tag

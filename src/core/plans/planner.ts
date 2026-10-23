@@ -3,7 +3,9 @@ import { z } from "zod";
 import { suggestStep, stayActivities, type Activity, type Step, type TopicStatus } from "./path";
 import { pathState } from "./create";
 import { countDueCards, dueCards } from "../study/cards";
-import { weightedPlanMastery } from "./progress";
+import { topicPassageCounts, weightedPlanMastery } from "./progress";
+import { putSetting } from "../settings";
+import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
 
 /**
  * The session planner and Oggi. See "Session planner" in docs/mastery.md: remaining work is an estimate in minutes from
@@ -67,25 +69,12 @@ export function savePlannerHours(
   else if (input.hours == null) delete next.weeks[input.week];
   else next.weeks[input.week] = input.hours;
   // Weeks already over are not read again.
-  const thisWeek = dayKey(monday(now));
+  const thisWeek = dayKey(startOfWeek(now));
   next.weeks = Object.fromEntries(Object.entries(next.weeks).filter(([week]) => week >= thisWeek));
-  db.prepare(
-    `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
-  ).run(plannerKey, JSON.stringify(plannerSettings.parse(next)), now);
+  putSetting(db, plannerKey, plannerSettings.parse(next), now);
   return { ok: true };
 }
 
-const startOfDay = (at: number) => new Date(at).setHours(0, 0, 0, 0);
-const addDays = (at: number, days: number) => {
-  const date = new Date(at);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days).getTime();
-};
-const monday = (at: number) => addDays(startOfDay(at), -((new Date(at).getDay() + 6) % 7));
-const dayKey = (at: number) => {
-  const date = new Date(at);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
 
 /**
  * The minutes of work a plan has left, from the path's view of it: the introduction and diagnostic while nothing was
@@ -180,22 +169,15 @@ type PlanState = NonNullable<ReturnType<typeof pathState>>;
 function studyState(db: Database.Database, now: number) {
   const today = startOfDay(now);
   const rows = db.prepare(`${studyPlans} ORDER BY updated_at DESC`).all() as PlanRow[];
-  const passages = db.prepare(
-    "SELECT t.id, count(tp.passage_id) AS n FROM topics t LEFT JOIN topic_passages tp ON tp.topic_id = t.id WHERE t.plan_id = ? GROUP BY t.id",
-  );
   return rows.flatMap((row) => {
-    const state = pathState(db, row.id, now);
+    // Today counts due cards per plan as one item, so the path's per-topic counts are not needed here.
+    const state = pathState(db, row.id, now, { dueCards: false });
     if (!state) return [];
     const doneToday = state.steps.filter((step) => step.at >= today && step.activity !== "cards");
     const remainingNow = remainingMinutes(state);
     const doneMinutes = doneToday.reduce((sum, step) => sum + stepMinutes[step.activity], 0);
     // The mastery the exam list shows, weighted by passages.
-    const mastery = weightedPlanMastery(
-      state.topics,
-      new Map(
-        (passages.all(row.id) as Array<{ id: string; n: number }>).map((topic) => [topic.id, topic.n]),
-      ),
-    );
+    const mastery = weightedPlanMastery(state.topics, topicPassageCounts(db, row.id));
     return [
       {
         row,
@@ -230,7 +212,7 @@ function layout(db: Database.Database, plans: Studied[], now: number) {
   };
   const planned = settings.weeklyHours != null || Object.keys(settings.weeks).length > 0;
   const result = planned
-    ? spread(exams, (day) => ((weekHours(monday(addDays(today, day))) ?? 0) * 60) / 7)
+    ? spread(exams, (day) => ((weekHours(startOfWeek(addDays(today, day))) ?? 0) * 60) / 7)
     : null;
   return { settings, dated, exams, weekHours, result, today };
 }
@@ -300,7 +282,7 @@ export function sessionPlan(db: Database.Database, now = Date.now()) {
     exams: string[];
   }> = [];
   if (result)
-    for (let start = monday(today); start <= addDays(today, last); start = addDays(start, 7)) {
+    for (let start = startOfWeek(today); start <= addDays(today, last); start = addDays(start, 7)) {
       const minutes = new Map<string, number>();
       const examsInWeek: string[] = [];
       for (let day = 0; day <= last; day += 1) {

@@ -6,6 +6,7 @@ import {
   parseExercises,
 } from "@politost/smartbook-parser";
 import { chunkText } from "./chunk";
+import { latestDocument } from "./documents";
 import { uuidv7 } from "../../shared/ids";
 import type { PassageHit } from "./retrieve";
 import { suggestSourceRebuild } from "../plans/views";
@@ -410,30 +411,7 @@ export function readingOrder(alias?: string): string {
 }
 
 export function sourcePassages(db: Database.Database, sourceId: string) {
-  const rows = db
-    .prepare(
-      `SELECT id, text, section_path, locator_json, char_start, char_end FROM passages
-       WHERE source_id = ?
-         AND document_id = (
-           SELECT id FROM source_documents
-           WHERE source_id = passages.source_id
-           ORDER BY version DESC
-           LIMIT 1
-         )
-       ORDER BY ${readingOrder()}`,
-    )
-    .all(sourceId) as Array<{
-    id: string;
-    text: string;
-    section_path: string | null;
-    locator_json: string;
-    char_start: number;
-    char_end: number;
-  }>;
-  return mergeViewerParagraphs(
-    mapPassages(rows),
-    rows.map((row) => row.char_start),
-  );
+  return viewerPassages(db, sourceId);
 }
 
 export function chapterPassages(
@@ -441,19 +419,19 @@ export function chapterPassages(
   sourceId: string,
   chapter: number,
 ) {
+  return viewerPassages(db, sourceId, chapter);
+}
+
+/** The latest document's passages for the viewer: all of them in reading order, or one chapter's in stored order. */
+function viewerPassages(db: Database.Database, sourceId: string, chapter?: number) {
   const rows = db
     .prepare(
       `SELECT id, text, section_path, locator_json, char_start, char_end FROM passages
-       WHERE source_id = ? AND json_extract(locator_json, '$.chapter') = ?
-         AND document_id = (
-           SELECT id FROM source_documents
-           WHERE source_id = passages.source_id
-           ORDER BY version DESC
-           LIMIT 1
-         )
-       ORDER BY rowid`,
+       WHERE source_id = ? AND (? IS NULL OR json_extract(locator_json, '$.chapter') = ?)
+         AND document_id = ${latestDocument("passages.source_id")}
+       ORDER BY ${chapter === undefined ? readingOrder() : "rowid"}`,
     )
-    .all(sourceId, chapter) as Array<{
+    .all(sourceId, chapter ?? null, chapter ?? null) as Array<{
     id: string;
     text: string;
     section_path: string | null;

@@ -55,6 +55,8 @@ afterEach(() => {
 });
 
 const config = () => join(fake.userData, "config.json");
+/** The temporary file config.json is written to and flushed before it replaces the old one. */
+const flushedConfig = /[\\/]\.config\.json\.[0-9a-f-]+\.tmp$/;
 const defaultWorkspace = () => join(fake.userData, "workspace");
 
 describe("ensureWorkspace", () => {
@@ -64,7 +66,7 @@ describe("ensureWorkspace", () => {
     expect(JSON.parse(readFileSync(config(), "utf8"))).toEqual({
       workspacePath: defaultWorkspace(),
     });
-    expect(fake.synced).toContain(`${config()}.tmp`);
+    expect(fake.synced).toContainEqual(expect.stringMatching(flushedConfig));
   });
 
   it("opens a moved workspace", () => {
@@ -106,7 +108,7 @@ describe("ensureWorkspace", () => {
 describe("saveWorkspacePath", () => {
   it("flushes the new path before replacing the old one", () => {
     saveWorkspacePath("/Volumes/USB/Pyxis workspace");
-    expect(fake.synced[0]).toBe(`${config()}.tmp`);
+    expect(fake.synced[0]).toMatch(flushedConfig);
     expect(JSON.parse(readFileSync(config(), "utf8"))).toEqual({
       workspacePath: "/Volumes/USB/Pyxis workspace",
     });

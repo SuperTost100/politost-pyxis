@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { startOfDay } from "./local-day";
 
 /** The most sessions one plan holds: a written part, an oral part, a retake or two. */
 export const MAX_EXAM_SESSIONS = 10;
@@ -45,7 +46,7 @@ export type ExamSession = {
  */
 export function nextExamDate(dates: number[], now: number): number | null {
   if (dates.length === 0) return null;
-  const today = new Date(now).setHours(0, 0, 0, 0);
+  const today = startOfDay(now);
   const upcoming = dates.filter((date) => date >= today);
   return upcoming.length > 0 ? Math.min(...upcoming) : Math.max(...dates);
 }

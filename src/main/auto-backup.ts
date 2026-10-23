@@ -6,10 +6,8 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { basename, dirname, isAbsolute, join } from "node:path";
@@ -19,7 +17,9 @@ import type {
   AutoBackupFile,
   AutoBackupStatus,
 } from "../shared/bridge";
-import { inside } from "./workspace-move";
+import { writeFileAtomic } from "../core/atomic-write";
+import { two } from "../shared/local-day";
+import { inside } from "../core/path-inside";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -137,9 +137,7 @@ export function writeAutoBackupState(
   file: string,
   state: AutoBackupState,
 ): void {
-  const temporary = `${file}.tmp`;
-  writeFileSync(temporary, JSON.stringify(state, null, 2));
-  renameSync(temporary, file);
+  writeFileAtomic(file, JSON.stringify(state, null, 2));
 }
 
 /** Whether an automatic backup should run now: on, a day after the last success, and not right after a failure. */
@@ -161,7 +159,6 @@ export function backupDue(state: AutoBackupState, now: number): boolean {
 
 /** `pyxis-auto-backup-2026-10-13-210512-1a2b3c4d.zip`, in local time so the student can read it. */
 export function autoBackupName(at: Date, backupId: string): string {
-  const two = (n: number) => String(n).padStart(2, "0");
   return `pyxis-auto-backup-${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}-${two(at.getHours())}${two(at.getMinutes())}${two(at.getSeconds())}-${backupId}.zip`;
 }
 

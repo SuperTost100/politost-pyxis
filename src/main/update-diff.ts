@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { open, rename, rm, type FileHandle } from "node:fs/promises";
 import { gunzipSync, inflateRawSync } from "node:zlib";
+import { readCapped } from "../core/sources/capped-body";
 
 // Block-level differential downloads, adapted from electron-updater's differential downloader (MIT, Copyright (c) 2015
 // Loopline Systems; see docs/notices.md). electron-builder cuts an installer into content-defined blocks and lists each
@@ -210,22 +211,9 @@ export async function readRange(
   size: number,
 ): Promise<Buffer> {
   const body = await rangeBody(await fetchRange(start, end), start, end, size);
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  const reader = body.getReader();
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.length;
-      if (received > end - start) throw new DiffError("range");
-      chunks.push(value);
-    }
-  } finally {
-    await reader.cancel();
-  }
-  if (received !== end - start) throw new DiffError("range");
-  return Buffer.concat(chunks);
+  const bytes = await readCapped(body, end - start, () => new DiffError("range"));
+  if (bytes.byteLength !== end - start) throw new DiffError("range");
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
 /**

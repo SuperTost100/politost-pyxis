@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { removeBlob } from "../blobs";
+import { namedBlobs, removeBlob } from "../blobs";
 
 /**
  * What deleting a chat or a plan takes with it besides its own rows: the hidden documents it brought and their files.
@@ -125,10 +125,15 @@ function sourceHashes(db: Database.Database, sourceId: string): string[] {
   ].filter((sha): sha is string => typeof sha === "string");
 }
 
-/** Every source a chat lists by hand or attached, in either scope shape (an ID array, or `{ planId, sourceIds }`). */
-export function chatListedSources(db: Database.Database): Set<string> {
+/**
+ * Every source a chat lists by hand or attached, in either scope shape (an ID array, or `{ planId, sourceIds }`).
+ * `except`: leave out this chat's own list.
+ */
+export function chatListedSources(db: Database.Database, except?: string): Set<string> {
   const ids = new Set<string>();
-  for (const row of db.prepare(`SELECT scope_json FROM chats`).all() as Array<{ scope_json: string }>) {
+  for (const row of db.prepare(`SELECT scope_json FROM chats WHERE id IS NOT ?`).all(except ?? null) as Array<{
+    scope_json: string;
+  }>) {
     const parsed = JSON.parse(row.scope_json) as unknown;
     const list = Array.isArray(parsed) ? parsed : (parsed as { sourceIds?: unknown } | null)?.sourceIds;
     if (Array.isArray(list)) for (const id of list) if (typeof id === "string") ids.add(id);
@@ -230,35 +235,12 @@ export function deleteLoosePassages(db: Database.Database, candidates: string[])
   }
 }
 
-/** Every place a row names a stored file. */
-const NAMED_BLOBS = `SELECT blob_sha AS sha FROM sources
-  UNION ALL SELECT blob_sha FROM attachments
-  UNION ALL SELECT blob_sha FROM whiteboards
-  UNION ALL SELECT json_extract(tree_json, '$.blobSha') FROM source_documents
-  UNION ALL SELECT json_extract(tree_json, '$.sourceSha') FROM source_documents`;
-
-function blobInUse(db: Database.Database, sha: string): boolean {
-  return (
-    db
-      .prepare(
-        `SELECT 1 FROM (${NAMED_BLOBS}) WHERE sha = ?
-         UNION ALL SELECT 1 FROM (${OPEN_JOBS}) WHERE instr(text, ?) > 0
-         LIMIT 1`,
-      )
-      .get(sha, sha) !== undefined
-  );
-}
-
 /**
  * The hashes rows name now, and the text of jobs that may still run, for checking many files at once. Read it and
  * remove files with no await in between, so no other core code can add a row in the meantime.
  */
 export function blobUse(db: Database.Database): (sha: string) => boolean {
-  const named = new Set(
-    (db.prepare(NAMED_BLOBS).all() as Array<{ sha: unknown }>).flatMap((row) =>
-      typeof row.sha === "string" ? [row.sha] : [],
-    ),
-  );
+  const named = namedBlobs(db);
   const jobs = (db.prepare(OPEN_JOBS).all() as Array<{ text: string }>).map((row) => row.text);
   return (sha) => named.has(sha) || jobs.some((text) => text.includes(sha));
 }
@@ -274,8 +256,11 @@ export function removeUnreferencedBlobs(
   workspace: string,
   hashes: Iterable<string>,
 ): void {
-  for (const sha of new Set(hashes)) {
-    if (blobInUse(db, sha)) continue;
+  const unique = new Set(hashes);
+  if (unique.size === 0) return;
+  const inUse = blobUse(db);
+  for (const sha of unique) {
+    if (inUse(sha)) continue;
     try {
       removeBlob(workspace, sha);
     } catch {

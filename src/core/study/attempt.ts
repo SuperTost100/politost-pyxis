@@ -36,6 +36,35 @@ export type StoredQuestion = {
   answer: Grade;
 };
 
+/** A question as a new attempt shows it: what to answer and how, nothing that gives the answer away or explains it. */
+export function askedQuestion(question: {
+  id: string;
+  sourceId?: string;
+  stem: string;
+  options?: string[];
+  left?: string[];
+  right?: string[];
+  answer: { kind: Grade["kind"] };
+}) {
+  return {
+    id: question.id,
+    sourceId: question.sourceId,
+    stem: question.stem,
+    options: question.options,
+    left: question.left,
+    right: question.right,
+    grade: { kind: question.answer.kind },
+  };
+}
+
+/** A stored question with its answer replaced by the answer's kind, as a saved quiz or review reads it back. */
+export function withoutAnswer<Q extends { answer: { kind: string } }>({
+  answer,
+  ...question
+}: Q): Omit<Q, "answer"> & { grade: { kind: Q["answer"]["kind"] } } {
+  return { ...question, grade: { kind: answer.kind } };
+}
+
 type Stored = {
   /** Every question exists; a quiz that is still being written says so with `complete: false`. */
   complete: true;
@@ -98,18 +127,7 @@ export function startAttempt(
   db.prepare(
     `INSERT INTO attempts (id, plan_id, item_id, started_at) VALUES (?, ?, ?, ?)`,
   ).run(attemptId, planId, itemId, now);
-  return {
-    attemptId,
-    questions: stored.questions.map((question) => ({
-      id: question.id,
-      sourceId: question.sourceId,
-      stem: question.stem,
-      options: question.options,
-      left: question.left,
-      right: question.right,
-      grade: { kind: question.answer.kind },
-    })),
-  };
+  return { attemptId, questions: stored.questions.map(askedQuestion) };
 }
 
 /** A question the student marked wrong ("Domanda sbagliata?"): by its own id or the exercise it came from. */

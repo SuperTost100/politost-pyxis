@@ -12,6 +12,7 @@ import {
 import { retrievability, type ScheduleState } from "../study/schedule";
 import { questionPlaces } from "../study/smartText";
 import { reachableTarget } from "../../shared/plan-file";
+import { addDays, startOfWeek } from "../../shared/local-day";
 import {
   MASTERY_GROUPS,
   MASTERY_PRIOR_COUNT,
@@ -163,6 +164,19 @@ export function gapSeverity(
   return proposed === "severe" || mastery < target / 2 ? "severe" : "minor";
 }
 
+/** Each topic of the plan with its number of passages, the weight weightedPlanMastery gives it. */
+export function topicPassageCounts(db: Database.Database, planId: string): Map<string, number> {
+  return new Map(
+    (
+      db
+        .prepare(
+          "SELECT t.id, count(tp.passage_id) AS n FROM topics t LEFT JOIN topic_passages tp ON tp.topic_id = t.id WHERE t.plan_id = ? GROUP BY t.id",
+        )
+        .all(planId) as Array<{ id: string; n: number }>
+    ).map((row) => [row.id, row.n]),
+  );
+}
+
 /** Topics weigh by passage count, untouched ones included. A topic without passages weighs 1, so a plan without any still shows progress. */
 export function weightedPlanMastery(
   topics: Array<{ id: string; mastery: number }>,
@@ -193,18 +207,12 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   }>;
   const blocked = flaggedIds(db, "exercise");
   const places = questionPlaces(db, planId);
-  const attemptSources = attemptQuestionSources(db, planId);
+  const items = questionItems(db, planId);
+  const attemptSources = attemptQuestionSources(db, planId, items);
   const questionKinds = new Map<string, string>();
-  const itemBodies = db
-    .prepare(
-      "SELECT body_json FROM items WHERE plan_id=? AND kind IN ('quiz','diagnostic','review','simulation')",
-    )
-    .all(planId) as { body_json: string }[];
-  for (const item of itemBodies) {
-    const body = JSON.parse(item.body_json) as {
-      questions?: Array<{ id: string; answer?: { kind: string } }>;
-    };
-    for (const question of body.questions ?? [])
+  for (const item of items.values()) {
+    if (item.planId !== planId) continue;
+    for (const question of item.questions)
       if (question.answer?.kind)
         questionKinds.set(question.id, question.answer.kind);
   }
@@ -212,7 +220,7 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   const legacySimulations = db
     .prepare(
       `
-    SELECT aa.created_at, aa.payload_json, i.body_json FROM attempt_answers aa
+    SELECT aa.created_at, aa.payload_json, a.item_id FROM attempt_answers aa
     JOIN attempts a ON a.id=aa.attempt_id JOIN items i ON i.id=a.item_id
     WHERE a.plan_id=? AND i.kind='simulation' AND a.submitted_at IS NOT NULL
   `,
@@ -220,17 +228,14 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
     .all(planId) as Array<{
     created_at: number;
     payload_json: string;
-    body_json: string;
+    item_id: string;
   }>;
   const simulationEvidence = legacySimulations.flatMap((attempt) => {
-    const body = JSON.parse(attempt.body_json) as {
-      questions?: Array<{ id: string; topicId?: string }>;
-    };
     const result = JSON.parse(attempt.payload_json) as {
       results?: Array<{ id: string; score: number }>;
     };
     const topics = new Map<string, number[]>();
-    for (const question of body.questions ?? []) {
+    for (const question of items.get(attempt.item_id)?.questions ?? []) {
       const answer = result.results?.find((row) => row.id === question.id);
       if (!question.topicId || !answer) continue;
       const scores = topics.get(question.topicId) ?? [];
@@ -420,18 +425,7 @@ export function planSeries(
     { target: number } | undefined;
   const target = plan?.target ?? 0.8;
   const reached = reachableTarget(target);
-  const passageCounts = new Map(
-    (
-      db
-        .prepare(
-          `
-    SELECT t.id, count(tp.passage_id) AS count FROM topics t
-    LEFT JOIN topic_passages tp ON tp.topic_id=t.id WHERE t.plan_id=? GROUP BY t.id
-  `,
-        )
-        .all(planId) as Array<{ id: string; count: number }>
-    ).map((row) => [row.id, row.count]),
-  );
+  const passageCounts = topicPassageCounts(db, planId);
   const preparation = weightedPlanMastery(topics, passageCounts);
   const historicalAverage = (at: number) => {
     const scores = masteryFor(masteryEvidence(evidence, at), at);
@@ -441,10 +435,7 @@ export function planSeries(
     );
   };
   const chart = chartPoints(events, now, 14, (day) => {
-    const end = new Date(day);
-    end.setDate(end.getDate() + 1);
-    end.setHours(0, 0, 0, 0);
-    return historicalAverage(Math.min(now, end.getTime() - 1));
+    return historicalAverage(Math.min(now, addDays(day, 1) - 1));
   });
   const completed = finishedLessons(db, planId);
   const topicDates = new Map(
@@ -454,10 +445,19 @@ export function planSeries(
         .all(planId) as { id: string; created_at: number }[]
     ).map((row) => [row.id, row.created_at]),
   );
+  // Events and finished lessons by topic, so each topic does not read through every plan event.
+  const eventsByTopic = new Map<string, typeof events>();
+  for (const event of events) {
+    if (event.at > now) continue;
+    const list = eventsByTopic.get(event.topicId);
+    if (list) list.push(event);
+    else eventsByTopic.set(event.topicId, [event]);
+  }
+  const lessonsByTopic = new Map<string, number>();
+  for (const row of completed)
+    if (row.at <= now) lessonsByTopic.set(row.topicId, (lessonsByTopic.get(row.topicId) ?? 0) + 1);
   const skillTopics = topics.map((topic) => {
-    const rows = events.filter(
-      (event) => event.topicId === topic.id && event.at <= now,
-    );
+    const rows = eventsByTopic.get(topic.id) ?? [];
     const lastStudied = rows.length
       ? rows.reduce((latest, event) => Math.max(latest, event.at), 0)
       : null;
@@ -472,9 +472,7 @@ export function planSeries(
               .length,
           0,
         ),
-      lessons: completed.filter(
-        (row) => row.topicId === topic.id && row.at <= now,
-      ).length,
+      lessons: lessonsByTopic.get(topic.id) ?? 0,
       lastStudied,
       idle:
         now - (lastStudied ?? topicDates.get(topic.id) ?? now) >=
@@ -541,9 +539,7 @@ export function planSeries(
         b.wrongAnswers - a.wrongAnswers ||
         a.openedAt - b.openedAt,
     );
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  const start = new Date(startOfWeek(now));
   const weekdaySeconds = Array<number>(7).fill(0);
   for (const bar of activity.bars)
     weekdaySeconds[new Date(bar.day).getDay()]! += bar.seconds;
@@ -608,19 +604,54 @@ type ScorePayload = {
  * recorded before they named their sources (mixed reviews, diagnostics and simulations) find them here, so a later
  * "wrong question" flag still removes them.
  */
-function attemptQuestionSources(db: Database.Database, planId: string) {
+type ItemQuestion = {
+  id: string;
+  topicId?: string;
+  sourceId?: string;
+  sourceIds?: string[];
+  answer?: { kind: string };
+};
+
+/**
+ * The questions of the plan's quizzes, diagnostics, reviews and simulations, and of any such item one of its attempts
+ * answered, each body parsed once.
+ */
+function questionItems(
+  db: Database.Database,
+  planId: string,
+): Map<string, { planId: string; questions: ItemQuestion[] }> {
   const rows = db
     .prepare(
-      `SELECT a.id, i.body_json FROM attempts a JOIN items i ON i.id = a.item_id
+      `SELECT id, plan_id, body_json FROM items
+       WHERE kind IN ('quiz', 'diagnostic', 'review', 'simulation')
+         AND (plan_id = ? OR id IN (SELECT item_id FROM attempts WHERE plan_id = ?))`,
+    )
+    .all(planId, planId) as Array<{ id: string; plan_id: string; body_json: string }>;
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        planId: row.plan_id,
+        questions: (JSON.parse(row.body_json) as { questions?: ItemQuestion[] }).questions ?? [],
+      },
+    ]),
+  );
+}
+
+function attemptQuestionSources(
+  db: Database.Database,
+  planId: string,
+  items: ReturnType<typeof questionItems>,
+) {
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.item_id FROM attempts a JOIN items i ON i.id = a.item_id
        WHERE a.plan_id = ? AND i.kind IN ('quiz', 'diagnostic', 'review', 'simulation')`,
     )
-    .all(planId) as Array<{ id: string; body_json: string }>;
+    .all(planId) as Array<{ id: string; item_id: string }>;
   const sources = new Map<string, string[]>();
   for (const row of rows) {
-    const body = JSON.parse(row.body_json) as {
-      questions?: Array<{ id: string; sourceId?: string; sourceIds?: string[] }>;
-    };
-    for (const question of body.questions ?? []) {
+    for (const question of items.get(row.item_id)?.questions ?? []) {
       const ids = [question.sourceId, ...(question.sourceIds ?? [])].filter(
         (id): id is string => !!id,
       );

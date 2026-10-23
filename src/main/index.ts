@@ -3,6 +3,7 @@ import { writeKeyStore } from "./key-store";
 import { randomUUID } from "node:crypto";
 import {
   droppedFileGrant,
+  keepGrant,
   pickedFileGrant,
   type FileGrant,
 } from "../core/ipc/file-grants";
@@ -561,7 +562,7 @@ async function grantPickedPaths(paths: string[]): Promise<void> {
   return grantFiles(paths.map(pickedFileGrant));
 }
 async function grantFiles(grants: FileGrant[]): Promise<void> {
-  for (const grant of grants) pickedGrants.set(grant.path, grant);
+  for (const grant of grants) keepGrant(pickedGrants, grant);
   const child = coreChild;
   if (!child || coreExited(child)) throw new Error("core-busy");
   const id = randomUUID();
@@ -865,47 +866,52 @@ function pauseCore(): Promise<void> {
 /** cleanupComplete: a commit deleted the old copy. outcome: what a recovery left live. */
 type ArchiveResult = { cleanupComplete: boolean; outcome?: RestoreOutcome };
 
+type ArchiveMessage = {
+  ok?: boolean;
+  message?: string;
+  cleanupComplete?: boolean;
+  outcome?: RestoreOutcome;
+  verified?: Array<boolean | null>;
+};
+
+/**
+ * Runs one operation in the archive worker and settles on its one message: `result` turns a successful one into the
+ * value, or returns null when it lacks what was asked. A failed message, a worker error, or an exit before any message
+ * rejects (`exitError` names that last case).
+ */
+function archiveWorker<T>(
+  workerData: Record<string, unknown>,
+  result: (message: ArchiveMessage) => T | null,
+  exitError: (code: number) => string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err: Error | null, value?: T) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(value as T);
+    };
+    const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), { workerData });
+    worker.once("message", (message: ArchiveMessage) => {
+      const value = message.ok ? result(message) : null;
+      if (value !== null) finish(null, value);
+      else finish(new Error(message.message || "backup-failed"));
+    });
+    worker.once("error", (err) => finish(err instanceof Error ? err : new Error("backup-failed")));
+    worker.once("exit", (code) => finish(new Error(exitError(code))));
+  });
+}
+
 function runArchive(
   op: "backup" | "restore" | "commit" | "recover",
   zip?: string,
 ): Promise<ArchiveResult> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (err?: Error, result?: ArchiveResult) => {
-      if (settled) return;
-      settled = true;
-      if (err) reject(err);
-      else resolve(result ?? { cleanupComplete: true });
-    };
-    const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
-      workerData: { op, workspace: workspacePath, zip },
-    });
-    worker.once(
-      "message",
-      (message: {
-        ok?: boolean;
-        message?: string;
-        cleanupComplete?: boolean;
-        outcome?: RestoreOutcome;
-      }) => {
-        if (message.ok)
-          finish(undefined, {
-            cleanupComplete: message.cleanupComplete ?? true,
-            outcome: message.outcome,
-          });
-        else finish(new Error(message.message || "backup-failed"));
-      },
-    );
-    worker.once("error", (err) => {
-      finish(err instanceof Error ? err : new Error("backup-failed"));
-    });
-    worker.once("exit", (code) => {
-      if (!settled)
-        finish(
-          new Error(code === 0 ? "backup-worker-no-result" : "backup-failed"),
-        );
-    });
-  });
+  return archiveWorker(
+    { op, workspace: workspacePath, zip },
+    (message) => ({ cleanupComplete: message.cleanupComplete ?? true, outcome: message.outcome }),
+    (code) => (code === 0 ? "backup-worker-no-result" : "backup-failed"),
+  );
 }
 
 /**
@@ -913,31 +919,11 @@ function runArchive(
  * so it runs beside a backup or a restore.
  */
 function verifyArchives(zips: string[]): Promise<Array<boolean | null>> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(join(import.meta.dirname, "archive-worker.js"), {
-      workerData: { op: "verify", zips },
-    });
-    let settled = false;
-    const finish = (err?: Error, verified?: Array<boolean | null>) => {
-      if (settled) return;
-      settled = true;
-      if (err) reject(err);
-      else resolve(verified ?? []);
-    };
-    worker.once("message", (message: {
-        ok?: boolean;
-        verified?: Array<boolean | null>;
-        message?: string;
-      }) =>
-      message.ok && message.verified
-        ? finish(undefined, message.verified)
-        : finish(new Error(message.message || "backup-failed")),
-    );
-    worker.once("error", (err) =>
-      finish(err instanceof Error ? err : new Error("backup-failed")),
-    );
-    worker.once("exit", () => finish(new Error("backup-worker-no-result")));
-  });
+  return archiveWorker(
+    { op: "verify", zips },
+    (message) => message.verified ?? null,
+    () => "backup-worker-no-result",
+  );
 }
 
 /**
@@ -974,8 +960,7 @@ function requireMainSender(event: IpcMainInvokeEvent, code: string): void {
 
 function registerIpc(): void {
   ipcMain.handle(mainChannels.coreRetry, async (event) => {
-    if (event.sender.id !== mainWindow?.webContents.id)
-      throw new Error("core-untrusted-sender");
+    requireMainSender(event, "core-untrusted-sender");
     // A backup, restore, move or wipe stopped core on purpose and starts it again itself. A core started now could
     // open the workspace mid-swap, and the operation's own start would then leave two cores on one database. A wipe
     // that could not put the data back keeps core stopped too.
@@ -1002,8 +987,7 @@ function registerIpc(): void {
   ipcMain.handle(
     mainChannels.openDialog,
     async (event, options: OpenDialogOptions) => {
-      if (event.sender.id !== mainWindow?.webContents.id)
-        throw new Error("picker-untrusted-sender");
+      requireMainSender(event, "picker-untrusted-sender");
       const forced = process.env["PYXIS_E2E_FILE"];
       if (forced && e2eSeam()) {
         await grantPickedPaths([forced]);
@@ -1062,8 +1046,7 @@ function registerIpc(): void {
     ...(fixture ? { fetch: fixture } : {}),
   });
   ipcMain.handle(mainChannels.updatesCheck, (event, force: unknown) => {
-    if (event.sender.id !== mainWindow?.webContents.id)
-      throw new Error("updates-untrusted-sender");
+    requireMainSender(event, "updates-untrusted-sender");
     return checkUpdates(force === true);
   });
   ipcMain.handle(mainChannels.menuLanguage, (event, language: unknown) => {
@@ -1148,23 +1131,19 @@ function registerIpc(): void {
     });
   });
   registerArtifactHandlers(() => mainWindow, e2eSeam);
-  function authorizeKeys(senderId: number): void {
-    if (senderId !== mainWindow?.webContents.id)
-      throw new Error("keys-untrusted-sender");
-  }
   function keyProvider(provider: unknown): "anthropic" | "openai" {
     if (provider !== "anthropic" && provider !== "openai")
       throw new Error("unknown-provider");
     return provider;
   }
   ipcMain.handle(mainChannels.terminalOpen, async (event, program: unknown) => {
-    authorizeKeys(event.sender.id);
+    requireMainSender(event, "keys-untrusted-sender");
     if (program !== undefined && program !== "antigravity")
       throw new Error("unknown-program");
     await openTerminal(program, (path) => shell.openPath(path));
   });
   ipcMain.handle(mainChannels.keysStatus, (event) => {
-    authorizeKeys(event.sender.id);
+    requireMainSender(event, "keys-untrusted-sender");
     const backend =
       process.platform === "linux"
         ? safeStorage.getSelectedStorageBackend()
@@ -1184,7 +1163,7 @@ function registerIpc(): void {
     };
   });
   ipcMain.handle(mainChannels.keysRemove, async (event, raw: unknown) => {
-    authorizeKeys(event.sender.id);
+    requireMainSender(event, "keys-untrusted-sender");
     if (workspaceBusy) throw new Error("workspace-busy");
     const provider = keyProvider(raw);
     const stored =
@@ -1207,7 +1186,7 @@ function registerIpc(): void {
   ipcMain.handle(
     mainChannels.keysSet,
     async (event, raw: unknown, key: unknown) => {
-      authorizeKeys(event.sender.id);
+      requireMainSender(event, "keys-untrusted-sender");
       if (workspaceBusy) throw new Error("workspace-busy");
       const provider = keyProvider(raw);
       if (typeof key !== "string" || !key.trim() || key.length > 4096)
@@ -1345,8 +1324,7 @@ function registerIpc(): void {
     }
   });
   ipcMain.handle(mainChannels.workspaceMove, async (event) => {
-    if (event.sender.id !== mainWindow?.webContents.id)
-      throw new Error("workspace-untrusted-sender");
+    requireMainSender(event, "workspace-untrusted-sender");
     const release = await takeWorkspace();
     try {
       const forced = e2eSeam() ? process.env["PYXIS_E2E_MOVE"] : undefined;

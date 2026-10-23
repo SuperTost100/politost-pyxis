@@ -5,7 +5,7 @@ import { hasBlob, putBlob, readBlob, removeBlob } from "../blobs";
 import { capabilityWarning, engineSeesImages } from "../engine/capabilities";
 import { kindFor, mimeFor as documentMime, storeExtracted, type ExtractedDocument } from "../sources/documents";
 import { readBoundedSync } from "../sources/bounded-read";
-import { sha256 } from "../sources/quality";
+import { base64, sha256 } from "../sources/quality";
 import { ocrBytes, runSourceWorker } from "../sources/worker-client";
 import { isHeicExt, imageMime } from "../sources/heic";
 import {
@@ -167,7 +167,7 @@ export async function stageFiles(
         }
         prepared.push({
           mediaType: fitted.mediaType,
-          data: Buffer.from(fitted.bytes).toString("base64"),
+          data: base64(fitted.bytes),
           sha,
           ...(original ? { original } : {}),
           ...(fitted.resizedFrom ? { resizedFrom: fitted.resizedFrom } : {}),
@@ -293,7 +293,7 @@ export async function savedImages(
     if (!image) {
       try {
         const fitted = await fit(readBlob(workspace, row.sha).file, extFor[row.mime], signal);
-        image = { mediaType: fitted.mediaType, data: Buffer.from(fitted.bytes).toString("base64") };
+        image = { mediaType: fitted.mediaType, data: base64(fitted.bytes) };
       } catch (error) {
         if (signal?.aborted || isAbort(error)) throw error;
         const message = error instanceof Error ? error.message : "";

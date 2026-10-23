@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import tiers from "../../../resources/model-tiers.json";
+import { tierData } from "./tiers";
 import { createDisclosure } from "./disclosure";
 import {
   createApiProviders,
@@ -263,11 +263,7 @@ export async function runTurn(input: TurnInput): Promise<EngineResult> {
 
 /** Ollama's own default context is a few thousand tokens and it drops the start of a longer prompt without a word. */
 function localContextWindow(model: string): number | undefined {
-  return (
-    tiers as unknown as {
-      local: { tiers: Array<{ model: string; contextWindow: number }> };
-    }
-  ).local.tiers.find((tier) => tier.model === model)?.contextWindow;
+  return tierData.local.tiers.find((tier) => tier.model === model)?.contextWindow;
 }
 
 async function turn(input: TurnInput): Promise<EngineResult> {

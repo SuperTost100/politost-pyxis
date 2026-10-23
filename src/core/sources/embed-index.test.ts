@@ -39,3 +39,23 @@ it("indexing stops after the batch in progress when local search is turned off",
   expect(db.prepare(`SELECT COUNT(*) AS n FROM passages_vec`).get()).toEqual({ n: 32 });
   db.close();
 });
+
+it("indexing reads on from the last batch and prepares its statements once", async () => {
+  const db = openDatabase(":memory:");
+  setEmbeddingConsent(db, true);
+  const insert = db.prepare(`INSERT INTO passages (id, text, created_at) VALUES (?, 'energia', 1)`);
+  for (let i = 0; i < 70; i += 1) insert.run(`p${i}`);
+  const prepare = db.prepare.bind(db);
+  const prepared: string[] = [];
+  db.prepare = ((sql: string) => {
+    prepared.push(sql);
+    return prepare(sql);
+  }) as typeof db.prepare;
+  const count = await indexModelVectors(db, "fixture", new AbortController().signal);
+  db.prepare = prepare;
+  expect(count).toBe(70);
+  expect(db.prepare(`SELECT COUNT(*) AS n FROM passages_vec`).get()).toEqual({ n: 70 });
+  // Four statements, then one consent check before each of the three batches and before the read that ends the loop.
+  expect(prepared.length).toBe(8);
+  db.close();
+});

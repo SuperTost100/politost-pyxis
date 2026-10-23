@@ -4,10 +4,11 @@ import { planEducation } from "./education";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
+import { daysBetween, startOfDay } from "../../shared/local-day";
 import { suggestStep, topicSuggestion, type Stage, type TopicStatus } from "./path";
 import { finishedLessons, gradedActivities, readSteps } from "./steps";
 import { countDueCards } from "../study/cards";
-import { gapSeverity, planMastery, syncGaps, weightedPlanMastery } from "./progress";
+import { gapSeverity, planMastery, syncGaps, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
 import type { ExamSessionInput } from "../../shared/exam-sessions";
 import { hasSessions, readSessions, saveSessions, sessionsFromInput, syncExamDates } from "./sessions";
@@ -331,11 +332,7 @@ export function readPlan(db: Database.Database, planId: string, now = Date.now()
 }
 
 export function daysUntil(examAt: number, now: number): number {
-  const exam = new Date(examAt);
-  exam.setHours(0, 0, 0, 0);
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  return Math.round((exam.getTime() - today.getTime()) / 86_400_000);
+  return daysBetween(now, examAt);
 }
 
 export function listPlans(db: Database.Database, now = Date.now()) {
@@ -349,7 +346,7 @@ export function listPlans(db: Database.Database, now = Date.now()) {
        ORDER BY CASE WHEN p.exam_at < ? THEN 2 WHEN p.exam_at IS NULL THEN 1 ELSE 0 END,
                 p.exam_at ASC, p.updated_at DESC`,
     )
-    .all(new Date(now).setHours(0, 0, 0, 0)) as Array<{
+    .all(startOfDay(now)) as Array<{
     id: string;
     title: string;
     status: string;
@@ -361,16 +358,7 @@ export function listPlans(db: Database.Database, now = Date.now()) {
   }>;
   return rows.map((row) => {
     const topics = planMastery(db, row.id, now);
-    const counts = new Map(
-      (
-        db
-          .prepare(
-            "SELECT t.id, count(tp.passage_id) AS n FROM topics t LEFT JOIN topic_passages tp ON tp.topic_id=t.id WHERE t.plan_id=? GROUP BY t.id",
-          )
-          .all(row.id) as { id: string; n: number }[]
-      ).map((t) => [t.id, t.n]),
-    );
-    const mastery = weightedPlanMastery(topics, counts);
+    const mastery = weightedPlanMastery(topics, topicPassageCounts(db, row.id));
     return {
       id: row.id,
       title: row.title,
@@ -399,6 +387,8 @@ export function pathState(
   db: Database.Database,
   planId: string,
   now = Date.now(),
+  /** False leaves every topic's `dueCards` at 0, for a caller that counts due cards across the plan itself. */
+  options: { dueCards?: boolean } = {},
 ) {
   syncExamDates(db, now, planId);
   const meta = db
@@ -415,9 +405,16 @@ export function pathState(
     )
     .all(planId) as Array<{ topic_id: string | null; severity: "severe" | "minor" | null }>;
   // Gap rows are written by the app itself (syncs, flags, merges), so they say nothing about when the topic was studied.
-  const lastStudied = db.prepare(
-    `SELECT MAX(created_at) AS at FROM learning_events
-     WHERE plan_id = ? AND topic_id = ? AND kind NOT IN ('gap_opened', 'gap_closed')`,
+  const lastStudied = new Map(
+    (
+      db
+        .prepare(
+          `SELECT topic_id, MAX(created_at) AS at FROM learning_events
+           WHERE plan_id = ? AND topic_id IS NOT NULL AND kind NOT IN ('gap_opened', 'gap_closed')
+           GROUP BY topic_id`,
+        )
+        .all(planId) as Array<{ topic_id: string; at: number }>
+    ).map((row) => [row.topic_id, row.at]),
   );
   // A topic's lesson is recorded once, so its step marks when the stay on that topic began.
   const readAt = new Map(
@@ -425,17 +422,17 @@ export function pathState(
   );
   const topics: TopicStatus[] = planMastery(db, planId, now).map((topic) => {
     const open = gaps.filter((gap) => gap.topic_id === topic.id);
-    const last = lastStudied.get(planId, topic.id) as { at: number | null };
+    const last = lastStudied.get(topic.id);
     const since = readAt.get(topic.id);
     return {
       id: topic.id,
       mastery: topic.mastery,
-      dueCards: countDueCards(db, planId, now, topic.id),
+      dueCards: options.dueCards === false ? 0 : countDueCards(db, planId, now, topic.id),
       // Only gaps Progress would call severe count as such; a minor reading is not a severe gap.
       severeGaps: open.filter(
         (gap) => gapSeverity(gap.severity, topic.mastery, meta.target) === "severe",
       ).length,
-      daysIdle: last.at == null ? 0 : Math.max(0, -daysUntil(last.at, now)),
+      daysIdle: last == null ? 0 : Math.max(0, -daysUntil(last, now)),
       graded: since == null ? 0 : gradedActivities(db, planId, topic.id, since),
     };
   });

@@ -93,6 +93,35 @@ const proposedCardSchema = z.object({
 
 /** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
 const citationSchema = z.object({ passageId: z.string(), label: z.string() });
+
+/** Where a passage sits in its source. Each kind of source fills in the parts it has. */
+const locatorSchema = z.object({
+  chapter: z.number().optional(),
+  paragraph: z.string().optional(),
+  page: z.number().optional(),
+  slide: z.number().optional(),
+});
+
+/** A quiz question as the quiz screen gets it: what to answer and the kind of answer, never the answer itself. */
+const quizQuestionSchema = z.object({
+  id: z.string(),
+  sourceId: z.string().optional(),
+  stem: z.string(),
+  grade: z.object({ kind: z.string() }),
+  options: z.array(z.string()).optional(),
+  left: z.array(z.string()).optional(),
+  right: z.array(z.string()).optional(),
+});
+
+/** A source queued for import: its row and job, and what the import found so far. */
+const importResultSchema = z.object({
+  sourceId: z.string(),
+  jobId: z.string().optional(),
+  title: z.string(),
+  chapters: z.number(),
+  passages: z.number(),
+  exercises: z.number(),
+});
 // One kind of evidence in a topic's mastery: how many observations, their summed weight and weighted score, their average.
 const masteryPartSchema = z.object({
   count: z.number().int(),
@@ -121,15 +150,7 @@ const reviewSessionSchema = z.object({
   cards: z.array(dueCardSchema),
   attemptId: z.string(),
   questions: z.array(
-    z.object({
-      id: z.string(),
-      sourceId: z.string().optional(),
-      stem: z.string(),
-      grade: z.object({ kind: z.string() }),
-      options: z.array(z.string()).optional(),
-      left: z.array(z.string()).optional(),
-      right: z.array(z.string()).optional(),
-    }),
+    quizQuestionSchema,
   ),
   progress: z.object({
     done: z.number(),
@@ -209,6 +230,15 @@ const JobStepView = z.object({
   name: z.string(),
   label: z.string(),
   state: z.enum(["pending", "running", "succeeded", "failed"]),
+});
+
+/** A plan or map job as its page shows progress. */
+const jobProgressSchema = z.object({
+  jobId: z.string(),
+  state: JobState,
+  progress: z.number(),
+  stepLabel: z.string().nullable(),
+  error: z.string().nullable(),
 });
 
 export const JobView = z.object({
@@ -740,15 +770,7 @@ export const requests = {
     output: z.object({
       attemptId: z.string(),
       questions: z.array(
-        z.object({
-          id: z.string(),
-          sourceId: z.string().optional(),
-          stem: z.string(),
-          grade: z.object({ kind: z.string() }),
-          options: z.array(z.string()).optional(),
-          left: z.array(z.string()).optional(),
-          right: z.array(z.string()).optional(),
-        }),
+        quizQuestionSchema,
       ),
     }),
   },
@@ -771,15 +793,7 @@ export const requests = {
     output: z.object({
       attemptId: z.string(),
       questions: z.array(
-        z.object({
-          id: z.string(),
-          sourceId: z.string().optional(),
-          stem: z.string(),
-          grade: z.object({ kind: z.string() }),
-          options: z.array(z.string()).optional(),
-          left: z.array(z.string()).optional(),
-          right: z.array(z.string()).optional(),
-        }),
+        quizQuestionSchema,
       ),
     }),
   },
@@ -809,16 +823,7 @@ export const requests = {
       submittedAt: z.number().optional(),
       result: quizResultSchema.optional(),
       questions: z.array(
-        z.object({
-          id: z.string(),
-          sourceId: z.string().optional(),
-          topicId: z.string().optional(),
-          stem: z.string(),
-          grade: z.object({ kind: z.string() }),
-          options: z.array(z.string()).optional(),
-          left: z.array(z.string()).optional(),
-          right: z.array(z.string()).optional(),
-        }),
+        quizQuestionSchema.extend({ topicId: z.string().optional() }),
       ),
       jobId: z.string().optional(),
       review: z.boolean().optional(),
@@ -1040,15 +1045,7 @@ export const requests = {
     output: z.object({
       attemptId: z.string(),
       questions: z.array(
-        z.object({
-          id: z.string(),
-          sourceId: z.string().optional(),
-          stem: z.string(),
-          grade: z.object({ kind: z.string() }),
-          options: z.array(z.string()).optional(),
-          left: z.array(z.string()).optional(),
-          right: z.array(z.string()).optional(),
-        }),
+        quizQuestionSchema,
       ),
     }),
   },
@@ -1448,15 +1445,7 @@ export const requests = {
   },
   "maps.build": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
-    output: z
-      .object({
-        jobId: z.string(),
-        state: JobState,
-        progress: z.number(),
-        stepLabel: z.string().nullable(),
-        error: z.string().nullable(),
-      })
-      .nullable(),
+    output: jobProgressSchema.nullable(),
   },
   "maps.generate": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
@@ -1965,16 +1954,7 @@ export const requests = {
   },
   "plans.build": {
     input: z.object({ planId: z.string() }),
-    output: z
-      .object({
-        jobId: z.string(),
-        state: JobState,
-        progress: z.number(),
-        stepLabel: z.string().nullable(),
-        error: z.string().nullable(),
-        steps: z.array(JobStepView),
-      })
-      .nullable(),
+    output: jobProgressSchema.extend({ steps: z.array(JobStepView) }).nullable(),
   },
   "plans.intro": {
     input: z.object({ planId: z.string() }),
@@ -2051,42 +2031,36 @@ export const requests = {
   },
   "plans.rebuildState": {
     input: z.object({ planId: z.string() }),
-    output: z
-      .object({
-        jobId: z.string(),
-        state: JobState,
-        progress: z.number(),
-        stepLabel: z.string().nullable(),
-        error: z.string().nullable(),
-        steps: z.array(JobStepView),
-        /** Present once the job succeeded: what applying would change. */
-        review: z
-          .object({
-            stale: z.boolean(),
-            kept: z.array(
-              z.object({
-                id: z.string(),
-                title: z.string(),
-                /** The title the rebuilt tree gave this topic, which it does not take. */
-                newTitle: z.string().optional(),
-                reason: z.enum(["passages", "title"]),
-                score: z.number(),
-              }),
-            ),
-            added: z.array(
-              z.object({ title: z.string(), passages: z.number() }),
-            ),
-            archived: z.array(
-              z.object({
-                id: z.string(),
-                title: z.string(),
-                progress: z.boolean(),
-              }),
-            ),
-          })
-          .nullable(),
-      })
-      .nullable(),
+    output: jobProgressSchema.extend({
+      steps: z.array(JobStepView),
+      /** Present once the job succeeded: what applying would change. */
+      review: z
+        .object({
+          stale: z.boolean(),
+          kept: z.array(
+            z.object({
+              id: z.string(),
+              title: z.string(),
+              /** The title the rebuilt tree gave this topic, which it does not take. */
+              newTitle: z.string().optional(),
+              reason: z.enum(["passages", "title"]),
+              score: z.number(),
+            }),
+          ),
+          added: z.array(
+            z.object({ title: z.string(), passages: z.number() }),
+          ),
+          archived: z.array(
+            z.object({
+              id: z.string(),
+              title: z.string(),
+              progress: z.boolean(),
+            }),
+          ),
+        })
+        .nullable(),
+    })
+    .nullable(),
   },
   "plans.rebuildStart": {
     input: z.object({ planId: z.string() }),
@@ -2208,14 +2182,7 @@ export const requests = {
   },
   "sources.import": {
     input: z.object({ path: z.string() }),
-    output: z.object({
-      sourceId: z.string(),
-      jobId: z.string().optional(),
-      title: z.string(),
-      chapters: z.number(),
-      passages: z.number(),
-      exercises: z.number(),
-    }),
+    output: importResultSchema,
   },
   "sources.search": {
     input: z.object({ query: z.string() }),
@@ -2225,10 +2192,7 @@ export const requests = {
         sourceId: z.string(),
         text: z.string(),
         sectionPath: z.string().nullable(),
-        locator: z.object({
-          chapter: z.number().optional(),
-          paragraph: z.string().optional(),
-        }),
+        locator: locatorSchema.pick({ chapter: true, paragraph: true }),
       }),
     ),
   },
@@ -2389,12 +2353,7 @@ export const requests = {
               passageId: z.string(),
               sourceId: z.string(),
               sectionPath: z.string().nullable(),
-              locator: z.object({
-                chapter: z.number().optional(),
-                paragraph: z.string().optional(),
-                page: z.number().optional(),
-                slide: z.number().optional(),
-              }),
+              locator: locatorSchema,
             }),
           ),
         }),
@@ -2454,12 +2413,7 @@ export const requests = {
               passageId: z.string(),
               sourceId: z.string(),
               sectionPath: z.string().nullable(),
-              locator: z.object({
-                chapter: z.number().optional(),
-                paragraph: z.string().optional(),
-                page: z.number().optional(),
-                slide: z.number().optional(),
-              }),
+              locator: locatorSchema,
             }),
           ),
         })
@@ -2476,14 +2430,7 @@ export const requests = {
   },
   "sources.paste": {
     input: z.object({ title: z.string(), text: z.string() }),
-    output: z.object({
-      sourceId: z.string(),
-      jobId: z.string().optional(),
-      title: z.string(),
-      chapters: z.number(),
-      passages: z.number(),
-      exercises: z.number(),
-    }),
+    output: importResultSchema,
   },
   "sources.books": {
     input: z.object({}),
@@ -2535,14 +2482,7 @@ export const requests = {
   },
   "sources.link": {
     input: z.object({ url: z.string() }),
-    output: z.object({
-      sourceId: z.string(),
-      jobId: z.string().optional(),
-      title: z.string(),
-      chapters: z.number(),
-      passages: z.number(),
-      exercises: z.number(),
-    }),
+    output: importResultSchema,
   },
   "sources.scanFolder": {
     input: z.object({ path: z.string() }),
@@ -2579,14 +2519,7 @@ export const requests = {
   },
   "sources.replace": {
     input: z.object({ sourceId: z.string(), path: z.string() }),
-    output: z.object({
-      sourceId: z.string(),
-      jobId: z.string().optional(),
-      title: z.string(),
-      chapters: z.number(),
-      passages: z.number(),
-      exercises: z.number(),
-    }),
+    output: importResultSchema,
   },
   "sources.syllabus": {
     input: z.object({ sourceId: z.string() }),
@@ -2691,12 +2624,7 @@ export const requests = {
         sourceId: z.string(),
         text: z.string(),
         sectionPath: z.string().nullable(),
-        locator: z.object({
-          chapter: z.number().optional(),
-          paragraph: z.string().optional(),
-          page: z.number().optional(),
-          slide: z.number().optional(),
-        }),
+        locator: locatorSchema,
         current: z.boolean(),
       }),
     ),
@@ -2730,12 +2658,7 @@ export const requests = {
         sourceId: z.string(),
         text: z.string(),
         sectionPath: z.string().nullable(),
-        locator: z.object({
-          chapter: z.number().optional(),
-          paragraph: z.string().optional(),
-          page: z.number().optional(),
-          slide: z.number().optional(),
-        }),
+        locator: locatorSchema,
         current: z.boolean(),
       }),
     ),

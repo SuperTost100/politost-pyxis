@@ -3,7 +3,7 @@ import { openDatabase } from "../db/connection";
 import { appendEvent } from "../events";
 import { saveQuiz, startAttempt, submitAttempt } from "../study/attempt";
 import { planGuide } from "./create";
-import { gradedActivities, readSteps, recordStep } from "./steps";
+import { gradedActivities, readSteps, recordStep, requireActiveTopic } from "./steps";
 
 type Db = ReturnType<typeof openDatabase>;
 
@@ -177,4 +177,13 @@ describe("gradedActivities", () => {
     expect(next(start + 9 * day)).toMatchObject({ activity: "quiz", topicId: "a", reason: "review" });
     db.close();
   });
+});
+
+it("accepts only an active topic of the plan", () => {
+  const db = fixture();
+  expect(() => requireActiveTopic(db, "plan", "a")).not.toThrow();
+  expect(() => requireActiveTopic(db, "other", "a")).toThrow("topic-missing");
+  expect(() => requireActiveTopic(db, "plan", null)).toThrow("topic-missing");
+  db.prepare("UPDATE topics SET archived_at = 2 WHERE id = 'a'").run();
+  expect(() => requireActiveTopic(db, "plan", "a")).toThrow("topic-missing");
 });

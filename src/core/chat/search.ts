@@ -81,24 +81,26 @@ function snippetOf(
   };
 }
 
-/** The folded text of each message already searched, so a keystroke does not read and fold every chat again. Messages never change once stored. */
-const foldedCache = new WeakMap<Database.Database, { chars: number; text: Map<string, { length: number; folded: string }> }>();
+/**
+ * The folded text of each message already searched, so a keystroke does not read and fold every chat again. A message
+ * changes only when a stopped reply is continued, which lengthens it, so its size in bytes tells a stale entry.
+ */
+const foldedCache = new WeakMap<Database.Database, { chars: number; text: Map<string, { bytes: number; folded: string }> }>();
 
 function foldedMessage(
   db: Database.Database,
-  id: string,
-  role: string,
-  body: string,
+  row: { id: string; role: string; bytes: number },
+  body: () => string,
 ): string {
   let cache = foldedCache.get(db);
   if (!cache || cache.chars > CACHE_CHARS) {
     cache = { chars: 0, text: new Map() };
     foldedCache.set(db, cache);
   }
-  const known = cache.text.get(id);
-  if (known && known.length === body.length) return known.folded;
-  const text = foldText(visibleText(role, body));
-  cache.text.set(id, { length: body.length, folded: text });
+  const known = cache.text.get(row.id);
+  if (known && known.bytes === row.bytes) return known.folded;
+  const text = foldText(visibleText(row.role, body()));
+  cache.text.set(row.id, { bytes: row.bytes, folded: text });
   cache.chars += text.length;
   return text;
 }
@@ -109,7 +111,8 @@ function foldedMessage(
  * searched, so the cap does not hide them behind newer chats of other subjects. Only the text a student sees is
  * searched, not the stored followups, checks or citation markers. A title match shows no snippet; otherwise the
  * snippet comes from the first message that matches. Each message is folded once and kept, so only the first search
- * after start pays for reading every chat; a later keystroke only looks for the words in text already folded.
+ * after start pays for reading every chat; a later keystroke reads only message sizes and the body of a match, and
+ * looks for the words in text already folded.
  */
 export function searchChats(
   db: Database.Database,
@@ -124,8 +127,10 @@ export function searchChats(
     )
     .all(subject ?? null, subject ?? null) as Array<{ id: string; title: string | null; updated_at: number }>;
   const messages = db.prepare(
-    `SELECT id, role, body FROM messages WHERE chat_id = ? AND role IN ('user', 'assistant') ORDER BY created_at`,
+    `SELECT id, role, octet_length(body) AS bytes FROM messages
+     WHERE chat_id = ? AND role IN ('user', 'assistant') ORDER BY created_at`,
   );
+  const bodyOf = db.prepare(`SELECT body FROM messages WHERE id = ?`).pluck();
   const hits: ChatSearchHit[] = [];
   for (const chat of chats) {
     // One more than the cap tells the student the list was cut.
@@ -135,14 +140,11 @@ export function searchChats(
       hits.push({ ...hit, snippet: null });
       continue;
     }
-    for (const row of messages.iterate(chat.id) as Iterable<{
-      id: string;
-      role: string;
-      body: string;
-    }>) {
-      const text = foldedMessage(db, row.id, row.role, row.body);
+    for (const row of messages.all(chat.id) as Array<{ id: string; role: string; bytes: number }>) {
+      const body = () => bodyOf.get(row.id) as string;
+      const text = foldedMessage(db, row, body);
       if (!terms.every((term) => text.includes(term))) continue;
-      const shown = visibleText(row.role, row.body);
+      const shown = visibleText(row.role, body());
       const at = find(shown, terms);
       if (!at) continue;
       hits.push({ ...hit, snippet: snippetOf(shown, at) });
