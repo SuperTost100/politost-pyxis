@@ -177,11 +177,13 @@ export function MakeCardsDialog() {
         })),
         ...made,
       });
-      await Promise.all(
-        ["cards", "card-queue", "card-browse", "review-session", "plan"].map(
-          (key) => client.invalidateQueries({ queryKey: [key] }),
+      // The browser lists cards from every plan; the other lists belong to this plan alone.
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["card-browse"] }),
+        ...["cards", "card-queue", "review-session", "plan"].map((key) =>
+          client.invalidateQueries({ queryKey: [key, planId] }),
         ),
-      );
+      ]);
       const saved = t("makeCards.saved", {
         count: result.saved,
         topic: topic?.title ?? "",
