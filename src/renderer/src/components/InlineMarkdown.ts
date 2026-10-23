@@ -1,6 +1,6 @@
 import { createElement, Fragment } from "react";
 import ReactMarkdown from "react-markdown";
-import { normalizeMathDelimiters } from "../markdown/normalizeMathDelimiters";
+import { normalizeMathDelimiters } from "../../../shared/math-delimiters";
 import { inlineRemarkPlugins, rehypePlugins } from "../markdown/plugins";
 
 // Everything a button or label cannot hold: blocks, links, images, controls.

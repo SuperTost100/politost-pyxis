@@ -2,13 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
-import { cacheShare, formatTokens, weekStart } from "../../lib/tokens";
+import { cacheShare, formatTokens } from "../../lib/tokens";
+import { startOfWeek } from "../../../../shared/local-day";
 import "./EngineUsage.css";
 
 /** Tokens each engine used this week, so a student on a capped plan can see what Pyxis costs them. */
 export function EngineUsage() {
   const { t, i18n } = useTranslation();
-  const [since] = useState(() => weekStart(new Date()).getTime());
+  const [since] = useState(() => startOfWeek(Date.now()));
   const usage = useQuery({
     queryKey: ["engines", "usage", since],
     queryFn: () => invoke("engines.usage", { since }),

@@ -79,6 +79,8 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await expect(meta).toHaveText("1 of 4");
     await expect(front).toHaveText("Unità della forza?");
     expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(1);
+    // The next card can show before the rating's refresh ends, and keys wait for it; Undo turns on when it ends.
+    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
     await page.keyboard.press("u");
     await expect(front).toHaveText("Seconda legge di Newton?");
     await expect(meta).toHaveText("0 of 4");
@@ -138,6 +140,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
     await page.keyboard.press("3");
     await expect(front).toHaveText("Unità della forza?");
+    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
     await page.keyboard.press("Space");
     await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
     await page.getByRole("button", { name: "Ask the tutor" }).click();

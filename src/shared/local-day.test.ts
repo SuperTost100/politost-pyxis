@@ -10,6 +10,8 @@ it("works in local calendar days across months, years and weeks", () => {
   // Sunday belongs to the week that started on the Monday before it.
   expect(startOfWeek(at(2026, 10, 18, 12))).toBe(at(2026, 10, 12));
   expect(startOfWeek(at(2026, 10, 12, 8))).toBe(at(2026, 10, 12));
+  // The week of the October daylight-saving change in Italy.
+  expect(startOfWeek(at(2026, 11, 1, 12))).toBe(at(2026, 10, 26));
   expect(daysBetween(at(2026, 10, 17, 23), at(2026, 10, 18, 1))).toBe(1);
   expect(daysBetween(at(2026, 10, 18), at(2026, 10, 17))).toBe(-1);
   // A day that changes the clock is still one day.

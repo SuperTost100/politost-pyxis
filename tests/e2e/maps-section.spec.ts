@@ -1,11 +1,9 @@
 import { expect, test } from "@playwright/test";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -176,9 +174,6 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
     expect(svg).toContain(">dipende da</tspan>");
     const pdf = await exportAs("Mappa e schema (PDF)");
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
-    mkdirSync(".tmp", { recursive: true });
-    writeFileSync(".tmp/maps-export.pdf", pdf);
-    writeFileSync(".tmp/maps-export.svg", svg);
     // The drawing gets a page of its own size; the outline follows on A4.
     const boxes = new Set(
       [...pdf.toString("latin1").matchAll(/\/MediaBox \[([^\]]+)\]/g)].map(

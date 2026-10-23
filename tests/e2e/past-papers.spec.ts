@@ -128,6 +128,8 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     )) as { sources: unknown[] };
     expect(read.sources).toEqual([]);
     await shoot(page, "sources-paper-it-dark");
+    // A reload into a new theme fades the page in; axe must not measure a colour halfway.
+    await animationsSettled(page);
     await expectNoAxeViolations(page);
 
     await look(page, "en", "dark");
@@ -140,6 +142,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await page.setViewportSize({ width: 1280, height: 900 });
     await look(page, "en", "light");
     await shoot(page, "sources-paper-en-light");
+    await animationsSettled(page);
     await expectNoAxeViolations(page);
 
     // Practise one paper: intro, first question, a graded answer.
