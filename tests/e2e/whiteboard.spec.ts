@@ -1,12 +1,9 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
 } from "@playwright/test";
 import {
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -14,6 +11,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 async function draw(page: Page) {
   // A freshly routed board has no layout box yet; measuring it earlier throws "canvas-missing".
@@ -43,25 +43,15 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
   const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-"));
   const output = join(userData, "drawing.png");
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_SAVE: output,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [
-      join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"),
-    ],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     // Hidden windows on Windows and Linux can stall CSS/JS motion mid-way (stuck modal leave, half-faded colors); the app honors this setting.
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
-    mkdirSync(".shots", { recursive: true });
     for (const language of ["en", "it"] as const)
       for (const theme of ["light", "dark"] as const) {
         await page.evaluate(
@@ -128,13 +118,8 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
         await expect(
           page.getByRole("button", { name: /Save|Salva/, exact: true }),
         ).toBeEnabled();
-        expect(
-          (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-            .violations,
-        ).toEqual([]);
-        await page.screenshot({
-          path: `.shots/m15-whiteboard-${language}-${theme}.png`,
-        });
+        await expectNoAxeViolations(page);
+        await saveShot(page, `m15-whiteboard-${language}-${theme}.png`);
         await page
           .getByRole("button", { name: /Close|Chiudi/, exact: true })
           .click();
@@ -202,14 +187,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
 test("ASK-05 an empty board cannot be saved, one eraser drag removes what it crosses and Clear can be undone", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-empty-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [
-      join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"),
-    ],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });

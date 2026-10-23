@@ -1,19 +1,18 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 /** Ten diagnostic questions over the book's two chapters; each explanation cites a passage by ID. */
 const diagnosticReply = {
@@ -40,31 +39,19 @@ async function launch(replies: Record<string, unknown>, delay = 0) {
   const file = join(userData, "book.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "fisica",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Moti", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8("## p1 | Velocità\nLa velocità descrive lo spostamento nel tempo.\n"),
-      "chapters/02.md": strToU8("## p1 | Lavoro\nIl lavoro è forza per spostamento.\n"),
+    makeBook({
+      id: "fisica",
+      chapters: [
+        { title: "Moti", text: "## p1 | Velocità\nLa velocità descrive lo spostamento nel tempo.\n" },
+        { title: "Energia", text: "## p1 | Lavoro\nIl lavoro è forza per spostamento.\n" },
+      ],
     }),
   );
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app: ElectronApplication = await electron.launch({ args: [MAIN], env });
+  const app: ElectronApplication = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
@@ -103,7 +90,7 @@ async function go(page: Page, hash: string) {
 }
 
 async function axe(page: Page) {
-  expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+  await expectNoAxeViolations(page);
 }
 
 const score = (page: Page) => page.locator(".px-quiz-score");
@@ -299,15 +286,11 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
       })),
     },
   });
-  mkdirSync(".shots", { recursive: true });
   const shoot = async (name: string, lang: string) => {
     for (const theme of ["light", "dark"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       await page.evaluate(() => document.fonts.ready);
-      await page.screenshot({
-        path: `.shots/quiz-mastery-${name}-${lang}-${theme}.png`,
-        animations: "disabled",
-      });
+      await saveShot(page, `quiz-mastery-${name}-${lang}-${theme}.png`, { animations: "disabled" });
     }
   };
   try {
@@ -581,7 +564,6 @@ test("open answer: checked right away, the check can be cancelled and the answer
 test("quiz screens in both languages and themes", async () => {
   test.setTimeout(240000);
   const { page, planId, topics, done } = await launch(openReplies(), 2500);
-  mkdirSync(".shots", { recursive: true });
   await page.setViewportSize({ width: 1280, height: 800 });
   try {
     for (const lang of ["it", "en"] as const) {
@@ -591,11 +573,7 @@ test("quiz screens in both languages and themes", async () => {
         for (const theme of ["light", "dark"] as const) {
           await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
           await page.evaluate(() => document.fonts.ready);
-          await page.screenshot({
-            path: `.shots/v021-quiz-${name}-${lang}-${theme}.png`,
-            animations: "disabled",
-            fullPage,
-          });
+          await saveShot(page, `v021-quiz-${name}-${lang}-${theme}.png`, { animations: "disabled", fullPage });
         }
       };
       await go(page, `/plans/${planId}/diagnostic`);
@@ -698,13 +676,7 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
   );
   test.setTimeout(480000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-live-study-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.PYXIS_E2E_PLAN_REPLIES;
-  const app = await electron.launch({
-    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: undefined } });
   const startedAt = Date.now();
   try {
     const page = await app.firstWindow();
@@ -746,7 +718,7 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
         }),
       imported.sourceId,
     )) as { planId: string };
-    let build: { state: string; error?: string } | null = null;
+    let build = null as { state: string; error?: string } | null;
     await expect
       .poll(
         async () => {
@@ -797,11 +769,11 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
         }),
       scope,
     )) as { attemptId: string };
-    let session: {
+    let session = null as {
       state: string;
       error?: string;
       questions: Array<{ id: string; grade: { kind: string } }>;
-    } | null = null;
+    } | null;
     await expect
       .poll(
         async () => {

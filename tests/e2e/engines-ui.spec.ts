@@ -1,24 +1,20 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   chmodSync,
-  mkdirSync,
   mkdtempSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("ENG-10 engine details, add paths and secure key-storage notice in both themes and languages", async () => {
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-ui-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -32,7 +28,6 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
       }),
     );
     // Exercise both keyring states without entering, storing or sending any key.
-    mkdirSync(".shots", { recursive: true });
     for (const language of ["en", "it"] as const)
       for (const theme of ["light", "dark"] as const)
         for (const canSave of [false, true]) {
@@ -99,15 +94,8 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
               name: language === "en" ? "Model" : "Modello",
             }),
           ).toBeVisible();
-          const audit = await new AxeBuilder({ page })
-            .setLegacyMode(true)
-            .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-            .analyze();
-          expect(audit.violations).toEqual([]);
-          await page.screenshot({
-            path: `.shots/m15-engine-details-${language}-${theme}.png`,
-            fullPage: true,
-          });
+          await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
+          await saveShot(page, `m15-engine-details-${language}-${theme}.png`, { fullPage: true });
           await drawer
             .getByRole("button", { name: /Close|Chiudi/, exact: true })
             .click();
@@ -175,15 +163,8 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
               ),
             ).toBeVisible();
           }
-          const modalAudit = await new AxeBuilder({ page })
-            .setLegacyMode(true)
-            .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
-            .analyze();
-          expect(modalAudit.violations).toEqual([]);
-          await page.screenshot({
-            path: `.shots/m15-engine-add-${canSave ? "form-" : ""}${language}-${theme}.png`,
-            fullPage: true,
-          });
+          await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
+          await saveShot(page, `m15-engine-add-${canSave ? "form-" : ""}${language}-${theme}.png`, { fullPage: true });
           await page.locator(".ant-modal-close").click();
         }
   } finally {
@@ -206,9 +187,6 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     return path;
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     // Only the two stand-ins exist: engines installed on this computer must not show up.
     HOME: bin,
     PATH: "/usr/bin:/bin",
@@ -222,11 +200,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
       `case "$1" in --version) echo "codex-cli 0.150.0";; login) echo "Logged in using ChatGPT";; *) exit 1;; esac`,
     ),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -325,9 +299,6 @@ test("Automatic engines: with all four CLIs ready, the summary gives each engine
     return path;
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     // Antigravity counts as signed in with a Gemini key and a model list.
     GEMINI_API_KEY: "test-key",
     CLI_FUNNEL_CLAUDE_BIN: fake(
@@ -355,11 +326,7 @@ esac`,
 esac`,
     ),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -388,7 +355,7 @@ esac`,
     await expect(lines.filter({ hasText: "Antigravity" })).toContainText(
       "chat",
     );
-    await page.screenshot({ path: ".shots/engines-four-en.png" });
+    await saveShot(page, "engines-four-en.png");
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

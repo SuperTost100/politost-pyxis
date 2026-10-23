@@ -1,12 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
+import { saveShot } from "./shots";
 
 // Guided plan loading and failure (PLAN-10 to PLAN-12). The recorded-reply fixture answers every call the
 // same way for a whole launch, so each failing step gets its own launch. No model is called.
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 const LARGE = Boolean(process.env.PYXIS_UI_LARGE);
 
 const modules = { modules: [{ title: "Cinematica", summary: "Il moto dei corpi" }, { title: "Dinamica", summary: "Le forze" }] };
@@ -26,14 +27,10 @@ const next = (page: Page) => page.getByRole("button", { name: /^(Continua|Contin
 
 function launch(userData: string, state: State) {
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(FIXTURES[state].replies),
     PYXIS_E2E_PLAN_DELAY: String(FIXTURES[state].delay),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  return launchPyxis({ userData, env });
 }
 
 /** Through the wizard to the guided flow, then to the step that calls the model. */
@@ -102,10 +99,9 @@ for (const state of Object.keys(FIXTURES) as State[]) {
       await page.getByRole("button", { name: "Salta" }).click();
       // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
       await expect(page).toHaveURL(/#\/exams$/);
-      await page.evaluate((size) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size }), LARGE ? "lg" : "md");
+      await page.evaluate((size) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size }), LARGE ? ("lg" as const) : ("md" as const));
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      mkdirSync(".shots/m14", { recursive: true });
       for (const language of ["it", "en"] as const)
         for (const theme of ["dark", "light"] as const)
           for (const width of [1280, 960]) {
@@ -124,7 +120,7 @@ for (const state of Object.keys(FIXTURES) as State[]) {
               await page.evaluate(() => document.fonts.ready);
               await tabWalk(page);
               const violations = (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations;
-              await page.screenshot({ path: `.shots/m14/${key}.png`, fullPage: true, animations: "disabled" });
+              await saveShot(page, `m14/${key}.png`, { fullPage: true, animations: "disabled" });
               const body = await page.locator("body").innerText();
               const untranslated = body.match(/\b(?:plans|quiz|wizard|jobs|sources)\.[A-Za-z][\w.-]+/g);
               const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
@@ -193,10 +189,13 @@ test("PLAN-10 Back while the modules load returns to the period step and the lat
     await page.evaluate(() => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: "md" }));
     await reach(page, "modules");
     await expectState(page, "loading-modules");
+    // The call is in flight, so it started before now, and the fixture holds it 10 s at most.
+    const answered = Date.now() + 10_000;
     await page.getByRole("button", { name: "Indietro" }).click();
     await expect(page.getByRole("group", { name: "Periodo" })).toBeVisible();
-    // The held call finishes after ten seconds; its modules must not appear on the period step.
-    await page.waitForTimeout(11000);
+    // Its modules must not appear on the period step. An ignored answer has no signal, so wait until the latest moment
+    // it can arrive, plus a second for the page to show it.
+    await page.waitForTimeout(Math.max(0, answered + 1000 - Date.now()));
     await expect(page.getByRole("group", { name: "Periodo" })).toBeVisible();
     await expect(page.getByRole("checkbox")).toHaveCount(0);
   } finally {

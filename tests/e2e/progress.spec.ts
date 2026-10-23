@@ -1,11 +1,13 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("PRO-01 through PRO-06 preparation layout, flagged content, activity and progress tabs", async () => {
   test.setTimeout(90000);
@@ -13,24 +15,12 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
   const file = join(userData, "book.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "study",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Moti", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Velocità\nLa velocità descrive il moto.\n",
-      ),
-      "chapters/02.md": strToU8(
-        "## p1 | Energia\nL’energia misura il lavoro disponibile.\n",
-      ),
+    makeBook({
+      id: "study",
+      chapters: [
+        { title: "Moti", text: "## p1 | Velocità\nLa velocità descrive il moto.\n" },
+        { title: "Energia", text: "## p1 | Energia\nL’energia misura il lavoro disponibile.\n" },
+      ],
     }),
   );
   const fixture = {
@@ -61,16 +51,9 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(fixture),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     const errors: string[] = [];
@@ -176,7 +159,6 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
     await page.evaluate((planId) => {
       window.location.hash = `/plans/${planId}/progress`;
     }, created.planId);
-    mkdirSync(".shots", { recursive: true });
     for (const [language, theme, width] of [
       ["it", "dark", 1280],
       ["it", "light", 960],
@@ -208,14 +190,8 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
         }),
       ).toBeVisible();
       await expect(page.locator(".ant-segmented-thumb")).toHaveCount(0);
-      await page.screenshot({
-        path: `.shots/m12-preparation-${language}-${theme}-${width}.png`,
-        fullPage: true,
-      });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await saveShot(page, `m12-preparation-${language}-${theme}-${width}.png`, { fullPage: true });
+      await expectNoAxeViolations(page);
       await expect(page.locator(".px-plan-progress .ant-segmented")).toHaveCount(0);
       await expect(
         page.getByRole("heading", {
@@ -238,14 +214,8 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
         page.locator(".px-progress-pace-facts dd").first(),
       ).toContainText(/min/);
       await expect(page.locator(".ant-segmented-thumb")).toHaveCount(0);
-      await page.screenshot({
-        path: `.shots/m12-pace-${language}-${theme}-${width}.png`,
-        fullPage: true,
-      });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await saveShot(page, `m12-pace-${language}-${theme}-${width}.png`, { fullPage: true });
+      await expectNoAxeViolations(page);
       // A topic row opens to the evidence behind its bar, and the parts add up to the bar's number.
       const breakdown = (await page.evaluate(
         (planId) => window.pyxis.invoke("plans.masteryBreakdown", { planId }),
@@ -275,14 +245,8 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
       expect(
         Number(await row.getByRole("meter").getAttribute("aria-valuenow")),
       ).toBe(Math.round((100 * total) / (first.priorWeight + weight)));
-      await page.screenshot({
-        path: `.shots/quiz-mastery-evidence-${language}-${theme}-${width}.png`,
-        fullPage: true,
-      });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await saveShot(page, `quiz-mastery-evidence-${language}-${theme}-${width}.png`, { fullPage: true });
+      await expectNoAxeViolations(page);
       await toggle.click();
       await expect(panel).toHaveCount(0);
     }

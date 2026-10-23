@@ -1,5 +1,4 @@
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -9,8 +8,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { animationsSettled } from "./settled";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -39,14 +39,10 @@ const LONG_REPLY = [
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-layout-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: REPLY,
     ...extra,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   await expect(page).toHaveURL(/#\/exams$/);
@@ -56,20 +52,39 @@ async function launch(extra: Record<string, string> = {}) {
 /** Two subjects, each with a plan and a source, plus a source in no plan. Fisica's source holds the passage the reply cites. */
 function seed(userData: string) {
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-  db.exec(`
-    INSERT INTO subjects(id,name,position,created_at) VALUES('s-fis','Fisica',0,1),('s-an','Analisi 2',1,1);
-    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES
-      ('src-fis','excerpt','Appunti di fisica','ready',1,1,1),
-      ('src-fis2','excerpt','Esercizi di meccanica','ready',1,1,1),
-      ('src-an','excerpt','Dispense di analisi 2','ready',1,1,1),
-      ('src-free','excerpt','Slide di chimica','ready',1,1,1);
-    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('d-fis','src-fis',1,'{"kind":"excerpt"}',1);
-    INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('pa1','src-fis','d-fis','Come si risolve un integrale per parti: la formula integrale per parti di u dv vale uv meno integrale di v du.','{"chapter":1,"paragraph":"p1"}','1. Integrali',1);
-    INSERT INTO plans(id,subject_id,title,status,content_language,target,created_at,updated_at) VALUES
-      ('p-fis','s-fis','Fisica 1','ready','it',0.75,1,1),
-      ('p-an','s-an','Analisi 2','ready','it',0.75,1,1);
-    INSERT INTO plan_sources(plan_id,source_id) VALUES('p-fis','src-fis'),('p-fis','src-fis2'),('p-an','src-an');
-  `);
+  seedSubjects(db, [{ id: "s-fis", name: "Fisica" }, { id: "s-an", name: "Analisi 2" }]);
+  seedSource(db, {
+    id: "src-fis",
+    title: "Appunti di fisica",
+    document: { id: "d-fis" },
+    passages: [
+      {
+        id: "pa1",
+        text: "Come si risolve un integrale per parti: la formula integrale per parti di u dv vale uv meno integrale di v du.",
+        locator: { chapter: 1, paragraph: "p1" },
+        section: "1. Integrali",
+      },
+    ],
+  });
+  seedSource(db, { id: "src-fis2", title: "Esercizi di meccanica" });
+  seedSource(db, { id: "src-an", title: "Dispense di analisi 2" });
+  seedSource(db, { id: "src-free", title: "Slide di chimica" });
+  seedPlan(db, {
+    id: "p-fis",
+    subjectId: "s-fis",
+    title: "Fisica 1",
+    language: "it",
+    target: 0.75,
+    sourceIds: ["src-fis", "src-fis2"],
+  });
+  seedPlan(db, {
+    id: "p-an",
+    subjectId: "s-an",
+    title: "Analisi 2",
+    language: "it",
+    target: 0.75,
+    sourceIds: ["src-an"],
+  });
   db.close();
 }
 
@@ -220,6 +235,9 @@ test("Ask: panel, automatic titles, rename and delete, greeting and the thinking
     const dialog = page.getByRole("dialog", { name: "Eliminare questa chat?" });
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(list.getByRole("button", { name: "Teorema fondamentale", exact: true })).toBeVisible();
+    // The cancelled dialog and the first menu are still closing; a click now can land on the menu that is going away.
+    await expect(dialog).toHaveCount(0);
+    await animationsSettled(page);
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
     await page.getByRole("menuitem", { name: "Elimina" }).click();
     await page.getByRole("button", { name: "Elimina per sempre" }).click();
@@ -427,6 +445,22 @@ test("Ask: a student who scrolled up is not pulled back down by new content", as
       .poll(() => page.evaluate(() => document.scrollingElement!.scrollHeight - document.scrollingElement!.clientHeight))
       .toBeGreaterThan(3 * 300);
     await expect.poll(gap).toBeLessThan(4);
+    // Content that arrives after the reply (its chips, the math checks) still grows the page on a slow runner. The wheel
+    // scrolls in small steps, and a growth while the page is still within 96 px of the end pins it back down, as it
+    // should for a student who has not scrolled up yet. So wait until the height holds before turning the wheel.
+    let height = -1;
+    await expect
+      .poll(
+        async () => {
+          const now = await page.evaluate(() => document.scrollingElement!.scrollHeight);
+          const held = now === height;
+          height = now;
+          return held;
+        },
+        { intervals: [500] },
+      )
+      .toBe(true);
+    await expect.poll(gap).toBeLessThan(4);
     const top = () => page.evaluate(() => document.scrollingElement!.scrollTop);
     const end = await top();
     // The chat is several wheel turns tall, so one turn up cannot reach the top and stops early.
@@ -452,6 +486,7 @@ test("Ask: a student who scrolled up is not pulled back down by new content", as
       late.style.height = "300px";
       document.querySelector(".ask-page")!.append(late);
     });
+    // The page must not follow the new content. Nothing signals that it chose not to, so this waits a fixed time.
     await page.waitForTimeout(500);
     expect(await top()).toBe(scrolled);
     expect(await gap()).toBe(before + 300);

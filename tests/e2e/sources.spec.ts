@@ -1,47 +1,35 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test } from "@playwright/test";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
-import { appUnderTest } from "./app-under-test";
+import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
   const file = join(userData, "source.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "physics",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Moti", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Velocità\nLa velocità descrive lo spostamento nel tempo.\n",
-      ),
-      "chapters/02.md": strToU8(
-        "## p1 | Lavoro\nIl lavoro è il prodotto di forza e spostamento.\n\n## p2 | Energia\nL'energia cinetica vale $E = m v^2 / 2$.\n",
-      ),
+    makeBook({
+      id: "physics",
+      chapters: [
+        { title: "Moti", text: "## p1 | Velocità\nLa velocità descrive lo spostamento nel tempo.\n" },
+        {
+          title: "Energia",
+          text: "## p1 | Lavoro\nIl lavoro è il prodotto di forza e spostamento.\n\n## p2 | Energia\nL'energia cinetica vale $E = m v^2 / 2$.\n",
+        },
+      ],
     }),
   );
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_FILE: file,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch(appUnderTest(env));
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -94,7 +82,6 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     await expect(drawer.locator(".is-current")).toContainText(
       "energia cinetica",
     );
-    mkdirSync(".shots", { recursive: true });
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       for (const width of [1280, 960]) {
@@ -103,15 +90,9 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
           height: width === 960 ? 640 : 832,
         });
         await expect(drawer).toBeVisible();
-        await page.waitForTimeout(250);
-        await page.screenshot({
-          path: `.shots/m4-viewer-it-${theme}-${width}.png`,
-          animations: "disabled",
-        });
-        const results = await new AxeBuilder({ page })
-          .setLegacyMode(true)
-          .analyze();
-        expect(results.violations).toEqual([]);
+        await animationsSettled(page);
+        await saveShot(page, `m4-viewer-it-${theme}-${width}.png`, { animations: "disabled" });
+        await expectNoAxeViolations(page);
       }
     }
     await page.keyboard.press("Escape");
@@ -167,10 +148,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     await expect(
       page.getByText("Pagina 2 di 600", { exact: true }),
     ).toBeVisible();
-    await page.screenshot({
-      path: ".shots/m4-pdf-it-light-960.png",
-      animations: "disabled",
-    });
+    await saveShot(page, "m4-pdf-it-light-960.png", { animations: "disabled" });
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -187,10 +165,8 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
   const userData = mkdtempSync(join(tmpdir(), "pyxis-e5-check-"));
   const modelDir = join(userData, "workspace", "models", "e5");
   cpSync(resolve(model!), modelDir, { recursive: true });
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
   // CI repeats this check on the packaged app, whose workers load the packaged node_modules.
-  let app = await electron.launch(appUnderTest(env));
+  let app = await launchPyxis({ userData });
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -233,7 +209,7 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
     )) as Array<{ sourceId: string }>;
     expect(hits.some((hit) => hit.sourceId === source.sourceId)).toBe(true);
     await app.close();
-    app = await electron.launch(appUnderTest(env));
+    app = await launchPyxis({ userData });
     page = await app.firstWindow();
     const restored = (await page.evaluate(
       (query) => window.pyxis.invoke("sources.search", { query }),

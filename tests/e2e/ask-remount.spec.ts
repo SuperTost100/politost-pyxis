@@ -1,23 +1,18 @@
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-remount-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
     // No signed-in AI command-line tools from the machine running the test: their notice would cover the page.
     HOME: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: "Ecco la risposta.\n<followups>\nUn esempio?\n</followups>",
     PYXIS_E2E_REPLY_DELAY: "8000",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   await expect(page).toHaveURL(/#\/exams$/);
@@ -54,6 +49,7 @@ test("a reply sent before leaving Ask does not pull the student back to it", asy
     await expect.poll(async () => (await chats()).length, { timeout: 20000 }).toBe(1);
     const [chat] = await chats();
     await expect.poll(() => messages(page, chat!.id), { timeout: 20000 }).toBe(2);
+    // A wrong jump back to the chat would come right after the reply is saved; give it a fixed moment to show.
     await page.waitForTimeout(500);
     await expect(page).toHaveURL(/#\/exams$/);
   } finally {
@@ -89,6 +85,7 @@ test("coming back while a reply is written shows it running, and core refuses a 
     await go(page, `/ask/${chatId}`);
     await expect(page.locator(".px-msg-bubble", { hasText: "Seconda domanda" })).toHaveCount(1);
     await expect(page.locator(".px-msg-bubble", { hasText: "Prima domanda" })).toBeVisible();
+    // A duplicate would appear once the read chat merges with the running reply; nothing signals that it did not.
     await page.waitForTimeout(500);
     await expect(page.locator(".px-msg-bubble", { hasText: "Seconda domanda" })).toHaveCount(1);
     await expect(stop).toBeVisible();
@@ -140,6 +137,7 @@ test("a question sent again after Stop shows once while its reply is written", a
     // Sent again, core answers the stored question rather than storing a second one, and the page shows it once.
     await box.press("Enter");
     await expect(stop).toBeVisible();
+    // While the reply is written, a second copy of the question must not show up. Its absence has no signal to wait for.
     await page.waitForTimeout(1000);
     await expect(bubbles).toHaveCount(1);
     expect(await messages(page, chatId)).toBe(3);

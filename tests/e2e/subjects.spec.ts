@@ -1,32 +1,15 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { expect, test } from "@playwright/test";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-// Waits until antd's open and close animations are done, so a click can't land on a dialog or popover still moving in.
-async function settled(page: Page) {
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          document
-            .getAnimations()
-            .filter(
-              (animation) =>
-                animation.playState === "running" &&
-                animation.effect?.getTiming().iterations !== Infinity,
-            ).length,
-      ),
-    )
-    .toBe(0);
-}
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by keyboard, remove", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-subject-check-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -41,7 +24,7 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     // With no plans yet, the subjects are in the same More menu the plan toolbar has.
     await page.getByRole("button", { name: "Altro", exact: true }).click();
     await page.getByRole("menuitem", { name: "Gestisci materie" }).click();
-    await settled(page);
+    await animationsSettled(page);
     for (const name of ["Fisica", "Analisi"]) {
       await page.getByRole("textbox", { name: "Nuova materia" }).fill(name);
       await page.getByRole("button", { name: "Aggiungi", exact: true }).click();
@@ -76,7 +59,6 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     }).toPass({ timeout: 15000 });
     await page.keyboard.press("Space");
     await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("subjects.list", {})) as Array<{ name: string }>).map((row) => row.name)).toEqual(["Analisi", "Fisica"]);
-    mkdirSync(".shots", { recursive: true });
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       for (const width of [1280, 960]) {
@@ -84,13 +66,13 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
         // Under xvfb the first capture after a resize can fail; let two frames paint, then retry until it takes.
         await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
         await expect(async () => {
-          await page.screenshot({ path: `.shots/m5-subjects-it-${theme}-${width}.png`, animations: "disabled" });
+          await saveShot(page, `m5-subjects-it-${theme}-${width}.png`, { animations: "disabled" });
         }).toPass({ timeout: 10000 });
       }
     }
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Rimuovi Analisi", exact: true }).click();
-    await settled(page);
+    await animationsSettled(page);
     await page.getByRole("button", { name: "Rimuovi", exact: true }).last().click();
     await expect(page.getByRole("button", { name: "Riordina Analisi" })).not.toBeVisible();
     await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("subjects.list", {})) as Array<{ name: string }>).map((row) => row.name)).toEqual(["Fisica"]);

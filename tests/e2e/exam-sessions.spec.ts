@@ -1,9 +1,12 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { expect, test } from "@playwright/test";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -15,17 +18,10 @@ function noonIn(days: number): Date {
 const dmy = (date: Date) =>
   `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 const unfold = (ics: string) => ics.replace(/\r\n[ \t]/g, "").split("\r\n");
-const shots = process.env["PYXIS_SHOTS_DIR"] ?? "";
 
 test("EXAM-01 an exam holds a written and an oral session, and a finished exam can be archived and restored", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-sessions-check-"));
-  if (shots) mkdirSync(shots, { recursive: true });
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -39,12 +35,10 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     });
     const written = noonIn(21);
     const oral = noonIn(33);
+    seedPlan(db, { id: "plan-a", title: "Fisica 1", language: "it", topics: [{ id: "topic-a", title: "Cinematica" }] });
+    seedPlan(db, { id: "plan-b", title: "Analisi 2", language: "it", topics: [{ id: "topic-b", title: "Integrali" }] });
     db.exec(`
-      INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('plan-a','Fisica 1','ready','it',1,1);
-      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('topic-a','plan-a','Cinematica',0,1);
       INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('card-a','plan-a','topic-a','Cos''è la velocità?','Spazio sul tempo',1);
-      INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('plan-b','Analisi 2','ready','it',1,1);
-      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('topic-b','plan-b','Integrali',0,1);
       INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('card-b','plan-b','topic-b','Cos''è un integrale?','Un''area',1);
     `);
     db.close();
@@ -60,8 +54,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
       await page.reload();
     };
     const snap = async (name: string, language: string, theme: string) => {
-      if (shots)
-        await page.screenshot({ path: join(shots, `${name}-${language}-${theme}.png`) });
+      await saveShot(page, `${name}-${language}-${theme}.png`);
     };
     await setLook("en", "light");
     await page.setViewportSize({ width: 1280, height: 860 });
@@ -117,8 +110,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await snap("plan-header-sessions", "en", "dark");
     await page.getByRole("button", { name: "Plan settings" }).click();
     await snap("plan-settings-sessions", "en", "dark");
-    const audit = await new AxeBuilder({ page }).setLegacyMode().analyze();
-    expect(audit.violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // Remove the second session again: one session left, no frame around it.
     await dialog.getByRole("button", { name: "Remove session 2" }).click();

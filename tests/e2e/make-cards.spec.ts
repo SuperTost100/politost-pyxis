@@ -1,12 +1,13 @@
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { animationsSettled } from "./settled";
+import { SHOTS, saveShot } from "./shots";
 
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
-/** Set to a folder to also save screenshots of the reply action, the selection menu and the review dialog. */
-const SHOTS = process.env.PYXIS_SHOTS_DIR;
 
 const PASSAGE =
   "L'integrale per parti si usa quando l'integrando è un prodotto: la formula vale uv meno l'integrale di v du.";
@@ -40,20 +41,31 @@ const CARDS = [
 
 function seed(userData: string) {
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
-  db.exec(`
-    INSERT INTO subjects(id,name,position,created_at) VALUES('s-mat','Analisi',0,1);
-    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('src-an','excerpt','Appunti di analisi','ready',1,1,1);
-    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('d-an','src-an',1,'{"kind":"excerpt"}',1);
-    INSERT INTO plans(id,subject_id,title,status,content_language,target,created_at,updated_at) VALUES
-      ('p-an','s-mat','Analisi 1','ready','it',0.75,1,2),
-      ('p-geo','s-mat','Geometria','ready','it',0.75,1,1);
-    INSERT INTO plan_sources(plan_id,source_id) VALUES('p-an','src-an');
-    INSERT INTO topics(id,plan_id,title,position,created_at) VALUES
-      ('t-lim','p-an','Limiti',0,1),('t-int','p-an','Integrali',1,1),('t-mat','p-geo','Matrici',0,1);
-  `);
-  db.prepare(
-    "INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('pa1','src-an','d-an',?,'{\"chapter\":1,\"paragraph\":\"p1\"}','1. Integrali',1)",
-  ).run(PASSAGE);
+  seedSubjects(db, [{ id: "s-mat", name: "Analisi" }]);
+  seedSource(db, {
+    id: "src-an",
+    title: "Appunti di analisi",
+    document: { id: "d-an" },
+    passages: [{ id: "pa1", text: PASSAGE, locator: { chapter: 1, paragraph: "p1" }, section: "1. Integrali" }],
+  });
+  seedPlan(db, {
+    id: "p-an",
+    subjectId: "s-mat",
+    title: "Analisi 1",
+    language: "it",
+    target: 0.75,
+    updatedAt: 2,
+    sourceIds: ["src-an"],
+    topics: [{ id: "t-lim", title: "Limiti" }, { id: "t-int", title: "Integrali" }],
+  });
+  seedPlan(db, {
+    id: "p-geo",
+    subjectId: "s-mat",
+    title: "Geometria",
+    language: "it",
+    target: 0.75,
+    topics: [{ id: "t-mat", title: "Matrici" }],
+  });
   db.exec("INSERT INTO topic_passages(topic_id,passage_id) VALUES('t-int','pa1')");
   db.close();
 }
@@ -73,24 +85,19 @@ const rows = (userData: string) => {
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
-  mkdirSync(SHOTS, { recursive: true });
   await page.mouse.move(1, 1);
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: join(SHOTS, `${name}.png`) });
+  await animationsSettled(page);
+  await saveShot(page, `${name}.png`);
 }
 
 test("flashcards from an Ask answer and from selected text: pick a place, review, then save", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-make-cards-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: REPLY,
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ cards: { cards: CARDS } }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -198,7 +205,7 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
 
     if (SHOTS) {
       await page.evaluate(() => window.pyxis.setAppearance("dark"));
-      await page.waitForTimeout(600);
+      await animationsSettled(page);
       await select();
       await shot(page, "5-selection-menu-dark");
       await menu.getByRole("button", { name: "Make flashcards" }).click();
@@ -211,7 +218,7 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
       await dialog.getByRole("button", { name: "Cancel" }).click();
       await page.evaluate(() => window.getSelection()?.removeAllRanges());
       await page.locator(".ant-drawer").getByRole("button", { name: "Close" }).click();
-      await page.waitForTimeout(600);
+      await animationsSettled(page);
       await shot(page, "8-reply-action-dark");
     }
   } finally {

@@ -1,25 +1,35 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSource } from "./seed";
+import { expectNoAxeViolations } from "./axe";
 
 /** One topic with three cards Pyxis wrote (one from a passage), one hand-made card, and a finished card build. */
 function seed(db: DatabaseSync) {
+  seedSource(db, {
+    id: "src",
+    title: "Appunti",
+    document: { id: "doc" },
+    passages: [
+      {
+        id: "pas",
+        text: "La forza è il prodotto di massa e accelerazione.",
+        locator: { chapter: 1 },
+        section: "1. Dinamica",
+      },
+    ],
+  });
+  seedPlan(db, {
+    id: "p",
+    title: "Fisica 1",
+    language: "it",
+    sourceIds: ["src"],
+    topics: [{ id: "t", title: "Dinamica" }],
+  });
   db.exec(`
-    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('src','excerpt','Appunti','ready',1,1,1);
-    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('doc','src',1,'{"kind":"excerpt"}',1);
-    INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('pas','src','doc','La forza è il prodotto di massa e accelerazione.','{"chapter":1}','1. Dinamica',1);
-    INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('p','Fisica 1','ready','it',1,1);
-    INSERT INTO plan_sources(plan_id,source_id) VALUES('p','src');
-    INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('t','p','Dinamica',0,1);
     INSERT INTO cards(id,plan_id,topic_id,front,back,passage_id,seed_key,grounding,created_at) VALUES
       ('c1','p','t','Seconda legge di Newton?','$F=ma$.','pas','k1','sources',1),
       ('c2','p','t','Unità della forza?','Il newton.',NULL,'k2','sources',2),
@@ -32,9 +42,7 @@ function seed(db: DatabaseSync) {
 test("card review: ratings only in the footer, undo, the card menu and asking the tutor", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-review-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -63,11 +71,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await page.keyboard.press("Space");
     await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations.map(
-        (violation) => violation.id,
-      ),
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // A rating can be taken back: the card shows again and its review and event are gone.
     await page.keyboard.press("3");
@@ -139,7 +143,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await page.getByRole("button", { name: "Ask the tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\/[\w-]+$/);
     await expect.poll(() => cardSteps().length).toBe(1);
-    expect(JSON.parse(cardSteps()[0].payload_json)).toMatchObject({
+    expect(JSON.parse(cardSteps()[0]!.payload_json)).toMatchObject({
       activity: "cards",
       result: { correct: 1, total: 1 },
     });
@@ -173,9 +177,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
 test("card browser: a card forgotten six times is tagged and filtered", async () => {
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-leech-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

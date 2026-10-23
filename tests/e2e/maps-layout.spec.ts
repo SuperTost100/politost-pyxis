@@ -1,10 +1,13 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { strToU8, zipSync } from "fflate";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async () => {
   test.setTimeout(240_000);
@@ -12,18 +15,15 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
   const file = join(userData, "derivatives.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "calculus",
-          title: "Analisi",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Derivate", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Derivata\nLa derivata misura il cambiamento. La derivata di $x^2$ è $2x$.\n\n## p2 | Prodotto\nLa regola del prodotto deriva $fg$ come $f'g+fg'$.\n\n## p3 | Composizione\nLa regola della catena deriva $f(g(x))$ come $f'(g(x))g'(x)$. Una tangente descrive la variazione locale.\n",
-      ),
+    makeBook({
+      id: "calculus",
+      title: "Analisi",
+      chapters: [
+        {
+          title: "Derivate",
+          text: "## p1 | Derivata\nLa derivata misura il cambiamento. La derivata di $x^2$ è $2x$.\n\n## p2 | Prodotto\nLa regola del prodotto deriva $fg$ come $f'g+fg'$.\n\n## p3 | Composizione\nLa regola della catena deriva $f(g(x))$ come $f'(g(x))g'(x)$. Una tangente descrive la variazione locale.\n",
+        },
+      ],
     }),
   );
   const planReplies = {
@@ -102,21 +102,12 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
   };
 
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies),
     PYXIS_E2E_MAP_REPLIES: process.env.PYXIS_LIVE_MAP
       ? undefined
       : JSON.stringify(mapReplies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [
-      join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js"),
-    ],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     // Hidden windows on Windows and Linux can stall CSS/JS motion mid-way (stuck modal leave, half-faded colors); the app honors this setting.
@@ -265,7 +256,6 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     expect((await boxes()).length).toBeLessThan(before);
     await fold.dispatchEvent("click");
     await expect(page.locator(".react-flow__node")).toHaveCount(before);
-    mkdirSync(".shots", { recursive: true });
     for (const [language, theme] of [
       ["it", "dark"],
       ["it", "light"],
@@ -282,14 +272,9 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       await page.reload();
       await page.setViewportSize({ width: 1280, height: 800 });
       await expect(page.locator(".react-flow__node")).toHaveCount(before);
-      await page.waitForTimeout(400);
-      await page.screenshot({
-        path: `.shots/map-large-${total}-${language}-${theme}-1280.png`,
-      });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await animationsSettled(page);
+      await saveShot(page, `map-large-${total}-${language}-${theme}-1280.png`);
+      await expectNoAxeViolations(page);
     }
     expect(errors).toEqual([]);
   } finally {

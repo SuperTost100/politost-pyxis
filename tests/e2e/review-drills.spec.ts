@@ -1,13 +1,14 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 const dbPath = (userData: string) => join(userData, "workspace", "pyxis.db");
 
 type Session = {
@@ -21,23 +22,14 @@ type Session = {
 
 /** Three chapters; only the first has exercises, so the other two topics have gaps that need a model-made drill. */
 function smartbook() {
-  return zipSync({
-    "smartbook.json": strToU8(
-      JSON.stringify({
-        id: "drills",
-        title: "Fisica",
-        access: "public",
-        chapters: [1, 2, 3].map((n) => ({ id: `c${n}`, number: n, title: `Tema ${n}`, file: `0${n}.md` })),
-      }),
-    ),
-    ...Object.fromEntries(
-      [1, 2, 3].map((n) => [`chapters/0${n}.md`, strToU8(`## p1 | Tema ${n}\nTesto del tema ${n}.\n`)]),
-    ),
-    "esercizi.md": strToU8(
-      [1, 2, 3, 4]
+  return makeBook({
+    id: "drills",
+    chapters: [1, 2, 3].map((n) => ({ title: `Tema ${n}`, text: `## p1 | Tema ${n}\nTesto del tema ${n}.\n` })),
+    files: {
+      "esercizi.md": [1, 2, 3, 4]
         .map((k) => `:::exercise{id="a${k}" chapter="1"}\nDomanda ${k}?\n:::solution\nrisposta ${k}\n:::\n:::\n`)
         .join("\n"),
-    ),
+    },
   });
 }
 
@@ -74,14 +66,10 @@ const diagnostic = {
 
 function launch(userData: string, replies: object, delay = 0) {
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ markdown: { markdown: "## Ripasso\nUsa le formule [P1]." }, questions: diagnostic, ...replies }),
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  return launchPyxis({ userData, env });
 }
 
 const invoke = <T>(page: Page, channel: string, input: object) =>
@@ -174,9 +162,8 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     const failed = page.getByRole("button", { name: "Riprova", exact: true });
     await expect(failed).toHaveCount(2);
     await expect(page.locator(".px-review-progress .small")).toContainText("in preparazione");
-    mkdirSync(".shots", { recursive: true });
-    await page.screenshot({ path: ".shots/review-drills-failed-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await saveShot(page, "review-drills-failed-it.png", { animations: "disabled" });
+    await expectNoAxeViolations(page);
 
     const before = (await invoke<Session>(page, "study.reviewSession", { planId }))!;
     expect(before.next).toBe("waiting");
@@ -205,8 +192,8 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     expect(adopted.drills[0]!.state).toBe("cancelled");
     await page.reload();
     await expect(page.getByRole("button", { name: "Continua il ripasso" })).toBeEnabled();
-    await page.screenshot({ path: ".shots/review-drills-adopted-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await saveShot(page, "review-drills-adopted-it.png", { animations: "disabled" });
+    await expectNoAxeViolations(page);
     // Reloading and restarting never add the questions again or start another model call.
     const again = (await invoke<Session>(page, "study.review", { planId }))!;
     expect(again.questions.map((question) => question.id)).toEqual(adopted.questions.map((question) => question.id));
@@ -298,7 +285,7 @@ test("LES-13 a failed drill can be skipped for good, a closed gap stops being wa
     await expect(page.getByText(/Non sono riuscito a preparare le domande su/)).toHaveCount(2, { timeout: 60000 });
     const skip = page.getByRole("button", { name: "Salta", exact: true });
     await expect(skip).toHaveCount(2);
-    await page.screenshot({ path: ".shots/review-drills-skip-offered-it.png", animations: "disabled" });
+    await saveShot(page, "review-drills-skip-offered-it.png", { animations: "disabled" });
     // Skipping one drill ends the wait for that one only; the other still blocks the finish.
     const before = (await invoke<Session>(page, "study.reviewSession", { planId }))!;
     await skip.first().click();
@@ -329,8 +316,8 @@ test("LES-13 a failed drill can be skipped for good, a closed gap stops being wa
     expect(await invoke(page, "study.reviewSession", { planId })).toBeNull();
     await expect(page.getByText(/Hai saltato le domande su/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Inizia il ripasso" })).toBeVisible();
-    await page.screenshot({ path: ".shots/review-drills-closed-gap-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await saveShot(page, "review-drills-closed-gap-it.png", { animations: "disabled" });
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -354,9 +341,8 @@ test("LES-03 a single gap drill started from the progress page opens its quiz wi
     await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
     await expect(page.getByText(EXPLANATION)).toBeVisible();
     await expect(page.locator(".px-quiz-question")).toBeVisible();
-    mkdirSync(".shots", { recursive: true });
-    await page.screenshot({ path: ".shots/progress-drill-explanation-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await saveShot(page, "progress-drill-explanation-it.png", { animations: "disabled" });
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -386,7 +372,7 @@ test("a gap drill opened from the path is requested once: Back from its quiz doe
     await page.evaluate(() => window.history.back());
     await expect(page).toHaveURL(/#\/plans\/[^/]+\/progress$/);
     await expect(page.getByRole("button", { name: /^Colma la lacuna ·/ }).first()).toBeVisible();
-    // Give a wrongly repeated request time to show itself.
+    // Give a wrongly repeated request time to show itself. A request that is not repeated has no signal to wait for.
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/#\/plans\/[^/]+\/progress$/);
     expect(drills()).toBe(1);

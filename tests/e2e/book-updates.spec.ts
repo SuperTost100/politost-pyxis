@@ -1,22 +1,18 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 const SPEED =
   "La velocità media è lo spazio percorso diviso il tempo impiegato.";
@@ -27,36 +23,17 @@ const ACCEL_V2 =
 /** Version 1 has two chapters. Version 2 rewrites one paragraph and adds a third chapter. */
 function pack(version: string) {
   const v2 = version !== "1.0.0";
-  const chapters = [
-    { id: "moti", number: 1, title: "Moti", file: "01.md" },
-    { id: "forze", number: 2, title: "Forze", file: "02.md" },
-    ...(v2
-      ? [{ id: "energia", number: 3, title: "Energia", file: "03.md" }]
-      : []),
-  ];
-  return zipSync({
-    "smartbook.json": strToU8(
-      JSON.stringify({
-        id: "fisica-demo",
-        title: "Fisica di prova",
-        version,
-        access: "public",
-        chapters,
-      }),
-    ),
-    "chapters/01.md": strToU8(
-      `## p1 | Velocità\n${SPEED}\n\n## p2 | Accelerazione\n${v2 ? ACCEL_V2 : ACCEL_V1}\n`,
-    ),
-    "chapters/02.md": strToU8(
-      "## p1 | Dinamica\nLa forza risultante è uguale alla massa per l'accelerazione.\n",
-    ),
-    ...(v2
-      ? {
-          "chapters/03.md": strToU8(
-            "## p1 | Lavoro\nIl lavoro di una forza costante è forza per spostamento.\n",
-          ),
-        }
-      : {}),
+  return makeBook({
+    id: "fisica-demo",
+    title: "Fisica di prova",
+    version,
+    chapters: [
+      { id: "moti", title: "Moti", text: `## p1 | Velocità\n${SPEED}\n\n## p2 | Accelerazione\n${v2 ? ACCEL_V2 : ACCEL_V1}\n` },
+      { id: "forze", title: "Forze", text: "## p1 | Dinamica\nLa forza risultante è uguale alla massa per l'accelerazione.\n" },
+      ...(v2
+        ? [{ id: "energia", title: "Energia", text: "## p1 | Lavoro\nIl lavoro di una forza costante è forza per spostamento.\n" }]
+        : []),
+    ],
   });
 }
 
@@ -89,9 +66,6 @@ function publish(dir: string, version: string) {
 function launch(userData: string, books: string) {
   // Recorded replies for the plan's introduction and diagnostic; no model is called.
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_BOOKS: books,
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       markdown: { markdown: "## Introduzione\n\nStudierai il moto." },
@@ -107,8 +81,7 @@ function launch(userData: string, books: string) {
       },
     }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  return launchPyxis({ userData, env });
 }
 
 /** Reads the workspace database next to the running app; WAL lets a second reader see committed rows. */
@@ -134,14 +107,9 @@ const invoke = <T>(page: Page, channel: string, input: object) =>
   ) as Promise<T>;
 
 async function noAxeViolations(page: Page) {
-  await page.waitForTimeout(300); // Let a modal finish its entrance before measuring contrast.
-  const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-    .violations;
-  expect(
-    found.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-    ),
-  ).toEqual([]);
+  // Let a modal finish its entrance before measuring contrast.
+  await animationsSettled(page);
+  await expectNoAxeViolations(page);
 }
 
 test("Book updates: a newer free book updates the same source in place, flags changed citations and offers its new chapter", async () => {
@@ -264,6 +232,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     await update.click();
     await expect.poll(() => asked.length).toBe(1);
     expect(asked[0]).toMatch(/1 piano usa questo libro/);
+    // Declining must start nothing. A job that never starts has no signal to wait for, so this is a fixed wait.
     await page.waitForTimeout(500);
     const versions = () =>
       rows<{ version: number }>(
@@ -353,11 +322,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     await rebuild.getByRole("button", { name: "Applica le modifiche" }).click();
     await expect(rebuild).toBeHidden();
     expect(await titles()).toEqual(["1. Moti", "2. Forze", "3. Energia"]);
-    mkdirSync(".shots", { recursive: true });
-    await page.screenshot({
-      path: ".shots/book-update-rebuilt-it.png",
-      animations: "disabled",
-    });
+    await saveShot(page, "book-update-rebuilt-it.png", { animations: "disabled" });
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

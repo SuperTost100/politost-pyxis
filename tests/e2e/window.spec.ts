@@ -1,11 +1,8 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import {
   existsSync,
   mkdtempSync,
@@ -17,25 +14,19 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { animationsSettled } from "./settled";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 async function clean(page: Page) {
-  expect(
-    (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-  ).toEqual([]);
+  await expectNoAxeViolations(page);
 }
 
 // The window loads index.html from pyxis-app://app. CI also runs this against the packaged app.
 test("window CSP: no string eval and no remote images in the main window", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-csp-"));
   const image = "https://tracker.example.com/pixel.png";
-  const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const packaged = process.env.PYXIS_DIST_APP;
-  const app = await electron.launch(
-    packaged
-      ? { executablePath: packaged, args: ["--use-mock-keychain"], env }
-      : { args: [join(process.cwd(), "out/main/index.js")], env },
-  );
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await expect(
@@ -98,10 +89,8 @@ test("window CSP: no string eval and no remote images in the main window", async
 // belongs to that origin. The update copies it once.
 test("an update from the file:// window keeps what the renderer stored", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-storage-"));
-  const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const launch = () =>
-    electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  // A stylesheet in out/ stands in for the old file:// page, so this runs that build even when CI checks the packaged app.
+  const launch = () => launchPyxis({ userData, packaged: false });
   const assets = join(process.cwd(), "out/renderer/assets");
   const stylesheet = join(
     assets,
@@ -168,21 +157,19 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
   const exported = join(root, "Motion.pyxis");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "motion",
-          title: "Motion",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Velocity", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Velocity\nVelocity is displacement divided by elapsed time. A displacement of 12 metres in 3 seconds gives a velocity of 4 metres per second.\n",
-      ),
-      "esami.md": strToU8(
-        ':::exercise{id="velocity" chapter="1"}\nA displacement of 12 metres takes 3 seconds. What is the velocity?\n:::solution\nVelocity = displacement / time = 4 m/s.\n:::\n:::\n',
-      ),
+    makeBook({
+      id: "motion",
+      title: "Motion",
+      chapters: [
+        {
+          title: "Velocity",
+          text: "## p1 | Velocity\nVelocity is displacement divided by elapsed time. A displacement of 12 metres in 3 seconds gives a velocity of 4 metres per second.\n",
+        },
+      ],
+      files: {
+        "esami.md":
+          ':::exercise{id="velocity" chapter="1"}\nA displacement of 12 metres takes 3 seconds. What is the velocity?\n:::solution\nVelocity = displacement / time = 4 m/s.\n:::\n:::\n',
+      },
     }),
   );
   const replies = {
@@ -214,9 +201,6 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
   const started = Date.now();
   let selectedModel: string | undefined;
   const env = {
-    ...process.env,
-    PYXIS_E2E: "1",
-    PYXIS_USER_DATA: userData,
     PYXIS_E2E_FILE: book,
     PYXIS_E2E_SAVE: backup,
     PYXIS_E2E_ZIP: backup,
@@ -234,13 +218,8 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       ? undefined
       : "Velocity is displacement divided by time [P1].",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
   const packaged = process.env.PYXIS_DIST_APP;
-  const app = await electron.launch(
-    packaged
-      ? { executablePath: packaged, args: ["--use-mock-keychain"], env }
-      : { args: [join(process.cwd(), "out/main/index.js")], env },
-  );
+  const app = await launchPyxis({ userData, env });
   if (!live)
     app.process().stderr?.on("data", (chunk) => console.error(String(chunk)));
   try {
@@ -382,7 +361,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       planId,
     );
     console.log("release: lesson");
-    const topicId = plan.topics[0]!.id;
+    const topicId = plan!.topics[0]!.id;
     // Study routes can be opened directly without asserting obsolete mastery unlocks.
     await page.evaluate(
       ({ planId, topicId }) => {
@@ -624,13 +603,7 @@ test("the packaged app reports the same GPU features as Electron's build", async
   test.skip(!packaged, "Set PYXIS_DIST_APP to the packaged executable.");
   async function features(executablePath?: string) {
     const userData = mkdtempSync(join(tmpdir(), "pyxis-gpu-"));
-    const env = { ...process.env, PYXIS_E2E: "1", PYXIS_USER_DATA: userData };
-    delete env.ELECTRON_RUN_AS_NODE;
-    const app = await electron.launch(
-      executablePath
-        ? { executablePath, args: ["--use-mock-keychain"], env }
-        : { args: [join(process.cwd(), "out/main/index.js")], env },
-    );
+    const app = await launchPyxis({ userData, packaged: executablePath ?? false });
     try {
       const page = await app.firstWindow();
       await page.waitForLoadState("load");

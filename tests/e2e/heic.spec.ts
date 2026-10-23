@@ -1,10 +1,11 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
 
 /** The pinned files the runtime task downloaded once, when they are on this machine and match their pins. */
 function stagedTessdata(): string | null {
@@ -21,11 +22,7 @@ function stagedTessdata(): string | null {
 test("SRC-04 real HEIC preview runs in a worker and blank OCR is not ready", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-heic-native-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch(process.env.PYXIS_DIST_APP
-    ? { executablePath: process.env.PYXIS_DIST_APP, args: ["--use-mock-keychain"], env }
-    : { args: [join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js")], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

@@ -1,11 +1,13 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("LES-20 through LES-23 exam timer restart, auto-submit and named grading model", async () => {
   test.setTimeout(240000);
@@ -13,36 +15,20 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
   const file = join(userData, "exam.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "physics",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Forze", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Forza\\nLa forza vale massa per accelerazione.\\n".replaceAll(
-          "\\n",
-          "\n",
-        ),
-      ),
-      "chapters/02.md": strToU8(
-        "## p1 | Energia\\nL’energia cinetica vale metà della massa per la velocità al quadrato.\\n".replaceAll(
-          "\\n",
-          "\n",
-        ),
-      ),
-      "esercizi.md": strToU8(
-        ':::exercise{id="practice" chapter="1"}\nDOMANDA DI PRATICA\n:::solution\n1\n:::\n:::\n',
-      ),
-      "esami.md": strToU8(
-        ':::exercise{id="force" chapter="1"}\nUna massa di 2 kg accelera a 3 m/s². Quanto vale la forza?\n:::solution\nF = ma = 6 N.\n:::\n:::\n\n:::exercise{id="energy" chapter="2"}\nUna massa di 2 kg si muove a 2 m/s. Quanto vale l’energia cinetica?\n:::solution\nE = mv²/2 = 4 J.\n:::\n:::\n',
-      ),
+    makeBook({
+      id: "physics",
+      chapters: [
+        { title: "Forze", text: "## p1 | Forza\nLa forza vale massa per accelerazione.\n" },
+        {
+          title: "Energia",
+          text: "## p1 | Energia\nL’energia cinetica vale metà della massa per la velocità al quadrato.\n",
+        },
+      ],
+      files: {
+        "esercizi.md": ':::exercise{id="practice" chapter="1"}\nDOMANDA DI PRATICA\n:::solution\n1\n:::\n:::\n',
+        "esami.md":
+          ':::exercise{id="force" chapter="1"}\nUna massa di 2 kg accelera a 3 m/s². Quanto vale la forza?\n:::solution\nF = ma = 6 N.\n:::\n:::\n\n:::exercise{id="energy" chapter="2"}\nUna massa di 2 kg si muove a 2 m/s. Quanto vale l’energia cinetica?\n:::solution\nE = mv²/2 = 4 J.\n:::\n:::\n',
+      },
     }),
   );
   const planReplies = {
@@ -61,9 +47,6 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies),
     PYXIS_E2E_SIMULATION_REPLIES: process.env.PYXIS_LIVE_SIMULATION
       ? undefined
@@ -76,9 +59,8 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
         }),
     PYXIS_E2E_SIMULATION_DELAY: "1500",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
   const launch = () =>
-    electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+    launchPyxis({ userData, env });
   let app = await launch();
   try {
     let page = await app.firstWindow();
@@ -120,14 +102,11 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await page.evaluate((planId) => {
       window.location.hash = `/plans/${planId}/simulation`;
     }, plan.planId);
-    mkdirSync(".shots", { recursive: true });
     await expect(
       page.getByRole("button", { name: "Inizia", exact: true }),
     ).toBeEnabled();
-    await page.screenshot({ path: ".shots/m11-setup-it-dark.png" });
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await saveShot(page, "m11-setup-it-dark.png");
+    await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Inizia", exact: true }).click();
     await expect(
       page.getByRole("textbox", { name: "La tua risposta" }),
@@ -212,13 +191,8 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       await expect(
         page.getByRole("textbox", { name: /La tua risposta|Your answer/ }),
       ).toBeVisible();
-      await page.screenshot({
-        path: `.shots/m11-run-${language}-${theme}-${width}.png`,
-      });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await saveShot(page, `m11-run-${language}-${theme}-${width}.png`);
+      await expectNoAxeViolations(page);
     }
     // Advance only this temporary exam's stored start; exercise core's real expiry path.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
@@ -317,10 +291,8 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await expect(
       page.getByRole("heading", { name: "Reference solution" }),
     ).toBeVisible();
-    await page.screenshot({ path: ".shots/m11-results-en-light.png" });
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await saveShot(page, "m11-results-en-light.png");
+    await expectNoAxeViolations(page);
     if (process.env.PYXIS_LIVE_SIMULATION)
       console.log(
         "Live simulation graders",

@@ -1,20 +1,15 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { quitPyxis } from "./app-exit";
+import { launchPyxis } from "./app-under-test";
 
 test("study reminders are off by default; the switch and the time are saved", async () => {
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-reminders-"));
-  const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
-  };
-  delete env.ELECTRON_RUN_AS_NODE;
   const launch = () =>
-    electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+    launchPyxis({ userData });
   let app = await launch();
   try {
     let page = await app.firstWindow();

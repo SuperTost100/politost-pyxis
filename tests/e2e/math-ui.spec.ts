@@ -1,5 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   cpSync,
   existsSync,
@@ -11,6 +10,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { MathCheck } from "../../src/shared/math-check";
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 async function launch(reply?: string) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -20,14 +23,7 @@ async function launch(reply?: string) {
   const pack = join(userData, "workspace/runtimes/pyodide", version);
   mkdirSync(pack, { recursive: true });
   cpSync(".tmp/pyodide", pack, { recursive: true });
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.PYXIS_E2E_REPLY;
-  if (reply) env.PYXIS_E2E_REPLY = reply;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: reply || undefined } });
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();
@@ -46,7 +42,6 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
   const reply = `${step}\n\n\`\`\`check\n${JSON.stringify({ kind: "derivative", expr: "x**2*sin(x)", claimed: "x", step })}\n\`\`\``;
   const { app, page, userData } = await launch(reply);
   try {
-    mkdirSync(".shots", { recursive: true });
     for (const [language, theme, width] of [
       ["it", "dark", 1280],
       ["it", "light", 960],
@@ -83,13 +78,8 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
       await expect(page.locator(".px-python pre").last()).toContainText(
         "example error",
       );
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
-      await page.screenshot({
-        path: `.shots/m9-python-${language}-${theme}-${width}.png`,
-      });
+      await expectNoAxeViolations(page);
+      await saveShot(page, `m9-python-${language}-${theme}-${width}.png`);
     }
     const result = (await page.evaluate(() =>
       window.pyxis.invoke("chats.ask", {
@@ -106,10 +96,8 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     });
     await page.locator(".px-check-badge.is-failed").focus();
     await expect(page.locator(".px-check-badge.is-failed")).toBeFocused();
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
-    await page.screenshot({ path: ".shots/m9-failed-light.png" });
+    await expectNoAxeViolations(page);
+    await saveShot(page, "m9-failed-light.png");
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -144,9 +132,7 @@ test("Graph several functions and mark where they meet", async () => {
     await page.getByRole("button", { name: "Rimuovi g" }).click();
     await expect(page.getByRole("textbox", { name: "Funzione g" })).toHaveCount(0);
     await expect(page.locator(".px-graph-meets")).toHaveCount(0);
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -189,7 +175,7 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
       message: {
         body: string;
         checks?: Array<{
-          kind: string;
+          kind: MathCheck["kind"];
           expr: string;
           claimed: string;
           step: string;
@@ -213,7 +199,7 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
     await expect(
       page.locator(".px-check-badge.is-verified").first(),
     ).toBeVisible({ timeout: 30000 });
-    await page.screenshot({ path: ".shots/m9-live-verified.png" });
+    await saveShot(page, "m9-live-verified.png");
     await page.evaluate(() => {
       window.location.hash = "/tools/graph";
     });
@@ -224,7 +210,7 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
       3,
     );
     await expect(page.getByText(/Integrale da/)).toBeVisible();
-    await page.screenshot({ path: ".shots/m9-graph.png" });
+    await saveShot(page, "m9-graph.png");
     await page.evaluate(() => {
       window.location.hash = "/tools/whiteboard";
     });

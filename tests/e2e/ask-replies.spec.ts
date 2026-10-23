@@ -1,14 +1,10 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
+import { seedSource } from "./seed";
 
 const CONTINUATION = " ha un massimo e un minimo su un intervallo chiuso.";
 
@@ -34,15 +30,11 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-replies-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: CONTINUATION,
     // The recorded reply waits before its first piece, so the moments right after Continue can be checked.
     PYXIS_E2E_REPLY_DELAY: "4000",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -113,25 +105,30 @@ test("Ask: Continue keeps the cut reply's citation chips while it waits for the 
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-replies-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: CONTINUATION,
     PYXIS_E2E_REPLY_DELAY: "4000",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     const now = Date.now();
+    seedSource(db, {
+      id: "src-an",
+      title: "Dispense di analisi",
+      document: { id: "d-an" },
+      passages: [
+        {
+          id: "pa-w",
+          text: "Una funzione continua su un intervallo chiuso ha massimo e minimo.",
+          locator: { chapter: 1, paragraph: "p1" },
+          section: "3. Weierstrass",
+        },
+      ],
+    });
     db.exec(`
-      INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('src-an','excerpt','Dispense di analisi','ready',1,1,1);
-      INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('d-an','src-an',1,'{"kind":"excerpt"}',1);
-      INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at)
-        VALUES('pa-w','src-an','d-an','Una funzione continua su un intervallo chiuso ha massimo e minimo.','{"chapter":1,"paragraph":"p1"}','3. Weierstrass',1);
       INSERT INTO chats(id,title,created_at,updated_at) VALUES('chat-cut','Teorema di Weierstrass',${now},${now});
       INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m-q','chat-cut','user','Che cosa dice il teorema di Weierstrass?',${now});
       INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,stopped,error,passages_json,created_at)

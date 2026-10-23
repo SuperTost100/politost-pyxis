@@ -1,8 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -10,6 +8,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -32,19 +34,11 @@ function unfold(ics: string): string[] {
 
 test("CAL-01 one exam's date exports to an .ics file from the plan header and from plan settings", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-calendar-check-"));
-  mkdirSync(".shots", { recursive: true });
   const saved = join(userData, "exams.ics");
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_SAVE: saved,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -57,16 +51,13 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,
     });
-    const insertPlan = db.prepare(
-      "INSERT INTO plans (id,title,status,exam_at,created_at,updated_at) VALUES (?,?,'ready',?,1,1)",
-    );
     // A plan's only session has the plan's id, as migration 19 gives it to an exam date the plan already had.
     const insertSession = db.prepare(
       "INSERT INTO plan_sessions (id,plan_id,date,created_at) VALUES (?,?,?,1)",
     );
     const insert = {
       run(id: string, title: string, examAt: number | null) {
-        insertPlan.run(id, title, examAt);
+        seedPlan(db, { id, title, examAt });
         if (examAt !== null) insertSession.run(id, id, examAt);
       },
     };
@@ -171,11 +162,8 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
       await page.setViewportSize({ width: 960, height: 700 });
       await page.reload();
       await expect(headerButton()).toBeEnabled();
-      const audit = await new AxeBuilder({ page }).setLegacyMode().analyze();
-      expect(audit.violations).toEqual([]);
-      await page.screenshot({
-        path: `.shots/calendar-plan-header-${language}-${theme}.png`,
-      });
+      await expectNoAxeViolations(page);
+      await saveShot(page, `calendar-plan-header-${language}-${theme}.png`);
     }
 
     // Plan settings, English: only that exam, and the summary follows the interface language.
@@ -187,9 +175,7 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     const settingsButton = () =>
       dialog.getByRole("button", { name: calendarName });
     await expect(settingsButton()).toBeEnabled();
-    await page.screenshot({
-      path: ".shots/calendar-plan-settings-en-light.png",
-    });
+    await saveShot(page, "calendar-plan-settings-en-light.png");
     rmSync(saved, { force: true });
     await settingsButton().click();
     await expect(settingsButton()).toBeEnabled();

@@ -1,10 +1,11 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -63,18 +64,9 @@ test("a quick check can be answered while the lesson is still being written, and
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "live",
-          title: "Fisica",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Forze", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Forza\nLa forza cambia lo stato di moto.\n",
-      ),
+    makeBook({
+      id: "live",
+      chapters: [{ title: "Forze", text: "## p1 | Forza\nLa forza cambia lo stato di moto.\n" }],
     }),
   );
   const replies = {
@@ -91,18 +83,11 @@ test("a quick check can be answered while the lesson is still being written, and
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     // Each model call waits first, so there is a moment where a lesson is being written and no text has arrived.
     PYXIS_E2E_PLAN_DELAY: "1500",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });

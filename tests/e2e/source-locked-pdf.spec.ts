@@ -1,13 +1,15 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { lockedPdf } from "../../src/core/sources/test-pdf";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 const PASSWORD = "Carnot-1824";
 
 function database(userData: string, readOnly = true) {
@@ -25,9 +27,8 @@ function everything(userData: string): string {
   }
 }
 
-/** Both themes at the desktop width, and the dark one narrow, saved for review in `.shots/`. */
+/** Both themes at the desktop width, and the dark one narrow, saved for review under PYXIS_SHOTS. */
 async function shoot(page: Page, name: string) {
-  mkdirSync(".shots", { recursive: true });
   for (const [theme, width] of [
     ["light", 1280],
     ["dark", 1280],
@@ -35,8 +36,8 @@ async function shoot(page: Page, name: string) {
   ] as const) {
     await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
     await page.setViewportSize({ width, height: 800 });
-    await page.waitForTimeout(300);
-    await page.screenshot({ path: `.shots/${name}-it-${theme}-${width}.png`, animations: "disabled" });
+    await animationsSettled(page);
+    await saveShot(page, `${name}-it-${theme}-${width}.png`, { animations: "disabled" });
   }
   await page.setViewportSize({ width: 1280, height: 800 });
 }
@@ -48,9 +49,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
   writeFileSync(pdf, lockedPdf("Il rendimento di una macchina termica", PASSWORD));
   const notes = join(userData, "Appunti.txt");
   writeFileSync(notes, "Il primo principio della termodinamica lega calore, lavoro ed energia interna.\n");
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -79,7 +78,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("Password di Dispense").fill("sbagliata");
     await shoot(page, "pdf-password-dialog");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await dialog.getByRole("button", { name: "Apri" }).click();
     await expect(dialog).toBeHidden();
     await expect(page.getByText("Questa password non apre il PDF. Riprova.")).toBeVisible();
@@ -125,7 +124,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     await expect(details.getByText(/Salvata da appunti\.invalid il/)).toBeVisible();
     await expect(details.getByRole("button", { name: "Controlla se c'è una nuova versione" })).toBeVisible();
     await shoot(page, "source-refresh-details");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

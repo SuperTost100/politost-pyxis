@@ -61,27 +61,14 @@ jobs:
         run: npm test -- --maxWorkers=2
       - name: Recorded Electron end-to-end checks
         run: |
-          run_e2e() {
-            if [ "$RUNNER_OS" = Linux ]; then
-              xvfb-run -a npx playwright test "$@" --workers=1
-            else
-              npx playwright test "$@" --workers=1
-            fi
-          }
-          run_e2e tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
-          run_e2e --grep-invert 'M14 every application|OCR data:|release loop:'
-      - name: Preserve failed test report
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+          bash .github/actions/e2e/run.sh tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
+          bash .github/actions/e2e/run.sh --grep-invert 'M14 every application|OCR data:|release loop:'
+      - name: Report end-to-end results
+        if: always()
+        uses: ./.github/actions/e2e
         with:
           name: test-report-${{ matrix.target }}
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
-      - name: Report local crash fault metadata
-        if: always() && runner.os == 'Windows'
-        run: node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR"
+          failed: ${{ job.status == 'failure' }}
       - name: Report Windows application fault modules
         if: failure() && runner.os == 'Windows'
         shell: pwsh
@@ -117,21 +104,14 @@ jobs:
           build: "true"
       - name: Route audit
         run: |
-          run_e2e() {
-            if [ "$RUNNER_OS" = Linux ]; then
-              xvfb-run -a npx playwright test "$@" --workers=1
-            else
-              npx playwright test "$@" --workers=1
-            fi
-          }
           for combo in ${{ matrix.language }}-dark-1280 ${{ matrix.language }}-dark-960 ${{ matrix.language }}-light-1280 ${{ matrix.language }}-light-960; do
             export PYXIS_UI_COMBO="$combo"
             export PYXIS_UI_RECORD="ci-audit/audit-$combo.json"
-            run_e2e tests/e2e/ui-audit.spec.ts
+            bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts
             if [ "${{ matrix.target }}" = mac-arm64 ]; then
               export PYXIS_UI_LARGE=1
               export PYXIS_UI_RECORD="ci-audit/audit-$combo-large.json"
-              run_e2e tests/e2e/ui-audit.spec.ts
+              bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts
               unset PYXIS_UI_LARGE
             fi
           done
@@ -143,18 +123,12 @@ jobs:
           path: ci-audit/
           if-no-files-found: warn
           retention-days: 14
-      - name: Preserve failed test report
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - name: Report end-to-end results
+        if: always()
+        uses: ./.github/actions/e2e
         with:
           name: audit-report-${{ matrix.target }}-${{ matrix.language }}
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
-      - name: Report local crash fault metadata
-        if: always() && runner.os == 'Windows'
-        run: node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR"
+          failed: ${{ job.status == 'failure' }}
 
   package:
     name: package ${{ matrix.target }}
@@ -230,11 +204,7 @@ jobs:
           # The installers are already built. This checks the fuses they carry, then turns --inspect back on in this
           # unpacked copy only, because Playwright attaches through it.
           node scripts/packaged-fuses.mjs "$PYXIS_DIST_APP" --allow-inspect
-          if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a npx playwright test "${specs[@]}" --workers=1
-          else
-            npx playwright test "${specs[@]}" --workers=1
-          fi
+          bash .github/actions/e2e/run.sh "${specs[@]}"
       - name: Collect installers and SHA-256 checksums
         run: |
           node --input-type=module <<'JS'
@@ -259,18 +229,12 @@ jobs:
           path: release-artifacts/
           if-no-files-found: error
           retention-days: 14
-      - name: Preserve failed test report
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - name: Report end-to-end results
+        if: always()
+        uses: ./.github/actions/e2e
         with:
           name: package-report-${{ matrix.target }}
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
-      - name: Report local crash fault metadata
-        if: always() && runner.os == 'Windows'
-        run: node scripts/minidump-fault.mjs "$PYXIS_CRASH_DIR"
+          failed: ${{ job.status == 'failure' }}
 
   # The in-app updater checks a download against the release's SHA256SUMS, by GitHub's asset names.
   checksums:

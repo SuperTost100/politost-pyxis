@@ -1,6 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -11,12 +9,9 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 
 // Stand-ins for the two engine CLIs. They report a version and a sign-in state, nothing more, so no model is called.
 function fakeBins(options: { claude: boolean | null; codex: boolean | null }) {
@@ -59,39 +54,13 @@ async function launch(
   userData: string,
   extra: Record<string, string>,
 ): Promise<ElectronApplication> {
-  const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
-    ...extra,
-  };
-  delete env.ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
+  return launchPyxis({ userData, env: extra });
 }
 
 async function noAxeViolations(page: Page) {
   // A dialog that is still fading in can measure as low contrast, so wait for finite animations to end first.
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          document
-            .getAnimations()
-            .filter(
-              (animation) =>
-                animation.playState === "running" &&
-                animation.effect?.getTiming().iterations !== Infinity,
-            ).length,
-      ),
-    )
-    .toBe(0);
-  const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-    .violations;
-  expect(
-    found.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-    ),
-  ).toEqual([]);
+  await animationsSettled(page);
+  await expectNoAxeViolations(page);
 }
 
 const profile = (page: Page) =>
@@ -364,6 +333,7 @@ test("First setup: cancelling a sign-in before its page opens is not a failure, 
     // Starting again is not undone by the answer to the cancelled attempt.
     await signIn.click();
     await expect(button(setup, "Annulla")).toBeVisible();
+    // The cancelled attempt's answer would undo this within moments; its absence has no signal, so this waits a fixed time.
     await page.waitForTimeout(500);
     await expect(button(setup, "Annulla")).toBeVisible();
     await expect(setup.getByText(/Accesso non completato/)).toHaveCount(0);
@@ -689,6 +659,7 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
     await expect(
       page.getByRole("heading", { name: "Esami", level: 1 }),
     ).toBeVisible();
+    // The notice would open once the engine check ends. A notice that never opens has no signal, so this is a fixed wait.
     await page.waitForTimeout(2000);
     await expect(notice(page)).toHaveCount(0);
   } finally {

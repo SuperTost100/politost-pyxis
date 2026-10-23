@@ -1,5 +1,4 @@
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
@@ -8,12 +7,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -23,14 +20,28 @@ const REPLY = [
 
 function seed(userData: string) {
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-  db.exec(`
-    INSERT INTO subjects(id,name,position,created_at) VALUES('s-fis','Fisica',0,1);
-    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('src-fis','excerpt','Appunti di fisica','ready',1,1,1);
-    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('d-fis','src-fis',1,'{"kind":"excerpt"}',1);
-    INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('pa1','src-fis','d-fis','Come si risolve un integrale per parti: la formula integrale per parti di u dv vale uv meno integrale di v du.','{"chapter":1,"paragraph":"p1"}','1. Integrali',1);
-    INSERT INTO plans(id,subject_id,title,status,content_language,target,created_at,updated_at) VALUES('p-fis','s-fis','Fisica 1','ready','it',0.75,1,1);
-    INSERT INTO plan_sources(plan_id,source_id) VALUES('p-fis','src-fis');
-  `);
+  seedSubjects(db, [{ id: "s-fis", name: "Fisica" }]);
+  seedSource(db, {
+    id: "src-fis",
+    title: "Appunti di fisica",
+    document: { id: "d-fis" },
+    passages: [
+      {
+        id: "pa1",
+        text: "Come si risolve un integrale per parti: la formula integrale per parti di u dv vale uv meno integrale di v du.",
+        locator: { chapter: 1, paragraph: "p1" },
+        section: "1. Integrali",
+      },
+    ],
+  });
+  seedPlan(db, {
+    id: "p-fis",
+    subjectId: "s-fis",
+    title: "Fisica 1",
+    language: "it",
+    target: 0.75,
+    sourceIds: ["src-fis"],
+  });
   db.close();
 }
 
@@ -104,13 +115,9 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-theme-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: REPLY,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -149,7 +156,7 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
     const settle = async () => {
       await page.mouse.move(1, 1);
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      await page.waitForTimeout(800);
+      await animationsSettled(page);
     };
     const reloaded = async () => {
       await page.reload();
@@ -170,7 +177,7 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
       // The switch the issue describes: the API call, with the chat on screen.
       await page.evaluate((theme) => window.pyxis.setAppearance(theme), to);
       await settle();
-      await page.screenshot({ path: `.shots/ask-theme-${from}-to-${to}.png` });
+      await saveShot(page, `ask-theme-${from}-to-${to}.png`);
       const live = await paint(page);
       const after = await landmarks(page);
       expect(after.theme).toBe(to);

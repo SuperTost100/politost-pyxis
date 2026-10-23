@@ -1,16 +1,14 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-composer-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1", PYXIS_E2E_REPLY: "Ecco." };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: "Ecco." } });
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();
@@ -24,11 +22,10 @@ async function launch() {
 const draft = (page: Page) => page.evaluate(() => sessionStorage.getItem("pyxis-draft"));
 
 async function shoot(page: Page, name: string) {
-  mkdirSync(".shots", { recursive: true });
   for (const theme of ["light", "dark"] as const) {
     await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await page.locator(".px-composer").screenshot({ path: `.shots/math-composer-${name}-${theme}.png` });
+    await saveShot(page.locator(".px-composer"), `math-composer-${name}-${theme}.png`);
   }
 }
 
@@ -73,7 +70,7 @@ test("Ask composer: a formula sits inline in the text, leaves as $...$ and rende
     // No LaTeX anywhere in the field.
     expect(await box.innerText()).not.toMatch(/[$^\\]/);
     await shoot(page, "text-and-chip");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // From the text, the first Backspace selects the formula and the second removes it; undo brings it back.
     for (let i = 0; i < " se x vale 3?".length; i += 1) await page.keyboard.press("Backspace");
@@ -103,7 +100,7 @@ test("Ask composer: a formula sits inline in the text, leaves as $...$ and rende
         return still;
       }, { intervals: [100] })
       .toBe(true);
-    await bubble.screenshot({ path: ".shots/math-composer-bubble-dark.png" });
+    await saveShot(bubble, "math-composer-bubble-dark.png");
     const stored = (await page.evaluate(() =>
       window.pyxis.invoke("chats.read", { chatId: location.hash.split("/").at(-1)! }),
     )) as { messages: Array<{ role: string; body: string }> };

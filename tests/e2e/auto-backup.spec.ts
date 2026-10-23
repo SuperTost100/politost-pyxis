@@ -1,6 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   type ElectronApplication,
   expect,
   test,
@@ -18,7 +16,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { quitPyxis } from "./app-exit";
+import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
+import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const automatic =
   /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}(?:-[0-9a-f]{8})?\.zip$/;
@@ -28,9 +30,7 @@ const HOUR = 60 * 60 * 1000;
 function addPlan(workspace: string, id = "auto-plan", title = "Motion") {
   const db = new DatabaseSync(join(workspace, "pyxis.db"), { timeout: 10000 });
   try {
-    db.prepare(
-      "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES (?,?,'ready',1,1)",
-    ).run(id, title);
+    seedPlan(db, { id, title });
   } finally {
     db.close();
   }
@@ -42,13 +42,8 @@ test.beforeEach(() => {
   mainLog.length = 0;
 });
 
-async function launch(env: Record<string, string | undefined>) {
-  const full = { ...process.env, PYXIS_E2E: "1", ...env };
-  delete full.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env: full as Record<string, string>,
-  });
+async function launch(env: { PYXIS_USER_DATA: string } & Record<string, string>) {
+  const app = await launchPyxis({ userData: env.PYXIS_USER_DATA, env });
   for (const stream of [app.process().stdout, app.process().stderr])
     stream?.on("data", (chunk) =>
       mainLog.push(
@@ -134,6 +129,7 @@ test("automatic backups: not while empty, then once a day with retention of this
     // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
     await expect(page).toHaveURL(/#\/exams$/);
     const workspace = await page.evaluate(() => window.pyxis.workspacePath());
+    // Two checks or more pass in 5 s. A check that backs up nothing leaves no trace to wait for.
     await page.waitForTimeout(5000);
     expect(backupsIn(folder)).toEqual([]);
     expect(
@@ -164,7 +160,8 @@ test("automatic backups: not while empty, then once a day with retention of this
       location.hash = "/settings/data";
     });
     await expect(page.getByText(/^Ultima copia: .+\.$/)).toBeVisible();
-    // The first check runs a second after core starts; give it time to do nothing.
+    // The first check runs a second after core starts; give it time to do nothing. Doing nothing leaves no trace to
+    // wait for, so this is a fixed wait.
     await page.waitForTimeout(4000);
     expect(backupsIn(folder)).toEqual([first]);
     await quitPyxis(app);
@@ -299,16 +296,8 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
       // The first check waits for core to start and its queue to empty, which can take a while on a slow runner.
       { timeout: 60_000 },
     );
-    expect(
-      (
-        await new AxeBuilder({ page })
-          .setLegacyMode()
-          .include(".px-backup-notice")
-          .analyze()
-      ).violations,
-    ).toEqual([]);
-    mkdirSync(".shots", { recursive: true });
-    await page.screenshot({ path: ".shots/auto-backup-notice.png" });
+    await expectNoAxeViolations(page, { include: [".px-backup-notice"] });
+    await saveShot(page, "auto-backup-notice.png");
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
     await expect(page).toHaveURL(/#\/exams$/);
@@ -486,15 +475,8 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
         { exact: true },
       ),
     ).toBeVisible();
-    const axe = await new AxeBuilder({ page })
-      .setLegacyMode()
-      .include(".px-settings-danger")
-      .analyze();
-    expect(axe.violations).toEqual([]);
-    mkdirSync(".shots", { recursive: true });
-    await page
-      .locator(".px-settings-danger")
-      .screenshot({ path: ".shots/wipe-backups.png" });
+    await expectNoAxeViolations(page, { include: [".px-settings-danger"] });
+    await saveShot(page.locator(".px-settings-danger"), "wipe-backups.png");
     await tick.uncheck();
     await expect(
       page.getByText(/^Le copie automatiche restano nella tua cartella/),

@@ -1,14 +1,12 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
 
 test("SET-05 deleting all data removes saved engine keys across a restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-wipe-keys-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const args = [join(process.cwd(), "out/main/index.js")];
-  let app = await electron.launch({ args, env });
+  let app = await launchPyxis({ userData });
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -25,7 +23,7 @@ test("SET-05 deleting all data removes saved engine keys across a restart", asyn
     expect((await page.evaluate(() => window.pyxis.keys.status())).configured).toEqual([]);
     await expect.poll(() => page.evaluate(() => window.pyxis.invoke("profile.get", {}))).toBeNull();
     await app.close();
-    app = await electron.launch({ args, env });
+    app = await launchPyxis({ userData });
     page = await app.firstWindow();
     expect((await page.evaluate(() => window.pyxis.keys.status())).configured).toEqual([]);
     await expect(page.getByRole("button", { name: "Salta" })).toBeVisible();

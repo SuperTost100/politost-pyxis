@@ -1,15 +1,16 @@
-import { _electron as electron, expect, test } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("route failure shows a plain recovery page without stack details", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-route-error-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -23,8 +24,8 @@ test("route failure shows a plain recovery page without stack details", async ()
     expect(message!.x).toBeGreaterThanOrEqual(shellColumn!.x);
     expect(message!.x + message!.width).toBeLessThanOrEqual(shellColumn!.x + shellColumn!.width);
     await expect(page.locator("pre")).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
-    await page.screenshot({ path: ".shots/route-error-it.png" });
+    await expectNoAxeViolations(page);
+    await saveShot(page, "route-error-it.png");
     await page.getByRole("button", { name: "Torna a Esami" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(page.getByRole("heading", { name: "Non è stato possibile aprire questa pagina" })).toHaveCount(0);
@@ -36,9 +37,7 @@ test("route failure shows a plain recovery page without stack details", async ()
 
 test("a failed plan build says so in the title and steps, shows its message under Details and retries", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-error-state-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -46,7 +45,7 @@ test("a failed plan build says so in the title and steps, shows its message unde
     const reason = "invalid-output: the model returned text that is not a topic list";
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     const now = Date.now();
-    db.exec("INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES('b','Chimica','building','it',1,1)");
+    seedPlan(db, { id: "b", title: "Chimica", status: "building", language: "it" });
     db.prepare(
       "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,error,created_at,updated_at) VALUES('jb','plan-build',?,'failed',0.3,'wizard.stepTopics',?,?,?)",
     ).run(JSON.stringify({ planId: "b" }), reason, now, now);

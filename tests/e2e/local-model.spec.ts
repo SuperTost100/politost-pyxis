@@ -1,20 +1,19 @@
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeOllama } from "../../src/core/engine/fake-ollama";
-import { appUnderTest } from "./app-under-test";
+import { launchPyxis } from "./app-under-test";
+import { animationsSettled } from "./settled";
+import { SHOTS, saveShot } from "./shots";
 
 const GIB = 1024 ** 3;
-// Screenshots for review go here when set. The checks run either way.
-const shots = process.env.PYXIS_LOCAL_SHOTS;
 
 const capable = {
   platform: "linux",
@@ -57,16 +56,11 @@ async function launch(
   userData: string,
   env: Record<string, string>,
 ): Promise<{ app: ElectronApplication; page: Page }> {
-  const merged: Record<string, string | undefined> = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
+  const app = await launchPyxis({
+    userData,
     // No real Ollama, engine CLI or graphics card takes part.
-    CLI_FUNNEL_NO_SHELL_PATH: "1",
-    ...env,
-  };
-  delete merged.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch(appUnderTest(merged));
+    env: { CLI_FUNNEL_NO_SHELL_PATH: "1", ...env },
+  });
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();
@@ -91,18 +85,13 @@ async function openEngines(
 }
 
 async function shoot(page: Page, name: string, locator?: string) {
-  if (!shots) return;
-  mkdirSync(shots, { recursive: true });
+  if (!SHOTS) return;
   for (const width of [1280, 420]) {
     await page.setViewportSize({ width, height: 900 });
-    const target = locator ? page.locator(locator).first() : page;
-    if (locator) await target.scrollIntoViewIfNeeded();
-    // Let the resized page finish painting before the picture.
-    await page.waitForTimeout(400);
-    await page.screenshot({
-      path: join(shots, `${name}-${width}.png`),
-      fullPage: false,
-    });
+    if (locator) await page.locator(locator).first().scrollIntoViewIfNeeded();
+    // Let the resized page finish its transitions before the picture.
+    await animationsSettled(page);
+    await saveShot(page, `${name}-${width}.png`, { fullPage: false });
   }
   await page.setViewportSize({ width: 1280, height: 900 });
 }

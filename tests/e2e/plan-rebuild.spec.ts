@@ -1,27 +1,23 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 // Seeded responses only: the app runs its real jobs against recorded replies, no model is called.
 
 // A hidden window never finishes a modal's leave animation, so every page here asks for reduced motion.
 function launch(userData: string, replies: unknown) {
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  return electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  return launchPyxis({ userData, env });
 }
 
 const intro = { markdown: "## Introduzione\n\nStudierai la fisica." };
@@ -304,11 +300,10 @@ test("PLAN-13 rebuild is reviewed, durable across restart, and applies exactly w
       .getByRole("button", { name: "Ricostruisci gli argomenti" })
       .click();
     await expect(dialog.getByText("Energia", { exact: true })).toBeVisible();
-    await page.waitForTimeout(300); // Let the modal finish its entrance before measuring contrast.
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
-    await page.screenshot({ path: ".shots/m13-rebuild-review.png", animations: "disabled" });
+    // Let the modal finish its entrance before measuring contrast.
+    await animationsSettled(page);
+    await expectNoAxeViolations(page);
+    await saveShot(page, "m13-rebuild-review.png", { animations: "disabled" });
     await dialog.getByRole("button", { name: "Applica le modifiche" }).click();
     await expect(dialog).toBeHidden();
     const after = (await page.evaluate(

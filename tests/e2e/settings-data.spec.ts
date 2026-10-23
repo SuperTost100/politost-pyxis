@@ -1,6 +1,5 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   existsSync,
   mkdirSync,
@@ -13,6 +12,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -31,9 +34,6 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
   const sourcePath = join(userData, "energy.txt");
   writeFileSync(sourcePath, text);
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_MOVE: parent,
     PYXIS_E2E_RELEASE: JSON.stringify({
       tag_name: newerTag,
@@ -42,11 +42,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       prerelease: false,
     }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  let app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  let app = await launchPyxis({ userData, env });
   try {
     let page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -68,9 +64,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       .toBe("ready");
     const original = await page.evaluate(() => window.pyxis.workspacePath());
     const db = new DatabaseSync(join(original, "pyxis.db"), { timeout: 10000 });
-    db.exec(
-      "INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('move-plan','Energy','ready',1,1)",
-    );
+    seedPlan(db, { id: "move-plan", title: "Energy" });
     const blob = db
       .prepare("SELECT blob_sha FROM sources WHERE id=?")
       .get(imported.sourceId) as { blob_sha: string };
@@ -137,18 +131,8 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       await expect(notice.locator("pre")).toBeVisible();
       const box = await notice.boundingBox();
       expect(box!.height).toBeLessThanOrEqual(680);
-      expect(
-        (
-          await new AxeBuilder({ page })
-            .setLegacyMode()
-            .include(".px-update-notice")
-            .analyze()
-        ).violations,
-      ).toEqual([]);
-      mkdirSync(".shots", { recursive: true });
-      await page.screenshot({
-        path: `.shots/m14-update-${language}-${theme}-${width}.png`,
-      });
+      await expectNoAxeViolations(page, { include: [".px-update-notice"] });
+      await saveShot(page, `m14-update-${language}-${theme}-${width}.png`);
       await notice
         .getByRole("button", { name: /^(Chiudi avviso|Dismiss notice)$/ })
         .click();
@@ -167,27 +151,15 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
       const license = page.locator(".px-about-license pre");
       await license.focus();
       await expect(license).toBeFocused();
-      expect(
-        (
-          await new AxeBuilder({ page })
-            .setLegacyMode()
-            .include(".px-about")
-            .analyze()
-        ).violations,
-      ).toEqual([]);
+      await expectNoAxeViolations(page, { include: [".px-about"] });
       await page.locator(".px-about").scrollIntoViewIfNeeded();
-      await page.screenshot({
-        path: `.shots/m14-about-${language}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `m14-about-${language}-${theme}-${width}.png`);
       const update = await page.evaluate(() => window.pyxis.checkUpdates());
       expect(update.state).toBe("available");
       expect(update.current).toBe(packageVersion);
     }
     await app.close();
-    app = await electron.launch({
-      args: [join(process.cwd(), "out/main/index.js")],
-      env,
-    });
+    app = await launchPyxis({ userData, env });
     page = await app.firstWindow();
     await expect
       .poll(() => page.evaluate(() => window.pyxis.workspacePath()))
@@ -212,17 +184,10 @@ test("a manual backup saved over the live database is refused and the data stays
   const userData = mkdtempSync(join(tmpdir(), "pyxis-backup-inside-"));
   const database = join(userData, "workspace", "pyxis.db");
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     // A Linux save dialog keeps the name as typed, so "pyxis.db" in the workspace reaches main unchanged.
     PYXIS_E2E_SAVE: database,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -256,12 +221,7 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
   const userData = mkdtempSync(join(tmpdir(), "pyxis-free-space-"));
   const sourcePath = join(userData, "lavoro.txt");
   writeFileSync(sourcePath, "Il lavoro di una forza costante è il prodotto scalare di forza e spostamento.");
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -305,14 +265,11 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
     await expect(
       page.getByText("Niente da liberare. Tutti i file salvati sono ancora in uso.", { exact: true }),
     ).toBeVisible();
-    mkdirSync(".shots", { recursive: true });
     for (const theme of ["light", "dark"] as const) {
       await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
       await button.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: `.shots/free-space-${theme}.png` });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode().include(".px-settings-subpage").analyze()).violations,
-      ).toEqual([]);
+      await saveShot(page, `free-space-${theme}.png`);
+      await expectNoAxeViolations(page, { include: [".px-settings-subpage"] });
     }
   } finally {
     await app.close();

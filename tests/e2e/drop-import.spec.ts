@@ -1,7 +1,8 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
 
 test("SRC-07 a dropped file gets a native grant and nothing else does", async () => {
   test.setTimeout(120000);
@@ -10,13 +11,7 @@ test("SRC-07 a dropped file gets a native grant and nothing else does", async ()
   const script = join(userData, "run.sh");
   writeFileSync(note, "La velocità descrive lo spostamento nel tempo.\n");
   writeFileSync(script, "echo no\n");
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.PYXIS_E2E_FILE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined } });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();

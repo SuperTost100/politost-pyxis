@@ -1,5 +1,4 @@
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -9,20 +8,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
 
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
 const mac = process.platform === "darwin";
 
 async function launch(options: { onboarded: boolean }) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-app-menu-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_RELEASE: JSON.stringify({
       tag_name: "v9.9.9",
       body: "Fixture release.",
@@ -30,8 +23,7 @@ async function launch(options: { onboarded: boolean }) {
       prerelease: false,
     }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   if (options.onboarded) {
     await page.getByRole("button", { name: "Salta" }).click();
@@ -50,7 +42,10 @@ async function pick(app: ElectronApplication, id: string) {
   expect(found, `menu item ${id}`).toBe(true);
 }
 
-/** Time for a command that must do nothing to have done something. */
+/**
+ * Time for a command that must do nothing to have done something. A fixed wait on purpose: nothing signals that a
+ * menu command was ignored.
+ */
 async function settle(page: Page) {
   await page.waitForTimeout(400);
 }
@@ -270,10 +265,13 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
   try {
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     seed(userData, (db) =>
-      db.exec(`
-        INSERT INTO plans(id,title,status,content_language,target,created_at,updated_at) VALUES('menu-plan','Fisica 1','ready','it',0.75,1,1);
-        INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('menu-topic','menu-plan','Dinamica',0,1);
-      `),
+      seedPlan(db, {
+        id: "menu-plan",
+        title: "Fisica 1",
+        language: "it",
+        target: 0.75,
+        topics: [{ id: "menu-topic", title: "Dinamica" }],
+      }),
     );
     await page.reload();
     // An open dialog.

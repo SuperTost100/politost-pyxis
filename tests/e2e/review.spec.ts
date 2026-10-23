@@ -1,6 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
+import { expect, test, type Page } from "@playwright/test";
 import {
   cpSync,
   existsSync,
@@ -14,9 +12,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 // The built app can be pointed at another output folder so a test run never races a rebuild of out/.
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
 
 const exercise = (id: string, chapter: number, n: number) =>
   `:::exercise{id="${id}" chapter="${chapter}"}\nDomanda ${id}?\n:::solution\nrisposta ${n}\n:::\n:::\n`;
@@ -27,24 +27,17 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
   const file = join(userData, "fisica.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "fisica",
-          title: "Fisica",
-          access: "public",
-          chapters: [
-            { id: "c1", number: 1, title: "Forze", file: "01.md" },
-            { id: "c2", number: 2, title: "Energia", file: "02.md" },
-          ],
-        }),
-      ),
-      "chapters/01.md": strToU8("## p1 | Forza\nLa forza vale massa per accelerazione.\n"),
-      "chapters/02.md": strToU8("## p1 | Energia\nL’energia cinetica dipende dalla velocità.\n"),
-      "esercizi.md": strToU8(
-        [1, 2, 3, 4].map((n) => exercise(`a${n}`, 1, n)).join("\n") +
+    makeBook({
+      id: "fisica",
+      chapters: [
+        { title: "Forze", text: "## p1 | Forza\nLa forza vale massa per accelerazione.\n" },
+        { title: "Energia", text: "## p1 | Energia\nL’energia cinetica dipende dalla velocità.\n" },
+      ],
+      files: {
+        "esercizi.md":
+          [1, 2, 3, 4].map((n) => exercise(`a${n}`, 1, n)).join("\n") +
           [5, 6, 7].map((n) => exercise(`b${n}`, 2, n)).join("\n"),
-      ),
+      },
     }),
   );
   const planReplies = {
@@ -61,13 +54,9 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -165,9 +154,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     await goto(`/plans/${planId}/review`);
     await expect(page.getByText("Hai un ripasso in corso")).toBeVisible();
     await expect(progress).toHaveText(new RegExp(`^5 di ${total} fatti`));
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Continua il ripasso" }).click();
     await expect(page).toHaveURL(/\/diagnostic\?attempt=/);
     // The question screen continues the same queue: card count first, then the question.
@@ -208,13 +195,9 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
   mkdirSync(pack, { recursive: true });
   cpSync(".tmp/pyodide", pack, { recursive: true });
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_REPLY: "Prova così:\n\n```python\nprint(6 * 7)\n```\n",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page: Page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -237,20 +220,14 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
     // Pyodide's first start takes over a minute on the hosted macOS x64 runner (each python.spec case there takes ~20 s).
     // A notice under the block (setup, unavailable, slow) means no output will come, so fail on it at once.
     const notice = page.locator(".px-python-block p.small");
-    for (const deadline = Date.now() + 150000; Date.now() < deadline; ) {
-      if (await output.isVisible()) break;
-      const shown = await notice.allInnerTexts();
-      if (shown.length > 0)
-        throw new Error(`The Python block showed a notice instead of output: ${shown.join(" | ")}`);
-      await page.waitForTimeout(250);
-    }
+    await expect(output.or(notice).first()).toBeVisible({ timeout: 150000 });
+    if (!(await output.isVisible()))
+      throw new Error(`The Python block showed a notice instead of output: ${(await notice.allInnerTexts()).join(" | ")}`);
     await expect(output).toHaveText("42\n", { timeout: 5000 });
     // The captured output scrolls by keyboard, so it must take focus.
     await output.focus();
     await expect(output).toBeFocused();
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     // Output belongs to the code that produced it: editing hides it, restoring brings it back.
     await code.fill("print(1)");
     await expect(output).toHaveCount(0);

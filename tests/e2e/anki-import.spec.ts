@@ -1,24 +1,19 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
 } from "@playwright/test";
 import { zipSync, strToU8 } from "fflate";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { animationsSettled } from "./settled";
+import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
+import { SHOTS, saveShot } from "./shots";
 
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
-/** Set PYXIS_SHOTS to a folder to save screenshots of the dialog. */
-const SHOTS = process.env.PYXIS_SHOTS;
 
 const DAY = 86_400_000;
 
@@ -94,9 +89,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
   const userData = mkdtempSync(join(tmpdir(), "pyxis-anki-import-"));
   const fixtures = mkdtempSync(join(tmpdir(), "pyxis-anki-fixture-"));
   const archive = packageFile(fixtures);
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -105,11 +98,13 @@ test("an Anki package imports into a topic with its history, in both themes", as
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,
     });
+    seedPlan(db, {
+      id: "p-phys",
+      title: "Fisica 1",
+      language: "it",
+      topics: [{ id: "t-dyn", title: "Dinamica" }, { id: "t-kin", title: "Cinematica" }],
+    });
     db.exec(`
-      INSERT INTO plans(id,title,status,content_language,created_at,updated_at) VALUES
-        ('p-phys','Fisica 1','ready','it',1,1);
-      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES
-        ('t-dyn','p-phys','Dinamica',0,1),('t-kin','p-phys','Cinematica',1,1);
       INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
         ('c-old','p-phys','t-kin','Velocità media?','Spazio diviso tempo.',1);
     `);
@@ -132,9 +127,8 @@ test("an Anki package imports into a topic with its history, in both themes", as
       "not an Anki package",
     );
     if (SHOTS) {
-      mkdirSync(SHOTS, { recursive: true });
-      await page.waitForTimeout(500);
-      await page.screenshot({ path: join(SHOTS, "en-light-refused.png") });
+      await animationsSettled(page);
+      await saveShot(page, "en-light-refused.png");
     }
 
     await pick(app, archive);
@@ -153,17 +147,13 @@ test("an Anki package imports into a topic with its history, in both themes", as
     ).toBeEnabled();
     // The buttons that just changed state are still fading to their new colours; axe would measure a colour halfway.
     await animationsSettled(page);
-    expect(
-      (
-        await new AxeBuilder({ page }).setLegacyMode(true).analyze()
-      ).violations.map((v) => v.id),
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
 
     if (SHOTS) {
       for (const theme of ["light", "dark"] as const) {
         await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
-        await page.waitForTimeout(400);
-        await page.screenshot({ path: join(SHOTS, `en-${theme}-dialog.png`) });
+        await animationsSettled(page);
+        await saveShot(page, `en-${theme}-dialog.png`);
       }
       await page.evaluate(() => window.pyxis.setAppearance("light"));
     }
@@ -182,12 +172,12 @@ test("an Anki package imports into a topic with its history, in both themes", as
     if (SHOTS) {
       for (const theme of ["light", "dark"] as const) {
         await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
-        await page.waitForTimeout(400);
-        await page.screenshot({ path: join(SHOTS, `en-${theme}-result.png`) });
+        await animationsSettled(page);
+        await saveShot(page, `en-${theme}-result.png`);
       }
       await page.setViewportSize({ width: 560, height: 800 });
-      await page.waitForTimeout(300);
-      await page.screenshot({ path: join(SHOTS, "en-dark-result-narrow.png") });
+      await animationsSettled(page);
+      await saveShot(page, "en-dark-result-narrow.png");
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.evaluate(() => window.pyxis.setAppearance("light"));
     }
@@ -233,8 +223,8 @@ test("an Anki package imports into a topic with its history, in both themes", as
     const exporting = page.getByRole("dialog", { name: "Export to Anki" });
     await expect(exporting.getByRole("checkbox")).not.toBeChecked();
     if (SHOTS) {
-      await page.waitForTimeout(500);
-      await page.screenshot({ path: join(SHOTS, "en-light-export.png") });
+      await animationsSettled(page);
+      await saveShot(page, "en-light-export.png");
     }
     // A click while the dialog still zooms in is lost; let it open fully first.
     await animationsSettled(page);

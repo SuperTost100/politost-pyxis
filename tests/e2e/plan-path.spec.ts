@@ -1,11 +1,13 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -66,9 +68,9 @@ async function showDone(page: Page) {
 }
 
 /** A full-page shot from the top, so the sticky app bar stays at the top of the image. */
-async function shoot(page: Page, path: string) {
+async function shoot(page: Page, name: string) {
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path, fullPage: true });
+  await saveShot(page, name, { fullPage: true });
 }
 
 /** No connector line may run through a box or a label: each stops at least a few pixels short of them. */
@@ -105,26 +107,12 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "path",
-          title: "Fisica",
-          access: "public",
-          chapters: chapters.map((chapter) => ({
-            id: `c${chapter.number}`,
-            number: chapter.number,
-            title: chapter.title,
-            file: `0${chapter.number}.md`,
-          })),
-        }),
-      ),
-      ...Object.fromEntries(
-        chapters.map((chapter) => [
-          `chapters/0${chapter.number}.md`,
-          strToU8(`## p${chapter.number} | ${chapter.title}\nTesto su ${chapter.title}.\n`),
-        ]),
-      ),
+    makeBook({
+      id: "path",
+      chapters: chapters.map((chapter) => ({
+        title: chapter.title,
+        text: `## p${chapter.number} | ${chapter.title}\nTesto su ${chapter.title}.\n`,
+      })),
     }),
   );
   const replies = {
@@ -142,15 +130,9 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
-  const shots = ".shots/plan-path";
-  mkdirSync(shots, { recursive: true });
+  const app = await launchPyxis({ userData, env });
   const combos = [
     ["it", "light"],
     ["it", "dark"],
@@ -211,10 +193,10 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     expect((await linesClear(page)).hits).toEqual([]);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
-      await shoot(page, `${shots}/new-plan-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/new-plan-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // The chooser lets the student skip the introduction and the diagnostic.
     await next.getByRole("button", { name: "Altre attività" }).click();
@@ -263,7 +245,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
       await language(page, lang, theme);
       await next.getByRole("button", { name: /^(Altre attività|Other activities)$/ }).click();
       await next.getByRole("button", { name: /^(Cambia argomento|Change topic)$/ }).click();
-      await shoot(page, `${shots}/topic-picker-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/topic-picker-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
     await next.getByRole("button", { name: "Altre attività" }).click();
@@ -311,20 +293,20 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expect(planned.getByRole("listitem")).toHaveCount(2);
     await expect(page.locator(".px-node.is-locked, .lucide-lock")).toHaveCount(0);
     expect((await linesClear(page)).hits).toEqual([]);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
-      await shoot(page, `${shots}/mid-way-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/mid-way-${lang}-${theme}.png`);
       await next.getByRole("button", { name: /^(Altre attività|Other activities)$/ }).click();
       expect((await linesClear(page)).hits).toEqual([]);
-      await shoot(page, `${shots}/chooser-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/chooser-${lang}-${theme}.png`);
     }
     // Narrow window.
     await language(page, "it", "light");
     await page.setViewportSize({ width: 560, height: 900 });
     await next.getByRole("button", { name: "Altre attività" }).click();
     expect((await linesClear(page)).hits).toEqual([]);
-    await shoot(page, `${shots}/chooser-narrow-it-light.png`);
+    await shoot(page, `plan-path/chooser-narrow-it-light.png`);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -337,25 +319,16 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "path-review",
-          title: "Fisica",
-          access: "public",
-          chapters: chapters.slice(0, 2).map((chapter) => ({
-            id: `c${chapter.number}`,
-            number: chapter.number,
-            title: chapter.title,
-            file: `0${chapter.number}.md`,
-          })),
-        }),
-      ),
-      "chapters/01.md": strToU8("## p1 | Forze\nUna forza cambia il moto.\n"),
-      "chapters/02.md": strToU8("## p2 | Energia e lavoro\nIl lavoro è forza per spostamento.\n"),
-      "esercizi.md": strToU8(
-        ':::exercise{id="push" chapter="1"}\nQuanto vale la forza su 2 kg a 3 m/s²?\n:::solution\nF = m a = 6 N.\n:::\n:::',
-      ),
+    makeBook({
+      id: "path-review",
+      chapters: [
+        { title: chapters[0]!.title, text: "## p1 | Forze\nUna forza cambia il moto.\n" },
+        { title: chapters[1]!.title, text: "## p2 | Energia e lavoro\nIl lavoro è forza per spostamento.\n" },
+      ],
+      files: {
+        "esercizi.md":
+          ':::exercise{id="push" chapter="1"}\nQuanto vale la forza su 2 kg a 3 m/s²?\n:::solution\nF = m a = 6 N.\n:::\n:::',
+      },
     }),
   );
   const replies = {
@@ -381,15 +354,9 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
-  const shots = ".shots/plan-path";
-  mkdirSync(shots, { recursive: true });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -425,7 +392,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       attemptId: string | null;
       itemId: string | null;
     }>;
-    const read = () => invoke<Read & { steps: Steps }>("plans.read", { planId });
+    const read = () => invoke<Omit<Read, "steps"> & { steps: Steps }>("plans.read", { planId });
     const topic = (await read()).topics[0]!;
 
     // A lesson read, a quiz handed in and a set of exercises finished, all on the first topic.
@@ -507,7 +474,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText(/^Le tue risposte del /)).toBeVisible();
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
     await expect(page.locator(".px-quiz-question")).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme] of [
       ["it", "light"],
       ["it", "dark"],
@@ -523,7 +490,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       );
       await page.reload();
       await expect(page.getByRole("button", { name: /^(Rifai|Redo)$/ })).toBeVisible();
-      await shoot(page, `${shots}/quiz-review-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/quiz-review-${lang}-${theme}.png`);
     }
     await page.evaluate(async () => {
       localStorage.setItem("pyxis.lang", "it");
@@ -565,8 +532,8 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText("Hai già finito questi esercizi.", { exact: false })).toBeVisible();
     await expect(page.getByText("Quanto vale la forza", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
-    await shoot(page, `${shots}/practice-review-it-light.png`);
+    await expectNoAxeViolations(page);
+    await shoot(page, `plan-path/practice-review-it-light.png`);
     await page.getByRole("button", { name: "Torna al percorso" }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
     expect((await read()).steps).toEqual(after);
@@ -592,8 +559,8 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText("Hai già fatto queste flashcard.", { exact: false })).toBeVisible();
     await expect(page.getByText("Nessuna flashcard in scadenza.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
-    await shoot(page, `${shots}/cards-review-it-light.png`);
+    await expectNoAxeViolations(page);
+    await shoot(page, `plan-path/cards-review-it-light.png`);
     // The focus bar's X is the only way out of a card session.
     await page.getByRole("button", { name: "Chiudi", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
@@ -618,7 +585,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.locator(".px-quiz-question")).toHaveCount(0);
     await expect(page.locator(".px-quiz-score")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme] of [
       ["it", "light"],
       ["it", "dark"],
@@ -637,7 +604,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       await expect(
         page.getByText(/^(Le risposte di questo tentativo non erano incluse|The answers of this attempt weren't included)/),
       ).toBeVisible();
-      await shoot(page, `${shots}/quiz-imported-${lang}-${theme}.png`);
+      await shoot(page, `plan-path/quiz-imported-${lang}-${theme}.png`);
     }
     await page.evaluate(async () => {
       localStorage.setItem("pyxis.lang", "it");

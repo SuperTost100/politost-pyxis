@@ -1,11 +1,11 @@
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { launchPyxis } from "./app-under-test";
+import { animationsSettled } from "./settled";
+import { SHOTS, saveShot } from "./shots";
 
-const MAIN = join(process.cwd(), "out/main/index.js");
-// Set PYXIS_SHOTS to a folder to keep screenshots of the import review in both themes.
-const SHOTS = process.env["PYXIS_SHOTS"];
 
 const plan = (title: string, extra: object = {}) =>
   JSON.stringify({
@@ -21,9 +21,7 @@ const plan = (title: string, extra: object = {}) =>
 
 async function start(args: string[]) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-open-plan-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN, ...args], env });
+  const app = await launchPyxis({ userData, args });
   const page = await app.firstWindow();
   return { app, page, userData };
 }
@@ -35,13 +33,12 @@ async function skipSetup(page: Page) {
 
 async function shoot(page: Page, name: string) {
   if (!SHOTS) return;
-  mkdirSync(SHOTS, { recursive: true });
   for (const width of [1280, 640])
     for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate((source) => window.pyxis.setAppearance(source), theme);
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: join(SHOTS, `${name}-${width}-${theme}.png`), fullPage: true });
+      await animationsSettled(page);
+      await saveShot(page, `${name}-${width}-${theme}.png`, { fullPage: true });
     }
 }
 

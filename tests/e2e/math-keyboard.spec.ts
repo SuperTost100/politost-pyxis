@@ -1,17 +1,15 @@
 import { importPickedSource } from "./picked-source";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
+import { saveShot } from "./shots";
 
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-keyboard-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1", ...extra };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env: extra });
   const page = await app.firstWindow();
   const violations: string[] = [];
   page.on("console", (message) => {
@@ -202,14 +200,10 @@ test("Quiz: an open answer takes a formula from the keyboard inline", async () =
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: "100",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -266,7 +260,7 @@ test("Quiz: an open answer takes a formula from the keyboard inline", async () =
     await expect(answer).toHaveText(/^La velocità vale /);
     await expect(answer.locator(".px-mathchip .katex .mfrac")).toBeVisible();
     expect(await answer.innerText()).not.toContain("frac");
-    await page.locator(".px-mathinput").screenshot({ path: ".shots/math-input-quiz.png" });
+    await saveShot(page.locator(".px-mathinput"), "math-input-quiz.png");
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

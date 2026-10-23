@@ -1,11 +1,13 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -101,18 +103,14 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "smart",
-          title: "Fisica",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Forze", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Forza\nLa forza cambia lo stato di moto.\n\n## p2 | Seconda legge\nLa forza è il prodotto di massa e accelerazione.\n",
-      ),
+    makeBook({
+      id: "smart",
+      chapters: [
+        {
+          title: "Forze",
+          text: "## p1 | Forza\nLa forza cambia lo stato di moto.\n\n## p2 | Seconda legge\nLa forza è il prodotto di massa e accelerazione.\n",
+        },
+      ],
     }),
   );
   const replies = {
@@ -129,19 +127,10 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: "2500",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
-  const shots = ".shots/smart-text";
-  mkdirSync(shots, { recursive: true });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -202,16 +191,16 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     for (const [lang, theme] of [["it", "light"], ["it", "dark"], ["en", "light"], ["en", "dark"]] as const) {
       await language(page, lang, theme);
       await expect(page.getByText("imparerai a descrivere il moto")).toBeVisible();
-      await page.screenshot({ path: `${shots}/intro-${lang}-${theme}.png` });
+      await saveShot(page, `smart-text/intro-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByRole("button", { name: /La velocità/ }).click();
     await expect(page.getByText("Giusto.", { exact: true })).toBeVisible();
     // Answering the introduction's only check completes it.
     await expect(page.getByText("Introduzione completata")).toBeVisible();
     expect(await done("intro")).toBe(true);
-    await page.screenshot({ path: `${shots}/intro-answered-it-light.png` });
+    await saveShot(page, `smart-text/intro-answered-it-light.png`);
 
     const learn = { topicId: (await read()).topics[0]!.id };
 
@@ -225,7 +214,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     const status = page.getByRole("status").filter({ hasText: "Sto scrivendo la lezione…" });
     await expect(status).toBeVisible();
     await expect(status.getByRole("button", { name: "Interrompi" })).toBeVisible();
-    await page.screenshot({ path: `${shots}/lesson-generating-it-light.png` });
+    await saveShot(page, `smart-text/lesson-generating-it-light.png`);
     await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible({ timeout: 20000 });
     await expect(status).toHaveCount(0);
     // Opening the lesson did not mark it done.
@@ -243,17 +232,17 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(display).toHaveCount(1);
     expect(await display.evaluate((element) => getComputedStyle(element).textAlign)).toBe("center");
     await expect(page.getByText("pyxis-")).toHaveCount(0);
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     for (const [lang, theme] of [["it", "light"], ["it", "dark"], ["en", "light"], ["en", "dark"]] as const) {
       await language(page, lang, theme);
       await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible();
-      await page.screenshot({ path: `${shots}/lesson-top-${lang}-${theme}.png` });
+      await saveShot(page, `smart-text/lesson-top-${lang}-${theme}.png`);
       await page.getByRole("button", { name: /^(Altre azioni|More actions)$/ }).click();
       await expect(page.getByRole("menuitem", { name: /^(Riscrivi una parte|Rewrite a part)$/ })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: /^(Mappa|Map)$/ })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: /^(Esporta|Export)$/ })).toBeVisible();
-      await page.screenshot({ path: `${shots}/lesson-menu-${lang}-${theme}.png` });
+      await saveShot(page, `smart-text/lesson-menu-${lang}-${theme}.png`);
       await page.keyboard.press("Escape");
     }
     await language(page, "it", "light");
@@ -287,11 +276,11 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       const check = page.getByRole("region", { name: /^(Verifica rapida|Quick check)$/ });
       await check.scrollIntoViewIfNeeded();
       await expect(check.getByText(/^(Non proprio\.|Not quite\.)$/)).toBeVisible();
-      await page.screenshot({ path: `${shots}/lesson-check-answered-${lang}-${theme}.png` });
+      await saveShot(page, `smart-text/lesson-check-answered-${lang}-${theme}.png`);
       const tryRegion = page.getByRole("region", { name: /^(Prova tu|Try it)$/ });
       await tryRegion.getByRole("button", { name: /^(Mostra tutta la soluzione|Show the whole solution)$/ }).click();
       await tryRegion.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: `${shots}/lesson-try-revealed-${lang}-${theme}.png` });
+      await saveShot(page, `smart-text/lesson-try-revealed-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
     // The saved answer survives a reload.
@@ -344,10 +333,10 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       await language(page, lang, theme);
       const region = page.getByRole("region", { name: /^(Ripasso finale|Recap)$/ });
       await region.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: `${shots}/lesson-recap-${lang}-${theme}.png` });
+      await saveShot(page, `smart-text/lesson-recap-${lang}-${theme}.png`);
       await page.locator(".px-reader-sources summary").click();
       await page.locator(".px-reader-sources").scrollIntoViewIfNeeded();
-      await page.screenshot({ path: `${shots}/lesson-sources-${lang}-${theme}.png` });
+      await saveShot(page, `smart-text/lesson-sources-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
     await page.locator(".px-reader-sources summary").click();
@@ -365,16 +354,17 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       file,
     );
     expect(copy).not.toHaveProperty("error");
+    const copyId = (copy as { planId: string }).planId;
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
-    }, copy.planId);
+    }, copyId);
     // Finished steps are folded into one line until opened.
     await page.locator(".px-path-summary").click();
     await page
       .getByRole("list", { name: "Passi fatti" })
       .getByRole("button", { name: /^Testo smart/ })
       .click();
-    await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/lesson/[^/]+\\?item=`));
+    await expect(page).toHaveURL(new RegExp(`#/plans/${copyId}/lesson/[^/]+\\?item=`));
     await expect(quick.getByText("Non proprio.")).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole("region", { name: "Ripasso finale" }).getByText("2 su 3 giuste")).toBeVisible();
     await expect(page.getByText("Lezione completata")).toBeVisible();

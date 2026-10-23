@@ -1,14 +1,14 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { blobParts } from "../../src/shared/blob-path";
 import { importPickedSource } from "./picked-source";
 import { animationsSettled } from "./settled";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 /** Reads the workspace database next to the running app; WAL lets a second reader see committed rows. */
 function rows<T>(userData: string, sql: string, ...args: string[]): T[] {
@@ -42,9 +42,8 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
   const file = join(userData, "fisica.txt");
   writeFileSync(file, "La velocità descrive lo spostamento nel tempo.\n\nL'energia cinetica dipende dalla velocità.\n");
   // The recorded-reply seam also selects the fixture engine plan creation requires; no model is called.
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1", PYXIS_E2E_PLAN_REPLIES: "{}" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const env = { PYXIS_E2E_PLAN_REPLIES: "{}" };
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -65,7 +64,7 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
     await invoke("sources.rename", { sourceId, title: "La mia fisica" });
     const { planId } = await invoke<{ planId: string }>("plans.create", { title: "Fisica", sourceIds: [sourceId] });
     // A lesson cites the first reading's passage: after reading again it must still resolve, marked out of date.
-    const [{ id: passageId }] = rows<{ id: string }>(userData, "SELECT id FROM passages WHERE source_id = ? ORDER BY created_at, rowid", sourceId);
+    const passageId = rows<{ id: string }>(userData, "SELECT id FROM passages WHERE source_id = ? ORDER BY created_at, rowid", sourceId)[0]!.id;
     // The app may still be writing after plan creation; wait for its lock instead of failing at once.
     const seed = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seed.prepare("INSERT INTO items(id,plan_id,kind,body_json,created_at) VALUES('cites-old',?,'lesson','{}',1)").run(planId);
@@ -84,6 +83,7 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
     // Declining the plan-use confirmation starts nothing.
     const message = await readAgain(page, "La mia fisica", "dismiss");
     expect(message).toMatch(/1 piano usa questa fonte/);
+    // Declining must start nothing. A job that never starts has no signal to wait for, so this is a fixed wait.
     await page.waitForTimeout(500);
     expect(jobs()).toEqual([]);
     expect(versions()).toEqual([1]);
@@ -115,10 +115,10 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
     expect(rows<{ status: string }>(userData, "SELECT status FROM sources WHERE id = ?", sourceId)).toEqual([{ status: "ready" }]);
     await page.getByRole("button", { name: /attività|background tasks|jobs running|1 attività/i }).first().click();
     await expect(page.getByText("Rileggendo il file non è uscito testo, quindi è rimasta la lettura precedente.")).toBeVisible();
-    await page.waitForTimeout(300); // Let the popover finish its entrance before measuring contrast.
-    mkdirSync(".shots", { recursive: true });
-    await page.screenshot({ path: ".shots/source-reextract-no-text-it.png", animations: "disabled" });
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    // Let the popover finish its entrance before measuring contrast.
+    await animationsSettled(page);
+    await saveShot(page, "source-reextract-no-text-it.png", { animations: "disabled" });
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

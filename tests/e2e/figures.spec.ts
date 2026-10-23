@@ -1,6 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
@@ -16,8 +14,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { strToU8, zipSync } from "fflate";
 import { importPickedSource } from "./picked-source";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const figure = (caption: string, code: string) =>
   ["```pyxis-figure", JSON.stringify({ caption, code }), "```"].join("\n");
@@ -100,18 +101,9 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
   const book = join(userData, "fisica.ptsb");
   writeFileSync(
     book,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "figures",
-          title: "Fisica",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Moto", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Moto\nNel moto accelerato la posizione cresce col quadrato del tempo.\n",
-      ),
+    makeBook({
+      id: "figures",
+      chapters: [{ title: "Moto", text: "## p1 | Moto\nNel moto accelerato la posizione cresce col quadrato del tempo.\n" }],
     }),
   );
   const replies = {
@@ -133,19 +125,10 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_REPLY: answer,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
-  const shots = ".shots/figures";
-  mkdirSync(shots, { recursive: true });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -227,9 +210,7 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
     await expect(
       page.getByText("Se raddoppi il tempo, la posizione…"),
     ).toBeVisible();
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme, width] of [
       ["it", "light", 1280],
       ["it", "dark", 1280],
@@ -240,13 +221,9 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
       // Reopening reads the cached lesson and its images; nothing runs again.
       await expect(figures).toHaveCount(2);
       await figures.first().scrollIntoViewIfNeeded();
-      await page.screenshot({
-        path: `${shots}/lesson-${lang}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `figures/lesson-${lang}-${theme}-${width}.png`);
       await figures.nth(1).scrollIntoViewIfNeeded();
-      await page.screenshot({
-        path: `${shots}/lesson-vectors-${lang}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `figures/lesson-vectors-${lang}-${theme}-${width}.png`);
     }
 
     const asked = (await page.evaluate(() =>
@@ -262,18 +239,14 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
     await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(1);
     await expect(page.getByText("Il massimo è in")).toBeVisible();
     await expect(page.getByText("pyxis-")).toHaveCount(0);
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     for (const [lang, theme, width] of [
       ["it", "dark", 1280],
       ["en", "light", 1280],
     ] as const) {
       await look(page, lang, theme, width);
       await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(1);
-      await page.screenshot({
-        path: `${shots}/ask-${lang}-${theme}-${width}.png`,
-      });
+      await saveShot(page, `figures/ask-${lang}-${theme}-${width}.png`);
     }
   } finally {
     await app.close();

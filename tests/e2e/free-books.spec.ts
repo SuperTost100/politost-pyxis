@@ -1,37 +1,23 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const MAIN = join(
-  process.cwd(),
-  process.env.PYXIS_OUT ?? "out",
-  "main/index.js",
-);
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
 
 // A folder laid out like books.politost.it: the catalog and one package. `tamper` lists a checksum that does not match.
 function booksSite(options: { tamper?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "pyxis-books-"));
-  const pkg = zipSync({
-    "smartbook.json": strToU8(
-      JSON.stringify({
-        id: "fisica-demo",
-        title: "Fisica di prova",
-        access: "public",
-        chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
-      }),
-    ),
-    "chapters/01.md": strToU8(
-      "## p1 | Velocità\nLa velocità media è lo spazio percorso diviso il tempo impiegato.\n",
-    ),
+  const pkg = makeBook({
+    id: "fisica-demo",
+    title: "Fisica di prova",
+    chapters: [{ title: "Moti", text: "## p1 | Velocità\nLa velocità media è lo spazio percorso diviso il tempo impiegato.\n" }],
   });
   mkdirSync(join(dir, "books"));
   writeFileSync(join(dir, "books", "fisica-demo@1.0.0.ptsb"), pkg);
@@ -60,23 +46,9 @@ function booksSite(options: { tamper?: boolean } = {}) {
 
 async function launch(userData: string, books: string) {
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_BOOKS: books,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  return electron.launch({ args: [MAIN], env });
-}
-
-async function noAxeViolations(page: Page) {
-  const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-    .violations;
-  expect(
-    found.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-    ),
-  ).toEqual([]);
+  return launchPyxis({ userData, env });
 }
 
 const button = (page: Page, name: string | RegExp) =>
@@ -115,7 +87,7 @@ test("Free books: from the end of setup a book goes into a new exam, and the Lib
     await expect(
       dialog.getByText("Fisica · 1 capitolo · ", { exact: false }),
     ).toBeVisible();
-    await noAxeViolations(page);
+    await expectNoAxeViolations(page);
     await dialog.getByRole("button", { name: "Aggiungi Fisica di prova" }).click();
     await expect(dialog.getByText("Aggiunto")).toBeVisible({ timeout: 30000 });
     await dialog.getByRole("button", { name: /Close|Chiudi/ }).click();

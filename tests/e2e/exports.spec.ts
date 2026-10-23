@@ -1,5 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,25 +10,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { unzipSync } from "fflate";
+import { launchPyxis } from "./app-under-test";
+import { seedPlan } from "./seed";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export modal", async () => {
   const root = mkdtempSync(join(tmpdir(), "pyxis-export-check-"));
   // Saved files go next to the app's data: Pyxis refuses to save a backup inside it.
   const userData = join(root, "userData");
   mkdirSync(".tmp", { recursive: true });
-  mkdirSync(".shots", { recursive: true });
   const saved = join(root, "export.bin");
-  const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
-    PYXIS_E2E_SAVE: saved,
-  };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const env = { PYXIS_E2E_SAVE: saved };
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -42,9 +36,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,
     });
-    db.exec(`INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('export-plan','Fisica','ready',1,1);
-      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('export-topic','export-plan','Energia',0,1);
-      INSERT INTO cards (id,plan_id,topic_id,front,back,created_at) VALUES ('card-basic','export-plan','export-topic','Forza $F=ma$','La forza è massa per accelerazione',1);
+    seedPlan(db, { id: "export-plan", title: "Fisica", topics: [{ id: "export-topic", title: "Energia" }] });
+    db.exec(`INSERT INTO cards (id,plan_id,topic_id,front,back,created_at) VALUES ('card-basic','export-plan','export-topic','Forza $F=ma$','La forza è massa per accelerazione',1);
       INSERT INTO cards (id,plan_id,topic_id,front,back,created_at) VALUES ('card-cloze','export-plan','export-topic','{{c1::$E=mc^2$}}','Energia',2);`);
     const insert = db.prepare(
       "INSERT INTO items (id,plan_id,topic_id,kind,body_json,created_at) VALUES (?, 'export-plan','export-topic','quiz',?,?)",
@@ -145,24 +138,9 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       await expect(
         modal.getByRole("radio", { name: "Markdown", exact: true }),
       ).toBeChecked();
-      await expect
-        .poll(() =>
-          modal.evaluate(
-            (element) =>
-              element
-                .getAnimations({ subtree: true })
-                .filter((a) => a.playState === "running").length,
-          ),
-        )
-        .toBe(0);
-      const audit = await new AxeBuilder({ page })
-        .setLegacyMode()
-        .include('[role="dialog"]')
-        .analyze();
-      expect(audit.violations).toEqual([]);
-      await page.screenshot({
-        path: `.shots/m13-export-${language}-${theme}-${width}.png`,
-      });
+      await animationsSettled(page, modal);
+      await expectNoAxeViolations(page, { include: ['[role="dialog"]'] });
+      await saveShot(page, `m13-export-${language}-${theme}-${width}.png`);
       if (!(language === "en" && theme === "light"))
         await modal.getByRole("button", { name: /^(Annulla|Cancel)$/ }).click();
     }
@@ -224,9 +202,9 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       page.evaluate(() => window.pyxis.backupWorkspace()),
     ).resolves.toBe("saved");
     const freshData = mkdtempSync(join(tmpdir(), "pyxis-export-restore-"));
-    const fresh = await electron.launch({
-      args: [join(process.cwd(), "out/main/index.js")],
-      env: { ...env, PYXIS_USER_DATA: freshData, PYXIS_E2E_ZIP: saved },
+    const fresh = await launchPyxis({
+      userData: freshData,
+      env: { ...env, PYXIS_E2E_ZIP: saved },
     });
     try {
       const freshPage = await fresh.firstWindow();

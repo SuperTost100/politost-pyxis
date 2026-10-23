@@ -1,6 +1,5 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   copyFileSync,
   existsSync,
@@ -13,8 +12,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
-import { strToU8, zipSync } from "fflate";
 import type { ConceptGraph } from "../../src/shared/concept-map";
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { SHOTS, saveShot } from "./shots";
 
 test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PNG", async () => {
   test.setTimeout(240_000);
@@ -22,18 +24,15 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
   const file = join(userData, "derivatives.ptsb");
   writeFileSync(
     file,
-    zipSync({
-      "smartbook.json": strToU8(
-        JSON.stringify({
-          id: "calculus",
-          title: "Analisi",
-          access: "public",
-          chapters: [{ id: "c1", number: 1, title: "Derivate", file: "01.md" }],
-        }),
-      ),
-      "chapters/01.md": strToU8(
-        "## p1 | Derivata\nLa derivata misura il cambiamento. La derivata di $x^2$ è $2x$.\n\n## p2 | Prodotto\nLa regola del prodotto deriva $fg$ come $f'g+fg'$.\n\n## p3 | Composizione\nLa regola della catena deriva $f(g(x))$ come $f'(g(x))g'(x)$. Una tangente descrive la variazione locale.\n",
-      ),
+    makeBook({
+      id: "calculus",
+      title: "Analisi",
+      chapters: [
+        {
+          title: "Derivate",
+          text: "## p1 | Derivata\nLa derivata misura il cambiamento. La derivata di $x^2$ è $2x$.\n\n## p2 | Prodotto\nLa regola del prodotto deriva $fg$ come $f'g+fg'$.\n\n## p3 | Composizione\nLa regola della catena deriva $f(g(x))$ come $f'(g(x))g'(x)$. Una tangente descrive la variazione locale.\n",
+        },
+      ],
     }),
   );
   const planReplies = {
@@ -97,19 +96,12 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies),
     PYXIS_E2E_MAP_REPLIES: process.env.PYXIS_LIVE_MAP
       ? undefined
       : JSON.stringify(mapReplies),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     // Hidden windows on Windows and Linux can stall CSS/JS motion mid-way (stuck modal leave, half-faded colors); the app honors this setting.
@@ -268,7 +260,6 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       .getByRole("dialog")
       .getByRole("button", { name: "Annulla" })
       .click();
-    mkdirSync(".shots", { recursive: true });
     for (const [language, theme, width] of [
       ["it", "dark", 1280],
       ["it", "light", 960],
@@ -287,13 +278,8 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       await expect(page.locator(".react-flow__node")).toHaveCount(
         initial.nodes.length,
       );
-      await page.screenshot({
-        path: `.shots/m10-map-${language}-${theme}-${width}.png`,
-      });
-      expect(
-        (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-          .violations,
-      ).toEqual([]);
+      await saveShot(page, `m10-map-${language}-${theme}-${width}.png`);
+      await expectNoAxeViolations(page);
       const output = join(userData, `map-${theme}-${language}.png`);
       await app.evaluate(({ session }, path) => {
         session.defaultSession.once("will-download", (_, item) =>
@@ -315,10 +301,10 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
         }
       };
       await expect.poll(readPng, { timeout: 20000 }).not.toBeNull();
-      copyFileSync(
-        output,
-        `.shots/m10-export-${language}-${theme}-${width}.png`,
-      );
+      if (SHOTS) {
+        mkdirSync(SHOTS, { recursive: true });
+        copyFileSync(output, join(SHOTS, `m10-export-${language}-${theme}-${width}.png`));
+      }
       const png = readPng()!;
       const bounds = await page.locator(".px-map-canvas").boundingBox();
       expect(png.width).toBe(Math.round(bounds!.width * 2));

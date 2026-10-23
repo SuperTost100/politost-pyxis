@@ -1,10 +1,12 @@
 import { importPickedSource } from "./picked-source";
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("PLAN-21 document tree and build resume after cancel and restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-plan-check-"));
@@ -42,17 +44,10 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     },
   };
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies),
     PYXIS_E2E_PLAN_DELAY: "2000",
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  let app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  let app = await launchPyxis({ userData, env });
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -86,7 +81,6 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await expect(
       page.getByRole("button", { name: "Annulla", exact: true }),
     ).toBeVisible();
-    mkdirSync(".shots", { recursive: true });
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       for (const width of [1280, 960]) {
@@ -95,10 +89,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
           height: width === 960 ? 640 : 800,
         });
         await page.emulateMedia({ reducedMotion: "reduce" });
-        await page.screenshot({
-          path: `.shots/m7-building-it-${theme}-${width}.png`,
-          animations: "disabled",
-        });
+        await saveShot(page, `m7-building-it-${theme}-${width}.png`, { animations: "disabled" });
       }
     }
     await page.getByRole("button", { name: "Annulla", exact: true }).click();
@@ -106,10 +97,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
       page.getByRole("button", { name: "Riprova", exact: true }),
     ).toBeVisible();
     await app.close();
-    app = await electron.launch({
-      args: [join(process.cwd(), "out/main/index.js")],
-      env,
-    });
+    app = await launchPyxis({ userData, env });
     page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.evaluate((id) => {
@@ -146,9 +134,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
       page.getByText("Studierai velocità e accelerazione", { exact: false }),
     ).toBeVisible();
     await expect(page.getByText("[P1]", { exact: false })).toHaveCount(0);
-    expect(
-      (await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations,
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Fatto", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${created.planId}$`));
     const diagnostic = (await page.evaluate(
@@ -169,13 +155,7 @@ test("PLAN-21 live Claude builds the owner's smartbook plan", async () => {
   );
   test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-live-plan-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.PYXIS_E2E_PLAN_REPLIES;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: undefined } });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -218,7 +198,7 @@ test("PLAN-21 live Claude builds the owner's smartbook plan", async () => {
         }),
       imported.sourceId,
     )) as { planId: string };
-    let last: { state: string; error?: string } | null = null;
+    let last = null as { state: string; error?: string } | null;
     await expect
       .poll(
         async () => {

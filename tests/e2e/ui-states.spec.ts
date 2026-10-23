@@ -1,31 +1,24 @@
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
-
-const MAIN = join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js");
+import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
+import { saveShot } from "./shots";
 
 function smartbook() {
-  return zipSync({
-    "smartbook.json": strToU8(
-      JSON.stringify({
-        id: "states",
-        title: "Fisica",
-        access: "public",
-        chapters: [1, 2].map((n) => ({ id: `c${n}`, number: n, title: `Tema ${n}`, file: `0${n}.md` })),
-      }),
-    ),
-    ...Object.fromEntries(
-      [1, 2].map((n) => [`chapters/0${n}.md`, strToU8(`## p1 | Tema ${n}\nIl moto rettilineo uniforme del tema ${n}.\n`)]),
-    ),
+  return makeBook({
+    id: "states",
+    chapters: [1, 2].map((n) => ({
+      title: `Tema ${n}`,
+      text: `## p1 | Tema ${n}\nIl moto rettilineo uniforme del tema ${n}.\n`,
+    })),
   });
 }
 
@@ -41,20 +34,15 @@ const diagnostic = {
 };
 
 async function launch(delay = 0) {
-  mkdirSync(".shots", { recursive: true });
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ui-states-"));
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       markdown: { markdown: "## Ripasso\nUsa le formule [P1]." },
       questions: diagnostic,
     }),
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [MAIN], env });
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   page.setDefaultTimeout(30000);
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -187,7 +175,7 @@ test("UI-02 a passage search says when nothing matches, ignores an empty query a
     await query.fill("pappagallo");
     await query.press("Enter");
     await expect(none("pappagallo")).toBeVisible();
-    await page.screenshot({ path: ".shots/ui-states-search-none-it.png", animations: "disabled" });
+    await saveShot(page, "ui-states-search-none-it.png", { animations: "disabled" });
 
     await query.fill("moto rettilineo");
     await query.press("Enter");
@@ -244,7 +232,7 @@ test("UI-03 the cards page announces the next card, names parked cards, and show
     await expect(page.getByText("{{c1::")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Riprendi la flashcard: La energia cinetica" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Riprendi la flashcard: Il lavoro meccanico" })).toBeVisible();
-    await page.screenshot({ path: ".shots/ui-states-cards-parked-it.png", animations: "disabled", fullPage: true });
+    await saveShot(page, "ui-states-cards-parked-it.png", { animations: "disabled", fullPage: true });
 
     // Rating a card says which one comes next, since the buttons the focus was on are gone. Every announcement is
     // recorded: the card just rated is never read out as the next one, not even until the queue updates.

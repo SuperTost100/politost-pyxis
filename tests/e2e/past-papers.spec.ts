@@ -1,11 +1,13 @@
-import AxeBuilder from "@axe-core/playwright";
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
-const shots = process.env.PYXIS_SHOTS ?? ".shots/past-papers";
 
 const paper = {
   title: "Analisi 1, appello di giugno",
@@ -41,12 +43,11 @@ async function look(page: Page, language: "it" | "en", theme: "light" | "dark") 
 
 async function shoot(page: Page, name: string) {
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: join(shots, `${name}.png`), fullPage: true });
+  await saveShot(page, `past-papers/${name}.png`, { fullPage: true });
 }
 
 test("past exams: add one, see what was read, practise it and follow it in a simulation", async () => {
   test.setTimeout(240000);
-  mkdirSync(shots, { recursive: true });
   const userData = mkdtempSync(join(tmpdir(), "pyxis-past-papers-"));
   const file = join(userData, "appello-giugno.md");
   writeFileSync(
@@ -55,9 +56,6 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
       paper.questions.map((q, i) => `${i + 1}. ${q.text}`).join("\n\n"),
   );
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       paper,
       markdown: { markdown: "## Ripasso\nUn riepilogo del piano." },
@@ -74,8 +72,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
       score: { score: 0.8, explanation: "Corretto, manca un passaggio." },
     }),
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({ args: [join(process.cwd(), "out/main/index.js")], env });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -131,7 +128,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     )) as { sources: unknown[] };
     expect(read.sources).toEqual([]);
     await shoot(page, "sources-paper-it-dark");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     await look(page, "en", "dark");
     await expect(page.getByText(/6 questions · 150 min · open 2, numeric 2, multiple choice 1, proof 1/)).toBeVisible();
@@ -143,7 +140,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await page.setViewportSize({ width: 1280, height: 900 });
     await look(page, "en", "light");
     await shoot(page, "sources-paper-en-light");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // Practise one paper: intro, first question, a graded answer.
     await page.getByRole("button", { name: "Practise", exact: true }).click();
@@ -166,13 +163,13 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await expect(page.getByText("Come i tuoi appelli passati")).toBeVisible();
     await expect(page.getByText("6 domande nello stile del tuo appello passato.")).toBeVisible();
     await expect(page.getByRole("button", { name: "150 minuti", pressed: true })).toBeVisible();
-    await page.waitForTimeout(600);
+    await animationsSettled(page);
     await shoot(page, "simulation-setup-it-dark");
     await look(page, "en", "light");
     await expect(page.getByText("Like your past exams")).toBeVisible();
-    await page.waitForTimeout(600);
+    await animationsSettled(page);
     await shoot(page, "simulation-setup-en-light");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await page.getByText("Standard", { exact: true }).click();
     await expect(page.getByText(/in the style of your past exam/)).toHaveCount(0);
 
@@ -195,7 +192,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await shoot(page, "sources-failed-en-light");
     await look(page, "it", "dark");
     await shoot(page, "sources-failed-it-dark");
-    expect((await new AxeBuilder({ page }).setLegacyMode(true).analyze()).violations).toEqual([]);
+    await expectNoAxeViolations(page);
     await look(page, "en", "light");
 
     // Removing the papers brings the plain setup back.

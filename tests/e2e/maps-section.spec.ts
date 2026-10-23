@@ -1,4 +1,4 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   existsSync,
   mkdirSync,
@@ -10,6 +10,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { seedPlan, seedSubjects } from "./seed";
 
 function graph(labels: string[]) {
   return {
@@ -35,18 +37,9 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
   const userData = mkdtempSync(join(tmpdir(), "pyxis-maps-section-"));
   const saved = join(userData, "export.bin");
   const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
     PYXIS_E2E_SAVE: saved,
   };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [
-      join(process.cwd(), process.env.PYXIS_OUT_DIR ?? "out", "main/index.js"),
-    ],
-    env,
-  });
+  const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -69,13 +62,19 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,
     });
-    db.exec(`
-      INSERT INTO subjects(id,name,position,created_at) VALUES('phys','Fisica',0,1),('chem','Chimica',1,1);
-      INSERT INTO plans(id,subject_id,title,status,created_at,updated_at) VALUES
-        ('p-phys','phys','Meccanica','ready',1,1),('p-chem','chem','Chimica generale','ready',1,1);
-      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES
-        ('t-motion','p-phys','Moto',0,1),('t-forces','p-phys','Forze',1,1),('t-atoms','p-chem','Atomi',0,1);
-    `);
+    seedSubjects(db, [{ id: "phys", name: "Fisica" }, { id: "chem", name: "Chimica" }]);
+    seedPlan(db, {
+      id: "p-phys",
+      subjectId: "phys",
+      title: "Meccanica",
+      topics: [{ id: "t-motion", title: "Moto" }, { id: "t-forces", title: "Forze" }],
+    });
+    seedPlan(db, {
+      id: "p-chem",
+      subjectId: "chem",
+      title: "Chimica generale",
+      topics: [{ id: "t-atoms", title: "Atomi" }],
+    });
     const insert = db.prepare(
       "INSERT INTO maps(id,plan_id,topic_id,graph_json,grounding,created_at) VALUES(?,?,?,?,'sources',1)",
     );

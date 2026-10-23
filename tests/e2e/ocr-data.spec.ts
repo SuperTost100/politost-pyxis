@@ -1,6 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
 import {
-  _electron as electron,
   expect,
   test,
   type ElectronApplication,
@@ -18,8 +16,9 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
-import { appUnderTest } from "./app-under-test";
+import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
+import { expectNoAxeViolations } from "./axe";
 
 const HEIC = join(process.cwd(), "tests/fixtures/synthetic-note.heic");
 const totalBytes = Object.values(OCR_DATA_FILES).reduce(
@@ -35,14 +34,7 @@ async function launch(
   userData: string,
   extra: Record<string, string> = {},
 ): Promise<ElectronApplication> {
-  const env = {
-    ...process.env,
-    PYXIS_USER_DATA: userData,
-    PYXIS_E2E: "1",
-    ...extra,
-  };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch(appUnderTest(env));
+  const app = await launchPyxis({ userData, env: extra });
   // Keep core failure and port diagnostics in the recorded run log.
   app.process().stderr?.on("data", (chunk) => {
     console.error(String(chunk));
@@ -94,23 +86,8 @@ function expectPinned(userData: string) {
 
 async function noAxeViolations(page: Page) {
   // A dialog that is still fading in has translucent text, which axe reports as low contrast.
-  // Spinners loop forever, so only animations that end are waited for.
-  await page.waitForFunction(() =>
-    document
-      .getAnimations()
-      .every(
-        (animation) =>
-          animation.playState !== "running" ||
-          animation.effect?.getTiming().iterations === Infinity,
-      ),
-  );
-  const found = (await new AxeBuilder({ page }).setLegacyMode(true).analyze())
-    .violations;
-  expect(
-    found.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-    ),
-  ).toEqual([]);
+  await animationsSettled(page);
+  await expectNoAxeViolations(page);
 }
 
 test("OCR data: a refused photo asks first, the app downloads the pinned files on consent, and the choice survives a restart", async () => {

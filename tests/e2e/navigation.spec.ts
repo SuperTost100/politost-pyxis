@@ -1,8 +1,9 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { launchPyxis } from "./app-under-test";
 
 test("the window stays on the app page and refuses device permissions", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-navigation-"));
@@ -12,12 +13,7 @@ test("the window stays on the app page and refuses device permissions", async ()
     join(userData, "page.html"),
     '<html><body><script src="page.js"></script></body></html>',
   );
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     // A workspace without a profile always returns to onboarding, so finish it first.
@@ -28,6 +24,7 @@ test("the window stays on the app page and refuses device permissions", async ()
     await page.evaluate((url) => {
       location.href = url;
     }, foreign);
+    // Main refuses the navigation without an event the page can see, so give a wrong one a fixed second to happen.
     await page.waitForTimeout(1000);
     expect(page.url().split("#")[0]).toBe(appPage);
     expect(await page.title()).not.toBe("foreign");
@@ -60,12 +57,7 @@ test("the window stays on the app page and refuses device permissions", async ()
 
 test("a page opened while the start page still redirects to Exams is not lost", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-navigation-"));
-  const env = { ...process.env, PYXIS_USER_DATA: userData, PYXIS_E2E: "1" };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out/main/index.js")],
-    env,
-  });
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
