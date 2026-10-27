@@ -1100,7 +1100,8 @@ export const requests = {
   },
   "study.cardsBuild": {
     input: z.object({ planId: z.string(), topicId: z.string() }),
-    output: z.object({ jobId: z.string(), state: z.string() }).nullable(),
+    // Progress, from 0 to 1, moves each time a batch of cards is stored.
+    output: z.object({ jobId: z.string(), state: z.string(), progress: z.number() }).nullable(),
   },
   "study.cardsPlaces": {
     // The plans and topics a card can go under, with a first guess from the chat's plan or subject, the lesson's topic, or the passages the text cites.

@@ -3,6 +3,7 @@ import { ArrowRight, Ellipsis } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Chip } from "./Chip";
+import { InlineMarkdown } from "./InlineMarkdown";
 import { IconButton } from "./IconButton";
 import { Logo } from "./Logo";
 import { RunnablePython } from "./PythonBlock";
@@ -201,7 +202,7 @@ export function ChatMessage({
           <div className="px-msg-chips">
             {suggestions.map((s) => (
               <Chip key={s} onClick={() => onSuggest?.(s)}>
-                {s}
+                <InlineMarkdown>{s}</InlineMarkdown>
               </Chip>
             ))}
           </div>

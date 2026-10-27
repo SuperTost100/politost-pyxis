@@ -16,3 +16,7 @@
   color: var(--ink);
   background: var(--surface-raised);
 }
+/* A suggestion with math: the formula follows the chip's type, not the body copy's. */
+.px-chip .px-markdown.is-body {
+  font: inherit;
+}
