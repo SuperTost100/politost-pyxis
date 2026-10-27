@@ -23,6 +23,17 @@ describe("interface languages", () => {
     expect(enKeys.sort()).toEqual(itKeys.sort());
   });
 
+  it('writes "ad", not "a", before a provider whose name starts with a vowel', () => {
+    const italian = readFileSync(resolve(dir, "it.json"), "utf8");
+    expect(italian.match(/\b[aA] (Anthropic|OpenAI|Ollama|Antigravity)\b/g) ?? []).toEqual([]);
+    const notice = JSON.parse(italian).engines.notice as Record<string, string>;
+    // EngineNotice picks the `_vowel` string for Anthropic, OpenAI and Antigravity.
+    expect(notice.item).toContain(" a {{vendor}}");
+    expect(notice.item_vowel).toContain(" ad {{vendor}}");
+    expect(notice.itemRelay).toContain(" a {{vendor}}");
+    expect(notice.itemRelay_vowel).toContain(" ad {{vendor}}");
+  });
+
   it('defines every key the interface asks for by a literal t("...") call', () => {
     const defined = new Set(
       enKeys.flatMap((key) => [

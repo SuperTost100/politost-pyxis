@@ -83,7 +83,14 @@ describe("plan delete", () => {
         .prepare("INSERT INTO exercises (id, prompt, answer, locator_json, created_at) VALUES (?, 'Quanto?', '1', ?, 1)")
         .run(id, JSON.stringify({ kind: "generated", topicId: topicOf(plan) }));
     database.prepare("INSERT INTO flags (id, target_kind, target_id, reason, created_at) VALUES ('f', 'exercise', 'generated', 'wrong', 1)").run();
+    // The passages each topic's card builds skipped go with the plan; they name passage IDs, which keep documents.
+    for (const plan of [planId, keep.planId])
+      database
+        .prepare("INSERT INTO settings (key, value_json, updated_at) VALUES (?, '[\"p\"]', 1)")
+        .run(`cards.noFacts.${topicOf(plan)}`);
+    const keptKey = `cards.noFacts.${topicOf(keep.planId)}`;
     planHandlers(database, "", runner).delete({ planId });
+    expect(database.prepare("SELECT key FROM settings WHERE key LIKE 'cards.noFacts.%'").all()).toEqual([{ key: keptKey }]);
     expect(cancelled).toContain("insight");
     expect(cancelled).not.toContain("other-insight");
     expect(database.prepare("SELECT id FROM jobs WHERE kind = 'gap-insight'").all()).toEqual([{ id: "other-insight" }]);

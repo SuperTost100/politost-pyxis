@@ -125,8 +125,8 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
     const notice = page.getByRole("region", {
       name: "Cosa esce da questo computer",
     });
-    await expect(notice.getByText("Claude Code li invia a Anthropic.")).toBeVisible();
-    await expect(notice.getByText("Codex li invia a OpenAI.")).toBeVisible();
+    await expect(notice.getByText("Claude Code li invia ad Anthropic.")).toBeVisible();
+    await expect(notice.getByText("Codex li invia ad OpenAI.")).toBeVisible();
     await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toHaveCount(0);
     await expect(button(page, "Continua")).toHaveCount(0);
     await noAxeViolations(page);
@@ -173,10 +173,10 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
       page.getByRole("heading", { name: "Segnalazioni di crash" }),
     ).toBeVisible();
     const crash = page.getByRole("switch", {
-      name: "Invia segnalazioni di crash",
+      name: "Consenti segnalazioni di crash",
     });
     await expect(crash).toBeChecked();
-    await expect(page.getByText(/^Acceso: /)).toBeVisible();
+    await expect(page.getByText(/^Consentite: /)).toBeVisible();
     await noAxeViolations(page);
     await button(page, "Continua").click();
 
@@ -208,21 +208,21 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
       location.hash = "/settings/privacy";
     });
     const saved = page.getByRole("switch", {
-      name: "Invia segnalazioni di crash",
+      name: "Consenti segnalazioni di crash",
     });
     await expect(saved).toBeChecked();
     await noAxeViolations(page);
     await saved.click();
     await expect(saved).not.toBeChecked();
     await expect(
-      page.getByText("Spento: nessun rapporto lascia questo computer."),
+      page.getByText("Non consentite: nessun rapporto lascia questo computer."),
     ).toBeVisible();
     await expect
       .poll(async () => (await profile(page))?.crashReports)
       .toBe(false);
     await page.reload();
     await expect(
-      page.getByRole("switch", { name: "Invia segnalazioni di crash" }),
+      page.getByRole("switch", { name: "Consenti segnalazioni di crash" }),
     ).not.toBeChecked();
   } finally {
     await app.close();
@@ -494,7 +494,7 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
     await button(page, "Continua").click();
     await button(page, "Continua").click();
     await page
-      .getByRole("switch", { name: "Invia segnalazioni di crash" })
+      .getByRole("switch", { name: "Consenti segnalazioni di crash" })
       .click();
     await button(page, "Continua").click();
     await expect(
@@ -562,7 +562,7 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
 
     // Crash reports show the stored choice (off), not the first-run default.
     const crash = page.getByRole("switch", {
-      name: "Invia segnalazioni di crash",
+      name: "Consenti segnalazioni di crash",
     });
     await expect(crash).not.toBeChecked();
     await button(page, "Continua").click();
@@ -622,8 +622,8 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
     app = await launch(userData, { ...env, ...reply });
     page = await app.firstWindow();
     await expect(notice(page)).toBeVisible({ timeout: 30000 });
-    await expect(notice(page).getByText("Claude Code li invia a Anthropic.")).toBeVisible();
-    await expect(notice(page).getByText("Codex li invia a OpenAI.")).toBeVisible();
+    await expect(notice(page).getByText("Claude Code li invia ad Anthropic.")).toBeVisible();
+    await expect(notice(page).getByText("Codex li invia ad OpenAI.")).toBeVisible();
     await noAxeViolations(page);
     await notice(page).getByRole("button", { name: "Non ora" }).click();
     await expect(notice(page)).toHaveCount(0);

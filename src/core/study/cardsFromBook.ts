@@ -6,6 +6,7 @@ import { generate, type GenerateInput } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { putSetting } from "../settings";
 import { requireTopic } from "./openLesson";
 
 const TEMPLATE = "cards.generate";
@@ -14,6 +15,21 @@ const ACTIVE = "('queued', 'running', 'interrupted')";
 
 type Params = { planId: string; topicId: string; selection?: ReturnType<typeof selectionFor> };
 type Passage = { id: string; text: string };
+
+/**
+ * The settings key listing a topic's passages the model found no fact about the subject in, such as a chapter opening
+ * that only lists objectives and prerequisites. They have no card, so this list keeps later builds from sending them
+ * again. Deleting the plan deletes the key.
+ */
+export const noFactsKey = (topicId: string) => `cards.noFacts.${topicId}`;
+
+function noFactPassages(db: Database.Database, topicId: string): Set<string> {
+  const row = db
+    .prepare(`SELECT value_json FROM settings WHERE key = ?`)
+    .get(noFactsKey(topicId)) as { value_json: string } | undefined;
+  const value = row ? (JSON.parse(row.value_json) as unknown) : [];
+  return new Set(Array.isArray(value) ? value.filter((id) => typeof id === "string") : []);
+}
 
 // A card asks for one fact, definition, formula or idea. These caps keep a worked exercise out.
 const FRONT_MAX = 200;
@@ -104,13 +120,14 @@ export function cardIssues(
   return issues;
 }
 
-/** Passages that no generated card (kept, edited or deleted) points to yet. */
+/** Passages that no generated card (kept, edited or deleted) points to yet, and that a build has not skipped. */
 function pendingPassages(
   db: Database.Database,
   { planId, topicId }: Params,
-  skip: Set<string>,
+  attempted: Set<string>,
   limit: number,
 ): Passage[] {
+  const noFacts = noFactPassages(db, topicId);
   return (
     db
       .prepare(
@@ -123,20 +140,26 @@ function pendingPassages(
       )
       .all(topicId, planId, topicId, TEMPLATE) as Passage[]
   )
-    .filter((row) => !skip.has(row.id))
+    .filter((row) => !attempted.has(row.id) && !noFacts.has(row.id))
     .slice(0, limit);
 }
 
+/**
+ * Every passage gets at least one card, or is listed in `skipped` when it states no fact about the subject; never both.
+ * Which passages state a fact is the model's call, so the schema can only require one of the two.
+ */
 function batchSchema(batch: Passage[]) {
   const byId = new Map(batch.map((row) => [row.id, row]));
   return z
     .object({
-      cards: z
-        .array(card)
-        .min(batch.length)
-        .max(batch.length * 3),
+      cards: z.array(card).max(batch.length * 3),
+      skipped: z.array(z.string()).max(batch.length).optional(),
     })
     .superRefine((value, ctx) => {
+      const skipped = new Set(value.skipped ?? []);
+      for (const id of skipped)
+        if (!byId.has(id))
+          ctx.addIssue({ code: "custom", message: `Unknown passage ID ${id}`, path: ["skipped"] });
       const covered = new Set<string>();
       const seen = new Set<string>();
       value.cards.forEach((row, i) => {
@@ -144,11 +167,12 @@ function batchSchema(batch: Passage[]) {
           ctx.addIssue({ code: "custom", message, path: ["cards", i] });
         const passage = byId.get(row.passageId);
         if (!passage) return issue("Unknown passage ID");
+        if (skipped.has(row.passageId)) issue(`Passage ${row.passageId} is skipped, so it gets no card`);
         covered.add(row.passageId);
         for (const message of cardIssues(row, seen, passage.text, "passage")) issue(message);
       });
       for (const row of batch)
-        if (!covered.has(row.id))
+        if (!covered.has(row.id) && !skipped.has(row.id))
           ctx.addIssue({
             code: "custom",
             message: `No card for passage ${row.id}`,
@@ -163,9 +187,12 @@ function saveBatch(
   { planId, topicId }: Params,
   batch: Passage[],
   rows: GeneratedCard[],
+  skipped: string[],
   provenance: { provider: string; model: string },
 ) {
   db.transaction(() => {
+    if (skipped.length)
+      putSetting(db, noFactsKey(topicId), [...new Set([...noFactPassages(db, topicId), ...skipped])]);
     const exists = db.prepare(
       "SELECT 1 FROM cards WHERE plan_id = ? AND topic_id = ? AND seed_key = ?",
     );
@@ -194,7 +221,8 @@ function saveBatch(
         now,
       );
     }
-    // The old prefix cards for these passages are now replaced, unless studied.
+    // The old prefix cards for these passages are now replaced, unless studied. A skipped passage's prefix card goes
+    // too: it quoted a passage with nothing about the subject to learn.
     for (const passage of batch)
       db.prepare(
         `UPDATE cards SET removed = 1
@@ -205,11 +233,23 @@ function saveBatch(
   })();
 }
 
+/**
+ * The calls one build makes at once. The step holds one CLI slot, like the plan build's intro step, and makes as many
+ * calls as the default CLI limit allows.
+ */
+const PARALLEL_CALLS = 2;
+
+/**
+ * Writes cards for the topic's passages that have none yet, five passages per model call and two calls at a time. Each
+ * batch is stored as its call returns, so the page can show its cards before the rest arrive; `onProgress` gets the
+ * share of passages done after each batch.
+ */
 export async function generateTopicCards(
   db: Database.Database,
   input: Params,
   run?: GenerateInput["run"],
   signal?: AbortSignal,
+  onProgress?: (fraction: number) => void,
 ) {
   requireTopic(db, input.planId, input.topicId);
   const selection = input.selection ?? selectionFor(db, "lesson");
@@ -220,30 +260,49 @@ export async function generateTopicCards(
     .filter(Boolean)
     .join("\n");
   const attempted = new Set<string>();
-  while (!signal?.aborted) {
-    const batch = pendingPassages(db, input, attempted, BATCH);
-    if (!batch.length) break;
-    for (const row of batch) attempted.add(row.id);
-    const schema = batchSchema(batch);
-    const result = await generate({
-      selection,
-      run,
-      signal,
-      schema,
-      system,
-      prompt: JSON.stringify({
-        passages: batch.map((row) => ({
-          id: row.id,
-          text: row.text.slice(0, 1500),
-        })),
-      }),
-    });
-    if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
-    saveBatch(db, input, batch, (result.data as z.infer<typeof schema>).cards, {
-      provider: result.provider,
-      model: result.model,
-    });
+  const total = pendingPassages(db, input, attempted, Number.MAX_SAFE_INTEGER).length;
+  let done = 0;
+  let failed = false;
+  async function worker() {
+    // A failed call stops the other worker from starting a new batch; the batch it already has out is still stored.
+    while (!signal?.aborted && !failed) {
+      const batch = pendingPassages(db, input, attempted, BATCH);
+      if (!batch.length) return;
+      for (const row of batch) attempted.add(row.id);
+      const schema = batchSchema(batch);
+      try {
+        const result = await generate({
+          selection,
+          run,
+          signal,
+          schema,
+          system,
+          prompt: JSON.stringify({
+            passages: batch.map((row) => ({
+              id: row.id,
+              text: row.text.slice(0, 1500),
+            })),
+          }),
+        });
+        if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
+        const data = result.data as z.infer<typeof schema>;
+        saveBatch(db, input, batch, data.cards, data.skipped ?? [], {
+          provider: result.provider,
+          model: result.model,
+        });
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+      done += batch.length;
+      if (total) onProgress?.(Math.min(1, done / total));
+    }
   }
+  const settled = await Promise.allSettled(
+    Array.from({ length: PARALLEL_CALLS }, () => worker()),
+  );
+  const rejected = settled.find((result) => result.status === "rejected");
+  if (rejected) throw rejected.reason;
 }
 
 export function registerCardJobs(
@@ -259,7 +318,7 @@ export function registerCardJobs(
         name: "cards",
         label: "jobs.cards",
         async run(ctx) {
-          await generateTopicCards(db, ctx.params as Params, run, ctx.signal);
+          await generateTopicCards(db, ctx.params as Params, run, ctx.signal, ctx.progress);
           return true;
         },
       },
@@ -292,17 +351,20 @@ export function enqueueTopicCards(
   };
 }
 
-/** Latest build for the topic, without error text: engine output can echo course material. */
+/**
+ * Latest build for the topic, without error text: engine output can echo course material. Its progress moves each time
+ * a batch of cards is stored, which tells the page to load them.
+ */
 export function readCardsBuild(
   db: Database.Database,
   { planId, topicId }: Params,
-): { jobId: string; state: string } | null {
+): { jobId: string; state: string; progress: number } | null {
   const row = db
     .prepare(
-      `SELECT id, state FROM jobs WHERE kind = 'cards-build'
+      `SELECT id, state, progress FROM jobs WHERE kind = 'cards-build'
          AND json_extract(params_json, '$.planId') = ? AND json_extract(params_json, '$.topicId') = ?
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
-    .get(planId, topicId) as { id: string; state: string } | undefined;
-  return row ? { jobId: row.id, state: row.state } : null;
+    .get(planId, topicId) as { id: string; state: string; progress: number } | undefined;
+  return row ? { jobId: row.id, state: row.state, progress: row.progress } : null;
 }
