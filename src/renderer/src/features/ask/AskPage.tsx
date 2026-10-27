@@ -30,6 +30,7 @@ import {
   attachable,
   draftKey,
   fileName,
+  keepUnsentQuestion,
   readPendingFiles,
   takeBoardAttachment,
   writePendingFiles,
@@ -588,9 +589,12 @@ export function AskPage() {
     turn.stop = () => {
       stoppedEarly = true;
     };
-    await scope.settled();
-    if (stoppedEarly) {
+    const stillHere = await scope.settled();
+    if (stoppedEarly || !stillHere) {
       turns.end(turn);
+      // The student opened another chat while the question waited for its scope. Sending it now would use that chat's
+      // subject and sources, so it stays unsent, as the draft of the chat it was asked in.
+      if (!stillHere) keepUnsentQuestion(sessionStorage, startedIn || undefined, trimmed);
       return;
     }
     const ids = visible(pickedNow.current);

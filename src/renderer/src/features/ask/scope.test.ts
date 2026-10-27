@@ -215,7 +215,20 @@ describe("scope changes a question waits for", () => {
     const scope = scopeChanges();
     scope.open();
     scope.track(Promise.reject(new Error("offline")));
-    await expect(scope.settled()).resolves.toBeUndefined();
+    await expect(scope.settled()).resolves.toBe(true);
+  });
+
+  it("tells a question its chat was left while it waited, so it does not go out with another chat's scope", async () => {
+    const scope = scopeChanges();
+    scope.open();
+    const subjectSources = later<void>();
+    scope.track(subjectSources.promise);
+    const question = scope.settled();
+    // The student opens another chat, whose own change is still running.
+    scope.open();
+    scope.track(new Promise(() => undefined));
+    subjectSources.resolve();
+    await expect(question).resolves.toBe(false);
   });
 
   it("chooses nothing with several subjects or once the student picked one", async () => {

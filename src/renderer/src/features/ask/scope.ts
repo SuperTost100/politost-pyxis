@@ -74,10 +74,15 @@ export function scopeChanges() {
     },
     /**
      * Resolves once no change of the chat on screen is running: it waits for all of them, then again for any that started
-     * meanwhile. A failed change counts as finished; the question goes out with the scope as it stands.
+     * meanwhile. A failed change counts as finished; the question goes out with the scope as it stands. It resolves to
+     * false when that chat was left while the question waited: the scope on screen is then another chat's, and the
+     * question must not go out with it.
      */
-    async settled(): Promise<void> {
-      while (pending.size > 0) await Promise.allSettled([...pending]);
+    async settled(): Promise<boolean> {
+      const mine = chat;
+      const changes = pending;
+      while (changes.size > 0 && chat === mine) await Promise.allSettled([...changes]);
+      return chat === mine;
     },
   };
 }
