@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -54,7 +54,12 @@ it("missing runtime and status never fetch; only explicit installation downloads
   await requireRuntime(path);
   expect((await currentRuntimeStatus(path)).phase).toBe("ready");
   expect(fetch).toHaveBeenCalledTimes(1);
-  writeFileSync(join(path, "runtimes/pyodide/test/runtime.js"), "bad");
+  const runtimeFile = join(path, "runtimes/pyodide/test/runtime.js");
+  writeFileSync(runtimeFile, "bad");
+  // A changed file is caught by its new modification time. Windows moves that clock in steps of about 15 ms, so a
+  // same-size rewrite right after the download can keep the old time; set it as a later edit would leave it.
+  const later = new Date(Date.now() + 60_000);
+  utimesSync(runtimeFile, later, later);
   expect((await currentRuntimeStatus(path)).phase).toBe("idle");
   await expect(requireRuntime(path)).rejects.toThrow("runtime-missing");
   expect(fetch).toHaveBeenCalledTimes(1);
