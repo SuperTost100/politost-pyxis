@@ -564,6 +564,7 @@
     "good": "Good",
     "easy": "Easy",
     "fresh": "New {{count}}",
+    "freshToday": "New {{count}} ({{today}} today)",
     "learning": "Learning {{count}}",
     "mastered": "Mastered {{count}}",
     "summary": "Seen {{seen}}. Again {{again}}, hard {{hard}}, good {{good}}, easy {{easy}}.",

@@ -564,6 +564,7 @@
     "good": "Bene",
     "easy": "Facile",
     "fresh": "Nuove {{count}}",
+    "freshToday": "Nuove {{count}} ({{today}} oggi)",
     "learning": "In corso {{count}}",
     "mastered": "Imparate {{count}}",
     "summary": "Viste {{seen}}. Da rivedere {{again}}, difficile {{hard}}, bene {{good}}, facile {{easy}}.",

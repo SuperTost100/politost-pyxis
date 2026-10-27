@@ -205,11 +205,23 @@ function saveBatch(
   })();
 }
 
+/**
+ * The calls one build makes at once. The step holds one CLI slot, like the plan build's intro step, and makes as many
+ * calls as the default CLI limit allows.
+ */
+const PARALLEL_CALLS = 2;
+
+/**
+ * Writes cards for the topic's passages that have none yet, five passages per model call and two calls at a time. Each
+ * batch is stored as its call returns, so the page can show its cards before the rest arrive; `onProgress` gets the
+ * share of passages done after each batch.
+ */
 export async function generateTopicCards(
   db: Database.Database,
   input: Params,
   run?: GenerateInput["run"],
   signal?: AbortSignal,
+  onProgress?: (fraction: number) => void,
 ) {
   requireTopic(db, input.planId, input.topicId);
   const selection = input.selection ?? selectionFor(db, "lesson");
@@ -220,30 +232,48 @@ export async function generateTopicCards(
     .filter(Boolean)
     .join("\n");
   const attempted = new Set<string>();
-  while (!signal?.aborted) {
-    const batch = pendingPassages(db, input, attempted, BATCH);
-    if (!batch.length) break;
-    for (const row of batch) attempted.add(row.id);
-    const schema = batchSchema(batch);
-    const result = await generate({
-      selection,
-      run,
-      signal,
-      schema,
-      system,
-      prompt: JSON.stringify({
-        passages: batch.map((row) => ({
-          id: row.id,
-          text: row.text.slice(0, 1500),
-        })),
-      }),
-    });
-    if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
-    saveBatch(db, input, batch, (result.data as z.infer<typeof schema>).cards, {
-      provider: result.provider,
-      model: result.model,
-    });
+  const total = pendingPassages(db, input, attempted, Number.MAX_SAFE_INTEGER).length;
+  let done = 0;
+  let failed = false;
+  async function worker() {
+    // A failed call stops the other worker from starting a new batch; the batch it already has out is still stored.
+    while (!signal?.aborted && !failed) {
+      const batch = pendingPassages(db, input, attempted, BATCH);
+      if (!batch.length) return;
+      for (const row of batch) attempted.add(row.id);
+      const schema = batchSchema(batch);
+      try {
+        const result = await generate({
+          selection,
+          run,
+          signal,
+          schema,
+          system,
+          prompt: JSON.stringify({
+            passages: batch.map((row) => ({
+              id: row.id,
+              text: row.text.slice(0, 1500),
+            })),
+          }),
+        });
+        if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
+        saveBatch(db, input, batch, (result.data as z.infer<typeof schema>).cards, {
+          provider: result.provider,
+          model: result.model,
+        });
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+      done += batch.length;
+      if (total) onProgress?.(Math.min(1, done / total));
+    }
   }
+  const settled = await Promise.allSettled(
+    Array.from({ length: PARALLEL_CALLS }, () => worker()),
+  );
+  const rejected = settled.find((result) => result.status === "rejected");
+  if (rejected) throw rejected.reason;
 }
 
 export function registerCardJobs(
@@ -259,7 +289,7 @@ export function registerCardJobs(
         name: "cards",
         label: "jobs.cards",
         async run(ctx) {
-          await generateTopicCards(db, ctx.params as Params, run, ctx.signal);
+          await generateTopicCards(db, ctx.params as Params, run, ctx.signal, ctx.progress);
           return true;
         },
       },
@@ -292,17 +322,20 @@ export function enqueueTopicCards(
   };
 }
 
-/** Latest build for the topic, without error text: engine output can echo course material. */
+/**
+ * Latest build for the topic, without error text: engine output can echo course material. Its progress moves each time
+ * a batch of cards is stored, which tells the page to load them.
+ */
 export function readCardsBuild(
   db: Database.Database,
   { planId, topicId }: Params,
-): { jobId: string; state: string } | null {
+): { jobId: string; state: string; progress: number } | null {
   const row = db
     .prepare(
-      `SELECT id, state FROM jobs WHERE kind = 'cards-build'
+      `SELECT id, state, progress FROM jobs WHERE kind = 'cards-build'
          AND json_extract(params_json, '$.planId') = ? AND json_extract(params_json, '$.topicId') = ?
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
-    .get(planId, topicId) as { id: string; state: string } | undefined;
-  return row ? { jobId: row.id, state: row.state } : null;
+    .get(planId, topicId) as { id: string; state: string; progress: number } | undefined;
+  return row ? { jobId: row.id, state: row.state, progress: row.progress } : null;
 }

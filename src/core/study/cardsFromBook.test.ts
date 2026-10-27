@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
 import { templateVersion } from "../engine/prompts";
@@ -240,6 +240,74 @@ it("covers every passage in successive bounded batches without a 20-passage ceil
       )
       .get(),
   ).toEqual({ n: 24 });
+  db.close();
+});
+
+it("stores each batch as its call returns, two calls at a time, and reports the share done", async () => {
+  const db = fixture();
+  for (let i = 0; i < 8; i++) {
+    const id = `extra-${i}`;
+    db.prepare("INSERT INTO passages(id,text,created_at) VALUES(?,?,?)").run(
+      id,
+      `Concept ${i} explains a distinct part of the topic in enough detail for a grounded question.`,
+      10 + i,
+    );
+    db.prepare("INSERT INTO topic_passages(topic_id,passage_id) VALUES('topic',?)").run(id);
+  }
+  // Ten passages: two batches of five. Each call waits until the test lets it answer.
+  const pending: Array<{ ids: string[]; answer: () => void }> = [];
+  const done: number[] = [];
+  const build = generateTopicCards(
+    db,
+    { planId: "plan", topicId: "topic" },
+    (input) => {
+      const { passages: batch } = JSON.parse(input.prompt) as { passages: Array<{ id: string }> };
+      const structured = {
+        cards: batch.map((row) => ({
+          kind: "qa",
+          front: `Which idea belongs to ${row.id}?`,
+          back: "The grounded concept.",
+          passageId: row.id,
+        })),
+      };
+      return new Promise((resolve) =>
+        pending.push({
+          ids: batch.map((row) => row.id),
+          answer: () =>
+            resolve({ structured, text: "", provider: "claude", model: "m", inputTokens: 1 }),
+        }),
+      );
+    },
+    undefined,
+    (fraction) => done.push(fraction),
+  );
+  const stored = () => (db.prepare("SELECT COUNT(*) AS n FROM cards").get() as { n: number }).n;
+  // Both calls are out before either answers.
+  await vi.waitFor(() => expect(pending).toHaveLength(2));
+  expect(stored()).toBe(0);
+  // The first answer is stored, and reported, while the second call is still out.
+  pending[0]!.answer();
+  await vi.waitFor(() => expect(stored()).toBe(5));
+  expect(done).toEqual([0.5]);
+  pending[1]!.answer();
+  await build;
+  expect(stored()).toBe(10);
+  expect(done).toEqual([0.5, 1]);
+  expect(new Set(pending.flatMap((call) => call.ids)).size).toBe(10);
+  db.close();
+});
+
+it("says how far the topic's latest build is", () => {
+  const db = fixture();
+  db.prepare(
+    `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at)
+     VALUES ('job', 'cards-build', '{"planId":"plan","topicId":"topic"}', 'running', 0.4, 1, 1)`,
+  ).run();
+  expect(readCardsBuild(db, { planId: "plan", topicId: "topic" })).toEqual({
+    jobId: "job",
+    state: "running",
+    progress: 0.4,
+  });
   db.close();
 });
 

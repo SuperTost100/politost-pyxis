@@ -124,6 +124,16 @@ describe("prompt templates", () => {
     expect(languageName("x".repeat(41), "English")).toBe("English");
   });
 
+  it("asks for flashcards about the subject, never about the book", () => {
+    // A chapter's opening passage lists its objectives and prerequisites; a card about those tests the book, not the subject.
+    expect(loadTemplate("cards.generate").version).toBe("cards-3");
+    const body = loadTemplate("cards.generate").body;
+    expect(body).toContain("Test the subject, not the book");
+    for (const word of ["objectives", "prerequisites", "structure"]) expect(body).toContain(word);
+    expect(body).toMatch(/never mention the chapter, the book, the text or the author/);
+    expect(body).toContain("When a passage introduces a chapter, base its card on a fact about the subject that it states");
+  });
+
   it("keeps security wording and literal completion blanks", () => {
     for (const id of [
       "quiz.open-grade",
