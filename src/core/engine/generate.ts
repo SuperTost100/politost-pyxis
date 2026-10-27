@@ -105,10 +105,10 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
   }
   // An automatic engine still out after a usage limit or a sign-out, or a model the subscription refused, is skipped
   // until it is back.
-  const instead =
-    isBenched(input.selection.provider) ||
-    isModelBenched(input.selection.provider, input.selection.model)
-      ? usableFallback(input)
+  const instead = isBenched(input.selection.provider)
+    ? usableFallback(input)
+    : isModelBenched(input.selection.provider, input.selection.model)
+      ? usableFallback(input, "model")
       : undefined;
   if (instead) return answerOn(input, instead);
   try {
@@ -118,14 +118,14 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
       !input.signal?.aborted && !isAbort(err)
         ? fallbackReason(err, input.selection.provider)
         : undefined;
-    const next = reason ? usableFallback(input) : undefined;
-    if (!reason || !next) throw engineIpcError(err, input.selection.provider);
-    // An engine Pyxis chose that hit its usage limit, was signed out or refused the model: the next ready engine
-    // answers once instead, and later automatic calls skip it until its limit resets, it is signed in again or the
-    // refused model's day is over.
+    // An engine Pyxis chose that hit its usage limit, was signed out or refused the model: the next ready engine, or
+    // the same engine's next model after a refusal, answers once instead. Later automatic calls skip it until its limit
+    // resets, it is signed in again or the refused model's day is over.
     if (reason === "model")
       benchModel(input.selection.provider, input.selection.model);
-    else
+    const next = reason ? usableFallback(input, reason) : undefined;
+    if (!reason || !next) throw engineIpcError(err, input.selection.provider);
+    if (reason !== "model")
       benchEngine(
         input.selection.provider,
         reason,
@@ -135,7 +135,11 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
       );
     const fallback = {
       from: providerName(input.selection.provider),
-      to: providerName(next.provider),
+      // The same engine answering on another model is named with that model.
+      to:
+        next.provider === input.selection.provider
+          ? `${providerName(next.provider)} (${next.model})`
+          : providerName(next.provider),
       reason,
     };
     const output = await answerOn(input, next);
@@ -145,8 +149,11 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
 }
 
 /** The engine an automatic selection moves to. A turn that carries a picture only moves to an engine that can see it. */
-function usableFallback(input: GenerateInput) {
-  const next = fallbackSelection(input.selection);
+function usableFallback(
+  input: GenerateInput,
+  reason?: "limit" | "signed-out" | "model",
+) {
+  const next = fallbackSelection(input.selection, reason);
   if (!next) return undefined;
   return !input.attachments?.length || engineSeesImages(next) ? next : undefined;
 }

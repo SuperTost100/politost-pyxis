@@ -99,20 +99,23 @@ export function rememberReady(providers: AutoProvider[]): void {
 }
 
 /**
- * The engine an automatic selection switches to when its own hit a usage limit or was signed out: the choice the
- * automatic plan makes for the same task without that engine. The result is not automatic itself, so a task switches
+ * The engine an automatic selection switches to when its own hit a usage limit, was signed out or refused the model:
+ * the choice the automatic plan makes for the same task without that engine, or without that model for a refusal. The result is not automatic itself, so a task switches
  * at most once. A selection the student pinned, or one a background job saved when it was queued, gets none.
  */
 export function fallbackSelection(
   selection: object & { provider: string },
+  reason?: "limit" | "signed-out" | "model",
 ): Omit<StoredSelection, "auto" | "effortChoice"> | undefined {
   const feature = automatic.get(selection);
   if (!feature) return undefined;
+  // A refused model leaves its engine's other models usable; a limit or a sign-out takes the whole engine out.
   const choice = planAuto(
     withoutRefusedModels(
       ready.filter(
         (provider) =>
-          provider.id !== selection.provider && !isBenched(provider.id),
+          (reason === "model" || provider.id !== selection.provider) &&
+          !isBenched(provider.id),
       ),
     ),
   )[feature as AutoFeature];

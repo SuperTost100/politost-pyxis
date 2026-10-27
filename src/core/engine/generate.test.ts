@@ -351,6 +351,39 @@ describe("switching engines on a usage limit or sign-out", () => {
     db.close();
   });
 
+  it("tries the same engine's other model when it is the only one ready", async () => {
+    const db = automaticChat();
+    rememberReady([
+      {
+        id: "claude",
+        kind: "cli",
+        effort: true,
+        models: [
+          { id: "claude-sonnet-5", efforts: [] },
+          { id: "claude-haiku-5", efforts: [] },
+        ],
+      },
+    ]);
+    const asked: string[] = [];
+    const output = await generate({
+      selection: selectionFor(db, "chat"),
+      prompt: "hi",
+      run: async (input) => {
+        asked.push(`${input.selection.provider}/${input.selection.model}`);
+        if (input.selection.model === "claude-sonnet-5") throw notIncluded;
+        return result({ text: "ciao", model: input.selection.model });
+      },
+    });
+    expect(asked).toEqual(["claude/claude-sonnet-5", "claude/claude-haiku-5"]);
+    expect(output.text).toBe("ciao");
+    expect(output.fallback).toEqual({
+      from: "Claude Code",
+      to: "Claude Code (claude-haiku-5)",
+      reason: "model",
+    });
+    db.close();
+  });
+
   it("names the refusal when the student pinned the model", async () => {
     const db = automaticChat();
     db.prepare("UPDATE feature_engines SET selection_json = ?").run(

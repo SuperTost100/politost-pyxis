@@ -89,12 +89,14 @@ describe("translateEngineError", () => {
     for (const message of [
       "Claude Sonnet 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.",
       "This model is not included in your plan. Upgrade your plan to use it.",
-      "You are out of credits.",
     ])
       expect(translateEngineError(new Error(message), "agent")).toEqual({
         code: "model-not-included",
         messageKey: "engines.errors.model-not-included",
       });
+    // Credits that ran out stop every model on the account, so they are a usage limit, not one refused model.
+    for (const message of ["You are out of credits.", "Insufficient credits. Buy more credits to continue."])
+      expect(translateEngineError(new Error(message), "agent").code).toBe("quota");
     // Ordinary words around a plan or credits are not a refusal.
     expect(
       translateEngineError(new Error("Credits: the plan was included in the lesson"), "agent").code,

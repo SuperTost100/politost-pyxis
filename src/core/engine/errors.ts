@@ -49,6 +49,15 @@ function textKind(
   if (status === 401) return "refused";
   if (status === 429) return "quota";
   const text = `${rawCode} ${message}`;
+  // A subscription that leaves out the chosen model, which the engine's other models may still have. Cursor says "is
+  // not included in your weekly usage. Buy credits or switch to a Grok model". Read before the limits below, because
+  // the same message offers credits.
+  if (
+    /\b(?:not included in your (?:plan|subscription|weekly usage|usage)|upgrade your (?:plan|subscription) to use)\b/i.test(
+      text,
+    )
+  )
+    return "model";
   if (
     /\b(?:invalid[ _-]api[ _-]key|unauthori[sz]ed|authentication(?:[ _-](?:error|failed|required))?)\b/i.test(
       text,
@@ -56,19 +65,11 @@ function textKind(
   )
     return "refused";
   if (
-    /\b(?:rate[ _-]limit(?:ed|[ _-]exceeded)?|too many requests|usage[ _-]limit|spend[ _-]limit|(?:insufficient[ _-])?quota)\b/i.test(
+    /\b(?:rate[ _-]limit(?:ed|[ _-]exceeded)?|too many requests|usage[ _-]limit|spend[ _-]limit|(?:insufficient[ _-])?quota|out of credits|insufficient credits|buy (?:more )?credits)\b/i.test(
       text,
     )
   )
     return "quota";
-  // A subscription that leaves out the chosen model. Cursor says "is not included in your weekly usage. Buy credits or
-  // switch to a Grok model"; other vendors ask to upgrade the plan or buy credits.
-  if (
-    /\b(?:not included in your (?:plan|subscription|weekly usage|usage)|buy (?:more )?credits|upgrade your (?:plan|subscription)|out of credits|insufficient credits)\b/i.test(
-      text,
-    )
-  )
-    return "model";
   return "";
 }
 
