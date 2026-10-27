@@ -23,11 +23,11 @@
   background: var(--primary);
   opacity: 1;
 }
+/* Six steps share a 720 px column, so a long label such as "Lingua dei contenuti" takes a second line instead of being cut. */
 .px-stepper-label {
   color: var(--ink-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  text-wrap: balance;
 }
 .px-stepper-item.is-current .px-stepper-label {
   color: var(--ink);

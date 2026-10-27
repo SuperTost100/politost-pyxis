@@ -23,6 +23,7 @@ import { recordStep } from "./steps";
 import type { StepResult } from "./path";
 import { stripPassageRefs } from "../../shared/smart-text";
 import { smartAnswers } from "../study/smartText";
+import { noFactsKey } from "../study/cardsFromBook";
 import type Database from "better-sqlite3";
 import {
   createPlan,
@@ -235,6 +236,12 @@ export function planHandlers(
           `DELETE FROM flags WHERE target_kind = 'exercise' AND target_id IN (${owned})`,
         ).run({ plan: input.planId });
         db.prepare(`DELETE FROM exercises WHERE id IN (${owned})`).run({ plan: input.planId });
+        // Read before the topics go. The lists name passage IDs, which would keep the plan's hidden documents.
+        const noFactKeys = (
+          db.prepare(`SELECT id FROM topics WHERE plan_id = ?`).pluck().all(input.planId) as string[]
+        ).map(noFactsKey);
+        const dropSetting = db.prepare("DELETE FROM settings WHERE key = ?");
+        for (const key of noFactKeys) dropSetting.run(key);
         deletePlan(db, input.planId);
         db.prepare("DELETE FROM settings WHERE key IN (?,?,?)").run(
           `plan-material:${input.planId}`,

@@ -74,20 +74,25 @@ function EngineNoticeBody({
     <>
       <p className="body">{t("engines.notice.intro")}</p>
       <ul className="engine-notice-list">
-        {engines.map((engine) => (
-          <li key={engine.id}>
-            {/* Cursor passes the text on to the maker of the model the student picked. */}
-            {t(
-              engine.id === "agent"
-                ? "engines.notice.itemRelay"
-                : "engines.notice.item",
-              {
-                name: engine.name,
-                vendor: vendors[engine.id as EngineProvider] ?? engine.name,
-              },
-            )}
-          </li>
-        ))}
+        {engines.map((engine) => {
+          const vendor = vendors[engine.id as EngineProvider] ?? engine.name;
+          return (
+            <li key={engine.id}>
+              {/* Cursor passes the text on to the maker of the model the student picked. */}
+              {t(
+                engine.id === "agent"
+                  ? "engines.notice.itemRelay"
+                  : "engines.notice.item",
+                {
+                  name: engine.name,
+                  vendor,
+                  // Italian says "ad Anthropic" before a vowel; the `_vowel` strings carry that.
+                  context: /^[aeiouàèéìòù]/i.test(vendor) ? "vowel" : undefined,
+                },
+              )}
+            </li>
+          );
+        })}
       </ul>
       {failed ? <p role="alert">{t("engines.disclosureFailed")}</p> : null}
     </>
