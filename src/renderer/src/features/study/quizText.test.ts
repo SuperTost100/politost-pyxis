@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { retryPick, skipOrder } from "./quizText";
+import { retryPick, skipOrder, verdictLine } from "./quizText";
 
 const questions = ["a", "b", "c", "d"].map((id) => ({ id }));
 const ids = (rows: Array<{ id: string }>) => rows.map((row) => row.id);
@@ -27,5 +27,22 @@ describe("retryPick", () => {
   it("sends the edited answer after a failed check", () => {
     expect(retryPick("", "", "new answer")).toBe("new answer");
     expect(retryPick("old", "old", "new")).toBe("new");
+  });
+});
+
+describe("verdictLine", () => {
+  it("tells a diagnostic under half where to start", () => {
+    expect(verdictLine(23, true)).toBe("quiz.verdictStart");
+  });
+  it("never ends a topic quiz with the diagnostic's line", () => {
+    expect(verdictLine(23, false)).toBe("quiz.verdictLow");
+    expect(verdictLine(0, false)).toBe("quiz.verdictLow");
+  });
+  it("uses the same lines from half up, whatever the quiz", () => {
+    for (const diagnostic of [true, false]) {
+      expect(verdictLine(50, diagnostic)).toBe("quiz.verdictClose");
+      expect(verdictLine(70, diagnostic)).toBe("quiz.verdictGood");
+      expect(verdictLine(90, diagnostic)).toBe("quiz.verdictGreat");
+    }
   });
 });

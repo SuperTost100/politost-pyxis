@@ -110,6 +110,29 @@ export function drawnPdf(count: number): Uint8Array {
   return pdfBytes(objects);
 }
 
+/**
+ * A one-page PDF with a CCITT Group 4 (fax) image, the encoding most black-and-white scans use. The 8 x 8 image is all
+ * black and covers the bottom three quarters of the 300 x 200 page. `label`, when given, is a text line above it.
+ */
+export function faxScanPdf(label = ""): Uint8Array {
+  // Row 1 is horizontal mode (001), a white run of 0 (00110101) and a black run of 8 (000101). Rows 2 to 8 repeat it,
+  // two vertical-0 codes (1) each. EOFB is two EOLs.
+  const bits = `001${"00110101"}${"000101"}${"11".repeat(7)}${"000000000001".repeat(2)}`;
+  const padded = bits.padEnd(Math.ceil(bits.length / 8) * 8, "0");
+  const hex = `${(padded.match(/.{8}/g) ?? []).map((byte) => Number.parseInt(byte, 2).toString(16).padStart(2, "0")).join("")}>`;
+  const safe = label.replace(/[()\\]/g, "");
+  const draw = `q 300 0 0 150 0 0 cm /Scan Do Q${safe ? ` BT /F1 12 Tf 20 170 Td (${safe}) Tj ET` : ""}`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /XObject << /Scan 5 0 R >> /Font << /F1 6 0 R >> >> >>",
+    `<< /Length ${draw.length} >>\nstream\n${draw}\nendstream`,
+    `<< /Type /XObject /Subtype /Image /Width 8 /Height 8 /ColorSpace /DeviceGray /BitsPerComponent 1 /Filter [/ASCIIHexDecode /CCITTFaxDecode] /DecodeParms [null << /K -1 /Columns 8 /Rows 8 >>] /Length ${hex.length} >>\nstream\n${hex}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  return pdfBytes(objects);
+}
+
 export function blankPdf(): Uint8Array {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",

@@ -290,7 +290,7 @@ export function MistakesNotebook({ planId }: { planId?: string }) {
         tabIndex={-1}
         ref={summary}
       >
-        {data ? t("mistakes.count", { count: entries.length }) : " "}
+        {data ? t("mistakes.summary", { count: entries.length }) : " "}
       </p>
       {redo.isError ? (
         <Notice tone="danger">{t("mistakes.redoFailed")}</Notice>

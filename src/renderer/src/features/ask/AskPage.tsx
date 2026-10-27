@@ -30,6 +30,7 @@ import {
   attachable,
   draftKey,
   fileName,
+  keepUnsentQuestion,
   readPendingFiles,
   takeBoardAttachment,
   writePendingFiles,
@@ -39,14 +40,23 @@ import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
 import { ChatPanel } from "./ChatPanel";
 import { replyPlainText } from "./replyText";
-import { addIds, allowsGeneral, applySubject, choseGeneral, scopeItems, type ScopeItem } from "./scope";
+import {
+  addIds,
+  allowsGeneral,
+  applySubject,
+  choseGeneral,
+  onlySubject,
+  scopeChanges,
+  scopeItems,
+  type ScopeItem,
+} from "./scope";
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { activePlans, starterPrompts, type Starter } from "./starters";
 import { formatTokens } from "../../lib/tokens";
 import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
-import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources } from "../../lib/queries";
+import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources, subjectsQuery } from "../../lib/queries";
 
 function errorKey(err: unknown): string {
   return err && typeof err === "object" && "messageKey" in err
@@ -247,10 +257,10 @@ export function AskPage() {
   const [mode, setMode] = useState<"solver" | "socratic">(defaultMode);
   const [picked, setPicked] = useState<string[]>([]);
   // A subject's sources arrive after its plans are read; a message sent before then waits for them, so it is not sent
-  // without the sources the student just picked.
+  // without the sources the student just picked. `scope` holds those changes for the chat on screen (see scope.ts).
   const pickedNow = useRef(picked);
   pickedNow.current = picked;
-  const scopeReady = useRef<Promise<void>>(Promise.resolve());
+  const [scope] = useState(scopeChanges);
   const [planId, setPlanId] = useState<string | null>(null);
   const loadedFor = useRef<string | undefined>(undefined);
   const [uncovered, setUncovered] = useState<string | null>(null);
@@ -270,6 +280,9 @@ export function AskPage() {
   chatNow.current = chatId;
   const arrived = useRef<string | null>(null);
   const [subject, setSubject] = useState("");
+  // The subject a question goes out with: set at once when one is chosen, so a question waiting for the scope to settle has it.
+  const subjectNow = useRef(subject);
+  subjectNow.current = subject;
   const [panelOpen, setPanelOpen] = useState(false);
   const [files, setFiles] = useState<string[]>(() =>
     readPendingFiles(sessionStorage, chatId),
@@ -335,13 +348,30 @@ export function AskPage() {
     setError(null);
   }, [chatId]);
 
+  const chooseLatest = useRef(chooseSubject);
+  chooseLatest.current = chooseSubject;
   useEffect(() => {
+    // Scope changes still running belong to the chat being left: they stop holding questions and touch nothing here.
+    const chat = scope.open();
     if (chatId) return;
     setPicked([]);
+    pickedNow.current = [];
     setPlanId(null);
     setSubject("");
+    subjectNow.current = "";
     setUncovered(null);
     loadedFor.current = undefined;
+    // A new chat starts on the student's only subject, so a question typed at once reads its plans. It is chosen once per
+    // new chat from a fresh list, so a subject added a moment ago counts. Any pick the student makes, "No subject"
+    // included, wins over it, before the list arrives or after. A question sent while the list loads waits for it; if the
+    // list cannot be read, the question goes without a subject.
+    void scope.track(
+      onlySubject(
+        () => client.fetchQuery({ ...subjectsQuery, staleTime: 0 }),
+        () => scope.wantsDefault(chat) && subjectNow.current === "",
+        (name) => chooseLatest.current(name),
+      ).catch(() => undefined),
+    );
   }, [chatId]);
 
   // A reply's math check runs after the reply is saved. When it ends, the chat is read again for its badges.
@@ -390,24 +420,30 @@ export function AskPage() {
   }
 
   async function chooseSubject(next: string) {
-    const previous = subject;
+    // The ref, not this render's state: the default choice can run after a chat change this closure has not seen.
+    const previous = subjectNow.current;
     if (next === previous) return;
+    const chat = scope.token();
     setSubject(next);
+    subjectNow.current = next;
     const plan = (plans.data ?? []).find((item) => item.id === planId);
     if (plan?.subject && plan.subject !== next) setPlanId(null);
-    const ready = Promise.all([
-      subjectSourceIds(previous),
-      subjectSourceIds(next),
-    ]).then(([before, after]) => {
-      pickedNow.current = applySubject(pickedNow.current, before, after);
-      setPicked(pickedNow.current);
-    });
-    scopeReady.current = ready;
-    await ready;
+    await scope.track(
+      Promise.all([
+        subjectSourceIds(previous),
+        subjectSourceIds(next),
+      ]).then(([before, after]) => {
+        if (!scope.isCurrent(chat)) return;
+        pickedNow.current = applySubject(pickedNow.current, before, after);
+        setPicked(pickedNow.current);
+      }),
+    );
   }
 
   async function addPlan(id: string) {
+    const chat = scope.token();
     const plan = await client.fetchQuery({ ...planQuery(id), staleTime: 15_000 });
+    if (!scope.isCurrent(chat)) return;
     // Set here too, so a message sent right after (a starter prompt) carries the plan's sources.
     pickedNow.current = addIds(
       pickedNow.current,
@@ -553,9 +589,12 @@ export function AskPage() {
     turn.stop = () => {
       stoppedEarly = true;
     };
-    await scopeReady.current.catch(() => undefined);
-    if (stoppedEarly) {
+    const stillHere = await scope.settled();
+    if (stoppedEarly || !stillHere) {
       turns.end(turn);
+      // The student opened another chat while the question waited for its scope. Sending it now would use that chat's
+      // subject and sources, so it stays unsent, as the draft of the chat it was asked in.
+      if (!stillHere) keepUnsentQuestion(sessionStorage, startedIn || undefined, trimmed);
       return;
     }
     const ids = visible(pickedNow.current);
@@ -599,7 +638,7 @@ export function AskPage() {
         sourceIds: ids,
         planId,
         mode,
-        subject: options.subject ?? subject,
+        subject: options.subject ?? subjectNow.current,
         files: attached.length > 0 ? attached : undefined,
         allowGeneral: general,
       },
@@ -828,11 +867,15 @@ export function AskPage() {
   /** A starter prompt asks at once, with its plan's material: the plan's subject when it has one, else its sources. */
   function start(starter: Starter) {
     if (busy) return;
-    if (starter.subject) void chooseSubject(starter.subject);
-    else scopeReady.current = addPlan(starter.planId);
+    if (starter.subject) {
+      scope.choose();
+      void chooseSubject(starter.subject);
+    }
+    else void scope.track(addPlan(starter.planId));
     void send(t(`ask.starter.${starter.kind}`, { topic: starter.topic }), {
       textOnly: true,
-      subject: starter.subject ?? subject,
+      // Without a subject of its own, the question goes with the chat's subject once the scope settles.
+      subject: starter.subject ?? undefined,
     });
   }
 
@@ -1189,7 +1232,11 @@ export function AskPage() {
           subjectControl={
             <SubjectMenu
               value={subject}
-              onChange={(next) => void chooseSubject(next)}
+              onChange={(next) => {
+                // A pick, "No subject" included, is the student's choice: the new chat's default no longer applies.
+                scope.choose();
+                void chooseSubject(next);
+              }}
               disabled={busy}
             />
           }

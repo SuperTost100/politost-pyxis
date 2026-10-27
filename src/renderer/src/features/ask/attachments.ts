@@ -30,6 +30,18 @@ export function draftKey(chatId?: string): string {
   return chatId ? `pyxis-draft:${chatId}` : "pyxis-draft";
 }
 
+/**
+ * A question that could not go out stays as its chat's draft, so the student finds it there and can send it again. A
+ * typed question is that draft already; a suggestion chip's text becomes the draft only when the chat has none.
+ */
+export function keepUnsentQuestion(
+  store: Pick<Storage, "getItem" | "setItem">,
+  chatId: string | undefined,
+  text: string,
+): void {
+  if (!store.getItem(draftKey(chatId))) store.setItem(draftKey(chatId), text);
+}
+
 function filesKey(chatId?: string): string {
   return chatId ? `pyxis-files:${chatId}` : "pyxis-files";
 }

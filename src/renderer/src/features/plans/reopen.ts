@@ -39,3 +39,17 @@ export function stepPath(planId: string, activity: string, topicId: string | nul
   if (activity === "gaps") return `${base}/progress?drill=${encodeURIComponent(topicId)}`;
   return `${base}/${activity}/${topicId}`;
 }
+
+/**
+ * Where "Skip the test" goes: the lesson of the first topic not read yet. Core keeps no skip state; the path stops
+ * suggesting the diagnostic once anything is studied, and then suggests this same lesson (rule 8 in docs/mastery.md).
+ */
+export function skipDiagnosticPath(
+  planId: string,
+  topics: ReadonlyArray<{ id: string }>,
+  steps: ReadonlyArray<{ activity: string; topicId: string | null }>,
+): string | null {
+  const read = new Set(steps.filter((step) => step.activity === "lesson").map((step) => step.topicId));
+  const first = topics.find((topic) => !read.has(topic.id));
+  return first ? stepPath(planId, "lesson", first.id) : null;
+}

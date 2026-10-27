@@ -53,7 +53,7 @@ Redo asks up to ten of them again as one quiz item with no topic (`redo: true` i
 Nothing on the path is locked. Every activity is open at any time and in any order; the path only suggests what to do first. `suggestStep` in `src/core/plans/path.ts` picks the first of these that applies:
 
 1. Due cards or severe gaps on any topic. When several topics qualify, the recommendation score below picks the topic, and its due cards come before its gaps.
-2. On a plan with no study yet, the introduction (when the plan has one), then the diagnostic.
+2. On a plan with no study yet, the introduction (when the plan has one), then the diagnostic. Pyxis stores no skip: "Skip the test" on the suggestion opens the lesson of the first unread topic, and reading it ends this rule like any other study.
 3. A simulation, once every topic has reached the target.
 4. A simulation, when the exam is 0 to 3 days away and some study has happened.
 5. The topic of the latest lesson read, until it reaches `0.6` mastery (or the target, when that is lower) or the student has done three graded activities on it, whichever comes first. Exercises come first, then a quiz, then exercises again. A quiz follows exercises, and exercises follow anything else.

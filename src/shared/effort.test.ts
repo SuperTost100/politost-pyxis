@@ -16,7 +16,7 @@ describe("task effort", () => {
       vision: "medium",
       default: "medium",
       plan: "high",
-      grading: "high",
+      grading: "medium",
     });
   });
 
@@ -48,7 +48,7 @@ describe("task effort", () => {
   });
 
   it("combines the task and the model", () => {
-    expect(automaticEffort("grading", ["low", "high"])).toBe("high");
+    expect(automaticEffort("plan", ["low", "high"])).toBe("high");
     expect(automaticEffort("chat", ["medium"])).toBe("medium");
     expect(automaticEffort("lesson", [])).toBeUndefined();
   });

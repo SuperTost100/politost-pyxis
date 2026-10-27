@@ -19,6 +19,88 @@ export function applySubject(
   return [...new Set([...picked.filter((id) => !dropped.has(id)), ...next])];
 }
 
+/**
+ * The subject a new chat starts on: the only one when the student has exactly one, so a question typed straight away
+ * reads its plans' sources. With none or several, no subject until the student picks.
+ */
+export function newChatSubject(subjects: ReadonlyArray<{ name: string }>): string {
+  return subjects.length === 1 ? subjects[0]!.name : "";
+}
+
+/**
+ * The changes to a chat's scope still running: the new chat's default subject, a subject the student picks, a starter's
+ * plan. A question waits for `settled`, so it goes out with the subject and sources the student sees.
+ *
+ * Each change belongs to the chat on screen when it started. Ask calls `open` whenever that chat changes: it returns the
+ * chat's token, and a question in the new chat no longer waits for the old chat's changes. A change checks `isCurrent`
+ * with its token before it touches the scope, so it never lands on another chat.
+ *
+ * `choose` records that the student picked a subject in this chat, "No subject" included, which leaves the value empty.
+ * The default subject is wanted only while the chat is on screen and the student has made no such choice.
+ */
+export function scopeChanges() {
+  let chat = 0;
+  let pending = new Set<Promise<unknown>>();
+  let chosen = false;
+  return {
+    open(): number {
+      chat += 1;
+      pending = new Set();
+      chosen = false;
+      return chat;
+    },
+    isCurrent(token: number): boolean {
+      return token === chat;
+    },
+    /** The current chat's token, for a change starting now. */
+    token(): number {
+      return chat;
+    },
+    choose(): void {
+      chosen = true;
+    },
+    wantsDefault(token: number): boolean {
+      return token === chat && !chosen;
+    },
+    track<T>(change: Promise<T>): Promise<T> {
+      const changes = pending;
+      changes.add(change);
+      const done = () => {
+        changes.delete(change);
+      };
+      // The finished change leaves its own chat's set; a failure counts as finished.
+      change.then(done, done);
+      return change;
+    },
+    /**
+     * Resolves once no change of the chat on screen is running: it waits for all of them, then again for any that started
+     * meanwhile. A failed change counts as finished; the question goes out with the scope as it stands. It resolves to
+     * false when that chat was left while the question waited: the scope on screen is then another chat's, and the
+     * question must not go out with it.
+     */
+    async settled(): Promise<boolean> {
+      const mine = chat;
+      const changes = pending;
+      while (changes.size > 0 && chat === mine) await Promise.allSettled([...changes]);
+      return chat === mine;
+    },
+  };
+}
+
+/**
+ * The new chat's default: the only subject, chosen once the subject list is read. `load` must return the current list,
+ * not a cached one. `wanted` is checked after the list arrives, so the choice is skipped when the student has moved to
+ * another chat or picked a subject meanwhile.
+ */
+export async function onlySubject(
+  load: () => Promise<ReadonlyArray<{ name: string }>>,
+  wanted: () => boolean,
+  choose: (name: string) => Promise<void>,
+): Promise<void> {
+  const only = newChatSubject(await load());
+  if (only && wanted()) await choose(only);
+}
+
 export function addIds(picked: string[], ids: string[]): string[] {
   return [...new Set([...picked, ...ids])];
 }

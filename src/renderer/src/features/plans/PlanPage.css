@@ -20,6 +20,9 @@
 .px-plan-header h1 {
   margin: var(--space-2) 0;
 }
+.px-plan-mastery-note {
+  margin: var(--space-1) 0 0;
+}
 .px-plan-header-actions {
   display: flex;
   justify-content: flex-end;
