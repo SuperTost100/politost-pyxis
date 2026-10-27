@@ -184,7 +184,7 @@ export function dueCards(
           ?
         ) AS due_at
        ${DUE_FROM}
-       ORDER BY due_at ASC
+       ORDER BY due_at ASC, c.created_at, c.rowid
        LIMIT 20`,
     )
     .all(
