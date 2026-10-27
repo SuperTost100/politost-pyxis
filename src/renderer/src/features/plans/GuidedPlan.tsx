@@ -212,7 +212,6 @@ function Guided({ seed }: { seed: WizardSeed }) {
     </Button>
   ) : (
     <Button
-      className="px-wizard-create"
       type="primary"
       shape="round"
       disabled={creating || !toDraftTopics(nodes).length}
