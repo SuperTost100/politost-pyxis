@@ -6,6 +6,7 @@ import { generate, type GenerateInput } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { putSetting } from "../settings";
 import { requireTopic } from "./openLesson";
 
 const TEMPLATE = "cards.generate";
@@ -14,6 +15,21 @@ const ACTIVE = "('queued', 'running', 'interrupted')";
 
 type Params = { planId: string; topicId: string; selection?: ReturnType<typeof selectionFor> };
 type Passage = { id: string; text: string };
+
+/**
+ * The settings key listing a topic's passages the model found no fact about the subject in, such as a chapter opening
+ * that only lists objectives and prerequisites. They have no card, so this list keeps later builds from sending them
+ * again. Deleting the plan deletes the key.
+ */
+export const noFactsKey = (topicId: string) => `cards.noFacts.${topicId}`;
+
+function noFactPassages(db: Database.Database, topicId: string): Set<string> {
+  const row = db
+    .prepare(`SELECT value_json FROM settings WHERE key = ?`)
+    .get(noFactsKey(topicId)) as { value_json: string } | undefined;
+  const value = row ? (JSON.parse(row.value_json) as unknown) : [];
+  return new Set(Array.isArray(value) ? value.filter((id) => typeof id === "string") : []);
+}
 
 // A card asks for one fact, definition, formula or idea. These caps keep a worked exercise out.
 const FRONT_MAX = 200;
@@ -104,13 +120,14 @@ export function cardIssues(
   return issues;
 }
 
-/** Passages that no generated card (kept, edited or deleted) points to yet. */
+/** Passages that no generated card (kept, edited or deleted) points to yet, and that a build has not skipped. */
 function pendingPassages(
   db: Database.Database,
   { planId, topicId }: Params,
-  skip: Set<string>,
+  attempted: Set<string>,
   limit: number,
 ): Passage[] {
+  const noFacts = noFactPassages(db, topicId);
   return (
     db
       .prepare(
@@ -123,20 +140,26 @@ function pendingPassages(
       )
       .all(topicId, planId, topicId, TEMPLATE) as Passage[]
   )
-    .filter((row) => !skip.has(row.id))
+    .filter((row) => !attempted.has(row.id) && !noFacts.has(row.id))
     .slice(0, limit);
 }
 
+/**
+ * Every passage gets at least one card, or is listed in `skipped` when it states no fact about the subject; never both.
+ * Which passages state a fact is the model's call, so the schema can only require one of the two.
+ */
 function batchSchema(batch: Passage[]) {
   const byId = new Map(batch.map((row) => [row.id, row]));
   return z
     .object({
-      cards: z
-        .array(card)
-        .min(batch.length)
-        .max(batch.length * 3),
+      cards: z.array(card).max(batch.length * 3),
+      skipped: z.array(z.string()).max(batch.length).optional(),
     })
     .superRefine((value, ctx) => {
+      const skipped = new Set(value.skipped ?? []);
+      for (const id of skipped)
+        if (!byId.has(id))
+          ctx.addIssue({ code: "custom", message: `Unknown passage ID ${id}`, path: ["skipped"] });
       const covered = new Set<string>();
       const seen = new Set<string>();
       value.cards.forEach((row, i) => {
@@ -144,11 +167,12 @@ function batchSchema(batch: Passage[]) {
           ctx.addIssue({ code: "custom", message, path: ["cards", i] });
         const passage = byId.get(row.passageId);
         if (!passage) return issue("Unknown passage ID");
+        if (skipped.has(row.passageId)) issue(`Passage ${row.passageId} is skipped, so it gets no card`);
         covered.add(row.passageId);
         for (const message of cardIssues(row, seen, passage.text, "passage")) issue(message);
       });
       for (const row of batch)
-        if (!covered.has(row.id))
+        if (!covered.has(row.id) && !skipped.has(row.id))
           ctx.addIssue({
             code: "custom",
             message: `No card for passage ${row.id}`,
@@ -163,9 +187,12 @@ function saveBatch(
   { planId, topicId }: Params,
   batch: Passage[],
   rows: GeneratedCard[],
+  skipped: string[],
   provenance: { provider: string; model: string },
 ) {
   db.transaction(() => {
+    if (skipped.length)
+      putSetting(db, noFactsKey(topicId), [...new Set([...noFactPassages(db, topicId), ...skipped])]);
     const exists = db.prepare(
       "SELECT 1 FROM cards WHERE plan_id = ? AND topic_id = ? AND seed_key = ?",
     );
@@ -194,7 +221,8 @@ function saveBatch(
         now,
       );
     }
-    // The old prefix cards for these passages are now replaced, unless studied.
+    // The old prefix cards for these passages are now replaced, unless studied. A skipped passage's prefix card goes
+    // too: it quoted a passage with nothing about the subject to learn.
     for (const passage of batch)
       db.prepare(
         `UPDATE cards SET removed = 1
@@ -257,7 +285,8 @@ export async function generateTopicCards(
           }),
         });
         if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
-        saveBatch(db, input, batch, (result.data as z.infer<typeof schema>).cards, {
+        const data = result.data as z.infer<typeof schema>;
+        saveBatch(db, input, batch, data.cards, data.skipped ?? [], {
           provider: result.provider,
           model: result.model,
         });

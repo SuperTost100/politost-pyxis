@@ -297,6 +297,70 @@ it("stores each batch as its call returns, two calls at a time, and reports the 
   db.close();
 });
 
+describe("a passage with no fact about the subject", () => {
+  const card = (id: string) => ({
+    kind: "qa",
+    front: `Which idea belongs to ${id}?`,
+    back: "The grounded concept.",
+    passageId: id,
+  });
+  const reply = (structured: unknown) => ({
+    structured,
+    text: "",
+    provider: "claude",
+    model: "m",
+    inputTokens: 1,
+  });
+
+  it("gets no card, keeps the batch's other cards, and is not sent again", async () => {
+    const db = fixture();
+    const sent: string[][] = [];
+    const run: GenerateInput["run"] = async (input) => {
+      // A repair adds its messages after the passages' JSON line.
+      const ids = (JSON.parse(input.prompt.split("\n")[0]!) as { passages: Array<{ id: string }> }).passages.map(
+        (row) => row.id,
+      );
+      sent.push(ids);
+      // p1 only lists the chapter's objectives: the model skips it.
+      return reply({ cards: ids.filter((id) => id !== "p1").map(card), skipped: ids.filter((id) => id === "p1") });
+    };
+    await generateTopicCards(db, { planId: "plan", topicId: "topic" }, run);
+    const fronts = () =>
+      (db.prepare("SELECT passage_id FROM cards ORDER BY passage_id").all() as Array<{ passage_id: string }>).map(
+        (row) => row.passage_id,
+      );
+    expect(fronts()).toEqual(["p2"]);
+    // The next build has nothing left to ask for, and a new passage goes out without the skipped one.
+    await generateTopicCards(db, { planId: "plan", topicId: "topic" }, run);
+    expect(sent).toHaveLength(1);
+    db.prepare("INSERT INTO passages(id,text,created_at) VALUES('p3',?,9)").run(
+      "Momentum is the product of a body's mass and its velocity.",
+    );
+    db.prepare("INSERT INTO topic_passages(topic_id,passage_id) VALUES('topic','p3')").run();
+    await generateTopicCards(db, { planId: "plan", topicId: "topic" }, run);
+    expect(sent).toEqual([["p1", "p2"], ["p3"]]);
+    expect(fronts()).toEqual(["p2", "p3"]);
+    db.close();
+  });
+
+  it("still needs a card or a skip for every passage, and never both", async () => {
+    for (const first of [
+      { cards: [card("p2")] },
+      { cards: [card("p1"), card("p2")], skipped: ["p1"] },
+      { cards: [card("p1"), card("p2")], skipped: ["elsewhere"] },
+    ]) {
+      const db = fixture();
+      let calls = 0;
+      await generateTopicCards(db, { planId: "plan", topicId: "topic" }, async () => {
+        calls += 1;
+        return reply(calls === 1 ? first : { cards: [card("p1"), card("p2")] });
+      });
+      expect(calls, JSON.stringify(first)).toBe(2);
+      db.close();
+    }
+  });
+});
+
 it("says how far the topic's latest build is", () => {
   const db = fixture();
   db.prepare(
