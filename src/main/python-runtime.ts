@@ -189,8 +189,12 @@ function execute(
   tails[operation] = turn.catch(() => undefined);
   return turn;
 }
+// The sandbox never navigates (will-navigate is refused), so a main frame that is destroyed or detached means its
+// renderer is gone. Electron can dispose the frame before isCrashed() turns true and before render-process-gone.
 function rendererGone(target: BrowserWindow): boolean {
-  return target.isDestroyed() || target.webContents.isDestroyed() || target.webContents.isCrashed();
+  if (target.isDestroyed() || target.webContents.isDestroyed() || target.webContents.isCrashed()) return true;
+  const frame = target.webContents.mainFrame;
+  return !frame || frame.isDestroyed() || frame.detached;
 }
 // Covers booting Pyodide (host.js allows 60 s) plus the run itself (at most 11 s). Old Intel Macs take over a minute to boot.
 const RUN_CEILING_MS = 90000;

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // A stand-in for Electron: windows never load anything, and each run/check the page is asked for stays pending until
 // the test settles it, so a request can be held in flight while others queue behind it.
 const fake = vi.hoisted(() => ({
-  windows: [] as Array<{ destroyed: boolean; crashed: boolean }>,
+  windows: [] as Array<{ destroyed: boolean; crashed: boolean; frame: { destroyed: boolean; detached: boolean } }>,
   held: [] as Array<{ script: string; settle: (value: unknown) => void; fail: (error: Error) => void }>,
   scripts: [] as string[],
 }));
@@ -12,12 +12,20 @@ vi.mock("electron", () => {
   class FakeWindow {
     destroyed = false;
     crashed = false;
+    frame = {
+      destroyed: false,
+      detached: false,
+      isDestroyed() {
+        return this.destroyed;
+      },
+    };
     listeners = new Map<string, Set<() => void>>();
     webContents = {
       setWindowOpenHandler: () => undefined,
       on: () => undefined,
       isDestroyed: () => this.destroyed,
       isCrashed: () => this.crashed,
+      mainFrame: this.frame,
       executeJavaScript: (script: string) => {
         fake.scripts.push(script);
         if (script.startsWith("window.pyxisRuntime.stop("))
@@ -138,6 +146,16 @@ describe("python runtime queue", () => {
     fake.held[0]!.fail(new Error("Render frame was disposed before the request completed"));
     await expect(running).rejects.toThrow("runtime-crashed");
   });
+
+  // Electron can dispose the main frame and reject the call before isCrashed() or render-process-gone report it.
+  for (const gone of ["destroyed", "detached"] as const)
+    it(`reports a run whose main frame is ${gone} as runtime-crashed, before the crash is reported`, async () => {
+      const running = handleRuntimeRequest("python", { code: "while True: pass" });
+      await tick();
+      fake.windows[0]!.frame[gone] = true;
+      fake.held[0]!.fail(new Error("Render frame was disposed before the request completed"));
+      await expect(running).rejects.toThrow("runtime-crashed");
+    });
 
   it("passes on a failed call from a renderer that is still running", async () => {
     const running = handleRuntimeRequest("python", { code: "1" });
