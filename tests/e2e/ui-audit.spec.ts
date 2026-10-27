@@ -1,4 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
+import { axeViolations } from "./axe";
 import {
   expect,
   test,
@@ -2246,7 +2246,7 @@ async function openState(page: Page, name: string) {
     case "engine-details":
       await openAdvancedEngines(page);
       await page
-        .getByRole("button", { name: /^(Dettagli di|Details for) / })
+        .locator(".px-engine-open")
         .first()
         .click();
       await expect(dialog).toBeVisible();
@@ -2254,9 +2254,7 @@ async function openState(page: Page, name: string) {
     case "engine-details-disabled":
       await openAdvancedEngines(page);
       await page
-        .getByRole("button", {
-          name: /^(Dettagli di|Details for) .*(Antigravity)/i,
-        })
+        .getByRole("button", { name: /^Antigravity/ })
         .click();
       await expect(dialog).toBeVisible();
       break;
@@ -2811,9 +2809,7 @@ test("M14 every application route in both languages, themes and supported widths
                     ),
                   ),
               );
-              const violations = (
-                await new AxeBuilder({ page }).setLegacyMode(true).analyze()
-              ).violations;
+              const violations = await axeViolations(page);
               await saveShot(page, `m14/${key}.png`, { fullPage: true, animations: "disabled" });
               // Fixed headers and modal backdrops are viewport-bound; keep a real viewport capture alongside the full-page image.
               await saveShot(page, `m14/${key}.viewport.png`, { fullPage: false, animations: "disabled" });

@@ -96,16 +96,13 @@ export default function FormulaPanel({
             aria-controls={`${id}-keys`}
             tabIndex={index === tab ? 0 : -1}
             title={t(`math.tab.${item.id}`)}
-            aria-label={t(`math.tab.${item.id}`)}
             onClick={() => setTab(index)}
             onKeyDown={(event) => onTabKey(event, index)}
           >
-            <span aria-hidden className="is-full">
-              {item.caption}
-            </span>
-            <span aria-hidden className="is-short">
-              {item.short}
-            </span>
+            {/* The visible caption leads the name and the tab's own name follows it (WCAG 2.5.3). */}
+            <span className="is-full">{item.caption}</span>
+            <span className="is-short">{item.short}</span>
+            <span className="visually-hidden">{` ${t(`math.tab.${item.id}`)}`}</span>
           </button>
         ))}
       </div>
