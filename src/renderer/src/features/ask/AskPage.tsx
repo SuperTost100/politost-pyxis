@@ -361,12 +361,13 @@ export function AskPage() {
     setUncovered(null);
     loadedFor.current = undefined;
     // A new chat starts on the student's only subject, so a question typed at once reads its plans. It is chosen once per
-    // new chat from a fresh list, so choosing "No subject" afterwards stays and a subject added a moment ago counts. A
-    // question sent while the list loads waits for it; if the list cannot be read, the question goes without a subject.
+    // new chat from a fresh list, so a subject added a moment ago counts. Any pick the student makes, "No subject"
+    // included, wins over it, before the list arrives or after. A question sent while the list loads waits for it; if the
+    // list cannot be read, the question goes without a subject.
     void scope.track(
       onlySubject(
         () => client.fetchQuery({ ...subjectsQuery, staleTime: 0 }),
-        () => scope.isCurrent(chat) && subjectNow.current === "",
+        () => scope.wantsDefault(chat) && subjectNow.current === "",
         (name) => chooseLatest.current(name),
       ).catch(() => undefined),
     );
@@ -862,7 +863,10 @@ export function AskPage() {
   /** A starter prompt asks at once, with its plan's material: the plan's subject when it has one, else its sources. */
   function start(starter: Starter) {
     if (busy) return;
-    if (starter.subject) void chooseSubject(starter.subject);
+    if (starter.subject) {
+      scope.choose();
+      void chooseSubject(starter.subject);
+    }
     else void scope.track(addPlan(starter.planId));
     void send(t(`ask.starter.${starter.kind}`, { topic: starter.topic }), {
       textOnly: true,
@@ -1224,7 +1228,11 @@ export function AskPage() {
           subjectControl={
             <SubjectMenu
               value={subject}
-              onChange={(next) => void chooseSubject(next)}
+              onChange={(next) => {
+                // A pick, "No subject" included, is the student's choice: the new chat's default no longer applies.
+                scope.choose();
+                void chooseSubject(next);
+              }}
               disabled={busy}
             />
           }

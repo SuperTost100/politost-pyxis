@@ -34,14 +34,19 @@ export function newChatSubject(subjects: ReadonlyArray<{ name: string }>): strin
  * Each change belongs to the chat on screen when it started. Ask calls `open` whenever that chat changes: it returns the
  * chat's token, and a question in the new chat no longer waits for the old chat's changes. A change checks `isCurrent`
  * with its token before it touches the scope, so it never lands on another chat.
+ *
+ * `choose` records that the student picked a subject in this chat, "No subject" included, which leaves the value empty.
+ * The default subject is wanted only while the chat is on screen and the student has made no such choice.
  */
 export function scopeChanges() {
   let chat = 0;
-  let latest: Promise<unknown> = Promise.resolve();
+  let pending = new Set<Promise<unknown>>();
+  let chosen = false;
   return {
     open(): number {
       chat += 1;
-      latest = Promise.resolve();
+      pending = new Set();
+      chosen = false;
       return chat;
     },
     isCurrent(token: number): boolean {
@@ -51,20 +56,28 @@ export function scopeChanges() {
     token(): number {
       return chat;
     },
+    choose(): void {
+      chosen = true;
+    },
+    wantsDefault(token: number): boolean {
+      return token === chat && !chosen;
+    },
     track<T>(change: Promise<T>): Promise<T> {
-      latest = change;
+      const changes = pending;
+      changes.add(change);
+      const done = () => {
+        changes.delete(change);
+      };
+      // The finished change leaves its own chat's set; a failure counts as finished.
+      change.then(done, done);
       return change;
     },
     /**
-     * Resolves once no change is running: it waits for the latest change, then again if another one started meanwhile. A
-     * failed change counts as finished; the question goes out with the scope as it stands.
+     * Resolves once no change of the chat on screen is running: it waits for all of them, then again for any that started
+     * meanwhile. A failed change counts as finished; the question goes out with the scope as it stands.
      */
     async settled(): Promise<void> {
-      for (;;) {
-        const waiting = latest;
-        await waiting.catch(() => undefined);
-        if (waiting === latest) return;
-      }
+      while (pending.size > 0) await Promise.allSettled([...pending]);
     },
   };
 }

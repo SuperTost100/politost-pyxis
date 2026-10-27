@@ -171,6 +171,46 @@ describe("scope changes a question waits for", () => {
     expect(chosen).toEqual([]);
   });
 
+  it("waits for every change still running in the chat, not only the latest", async () => {
+    const scope = scopeChanges();
+    scope.open();
+    const defaultLoad = later<void>();
+    const starterPlan = later<void>();
+    scope.track(defaultLoad.promise);
+    scope.track(starterPlan.promise);
+    const question = scope.settled();
+    starterPlan.resolve();
+    expect(await settledNow(question)).toBe(false);
+    defaultLoad.resolve();
+    expect(await settledNow(question)).toBe(true);
+  });
+
+  it("skips the default once the student chose a subject in this chat, \"No subject\" included", async () => {
+    const scope = scopeChanges();
+    const chat = scope.open();
+    expect(scope.wantsDefault(chat)).toBe(true);
+    const list = later<Subjects>();
+    const chosen: string[] = [];
+    const pending = scope.track(
+      onlySubject(
+        () => list.promise,
+        () => scope.wantsDefault(chat),
+        async (name) => {
+          chosen.push(name);
+        },
+      ),
+    );
+    // "No subject" picked while the list loads: the value stays empty, but it is a choice.
+    scope.choose();
+    list.resolve([{ name: "Analisi 1" }]);
+    await pending;
+    expect(chosen).toEqual([]);
+    // The next chat starts with no choice made.
+    const next = scope.open();
+    expect(scope.wantsDefault(next)).toBe(true);
+    expect(scope.wantsDefault(chat)).toBe(false);
+  });
+
   it("lets a question go after a change that failed", async () => {
     const scope = scopeChanges();
     scope.open();

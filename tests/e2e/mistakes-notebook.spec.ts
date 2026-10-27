@@ -294,7 +294,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
         '.ant-select-dropdown:visible .ant-select-item-option[title="Chimica generale"]',
       )
       .click();
-    await expect(page.getByRole("status")).toHaveText("1 question to redo");
+    await expect(page.getByRole("status")).toHaveText("1 question to redo from quizzes, quick checks and simulations");
 
     // Redo a question from its exam's tab: answered right, it leaves; the topic's mastery moves.
     await page.evaluate(() => {
