@@ -3,24 +3,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // A stand-in for Electron: windows never load anything, and each run/check the page is asked for stays pending until
 // the test settles it, so a request can be held in flight while others queue behind it.
 const fake = vi.hoisted(() => ({
-  windows: [] as Array<{ destroyed: boolean }>,
-  held: [] as Array<{ script: string; settle: (value: unknown) => void }>,
+  windows: [] as Array<{ destroyed: boolean; crashed: boolean }>,
+  held: [] as Array<{ script: string; settle: (value: unknown) => void; fail: (error: Error) => void }>,
   scripts: [] as string[],
 }));
 
 vi.mock("electron", () => {
   class FakeWindow {
     destroyed = false;
+    crashed = false;
     listeners = new Map<string, Set<() => void>>();
     webContents = {
       setWindowOpenHandler: () => undefined,
       on: () => undefined,
+      isDestroyed: () => this.destroyed,
+      isCrashed: () => this.crashed,
       executeJavaScript: (script: string) => {
         fake.scripts.push(script);
         if (script.startsWith("window.pyxisRuntime.stop("))
           return Promise.resolve(undefined);
-        return new Promise((resolve) =>
-          fake.held.push({ script, settle: resolve }),
+        return new Promise((resolve, reject) =>
+          fake.held.push({ script, settle: resolve, fail: reject }),
         );
       },
     };
@@ -125,6 +128,22 @@ describe("python runtime queue", () => {
     expect(fake.windows).toHaveLength(2);
     fake.held.at(-1)!.settle({ state: "verified" });
     await expect(later).resolves.toEqual({ state: "verified" });
+  });
+
+  // Electron 45 rejects the pending call the moment the renderer dies, before the window closes.
+  it("reports a renderer that died mid-run as runtime-crashed, whatever Electron's rejection says", async () => {
+    const running = handleRuntimeRequest("python", { code: "while True: pass" });
+    await tick();
+    fake.windows[0]!.crashed = true;
+    fake.held[0]!.fail(new Error("Render frame was disposed before the request completed"));
+    await expect(running).rejects.toThrow("runtime-crashed");
+  });
+
+  it("passes on a failed call from a renderer that is still running", async () => {
+    const running = handleRuntimeRequest("python", { code: "1" });
+    await tick();
+    fake.held[0]!.fail(new Error("Script failed to execute"));
+    await expect(running).rejects.toThrow("Script failed to execute");
   });
 
   it("keeps queued work when the same workspace is configured again", async () => {
