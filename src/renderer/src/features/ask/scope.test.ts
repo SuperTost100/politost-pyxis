@@ -4,10 +4,20 @@ import {
   allowsGeneral,
   applySubject,
   choseGeneral,
+  newChatDefault,
   newChatSubject,
   scopeItems,
-  startOnOnlySubject,
 } from "./scope";
+
+type Subjects = Array<{ name: string }>;
+
+function later<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 describe("chat scope", () => {
   it("swaps the previous subject's sources for the new one and keeps hand-picked ones", () => {
@@ -89,29 +99,65 @@ describe("a new chat's subject", () => {
     expect(newChatSubject([])).toBe("");
     expect(newChatSubject([{ name: "Analisi 1" }, { name: "Fisica" }])).toBe("");
   });
+});
 
-  it("holds a question sent before the subjects load until the only subject and its sources are chosen", async () => {
-    let release!: (list: Array<{ name: string }>) => void;
-    const loading = new Promise<Array<{ name: string }>>((resolve) => {
-      release = resolve;
-    });
+describe("starting a new chat on the only subject", () => {
+  it("holds a question sent while the subjects load until the subject and its sources are chosen", async () => {
+    const list = later<Subjects>();
     const chosen: string[] = [];
-    const ready = startOnOnlySubject(
-      () => loading,
-      () => "",
+    const defaults = newChatDefault(
+      () => list.promise,
       async (name) => {
         await Promise.resolve();
         chosen.push(name);
       },
     );
+    const ready = defaults.open(true, () => "");
     let settled = false;
     void ready.then(() => {
       settled = true;
     });
     await Promise.resolve();
     expect(settled).toBe(false);
-    release([{ name: "Analisi 1" }]);
+    list.resolve([{ name: "Analisi 1" }]);
     await ready;
+    expect(chosen).toEqual(["Analisi 1"]);
+  });
+
+  it("drops a pending default when the student opens another chat while the subjects load", async () => {
+    const list = later<Subjects>();
+    const chosen: string[] = [];
+    const defaults = newChatDefault(
+      () => list.promise,
+      async (name) => {
+        chosen.push(name);
+      },
+    );
+    const ready = defaults.open(true, () => "");
+    // An existing chat without a subject opens on the same Ask page.
+    await defaults.open(false, () => "");
+    list.resolve([{ name: "Analisi 1" }]);
+    await ready;
+    expect(chosen).toEqual([]);
+  });
+
+  it("reads the subjects again for each new chat", async () => {
+    let subjects: Subjects = [{ name: "Analisi 1" }];
+    const loads: number[] = [];
+    const chosen: string[] = [];
+    const defaults = newChatDefault(
+      async () => {
+        loads.push(subjects.length);
+        return subjects;
+      },
+      async (name) => {
+        chosen.push(name);
+      },
+    );
+    await defaults.open(true, () => "");
+    subjects = [{ name: "Analisi 1" }, { name: "Fisica" }];
+    await defaults.open(true, () => "");
+    expect(loads).toEqual([1, 2]);
     expect(chosen).toEqual(["Analisi 1"]);
   });
 
@@ -120,8 +166,8 @@ describe("a new chat's subject", () => {
     const choose = async (name: string) => {
       chosen.push(name);
     };
-    await startOnOnlySubject(async () => [{ name: "Analisi 1" }, { name: "Fisica" }], () => "", choose);
-    await startOnOnlySubject(async () => [{ name: "Analisi 1" }], () => "Fisica", choose);
+    await newChatDefault(async () => [{ name: "Analisi 1" }, { name: "Fisica" }], choose).open(true, () => "");
+    await newChatDefault(async () => [{ name: "Analisi 1" }], choose).open(true, () => "Fisica");
     expect(chosen).toEqual([]);
   });
 });

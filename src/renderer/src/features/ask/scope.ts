@@ -28,17 +28,25 @@ export function newChatSubject(subjects: ReadonlyArray<{ name: string }>): strin
 }
 
 /**
- * Starts a new chat on the only subject. The returned promise is what a first question waits for, so a question sent
- * while the subjects are still loading still carries the subject and its plans' sources. A subject the student picked
- * meanwhile stays.
+ * Starts each new chat on the only subject. Ask calls `open` whenever the chat on screen changes. For a new chat it reads
+ * the subjects (`load` must return the current list, not a cached one) and chooses the only one, unless the student
+ * picked a subject meanwhile. The promise it returns is what a first question waits for, so a question sent while the
+ * subjects load still carries the subject and its plans' sources. Opening any other chat first drops the pending choice,
+ * so it never lands on that chat.
  */
-export async function startOnOnlySubject(
+export function newChatDefault(
   load: () => Promise<ReadonlyArray<{ name: string }>>,
-  current: () => string,
   choose: (name: string) => Promise<void>,
-): Promise<void> {
-  const only = newChatSubject(await load());
-  if (only && current() === "") await choose(only);
+) {
+  let latest = 0;
+  return {
+    async open(isNew: boolean, subject: () => string): Promise<void> {
+      const run = ++latest;
+      if (!isNew) return;
+      const only = newChatSubject(await load());
+      if (only && run === latest && subject() === "") await choose(only);
+    },
+  };
 }
 
 export function addIds(picked: string[], ids: string[]): string[] {

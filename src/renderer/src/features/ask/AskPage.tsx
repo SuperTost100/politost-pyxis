@@ -44,7 +44,7 @@ import {
   allowsGeneral,
   applySubject,
   choseGeneral,
-  startOnOnlySubject,
+  newChatDefault,
   scopeItems,
   type ScopeItem,
 } from "./scope";
@@ -349,29 +349,29 @@ export function AskPage() {
   useEffect(() => {
     if (chatId) return;
     setPicked([]);
+    pickedNow.current = [];
     setPlanId(null);
     setSubject("");
+    subjectNow.current = "";
     setUncovered(null);
     loadedFor.current = undefined;
   }, [chatId]);
 
-  // A new chat starts on the student's only subject, so a question typed at once reads its plans. It is set once per
-  // new chat: choosing "No subject" afterwards stays. It waits for the reset above to clear the previous chat's subject.
-  // A question sent while the subjects load waits for it through scopeReady; if they cannot be read, it goes without.
-  const subjectDefaulted = useRef(false);
+  // A new chat starts on the student's only subject, so a question typed at once reads its plans. It is chosen once per
+  // new chat from a fresh subject list, so choosing "No subject" afterwards stays and a subject added a moment ago counts.
+  // A question sent while the list loads waits for it through scopeReady; if the list cannot be read, it goes without.
+  // Opening any other chat drops a choice still pending.
+  const chooseLatest = useRef(chooseSubject);
+  chooseLatest.current = chooseSubject;
+  const newChats = useRef<ReturnType<typeof newChatDefault> | null>(null);
+  const defaults = (newChats.current ??= newChatDefault(
+    () => client.fetchQuery({ ...subjectsQuery, staleTime: 0 }),
+    (name) => chooseLatest.current(name),
+  ));
   useEffect(() => {
-    if (chatId) {
-      subjectDefaulted.current = false;
-      return;
-    }
-    if (subjectDefaulted.current || subject !== "") return;
-    subjectDefaulted.current = true;
-    scopeReady.current = startOnOnlySubject(
-      () => client.ensureQueryData(subjectsQuery),
-      () => subjectNow.current,
-      chooseSubject,
-    ).catch(() => undefined);
-  }, [chatId, subject]);
+    const ready = defaults.open(!chatId, () => subjectNow.current).catch(() => undefined);
+    if (!chatId) scopeReady.current = ready;
+  }, [chatId]);
 
   // A reply's math check runs after the reply is saved. When it ends, the chat is read again for its badges.
   useEffect(
@@ -419,7 +419,8 @@ export function AskPage() {
   }
 
   async function chooseSubject(next: string) {
-    const previous = subject;
+    // The ref, not this render's state: the default choice can run after a chat change this closure has not seen.
+    const previous = subjectNow.current;
     if (next === previous) return;
     setSubject(next);
     subjectNow.current = next;
