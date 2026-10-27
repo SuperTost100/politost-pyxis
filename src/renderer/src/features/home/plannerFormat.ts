@@ -10,6 +10,20 @@ export function formatMinutes(t: T, minutes: number): string {
   return t("planner.hoursMinutes", { hours, minutes: rest });
 }
 
+/** Hours with the language's own decimal mark: "0,5" in Italian, "0.5" in English. Planner hours come in halves. */
+export function formatHours(language: string, hours: number): string {
+  return new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(hours);
+}
+
+/** The decimal mark of a language, for a number field that shows and reads typed hours. */
+export function decimalSeparator(language: string): string {
+  return (
+    new Intl.NumberFormat(language)
+      .formatToParts(1.1)
+      .find((part) => part.type === "decimal")?.value ?? "."
+  );
+}
+
 /** A planner date (YYYY-MM-DD, local) as a Date at local midnight. */
 export function plannerDate(key: string): Date {
   const [year, month, day] = key.split("-").map(Number);

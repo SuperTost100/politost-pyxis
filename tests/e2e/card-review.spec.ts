@@ -52,6 +52,8 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
       timeout: 10_000,
     });
     seed(db);
+    // Three new cards a day: the session holds three of the topic's four.
+    db.exec(`INSERT INTO settings(key,value_json,updated_at) VALUES('cards.newPerDay','3',1)`);
     const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
     await page.evaluate(() => {
       location.hash = "#/plans/p/cards/t";
@@ -61,7 +63,12 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     const front = page.locator("article.px-card .px-card-front");
     const meta = page.locator(".focus-meta");
     await expect(front).toHaveText("Seconda legge di Newton?");
-    await expect(meta).toHaveText("0 of 4");
+    // The header counts the card on screen, and the deck counts say why the session is shorter than the deck.
+    await expect(meta).toHaveText("1 of 3");
+    await expect(page.locator(".px-cards-toolbar .small")).toHaveText(
+      "New 4 (3 today) · Learning 0 · Mastered 0",
+    );
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled();
     // One way out, and no authoring form open in the loop.
     await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Mark as done" })).toHaveCount(0);
@@ -76,14 +83,14 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     // A rating can be taken back: the card shows again and its review and event are gone.
     await page.keyboard.press("3");
     await expect(page.locator(".px-cards-undo")).toContainText("Rated Good.");
-    await expect(meta).toHaveText("1 of 4");
+    await expect(meta).toHaveText("2 of 3");
     await expect(front).toHaveText("Unità della forza?");
     expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(1);
     // The next card can show before the rating's refresh ends, and keys wait for it; Undo turns on when it ends.
     await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
     await page.keyboard.press("u");
     await expect(front).toHaveText("Seconda legge di Newton?");
-    await expect(meta).toHaveText("0 of 4");
+    await expect(meta).toHaveText("1 of 3");
     await expect(page.locator(".px-cards-undo")).toHaveCount(0);
     expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(0);
     expect(
@@ -170,6 +177,52 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     // The X closes the session and goes back to the exam.
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await expect(page).toHaveURL(/#\/plans\/p$/);
+    db.close();
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test("card build: cards show as each batch is stored, and Export waits for the first card", async () => {
+  test.setTimeout(90_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-card-build-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
+      timeout: 10_000,
+    });
+    seedPlan(db, { id: "p", title: "Fisica 1", language: "it", topics: [{ id: "t", title: "Dinamica" }] });
+    // A build still writing: no card yet. Seeded after start-up, so the runner leaves it running.
+    db.exec(
+      `INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at)
+       VALUES('job','cards-build','{"planId":"p","topicId":"t"}','running',0,1,1)`,
+    );
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/cards/t";
+    });
+    await page.reload();
+    const building = page.getByText("Writing flashcards from your sources.", { exact: false });
+    const exportButton = page.getByRole("button", { name: "Export", exact: true });
+    await expect(building).toBeVisible();
+    await expect(exportButton).toBeDisabled();
+    await expect(page.locator("article.px-card")).toHaveCount(0);
+
+    // The first batch is stored and the build moves its progress: its cards show while the build goes on.
+    db.exec(`
+      INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,grounding,created_at) VALUES
+        ('b1','p','t','Seconda legge di Newton?','$F=ma$.','g1','sources',1),
+        ('b2','p','t','Unità della forza?','Il newton.','g2','sources',2);
+      UPDATE jobs SET progress = 0.4 WHERE id = 'job';
+    `);
+    await expect(page.locator("article.px-card .px-card-front")).toHaveText("Seconda legge di Newton?");
+    await expect(building).toBeVisible();
+    await expect(page.locator(".focus-meta")).toHaveText("1 of 2");
+    await expect(exportButton).toBeEnabled();
     db.close();
   } finally {
     await app.close();

@@ -13,7 +13,13 @@ import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import { addDays, dayKey } from "../../../../shared/local-day";
 import { examDaysLabel } from "../plans/examDays";
-import { behindText, formatMinutes, plannerDate } from "./plannerFormat";
+import {
+  behindText,
+  decimalSeparator,
+  formatHours,
+  formatMinutes,
+  plannerDate,
+} from "./plannerFormat";
 import "./PlannerPage.css";
 
 type Planner = RequestOutput<"plans.planner">;
@@ -99,12 +105,14 @@ export function PlannerPage() {
             <HoursInput
               id="planner-hours"
               value={data.weeklyHours}
-              placeholder={data.neededHours != null ? String(data.neededHours) : undefined}
+              placeholder={
+                data.neededHours != null ? formatHours(i18n.language, data.neededHours) : undefined
+              }
               onSave={(hours) => void save({ hours })}
             />
             {data.neededHours != null ? (
               <p className="small ink-muted">
-                {t("planner.needed", { hours: data.neededHours })}
+                {t("planner.needed", { hours: formatHours(i18n.language, data.neededHours) })}
               </p>
             ) : null}
           </div>
@@ -321,7 +329,7 @@ function HoursInput(props: {
   label?: string;
   onSave: (hours: number | null) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [draft, setDraft] = useState<number | null>(props.value);
   useEffect(() => setDraft(props.value), [props.value]);
   const commit = () => {
@@ -336,6 +344,7 @@ function HoursInput(props: {
       min={0}
       max={100}
       step={1}
+      decimalSeparator={decimalSeparator(i18n.language)}
       placeholder={props.placeholder}
       value={draft}
       suffix={t("planner.hoursUnit")}

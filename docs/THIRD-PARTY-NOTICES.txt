@@ -27,6 +27,34 @@ Installed production packages, bundled fonts and separately downloaded runtime/m
 
 ========================================================================
 
+@acemir/cssom 0.9.32
+License metadata: MIT
+
+--- LICENSE.txt ---
+Copyright (c) Nikita Vasilyev
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+========================================================================
+
 @ant-design/colors 8.0.1
 License metadata: MIT
 
@@ -3375,7 +3403,7 @@ SOFTWARE.
 
 ========================================================================
 
-@tanstack/query-core 5.104.5
+@tanstack/query-core 5.105.0
 License metadata: MIT
 
 --- LICENSE ---
@@ -3404,7 +3432,7 @@ SOFTWARE.
 
 ========================================================================
 
-@tanstack/react-query 5.104.5
+@tanstack/react-query 5.105.0
 License metadata: MIT
 
 --- LICENSE ---
@@ -4371,7 +4399,7 @@ SOFTWARE.
 
 ========================================================================
 
-antd 6.6.7
+antd 6.6.8
 License metadata: MIT
 
 --- LICENSE ---
@@ -4904,35 +4932,10 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ========================================================================
 
-cli-funnel 0.5.1
+cli-funnel 0.6.1
 License metadata: MIT
 
---- LICENSE ---
-Source: https://raw.githubusercontent.com/SuperTost100/cli-funnel/6f6b04650e18fea40c7b10ae0a393f8db78f0a17/LICENSE
-SHA-256: 9388c0c8e9a16013ddb24abccf14464ba93da95689c501c20fe2e2213c53a25e
-
-MIT License
-
-Copyright (c) 2026 cli-funnel contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
+No license or notice text was included in this installed package.
 
 ========================================================================
 
@@ -5505,34 +5508,6 @@ Redistributions in binary form must reproduce the above copyright notice, this l
 
 THIS IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-
-========================================================================
-
-cssom 0.5.0
-License metadata: MIT
-
---- LICENSE.txt ---
-Copyright (c) Nikita Vasilyev
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 ========================================================================
@@ -8324,7 +8299,7 @@ IN THE SOFTWARE.
 
 ========================================================================
 
-i18next 26.5.3
+i18next 26.5.11
 License metadata: MIT
 
 --- LICENSE ---
@@ -9710,7 +9685,7 @@ copy of the Program in return for a fee.
 
 ========================================================================
 
-katex 0.19.0
+katex 0.19.1
 License metadata: MIT
 
 --- LICENSE ---
@@ -12094,7 +12069,7 @@ THE SOFTWARE.
 
 ========================================================================
 
-linkedom 0.18.13
+linkedom 0.18.14
 License metadata: ISC
 
 --- LICENSE ---
@@ -12501,7 +12476,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
 
-lucide-react 1.49.0
+lucide-react 1.62.0
 License metadata: ISC
 
 --- LICENSE ---
@@ -62811,7 +62786,7 @@ DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-react-i18next 17.1.0
+react-i18next 17.1.9
 License metadata: MIT
 
 --- LICENSE ---
