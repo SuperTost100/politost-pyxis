@@ -44,7 +44,7 @@ import {
   allowsGeneral,
   applySubject,
   choseGeneral,
-  newChatSubject,
+  startOnOnlySubject,
   scopeItems,
   type ScopeItem,
 } from "./scope";
@@ -54,7 +54,7 @@ import { activePlans, starterPrompts, type Starter } from "./starters";
 import { formatTokens } from "../../lib/tokens";
 import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
-import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources, useSubjects } from "../../lib/queries";
+import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources, subjectsQuery } from "../../lib/queries";
 
 function errorKey(err: unknown): string {
   return err && typeof err === "object" && "messageKey" in err
@@ -278,6 +278,9 @@ export function AskPage() {
   chatNow.current = chatId;
   const arrived = useRef<string | null>(null);
   const [subject, setSubject] = useState("");
+  // The subject a question goes out with: set at once when one is chosen, so a question waiting on scopeReady has it.
+  const subjectNow = useRef(subject);
+  subjectNow.current = subject;
   const [panelOpen, setPanelOpen] = useState(false);
   const [files, setFiles] = useState<string[]>(() =>
     readPendingFiles(sessionStorage, chatId),
@@ -322,7 +325,6 @@ export function AskPage() {
 
   const sources = useSources();
   const plans = usePlans();
-  const subjects = useSubjects();
 
   const thread = useQuery({
     queryKey: ["chat", chatId],
@@ -355,17 +357,21 @@ export function AskPage() {
 
   // A new chat starts on the student's only subject, so a question typed at once reads its plans. It is set once per
   // new chat: choosing "No subject" afterwards stays. It waits for the reset above to clear the previous chat's subject.
+  // A question sent while the subjects load waits for it through scopeReady; if they cannot be read, it goes without.
   const subjectDefaulted = useRef(false);
   useEffect(() => {
     if (chatId) {
       subjectDefaulted.current = false;
       return;
     }
-    if (subjectDefaulted.current || !subjects.data || subject !== "") return;
+    if (subjectDefaulted.current || subject !== "") return;
     subjectDefaulted.current = true;
-    const only = newChatSubject(subjects.data);
-    if (only) void chooseSubject(only);
-  }, [chatId, subjects.data, subject]);
+    scopeReady.current = startOnOnlySubject(
+      () => client.ensureQueryData(subjectsQuery),
+      () => subjectNow.current,
+      chooseSubject,
+    ).catch(() => undefined);
+  }, [chatId, subject]);
 
   // A reply's math check runs after the reply is saved. When it ends, the chat is read again for its badges.
   useEffect(
@@ -416,6 +422,7 @@ export function AskPage() {
     const previous = subject;
     if (next === previous) return;
     setSubject(next);
+    subjectNow.current = next;
     const plan = (plans.data ?? []).find((item) => item.id === planId);
     if (plan?.subject && plan.subject !== next) setPlanId(null);
     const ready = Promise.all([
@@ -622,7 +629,7 @@ export function AskPage() {
         sourceIds: ids,
         planId,
         mode,
-        subject: options.subject ?? subject,
+        subject: options.subject ?? subjectNow.current,
         files: attached.length > 0 ? attached : undefined,
         allowGeneral: general,
       },

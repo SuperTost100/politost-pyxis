@@ -57,6 +57,10 @@ test("Ask: starter prompts from the plans, the title in the header, and a pasted
     });
     await page.reload();
 
+    // With one subject, a new chat starts on it and on its plan's source.
+    await expect(page.getByRole("button", { name: /^Materia:/ })).toHaveText("Fisica");
+    await expect(page.getByRole("button", { name: "1 fonte", exact: true })).toBeVisible();
+
     // An empty chat suggests questions on the plan's topics and says how to attach material.
     const starters = page.getByRole("list", { name: "Domande suggerite" });
     await expect(starters.getByRole("button")).toHaveText([

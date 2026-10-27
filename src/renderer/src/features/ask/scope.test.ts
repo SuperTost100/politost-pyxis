@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { addIds, allowsGeneral, applySubject, choseGeneral, newChatSubject, scopeItems } from "./scope";
+import {
+  addIds,
+  allowsGeneral,
+  applySubject,
+  choseGeneral,
+  newChatSubject,
+  scopeItems,
+  startOnOnlySubject,
+} from "./scope";
 
 describe("chat scope", () => {
   it("swaps the previous subject's sources for the new one and keeps hand-picked ones", () => {
@@ -80,5 +88,40 @@ describe("a new chat's subject", () => {
   it("stays empty with no subject or several", () => {
     expect(newChatSubject([])).toBe("");
     expect(newChatSubject([{ name: "Analisi 1" }, { name: "Fisica" }])).toBe("");
+  });
+
+  it("holds a question sent before the subjects load until the only subject and its sources are chosen", async () => {
+    let release!: (list: Array<{ name: string }>) => void;
+    const loading = new Promise<Array<{ name: string }>>((resolve) => {
+      release = resolve;
+    });
+    const chosen: string[] = [];
+    const ready = startOnOnlySubject(
+      () => loading,
+      () => "",
+      async (name) => {
+        await Promise.resolve();
+        chosen.push(name);
+      },
+    );
+    let settled = false;
+    void ready.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release([{ name: "Analisi 1" }]);
+    await ready;
+    expect(chosen).toEqual(["Analisi 1"]);
+  });
+
+  it("chooses nothing with several subjects or once the student picked one", async () => {
+    const chosen: string[] = [];
+    const choose = async (name: string) => {
+      chosen.push(name);
+    };
+    await startOnOnlySubject(async () => [{ name: "Analisi 1" }, { name: "Fisica" }], () => "", choose);
+    await startOnOnlySubject(async () => [{ name: "Analisi 1" }], () => "Fisica", choose);
+    expect(chosen).toEqual([]);
   });
 });

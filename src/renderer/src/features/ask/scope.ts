@@ -27,6 +27,20 @@ export function newChatSubject(subjects: ReadonlyArray<{ name: string }>): strin
   return subjects.length === 1 ? subjects[0]!.name : "";
 }
 
+/**
+ * Starts a new chat on the only subject. The returned promise is what a first question waits for, so a question sent
+ * while the subjects are still loading still carries the subject and its plans' sources. A subject the student picked
+ * meanwhile stays.
+ */
+export async function startOnOnlySubject(
+  load: () => Promise<ReadonlyArray<{ name: string }>>,
+  current: () => string,
+  choose: (name: string) => Promise<void>,
+): Promise<void> {
+  const only = newChatSubject(await load());
+  if (only && current() === "") await choose(only);
+}
+
 export function addIds(picked: string[], ids: string[]): string[] {
   return [...new Set([...picked, ...ids])];
 }

@@ -16,7 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
-import { examDaysLabel } from "./examDays";
+import { examDaysLabel, onTrackLabel } from "./examDays";
 import { ExamSessionsField } from "./ExamSessionsField";
 import {
   draftsFromSessions,
@@ -291,11 +291,12 @@ export function PlanPage() {
               )
             : t("plans.noExam")}{" "}
           ·{" "}
-          {t("progress.onTrack", {
-            ready: progress?.preparation.onTrack ?? 0,
-            count: progress?.preparation.totalTopics ?? 0,
-            target: Math.round((plan.data?.target ?? 0.75) * 100),
-          })}
+          {onTrackLabel(
+            t,
+            progress?.preparation.onTrack ?? 0,
+            progress?.preparation.totalTopics ?? 0,
+            plan.data?.target ?? 0.75,
+          )}
         </p>
         {plan.data &&
         (plan.data.sessions.length > 1 ||

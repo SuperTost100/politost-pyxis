@@ -1287,6 +1287,8 @@
     "chart": "Last 14 days",
     "onTrack_one": "{{ready}} of {{count}} topic at your {{target}}% target",
     "onTrack_other": "{{ready}} of {{count}} topics at your {{target}}% target",
+    "onTrackReachable_one": "{{ready}} of {{count}} topic at {{threshold}}% (target {{target}}%)",
+    "onTrackReachable_other": "{{ready}} of {{count}} topics at {{threshold}}% (target {{target}}%)",
     "lessons": "{{count}} lessons finished",
     "gaps": "Gaps",
     "noGaps": "No open gap.",
