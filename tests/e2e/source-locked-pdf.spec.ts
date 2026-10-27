@@ -65,10 +65,10 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
       window.location.hash = "/exams/library";
     });
     await expect(page.getByText("Questo PDF è protetto da password. Inseriscila per leggere il file.")).toBeVisible();
-    const enter = page.getByRole("button", { name: "Inserisci la password di Dispense" });
+    const enter = page.getByRole("button", { name: "Inserisci password di Dispense" });
     // The background tasks offer the same answer instead of a Retry that would stop the same way.
     await page.getByRole("button", { name: /attività/i }).first().click();
-    await expect(page.getByRole("region", { name: /attività/i }).getByRole("button", { name: "Inserisci la password di Dispense" })).toBeVisible();
+    await expect(page.getByRole("region", { name: /attività/i }).getByRole("button", { name: "Inserisci password di Dispense" })).toBeVisible();
     await expect(page.getByRole("region", { name: /attività/i }).getByRole("button", { name: "Riprova" })).toHaveCount(0);
     await page.keyboard.press("Escape");
 
