@@ -128,6 +128,17 @@ describe("cards", () => {
     expect(due[0]?.sectionPath).toBeNull();
   });
 
+  it("shows new cards oldest first, so cards stored later do not replace the one on screen", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    // Stored in the other order: the table's order must not decide which new card comes first.
+    db.prepare(
+      `INSERT INTO cards (id, plan_id, topic_id, front, back, created_at) VALUES
+         ('later', ?, ?, 'Seconda?', 'B', 2), ('first', ?, ?, 'Prima?', 'A', 1)`,
+    ).run(planId, topicId, planId, topicId);
+    expect(dueCards(db, planId, T0, topicId).map((card) => card.id)).toEqual(["first", "later"]);
+  });
+
   it("keeps the passage title on a seeded card", () => {
     const db = openDatabase(":memory:");
     const { planId, topicId } = planWithTopic(db);

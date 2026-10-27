@@ -453,6 +453,8 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     await expect(page.locator(".px-intro-actions").getByRole("button", { name: "Chiudi" })).toHaveCount(0);
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
+    // The page header says what the page is, not "Quiz".
+    await expect(page.getByRole("heading", { level: 1, name: "Test diagnostico" })).toBeVisible();
     // The options are shown in a shuffled order, so each answer is picked by its text.
     const option = (text: string) => page.getByRole("button", { name: new RegExp(`^[A-D]\\. ${text}$`) });
     await expect(option("La velocità")).toBeEnabled();
