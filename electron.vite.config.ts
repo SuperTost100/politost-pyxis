@@ -71,7 +71,7 @@ export default defineConfig({
   main: {
     resolve: { alias: { "@politost/smartbook-parser": parser } },
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           index: resolve(root, "src/main/index.ts"),
           core: resolve(root, "src/core/index.ts"),
@@ -84,7 +84,7 @@ export default defineConfig({
   },
   preload: {
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           index: resolve(root, "src/preload/index.ts"),
         },
@@ -103,6 +103,6 @@ export default defineConfig({
     },
     plugins: [react(), katexWoff2Only(), copySandboxPage(), cspMeta()],
     // electron-vite leaves the renderer unminified; minifying it shrinks what the window parses at startup.
-    build: { minify: "esbuild" },
+    build: { minify: "oxc" },
   },
 });
