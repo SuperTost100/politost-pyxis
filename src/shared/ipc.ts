@@ -396,6 +396,8 @@ const LessonOutput = z.object({
   markdown: z.string(),
   passageIds: z.array(z.string()),
   fallback: z.boolean().optional(),
+  /** Why the lesson fell back to the book text: an `engines.errors.*` message key. */
+  fallbackReason: z.string().startsWith("engines.errors.").optional(),
   /** The lesson row its answers belong to. */
   itemId: z.string().optional(),
   wording: z.enum(["simple", "balanced", "technical"]).optional(),
@@ -2665,7 +2667,7 @@ const broadcasts = {
   "engine.fallback": z.object({
     from: z.string(),
     to: z.string(),
-    reason: z.enum(["limit", "signed-out"]),
+    reason: z.enum(["limit", "signed-out", "model"]),
   }),
   // Download and check progress of the local model.
   "engine.local": z.object({

@@ -21,7 +21,11 @@ import {
 import { clearSignOut } from "./bench";
 import { effortsOf, rememberModels, resolveEffort } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
-import { rememberReady, type StoredSelection } from "./selection";
+import {
+  rememberReady,
+  withoutRefusedModels,
+  type StoredSelection,
+} from "./selection";
 import { hardware as probeHardware, type Hardware } from "./hardware";
 import {
   adviseLocal,
@@ -236,7 +240,8 @@ export async function autoConfigureEngines(
   const unreadable = failed > 0 && listed.length === 0;
   // A task whose engine hits a usage limit switches to the next one from this list.
   if (!unreadable) rememberReady(listed);
-  const plan = planAuto(listed);
+  // A model the student's subscription refused today is left out, so the task moves to one that answers.
+  const plan = planAuto(withoutRefusedModels(listed));
   const doubtful =
     !unreadable && listed.length === 0 && hadEngines.get(db) === true;
   if (!unreadable) hadEngines.set(db, listed.length > 0);

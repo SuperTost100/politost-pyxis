@@ -40,7 +40,10 @@ function httpStatus(message: string): number {
  * Classifies a failure by its text when it carries no structured code or limit: the status it states first, then
  * whole words. Stderr goes through here too, so every pattern is anchored to a word or a stated status.
  */
-function textKind(rawCode: string, message: string): "refused" | "quota" | "" {
+function textKind(
+  rawCode: string,
+  message: string,
+): "refused" | "quota" | "model" | "" {
   const status =
     httpStatus(message) || (/^[1-5]\d\d$/.test(rawCode) ? Number(rawCode) : 0);
   if (status === 401) return "refused";
@@ -58,6 +61,14 @@ function textKind(rawCode: string, message: string): "refused" | "quota" | "" {
     )
   )
     return "quota";
+  // A subscription that leaves out the chosen model. Cursor says "is not included in your weekly usage. Buy credits or
+  // switch to a Grok model"; other vendors ask to upgrade the plan or buy credits.
+  if (
+    /\b(?:not included in your (?:plan|subscription|weekly usage|usage)|buy (?:more )?credits|upgrade your (?:plan|subscription)|out of credits|insufficient credits)\b/i.test(
+      text,
+    )
+  )
+    return "model";
   return "";
 }
 
@@ -91,18 +102,24 @@ export function translateEngineError(
   }
   if (kind === "quota")
     return { code: "quota", messageKey: "engines.errors.quota" };
+  if (kind === "model")
+    return {
+      code: "model-not-included",
+      messageKey: "engines.errors.model-not-included",
+    };
   const code = err instanceof FunnelError ? err.code : "cli-failed";
   return { code, messageKey: `engines.errors.${code}` };
 }
 
 /**
  * Why another engine could answer instead: the engine hit a usage limit (CLI Funnel attaches the `limit` it reported to
- * the error) or its sign-in or key was refused. Any other failure is not one a second engine would get round.
+ * the error), its sign-in or key was refused, or the subscription does not include the model. Any other failure is not
+ * one a second engine would get round.
  */
 export function fallbackReason(
   err: unknown,
   provider: string,
-): "limit" | "signed-out" | undefined {
+): "limit" | "signed-out" | "model" | undefined {
   if (!isEngineFailure(err) && !(err instanceof Error && "limit" in err))
     return undefined;
   if (err && typeof err === "object" && "limit" in err && err.limit)
@@ -110,6 +127,7 @@ export function fallbackReason(
   const { code } = translateEngineError(err, provider);
   if (code === "quota") return "limit";
   if (code === "not-logged-in" || code === "refused") return "signed-out";
+  if (code === "model-not-included") return "model";
   return undefined;
 }
 

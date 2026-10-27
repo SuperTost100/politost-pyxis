@@ -2,7 +2,7 @@ import { IpcError } from "../../shared/ipc";
 import type Database from "better-sqlite3";
 import { automaticEffort, nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
-import { isBenched } from "./bench";
+import { isBenched, isModelBenched } from "./bench";
 import { effortsOf } from "./efforts";
 import type { ProviderId } from "./funnel";
 import { LOCAL_PROVIDER, localData, readLocal } from "./local";
@@ -109,12 +109,24 @@ export function fallbackSelection(
   const feature = automatic.get(selection);
   if (!feature) return undefined;
   const choice = planAuto(
-    ready.filter(
-      (provider) =>
-        provider.id !== selection.provider && !isBenched(provider.id),
+    withoutRefusedModels(
+      ready.filter(
+        (provider) =>
+          provider.id !== selection.provider && !isBenched(provider.id),
+      ),
     ),
   )[feature as AutoFeature];
   return choice
     ? { ...choice, provider: choice.provider as ProviderId }
     : undefined;
+}
+
+/** The providers with only the models their subscription has not refused today. */
+export function withoutRefusedModels(providers: AutoProvider[]): AutoProvider[] {
+  return providers.map((provider) => ({
+    ...provider,
+    models: provider.models.filter(
+      (model) => !isModelBenched(provider.id, model.id),
+    ),
+  }));
 }

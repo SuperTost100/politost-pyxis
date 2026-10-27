@@ -1,3 +1,4 @@
+import { FunnelError } from "../engine/funnel";
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
@@ -97,6 +98,18 @@ describe("openLesson", () => {
       )
       .get() as { n: number };
     expect(rows.n).toBe(0);
+    // A failure that isn't the engine's gives no engine reason.
+    expect(result.fallbackReason).toBeUndefined();
+    // The engine's own reason comes with the book text, so the student knows why there is no lesson.
+    const refused = (async () => {
+      throw new FunnelError(
+        "Claude Sonnet 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.",
+        "cli-failed",
+      );
+    }) as unknown as Parameters<typeof writeLesson>[3];
+    const explained = await writeLesson(db, plan.planId, topic.id, refused);
+    expect(explained.fallback).toBe(true);
+    expect(explained.fallbackReason).toBe("engines.errors.model-not-included");
   });
 });
 

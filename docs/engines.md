@@ -127,14 +127,15 @@ In Settings, Engines, with Advanced options on, each task has an effort picker n
 
 ## Switching engines on a usage limit
 
-When the engine Pyxis chose for a task hits a usage limit or is signed out (a refused key counts for API providers), `generate()` asks once more on another engine. The replacement is what `planAuto()` would choose for the same task without the failed engine, among the engines the last automatic choice could use. Core then broadcasts `engine.fallback` and the window shows one line saying which engine answered.
+When the engine Pyxis chose for a task hits a usage limit, is signed out (a refused key counts for API providers) or says the student's subscription doesn't include the model, `generate()` asks once more on another engine. The replacement is what `planAuto()` would choose for the same task without the failed engine, among the engines the last automatic choice could use. Core then broadcasts `engine.fallback` and the window shows one line saying which engine answered.
 
 - Only automatic selections switch. `selectionFor` marks the selections it returns from an automatic row, so a task the student pinned keeps its engine and shows the error.
 - A background job that saved its selection when it was queued keeps that engine.
 - The retry happens once. If the second engine fails too, its error is shown.
-- Later automatic calls skip the failed engine and go straight to the replacement, without a notice. A usage limit keeps it out until the reset time CLI Funnel reports (`resetAt`, else `retryAfterMs`), or 30 minutes when it reports neither. A sign-out keeps it out until a scan finds it signed in again or its API key changes. This lives in core's memory only (`src/core/engine/bench.ts`), so a restart tries every engine again.
+- Later automatic calls skip the failed engine and go straight to the replacement, without a notice. A usage limit keeps it out until the reset time CLI Funnel reports (`resetAt`, else `retryAfterMs`), or 30 minutes when it reports neither. A sign-out keeps it out until a scan finds it signed in again or its API key changes. A refused model keeps only that model out, for 24 hours: core runs the automatic choice again at once, so the tasks that used it move to another model and Settings shows the new one, while the engine's other models stay in use. This lives in core's memory only (`src/core/engine/bench.ts`), so a restart tries every engine again.
 - A stopped turn never switches, and a turn with a picture switches only to an engine that can see it.
-- CLI Funnel already retries an API request twice on 429 and 5xx before any output. A limit is recognised from the `limit` CLI Funnel attaches to the error, and otherwise from the same classification that maps errors to `engines.errors.quota`, `not-logged-in` and `refused`.
+- CLI Funnel already retries an API request twice on 429 and 5xx before any output. A limit is recognised from the `limit` CLI Funnel attaches to the error, and otherwise from the same classification that maps errors to `engines.errors.quota`, `not-logged-in`, `refused` and `model-not-included`. The last one matches the wording vendors use when a plan leaves a model out, such as Cursor's "is not included in your weekly usage" or "buy credits".
+- A lesson that falls back to the book text after an engine failure carries the failure's message key as `fallbackReason`, and the lesson page shows it with a link to the engine settings.
 
 ## Chat conversations and prompt caching
 

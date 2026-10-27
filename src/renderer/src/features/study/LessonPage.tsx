@@ -338,13 +338,15 @@ export function LessonPage() {
             tone={cancelled ? "info" : "warning"}
             action={{ label: t("lesson.retry"), onClick: () => void lesson.refetch() }}
             secondary={
-              lesson.isError && !cancelled
+              (lesson.isError && !cancelled) || data?.fallbackReason
                 ? { label: t("engines.title"), onClick: () => navigate("/settings/engines") }
                 : undefined
             }
           >
             {data?.fallback
-              ? t("lesson.sourceFallback")
+              ? data.fallbackReason
+                ? `${t("lesson.sourceFallback")} ${t(data.fallbackReason)}`
+                : t("lesson.sourceFallback")
               : t(cancelled ? "lesson.cancelled" : "lesson.failed")}
           </Notice>
         </div>

@@ -3,7 +3,14 @@ import { z } from "zod";
 import { IpcError } from "../../shared/ipc";
 import { openDatabase } from "../db/connection";
 import type { AutoProvider } from "./auto";
-import { clearBench, clearSignOut, DEFAULT_LIMIT_MS } from "./bench";
+import {
+  clearBench,
+  clearSignOut,
+  DEFAULT_LIMIT_MS,
+  isBenched,
+  isModelBenched,
+  MODEL_REFUSED_MS,
+} from "./bench";
 import { generate, setFallbackListener } from "./generate";
 import { FunnelError, type EngineResult } from "./funnel";
 import { rememberReady, selectionFor } from "./selection";
@@ -304,6 +311,60 @@ describe("switching engines on a usage limit or sign-out", () => {
     expect(output.text).toBe("ciao");
     expect(output.fallback).toEqual({ from: "Claude Code", to: "Codex", reason: "limit" });
     expect(heard).toEqual([output.fallback]);
+    db.close();
+  });
+
+  // Cursor's words when a subscription leaves out the model Pyxis chose (seen on 2026-10-27).
+  const notIncluded = new FunnelError(
+    "Claude Sonnet 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.",
+    "cli-failed",
+  );
+
+  it("moves on when the subscription does not include the model, and says so", async () => {
+    const db = automaticChat();
+    const heard: unknown[] = [];
+    setFallbackListener((event) => heard.push(event));
+    const output = await generate({
+      selection: selectionFor(db, "chat"),
+      prompt: "hi",
+      run: async (input) => {
+        if (input.selection.provider === "claude") throw notIncluded;
+        return result({ text: "ciao", provider: "codex" });
+      },
+    });
+    expect(output.text).toBe("ciao");
+    expect(output.fallback).toEqual({ from: "Claude Code", to: "Codex", reason: "model" });
+    expect(heard).toEqual([output.fallback]);
+    db.close();
+  });
+
+  it("skips only the refused model, for a day", async () => {
+    vi.useFakeTimers();
+    const db = automaticChat();
+    expect(await ask(db, notIncluded)).toEqual(["claude", "codex"]);
+    expect(await ask(db, notIncluded)).toEqual(["codex"]);
+    expect(isModelBenched("claude", "claude-sonnet-5")).toBe(true);
+    expect(isModelBenched("claude", "claude-haiku-5")).toBe(false);
+    expect(isBenched("claude")).toBe(false);
+    vi.setSystemTime(Date.now() + MODEL_REFUSED_MS + 1000);
+    expect(await ask(db, notIncluded)).toEqual(["claude", "codex"]);
+    db.close();
+  });
+
+  it("names the refusal when the student pinned the model", async () => {
+    const db = automaticChat();
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(
+      JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }),
+    );
+    await expect(
+      generate({
+        selection: selectionFor(db, "chat"),
+        prompt: "hi",
+        run: async () => {
+          throw notIncluded;
+        },
+      }),
+    ).rejects.toMatchObject({ messageKey: "engines.errors.model-not-included" });
     db.close();
   });
 

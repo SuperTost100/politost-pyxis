@@ -3,6 +3,7 @@ import { openDatabase } from "../db/connection";
 import { engineHandlers } from "./handlers";
 import { selectionFor } from "./selection";
 import { getFunnel } from "./funnel";
+import { benchModel, clearBench } from "./bench";
 vi.mock("./funnel", async (original) => {
   const actual = await original<typeof import("./funnel")>();
   return { ...actual, getFunnel: vi.fn(actual.getFunnel), runTurn: vi.fn() };
@@ -85,6 +86,23 @@ describe("automatic engine choice", () => {
       model: "gpt-6-luna",
       effort: "low",
     });
+    db.close();
+  });
+
+  it("moves the tasks off a model the subscription refused", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    expect(selectionFor(db, "lesson").model).toBe("claude-sonnet-5");
+    benchModel("claude", "claude-sonnet-5");
+    try {
+      await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+      expect(selectionFor(db, "lesson").model).not.toBe("claude-sonnet-5");
+      // The engine's other models stay in use.
+      expect(selectionFor(db, "plan").model).toBe("claude-opus-5-5");
+    } finally {
+      clearBench();
+    }
     db.close();
   });
 
