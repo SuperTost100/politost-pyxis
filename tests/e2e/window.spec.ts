@@ -389,7 +389,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     for (let i = 0; i < 10; i++) {
       console.log(`release: question ${i}`);
       await page
-        .getByRole("button", { name: "A. Vero", exact: true })
+        .getByRole("button", { name: "A Vero", exact: true })
         .click({ timeout: 120000 });
       await page.getByRole("button", { name: "Verifica", exact: true }).click();
       if (i === 0) await clean(page);

@@ -289,7 +289,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     // Recap: answering every question completes the lesson.
     const recap = page.getByRole("region", { name: "Ripasso finale" });
     await recap.scrollIntoViewIfNeeded();
-    await recap.getByRole("button", { name: /^(B\s*)?Newton$/ }).click();
+    await recap.getByRole("button", { name: /^[A-C] Newton$/ }).click();
     await recap.getByRole("button", { name: /raddoppia/ }).click();
     expect(await done("lesson", learn.topicId)).toBe(false);
     await recap.getByRole("button", { name: /è sempre fermo/ }).click();
@@ -314,13 +314,13 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       }
     };
     expect(checkAnswers()).toBe(4);
-    await page.getByRole("button", { name: "Livello di linguaggio: Bilanciato" }).click();
+    await page.getByRole("button", { name: "Livello Bilanciato" }).click();
     await page.getByRole("menuitem", { name: "Semplice" }).click();
-    await expect(page.getByRole("button", { name: "Livello di linguaggio: Semplice" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Livello Semplice" })).toBeVisible();
     await expect(status).toBeVisible();
     await expect(status).toHaveCount(0, { timeout: 20000 });
     await expect(recap.getByText("2 su 3 giuste")).toHaveCount(0);
-    await recap.getByRole("button", { name: /^(B\s*)?Newton$/ }).click();
+    await recap.getByRole("button", { name: /^[A-C] Newton$/ }).click();
     await expect.poll(checkAnswers).toBe(5);
     await language(page, "it", "light");
 
