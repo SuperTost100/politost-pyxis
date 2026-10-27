@@ -30,11 +30,13 @@ files:
   # zod's TypeScript sources are for its "@zod/source" export condition, which nothing here sets.
   - "!**/node_modules/zod/src/**"
   # Core reads PDFs through the modern build. It draws scanned pages for OCR with @napi-rs/canvas, which ships; the
-  # legacy build would load it eagerly in every text-only read. Core passes neither cMapUrl nor standardFontDataUrl, so
-  # the font, cmap, viewer and minified files go too.
+  # legacy build would load it eagerly in every text-only read. Core passes neither cMapUrl, standardFontDataUrl nor
+  # iccUrl, so the font, cmap, ICC profile, viewer and minified files go too. The wasm folder ships for the image
+  # decoders OCR needs (wasmUrl in pdf-ocr.ts), without the QuickJS engine that only the excluded sandbox loads.
   - "!**/node_modules/pdfjs-dist/legacy/**"
-  - "!**/node_modules/pdfjs-dist/{cmaps,standard_fonts,image_decoders,web}/**"
+  - "!**/node_modules/pdfjs-dist/{cmaps,standard_fonts,image_decoders,web,iccs}/**"
   - "!**/node_modules/pdfjs-dist/build/{*.min.mjs,pdf.sandbox*}"
+  - "!**/node_modules/pdfjs-dist/wasm/quickjs-eval.*"
   # Node's tesseract.js loads tesseract-core*.js, which reads its .wasm file. The .wasm.js files are browser builds with
   # the wasm inlined. tesseract.js 7.0.0 (pinned exactly) never loads the -lstm cores either: its getCore compares a
   # boolean with OEM numbers. Only the browser gunzip imports zlibjs. scripts/after-pack.test.mjs checks all three.

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { manyPagePdf } from "../../src/core/sources/test-pdf";
+import { faxScanPdf, manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { makeBook } from "./book";
@@ -149,6 +149,50 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
       page.getByText("Pagina 2 di 600", { exact: true }),
     ).toBeVisible();
     await saveShot(page, "m4-pdf-it-light-960.png", { animations: "disabled" });
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+// pdf.js decodes fax and JBIG2 images, the usual encodings of a scanned figure, in a separate module the viewer has
+// to be able to load. Without it the figure is missing from the drawn page.
+test("the PDF viewer draws a fax-encoded figure", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-fax-viewer-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.getByText("Fonti", { exact: true }).click();
+    const pdf = join(userData, "figure.pdf");
+    writeFileSync(pdf, faxScanPdf("Pendulum figure from the laboratory notes"));
+    const imported = (await importPickedSource(page, app, pdf)) as { sourceId: string };
+    await expect
+      .poll(
+        async () => {
+          const rows = (await page.evaluate(() => window.pyxis.invoke("sources.list", {}))) as Array<{
+            id: string;
+            status: string;
+          }>;
+          return rows.find((source) => source.id === imported.sourceId)?.status;
+        },
+        { timeout: 30000 },
+      )
+      .toBe("ready");
+    await page.getByRole("combobox", { name: "Cerca in" }).click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]').click();
+    await page.getByRole("textbox", { name: "Cerca nei brani" }).fill("Pendulum");
+    await page.keyboard.press("Enter");
+    await page.locator(".px-library-hit").filter({ hasText: "Pendulum" }).first().click();
+    // The cited line is marked once the page and its text layer are drawn.
+    await expect(page.locator(".source-pdf-text .is-cited").first()).toBeVisible();
+    // The figure covers the bottom three quarters of the page.
+    const figure = await page.locator(".source-pdf-page canvas").evaluate((canvas: HTMLCanvasElement) => {
+      const [r, g, b] = canvas.getContext("2d")!.getImageData(canvas.width / 2, canvas.height * 0.6, 1, 1).data;
+      return (r! + g! + b!) / 3;
+    });
+    expect(figure).toBeLessThan(64);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

@@ -59,13 +59,13 @@ export async function extractPdf(
   // The modern build loads canvas only for page rendering. Text-only workers must avoid the legacy build's
   // eager native addon load: on Windows its Tokio thread can outlive the DLL when the worker stops.
   const { getDocument, PasswordResponses } = await import("pdfjs-dist");
-  const doc = await getDocument({
+  const task = getDocument({
     data: bytes,
     disableWorker: true,
-    isEvalSupported: false,
     useSystemFonts: true,
     ...(password ? { password } : {}),
-  } as Parameters<typeof getDocument>[0]).promise.catch((error: unknown) => {
+  } as Parameters<typeof getDocument>[0]);
+  const doc = await task.promise.catch((error: unknown) => {
     if (error instanceof Error && error.name === "PasswordException")
       throw new Error(
         (error as Error & { code?: number }).code === PasswordResponses.INCORRECT_PASSWORD
@@ -89,7 +89,7 @@ export async function extractPdf(
       section: `p. ${number}`,
     });
   }
-  await doc.destroy();
+  await task.destroy();
   const thin = pages.filter((page) => page.text.length < emptyPage).length;
   return { pages, scanned: pages.length > 0 && thin * 2 > pages.length };
 }

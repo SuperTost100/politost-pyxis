@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { withOcrWorker } from "./recognize";
 import type { OcrPage } from "./ocr";
 
@@ -50,19 +51,23 @@ export async function ocrPdfPages(
   scratch?: string,
 ): Promise<{ count: number; pages: OcrPage[] }> {
   // pdf.js' modern build draws through these in Node; its legacy build would set them, but it loads the addon eagerly.
-  const canvas = createRequire(import.meta.url)("@napi-rs/canvas") as CanvasModule;
+  const require = createRequire(import.meta.url);
+  const canvas = require("@napi-rs/canvas") as CanvasModule;
   const scope = globalThis as Record<string, unknown>;
   scope.DOMMatrix ??= canvas.DOMMatrix;
   scope.Path2D ??= canvas.Path2D;
   scope.ImageData ??= canvas.ImageData;
   const { getDocument } = await import("pdfjs-dist");
-  const doc = await getDocument({
+  const task = getDocument({
     data: bytes,
     disableWorker: true,
-    isEvalSupported: false,
     // No font faces in Node: glyphs are drawn as paths, which is what OCR needs.
     disableFontFace: true,
-  } as Parameters<typeof getDocument>[0]).promise.catch((error: unknown) => {
+    // Fax (CCITT), JBIG2 and JPEG 2000 images, the usual encodings of a scan, decode in WebAssembly modules that pdf.js
+    // reads from this folder. Without it they are skipped and the page reaches OCR blank. It needs the trailing slash.
+    wasmUrl: `${join(dirname(require.resolve("pdfjs-dist/package.json")), "wasm")}/`,
+  } as Parameters<typeof getDocument>[0]);
+  const doc = await task.promise.catch((error: unknown) => {
     // A locked scan was opened with its password at import, and Pyxis never keeps the password.
     if (error instanceof Error && error.name === "PasswordException") throw new Error("pdf-password-required");
     throw error;
@@ -87,7 +92,8 @@ export async function ocrPdfPages(
                 // A transparent page reads as black to Tesseract.
                 context.fillStyle = "#ffffff";
                 context.fillRect(0, 0, drawing.width, drawing.height);
-                await page.render({ canvasContext: context, viewport } as Parameters<typeof page.render>[0]).promise;
+                // canvas: null makes pdf.js draw on this context, over the white fill.
+                await page.render({ canvas: null, canvasContext: context, viewport } as Parameters<typeof page.render>[0]).promise;
                 out.push({ page: number, text: await recognize(drawing.toBuffer("image/png")) });
               } finally {
                 // Each page's drawing data stays cached until this; a long book would otherwise hold every page.
@@ -101,6 +107,6 @@ export async function ocrPdfPages(
       : [];
     return { count: doc.numPages, pages: read };
   } finally {
-    await doc.destroy();
+    await task.destroy();
   }
 }
