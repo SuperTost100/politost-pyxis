@@ -125,8 +125,8 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     await expect(
       page.getByRole("progressbar", { name: "Dieci secondi per riflettere" }),
     ).toHaveAttribute("aria-valuenow", "0");
-    const vero = page.getByRole("button", { name: "A. Vero", exact: true });
-    const falso = page.getByRole("button", { name: "B. Falso", exact: true });
+    const vero = page.getByRole("button", { name: "A Vero", exact: true });
+    const falso = page.getByRole("button", { name: "B Falso", exact: true });
     // Number keys pick, and the pick can change freely until Check.
     await page.keyboard.press("2");
     await expect(falso).toHaveAttribute("aria-pressed", "true");
@@ -144,7 +144,7 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     await page.keyboard.press("Enter");
     await expect(page.locator(".px-quiz-feedback")).toContainText("Corretto");
     await expect(page.getByRole("button", { name: "Avanti", exact: true })).toBeFocused();
-    await expect(page.getByRole("button", { name: /^A\. Vero, Corretta$/ })).toBeDisabled();
+    await expect(page.getByRole("button", { name: /^A Vero Corretta$/ })).toBeDisabled();
     await axe(page);
     await page.keyboard.press("Enter");
     await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
@@ -164,8 +164,8 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     await falso.click();
     await page.getByRole("button", { name: "Verifica", exact: true }).click();
     await expect(page.locator(".px-quiz-feedback")).toContainText("Sbagliato");
-    await expect(page.getByRole("button", { name: /^A\. Vero, Risposta giusta$/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^B\. Falso, Sbagliata$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^A Vero Risposta giusta$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^B Falso Sbagliata$/ })).toBeVisible();
     // Back shows the previous question as answered, read-only, on the left of the same row.
     const back = page.getByRole("button", { name: "Indietro", exact: true });
     const next = page.getByRole("button", { name: "Avanti", exact: true });
@@ -175,7 +175,7 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     await back.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
     await expect(page.locator(".px-quiz-feedback")).toContainText("Corretto");
-    await expect(page.getByRole("button", { name: /^A\. Vero, Corretta$/ })).toBeDisabled();
+    await expect(page.getByRole("button", { name: /^A Vero Corretta$/ })).toBeDisabled();
     await next.click();
     await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
     await expect(page.locator(".px-quiz-feedback")).toContainText("Sbagliato");
@@ -322,7 +322,7 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
     const feedback = page.locator(".px-quiz-feedback.is-wrong");
     await expect(feedback).toContainText("Ancora da imparare");
     await expect(feedback).toContainText("Vale 0, come una risposta sbagliata.");
-    await expect(page.getByRole("button", { name: /^A\. Vero, Risposta giusta$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^A Vero Risposta giusta$/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Non lo so" })).toHaveCount(0);
     await axe(page);
     await shoot("dont-know", "it");
@@ -447,7 +447,7 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
     // The options are shown in a shuffled order, so each answer is picked by its text.
-    const option = (text: string) => page.getByRole("button", { name: new RegExp(`^[A-D]\\. ${text}$`) });
+    const option = (text: string) => page.getByRole("button", { name: new RegExp(`^[A-D] ${text}$`) });
     await expect(option("La velocità")).toBeEnabled();
     await option("La velocità").click();
     await page.keyboard.press("Enter");

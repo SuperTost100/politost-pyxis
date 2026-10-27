@@ -1187,7 +1187,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
                   letter={String.fromCharCode(65 + optionIndex)}
                   state={optionState(valueOf(optionIndex))}
                   shortcut={optionIndex < 4 ? String(optionIndex + 1) : undefined}
-                  label={`${String.fromCharCode(65 + optionIndex)}. ${option.replace(/\$/g, "")}`}
+                  math={option}
                   disabled={locked}
                   onClick={() => pick(valueOf(optionIndex))}
                 >
