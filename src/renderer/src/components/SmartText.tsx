@@ -165,6 +165,7 @@ function Question({
           <QuizOption
             key={index}
             letter={String.fromCharCode(65 + index)}
+            math={option}
             state={
               !answered
                 ? "idle"

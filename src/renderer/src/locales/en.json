@@ -474,7 +474,7 @@
       "submit": "Open",
       "cancel": "Cancel",
       "enter": "Enter password",
-      "enterNamed": "Enter the password for {{title}}"
+      "enterNamed": "Enter password for {{title}}"
     },
     "replaceNoText": "I found no text in the new file, so I kept the current version. To read a scan, add it as a new source.",
     "smartbookBroken": "I can't open this smartbook because parts of the package are missing. Download it again, then add it.",
@@ -2130,7 +2130,7 @@
     "effortAuto": "Automatic · {{level}}",
     "effortNone": "Not adjustable",
     "effortFellBack": "This model does not offer {{level}}, so Pyxis uses the automatic level.",
-    "effortAdvice": "Pyxis sets the reasoning effort by task: low for chat and maps, medium for lessons, quizzes and photos, high for plans and grading. Pick a level to override it for one task. Models without effort settings run as they are.",
+    "effortAdvice": "Pyxis sets the reasoning effort by task: low for chat and maps, medium for lessons, quizzes, photos and grading, high for plans. Pick a level to override it for one task. Models without effort settings run as they are.",
     "effortLevel": {
       "none": "None",
       "minimal": "Minimal",

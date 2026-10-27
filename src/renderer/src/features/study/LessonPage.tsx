@@ -8,7 +8,7 @@ import {
   PencilLine,
   RefreshCw,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
@@ -212,31 +212,35 @@ export function LessonPage() {
     // `save` reads only what the render that finished the stream holds.
   }, [lesson.data, lesson.isFetching, lesson.isError, queued]);
 
+  const levelHintId = useId();
   const levelMenu = (
-    <Dropdown
-      trigger={["click"]}
-      disabled={busy}
-      menu={{
-        selectable: true,
-        selectedKeys: [wording],
-        items: wordings.map((value) => ({
-          key: value,
-          label: t(`lesson.wording.${value}`),
-        })),
-        onClick: ({ key: value }) => setChosen(value as Wording),
-      }}
-    >
-      <Button
-        shape="round"
-        aria-label={`${t("lesson.wording.label")}: ${t(`lesson.wording.${wording}`)}`}
+    <>
+      <Dropdown
+        trigger={["click"]}
+        disabled={busy}
+        menu={{
+          selectable: true,
+          selectedKeys: [wording],
+          items: wordings.map((value) => ({
+            key: value,
+            label: t(`lesson.wording.${value}`),
+          })),
+          onClick: ({ key: value }) => setChosen(value as Wording),
+        }}
       >
-        <span className="px-reader-level">
-          <span className="ink-muted">{t("lesson.level")}</span>
-          {t(`lesson.wording.${wording}`)}
-          <ChevronDown size={14} strokeWidth={1.75} aria-hidden />
-        </span>
-      </Button>
-    </Dropdown>
+        <Button shape="round" aria-describedby={levelHintId}>
+          <span className="px-reader-level">
+            <span className="ink-muted">{t("lesson.level")}</span>
+            {t(`lesson.wording.${wording}`)}
+            <ChevronDown size={14} strokeWidth={1.75} aria-hidden />
+          </span>
+        </Button>
+      </Dropdown>
+      {/* The visible "Level Balanced" names the button (WCAG 2.5.3); the full name of the setting is its description. */}
+      <span id={levelHintId} className="visually-hidden">
+        {t("lesson.wording.label")}
+      </span>
+    </>
   );
   const moreMenu = (
     <Dropdown

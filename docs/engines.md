@@ -20,7 +20,7 @@ The result carries text, provider, model and token usage: input and output token
 
 Pyxis picks the engine, model and effort for each feature itself. `planAuto()` in `src/core/engine/auto.ts` is a pure function of the ready providers and the models each one lists. It never calls a model, so it costs no usage. The tiers, weights and model patterns live in `resources/model-tiers.json`.
 
-- Each feature needs a tier: `chat` and `map` fast, `lesson`, `vision` and `default` mid, `grading` and `plan` strong. Vision only considers models that read images (`capabilities.ts`). A feature key missing from the file counts as mid.
+- Each feature needs a tier: `chat` and `map` fast, `lesson`, `vision`, `grading` and `default` mid, `plan` strong. Vision only considers models that read images (`capabilities.ts`). A feature key missing from the file counts as mid.
 - Model patterns are regular expressions per tier, cheapest sufficient first. Claude: haiku fast, sonnet mid, opus then fable strong. Codex and OpenAI: luna, mini and nano fast, terra mid, sol then astra strong. Antigravity: Gemini Flash fast, Gemini Pro mid and strong (Claude sonnet and opus as fallbacks). Cursor Agent: Gemini Flash, luna, Composer, then mini/nano fast; Claude sonnet, terra, then Gemini Pro mid; Claude opus then sol strong. Cursor's `-thinking` variants and Fable (listed there without zero data retention) never match. Within a pattern the highest version the provider lists wins. A tier with no match steps to the neighbouring tier, and the last resort is the first model the provider lists.
 - Effort follows the tier, see [Reasoning effort](#reasoning-effort).
 - A provider is ready when it is installed, signed in and not disabled. API providers count only with a stored key that the provider accepts. CLIs win. A local model the student turned on comes next, and API providers are used only when neither is ready, because they bill per token.
@@ -28,14 +28,14 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 
 Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.4 model lists:
 
-| Ready CLIs                | Chat and maps       | Lessons and default                              | Photos             | Plans       | Grading     |
-| ------------------------- | ------------------- | ------------------------------------------------ | ------------------ | ----------- | ----------- |
-| Claude Code + Codex       | Codex luna          | Claude sonnet                                    | Claude sonnet      | Claude opus | Codex sol   |
-| Claude Code + Antigravity | Gemini Flash        | Claude sonnet                                    | Claude sonnet      | Claude opus | Gemini Pro  |
-| Claude Code + Cursor      | Cursor Gemini Flash | Claude sonnet                                    | Claude sonnet      | Claude opus | Cursor opus |
-| Codex + Antigravity       | Gemini Flash        | Gemini Pro (lessons), Codex terra (default)      | Codex terra        | Codex sol   | Codex sol   |
-| Cursor + Antigravity      | Gemini Flash        | Cursor sonnet                                    | OCR (no image CLI) | Cursor opus | Gemini Pro  |
-| All four                  | Gemini Flash        | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet      | Claude opus | Codex sol   |
+| Ready CLIs                | Chat and maps                                   | Lessons and default                              | Photos             | Plans       | Grading       |
+| ------------------------- | ----------------------------------------------- | ------------------------------------------------ | ------------------ | ----------- | ------------- |
+| Claude Code + Codex       | Codex luna                                      | Codex terra (lessons), Claude sonnet (default)   | Claude sonnet      | Claude opus | Claude sonnet |
+| Claude Code + Antigravity | Gemini Flash                                    | Gemini Pro (lessons), Claude sonnet (default)    | Claude sonnet      | Claude opus | Claude sonnet |
+| Claude Code + Cursor      | Cursor Gemini Flash                             | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet      | Claude opus | Claude sonnet |
+| Codex + Antigravity       | Gemini Flash                                    | Codex terra (lessons), Gemini Pro (default)      | Codex terra        | Codex sol   | Gemini Pro    |
+| Cursor + Antigravity      | Gemini Flash                                    | Gemini Pro (lessons), Cursor sonnet (default)    | OCR (no image CLI) | Cursor opus | Cursor sonnet |
+| All four                  | Gemini Flash (chat), Cursor Gemini Flash (maps) | Codex terra (lessons), Claude sonnet (default)   | Claude sonnet      | Claude opus | Cursor sonnet |
 
 An automatic row in `feature_engines` carries `"auto": true` in its JSON. A row without it is pinned. `engines.setFeature` pins, and `engines.autoConfigure` with `reset` returns features to automatic. Only automatic rows are rewritten. When no engine is ready they are removed, which brings back `engine-missing`. If every ready engine fails to list models, the current rows stay.
 
@@ -99,12 +99,13 @@ The unit tests run every hardware parser on captured command output and the chec
 
 Every task runs at a reasoning effort that fits it, whether Pyxis or the student picked the model. `taskEffort()` in `src/shared/effort.ts` reads the level from `resources/model-tiers.json`:
 
-| Task                                        | Effort   |
-| ------------------------------------------- | -------- |
-| Chat (Ask) and maps                         | `low`    |
-| Lessons, quizzes, cards and drills, photos  | `medium` |
-| The default engine                          | `medium` |
-| Plans, grading of exercises and simulations | `high`   |
+| Task                                       | Effort   |
+| ------------------------------------------ | -------- |
+| Chat (Ask) and maps                        | `low`    |
+| Lessons, quizzes, cards and drills, photos | `medium` |
+| Grading of exercises and simulations       | `medium` |
+| The default engine                         | `medium` |
+| Plans                                      | `high`   |
 
 `selectionFor` resolves the effort on every call, so a row saved before this existed gets its level without a migration.
 

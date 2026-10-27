@@ -82,12 +82,8 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
                   : "Torna alla scelta automatica",
             }),
           ).toBeDisabled();
-          const details = page.getByRole("button", {
-            name:
-              language === "en"
-                ? "Details for Claude Code"
-                : "Dettagli di Claude Code",
-          });
+          // The row's visible words name the button; "Details for ..." is its description.
+          const details = page.getByRole("button", { name: /^Claude Code/ });
           await details.click();
           const drawer = page.getByRole("dialog", {
             name: "Claude Code",
@@ -112,12 +108,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           ).toHaveCount(1);
           // Antigravity has no sign-out command: the drawer says how to sign out instead of offering a button that fails.
           await page
-            .getByRole("button", {
-              name:
-                language === "en"
-                  ? "Details for Antigravity"
-                  : "Dettagli di Antigravity",
-            })
+            .getByRole("button", { name: /^Antigravity/ })
             .click();
           const agy = page.getByRole("dialog", {
             name: "Antigravity",
@@ -234,7 +225,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await notice.getByRole("button", { name: "I understand" }).click();
     await expect(notice).toHaveCount(0);
     await expect(page.locator(".engines-summary")).toContainText(
-      "Pyxis uses Codex for chat, maps and grading and Claude Code for plans, lessons and photos.",
+      "Pyxis uses Codex for chat, maps and lessons and Claude Code for plans, photos and grading.",
       { timeout: 30000 },
     );
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(2);

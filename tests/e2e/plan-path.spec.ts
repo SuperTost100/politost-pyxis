@@ -461,7 +461,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       timeout: 20000,
     });
     // The lesson was written at the default wording; the profile's new one does not replace it.
-    await expect(page.getByRole("button", { name: "Livello di linguaggio: Bilanciato" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Livello Bilanciato" })).toBeVisible();
     expect(lessonRows()).toBe(1);
     expect((await read()).steps).toEqual(before);
     await page.goBack();
@@ -507,7 +507,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.getByRole("button", { name: "Personalizza" }).click();
     await page.getByRole("button", { name: "Solo vero o falso", exact: true }).click();
     await page.getByRole("button", { name: "Inizia", exact: true }).click();
-    const vero = page.getByRole("button", { name: "A. Vero", exact: true });
+    const vero = page.getByRole("button", { name: "A Vero", exact: true });
     for (let i = 0; i < 10; i++) {
       await expect(page.getByText(`Domanda ${i + 1} di 10`, { exact: true })).toBeVisible();
       await vero.click();
