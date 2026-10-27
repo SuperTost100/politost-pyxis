@@ -2127,7 +2127,7 @@
     "effortAuto": "Automatico · {{level}}",
     "effortNone": "Non regolabile",
     "effortFellBack": "Questo modello non offre il livello «{{level}}», quindi Pyxis usa quello automatico.",
-    "effortAdvice": "Pyxis imposta il livello di ragionamento in base alla funzione: basso per chat e mappe, medio per lezioni, quiz e foto, alto per piani e correzione. Scegli un livello per cambiarlo per una sola funzione. I modelli senza impostazioni di ragionamento restano come sono.",
+    "effortAdvice": "Pyxis imposta il livello di ragionamento in base alla funzione: basso per chat e mappe, medio per lezioni, quiz, foto e correzione, alto per i piani. Scegli un livello per cambiarlo per una sola funzione. I modelli senza impostazioni di ragionamento restano come sono.",
     "effortLevel": {
       "none": "Nessuno",
       "minimal": "Minimo",
