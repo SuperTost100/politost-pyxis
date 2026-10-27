@@ -205,6 +205,11 @@ const shipped = [
   "node_modules/pdfjs-dist/build/pdf.worker.mjs",
   "node_modules/pdfjs-dist/package.json",
   "node_modules/pdfjs-dist/LICENSE",
+  // OCR draws fax, JBIG2 and JPEG 2000 scans with these, and ICC colours with qcms.
+  "node_modules/pdfjs-dist/wasm/jbig2.wasm",
+  "node_modules/pdfjs-dist/wasm/openjpeg.wasm",
+  "node_modules/pdfjs-dist/wasm/qcms_bg.wasm",
+  "node_modules/pdfjs-dist/wasm/LICENSE_JBIG2",
   // The embed worker is ESM, so Node resolves transformers' "node" + "import" export.
   "node_modules/@huggingface/transformers/dist/transformers.node.mjs",
   "node_modules/@huggingface/transformers/package.json",
@@ -237,8 +242,12 @@ const dropped = [
   // Only tesseract.js' browser gunzip imports zlibjs.
   "node_modules/zlibjs/bin/node-zlib.js",
   "node_modules/zlibjs/LICENSE",
-  // main passes neither cMapUrl nor standardFontDataUrl.
+  // main passes neither cMapUrl, standardFontDataUrl nor iccUrl.
   "node_modules/pdfjs-dist/cmaps/Adobe-Japan1-UCS2.bcmap",
+  "node_modules/pdfjs-dist/iccs/CGATS001Compat-v2-micro.icc",
+  // Only the excluded scripting sandbox loads QuickJS.
+  "node_modules/pdfjs-dist/wasm/quickjs-eval.js",
+  "node_modules/pdfjs-dist/wasm/quickjs-eval.wasm",
   "node_modules/pdfjs-dist/standard_fonts/FoxitSans.pfb",
   "node_modules/pdfjs-dist/image_decoders/pdf.image_decoders.mjs",
   "node_modules/pdfjs-dist/web/pdf_viewer.mjs",

@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { PDFDocumentProxy, RenderTask, TextLayer } from "pdfjs-dist";
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import { Notice } from "./Notice";
 
 export default function PdfSourcePage({ sha, initialPage, excerpt }: { sha: string; initialPage: number; excerpt: string }) {
@@ -23,7 +23,7 @@ export default function PdfSourcePage({ sha, initialPage, excerpt }: { sha: stri
   }, []);
   useEffect(() => {
     let disposed = false;
-    let pdf: PDFDocumentProxy | undefined;
+    let task: PDFDocumentLoadingTask | undefined;
     const controller = new AbortController();
     setDocument(null); setPageNumber(initialPage); setError(null);
     void (async () => {
@@ -35,11 +35,14 @@ export default function PdfSourcePage({ sha, initialPage, excerpt }: { sha: stri
       pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
       const data = new Uint8Array(await response.arrayBuffer());
       if (disposed) return;
-      pdf = await pdfjs.getDocument({ data, isEvalSupported: false, useSystemFonts: true }).promise;
-      if (disposed) { await pdf.destroy(); return; }
+      // Scanned figures (fax, JBIG2, JPEG 2000) decode in modules pdf.js loads from `wasmUrl`. The window's CSP allows
+      // no WebAssembly, so it loads their JavaScript builds, which the build copies to pdfjs/ (electron.vite.config.ts).
+      task = pdfjs.getDocument({ data, useSystemFonts: true, useWasm: false, wasmUrl: new URL("pdfjs/", window.location.href).href });
+      const pdf = await task.promise;
+      if (disposed) { await task.destroy(); return; }
       setCount(pdf.numPages); setPageNumber(Math.max(1, Math.min(initialPage, pdf.numPages))); setDocument(pdf);
     })().catch((err: unknown) => { if (!disposed) setError(err instanceof Error ? err.message : "pdf-render-failed"); });
-    return () => { disposed = true; controller.abort(); void pdf?.destroy(); };
+    return () => { disposed = true; controller.abort(); void task?.destroy(); };
   }, [sha, initialPage]);
   useEffect(() => {
     if (!document || !canvas.current || !text.current) return;
@@ -56,9 +59,7 @@ export default function PdfSourcePage({ sha, initialPage, excerpt }: { sha: stri
       target.width = Math.ceil(viewport.width); target.height = Math.ceil(viewport.height);
       textTarget.style.setProperty("--scale-factor", String(viewport.scale));
       textTarget.style.width = `${viewport.width}px`; textTarget.style.height = `${viewport.height}px`;
-      const context = target.getContext("2d");
-      if (!context) throw new Error("canvas-missing");
-      render = page.render({ canvasContext: context, viewport });
+      render = page.render({ canvas: target, viewport });
       const content = await page.getTextContent();
       if (disposed) return;
       layer = new pdfjs.TextLayer({ textContentSource: content, container: textTarget, viewport });
