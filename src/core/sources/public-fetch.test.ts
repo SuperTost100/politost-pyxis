@@ -45,7 +45,18 @@ it("stops before reading on when the signal is aborted", async () => {
 // Runs the real undici, so a release that stops honouring the connector's lookup fails here.
 it("connects to the pinned address, not to what the hostname resolves to", async () => {
   const server = createServer((request, response) => response.end(`host=${request.headers.host}`));
-  await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
+  // node:http reports a failed bind on "error", not to the listen callback.
+  await new Promise<void>((listening, failed) => {
+    const onError = (error: Error) => {
+      server.off("listening", onListening);
+      failed(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      listening();
+    };
+    server.once("error", onError).once("listening", onListening).listen(0, "127.0.0.1");
+  });
   try {
     const { port } = server.address() as AddressInfo;
     // .invalid never resolves, so only the pinned lookup can reach the server.
