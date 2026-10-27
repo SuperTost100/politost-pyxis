@@ -53,7 +53,7 @@ function textKind(
   // not included in your weekly usage. Buy credits or switch to a Grok model". Read before the limits below, because
   // the same message offers credits.
   if (
-    /\b(?:not included in your (?:plan|subscription|weekly usage|usage)|upgrade your (?:plan|subscription) to use)\b/i.test(
+    /\b(?:not included in your (?:plan|subscription|weekly usage|usage)|upgrade your (?:plan|subscription) to use (?:this|the) model)\b/i.test(
       text,
     )
   )
