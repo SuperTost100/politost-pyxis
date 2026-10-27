@@ -18,7 +18,7 @@ export function QuizOption({
   children,
   state = "idle",
   shortcut,
-  label,
+  math,
   disabled,
   onClick,
 }: {
@@ -27,8 +27,11 @@ export function QuizOption({
   state?: QuizOptionState;
   /** The number key that picks it, shown at the end of the row. */
   shortcut?: string;
-  /** Accessible name when the visible text needs a plainer reading (math). */
-  label?: string;
+  /**
+   * The option's Markdown. A screen reader gets nothing from KaTeX inside a button, so an option with `$` math is named
+   * from this text, formulas as written without their `$`.
+   */
+  math?: string;
   disabled?: boolean;
   onClick?: () => void;
 }) {
@@ -41,6 +44,7 @@ export function QuizOption({
         : state === "answer"
           ? { icon: "circle-check" as const, word: t("components.quiz.answer") }
           : null;
+  const answer = math?.includes("$") ? math.replaceAll("$", "") : undefined;
   return (
     <button
       type="button"
@@ -49,23 +53,26 @@ export function QuizOption({
         .join(" ")}
       aria-pressed={state === "idle" || state === "selected" ? state === "selected" : undefined}
       aria-keyshortcuts={state === "muted" ? undefined : shortcut}
-      aria-label={label && feedback ? `${label}, ${feedback.word}` : label}
+      aria-label={
+        answer === undefined ? undefined : [letter, answer, feedback?.word].filter(Boolean).join(" ")
+      }
       disabled={disabled}
       onClick={onClick}
     >
-      <span className="px-opt-key" aria-hidden>
-        {letter}
-      </span>
-      <span className="px-opt-text">{children}</span>
+      {/*
+        The letter, the answer and the result name the button, in the order they are drawn (WCAG 2.5.3). The spaces
+        between them draw nothing in a grid; they keep "A" and "F=ma" two words for a check of the visible text.
+      */}
+      <span className="px-opt-key">{letter}</span>{" "}
+      <span className="px-opt-text">{children}</span>{" "}
       {feedback ? (
         <span className="px-opt-state">
           <Icon name={feedback.icon} size={16} strokeWidth={2} />
           {feedback.word}
         </span>
       ) : shortcut && state !== "muted" ? (
-        <kbd className="px-opt-shortcut" aria-hidden>
-          {shortcut}
-        </kbd>
+        // The key hint is drawn from data-key, so it is not text: aria-keyshortcuts already tells a screen reader.
+        <kbd className="px-opt-shortcut" aria-hidden data-key={shortcut} />
       ) : null}
     </button>
   );
