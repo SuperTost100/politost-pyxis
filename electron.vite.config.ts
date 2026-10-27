@@ -33,6 +33,28 @@ function copySandboxPage(): Plugin {
   };
 }
 
+// pdf.js loads the decoders for scanned figures (fax, JBIG2, JPEG 2000) by file name from the `wasmUrl` folder. The
+// window's CSP allows no WebAssembly, so the PDF viewer asks for their JavaScript builds at pdfjs/ (PdfSourcePage.tsx).
+const pdfjsDecoders = ["jbig2_nowasm_fallback.js", "openjpeg_nowasm_fallback.js"];
+function pdfjsImageDecoders(): Plugin {
+  const folder = resolve(root, "node_modules/pdfjs-dist/wasm");
+  return {
+    name: "pdfjs-image-decoders",
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const name = /^\/pdfjs\/([\w.-]+)$/.exec(request.url ?? "")?.[1];
+        if (!name || !pdfjsDecoders.includes(name)) return next();
+        response.setHeader("Content-Type", "text/javascript; charset=utf-8");
+        response.end(readFileSync(resolve(folder, name)));
+      });
+    },
+    generateBundle() {
+      for (const name of pdfjsDecoders)
+        this.emitFile({ type: "asset", fileName: `pdfjs/${name}`, source: readFileSync(resolve(folder, name)) });
+    },
+  };
+}
+
 // The built page carries the production CSP itself. The dev server page relies on main's header, which also
 // allows the Vite origin and HMR.
 function cspMeta(): Plugin {
@@ -71,7 +93,7 @@ export default defineConfig({
   main: {
     resolve: { alias: { "@politost/smartbook-parser": parser } },
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           index: resolve(root, "src/main/index.ts"),
           core: resolve(root, "src/core/index.ts"),
@@ -84,7 +106,7 @@ export default defineConfig({
   },
   preload: {
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           index: resolve(root, "src/preload/index.ts"),
         },
@@ -101,8 +123,8 @@ export default defineConfig({
         "@shared": resolve(root, "src/shared"),
       },
     },
-    plugins: [react(), katexWoff2Only(), copySandboxPage(), cspMeta()],
+    plugins: [react(), katexWoff2Only(), copySandboxPage(), pdfjsImageDecoders(), cspMeta()],
     // electron-vite leaves the renderer unminified; minifying it shrinks what the window parses at startup.
-    build: { minify: "esbuild" },
+    build: { minify: "oxc" },
   },
 });

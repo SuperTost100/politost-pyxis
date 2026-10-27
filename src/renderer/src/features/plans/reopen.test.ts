@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reopenPath, stepPath } from "./reopen";
+import { reopenPath, skipDiagnosticPath, stepPath } from "./reopen";
 
 const step = (activity: string, extra: Record<string, string | null> = {}) => ({
   activity,
@@ -46,5 +46,22 @@ describe("opening a step to do", () => {
     expect(stepPath("p", "cards", "t1")).toBe("/plans/p/cards/t1");
     expect(stepPath("p", "gaps", "t 1")).toBe("/plans/p/progress?drill=t%201");
     expect(stepPath("p", "quiz", null)).toBeNull();
+  });
+});
+
+describe("skipping the diagnostic", () => {
+  const topics = [{ id: "t1" }, { id: "t2" }, { id: "t3" }];
+  it("starts the lesson of the first topic not read yet, the step the path suggests once something is studied", () => {
+    expect(skipDiagnosticPath("p", topics, [])).toBe("/plans/p/lesson/t1");
+    expect(
+      skipDiagnosticPath("p", topics, [
+        { activity: "intro", topicId: null },
+        { activity: "lesson", topicId: "t1" },
+      ]),
+    ).toBe("/plans/p/lesson/t2");
+  });
+  it("has nowhere to go without an unread topic", () => {
+    expect(skipDiagnosticPath("p", [], [])).toBeNull();
+    expect(skipDiagnosticPath("p", [{ id: "t1" }], [{ activity: "lesson", topicId: "t1" }])).toBeNull();
   });
 });

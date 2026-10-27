@@ -59,6 +59,17 @@ export function verdict(score: number): "correct" | "partial" | "wrong" {
 }
 
 /**
+ * The line under a finished quiz's score. Under half, a diagnostic has done its job by showing where to start; any other
+ * quiz points at what to review instead.
+ */
+export function verdictLine(percent: number, diagnostic: boolean): string {
+  if (percent >= 90) return "quiz.verdictGreat";
+  if (percent >= 70) return "quiz.verdictGood";
+  if (percent >= 50) return "quiz.verdictClose";
+  return diagnostic ? "quiz.verdictStart" : "quiz.verdictLow";
+}
+
+/**
  * The order the student meets the questions in: skipped ones come back after all the others, in the order they were
  * skipped. A question is skipped at most once, so this is the last move any question makes.
  */

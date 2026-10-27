@@ -81,6 +81,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await expect(
       page.getByRole("button", { name: "Annulla", exact: true }),
     ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sto preparando Fisica 1" })).toBeVisible();
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       for (const width of [1280, 960]) {
@@ -107,6 +108,9 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await expect(
       page.getByRole("button", { name: "Apri il piano", exact: true }),
     ).toBeVisible({ timeout: 20000 });
+    // A built plan says so, and Enter opens it.
+    await expect(page.getByRole("heading", { name: "Fisica 1 è pronto" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Apri il piano", exact: true })).toBeFocused();
     await page
       .getByRole("button", { name: "Apri il piano", exact: true })
       .click();

@@ -57,6 +57,10 @@ test("Ask: starter prompts from the plans, the title in the header, and a pasted
     });
     await page.reload();
 
+    // With one subject, a new chat starts on it and on its plan's source.
+    await expect(page.getByRole("button", { name: /^Materia:/ })).toHaveText("Fisica");
+    await expect(page.getByRole("button", { name: "1 fonte", exact: true })).toBeVisible();
+
     // An empty chat suggests questions on the plan's topics and says how to attach material.
     const starters = page.getByRole("list", { name: "Domande suggerite" });
     await expect(starters.getByRole("button")).toHaveText([
@@ -114,6 +118,55 @@ test("Ask: starter prompts from the plans, the title in the header, and a pasted
     await expect(page.getByRole("button", { name: "Rinomina Cinematica di base" })).toBeVisible();
     await page.getByRole("button", { name: "Apri le chat" }).click();
     await expect(page.getByRole("list", { name: "Chat" }).getByRole("button", { name: "Cinematica di base", exact: true })).toBeVisible();
+  } finally {
+    await finish(app, userData, db);
+  }
+});
+
+test("Ask: a new chat starts on the only subject, and on none once a second subject exists", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData, db } = await launch();
+  try {
+    seedSubjects(db, [{ id: "s-fis", name: "Fisica" }]);
+    seedSource(db, { id: "src-fis", title: "Appunti di fisica" });
+    seedPlan(db, {
+      id: "p-fis",
+      subjectId: "s-fis",
+      title: "Fisica 1",
+      language: "it",
+      target: 0.75,
+      sourceIds: ["src-fis"],
+      topics: [{ id: "t1", title: "Cinematica" }],
+    });
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await page.reload();
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    const sentSubject = async () => {
+      await expect(page).toHaveURL(/#\/ask\/.+/);
+      await expect(page.getByText("Fammi un esempio")).toBeVisible({ timeout: 30000 });
+      const chat = await page.evaluate(() =>
+        window.pyxis.invoke("chats.read", { chatId: location.hash.split("/").at(-1)! }),
+      );
+      return (chat as { subject: string | null }).subject;
+    };
+
+    // A question typed at once goes out with the only subject.
+    await box.fill("Che cos'è la velocità?");
+    await box.press("Enter");
+    expect(await sentSubject()).toBe("Fisica");
+
+    // A subject added since the list was read counts: the next new chat has two and starts on none.
+    await page.evaluate(() => window.pyxis.invoke("subjects.add", { name: "Chimica" }));
+    await page.getByRole("button", { name: "Nuova chat" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    // The empty chat's greeting: the composer now belongs to the new chat.
+    await expect(page.getByRole("heading", { level: 1, name: "Ciao" })).toBeVisible();
+    await box.fill("Che cos'è l'accelerazione?");
+    await box.press("Enter");
+    expect(await sentSubject()).toBeNull();
+    await expect(page.getByRole("button", { name: /^Materia:/ })).toHaveText("Nessuna materia");
   } finally {
     await finish(app, userData, db);
   }

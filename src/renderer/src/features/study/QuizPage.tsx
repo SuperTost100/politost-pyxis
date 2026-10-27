@@ -999,7 +999,8 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         <QuizResults
           diagnostic={diagnostic && !review}
           questions={questions}
-          results={finalResult.results}
+          // Numbered as the student met them: a skipped question is listed where it came back, not where it was stored.
+          results={skipOrder(finalResult.results, skipped)}
           score={finalResult.score}
           topics={plan.data?.topics ?? []}
           answerText={answerText}
