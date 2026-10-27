@@ -4,8 +4,9 @@ import {
   allowsGeneral,
   applySubject,
   choseGeneral,
-  newChatDefault,
   newChatSubject,
+  onlySubject,
+  scopeChanges,
   scopeItems,
 } from "./scope";
 
@@ -101,64 +102,80 @@ describe("a new chat's subject", () => {
   });
 });
 
-describe("starting a new chat on the only subject", () => {
-  it("holds a question sent while the subjects load until the subject and its sources are chosen", async () => {
+/** Whether a promise has settled after the microtasks queued so far have run. */
+async function settledNow(promise: Promise<unknown>): Promise<boolean> {
+  let done = false;
+  void promise.then(() => {
+    done = true;
+  });
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  return done;
+}
+
+describe("scope changes a question waits for", () => {
+  it("holds a question until the new chat's default subject and its sources are chosen", async () => {
+    const scope = scopeChanges();
+    const chat = scope.open();
     const list = later<Subjects>();
     const chosen: string[] = [];
-    const defaults = newChatDefault(
-      () => list.promise,
-      async (name) => {
-        await Promise.resolve();
-        chosen.push(name);
-      },
+    scope.track(
+      onlySubject(
+        () => list.promise,
+        () => scope.isCurrent(chat),
+        async (name) => {
+          await Promise.resolve();
+          chosen.push(name);
+        },
+      ),
     );
-    const ready = defaults.open(true, () => "");
-    let settled = false;
-    void ready.then(() => {
-      settled = true;
-    });
-    await Promise.resolve();
-    expect(settled).toBe(false);
+    const question = scope.settled();
+    expect(await settledNow(question)).toBe(false);
     list.resolve([{ name: "Analisi 1" }]);
-    await ready;
+    await question;
     expect(chosen).toEqual(["Analisi 1"]);
   });
 
-  it("drops a pending default when the student opens another chat while the subjects load", async () => {
+  it("also waits for a subject the student picks while the default is still loading", async () => {
+    const scope = scopeChanges();
+    scope.open();
+    const list = later<Subjects>();
+    scope.track(list.promise);
+    const question = scope.settled();
+    const picked = later<void>();
+    scope.track(picked.promise);
+    list.resolve([]);
+    expect(await settledNow(question)).toBe(false);
+    picked.resolve();
+    expect(await settledNow(question)).toBe(true);
+  });
+
+  it("releases a question in an existing chat from the new chat's pending default, and drops that default", async () => {
+    const scope = scopeChanges();
+    const newChat = scope.open();
     const list = later<Subjects>();
     const chosen: string[] = [];
-    const defaults = newChatDefault(
-      () => list.promise,
-      async (name) => {
-        chosen.push(name);
-      },
+    const pending = scope.track(
+      onlySubject(
+        () => list.promise,
+        () => scope.isCurrent(newChat),
+        async (name) => {
+          chosen.push(name);
+        },
+      ),
     );
-    const ready = defaults.open(true, () => "");
     // An existing chat without a subject opens on the same Ask page.
-    await defaults.open(false, () => "");
+    scope.open();
+    expect(await settledNow(scope.settled())).toBe(true);
     list.resolve([{ name: "Analisi 1" }]);
-    await ready;
+    await pending;
     expect(chosen).toEqual([]);
   });
 
-  it("reads the subjects again for each new chat", async () => {
-    let subjects: Subjects = [{ name: "Analisi 1" }];
-    const loads: number[] = [];
-    const chosen: string[] = [];
-    const defaults = newChatDefault(
-      async () => {
-        loads.push(subjects.length);
-        return subjects;
-      },
-      async (name) => {
-        chosen.push(name);
-      },
-    );
-    await defaults.open(true, () => "");
-    subjects = [{ name: "Analisi 1" }, { name: "Fisica" }];
-    await defaults.open(true, () => "");
-    expect(loads).toEqual([1, 2]);
-    expect(chosen).toEqual(["Analisi 1"]);
+  it("lets a question go after a change that failed", async () => {
+    const scope = scopeChanges();
+    scope.open();
+    scope.track(Promise.reject(new Error("offline")));
+    await expect(scope.settled()).resolves.toBeUndefined();
   });
 
   it("chooses nothing with several subjects or once the student picked one", async () => {
@@ -166,8 +183,9 @@ describe("starting a new chat on the only subject", () => {
     const choose = async (name: string) => {
       chosen.push(name);
     };
-    await newChatDefault(async () => [{ name: "Analisi 1" }, { name: "Fisica" }], choose).open(true, () => "");
-    await newChatDefault(async () => [{ name: "Analisi 1" }], choose).open(true, () => "Fisica");
+    await onlySubject(async () => [{ name: "Analisi 1" }, { name: "Fisica" }], () => true, choose);
+    await onlySubject(async () => [{ name: "Analisi 1" }], () => false, choose);
     expect(chosen).toEqual([]);
   });
 });
+

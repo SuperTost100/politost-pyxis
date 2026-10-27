@@ -44,7 +44,8 @@ import {
   allowsGeneral,
   applySubject,
   choseGeneral,
-  newChatDefault,
+  onlySubject,
+  scopeChanges,
   scopeItems,
   type ScopeItem,
 } from "./scope";
@@ -255,10 +256,10 @@ export function AskPage() {
   const [mode, setMode] = useState<"solver" | "socratic">(defaultMode);
   const [picked, setPicked] = useState<string[]>([]);
   // A subject's sources arrive after its plans are read; a message sent before then waits for them, so it is not sent
-  // without the sources the student just picked.
+  // without the sources the student just picked. `scope` holds those changes for the chat on screen (see scope.ts).
   const pickedNow = useRef(picked);
   pickedNow.current = picked;
-  const scopeReady = useRef<Promise<void>>(Promise.resolve());
+  const [scope] = useState(scopeChanges);
   const [planId, setPlanId] = useState<string | null>(null);
   const loadedFor = useRef<string | undefined>(undefined);
   const [uncovered, setUncovered] = useState<string | null>(null);
@@ -278,7 +279,7 @@ export function AskPage() {
   chatNow.current = chatId;
   const arrived = useRef<string | null>(null);
   const [subject, setSubject] = useState("");
-  // The subject a question goes out with: set at once when one is chosen, so a question waiting on scopeReady has it.
+  // The subject a question goes out with: set at once when one is chosen, so a question waiting for the scope to settle has it.
   const subjectNow = useRef(subject);
   subjectNow.current = subject;
   const [panelOpen, setPanelOpen] = useState(false);
@@ -346,7 +347,11 @@ export function AskPage() {
     setError(null);
   }, [chatId]);
 
+  const chooseLatest = useRef(chooseSubject);
+  chooseLatest.current = chooseSubject;
   useEffect(() => {
+    // Scope changes still running belong to the chat being left: they stop holding questions and touch nothing here.
+    const chat = scope.open();
     if (chatId) return;
     setPicked([]);
     pickedNow.current = [];
@@ -355,22 +360,16 @@ export function AskPage() {
     subjectNow.current = "";
     setUncovered(null);
     loadedFor.current = undefined;
-  }, [chatId]);
-
-  // A new chat starts on the student's only subject, so a question typed at once reads its plans. It is chosen once per
-  // new chat from a fresh subject list, so choosing "No subject" afterwards stays and a subject added a moment ago counts.
-  // A question sent while the list loads waits for it through scopeReady; if the list cannot be read, it goes without.
-  // Opening any other chat drops a choice still pending.
-  const chooseLatest = useRef(chooseSubject);
-  chooseLatest.current = chooseSubject;
-  const newChats = useRef<ReturnType<typeof newChatDefault> | null>(null);
-  const defaults = (newChats.current ??= newChatDefault(
-    () => client.fetchQuery({ ...subjectsQuery, staleTime: 0 }),
-    (name) => chooseLatest.current(name),
-  ));
-  useEffect(() => {
-    const ready = defaults.open(!chatId, () => subjectNow.current).catch(() => undefined);
-    if (!chatId) scopeReady.current = ready;
+    // A new chat starts on the student's only subject, so a question typed at once reads its plans. It is chosen once per
+    // new chat from a fresh list, so choosing "No subject" afterwards stays and a subject added a moment ago counts. A
+    // question sent while the list loads waits for it; if the list cannot be read, the question goes without a subject.
+    void scope.track(
+      onlySubject(
+        () => client.fetchQuery({ ...subjectsQuery, staleTime: 0 }),
+        () => scope.isCurrent(chat) && subjectNow.current === "",
+        (name) => chooseLatest.current(name),
+      ).catch(() => undefined),
+    );
   }, [chatId]);
 
   // A reply's math check runs after the reply is saved. When it ends, the chat is read again for its badges.
@@ -422,23 +421,27 @@ export function AskPage() {
     // The ref, not this render's state: the default choice can run after a chat change this closure has not seen.
     const previous = subjectNow.current;
     if (next === previous) return;
+    const chat = scope.token();
     setSubject(next);
     subjectNow.current = next;
     const plan = (plans.data ?? []).find((item) => item.id === planId);
     if (plan?.subject && plan.subject !== next) setPlanId(null);
-    const ready = Promise.all([
-      subjectSourceIds(previous),
-      subjectSourceIds(next),
-    ]).then(([before, after]) => {
-      pickedNow.current = applySubject(pickedNow.current, before, after);
-      setPicked(pickedNow.current);
-    });
-    scopeReady.current = ready;
-    await ready;
+    await scope.track(
+      Promise.all([
+        subjectSourceIds(previous),
+        subjectSourceIds(next),
+      ]).then(([before, after]) => {
+        if (!scope.isCurrent(chat)) return;
+        pickedNow.current = applySubject(pickedNow.current, before, after);
+        setPicked(pickedNow.current);
+      }),
+    );
   }
 
   async function addPlan(id: string) {
+    const chat = scope.token();
     const plan = await client.fetchQuery({ ...planQuery(id), staleTime: 15_000 });
+    if (!scope.isCurrent(chat)) return;
     // Set here too, so a message sent right after (a starter prompt) carries the plan's sources.
     pickedNow.current = addIds(
       pickedNow.current,
@@ -584,7 +587,7 @@ export function AskPage() {
     turn.stop = () => {
       stoppedEarly = true;
     };
-    await scopeReady.current.catch(() => undefined);
+    await scope.settled();
     if (stoppedEarly) {
       turns.end(turn);
       return;
@@ -860,10 +863,11 @@ export function AskPage() {
   function start(starter: Starter) {
     if (busy) return;
     if (starter.subject) void chooseSubject(starter.subject);
-    else scopeReady.current = addPlan(starter.planId);
+    else void scope.track(addPlan(starter.planId));
     void send(t(`ask.starter.${starter.kind}`, { topic: starter.topic }), {
       textOnly: true,
-      subject: starter.subject ?? subject,
+      // Without a subject of its own, the question goes with the chat's subject once the scope settles.
+      subject: starter.subject ?? undefined,
     });
   }
 
