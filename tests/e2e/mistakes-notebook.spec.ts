@@ -314,7 +314,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
       /#\/plans\/p-phys\/redo\?attempt=.+&from=plan$/,
     );
     await expect(page.getByText("Redo mistakes")).toBeVisible();
-    await page.getByRole("button", { name: /^A\. La forza$/ }).click();
+    await page.getByRole("button", { name: /^A La forza$/ }).click();
     await page.getByRole("button", { name: "Check", exact: true }).click();
     await page
       .getByRole("button", { name: "See results", exact: true })
