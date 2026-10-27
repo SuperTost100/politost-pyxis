@@ -25,9 +25,14 @@ describe("prompt templates", () => {
   });
 
   it("bumps the version of every template whose wording changed", () => {
-    // Smart text: lessons teach with inline blocks and no citations. smart-2 adds the pyxis-figure block.
-    expect(loadTemplate("lesson.write").version).toBe("smart-2");
-    expect(loadTemplate("plan.intro").version).toBe("3");
+    // Smart text: lessons teach with inline blocks and no citations. smart-2 adds the pyxis-figure block. smart-3 and
+    // intro 4: a check's explanation shows after a wrong pick too, so it never calls the other options correct.
+    expect(loadTemplate("lesson.write").version).toBe("smart-3");
+    expect(loadTemplate("plan.intro").version).toBe("4");
+    for (const id of ["lesson.write", "plan.intro"] as const)
+      expect(loadTemplate(id).body, id).toContain(
+        "The student reads the explanation after a wrong pick too, so never call any option but the answer correct",
+      );
     expect(loadTemplate("quiz.batch").version).toBe("quiz-4");
     expect(loadTemplate("chat.socratic").version).toBe("5");
     // Answers may ask for a figure drawn in the Python sandbox.

@@ -294,6 +294,7 @@ export function PlanPage() {
           {t("progress.onTrack", {
             ready: progress?.preparation.onTrack ?? 0,
             count: progress?.preparation.totalTopics ?? 0,
+            target: Math.round((plan.data?.target ?? 0.75) * 100),
           })}
         </p>
         {plan.data &&
@@ -312,6 +313,8 @@ export function PlanPage() {
           target={(plan.data?.target ?? 0.75) * 100}
           label={t("progress.title")}
         />
+        {/* Topic bars show one topic each; this bar weighs every topic by its passages, so it reads much lower early on. */}
+        <p className="small ink-muted px-plan-mastery-note">{t("planOverview.planMastery")}</p>
         <div className="px-plan-header-actions">
           <Button
             shape="round"

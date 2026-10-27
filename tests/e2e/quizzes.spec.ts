@@ -357,10 +357,17 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
     await page.getByRole("button", { name: "Vedi risultato", exact: true }).click();
     // Nine right answers; the one "I don't know" is a wrong answer with no pick.
     await expect(score(page)).toHaveText(/^9\s*su 10$/);
-    const second = page.locator(".px-quiz-row").nth(1);
-    await second.locator(".px-quiz-row-head").click();
-    await expect(second.locator(".px-quiz-answer-empty")).toHaveText("Nessuna risposta");
-    await expect(second.locator(".px-quiz-answer.is-expected")).toContainText("Vero");
+    // The count covers this quiz only; the mistakes notebook also collects quick checks and simulations.
+    await expect(page.getByText("1 risposta da rivedere in questo quiz")).toBeVisible();
+    // Results are numbered as the questions were met: the "I don't know" one came first, the skipped one last.
+    const rows = page.locator(".px-quiz-row");
+    const first = rows.nth(0);
+    await expect(first.locator(".px-quiz-row-number")).toHaveText("01");
+    await first.locator(".px-quiz-row-head").click();
+    await expect(first.locator(".px-quiz-answer-empty")).toHaveText("Nessuna risposta");
+    await expect(first.locator(".px-quiz-answer.is-expected")).toContainText("Vero");
+    await expect(rows.nth(9).locator(".px-quiz-row-number")).toHaveText("10");
+    await expect(rows.nth(9).locator(".px-quiz-row-stem")).toHaveText(skippedStem);
 
     // The same three screens in English.
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));

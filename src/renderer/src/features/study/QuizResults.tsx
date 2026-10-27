@@ -8,6 +8,7 @@ import { openSourceViewer } from "../../components/SourceViewer";
 import {
   stemText,
   verdict,
+  verdictLine,
   type QuizAnswer,
   type QuizQuestion,
 } from "./quizText";
@@ -61,15 +62,7 @@ export function QuizResults({
   const percent = Math.round(score * 100);
   const toReview = counted.filter((row) => row.score < 1).length;
   const excluded = results.length - counted.length;
-  const line = t(
-    percent >= 90
-      ? "quiz.verdictGreat"
-      : percent >= 70
-        ? "quiz.verdictGood"
-        : percent >= 50
-          ? "quiz.verdictClose"
-          : "quiz.verdictStart",
-  );
+  const line = t(verdictLine(percent, diagnostic));
   const byTopic = diagnostic
     ? topics.flatMap((topic) => {
         const rows = counted.filter(

@@ -19,6 +19,14 @@ export function applySubject(
   return [...new Set([...picked.filter((id) => !dropped.has(id)), ...next])];
 }
 
+/**
+ * The subject a new chat starts on: the only one when the student has exactly one, so a question typed straight away
+ * reads its plans' sources. With none or several, no subject until the student picks.
+ */
+export function newChatSubject(subjects: ReadonlyArray<{ name: string }>): string {
+  return subjects.length === 1 ? subjects[0]!.name : "";
+}
+
 export function addIds(picked: string[], ids: string[]): string[] {
   return [...new Set([...picked, ...ids])];
 }

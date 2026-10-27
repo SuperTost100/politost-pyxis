@@ -760,7 +760,9 @@
     "redoTopic_other": "Rifai {{count}} domande",
     "redoFailed": "Non sono riuscito a riaprire le domande. Riprova.",
     "redoTitle": "Rifai gli errori",
-    "back": "Torna al quaderno"
+    "back": "Torna al quaderno",
+    "summary_one": "{{count}} domanda da rifare tra quiz, verifiche rapide e simulazioni",
+    "summary_other": "{{count}} domande da rifare tra quiz, verifiche rapide e simulazioni"
   },
   "map": {
     "title": "Mappa",
@@ -1153,8 +1155,8 @@
     "verdictGood": "Buona base.",
     "verdictClose": "Ci sei quasi.",
     "verdictStart": "Ora sai da dove partire.",
-    "toReview_one": "{{count}} risposta da rivedere",
-    "toReview_other": "{{count}} risposte da rivedere",
+    "toReview_one": "{{count}} risposta da rivedere in questo quiz",
+    "toReview_other": "{{count}} risposte da rivedere in questo quiz",
     "allCorrect": "Tutte le risposte sono corrette",
     "excludedCount_one": "{{count}} domanda esclusa",
     "excludedCount_other": "{{count}} domande escluse",
@@ -1171,7 +1173,8 @@
     "reviewMistakes": "Ripassa gli errori",
     "redo": "Rifai",
     "answeredOn": "Le tue risposte del {{date}}",
-    "answersNotShared": "Le risposte di questo tentativo non erano incluse nel piano condiviso."
+    "answersNotShared": "Le risposte di questo tentativo non erano incluse nel piano condiviso.",
+    "verdictLow": "Ora sai cosa ripassare."
   },
   "practice": {
     "title": "Esercizi del libro",
@@ -1261,7 +1264,7 @@
       },
       "reason": {
         "intro": "Parti da qui: cosa studierai e come.",
-        "diagnostic": "Trova il tuo punto di partenza. Puoi saltarlo.",
+        "diagnostic": "Trova il tuo punto di partenza. Se lo salti, parti dalla prima lezione.",
         "due_one": "1 flashcard da ripassare oggi.",
         "due_other": "{{count}} flashcard da ripassare oggi.",
         "gaps_one": "Una lacuna seria su questo argomento.",
@@ -1275,14 +1278,15 @@
         "stay": "Questo argomento non è ancora solido. Restaci ancora un po'.",
         "review_one": "L'hai studiato l'ultima volta ieri. Vedi cosa ricordi ancora.",
         "review_other": "L'hai studiato l'ultima volta {{count}} giorni fa. Vedi cosa ricordi ancora."
-      }
+      },
+      "skipDiagnostic": "Salta il test"
     }
   },
   "progress": {
     "title": "Progressi",
     "chart": "Ultimi 14 giorni",
-    "onTrack_one": "{{ready}} su {{count}} argomento a obiettivo",
-    "onTrack_other": "{{ready}} su {{count}} argomenti a obiettivo",
+    "onTrack_one": "{{ready}} su {{count}} argomento all'obiettivo del {{target}}%",
+    "onTrack_other": "{{ready}} su {{count}} argomenti all'obiettivo del {{target}}%",
     "lessons": "{{count}} lezioni completate",
     "gaps": "Lacune",
     "noGaps": "Nessuna lacuna aperta.",
@@ -1505,7 +1509,8 @@
       "read": "Parti da una spiegazione, poi fai pratica.",
       "practice": "Prova gli esercizi, poi colma le lacune.",
       "decide": "Lascia al piano la scelta dell'ordine."
-    }
+    },
+    "ready": "{{title}} è pronto"
   },
   "shared": {
     "title": "Apri un piano condiviso",
@@ -2515,7 +2520,8 @@
     "archiveHelp": "Metti da parte un esame finito. Esce dalle code di ripasso, dai conteggi e dai consigli. Lezioni e progressi restano e puoi ripristinarlo quando vuoi.",
     "restore": "Ripristina l'esame",
     "restoreHelp": "Riporta questo esame nelle code di ripasso e nei consigli.",
-    "archivedNotice": "Questo esame è archiviato. Resta fuori dalle code di ripasso e dai consigli."
+    "archivedNotice": "Questo esame è archiviato. Resta fuori dalle code di ripasso e dai consigli.",
+    "planMastery": "Tutto il piano: ogni argomento conta quanto il suo materiale."
   },
   "smart": {
     "check": "Verifica rapida",

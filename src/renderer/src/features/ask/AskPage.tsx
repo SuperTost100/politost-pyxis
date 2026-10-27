@@ -39,14 +39,22 @@ import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
 import { ChatPanel } from "./ChatPanel";
 import { replyPlainText } from "./replyText";
-import { addIds, allowsGeneral, applySubject, choseGeneral, scopeItems, type ScopeItem } from "./scope";
+import {
+  addIds,
+  allowsGeneral,
+  applySubject,
+  choseGeneral,
+  newChatSubject,
+  scopeItems,
+  type ScopeItem,
+} from "./scope";
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { activePlans, starterPrompts, type Starter } from "./starters";
 import { formatTokens } from "../../lib/tokens";
 import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
-import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources } from "../../lib/queries";
+import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources, useSubjects } from "../../lib/queries";
 
 function errorKey(err: unknown): string {
   return err && typeof err === "object" && "messageKey" in err
@@ -314,6 +322,7 @@ export function AskPage() {
 
   const sources = useSources();
   const plans = usePlans();
+  const subjects = useSubjects();
 
   const thread = useQuery({
     queryKey: ["chat", chatId],
@@ -343,6 +352,20 @@ export function AskPage() {
     setUncovered(null);
     loadedFor.current = undefined;
   }, [chatId]);
+
+  // A new chat starts on the student's only subject, so a question typed at once reads its plans. It is set once per
+  // new chat: choosing "No subject" afterwards stays. It waits for the reset above to clear the previous chat's subject.
+  const subjectDefaulted = useRef(false);
+  useEffect(() => {
+    if (chatId) {
+      subjectDefaulted.current = false;
+      return;
+    }
+    if (subjectDefaulted.current || !subjects.data || subject !== "") return;
+    subjectDefaulted.current = true;
+    const only = newChatSubject(subjects.data);
+    if (only) void chooseSubject(only);
+  }, [chatId, subjects.data, subject]);
 
   // A reply's math check runs after the reply is saved. When it ends, the chat is read again for its badges.
   useEffect(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addIds, allowsGeneral, applySubject, choseGeneral, scopeItems } from "./scope";
+import { addIds, allowsGeneral, applySubject, choseGeneral, newChatSubject, scopeItems } from "./scope";
 
 describe("chat scope", () => {
   it("swaps the previous subject's sources for the new one and keeps hand-picked ones", () => {
@@ -70,5 +70,15 @@ describe("choseGeneral", () => {
     expect(choseGeneral(undefined, [...general, { role: "user", grounding: null }])).toBe(true);
     expect(choseGeneral(undefined, [{ role: "assistant", grounding: "sources" }])).toBe(false);
     expect(choseGeneral(undefined, [])).toBe(false);
+  });
+});
+
+describe("a new chat's subject", () => {
+  it("is the student's only subject", () => {
+    expect(newChatSubject([{ name: "Analisi 1" }])).toBe("Analisi 1");
+  });
+  it("stays empty with no subject or several", () => {
+    expect(newChatSubject([])).toBe("");
+    expect(newChatSubject([{ name: "Analisi 1" }, { name: "Fisica" }])).toBe("");
   });
 });

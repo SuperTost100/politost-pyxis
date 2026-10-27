@@ -193,7 +193,7 @@ export function WizardFrame() {
                   ? "wizard.cancelledTitle"
                   : "wizard.preparingFailed",
               )
-            : t("wizard.preparing", { title: name })
+            : t(built ? "wizard.ready" : "wizard.preparing", { title: name })
         }
         closable={!busy}
       >
@@ -221,7 +221,7 @@ export function WizardFrame() {
                   : t(step.label),
               state: step.state === "succeeded" ? "done" : step.state,
             }))}
-            label={t("wizard.preparing", { title: name })}
+            label={t(built ? "wizard.ready" : "wizard.preparing", { title: name })}
           />
           {build.data?.stepLabel && !failed ? (
             <p className="small px-build-status" role="status">
@@ -259,6 +259,8 @@ export function WizardFrame() {
                 type="primary"
                 shape="round"
                 size="large"
+                // The one thing left to do once the plan is ready, so Enter opens it.
+                autoFocus
                 onClick={() => navigate(`/plans/${built}`)}
               >
                 {t("wizard.open")}

@@ -250,7 +250,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
       .locator(".ant-segmented-item-label", { hasText: "Mistakes notebook" })
       .click();
     await expect(page).toHaveURL(/#\/exams\/mistakes$/);
-    await expect(page.getByRole("status")).toHaveText("5 questions to redo");
+    await expect(page.getByRole("status")).toHaveText("5 questions to redo from quizzes, quick checks and simulations");
     // Exams in subject order, then topics in plan order; an exam without mistakes is not listed.
     await expect(page.getByRole("heading", { level: 2 })).toHaveText([
       "Fisica 1",
@@ -303,7 +303,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await expect(
       page.locator(".px-seg .ant-segmented-item-selected"),
     ).toHaveText("Mistakes notebook");
-    await expect(page.getByRole("status")).toHaveText("4 questions to redo");
+    await expect(page.getByRole("status")).toHaveText("4 questions to redo from quizzes, quick checks and simulations");
     // The exam is the page; its topics are the next level.
     await expect(page.getByRole("heading", { level: 2 })).toHaveText([
       "Dinamica",
@@ -321,7 +321,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
       .click();
     await page.getByRole("button", { name: "Back to the notebook" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-phys\/mistakes$/);
-    await expect(page.getByRole("status")).toHaveText("3 questions to redo");
+    await expect(page.getByRole("status")).toHaveText("3 questions to redo from quizzes, quick checks and simulations");
     await expect(entry("Che cosa causa")).toHaveCount(0);
     const evidence = db
       .prepare(
