@@ -93,13 +93,16 @@ describe("automatic engine choice", () => {
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);
     await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
-    expect(selectionFor(db, "lesson").model).toBe("claude-sonnet-5");
-    benchModel("claude", "claude-sonnet-5");
+    const features = ["chat", "default", "grading", "lesson", "map", "plan", "vision"];
+    // The lesson engine's model gets refused, whichever the split gave it.
+    const refused = selectionFor(db, "lesson");
+    benchModel(refused.provider, refused.model);
     try {
       await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
-      expect(selectionFor(db, "lesson").model).not.toBe("claude-sonnet-5");
+      const after = features.map((feature) => selectionFor(db, feature));
+      expect(after.some((choice) => choice.model === refused.model)).toBe(false);
       // The engine's other models stay in use.
-      expect(selectionFor(db, "plan").model).toBe("claude-opus-5-5");
+      expect(after.some((choice) => choice.provider === refused.provider)).toBe(true);
     } finally {
       clearBench();
     }
