@@ -234,7 +234,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await notice.getByRole("button", { name: "I understand" }).click();
     await expect(notice).toHaveCount(0);
     await expect(page.locator(".engines-summary")).toContainText(
-      "Pyxis uses Codex for chat, maps and grading and Claude Code for plans, lessons and photos.",
+      "Pyxis uses Codex for chat, maps and lessons and Claude Code for plans, photos and grading.",
       { timeout: 30000 },
     );
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(2);
