@@ -338,7 +338,6 @@ export function WizardFrame() {
           </Button>
         ) : (
           <Button
-            className="px-wizard-create"
             type="primary"
             shape="round"
             disabled={busy || !!disabledReason}

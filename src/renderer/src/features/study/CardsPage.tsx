@@ -143,6 +143,11 @@ export function CardsPage() {
   useEffect(() => {
     if (buildState === "succeeded") void refresh();
   }, [buildState]);
+  // The build stores its cards a batch at a time and moves its progress with each one: show them as they arrive.
+  const buildProgress = build.data?.progress ?? 0;
+  useEffect(() => {
+    if (building && buildProgress > 0) void refresh();
+  }, [buildProgress]);
   const deckCards = everywhere
     ? dueEverywhere.data
     : reviewing
@@ -478,6 +483,14 @@ export function CardsPage() {
     ? (reviewQueue.data?.progress.total ?? 0)
     : seen.length + (everywhere ? (dueEverywhere.data?.length ?? 0) : (queue.data?.due ?? 0));
   const sessionDone = reviewing ? (reviewQueue.data?.progress.done ?? 0) : seen.length;
+  // The header counts the card on screen: the first card reads "1 of 20".
+  const sessionAt = Math.min(sessionTotal, sessionDone + (card ? 1 : 0));
+  // New cards past today's limit wait for another day; the deck counts say how many of them this session holds.
+  const freshToday = queue.data ? Math.min(queue.data.fresh, queue.data.newToday.left) : 0;
+  // Export carries active and suspended cards; with neither there is nothing to export.
+  const noCards =
+    !queue.data ||
+    (queue.data.fresh + queue.data.learning + queue.data.mastered === 0 && !parked.data?.length);
   // Today's new cards are used up and the topic still has new ones: say why the deck stops.
   const capped =
     !reviewing &&
@@ -499,7 +512,7 @@ export function CardsPage() {
       title={t(everywhere ? "oggi.cardsTitle" : reviewing ? "cards.reviewTitle" : "cards.title")}
       meta={
         sessionTotal > 0
-          ? [shownCard?.planTitle, t("cards.sessionProgress", { done: sessionDone, total: sessionTotal })]
+          ? [shownCard?.planTitle, t("cards.sessionProgress", { done: sessionAt, total: sessionTotal })]
               .filter(Boolean)
               .join(" \u00b7 ")
           : shownCard?.planTitle
@@ -550,7 +563,9 @@ export function CardsPage() {
         <div className="px-cards-toolbar">
           {queue.data ? (
             <p className="small">
-              {t("cards.fresh", { count: queue.data.fresh })}
+              {freshToday < queue.data.fresh
+                ? t("cards.freshToday", { count: queue.data.fresh, today: freshToday })
+                : t("cards.fresh", { count: queue.data.fresh })}
               {" · "}
               {t("cards.learning", { count: queue.data.learning })}
               {" · "}
@@ -563,6 +578,7 @@ export function CardsPage() {
                 planId={planId ?? ""}
                 topicId={topicId}
                 kind="cards"
+                disabled={noCards}
               />
             </div>
           )}

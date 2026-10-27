@@ -49,6 +49,12 @@ function clock(ms: number): string {
     : `${Math.floor(total / 60)}:${pad(total % 60)}`;
 }
 
+/** Where a saved match sits among a matching question's right-hand texts; `undefined` for none or one no longer offered. */
+function matchIndex(right: string[] | undefined, match: string | undefined): number | undefined {
+  const at = match ? (right ?? []).indexOf(match) : -1;
+  return at < 0 ? undefined : at;
+}
+
 /** A timed quiz's countdown. It ticks on its own, so the page re-renders only when time is up. */
 function QuizClock({
   deadlineAt,
@@ -775,10 +781,10 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   if (redo && !savedAttempt) return <Navigate to={back} replace />;
   return (
     <FocusLayout
-      title={t(redo ? "mistakes.redoTitle" : "quiz.title")}
+      title={t(redo ? "mistakes.redoTitle" : diagnostic ? "quiz.diagnosticTitle" : "quiz.title")}
       onClose={() => void close()}
       meta={
-        question && !finalResult && !showIntro && !noAnswers
+        question && !finalResult && !showIntro && !noAnswers && !gradingStarted
           ? wholeReview
             ? t("cards.reviewPosition", {
                 current: wholeReview.cardsTotal + index + 1,
@@ -1107,7 +1113,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
           <div className="px-quiz-nav">
             {gradingStopped && gradeState !== "cancelled" ? (
               <Button shape="round" onClick={() => navigate("/settings/engines")}>
-                {t("engines.title")}
+                {t("quiz.openEngines")}
               </Button>
             ) : (
               <span />
@@ -1200,31 +1206,45 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
               {question.left?.map((left, leftIndex) => (
                 <label key={leftIndex}>
                   <InlineMarkdown>{left}</InlineMarkdown>
-                  <select
-                    aria-label={t("quiz.matchFor", { item: left })}
+                  <Select
+                    // A native <select> menu is plain text and cannot draw the math in an option.
+                    aria-label={t("quiz.matchFor", { item: left.replace(/\$/g, "") })}
+                    className="px-quiz-match-select"
+                    classNames={{ popup: { root: "px-quiz-match-popup" } }}
                     disabled={locked}
-                    value={pairs(picks[question.id])[leftIndex]?.[1] ?? ""}
-                    onChange={(event) =>
+                    allowClear
+                    placeholder={t("quiz.chooseMatch")}
+                    value={matchIndex(question.right, pairs(picks[question.id])[leftIndex]?.[1])}
+                    // The label is the plain reading for assistive technology, like a multiple-choice option's. The
+                    // value is the position, so a screen reader never announces the raw TeX.
+                    options={(question.right ?? []).map((right, rightIndex) => ({
+                      value: rightIndex,
+                      label: right.replace(/\$/g, ""),
+                      // The default hover tooltip would show the label's raw TeX.
+                      title: "",
+                    }))}
+                    optionRender={(option) => (
+                      <InlineMarkdown>{question.right?.[Number(option.value)] ?? ""}</InlineMarkdown>
+                    )}
+                    labelRender={({ value }) => (
+                      <InlineMarkdown>{question.right?.[Number(value)] ?? ""}</InlineMarkdown>
+                    )}
+                    onChange={(value: number | undefined) =>
                       pick(
                         JSON.stringify(
                           (question.left ?? []).map((item, itemIndex) => [
                             item,
                             itemIndex === leftIndex
-                              ? event.target.value
+                              ? value === undefined
+                                ? ""
+                                : (question.right?.[value] ?? "")
                               : (pairs(picks[question.id])[itemIndex]?.[1] ??
                                 ""),
                           ]),
                         ),
                       )
                     }
-                  >
-                    <option value="">{t("quiz.chooseMatch")}</option>
-                    {question.right?.map((right, rightIndex) => (
-                      <option key={rightIndex} value={right}>
-                        {right}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
               ))}
             </div>
