@@ -51,7 +51,7 @@ test("settings show a sidebar from 960px and drill down below it", async () => {
     );
     await sidebar.getByRole("button", { name: "Motori AI" }).click();
     await page.getByRole("switch", { name: "Opzioni avanzate" }).click();
-    await page.getByRole("button", { name: "Dettagli di Claude Code" }).click();
+    await page.getByRole("button", { name: /^Claude Code/ }).click();
     const drawer = page.getByRole("dialog", { name: "Claude Code", exact: true });
     await expect(drawer).toBeVisible();
     await page.setViewportSize({ width: 800, height: 800 });

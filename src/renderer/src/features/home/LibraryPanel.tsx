@@ -1429,7 +1429,7 @@ const LibraryRow = memo(function LibraryRow({
             )}
             onClick={() => handlers.current?.updateBook(source)}
           >
-            {t("books.update")}
+            {t(bookBusy === source.id ? "books.adding" : "books.update")}
           </Button>
         </p>
       ) : null}

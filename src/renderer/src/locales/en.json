@@ -474,7 +474,7 @@
       "submit": "Open",
       "cancel": "Cancel",
       "enter": "Enter password",
-      "enterNamed": "Enter the password for {{title}}"
+      "enterNamed": "Enter password for {{title}}"
     },
     "replaceNoText": "I found no text in the new file, so I kept the current version. To read a scan, add it as a new source.",
     "smartbookBroken": "I can't open this smartbook because parts of the package are missing. Download it again, then add it.",

@@ -61,6 +61,9 @@
   color: var(--ink-subtle);
   font: 400 11px/1 var(--font-mono);
 }
+.px-opt-shortcut::before {
+  content: attr(data-key) / "";
+}
 .px-opt-state {
   display: inline-flex;
   align-items: center;
