@@ -1265,6 +1265,18 @@ async function openWizard(page: Page, step: number) {
   }
 }
 
+/** A step's Back and Continue/Create buttons share one line, and no stepper label is cut with an ellipsis. */
+async function expectStepFrame(page: Page) {
+  const edges = page.locator(".focus-actions-bar").getByRole("button");
+  const first = (await edges.first().boundingBox())!;
+  const last = (await edges.last().boundingBox())!;
+  expect(Math.abs(first.y + first.height / 2 - (last.y + last.height / 2))).toBeLessThan(1);
+  const cut = await page
+    .locator(".px-stepper-label")
+    .evaluateAll((labels) => labels.filter((label) => label.scrollWidth > label.clientWidth).length);
+  expect(cut).toBe(0);
+}
+
 async function openGuided(
   page: Page,
   upTo: "period" | "modules" | "style" | "tree",
@@ -1423,6 +1435,7 @@ async function openState(page: Page, name: string) {
           }),
         ).toBeVisible();
       await expect(page).toHaveURL(/#\/plans\/new$/);
+      await expectStepFrame(page);
       break;
     }
     case "import-review": {
@@ -1568,6 +1581,7 @@ async function openState(page: Page, name: string) {
     case "guided-style":
     case "guided-tree":
       await openGuided(page, name.slice("guided-".length) as "period");
+      await expectStepFrame(page);
       break;
     case "shortcuts-dialog":
       await auditApp!.evaluate(({ Menu }) => {
@@ -1986,6 +2000,13 @@ async function openState(page: Page, name: string) {
         page.getByRole("button", {
           name: /Riprova la correzione|Retry grading/,
         }),
+      ).toBeVisible();
+      // Grading is not a question: the header shows no position, the count says graded rather than correct, and the
+      // way to the engines names the page it opens.
+      await expect(page.getByText(/^(Domanda|Question) \d+ (di|of) \d+$/)).toHaveCount(0);
+      await expect(page.getByText(/\d+ su \d+ risposte? apert[ae] valutat[ae]|\d+ of \d+ open answers? graded/)).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: /^(Apri Motori AI|Open AI engines)$/ }),
       ).toBeVisible();
       break;
     case "simulation-ready":

@@ -83,7 +83,31 @@ export function mapOutsideCode(
   return out;
 }
 
-/** Turns \\( … \\) and \\[ … \\] into $ / $$ forms for remark-math. Leaves $ and $$ untouched. */
+/**
+ * `$ … $` and `$$ … $$` spans, as remark-math reads them: an inline span opens before a non-space, closes after one and
+ * stays on its line; `\$` is a literal dollar sign.
+ */
+const MATH_SPAN = /\$\$[\s\S]+?\$\$|(?<!\\)\$(?=\S)[^\n$]*?(?<=\S)(?<!\\)\$/g;
+
+/** Start and end offsets of the math spans in `text`. */
+export function mathSpans(text: string): Array<[number, number]> {
+  return [...text.matchAll(MATH_SPAN)].map((m) => [m.index, m.index + m[0].length]);
+}
+
+/**
+ * KaTeX has no Markdown: `**b**` inside a formula draws two asterisk glyphs around b. Writes it as `\mathbf{b}`.
+ * Needs `**` hugging its text, so `f ** g` stays.
+ */
+function boldInMath(text: string): string {
+  return text.replace(MATH_SPAN, (span) =>
+    span.replace(/\*\*(?=\S)([^*\n]*?\S)\*\*/g, "\\mathbf{$1}"),
+  );
+}
+
+/**
+ * Turns \\( … \\) and \\[ … \\] into $ / $$ forms for remark-math, and Markdown bold inside a formula into \\mathbf.
+ * Leaves $ and $$ untouched.
+ */
 export function normalizeMathDelimiters(input: string): string {
   return mapOutsideCode(input, (text) => {
     let out = text.replace(
@@ -91,7 +115,7 @@ export function normalizeMathDelimiters(input: string): string {
       (_, body: string) => `\n$$\n${body.trim()}\n$$\n`,
     );
     out = out.replace(/\\\(([\s\S]*?)\\\)/g, (_, body: string) => `$${body}$`);
-    return out;
+    return boldInMath(out);
   });
 }
 

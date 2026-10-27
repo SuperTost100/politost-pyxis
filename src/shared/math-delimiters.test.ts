@@ -71,3 +71,23 @@ describe("displayMathLines", () => {
     expect(displayMathLines("`code`\n$$x^2$$")).toBe("`code`\n$$\nx^2\n$$");
   });
 });
+
+describe("bold markers inside math", () => {
+  it("turns ** inside a formula into \\mathbf instead of two asterisk glyphs", () => {
+    expect(normalizeMathDelimiters("$a \\subset **b** \\subset **c**$")).toBe(
+      "$a \\subset \\mathbf{b} \\subset \\mathbf{c}$",
+    );
+    expect(normalizeMathDelimiters("$$\nx **y**\n$$")).toBe("$$\nx \\mathbf{y}\n$$");
+  });
+
+  it("leaves bold around a formula, bold in prose, spaced ** and code alone", () => {
+    for (const same of [
+      "**$x^2$** e **non** $y$",
+      "$f ** g$ e $a$ ** $b$",
+      "`$a **b** c$`",
+      "```\n$a **b** c$\n```",
+      "costa \\$5 e **forte** \\$6",
+    ])
+      expect(normalizeMathDelimiters(same)).toBe(same);
+  });
+});
