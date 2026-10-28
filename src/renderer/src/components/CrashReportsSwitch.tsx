@@ -34,14 +34,14 @@ export function CrashReportsSwitch({
           id={id}
           checked={checked}
           disabled={disabled}
-          aria-describedby={`${id}-hint ${id}-why`}
+          aria-describedby={`${id}-hint ${id}-why ${id}-facts`}
           onChange={onChange}
         />
       </div>
       <p className="small px-crash-detail" id={`${id}-why`}>
         {t("settings.crashWhy")}
       </p>
-      <ul className="small px-crash-detail px-crash-facts">
+      <ul className="small px-crash-detail px-crash-facts" id={`${id}-facts`}>
         <li>{t("settings.crashContents")}</li>
         <li>{t("settings.crashNever")}</li>
         <li>{t("settings.crashKept")}</li>

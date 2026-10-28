@@ -18,7 +18,9 @@ async function crashServer(): Promise<{ server: Server; endpoint: string; receiv
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
       received.push({ path: request.url ?? "", headers: request.headers, body: Buffer.concat(chunks) });
-      if (request.url === "/minidump") response.writeHead(200, { "content-type": "text/plain" }).end("report-id");
+      // Crashpad adds ?product=…&version=…&guid=… to the URL, as it does with the real Worker.
+      const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+      if (path === "/minidump") response.writeHead(200, { "content-type": "text/plain" }).end("report-id");
       else response.writeHead(204).end();
     });
   });

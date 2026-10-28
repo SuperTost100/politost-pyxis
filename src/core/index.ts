@@ -174,7 +174,9 @@ if (!parent) {
     // Main keeps a copy of the crash-report switch so it can start the crash reporter before core is up. Core sends
     // the stored value now (a restore or a new workspace can change it) and again after every profile save.
     port.postMessage({ type: "crash-consent", enabled: readProfile(db)?.crashReports === true });
-    bindProfile(db, (profile) => port.postMessage({ type: "crash-consent", enabled: profile.crashReports }));
+    bindProfile(db, (profile) =>
+      port.postMessage({ type: "crash-consent", enabled: profile.crashReports === true }),
+    );
     const planFixture = dev ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined;
     bindPlans(
       db,
