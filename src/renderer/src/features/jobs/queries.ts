@@ -10,6 +10,14 @@ export function useJobs() {
   });
 }
 
+/** Jobs that finished today and were not cleared, for the jobs list. */
+export function useFinishedJobs() {
+  return useQuery({
+    queryKey: ["jobs-finished"],
+    queryFn: () => invoke("jobs.finished", {}),
+  });
+}
+
 export function JobsSync() {
   const client = useQueryClient();
   useEffect(() => {

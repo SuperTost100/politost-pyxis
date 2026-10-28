@@ -149,7 +149,7 @@ describe("migration 22", () => {
   it("turns an existing exam date into one session that carries the plan's id", () => {
     const file = join(mkdtempSync(join(tmpdir(), "pyxis-sessions-")), "pyxis.db");
     const db = openDatabase(file);
-    db.exec("DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at;");
+    db.exec("DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at; ALTER TABLE jobs DROP COLUMN fallback_json;");
     db.pragma("user_version = 21");
     db.prepare("INSERT INTO plans(id,title,status,exam_at,created_at,updated_at) VALUES('dated','A','ready',?,1,1)").run(noon(2026, 11, 20));
     db.prepare("INSERT INTO plans(id,title,status,created_at,updated_at) VALUES('undated','B','ready',1,1)").run();
@@ -157,7 +157,7 @@ describe("migration 22", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(22);
+    expect(again.pragma("user_version", { simple: true })).toBe(23);
     expect(readSessions(again, "dated")).toEqual([
       { id: "dated", date: noon(2026, 11, 20), time: null, place: null, label: null },
     ]);

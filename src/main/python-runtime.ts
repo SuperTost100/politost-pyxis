@@ -189,6 +189,13 @@ function execute(
   tails[operation] = turn.catch(() => undefined);
   return turn;
 }
+// The sandbox never navigates (will-navigate is refused), so a main frame that is destroyed or detached means its
+// renderer is gone. Electron can dispose the frame before isCrashed() turns true and before render-process-gone.
+function rendererGone(target: BrowserWindow): boolean {
+  if (target.isDestroyed() || target.webContents.isDestroyed() || target.webContents.isCrashed()) return true;
+  const frame = target.webContents.mainFrame;
+  return !frame || frame.isDestroyed() || frame.detached;
+}
 // Covers booting Pyodide (host.js allows 60 s) plus the run itself (at most 11 s). Old Intel Macs take over a minute to boot.
 const RUN_CEILING_MS = 90000;
 async function dispatch(
@@ -203,9 +210,16 @@ async function dispatch(
   let onClosed: (() => void) | undefined;
   try {
     return await Promise.race([
-      target.webContents.executeJavaScript(
-        `window.pyxisRuntime.${method}(${JSON.stringify(payload)}${operation === "run" ? `, ${timeoutMs}` : ""})`,
-      ),
+      target.webContents
+        .executeJavaScript(
+          `window.pyxisRuntime.${method}(${JSON.stringify(payload)}${operation === "run" ? `, ${timeoutMs}` : ""})`,
+        )
+        .catch((error: unknown) => {
+          // Since Electron 45 a renderer that dies rejects the pending call at once ("Render frame was disposed before
+          // the request completed"), before the window closes. A call that fails with the renderer gone crashed.
+          if (rendererGone(target)) throw new Error("runtime-crashed");
+          throw error;
+        }),
       new Promise((_, reject) => {
         timer = setTimeout(() => {
           void target.webContents

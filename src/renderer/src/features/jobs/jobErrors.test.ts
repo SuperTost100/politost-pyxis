@@ -26,6 +26,8 @@ describe("job error text", () => {
     expect(jobErrorKey("quota")).toBe("engines.errors.quota");
     expect(jobErrorKey("cli-failed")).toBe("engines.errors.cli-failed");
     expect(jobErrorKey("not-logged-in: Please run /login")).toBe("engines.errors.not-logged-in");
+    expect(jobErrorKey("model-not-included: not in your plan")).toBe("engines.errors.model-not-included");
+    expect(jobErrorKey("stream-truncated")).toBe("engines.errors.stream-truncated");
   });
 
   it("keeps the messages it already had", () => {

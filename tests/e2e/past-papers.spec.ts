@@ -39,6 +39,11 @@ async function look(page: Page, language: "it" | "en", theme: "light" | "dark") 
     { language, theme },
   );
   await page.reload();
+  // The window draws nothing until it has its theme, then fades the page in: wait for both, and for the fade to end,
+  // before a caller takes a screenshot or measures.
+  await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+  await expect(page.locator("h1:visible").first()).toBeVisible();
+  await animationsSettled(page);
 }
 
 async function shoot(page: Page, name: string) {
@@ -140,9 +145,11 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await page.setViewportSize({ width: 420, height: 900 });
     await shoot(page, "sources-paper-en-dark-420");
     await look(page, "it", "light");
+    await expect(page.getByText(/6 domande · 150 min · aperte 2, numeriche 2/)).toBeVisible();
     await shoot(page, "sources-paper-it-light-420");
     await page.setViewportSize({ width: 1280, height: 900 });
     await look(page, "en", "light");
+    await expect(page.getByText(/6 questions · 150 min/)).toBeVisible();
     await shoot(page, "sources-paper-en-light");
     await animationsSettled(page);
     await expectNoAxeViolations(page);

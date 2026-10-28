@@ -28,6 +28,11 @@ export function withUsageScope<T>(next: UsageScope, fn: () => T): T {
   return scope.run({ ...scope.getStore(), ...next }, fn);
 }
 
+/** What the model call running right now works for, if it runs inside `withUsageScope`. */
+export function currentUsageScope(): UsageScope | undefined {
+  return scope.getStore();
+}
+
 /** Core stores each call's tokens. Tests and tools that open no workspace leave it unset. */
 export function setUsageRecorder(
   recorder: ((usage: EngineResult, scope: UsageScope) => void) | undefined,

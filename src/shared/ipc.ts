@@ -240,6 +240,13 @@ const jobProgressSchema = z.object({
   error: z.string().nullable(),
 });
 
+/** An engine refused a call and another one answered: who was asked, who answered, and why. */
+const JobFallback = z.object({
+  from: z.string(),
+  to: z.string(),
+  reason: z.enum(["limit", "signed-out", "model"]),
+});
+
 export const JobView = z.object({
   id: z.string(),
   kind: z.string(),
@@ -250,6 +257,10 @@ export const JobView = z.object({
   stepLabel: z.string().nullable(),
   error: z.string().nullable(),
   steps: z.array(JobStepView),
+  /** When the job last changed state, in ms since the epoch: for a finished job, when it finished. */
+  updatedAt: z.number(),
+  /** Set when an automatic engine refused a call of this job and another engine did the work. */
+  fallback: JobFallback.optional(),
 });
 
 export type JobView = z.infer<typeof JobView>;
@@ -418,6 +429,8 @@ const LessonOutput = z.object({
 
 export const requests = {
   "jobs.list": { input: z.object({}), output: z.array(JobView) },
+  /** Jobs that finished today and were not cleared, newest first. */
+  "jobs.finished": { input: z.object({}), output: z.array(JobView) },
   "jobs.startDemo": {
     input: z.object({ failOnce: z.boolean().optional() }),
     output: z.object({ jobId: z.string() }),

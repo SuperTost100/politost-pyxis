@@ -130,20 +130,33 @@ test("Quiz: a matching question's menu draws math and picks with the keyboard", 
     await expect(rows).toHaveCount(3);
     await expect(rows.first().locator(".katex")).not.toHaveCount(0);
     const first = page.getByRole("combobox", { name: "Abbinamento per \\mathbb{N}" });
-    await first.focus();
-    await page.keyboard.press("ArrowDown");
     const menu = page.locator(".ant-select-dropdown:visible");
-    await expect(menu.locator(".ant-select-item-option .katex").first()).toBeVisible();
-    expect((await menu.locator(".ant-select-item-option").allInnerTexts()).join(" ")).not.toContain("$");
-    // No hover tooltip with raw TeX either.
-    await expect(menu.locator(".ant-select-item-option[title]:not([title=''])")).toHaveCount(0);
-    await saveShot(page, "quiz-match-math-open.png");
-    // Arrow keys walk the options; take the first one that holds math.
-    for (let tries = 0; tries < 3; tries += 1) {
-      if ((await menu.locator(".ant-select-item-option-active .katex").count()) > 0) break;
-      await page.keyboard.press("ArrowDown");
-    }
-    await expect(menu.locator(".ant-select-item-option-active .katex").first()).toBeVisible();
+    const options = menu.locator(".ant-select-item-option");
+    const active = () =>
+      options.evaluateAll((items) => items.findIndex((item) => item.classList.contains("ant-select-item-option-active")));
+    // Open the menu, check it, and walk to the first option that holds math. Each press waits for the highlight to move,
+    // so a slow window can't make the loop read the old option and press past the one it wants. The hidden macOS test
+    // window belongs to an app that can't be active, so the menu can lose focus and close: every step that needs it open
+    // runs again from the start.
+    await expect(async () => {
+      if (!(await menu.isVisible())) {
+        await first.focus();
+        await page.keyboard.press("ArrowDown");
+      }
+      await expect(options.locator(".katex").first()).toBeVisible({ timeout: 2000 });
+      expect((await options.allInnerTexts()).join(" ")).not.toContain("$");
+      // No hover tooltip with raw TeX either.
+      await expect(menu.locator(".ant-select-item-option[title]:not([title=''])")).toHaveCount(0);
+      await saveShot(page, "quiz-match-math-open.png");
+      const target = await options.evaluateAll((items) => items.findIndex((item) => item.querySelector(".katex")));
+      expect(target).toBeGreaterThanOrEqual(0);
+      for (let tries = 0; tries < 10 && (await active()) !== target; tries += 1) {
+        const before = await active();
+        await page.keyboard.press(before < target ? "ArrowDown" : "ArrowUp");
+        await expect.poll(active, { timeout: 2000 }).not.toBe(before);
+      }
+      await expect(menu.locator(".ant-select-item-option-active .katex").first()).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 20000 });
     await page.keyboard.press("Enter");
     await expect(menu).toBeHidden();
     await expect(rows.first().locator(".ant-select-content .katex").first()).toBeVisible();

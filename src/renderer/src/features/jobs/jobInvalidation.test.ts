@@ -10,6 +10,7 @@ describe("job update invalidation", () => {
     expect(keys(staleFamilies({ kind: "plan-build", state: "succeeded" }))).toEqual([
       "jobs",
       "plan-build",
+      "jobs-finished",
       "plans",
       "plan",
       "series:later",
@@ -17,6 +18,7 @@ describe("job update invalidation", () => {
     expect(keys(staleFamilies({ kind: "quiz-build", state: "running" }))).toEqual(["jobs"]);
     expect(keys(staleFamilies({ kind: "cards-build", state: "failed" }))).toEqual([
       "jobs",
+      "jobs-finished",
       "plans",
       "plan",
       "series:later",
@@ -55,6 +57,7 @@ describe("stale batcher", () => {
       "source-chapters",
       "source-meta",
       "plan-build",
+      "jobs-finished",
       "plans",
       "plan",
       "series:later",
