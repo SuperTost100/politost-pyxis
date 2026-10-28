@@ -399,7 +399,7 @@ export async function writeLesson(
         signal: options?.signal,
         onDelta: options?.onDelta && ((text) => options.onDelta?.(earlier + text)),
         prompt: grounded
-          ? `Topic: ${topic.title}\n${partNote(index, batches.length)}\n\nMaterial:\n\n${materialText(batch)}`
+          ? `Topic: ${topic.title}\n${partNote(index, batches.length)}${lessonSoFar(written)}\n\nMaterial:\n\n${materialText(batch)}`
           : `Topic: ${topic.title}`,
         system: [lessonSystem(context, grounded, python != null), interestsLine(db)]
           .filter(Boolean)
@@ -466,6 +466,25 @@ function partNote(index: number, count: number) {
     ? `write about ${share} section${share === 1 ? "" : "s"} for this part, with about one quick check per section.`
     : "do not start a new ## section for this part: continue the section the earlier part ended with, and add no quick check.";
   return `Part ${index + 1} of ${count}. Teach this part of the material, continuing from the earlier parts. The whole lesson has about ${LESSON_SECTIONS} sections across all parts, so ${budget}${index + 1 < count ? " This is not the last part: do not write the pyxis-recap." : " This is the last part: end with the pyxis-recap for the whole topic."}`;
+}
+
+/** Characters of the lesson so far a later part sees: enough for the section it continues, without resending the lesson. */
+const TAIL_CHARS = 1500;
+
+/**
+ * Where the lesson written by the earlier parts ends: its last ## section, cut to its heading and its last characters
+ * when long. Empty for the first part.
+ */
+function lessonSoFar(written: string[]) {
+  if (!written.length) return "";
+  const text = written.join("\n\n");
+  const start = Math.max(text.lastIndexOf("\n## "), text.startsWith("## ") ? 0 : -1);
+  const section = start >= 0 ? text.slice(start).trimStart() : text;
+  const tail =
+    section.length <= TAIL_CHARS
+      ? section
+      : `${section.slice(0, section.indexOf("\n") + 1)}…\n${section.slice(-TAIL_CHARS)}`;
+  return `\n\nThe lesson so far ends like this (do not repeat it):\n\n${tail}`;
 }
 
 /** The model's lesson, unwrapped when it put the whole answer in one Markdown fence; empty when there is no text. */

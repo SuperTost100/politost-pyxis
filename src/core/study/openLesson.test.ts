@@ -526,6 +526,10 @@ it("splits the lesson's six sections over its parts, and asks a single-part less
       expect(prompt).toContain("about 6 sections across all parts");
       expect(prompt).toContain("write about 2 sections for this part");
     }
+    // A later part sees where the lesson so far ends, so it can continue it; the first part has nothing before it.
+    expect(prompts[0]).not.toContain("The lesson so far ends like this");
+    expect(prompts[1]).toContain("The lesson so far ends like this");
+    expect(prompts[1]).toContain("## Idea\n\nText.");
 
     // Four or more parts still add up to the lesson's six sections.
     const requested = () =>
