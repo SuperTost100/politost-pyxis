@@ -101,8 +101,8 @@ Every task runs at a reasoning effort that fits it, whether Pyxis or the student
 
 | Task                                       | Effort   |
 | ------------------------------------------ | -------- |
-| Chat (Ask) and maps                        | `low`    |
-| Lessons, quizzes, cards and drills, photos | `medium` |
+| Chat (Ask), maps and flashcards            | `low`    |
+| Lessons, quizzes and drills, photos        | `medium` |
 | Grading of exercises and simulations       | `medium` |
 | The default engine                         | `medium` |
 | Plans                                      | `high`   |
