@@ -343,6 +343,7 @@ const engineFeature = z.enum([
   "grading",
   "map",
   "vision",
+  "cards",
 ]);
 const engineSelection = z.object({
   provider: z.string(),

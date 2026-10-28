@@ -17,6 +17,7 @@ import {
   parseSmartText,
   smartQuestions,
   smartSections,
+  writtenSections,
 } from "@shared/smart-text";
 import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
@@ -55,6 +56,8 @@ export function LessonPage() {
   const [live, setLive] = useState("");
   const [livePassages, setLivePassages] = useState<string[]>([]);
   const [liveCitations, setLiveCitations] = useState<string[]>([]);
+  // Known from the first event, before any text: the lesson is written from the model's own knowledge, not sources.
+  const [liveGeneral, setLiveGeneral] = useState(false);
   const [chosen, setChosen] = useState<Wording | undefined>();
   const [exportOpen, setExportOpen] = useState(false);
   const [partOpen, setPartOpen] = useState(false);
@@ -78,6 +81,7 @@ export function LessonPage() {
       setLive("");
       setLivePassages([]);
       setLiveCitations([]);
+      setLiveGeneral(false);
       queued.drop();
       const again = regenerate.current;
       regenerate.current = false;
@@ -93,7 +97,10 @@ export function LessonPage() {
         },
         (event) => {
           const data = event as { text?: string; passageIds?: string[]; citations?: string[] };
-          if (Array.isArray(data.passageIds)) setLivePassages(data.passageIds);
+          if (Array.isArray(data.passageIds)) {
+            setLivePassages(data.passageIds);
+            setLiveGeneral(data.passageIds.length === 0);
+          }
           if (Array.isArray(data.citations)) setLiveCitations(data.citations);
           if (typeof data.text === "string") setLive(data.text);
         },
@@ -145,8 +152,13 @@ export function LessonPage() {
   const writing = lesson.isFetching;
   const data = lesson.data;
   const fromLive = showsLiveText({ writing, live, saved: data?.markdown, cancelled });
+  // While the lesson is written, the reader gets each section once it is finished and a status for the one in progress,
+  // so nothing they are reading changes under them. Text that is stopped or saved shows whole.
+  const written = useMemo(() => (writing && live ? writtenSections(live) : null), [writing, live]);
   const markdown = writing
-    ? live || data?.markdown || ""
+    ? written
+      ? written.done
+      : (data?.markdown ?? "")
     : (data?.markdown ?? (cancelled ? live : ""));
   const topic = plan.data?.topics.find((item) => item.id === topicId);
   const read = plan.data?.steps.some(
@@ -320,7 +332,7 @@ export function LessonPage() {
       }
     >
       {modalContext}
-      {data?.general && !writing ? (
+      {(writing ? liveGeneral : data?.general) ? (
         <div className="px-reader-note">
           <Tag tone="general">{t("components.tags.general")}</Tag>
           <span className="meta ink-muted">{t("lesson.generalNote")}</span>
@@ -355,14 +367,6 @@ export function LessonPage() {
           </Notice>
         </div>
       ) : null}
-      {writing ? (
-        <ReaderProgress
-          label={t("lesson.writing")}
-          stopLabel={t("lesson.stop")}
-          onStop={() => stop.current?.()}
-          empty={!markdown}
-        />
-      ) : null}
       {rewritePart.isPending ? (
         <ReaderProgress
           label={t("lesson.rewritingPart", { title: sections[part]?.title ?? "" })}
@@ -388,6 +392,20 @@ export function LessonPage() {
           {markdown}
         </SmartText>
       </SelectionMenu>
+      {writing ? (
+        <ReaderProgress
+          label={
+            written?.writing
+              ? t("lesson.writingSection", { n: written.writing.number })
+              : t("lesson.writing")
+          }
+          detail={written?.writing ? <InlineMarkdown>{written.writing.title}</InlineMarkdown> : undefined}
+          stopLabel={t("lesson.stop")}
+          onStop={() => stop.current?.()}
+          empty={!markdown}
+          pending
+        />
+      ) : null}
       {data && !writing ? (
         <>
           <ReaderEnd

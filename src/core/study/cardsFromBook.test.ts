@@ -94,6 +94,24 @@ it("uses the persisted engine when settings change before an interrupted build r
   db.close();
 });
 
+it("runs on the cards engine, not the lesson's or the default one", async () => {
+  const db = fixture();
+  const row = (feature: string, model: string) =>
+    db
+      .prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES (?, ?, 1)")
+      .run(feature, JSON.stringify({ provider: "claude", model }));
+  row("lesson", "lesson-model");
+  row("cards", "fast-model");
+  const mock = counting();
+  const models: string[] = [];
+  await generateTopicCards(db, { planId: "plan", topicId: "topic" }, async (input) => {
+    models.push(input.selection.model);
+    return mock.run(input);
+  });
+  expect(models).toEqual(["fast-model"]);
+  db.close();
+});
+
 describe("generated topic cards", () => {
   it("stores grounded question, concept and cloze cards with provenance, once", async () => {
     const db = fixture();

@@ -15,6 +15,7 @@ const levels = (...ids: string[]) => ids.map((id) => ({ id, label: id }));
 const tasks = [
   "chat",
   "map",
+  "cards",
   "lesson",
   "vision",
   "default",
@@ -50,6 +51,7 @@ describe("effort by task", () => {
     ).toEqual({
       chat: "low",
       map: "low",
+      cards: "low",
       lesson: "medium",
       vision: "medium",
       default: "medium",

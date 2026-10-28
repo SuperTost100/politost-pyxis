@@ -5,13 +5,14 @@ describe("task effort", () => {
   it("maps each task to its level", () => {
     expect(
       Object.fromEntries(
-        ["chat", "map", "lesson", "vision", "default", "plan", "grading"].map(
+        ["chat", "map", "cards", "lesson", "vision", "default", "plan", "grading"].map(
           (feature) => [feature, taskEffort(feature)],
         ),
       ),
     ).toEqual({
       chat: "low",
       map: "low",
+      cards: "low",
       lesson: "medium",
       vision: "medium",
       default: "medium",

@@ -6,6 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -159,9 +161,7 @@ test("a quick check can be answered while the lesson is still being written, and
       }
     };
 
-    const status = page
-      .getByRole("status")
-      .filter({ hasText: "Sto scrivendo la lezione…" });
+    const status = page.getByRole("status").filter({ hasText: /^Sto scrivendo/ });
     const quick = page.getByRole("region", { name: "Verifica rapida" });
     const open = () =>
       page.evaluate(
@@ -175,8 +175,24 @@ test("a quick check can be answered while the lesson is still being written, and
     await open();
     await expect(status).toBeVisible();
     await expect(quick).toHaveCount(1);
-    // The block still being written is a placeholder with nothing to click.
-    await expect(page.getByText("Sto preparando un esercizio…")).toBeVisible();
+    // The first section is finished and readable. The second is only a status with its title, an icon and words,
+    // until it is finished: its text and the block still being written are not on the page yet.
+    await expect(page.getByText("Una forza cambia il moto.")).toBeVisible();
+    await expect(status).toContainText("Sto scrivendo la sezione 2:");
+    await expect(status).toContainText("Seconda idea");
+    await expect(status.locator("svg")).toHaveCount(1);
+    await expect(page.getByRole("heading", { name: "Seconda idea" })).toHaveCount(0);
+    await expect(page.getByText("Forza, massa e accelerazione.")).toHaveCount(0);
+    await expect(page.getByText("Sto preparando un esercizio…")).toHaveCount(0);
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
+      await saveShot(page, `lesson-streaming/it-${theme}-1280.png`);
+      await expectNoAxeViolations(page);
+    }
+    await page.setViewportSize({ width: 960, height: 640 });
+    await saveShot(page, "lesson-streaming/it-dark-960.png");
+    await page.evaluate(() => window.pyxis.setAppearance("light"));
+    await page.setViewportSize({ width: 1280, height: 800 });
     await quick.getByRole("button", { name: /Spinge nel verso/ }).click();
     await expect(quick.getByText("Non proprio.")).toBeVisible();
     await expect(status).toBeVisible();
@@ -196,11 +212,17 @@ test("a quick check can be answered while the lesson is still being written, and
     await expect(quick.getByText("Giusto.", { exact: true })).toBeVisible();
     await expect(status).toBeVisible();
     expect(answerEvents()).toBe(0);
+    // What the reader is on does not move when the rest of the lesson lands.
+    const reading = page.getByText("Una forza cambia il moto.");
+    const before = (await reading.boundingBox())!.y;
     writeFileSync(hold, "");
     await expect(status).toHaveCount(0, { timeout: 20000 });
+    await expect(page.getByText("Forza, massa e accelerazione.")).toBeVisible();
+    expect((await reading.boundingBox())!.y).toBe(before);
     await expect(
       page.getByRole("region", { name: "Ripasso finale" }),
     ).toBeVisible();
+    await expect(page.getByText("Forza, massa e accelerazione.")).toBeVisible();
     await expect.poll(answerEvents).toBe(1);
     // The saved pick is what the reader sees after a reload.
     await page.reload();

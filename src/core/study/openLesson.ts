@@ -453,9 +453,13 @@ export async function writeLesson(
   };
 }
 
+/** Sections the whole lesson should have, split over its parts (the prompt asks a one-part lesson for the same). */
+const LESSON_SECTIONS = 6;
+
 function partNote(index: number, count: number) {
   if (count === 1) return "Teach this material.";
-  return `Part ${index + 1} of ${count}. Teach this part of the material, continuing from the earlier parts.${index + 1 < count ? " This is not the last part: do not write the pyxis-recap." : " This is the last part: end with the pyxis-recap for the whole topic."}`;
+  const share = Math.max(1, Math.round(LESSON_SECTIONS / count));
+  return `Part ${index + 1} of ${count}. Teach this part of the material, continuing from the earlier parts. The whole lesson has about ${LESSON_SECTIONS} sections across all parts, so write about ${share} section${share === 1 ? "" : "s"} for this part, with about one quick check per section.${index + 1 < count ? " This is not the last part: do not write the pyxis-recap." : " This is the last part: end with the pyxis-recap for the whole topic."}`;
 }
 
 /** The model's lesson, unwrapped when it put the whole answer in one Markdown fence; empty when there is no text. */
