@@ -64,13 +64,20 @@ describe("scrubbing", () => {
     expect(scrubMessage(`Unexpected token 'C', "Ciao Mario, ecco i miei appunti" is not valid JSON`, posix)).toBe(
       `Unexpected token 'C', "…" is not valid JSON`,
     );
-    expect(scrubMessage("Cannot read properties of undefined (reading 'length')", posix)).toBe(
-      "Cannot read properties of undefined (reading 'length')",
+    expect(scrubMessage("Cannot read properties of undefined (reading 'readFile')", posix)).toBe(
+      "Cannot read properties of undefined (reading 'readFile')",
     );
     expect(scrubMessage("ENOENT: no such file or directory, open '/home/mario/My Notes/x.pdf'", posix)).toBe(
       "ENOENT: no such file or directory, open '…'",
     );
     expect(scrubMessage("model said «la risposta è 42»", posix)).toBe("model said «…»");
+  });
+
+  it("drops a quoted single word unless it is clearly code, so a name typed by the student never goes", () => {
+    for (const word of ["Mario", "mario", "ciao", "Rossi", "length"])
+      expect(scrubMessage(`Unknown value '${word}'`, posix)).toBe("Unknown value '…'");
+    for (const word of ["C", "readFile", "plan_id", "fs.promises", "ENOENT", "item2", "$scope", "undefined", "null"])
+      expect(scrubMessage(`Unknown value '${word}'`, posix)).toBe(`Unknown value '${word}'`);
   });
 
   it("removes API keys, tokens and e-mail addresses", () => {

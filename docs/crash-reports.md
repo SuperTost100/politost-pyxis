@@ -15,7 +15,7 @@ Scrubbing happens in main (`src/main/crash-reports.ts`) before a JavaScript erro
 
 - The home folder becomes `~`, the workspace `<workspace>` and `userData` `<userData>`, in any slash style and as `file://` URLs, and everything after them is cut, because it would name the student's files.
 - Paths under the installed app keep their code path (`<app>/out/main/core.js`). Any other absolute path becomes `<path>`, a web address `<url>` and a `pyxis-blob:` address `<blob>`.
-- Quoted text is kept only when it looks like a code identifier, because library messages quote their input (`Unexpected token 'C', "Ciao Mario" is not valid JSON`).
+- Quoted text is kept only when it is clearly code, because library messages quote their input (`Unexpected token 'C', "Ciao Mario" is not valid JSON`). Clearly code means one character, `undefined`, `null`, `true`, `false` or `NaN`, or an identifier with an underscore, `$`, a dot, a digit, camelCase or all capitals. A plain word such as `'Mario'` or `'length'` is removed, because a name the student typed looks the same as a property name. A typed word that happens to carry one of those marks, such as `mario.rossi`, would still pass.
 - API keys, bearer tokens, long tokens and e-mail addresses are removed.
 - The message is cut to 300 characters on one line. The stack keeps up to 30 frames and drops the message lines at its top.
 - A value thrown that is not an Error sends only its type, or the `code` of a Pyxis IPC error such as `core-restarted`.

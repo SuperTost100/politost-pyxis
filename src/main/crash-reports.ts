@@ -127,12 +127,24 @@ function stripControl(text: string): string {
   return text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");
 }
 
-const SAFE_QUOTED = /^(?:[A-Za-z_$][\w$.-]{0,40}|<(?:app|path|url|blob|key|email|workspace|userData)>)$/;
+const SCRUB_LABEL = /^<(?:app|path|url|blob|key|email|workspace|userData)>$/;
+const JS_VALUES = new Set(["undefined", "null", "true", "false", "NaN"]);
+
+/**
+ * Quoted text that is clearly code: one character, a JavaScript value, or an identifier with a mark no typed word has
+ * (an underscore, $, a dot, a digit, camelCase, or all capitals). A plain word such as 'Mario' or 'ciao' goes, because a
+ * name or a word the student typed looks exactly like a property name.
+ */
+function safeQuoted(inner: string) {
+  if (SCRUB_LABEL.test(inner) || JS_VALUES.has(inner)) return true;
+  if (!/^[A-Za-z_$][\w$.-]{0,40}$/.test(inner)) return false;
+  return inner.length === 1 || /[_$.\d]/.test(inner) || /[a-z][A-Z]/.test(inner) || /^[A-Z][A-Z0-9_]+$/.test(inner);
+}
 
 /**
  * One error message, made safe to send. Folder roots become labels and anything after the home, workspace or userData
  * label becomes "…", other absolute paths and URLs become <path> and <url>, keys and e-mail addresses go, and quoted
- * text is kept only when it looks like a code identifier: library messages quote input ("Unexpected token 'C',
+ * text is kept only when it is clearly code (see safeQuoted): library messages quote input ("Unexpected token 'C',
  * "Ciao Mario" is not valid JSON"), and that input can be the student's.
  */
 export function scrubMessage(message: string, roots: ScrubRoots): string {
@@ -163,7 +175,7 @@ export function scrubMessage(message: string, roots: ScrubRoots): string {
     [/«([^»\n]*)»/g, "«", "»"],
   ];
   for (const [pattern, open, close] of quoted)
-    out = out.replace(pattern, (_m, inner: string) => `${open}${SAFE_QUOTED.test(inner) ? inner : "…"}${close}`);
+    out = out.replace(pattern, (_m, inner: string) => `${open}${safeQuoted(inner) ? inner : "…"}${close}`);
   out = out.replace(/\s+/g, " ").trim();
   return out.length > CRASH_LIMITS.messageChars ? `${out.slice(0, CRASH_LIMITS.messageChars - 1)}…` : out;
 }
