@@ -6,7 +6,6 @@ import {
   type Page,
 } from "@playwright/test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
@@ -72,6 +71,7 @@ const profile = (page: Page) =>
     educationLevel: string;
     contentLanguage: string;
     crashReports: boolean;
+    gradeScale: 30 | 100 | null;
   } | null>;
 const button = (page: Page | Locator, name: string | RegExp) =>
   page.getByRole("button", { name, exact: typeof name === "string" });
@@ -84,7 +84,7 @@ async function noNavigation(page: Page) {
   await expect(button(page, "Impostazioni")).toHaveCount(0);
 }
 
-test("First setup: welcome, name, engines found, photos later, crash reports on by default, ready, then the switch in Settings", async () => {
+test("First setup: about you, the engine with its notice and crash reports off, the exam with a goal out of 30, the material, then the switch in Settings", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
@@ -94,28 +94,26 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
-    // Welcome: what Pyxis is, before any question.
+    // Step 1: what Pyxis is, and the profile, on one screen.
     await expect(
       page.getByRole("heading", { name: "Ciao, sono Pyxis" }),
     ).toBeVisible();
-    await expect(page.getByText(/Pyxis è gratis\./)).toBeVisible();
-    await expect(stepper(page)).toHaveCount(0);
-    await noNavigation(page);
-    await noAxeViolations(page);
-    await button(page, "Inizia").click();
-    await expect(page.getByRole("heading", { name: "Iniziamo" })).toBeVisible();
+    await expect(stepper(page).getByRole("listitem")).toHaveCount(4);
     await expect(currentStep(page)).toHaveText("Passo 1 di 4: Su di te");
     await expect(page.getByText("Passo 1 di 4")).not.toBeInViewport();
+    await expect(
+      button(page, "Università").and(page.locator("[aria-pressed=true]")),
+    ).toBeVisible();
     await noNavigation(page);
-    await page.getByLabel("Nome", { exact: true }).fill("Ada");
+    await page.getByLabel("Come ti chiami? (facoltativo)", { exact: true }).fill("Ada");
     await noAxeViolations(page);
     await button(page, "Continua").click();
 
-    // Engines: what was found, in plain words, and no model call anywhere.
+    // Step 2: what was found, in plain words, and no model call anywhere.
     await expect(
-      page.getByRole("heading", { name: "Collega un motore AI" }),
+      page.getByRole("heading", { name: "Chi scrive le tue lezioni" }),
     ).toBeVisible();
-    await expect(currentStep(page)).toHaveText("Passo 2 di 4: Motori AI");
+    await expect(currentStep(page)).toHaveText("Passo 2 di 4: Motore AI");
     await expect(page.getByText("Ho trovato Claude Code e Codex.")).toBeVisible(
       {
         timeout: 30000,
@@ -129,6 +127,11 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
     await expect(notice.getByText("Codex li invia ad OpenAI.")).toBeVisible();
     await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toHaveCount(0);
     await expect(button(page, "Continua")).toHaveCount(0);
+    // Crash reports sit next to the notice, off until the student turns them on.
+    const crash = page.getByRole("switch", {
+      name: "Consenti segnalazioni di crash",
+    });
+    await expect(crash).not.toBeChecked();
     await noAxeViolations(page);
     await notice.getByRole("button", { name: "Ho capito" }).click();
     await expect(notice).toHaveCount(0);
@@ -145,63 +148,63 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
         .filter((row) => row.id === "claude" || row.id === "codex")
         .map((row) => row.acknowledged),
     ).toEqual([true, true]);
+    // No scan download is offered in setup: it comes up only when a scan is added.
+    await expect(button(page, /^Scarica [\d.,]+ MB$/)).toHaveCount(0);
     await noAxeViolations(page);
     await button(page, "Continua").click();
 
-    // Photos: the same OCR consent card as Settings > Data. The footer keeps Continue, which moves on without downloading.
+    // Step 3: the profile is saved when the engine step ends, with crash reports off.
     await expect(
-      page.getByRole("heading", { name: "Foto e scansioni" }),
+      page.getByRole("heading", { name: "Quale esame prepari?" }),
     ).toBeVisible();
-    await expect(
-      page.getByText("Leggere le scansioni richiede un download una tantum"),
-    ).toBeVisible();
-    await expect(page.getByText(/raw\.githubusercontent\.com/)).toBeVisible();
-    await expect(button(page, /^Scarica [\d.,]+ MB$/)).toBeVisible();
-    await expect(currentStep(page)).toHaveText("Passo 3 di 4: Foto e scansioni");
-    await expect(button(page, "Più tardi")).toHaveCount(0);
-    await expect(button(page, "Indietro")).toBeVisible();
-    await noAxeViolations(page);
-    await button(page, "Continua").click();
-    expect(
-      await page.evaluate(() =>
-        window.pyxis.invoke("sources.ocrDataState", {}),
-      ),
-    ).toMatchObject({ consent: false, state: "missing" });
-
-    // Crash reports: a real switch, already on.
-    await expect(
-      page.getByRole("heading", { name: "Segnalazioni di crash" }),
-    ).toBeVisible();
-    const crash = page.getByRole("switch", {
-      name: "Consenti segnalazioni di crash",
-    });
-    await expect(crash).toBeChecked();
-    await expect(page.getByText(/^Consentite: /)).toBeVisible();
-    await noAxeViolations(page);
-    await button(page, "Continua").click();
-
-    // Ready: the profile is saved and the next step is an exam.
-    await expect(
-      page.getByRole("heading", { name: "Tutto pronto" }),
-    ).toBeVisible();
+    await expect(currentStep(page)).toHaveText("Passo 3 di 4: L'esame");
     expect(await profile(page)).toMatchObject({
       displayName: "Ada",
-      crashReports: true,
+      educationLevel: "university",
+      crashReports: false,
+      gradeScale: null,
     });
-    await expect(button(page, "Parti da un libro PoliTost gratuito")).toBeVisible();
-    await expect(button(page, "Vai agli esami")).toBeVisible();
     await noNavigation(page);
+    // Nothing is chosen for the student: Continue waits for a name and a date, or no date yet.
+    await expect(button(page, "Continua")).toBeDisabled();
+    await page.getByLabel("Nome dell'esame", { exact: true }).fill("Analisi 1");
+    await expect(button(page, "Continua")).toBeDisabled();
+    await button(page, "Non ho ancora la data").click();
+    await expect(page.getByText("Nessuna data per ora.", { exact: false })).toBeVisible();
+    // At university the goal is out of 30, from 18 to 30.
+    const goal = page.getByRole("slider", { name: /^Obiettivo .* su 30$/ });
+    await expect(goal).toHaveAttribute("aria-valuemin", "18");
+    await expect(goal).toHaveAttribute("aria-valuemax", "30");
+    await expect(goal).toHaveAttribute("aria-valuenow", "23");
+    await goal.focus();
+    await page.keyboard.press("End");
+    await expect(goal).toHaveAttribute("aria-valuenow", "30");
+    await expect(button(page, "Nessun esame per ora")).toBeVisible();
     await noAxeViolations(page);
-    // The primary action opens the plan wizard, and the navigation is back.
-    await button(page, "Crea il tuo primo piano").click();
-    await expect(page).toHaveURL(/#\/plans\/new$/);
-    await page.evaluate(() => {
-      location.hash = "/exams";
-    });
+    await button(page, "Continua").click();
+
+    // Step 4: the material. With nothing picked the main button continues to the guided flow.
+    await expect(
+      page.getByRole("heading", { name: "Da cosa studi?" }),
+    ).toBeVisible();
+    await expect(currentStep(page)).toHaveText("Passo 4 di 4: Materiale");
+    await expect(button(page, "Libri PoliTost gratuiti")).toBeVisible();
+    await expect(page.getByText("Lezioni in italiano, ordine scelto da Pyxis")).toBeVisible();
+    await button(page, "Cambia").click();
+    await expect(button(page, "English")).toBeVisible();
+    await noAxeViolations(page);
+
+    // Back to the exam, which a student without one yet skips: the exams list has the way to create one.
+    await button(page, "Indietro").click();
+    await expect(page.getByLabel("Nome dell'esame", { exact: true })).toHaveValue("Analisi 1");
+    await button(page, "Nessun esame per ora").click();
+    await expect(page).toHaveURL(/#\/exams$/);
     await expect(
       page.getByRole("radiogroup", { name: "Sezioni" }),
     ).toBeVisible();
     await expect(button(page, "Impostazioni")).toBeVisible();
+    await expect(button(page, "Nuovo esame")).toBeVisible();
+    expect(await page.evaluate(() => window.pyxis.invoke("plans.list", {}))).toEqual([]);
 
     // The Settings switch shows the stored choice, saves each change and matches the setup wording.
     await page.evaluate(() => {
@@ -210,20 +213,17 @@ test("First setup: welcome, name, engines found, photos later, crash reports on 
     const saved = page.getByRole("switch", {
       name: "Consenti segnalazioni di crash",
     });
-    await expect(saved).toBeChecked();
+    await expect(saved).not.toBeChecked();
     await noAxeViolations(page);
     await saved.click();
-    await expect(saved).not.toBeChecked();
-    await expect(
-      page.getByText("Non consentite: nessun rapporto lascia questo computer."),
-    ).toBeVisible();
+    await expect(saved).toBeChecked();
     await expect
       .poll(async () => (await profile(page))?.crashReports)
-      .toBe(false);
+      .toBe(true);
     await page.reload();
     await expect(
       page.getByRole("switch", { name: "Consenti segnalazioni di crash" }),
-    ).not.toBeChecked();
+    ).toBeChecked();
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
@@ -239,7 +239,6 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
   let app = await launch(userData, out.env);
   try {
     let page = await app.firstWindow();
-    await button(page, "Inizia").click();
     await button(page, "Continua").click();
     await expect(
       page.getByText("Ho trovato Claude Code, ma serve ancora l'accesso."),
@@ -255,7 +254,6 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
     const none = fakeBins({ claude: null, codex: null });
     app = await launch(userData, none.env);
     page = await app.firstWindow();
-    await button(page, "Inizia").click();
     await button(page, "Continua").click();
     await expect(page.getByText("Non ho trovato nessun motore.")).toBeVisible({
       timeout: 30000,
@@ -290,10 +288,10 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
     // Nothing is ready, so the one primary action says what happens: carry on and sign in later.
     await button(page, "Lo farò dopo").click();
     await expect(
-      page.getByRole("heading", { name: "Foto e scansioni" }),
+      page.getByRole("heading", { name: "Quale esame prepari?" }),
     ).toBeVisible();
     await button(page, "Indietro").click();
-    await expect(currentStep(page)).toHaveText("Passo 2 di 4: Motori AI");
+    await expect(currentStep(page)).toHaveText("Passo 2 di 4: Motore AI");
     rmSync(none.bin, { recursive: true, force: true });
   } finally {
     await app.close();
@@ -315,7 +313,6 @@ test("First setup: cancelling a sign-in before its page opens is not a failure, 
   const app = await launch(userData, env);
   try {
     const page = await app.firstWindow();
-    await button(page, "Inizia").click();
     await button(page, "Continua").click();
     const setup = page.getByRole("region", { name: "Configura Claude Code" });
     await expect(button(setup, "Accedi con Claude")).toBeVisible({
@@ -377,7 +374,6 @@ test("First setup: Install runs the installer, shows its output, then signs in b
   });
   try {
     const page = await app.firstWindow();
-    await button(page, "Inizia").click();
     await button(page, "Continua").click();
     await expect(page.getByText("Non ho trovato nessun motore.")).toBeVisible({
       timeout: 30000,
@@ -406,7 +402,7 @@ test("First setup: Install runs the installer, shows its output, then signs in b
   }
 });
 
-test("First setup: skipping leaves crash reports off, and the OCR download shows progress and can continue in the background", async () => {
+test("First setup: skipping leaves crash reports off, and a new profile below university sees goals out of 100", async () => {
   test.setTimeout(180000);
   const skipped = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
   const engines = fakeBins({ claude: null, codex: null });
@@ -421,42 +417,27 @@ test("First setup: skipping leaves crash reports off, and the OCR download shows
     });
     await app.close();
 
-    // A local proxy holds the connection open, so nothing reaches GitHub and the download stays in progress.
-    const proxy: Server = createServer((socket) => {
-      socket.on("error", () => undefined);
-    });
-    await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
-    const url = `http://127.0.0.1:${(proxy.address() as { port: number }).port}`;
     const fresh = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
-    app = await launch(fresh, {
-      ...engines.env,
-      NODE_USE_ENV_PROXY: "1",
-      HTTPS_PROXY: url,
-      https_proxy: url,
-    });
+    app = await launch(fresh, engines.env);
     try {
       const second = await app.firstWindow();
-      await button(second, "Inizia").click();
+      await button(second, "Superiore").click();
       await button(second, "Continua").click();
+      await expect(second.getByRole("switch")).not.toBeChecked();
       await button(second, "Lo farò dopo").click();
-      await button(second, /^Scarica [\d.,]+ MB$/).click();
       await expect(
-        second.getByRole("progressbar", {
-          name: "Scarico i dati di lettura delle scansioni",
-        }),
+        second.getByRole("heading", { name: "Quale esame prepari?" }),
       ).toBeVisible();
-      await expect(
-        second.getByText("Il download continua anche se vai avanti."),
-      ).toBeVisible();
-      await button(second, "Annulla il download").click();
-      await expect(
-        second.getByText(/Il download è stato annullato/),
-      ).toBeVisible();
-      await button(second, "Continua").click();
-      await expect(second.getByRole("switch")).toBeChecked();
+      // Below university the goal keeps the scale out of 100.
+      const goal = second.getByRole("slider", { name: /^Obiettivo .* su 100$/ });
+      await expect(goal).toHaveAttribute("aria-valuemin", "50");
+      await expect(goal).toHaveAttribute("aria-valuenow", "75");
+      expect(await profile(second)).toMatchObject({
+        educationLevel: "upper-secondary",
+        crashReports: false,
+      });
     } finally {
       await app.close();
-      proxy.close();
       rmSync(fresh, { recursive: true, force: true });
     }
   } finally {
@@ -465,7 +446,7 @@ test("First setup: skipping leaves crash reports off, and the OCR download shows
   }
 });
 
-test("Run setup again: Settings reopens setup filled in, without Skip, leaves engines alone and returns to Settings", async () => {
+test("Run setup again: Settings reopens the profile and engine steps filled in, without Skip, leaves engines alone and returns to Settings", async () => {
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
@@ -475,9 +456,8 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
 
-    // First setup: a name, a school, a level, and crash reports turned off.
-    await button(page, "Inizia").click();
-    await page.getByLabel("Nome", { exact: true }).fill("Ada");
+    // First setup: a name, a school, a level, and crash reports turned on.
+    await page.getByLabel("Come ti chiami? (facoltativo)", { exact: true }).fill("Ada");
     await page.getByLabel("Scuola", { exact: true }).fill("Liceo Volta");
     await button(page, "Superiore").click();
     await button(page, "Continua").click();
@@ -491,23 +471,18 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
     await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toBeVisible(
       { timeout: 30000 },
     );
-    await button(page, "Continua").click();
-    await button(page, "Continua").click();
     await page
       .getByRole("switch", { name: "Consenti segnalazioni di crash" })
       .click();
     await button(page, "Continua").click();
-    await expect(
-      page.getByRole("heading", { name: "Tutto pronto" }),
-    ).toBeVisible();
-    await expect(button(page, "Torna alle impostazioni")).toHaveCount(0);
-    await button(page, "Vai agli esami").click();
+    await button(page, "Nessun esame per ora").click();
+    await expect(page).toHaveURL(/#\/exams$/);
     const stored = await profile(page);
     expect(stored).toMatchObject({
       displayName: "Ada",
       school: "Liceo Volta",
       educationLevel: "upper-secondary",
-      crashReports: false,
+      crashReports: true,
     });
     const featuresBefore = await page.evaluate(() =>
       window.pyxis.invoke("engines.features", {}),
@@ -523,19 +498,20 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
     await button(page, "Rifai la configurazione").click();
     await expect(page).toHaveURL(/#\/onboarding\?again=1$/);
 
-    // Welcome has no Skip. Cancel leaves without saving.
+    // The rerun has two steps and no Skip. Cancel leaves without saving.
     await expect(
       page.getByRole("heading", { name: "Ciao, sono Pyxis" }),
     ).toBeVisible();
+    await expect(currentStep(page)).toHaveText("Passo 1 di 2: Su di te");
     await expect(button(page, "Salta")).toHaveCount(0);
-    await noAxeViolations(page);
     await button(page, "Annulla").click();
     await expect(page).toHaveURL(/#\/settings\/profile$/);
     await button(page, "Rifai la configurazione").click();
-    await button(page, "Inizia").click();
 
-    // Profile: every answer is filled in, and there is Back instead of Skip.
-    await expect(page.getByLabel("Nome", { exact: true })).toHaveValue("Ada");
+    // Profile: every answer is filled in.
+    await expect(
+      page.getByLabel("Come ti chiami? (facoltativo)", { exact: true }),
+    ).toHaveValue("Ada");
     await expect(page.getByLabel("Scuola", { exact: true })).toHaveValue(
       "Liceo Volta",
     );
@@ -544,10 +520,10 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
         page.locator("[aria-pressed=true]"),
       ),
     ).toBeVisible();
-    await expect(button(page, "Salta")).toHaveCount(0);
-    await expect(button(page, "Indietro")).toBeVisible();
     await noAxeViolations(page);
-    await page.getByLabel("Nome", { exact: true }).fill("Ada L.");
+    await page
+      .getByLabel("Come ti chiami? (facoltativo)", { exact: true })
+      .fill("Ada L.");
     await button(page, "Continua").click();
 
     // Engines: shows what is set up and asks nothing. No launch notice appears.
@@ -557,25 +533,15 @@ test("Run setup again: Settings reopens setup filled in, without Skip, leaves en
     await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
-    await button(page, "Continua").click();
-    await button(page, "Continua").click();
-
-    // Crash reports show the stored choice (off), not the first-run default.
-    const crash = page.getByRole("switch", {
-      name: "Consenti segnalazioni di crash",
-    });
-    await expect(crash).not.toBeChecked();
-    await button(page, "Continua").click();
-
-    // The end goes back to Settings > Profile.
+    // Crash reports show the stored choice (on), not the first-run default.
     await expect(
-      page.getByRole("heading", { name: "Configurazione aggiornata" }),
-    ).toBeVisible();
-    await expect(button(page, "Vai agli esami")).toHaveCount(0);
-    await expect(button(page, "Crea il tuo primo piano")).toHaveCount(0);
+      page.getByRole("switch", { name: "Consenti segnalazioni di crash" }),
+    ).toBeChecked();
     await noNavigation(page);
     await noAxeViolations(page);
-    await button(page, "Torna alle impostazioni").click();
+
+    // The end saves and goes back to Settings > Profile.
+    await button(page, "Salva e torna alle impostazioni").click();
     await expect(page).toHaveURL(/#\/settings\/profile$/);
     await expect(page.getByLabel("Nome", { exact: true })).toHaveValue(
       "Ada L.",

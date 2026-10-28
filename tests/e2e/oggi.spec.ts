@@ -93,7 +93,7 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
     await hours.fill("1");
     await hours.press("Enter");
     // One hour a week cannot cover the closest exam.
-    await expect(page.getByText(/At this pace Fisica 1 reaches its 75% target/)).toBeVisible();
+    await expect(page.getByText(/At this pace Fisica 1 reaches its 22\.5\/30 target/)).toBeVisible();
     await page.getByText("By day").click();
     await expect(page.getByText("today", { exact: true })).toBeVisible();
     db.close();

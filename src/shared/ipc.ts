@@ -335,6 +335,9 @@ const EducationLevelSchema = z.enum([
   "other",
 ]);
 
+/** Grades, goals and mastery shown out of 30 or out of 100. */
+const GradeScaleSchema = z.union([z.literal(30), z.literal(100)]);
+
 const engineFeature = z.enum([
   "default",
   "chat",
@@ -2113,6 +2116,8 @@ export const requests = {
         dyslexia: z.boolean(),
         textSize: z.enum(["sm", "md", "lg"]),
         crashReports: z.boolean(),
+        /** Null until the student picks one; the window then shows grades out of 30 at university, else out of 100. */
+        gradeScale: GradeScaleSchema.nullable(),
       })
       .nullable(),
   },
@@ -2141,6 +2146,7 @@ export const requests = {
       dyslexia: z.boolean().optional(),
       textSize: z.enum(["sm", "md", "lg"]).optional(),
       crashReports: z.boolean().optional(),
+      gradeScale: GradeScaleSchema.nullable().optional(),
     }),
     output: z.object({
       displayName: z.string(),
@@ -2156,6 +2162,7 @@ export const requests = {
       dyslexia: z.boolean(),
       textSize: z.enum(["sm", "md", "lg"]),
       crashReports: z.boolean(),
+      gradeScale: GradeScaleSchema.nullable(),
     }),
   },
   "sources.list": {

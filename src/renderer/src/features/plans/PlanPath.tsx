@@ -8,6 +8,7 @@ import { Icon, type IconName } from "../../components/Icon";
 import { MasteryBar } from "../../components/MasteryBar";
 import { PathNode } from "../../components/PathNode";
 import { Tag } from "../../components/Tag";
+import { useGradeScale } from "../../lib/useGradeScale";
 import { searchMatcher } from "../../lib/search";
 import { reopenPath, skipDiagnosticPath, stepPath } from "./reopen";
 import "./PlanPath.css";
@@ -46,6 +47,7 @@ export function PlanPath({
   guide: Guide | undefined;
 }) {
   const { t } = useTranslation();
+  const grade = useGradeScale();
   const navigate = useNavigate();
   const ids = useId();
   const frame = useRef<HTMLDivElement>(null);
@@ -309,8 +311,9 @@ export function PlanPath({
                 </div>
                 <div className="px-path-topic-mastery">
                   <MasteryBar
-                    value={Math.round(topic.mastery * 100)}
+                    value={topic.mastery * 100}
                     target={plan.target * 100}
+                    scale={grade.scale}
                     label={t("plans.path.mastery", { topic: title(topicId) })}
                   />
                 </div>
@@ -347,13 +350,13 @@ export function PlanPath({
                 {matches.length ? (
                   <ul className="px-path-picker-list" aria-label={t("plans.path.topics")}>
                     {matches.map((item) => {
-                      const mastery = Math.round((status.get(item.id)?.mastery ?? 0) * 100);
+                      const mastery = grade.format(status.get(item.id)?.mastery ?? 0);
                       return (
                         <li key={item.id}>
                           <button
                             type="button"
                             aria-current={item.id === topicId ? "true" : undefined}
-                            aria-label={`${item.title}, ${mastery}%${read.has(item.id) ? `, ${t("plans.path.result.lesson")}` : ""}`}
+                            aria-label={`${item.title}, ${mastery}${read.has(item.id) ? `, ${t("plans.path.result.lesson")}` : ""}`}
                             onClick={() => {
                               setPicked(item.id);
                               closePicker();
@@ -363,7 +366,7 @@ export function PlanPath({
                             {read.has(item.id) ? (
                               <span className="meta ink-muted">{t("plans.path.result.lesson")}</span>
                             ) : null}
-                            <span className="px-path-picker-value meta">{mastery}%</span>
+                            <span className="px-path-picker-value meta">{mastery}</span>
                           </button>
                         </li>
                       );

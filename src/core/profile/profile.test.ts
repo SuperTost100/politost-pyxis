@@ -25,6 +25,19 @@ describe("profile", () => {
     expect(opted.crashReports).toBe(true);
   });
 
+  it("keeps the grade scale unset until the student picks one, and keeps the pick through other saves", () => {
+    const db = openDatabase(":memory:");
+    expect(saveProfile(db, { displayName: "Ada" }).gradeScale).toBeNull();
+    // Changing the level leaves an unpicked scale unset, so the window follows the new level.
+    saveProfile(db, { educationLevel: "upper-secondary" });
+    expect(readProfile(db)?.gradeScale).toBeNull();
+    saveProfile(db, { gradeScale: 100 });
+    saveProfile(db, { educationLevel: "university", textSize: "lg" });
+    expect(readProfile(db)?.gradeScale).toBe(100);
+    saveProfile(db, { gradeScale: null });
+    expect(readProfile(db)?.gradeScale).toBeNull();
+  });
+
   describe("crash reports default", () => {
     const stored = (db: ReturnType<typeof openDatabase>) =>
       JSON.parse(

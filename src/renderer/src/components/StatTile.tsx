@@ -5,6 +5,7 @@ import "./StatTile.css";
 export function StatTile({
   label,
   value,
+  display,
   unit = "%",
   target,
   pills,
@@ -12,7 +13,10 @@ export function StatTile({
   compact = false,
 }: {
   label: string;
+  /** The bar's value, from 0 to 100. */
   value: number;
+  /** The number as shown, when it is not `value` itself (a grade out of 30 with a decimal comma). */
+  display?: string;
   unit?: string;
   target?: number;
   pills?: string[];
@@ -26,7 +30,7 @@ export function StatTile({
         <div>
           <div className="px-stat-label">{label}</div>
           <div className="px-stat-num">
-            {value}
+            {display ?? value}
             <small>{unit}</small>
           </div>
         </div>

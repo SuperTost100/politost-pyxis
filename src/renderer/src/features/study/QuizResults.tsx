@@ -5,6 +5,7 @@ import { Icon, type IconName } from "../../components/Icon";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
+import { useGradeScale } from "../../lib/useGradeScale";
 import {
   stemText,
   verdict,
@@ -54,6 +55,7 @@ export function QuizResults({
   actions: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
+  const grade = useGradeScale();
   const counted = results.filter((row) => !row.flagged);
   const points = counted.reduce((sum, row) => sum + row.score, 0);
   const number = new Intl.NumberFormat(i18n.language, {
@@ -88,7 +90,7 @@ export function QuizResults({
           </span>
         </p>
         <p className="reading px-quiz-hero-line">
-          <span className="px-quiz-percent">{percent}%</span>
+          <span className="px-quiz-percent">{grade.format(score)}</span>
           <span aria-hidden> · </span>
           {line}
         </p>
@@ -186,6 +188,7 @@ function ResultRow({
   onWrong: (wrong: boolean) => void;
 }) {
   const { t } = useTranslation();
+  const grade = useGradeScale();
   const [open, setOpen] = useState(false);
   const body = useId();
   const state = mark(row);
@@ -220,7 +223,7 @@ function ResultRow({
         </span>
         {state === "partial" ? (
           <span className="meta px-quiz-row-score">
-            {Math.round(row.score * 100)}%
+            {grade.format(row.score)}
           </span>
         ) : null}
         <Icon name="chevron-right" size={16} className="px-quiz-chevron" />

@@ -84,19 +84,15 @@
     }
   },
   "onboarding": {
-    "title": "Let's start",
-    "body": "Name, school and course stay on this computer. Then we set up AI engines, scans and privacy.",
     "name": "Name",
-    "level": "Level",
+    "level": "Study level",
     "year": "Year",
     "school": "School",
     "course": "Course",
     "continue": "Continue",
     "skip": "Skip",
     "again": {
-      "readyTitle": "Setup updated",
-      "readyBody": "Your answers are saved. Change them any time in Settings.",
-      "done": "Back to Settings"
+      "done": "Save and back to Settings"
     },
     "done": "Go to exams",
     "contentLanguage": "English",
@@ -113,12 +109,12 @@
     "later": "I'll do it later",
     "steps": {
       "profile": "About you",
-      "engines": "AI engines",
-      "photos": "Photos and scans",
-      "privacy": "Privacy"
+      "engines": "AI engine",
+      "exam": "The exam",
+      "material": "Material"
     },
     "engines": {
-      "title": "Connect an AI engine",
+      "title": "Who writes your lessons",
       "body": "Pyxis uses an AI you already pay for, so it costs you nothing more. I install it and sign you in.",
       "found": "I found {{names}}.",
       "foundSignedOut": "I found {{names}}, but you still need to sign in.",
@@ -142,31 +138,19 @@
       "setUp": "Set up",
       "addAnother": "Set up another engine"
     },
-    "photos": {
-      "title": "Photos and scans",
-      "body": "Pyxis can read the text in a photo or a scan directly on this computer.",
-      "keepGoing": "The download keeps going if you move on."
-    },
-    "privacy": {
-      "title": "Crash reports",
-      "body": "One choice. You can change it any time in Settings, under Privacy."
-    },
-    "welcome": {
+    "nameQuestion": "What's your name? (optional)",
+    "levelHelp": "The tutor explains at this level. At university, grades and goals are out of 30, otherwise out of 100. You can change both in your profile any time.",
+    "profile": {
       "title": "Hi, I'm Pyxis",
-      "body": "I'm a study tutor that runs on this computer.",
-      "points": {
-        "plan": "I turn your notes, slides and books into a study plan, lessons that cite your material, and quizzes.",
-        "local": "Your files and your progress stay on this computer.",
-        "account": "I work through an AI you already have an account for, such as ChatGPT, Claude or Gemini. Pyxis itself is free.",
-        "time": "Setup takes about 3 minutes."
-      },
-      "start": "Start setup"
+      "body": "From your material I build a path to the exam, with lessons that cite it, quizzes and mock exams. Your files and progress stay on this computer."
     },
-    "ready": {
-      "title": "You're ready",
-      "body": "Pick the subject, the exam date and your material. I build the study plan from them.",
-      "create": "Create your first plan",
-      "book": "Start from a free PoliTost book"
+    "exam": {
+      "title": "Which exam are you preparing?",
+      "skip": "No exam for now"
+    },
+    "material": {
+      "title": "What do you study from?",
+      "body": "The more material you give me, the closer the lessons follow your course."
     }
   },
   "ask": {
@@ -288,9 +272,9 @@
     "plans": "Plans",
     "sources": "Sources",
     "cards": "Flashcards",
-    "emptyTitle": "No plans yet",
-    "emptyBody": "A plan starts from course material and an exam date.",
-    "newPlan": "New plan",
+    "emptyTitle": "No exams yet",
+    "emptyBody": "An exam starts from your course material and, if you have it, the date. Create one whenever you like.",
+    "newPlan": "New exam",
     "importFileItem": "Import from a .pyxis file",
     "importLinkItem": "Import from a link",
     "sourcesEmptyTitle": "No sources yet",
@@ -743,7 +727,7 @@
     "count_one": "{{count}} question to redo",
     "count_other": "{{count}} questions to redo",
     "noTopic": "No topic",
-    "yourAnswerScore": "Your answer · {{percent}}%",
+    "yourAnswerScore": "Your answer · {{score}}",
     "rightAnswer": "Correct answer",
     "why": "Explanation",
     "missedIn": "{{origin}} · {{date}}",
@@ -1011,7 +995,6 @@
     "tutorLocked": "The tutor is unavailable during the attempt. Your answers save as you write.",
     "factGrading": "Graded when you hand it in",
     "timeLeft": "Time remaining",
-    "outOf100": "out of 100",
     "modelGrade": "Estimated grade by {{model}}.",
     "question": "Question {{count}}",
     "blank": "No answer",
@@ -1047,7 +1030,8 @@
     "buildCancel": "Cancel",
     "buildRetry": "Retry",
     "generatedWarning": "These questions were written by {{model}} from your material, not taken from a real exam. Treat the grade as a practice estimate.",
-    "startFailed": "The exam could not start. Try again."
+    "startFailed": "The exam could not start. Try again.",
+    "outOf": "out of {{scale}}"
   },
   "quiz": {
     "title": "Quiz",
@@ -1288,10 +1272,10 @@
   "progress": {
     "title": "Progress",
     "chart": "Last 14 days",
-    "onTrack_one": "{{ready}} of {{count}} topic at your {{target}}% target",
-    "onTrack_other": "{{ready}} of {{count}} topics at your {{target}}% target",
-    "onTrackReachable_one": "{{ready}} of {{count}} topic at {{threshold}}% (target {{target}}%)",
-    "onTrackReachable_other": "{{ready}} of {{count}} topics at {{threshold}}% (target {{target}}%)",
+    "onTrack_one": "{{ready}} of {{count}} topic at your {{target}} target",
+    "onTrack_other": "{{ready}} of {{count}} topics at your {{target}} target",
+    "onTrackReachable_one": "{{ready}} of {{count}} topic at {{threshold}} (target {{target}})",
+    "onTrackReachable_other": "{{ready}} of {{count}} topics at {{threshold}} (target {{target}})",
     "lessons": "{{count}} lessons finished",
     "gaps": "Gaps",
     "noGaps": "No open gap.",
@@ -1303,12 +1287,11 @@
     "simulations": "Simulations",
     "noSimulations": "No simulation yet.",
     "startSimulation": "Start a simulation",
-    "simulationRow": "{{score}} out of 100 · {{minutes}} min",
     "preparation": "Preparation",
     "paceTitle": "Pace",
     "forecast": "Exam forecast",
-    "target": "target {{value}}%",
-    "weeklyChange": "{{value}}% this week",
+    "target": "target {{value}}",
+    "weeklyChange": "{{value}} this week",
     "topicsOnTrack": "Topics on track",
     "lessonsDone": "Lessons completed",
     "gapsCount": "Gaps · {{count}}",
@@ -1391,16 +1374,16 @@
     "gapMissExplained": "Missed “{{question}}”. {{explanation}}"
   },
   "wizard": {
-    "title": "New plan",
+    "title": "New exam",
     "body": "A smartbook chapter becomes a topic, without a model call.",
-    "planTitle": "Title",
-    "planTitlePlaceholder": "For example Physics 1, June exam",
+    "planTitle": "Exam name",
+    "planTitlePlaceholder": "For example Calculus 1",
     "subjectPlaceholder": "For example Physics",
     "subject": "Subject",
-    "create": "Create the plan",
+    "create": "Create the exam",
     "preparing": "Preparing {{title}}",
-    "open": "Open the plan",
-    "preparingFailed": "I couldn't prepare the plan",
+    "open": "Open the exam",
+    "preparingFailed": "I couldn't prepare the exam",
     "cancelledTitle": "Plan build cancelled",
     "buildFailed": "A step stopped before the plan was ready. Try again to continue from the last saved step.",
     "stepSources": "Reading the sources",
@@ -1450,12 +1433,7 @@
     },
     "topicName": "Topic name",
     "exam": "Exam date",
-    "tomorrow": "Tomorrow",
-    "inTwo": "In 2 days",
-    "inThree": "In 3 days",
-    "inTen": "Within 10 days",
-    "examDate": "Or a date",
-    "target": "Target {{score}}",
+    "examDate": "Exam date",
     "language": "Content language",
     "italian": "Italiano",
     "english": "English",
@@ -1466,7 +1444,7 @@
     "stepIntro": "Writing the introduction",
     "stepIntroDiagnostic": "Writing the introduction and the diagnostic quiz",
     "stepDiagnostic": "Preparing the diagnostic quiz",
-    "stepReady": "Plan ready",
+    "stepReady": "Exam ready",
     "sourceNotReady": "A source needs attention. Finish its import or OCR, then retry this build.",
     "cancelled": "Build cancelled. Retry to resume from the saved step.",
     "continueBuild": "Continue plan build",
@@ -1475,23 +1453,17 @@
     "buildInProgress": "This plan is still being built. Open its progress to resume or cancel.",
     "questions": {
       "0": "Which exam are you preparing?",
-      "1": "When is your exam?",
-      "2": "What result are you aiming for?",
-      "3": "What will you study from?",
-      "4": "Which language should the lessons use?",
-      "5": "How do you prefer to study?"
+      "1": "What do you study from?"
     },
     "material": "Material",
     "targetStep": "Target",
-    "addSubject": "Add this subject",
-    "titleRequired": "Give your plan a title to continue.",
-    "inTwoOrThree": "In 2 or 3 days",
+    "titleRequired": "Name the exam to continue.",
     "examSummary": "Exam on {{date}}",
-    "noDate": "No date yet",
-    "noDateSummary": "No exam date for now. You can add one later in the plan's settings.",
+    "noDate": "I don't have the date yet",
+    "noDateSummary": "No date for now. You can add one later in the exam's settings.",
     "examSummaryMany_one": "{{count}} sessions, the first on {{date}}",
     "examSummaryMany_other": "{{count}} sessions, the first on {{date}}",
-    "examRequired": "Pick one of these to continue.",
+    "examRequired": "Pick the date, or I don't have the date yet, to continue.",
     "sourcesInPlan_one": "{{count}} source in the plan",
     "sourcesInPlan_other": "{{count}} sources in the plan",
     "sourcesListLabel": "Plan sources",
@@ -1515,7 +1487,28 @@
       "practice": "Try exercises first, then fill the gaps.",
       "decide": "Let the plan choose the order."
     },
-    "ready": "{{title}} is ready"
+    "ready": "{{title}} is ready",
+    "subjectHelp": "Groups the exams of the same subject.",
+    "examStep": "The exam",
+    "daysLeft_one": "in {{count}} day",
+    "daysLeft_other": "in {{count}} days",
+    "daysLeftToday": "today",
+    "goalOn": "Goal {{value}} out of {{scale}}",
+    "optionsSummary": "Lessons {{language}}, {{style}}",
+    "inItalian": "in Italian",
+    "inEnglish": "in English",
+    "styleShort": {
+      "read": "explanation first",
+      "practice": "exercises first",
+      "decide": "order chosen by Pyxis"
+    },
+    "optionsChange": "Change",
+    "optionsHide": "Close",
+    "waitTitle": "New exam",
+    "waitBody": "You can close this screen: the preparation goes on, and you'll find it in Activities, at the top right.",
+    "buildProgress": "{{percent}}% done",
+    "topicsFound": "The topics I found",
+    "topicsFoundNote": "Each topic already has its place in the path. You can change names and order later."
   },
   "shared": {
     "title": "Open a shared plan",
@@ -1761,7 +1754,11 @@
     "crashContents": "A crash report describes the technical state of the app when the error happened: version, system and some portions of memory. Pyxis adds none of your files or chats to it, but memory can hold fragments of what you were using.",
     "flashcards": "Flashcards",
     "newPerDay": "New flashcards per day",
-    "newPerDayHint": "For each exam. Flashcards you have started come back when they are due, whatever the limit. With 0 no new ones start."
+    "newPerDayHint": "For each exam. Flashcards you have started come back when they are due, whatever the limit. With 0 no new ones start.",
+    "levelHelp": "The tutor explains at this level in chats and in the exams you create from now on.",
+    "gradeScale": "Grades and goals",
+    "gradeScaleOn": "Out of {{scale}}",
+    "gradeScaleHelp": "Applies to grades, goals and preparation everywhere in the app. University starts out of 30, every other level out of 100."
   },
   "jobs": {
     "label_one": "{{count}} background task",
@@ -2522,9 +2519,6 @@
     "rebuildArchived_progress": "Hidden from the path. Its progress, flashcards and gaps are kept.",
     "rebuildArchived_empty": "Hidden from the path. It has no study history yet.",
     "rebuildNoneArchived": "No topics are archived.",
-    "educationLevel": "Education level",
-    "educationHelp": "The tutor answers chats about this plan at this level. It was copied from your profile when the plan was made.",
-    "educationFailed": "The level could not be saved. Try again.",
     "archive": "Archive exam",
     "archiveHelp": "Set a finished exam aside. It leaves your review queues, counts and recommendations. Lessons and progress stay, and you can restore it at any time.",
     "restore": "Restore exam",
@@ -2713,8 +2707,8 @@
     "hours_one": "{{count}} h",
     "hours_other": "{{count}} h",
     "hoursMinutes": "{{hours}} h {{minutes}} min",
-    "behind_one": "At this pace {{title}} reaches its {{target}}% target 1 day after the exam, and about {{atExam}}% by the exam.",
-    "behind_other": "At this pace {{title}} reaches its {{target}}% target {{count}} days after the exam, and about {{atExam}}% by the exam.",
-    "behindNoTime": "{{title}} has no study time before its exam, so it will not reach its {{target}}% target. Add hours to the weeks before it."
+    "behind_one": "At this pace {{title}} reaches its {{target}} target 1 day after the exam, and about {{atExam}} by the exam.",
+    "behind_other": "At this pace {{title}} reaches its {{target}} target {{count}} days after the exam, and about {{atExam}} by the exam.",
+    "behindNoTime": "{{title}} has no study time before its exam, so it will not reach its {{target}} target. Add hours to the weeks before it."
   }
 }

@@ -34,6 +34,6 @@
 .px-mbar-value {
   font: 400 12px/16px var(--font-mono);
   color: var(--ink);
-  min-width: 36px;
+  min-width: 7ch;
   text-align: right;
 }

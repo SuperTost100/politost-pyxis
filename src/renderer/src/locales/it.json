@@ -84,19 +84,15 @@
     }
   },
   "onboarding": {
-    "title": "Iniziamo",
-    "body": "Nome, scuola e corso restano su questo computer. Poi vediamo i motori AI, le scansioni e la privacy.",
     "name": "Nome",
-    "level": "Livello",
+    "level": "Livello di studio",
     "year": "Anno",
     "school": "Scuola",
     "course": "Corso",
     "continue": "Continua",
     "skip": "Salta",
     "again": {
-      "readyTitle": "Configurazione aggiornata",
-      "readyBody": "Le risposte sono salvate. Puoi cambiarle quando vuoi nelle impostazioni.",
-      "done": "Torna alle impostazioni"
+      "done": "Salva e torna alle impostazioni"
     },
     "done": "Vai agli esami",
     "contentLanguage": "Italian",
@@ -113,12 +109,12 @@
     "later": "Lo farò dopo",
     "steps": {
       "profile": "Su di te",
-      "engines": "Motori AI",
-      "photos": "Foto e scansioni",
-      "privacy": "Privacy"
+      "engines": "Motore AI",
+      "exam": "L'esame",
+      "material": "Materiale"
     },
     "engines": {
-      "title": "Collega un motore AI",
+      "title": "Chi scrive le tue lezioni",
       "body": "Pyxis usa un'AI che paghi già, quindi non spendi altro. La installo io e ti faccio accedere.",
       "found": "Ho trovato {{names}}.",
       "foundSignedOut": "Ho trovato {{names}}, ma serve ancora l'accesso.",
@@ -142,31 +138,19 @@
       "setUp": "Configura",
       "addAnother": "Configura un altro motore"
     },
-    "photos": {
-      "title": "Foto e scansioni",
-      "body": "Pyxis può leggere il testo di una foto o di una scansione direttamente su questo computer.",
-      "keepGoing": "Il download continua anche se vai avanti."
-    },
-    "privacy": {
-      "title": "Segnalazioni di crash",
-      "body": "Una sola scelta. Puoi cambiarla quando vuoi in Impostazioni, alla voce Privacy."
-    },
-    "welcome": {
+    "nameQuestion": "Come ti chiami? (facoltativo)",
+    "levelHelp": "Il tutor spiega a questo livello. All'università voti e obiettivi sono su 30, negli altri casi su 100. Li cambi quando vuoi nel profilo.",
+    "profile": {
       "title": "Ciao, sono Pyxis",
-      "body": "Sono un tutor di studio che gira su questo computer.",
-      "points": {
-        "plan": "Trasformo appunti, slide e libri in un piano di studio, lezioni che citano il tuo materiale e quiz.",
-        "local": "I tuoi file e i tuoi progressi restano su questo computer.",
-        "account": "Lavoro con un'AI per cui hai già un account, come ChatGPT, Claude o Gemini. Pyxis è gratis.",
-        "time": "La configurazione richiede circa 3 minuti."
-      },
-      "start": "Inizia"
+      "body": "Dal tuo materiale preparo un percorso fino all'esame, con lezioni che lo citano, quiz e simulazioni. File e progressi restano su questo computer."
     },
-    "ready": {
-      "title": "Tutto pronto",
-      "body": "Scegli la materia, la data dell'esame e il materiale. Il piano di studio lo preparo io.",
-      "create": "Crea il tuo primo piano",
-      "book": "Parti da un libro PoliTost gratuito"
+    "exam": {
+      "title": "Quale esame prepari?",
+      "skip": "Nessun esame per ora"
+    },
+    "material": {
+      "title": "Da cosa studi?",
+      "body": "Più materiale mi dai, più le lezioni seguono il tuo corso."
     }
   },
   "ask": {
@@ -288,9 +272,9 @@
     "plans": "Piani",
     "sources": "Fonti",
     "cards": "Flashcard",
-    "emptyTitle": "Nessun piano ancora",
-    "emptyBody": "Un piano parte dal materiale del corso e da una data d'esame.",
-    "newPlan": "Nuovo piano",
+    "emptyTitle": "Ancora nessun esame",
+    "emptyBody": "Un esame parte dal materiale del corso e, se ce l'hai, dalla data. Crealo quando vuoi.",
+    "newPlan": "Nuovo esame",
     "importFileItem": "Importa da un file .pyxis",
     "importLinkItem": "Importa da un link",
     "sourcesEmptyTitle": "Nessuna fonte ancora",
@@ -743,7 +727,7 @@
     "count_one": "{{count}} domanda da rifare",
     "count_other": "{{count}} domande da rifare",
     "noTopic": "Nessun argomento",
-    "yourAnswerScore": "La tua risposta · {{percent}}%",
+    "yourAnswerScore": "La tua risposta · {{score}}",
     "rightAnswer": "Risposta corretta",
     "why": "Spiegazione",
     "missedIn": "{{origin}} · {{date}}",
@@ -1011,7 +995,6 @@
     "tutorLocked": "Il tutor non è disponibile durante la prova. Le risposte si salvano mentre scrivi.",
     "factGrading": "Correzione alla consegna",
     "timeLeft": "Tempo rimanente",
-    "outOf100": "su 100",
     "modelGrade": "Valutazione stimata da {{model}}.",
     "question": "Domanda {{count}}",
     "blank": "Nessuna risposta",
@@ -1047,7 +1030,8 @@
     "buildCancel": "Annulla",
     "buildRetry": "Riprova",
     "generatedWarning": "Queste domande sono scritte da {{model}} a partire dal tuo materiale, non vengono da un esame reale. Considera il voto una stima di allenamento.",
-    "startFailed": "Non è stato possibile iniziare la prova. Riprova."
+    "startFailed": "Non è stato possibile iniziare la prova. Riprova.",
+    "outOf": "su {{scale}}"
   },
   "quiz": {
     "title": "Quiz",
@@ -1288,10 +1272,10 @@
   "progress": {
     "title": "Progressi",
     "chart": "Ultimi 14 giorni",
-    "onTrack_one": "{{ready}} su {{count}} argomento all'obiettivo del {{target}}%",
-    "onTrack_other": "{{ready}} su {{count}} argomenti all'obiettivo del {{target}}%",
-    "onTrackReachable_one": "{{ready}} su {{count}} argomento al {{threshold}}% (obiettivo {{target}}%)",
-    "onTrackReachable_other": "{{ready}} su {{count}} argomenti al {{threshold}}% (obiettivo {{target}}%)",
+    "onTrack_one": "{{ready}} su {{count}} argomento all'obiettivo di {{target}}",
+    "onTrack_other": "{{ready}} su {{count}} argomenti all'obiettivo di {{target}}",
+    "onTrackReachable_one": "{{ready}} su {{count}} argomento a {{threshold}} (obiettivo {{target}})",
+    "onTrackReachable_other": "{{ready}} su {{count}} argomenti a {{threshold}} (obiettivo {{target}})",
     "lessons": "{{count}} lezioni completate",
     "gaps": "Lacune",
     "noGaps": "Nessuna lacuna aperta.",
@@ -1303,12 +1287,11 @@
     "simulations": "Simulazioni",
     "noSimulations": "Nessuna simulazione ancora.",
     "startSimulation": "Inizia una simulazione",
-    "simulationRow": "{{score}} su 100 · {{minutes}} min",
     "preparation": "Preparazione",
     "paceTitle": "Ritmo",
     "forecast": "Previsione per l’esame",
-    "target": "obiettivo {{value}}%",
-    "weeklyChange": "{{value}}% questa settimana",
+    "target": "obiettivo {{value}}",
+    "weeklyChange": "{{value}} questa settimana",
     "topicsOnTrack": "Argomenti a obiettivo",
     "lessonsDone": "Lezioni completate",
     "gapsCount": "Lacune · {{count}}",
@@ -1391,16 +1374,16 @@
     "gapMissExplained": "Hai sbagliato «{{question}}». {{explanation}}"
   },
   "wizard": {
-    "title": "Nuovo piano",
+    "title": "Nuovo esame",
     "body": "Un capitolo dello smartbook diventa un argomento, senza chiamare un modello.",
-    "planTitle": "Titolo",
-    "planTitlePlaceholder": "Per esempio Fisica 1, esame di giugno",
+    "planTitle": "Nome dell'esame",
+    "planTitlePlaceholder": "Per esempio Analisi 1",
     "subjectPlaceholder": "Per esempio Fisica",
     "subject": "Materia",
-    "create": "Crea il piano",
-    "preparing": "Sto preparando {{title}}",
-    "open": "Apri il piano",
-    "preparingFailed": "Non sono riuscito a preparare il piano",
+    "create": "Crea l'esame",
+    "preparing": "Preparo {{title}}",
+    "open": "Apri l'esame",
+    "preparingFailed": "Non sono riuscito a preparare l'esame",
     "cancelledTitle": "Creazione annullata",
     "buildFailed": "Un passaggio si è fermato prima che il piano fosse pronto. Riprova per continuare dall’ultimo passaggio salvato.",
     "stepSources": "Leggo le fonti",
@@ -1450,12 +1433,7 @@
     },
     "topicName": "Nome dell'argomento",
     "exam": "Data dell'esame",
-    "tomorrow": "Domani",
-    "inTwo": "Tra 2 giorni",
-    "inThree": "Tra 3 giorni",
-    "inTen": "Entro 10 giorni",
-    "examDate": "Oppure una data",
-    "target": "Obiettivo {{score}}",
+    "examDate": "Data dell'esame",
     "language": "Lingua dei contenuti",
     "italian": "Italiano",
     "english": "English",
@@ -1466,7 +1444,7 @@
     "stepIntro": "Scrivo l’introduzione",
     "stepIntroDiagnostic": "Scrivo l’introduzione e il test iniziale",
     "stepDiagnostic": "Preparo il test iniziale",
-    "stepReady": "Piano pronto",
+    "stepReady": "Esame pronto",
     "sourceNotReady": "Una fonte richiede attenzione. Completa l’importazione o l’OCR, poi riprova a costruire il piano.",
     "cancelled": "Creazione annullata. Riprova per riprendere dal passaggio salvato.",
     "continueBuild": "Riprendi la creazione del piano",
@@ -1475,23 +1453,17 @@
     "buildInProgress": "Questo piano è ancora in costruzione. Apri l’avanzamento per riprendere o annullare.",
     "questions": {
       "0": "Quale esame prepari?",
-      "1": "Quando hai l'esame?",
-      "2": "A quale risultato punti?",
-      "3": "Da cosa studierai?",
-      "4": "In quale lingua vuoi le lezioni?",
-      "5": "Come preferisci studiare?"
+      "1": "Da cosa studi?"
     },
     "material": "Materiale",
     "targetStep": "Obiettivo",
-    "addSubject": "Aggiungi questa materia",
-    "titleRequired": "Dai un titolo al piano per continuare.",
-    "inTwoOrThree": "Tra 2 o 3 giorni",
+    "titleRequired": "Dai un nome all'esame per continuare.",
     "examSummary": "Esame il {{date}}",
-    "noDate": "Nessuna data per ora",
-    "noDateSummary": "Nessuna data d'esame per ora. Puoi aggiungerla dopo nelle impostazioni del piano.",
+    "noDate": "Non ho ancora la data",
+    "noDateSummary": "Nessuna data per ora. Puoi aggiungerla dopo nelle impostazioni dell'esame.",
     "examSummaryMany_one": "{{count}} prove, la prima il {{date}}",
     "examSummaryMany_other": "{{count}} prove, la prima il {{date}}",
-    "examRequired": "Scegli una di queste opzioni per continuare.",
+    "examRequired": "Scegli la data, oppure Non ho ancora la data, per continuare.",
     "sourcesInPlan_one": "{{count}} fonte nel piano",
     "sourcesInPlan_other": "{{count}} fonti nel piano",
     "sourcesListLabel": "Fonti del piano",
@@ -1515,7 +1487,28 @@
       "practice": "Prova gli esercizi, poi colma le lacune.",
       "decide": "Lascia al piano la scelta dell'ordine."
     },
-    "ready": "{{title}} è pronto"
+    "ready": "{{title}} è pronto",
+    "subjectHelp": "Raggruppa gli esami della stessa materia.",
+    "examStep": "L'esame",
+    "daysLeft_one": "tra {{count}} giorno",
+    "daysLeft_other": "tra {{count}} giorni",
+    "daysLeftToday": "oggi",
+    "goalOn": "Obiettivo {{value}} su {{scale}}",
+    "optionsSummary": "Lezioni {{language}}, {{style}}",
+    "inItalian": "in italiano",
+    "inEnglish": "in inglese",
+    "styleShort": {
+      "read": "prima la spiegazione",
+      "practice": "prima gli esercizi",
+      "decide": "ordine scelto da Pyxis"
+    },
+    "optionsChange": "Cambia",
+    "optionsHide": "Chiudi",
+    "waitTitle": "Nuovo esame",
+    "waitBody": "Puoi chiudere questa schermata: la preparazione continua e la ritrovi nelle attività, in alto a destra.",
+    "buildProgress": "{{percent}}% fatto",
+    "topicsFound": "Gli argomenti che ho trovato",
+    "topicsFoundNote": "Ogni argomento ha già il suo posto nel percorso. Nomi e ordine li cambi dopo."
   },
   "shared": {
     "title": "Apri un piano condiviso",
@@ -1761,7 +1754,11 @@
     "crashContents": "Un rapporto di crash descrive lo stato tecnico del programma al momento dell'errore: versione, sistema e alcune porzioni di memoria. Pyxis non ci aggiunge i tuoi file né le tue chat, ma la memoria può contenere frammenti di ciò che stavi usando.",
     "flashcards": "Flashcard",
     "newPerDay": "Flashcard nuove al giorno",
-    "newPerDayHint": "Per ogni esame. Le flashcard già iniziate tornano quando scadono, qualunque sia il limite. Con 0 non ne partono di nuove."
+    "newPerDayHint": "Per ogni esame. Le flashcard già iniziate tornano quando scadono, qualunque sia il limite. Con 0 non ne partono di nuove.",
+    "levelHelp": "Il tutor spiega a questo livello nelle chat e negli esami che crei da qui in poi.",
+    "gradeScale": "Voti e obiettivi",
+    "gradeScaleOn": "Su {{scale}}",
+    "gradeScaleHelp": "Vale per voti, obiettivi e preparazione in tutta l'app. All'università si parte da 30, negli altri casi da 100."
   },
   "jobs": {
     "label_one": "{{count}} attività",
@@ -2522,9 +2519,6 @@
     "rebuildArchived_progress": "Nascosto dal percorso. Progressi, flashcard e lacune restano salvati.",
     "rebuildArchived_empty": "Nascosto dal percorso. Non ha ancora una cronologia di studio.",
     "rebuildNoneArchived": "Nessun argomento viene archiviato.",
-    "educationLevel": "Livello di studi",
-    "educationHelp": "Il tutor risponde alle chat su questo piano a questo livello. È stato copiato dal tuo profilo quando hai creato il piano.",
-    "educationFailed": "Non è stato possibile salvare il livello. Riprova.",
     "archive": "Archivia l'esame",
     "archiveHelp": "Metti da parte un esame finito. Esce dalle code di ripasso, dai conteggi e dai consigli. Lezioni e progressi restano e puoi ripristinarlo quando vuoi.",
     "restore": "Ripristina l'esame",
@@ -2713,8 +2707,8 @@
     "hours_one": "{{count}} h",
     "hours_other": "{{count}} h",
     "hoursMinutes": "{{hours}} h {{minutes}} min",
-    "behind_one": "Con questo ritmo {{title}} arriva all'obiettivo del {{target}}% 1 giorno dopo l'esame, e al {{atExam}}% circa il giorno dell'esame.",
-    "behind_other": "Con questo ritmo {{title}} arriva all'obiettivo del {{target}}% {{count}} giorni dopo l'esame, e al {{atExam}}% circa il giorno dell'esame.",
-    "behindNoTime": "{{title}} non ha ore di studio prima dell'esame, quindi non arriverà all'obiettivo del {{target}}%. Aggiungi ore alle settimane prima dell'esame."
+    "behind_one": "Con questo ritmo {{title}} arriva all'obiettivo di {{target}} 1 giorno dopo l'esame, e a circa {{atExam}} il giorno dell'esame.",
+    "behind_other": "Con questo ritmo {{title}} arriva all'obiettivo di {{target}} {{count}} giorni dopo l'esame, e a circa {{atExam}} il giorno dell'esame.",
+    "behindNoTime": "{{title}} non ha ore di studio prima dell'esame, quindi non arriverà all'obiettivo di {{target}}. Aggiungi ore alle settimane prima dell'esame."
   }
 }

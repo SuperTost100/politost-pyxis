@@ -72,9 +72,7 @@ const routes = [
     "diagnostics",
   ].map((section) => [`settings-${section}`, `/settings/${section}`] as const),
   ["gallery", "/dev/gallery"],
-  ...[1, 2, 3, 4, 5, 6].map(
-    (step) => [`wizard-${step}`, "/plans/new"] as const,
-  ),
+  ...[1, 2].map((step) => [`wizard-${step}`, "/plans/new"] as const),
   ["plan", "/plans/audit-plan"],
   ["plan-dated", "/plans/audit-ready-plan"],
   ["plan-topics", "/plans/audit-plan/topics"],
@@ -1228,41 +1226,35 @@ function prepareState(name: string) {
   }
 }
 
-// Steps 5 and 6 sit behind the material step. Continuing there with nothing picked leaves for the guided flow,
-// so those states pick the seeded source first and show the classic wizard, not the guided page.
+// The exam step, then the material step. On the material step the seeded source is picked, so it shows the
+// exam's material and the Create button rather than the guided flow's way in.
 async function openWizard(page: Page, step: number) {
   await page
-    .getByRole("textbox", { name: /Titolo|Title/, exact: true })
+    .getByRole("textbox", { name: both("Nome dell'esame", "Exam name"), exact: true })
     .fill("Fisica audit");
-  const current = (index: number) => page.locator(".px-stepper-item").nth(index);
-  for (let at = 1; at < step; at++) {
-    if (at === 4 && step > 4) {
-      // The seeded source is in the library, so it comes in through the library picker.
-      await page
-        .getByRole("button", {
-          name: both("Dalla tua libreria", "From your library"),
-        })
-        .click();
-      const picker = page.getByRole("dialog");
-      await picker.getByRole("checkbox", { name: /Appunti di fisica/ }).check();
-      await picker
-        .getByRole("button", { name: /^(Aggiungi 1 fonte|Add 1 source)$/ })
-        .click();
-      await expect(picker).toBeHidden();
-    }
-    // Nothing is chosen for the student on the exam step.
-    if (at === 2)
-      await page
-        .getByRole("button", {
-          name: both("Entro 10 giorni", "Within 10 days"),
-        })
-        .click();
-    await page
-      .getByRole("button", { name: /Continua|Continue/, exact: true })
-      .click();
-    // One click per transition: wait for the next step before the next click.
-    await expect(current(at)).toHaveAttribute("aria-current", "step");
-  }
+  if (step === 1) return;
+  // Nothing is chosen for the student on the exam step.
+  await page
+    .getByRole("button", {
+      name: both("Non ho ancora la data", "I don't have the date yet"),
+    })
+    .click();
+  await page
+    .getByRole("button", { name: /Continua|Continue/, exact: true })
+    .click();
+  await expect(page.locator(".px-stepper-item").nth(1)).toHaveAttribute("aria-current", "step");
+  // The seeded source is in the library, so it comes in through the library picker.
+  await page
+    .getByRole("button", {
+      name: both("Dalla tua libreria", "From your library"),
+    })
+    .click();
+  const picker = page.getByRole("dialog");
+  await picker.getByRole("checkbox", { name: /Appunti di fisica/ }).check();
+  await picker
+    .getByRole("button", { name: /^(Aggiungi 1 fonte|Add 1 source)$/ })
+    .click();
+  await expect(picker).toBeHidden();
 }
 
 /** A step's Back and Continue/Create buttons share one line, and no stepper label is cut with an ellipsis. */
@@ -1282,18 +1274,19 @@ async function openGuided(
   upTo: "period" | "modules" | "style" | "tree",
 ) {
   await page
-    .getByRole("textbox", { name: /Titolo|Title/, exact: true })
+    .getByRole("textbox", { name: both("Nome dell'esame", "Exam name"), exact: true })
     .fill("Fisica audit");
   const next = () =>
     page
       .getByRole("button", { name: /Continua|Continue/, exact: true })
       .click();
-  // No material chosen: the last Continue of the wizard leads to the guided flow.
-  await next();
   await page
-    .getByRole("button", { name: both("Entro 10 giorni", "Within 10 days") })
+    .getByRole("button", {
+      name: both("Non ho ancora la data", "I don't have the date yet"),
+    })
     .click();
-  for (let i = 0; i < 3; i++) await next();
+  // No material chosen: Continue on the material step leads to the guided flow.
+  for (let i = 0; i < 2; i++) await next();
   const periods = page.getByRole("group", { name: both("Periodo", "Period") });
   await expect(periods).toBeVisible();
   if (upTo === "period") return;
@@ -1409,31 +1402,27 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "wizard-1":
-    case "wizard-2":
-    case "wizard-3":
-    case "wizard-4":
-    case "wizard-5":
-    case "wizard-6": {
+    case "wizard-2": {
       const step = Number(name.split("-")[1]);
       await expect(page.locator(".px-stepper-item").nth(step - 1)).toHaveAttribute(
         "aria-current",
         "step",
       );
-      const guide = page.getByRole("button", {
-        name: both("Non ho materiale", "I have no material"),
-      });
-      // Material step with nothing picked offers the guided flow; later steps run only with a source, so they offer none.
-      await expect(guide).toHaveCount(step === 4 ? 1 : 0);
-      if (step === 5)
+      if (step === 1)
         await expect(
-          page.getByRole("button", { name: both("Italiano", "English") }),
-        ).toHaveCount(2);
-      if (step === 6)
+          page.getByRole("slider", { name: /^(Obiettivo|Goal) .* (su|out of) (30|100)$/ }),
+        ).toBeVisible();
+      // With a source picked, the material step creates the exam and offers no guided flow.
+      if (step === 2) {
+        await expect(
+          page.getByRole("button", { name: both("Non ho materiale", "I have no material") }),
+        ).toHaveCount(0);
         await expect(
           page.getByRole("button", {
-            name: both("Crea il piano", "Create the plan"),
+            name: both("Crea l'esame", "Create the exam"),
           }),
         ).toBeVisible();
+      }
       await expect(page).toHaveURL(/#\/plans\/new$/);
       await expectStepFrame(page);
       break;

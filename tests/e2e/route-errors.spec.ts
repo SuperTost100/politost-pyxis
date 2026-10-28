@@ -56,7 +56,7 @@ test("a failed plan build says so in the title and steps, shows its message unde
     db.close();
 
     await page.evaluate(() => { window.location.hash = "/plans/new?build=b"; });
-    await expect(page.getByRole("heading", { name: "Non sono riuscito a preparare il piano" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Non sono riuscito a preparare l'esame" })).toBeVisible();
     await expect(page.getByText("Non sono riuscito a creare gli argomenti")).toBeVisible();
     await expect(page.getByText("Creo gli argomenti")).toHaveCount(0);
     const state = page.getByRole("alert");

@@ -189,7 +189,7 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
         .click();
     }
     await expect(score(page)).toHaveText(/^9\s*su 10$/);
-    await expect(page.getByText("90%", { exact: true })).toBeVisible();
+    await expect(page.getByText("27/30", { exact: true })).toBeVisible();
     await page.reload();
     await expect(score(page)).toHaveText(/^9\s*su 10$/);
     const second = page.locator(".px-quiz-row").nth(1);
@@ -200,7 +200,7 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     // "Wrong question?" takes it out of the score at once; the toast can undo it.
     await second.getByRole("button", { name: "Domanda sbagliata?" }).click();
     await expect(score(page)).toHaveText(/^9\s*su 9$/);
-    await expect(page.getByText("100%", { exact: true })).toBeVisible();
+    await expect(page.getByText("30/30", { exact: true })).toBeVisible();
     await page.locator(".px-quiz-toast").getByRole("button", { name: "Annulla" }).click();
     await expect(score(page)).toHaveText(/^9\s*su 10$/);
     await expect(second.getByRole("button", { name: "Domanda sbagliata?" })).toBeVisible();
@@ -561,7 +561,7 @@ test("open answer: checked right away, the check can be cancelled and the answer
     await page.getByRole("button", { name: "Verifica", exact: true }).click();
     const feedback = page.locator(".px-quiz-feedback");
     await expect(feedback).toContainText("Parzialmente corretto", { timeout: 15000 });
-    await expect(feedback).toContainText("60%");
+    await expect(feedback).toContainText("18/30");
     await expect(feedback).toContainText("Risposta modello");
     await expect(answer).toBeDisabled();
     await axe(page);
