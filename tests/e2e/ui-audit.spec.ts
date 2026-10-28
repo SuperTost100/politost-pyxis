@@ -1822,9 +1822,15 @@ async function openState(page: Page, name: string) {
             name: /^(Annulla|Cancel): (Scrivo le flashcard|Writing flashcards)$/,
           }),
         ).toBeVisible();
-        // Jobs that stopped for one reason are one problem with the count in its title.
+        // Jobs that stopped for one reason are one problem with the count in its title. How many share the reason
+        // depends on which states ran before this one (a full run seeds one more), so only the merge is checked.
         await expect(
-          list.getByText(/^(3 attività ferme|3 tasks stopped)$/),
+          list.getByText(/^([2-9]|\d\d+) (attività ferme|tasks stopped)$/),
+        ).toBeVisible();
+        await expect(
+          list.getByRole("button", {
+            name: /^(Mostra le \d+ attività|Show the \d+ tasks)$/,
+          }),
         ).toBeVisible();
         // Finished today, with the engine that answered after another one refused.
         await expect(

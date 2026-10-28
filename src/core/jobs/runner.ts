@@ -85,7 +85,7 @@ export type Runner = {
   resumeLocal: (kinds: string[]) => string[];
   dismiss: (jobId: string) => void;
   list: () => JobView[];
-  /** Jobs that succeeded today and were not cleared, newest first. */
+  /** Jobs that succeeded today and were not cleared, newest first. The day bounds the list, so it has no other limit: clearing it must reach every job. */
   finished: (now?: number) => JobView[];
   /** Notes that another engine answered a call of this job, for the job's list entry. The latest one is kept. */
   noteFallback: (
@@ -503,8 +503,7 @@ export function createRunner(
         .prepare(
           `SELECT id FROM jobs
            WHERE dismissed = 0 AND state = 'succeeded' AND updated_at >= ?
-           ORDER BY updated_at DESC, rowid DESC
-           LIMIT 50`,
+           ORDER BY updated_at DESC, rowid DESC`,
         )
         .all(midnight.getTime()) as Array<{ id: string }>;
       return rows.flatMap((row) => {

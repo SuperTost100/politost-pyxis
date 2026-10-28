@@ -609,6 +609,24 @@ describe("job runner", () => {
     expect(runner.finished(now)[0]?.updatedAt).toBe(at(14, 5));
   });
 
+  it("lists every job that finished today, however many, so clearing them leaves none behind", () => {
+    const database = db();
+    const runner = createRunner(database, () => {});
+    runner.register("long", {
+      jobClass: "local",
+      steps: [{ name: "run", label: "run", run: async () => null }],
+    });
+    const now = new Date(2026, 9, 28, 15, 30).getTime();
+    const add = database.prepare(
+      `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES (?, 'long', '{}', 'succeeded', 1, 1, ?)`,
+    );
+    for (let i = 0; i < 120; i += 1) add.run(`done-${i}`, new Date(2026, 9, 28, 8).getTime() + i);
+    const listed = runner.finished(now);
+    expect(listed).toHaveLength(120);
+    for (const job of listed) runner.dismiss(job.id);
+    expect(runner.finished(now)).toEqual([]);
+  });
+
   it("notes which engine answered on the job, and forgets it when the job is retried", () => {
     const database = db();
     const seen: JobView[] = [];
