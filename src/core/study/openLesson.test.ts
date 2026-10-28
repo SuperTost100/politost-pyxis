@@ -510,7 +510,13 @@ it("splits the lesson's six sections over its parts, and asks a single-part less
     const prompts: string[] = [];
     const run: Parameters<typeof writeLesson>[3] = async (input) => {
       prompts.push(input.prompt);
-      return { text: "## Idea\n\nText.", provider: "claude", model: "test", inputTokens: 1 };
+      // A fenced `## ` line is code, not a heading: the next part must still see the section's own heading.
+      return {
+        text: "## Idea\n\nText.\n\n```python\n## not a heading\nx = 1\n```",
+        provider: "claude",
+        model: "test",
+        inputTokens: 1,
+      };
     };
     add("one", 20000, 1);
     await writeLesson(db, "p", "t", run);
@@ -530,6 +536,7 @@ it("splits the lesson's six sections over its parts, and asks a single-part less
     expect(prompts[0]).not.toContain("The lesson so far ends like this");
     expect(prompts[1]).toContain("The lesson so far ends like this");
     expect(prompts[1]).toContain("## Idea\n\nText.");
+    expect(prompts[1]).toContain("so far ends like this (do not repeat it):\n\n## Idea");
 
     // Four or more parts still add up to the lesson's six sections.
     const requested = () =>

@@ -478,8 +478,9 @@ const TAIL_CHARS = 1500;
 function lessonSoFar(written: string[]) {
   if (!written.length) return "";
   const text = written.join("\n\n");
-  const start = Math.max(text.lastIndexOf("\n## "), text.startsWith("## ") ? 0 : -1);
-  const section = start >= 0 ? text.slice(start).trimStart() : text;
+  // smartSections skips `## ` lines inside code fences, which are code, not headings.
+  const last = smartSections(text).at(-1);
+  const section = last ? text.split("\n").slice(last.start).join("\n") : text;
   const tail =
     section.length <= TAIL_CHARS
       ? section
