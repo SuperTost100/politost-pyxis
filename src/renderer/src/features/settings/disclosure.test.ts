@@ -70,11 +70,11 @@ describe("what leaves this computer", () => {
     };
     const en = await translator("en");
     expect(disclosureText({ t: en, language: "en", features })).toBe(
-      "Chat and maps run on this computer, so nothing leaves it for them. For plans, lessons, photos and grading, the text, the retrieved passages and the attachments go to that engine's vendor.",
+      "Chat and maps run on this computer, so nothing leaves it for them. For exams, lessons, photos and grading, the text, the retrieved passages and the attachments go to that engine's vendor.",
     );
     const it_ = await translator("it");
     expect(disclosureText({ t: it_, language: "it", features })).toBe(
-      "La chat e le mappe girano su questo computer, quindi per queste non esce nulla. Per i piani, le lezioni, le foto e le correzioni, il testo, i brani recuperati e gli allegati arrivano al fornitore del motore.",
+      "La chat e le mappe girano su questo computer, quindi per queste non esce nulla. Per gli esami, le lezioni, le foto e le correzioni, il testo, i brani recuperati e gli allegati arrivano al fornitore del motore.",
     );
     expect(
       disclosureText({

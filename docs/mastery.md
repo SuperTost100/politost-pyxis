@@ -159,6 +159,10 @@ The plan starts from today's start: today's finished steps are added back to the
 
 `neededHours` is the weekly time that would bring every exam to its target on time: for each exam, the work of that exam and every earlier one over the days before it, the largest such pace, times 7, rounded up to the half hour.
 
+### Expected dates on the exam page
+
+The exam page shows, for each topic below the target and for the simulation, the day the planner expects it done (`plans.schedule`, `planSchedule`). `remainingWork` splits the remaining minutes into pieces in the path's order: the introduction and diagnostic together, then each topic below the target in the plan's order (its lesson if unread and its graded activities), then the simulation. `finishDays` lays those pieces, one after the other, on the minutes the planner gives the exam each day from today. A piece ends on the first day whose minutes so far cover it and every piece before it, within the same 2.5 minutes Oggi allows. Today's finished steps come first, because the planner lays the exam out from the start of today. A piece that the days before the exam do not cover gets no date, and the page says it does not fit at this pace. Without hours in the planner, without a date, on the exam day or for an archived exam there are no dates. The path suggests topics in its own order (rule 8 and the stays of rule 5), so a date reads as "by this day at this pace", not as the day the student must open that topic.
+
 ### Falling behind
 
 An exam is behind when work is still left on its exam day. The warning gives two numbers. At the pace the exam got, it reaches its target that many days after the exam: the work left divided by its average minutes a day. By the exam it gets the share of the way from its current mastery to the target that matches the share of its work done: an exam at 10% with a 75% target that gets half its work done shows about 42%. This assumes mastery grows in step with the work, which is a simplification; it says which exam needs more time, not what the exam result will be.

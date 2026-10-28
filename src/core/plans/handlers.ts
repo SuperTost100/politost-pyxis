@@ -46,7 +46,7 @@ import {
   deleteLoosePassages,
   removeUnreferencedBlobs,
 } from "../chat/delete";
-import { dueEverywhere, savePlannerHours, sessionPlan, todayPlan } from "./planner";
+import { dueEverywhere, planSchedule, savePlannerHours, sessionPlan, todayPlan } from "./planner";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
 import { AUTHOR_MAX, type PlanFile, type PlanFilePart } from "../../shared/plan-file";
@@ -312,6 +312,9 @@ export function planHandlers(
     },
     planner() {
       return sessionPlan(db);
+    },
+    schedule(input: { planId: string }) {
+      return planSchedule(db, input.planId);
     },
     plannerHours(input: { week?: string; hours: number | null }) {
       return savePlannerHours(db, input);

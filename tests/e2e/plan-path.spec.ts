@@ -73,34 +73,6 @@ async function shoot(page: Page, name: string) {
   await saveShot(page, name, { fullPage: true });
 }
 
-/** No connector line may run through a box or a label: each stops at least a few pixels short of them. */
-async function linesClear(page: Page) {
-  return page.evaluate(() => {
-    const boxes = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        ".px-path .px-node, .px-path .px-node-label, .px-path-next, .px-path-heading, .px-path-summary",
-      ),
-    ).map((element) => element.getBoundingClientRect());
-    const hits: string[] = [];
-    for (const path of document.querySelectorAll<SVGPathElement>(".px-path-lines path")) {
-      const length = path.getTotalLength();
-      const matrix = path.getScreenCTM()!;
-      for (let at = 0; at <= length; at += 2) {
-        const point = path.getPointAtLength(at).matrixTransform(matrix);
-        for (const box of boxes)
-          if (
-            point.x > box.left - 4 &&
-            point.x < box.right + 4 &&
-            point.y > box.top - 4 &&
-            point.y < box.bottom + 4
-          )
-            hits.push(`${Math.round(point.x)},${Math.round(point.y)}`);
-      }
-    }
-    return { lines: document.querySelectorAll(".px-path-lines path").length, hits };
-  });
-}
-
 test("plan path: nothing locked, the next step offers every activity, any topic's lesson records a step", async () => {
   test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-path-"));
@@ -179,18 +151,19 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     const topics = (await read()).topics;
     expect(topics.map((topic) => topic.title)).toEqual(chapters.map((c) => `${c.number}. ${c.title}`));
 
-    // A new plan: the introduction is suggested, every topic is a preview, nothing is locked.
+    // A new plan: the introduction is suggested, every topic is a row with its mastery, nothing is locked.
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, planId);
     const next = page.locator(".px-path-next");
-    await expect(next.getByText("Ti suggerisco")).toBeVisible();
+    await expect(next.getByText("Adesso")).toBeVisible();
     await expect(next.getByRole("heading", { name: "Introduzione" })).toBeVisible();
     await expect(page.getByText(/Si sblocca|Unlocks/)).toHaveCount(0);
     await expect(page.locator(".px-node.is-locked, .lucide-lock")).toHaveCount(0);
-    const planned = page.getByRole("list", { name: "In programma" });
-    await expect(planned.getByRole("listitem")).toHaveCount(4);
-    expect((await linesClear(page)).hits).toEqual([]);
+    const path = page.getByRole("list", { name: `Percorso: ${topics.length} argomenti` });
+    await expect(path.getByRole("meter")).toHaveCount(topics.length);
+    // No topic is open while the path suggests the introduction.
+    await expect(path.getByRole("button", { expanded: true })).toHaveCount(0);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
       await shoot(page, `plan-path/new-plan-${lang}-${theme}.png`);
@@ -199,11 +172,11 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expectNoAxeViolations(page);
 
     // The chooser lets the student skip the introduction and the diagnostic.
-    await next.getByRole("button", { name: "Altre attività" }).click();
+    await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
     const forFirst = page.getByRole("list", { name: `Attività su ${topics[0]!.title}` });
     for (const name of ["Testo smart", "Esercizio assistito", "Quiz", "Flashcard"])
       await expect(forFirst.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
-    const whole = page.getByRole("list", { name: "Tutto il piano" });
+    const whole = page.getByRole("list", { name: "Tutto l'esame" });
     for (const name of ["Simulazione d'esame", "Test diagnostico", "Introduzione"])
       await expect(whole.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
     await forFirst.getByRole("button", { name: /^Testo smart/ }).click();
@@ -222,13 +195,18 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
 
     // After the first lesson the next box suggests work on it, with every alternative next to it.
     await page.getByRole("button", { name: "Torna al percorso" }).click();
-    await expect(next.getByText("Ti suggerisco")).toBeVisible();
+    await expect(next.getByText("Adesso")).toBeVisible();
     await expect(next.getByRole("heading")).toHaveText(`Esercizio assistito su ${topics[0]!.title}`);
     await expect(next.getByText("Fissa quello che hai appena letto.")).toBeVisible();
     const done = page.getByRole("list", { name: "Passi fatti" });
     await showDone(page);
     await expect(done.getByRole("button", { name: new RegExp(`^Testo smart, ${topics[0]!.title}, letto`) })).toBeVisible();
-    await next.getByRole("button", { name: "Altre attività" }).click();
+    // The topic the path is on opens with its steps, and the suggested one says so.
+    const firstSteps = page.getByRole("list", { name: `Passi di ${topics[0]!.title}` });
+    await expect(firstSteps.getByRole("button", { name: "Lezione, fatto" })).toBeVisible();
+    await expect(firstSteps.getByRole("button", { name: "Esercizi, adesso" })).toBeVisible();
+    await expect(firstSteps.getByRole("button", { name: "Quiz, da fare" })).toBeVisible();
+    await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
     for (const name of ["Testo smart", "Quiz", "Flashcard"])
       await expect(forFirst.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
     await expect(forFirst.getByRole("button", { name: /^Esercizio assistito.*Consigliato/ })).toBeVisible();
@@ -238,17 +216,17 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     const search = page.getByRole("textbox", { name: "Cerca un argomento" });
     await expect(search).toBeFocused();
     await search.fill("onde");
-    const topicList = page.getByRole("list", { name: "Argomenti del piano" });
+    const topicList = page.getByRole("list", { name: "Argomenti dell'esame" });
     await expect(topicList.getByRole("button")).toHaveCount(1);
     await search.fill("");
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
-      await next.getByRole("button", { name: /^(Altre attività|Other activities)$/ }).click();
+      await next.getByRole("button", { name: /^(Scegli un'altra attività|Choose another activity)$/ }).click();
       await next.getByRole("button", { name: /^(Cambia argomento|Change topic)$/ }).click();
       await shoot(page, `plan-path/topic-picker-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
-    await next.getByRole("button", { name: "Altre attività" }).click();
+    await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
     await next.getByRole("button", { name: "Cambia argomento" }).click();
     await search.fill("onde");
     await topicList.getByRole("button", { name: new RegExp(topics[2]!.title) }).click();
@@ -289,23 +267,23 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expect(done).toHaveCount(0);
     await showDone(page);
     await expect(done.getByRole("listitem")).toHaveCount(2);
-    // Only the unread topic and the simulation are still to come; still nothing is locked.
-    await expect(planned.getByRole("listitem")).toHaveCount(2);
+    // Any topic opens on a click, and its steps go straight to the activity; still nothing is locked.
+    await path.getByRole("button", { name: new RegExp(`^${topics[1]!.title}`) }).click();
+    const secondSteps = page.getByRole("list", { name: `Passi di ${topics[1]!.title}` });
+    await expect(secondSteps.getByRole("button", { name: "Lezione, da fare" })).toBeVisible();
+    await expect(page.getByRole("list", { name: `Passi di ${topics[0]!.title}` })).toHaveCount(0);
     await expect(page.locator(".px-node.is-locked, .lucide-lock")).toHaveCount(0);
-    expect((await linesClear(page)).hits).toEqual([]);
     await expectNoAxeViolations(page);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
       await shoot(page, `plan-path/mid-way-${lang}-${theme}.png`);
-      await next.getByRole("button", { name: /^(Altre attività|Other activities)$/ }).click();
-      expect((await linesClear(page)).hits).toEqual([]);
-      await shoot(page, `plan-path/chooser-${lang}-${theme}.png`);
+      await next.getByRole("button", { name: /^(Scegli un'altra attività|Choose another activity)$/ }).click();
+        await shoot(page, `plan-path/chooser-${lang}-${theme}.png`);
     }
     // Narrow window.
     await language(page, "it", "light");
     await page.setViewportSize({ width: 560, height: 900 });
-    await next.getByRole("button", { name: "Altre attività" }).click();
-    expect((await linesClear(page)).hits).toEqual([]);
+    await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
     await shoot(page, `plan-path/chooser-narrow-it-light.png`);
   } finally {
     await app.close();
@@ -581,7 +559,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await showDone(page);
     await done.getByRole("button", { name: new RegExp(`^Quiz, ${topic.title}, 6/10`) }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/quiz/[^/?]+\\?attempt=`));
-    await expect(page.getByText("Le risposte di questo tentativo non erano incluse nel piano condiviso.")).toBeVisible();
+    await expect(page.getByText("Le risposte di questo tentativo non erano incluse nell'esame condiviso.")).toBeVisible();
     await expect(page.locator(".px-quiz-question")).toHaveCount(0);
     await expect(page.locator(".px-quiz-score")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();

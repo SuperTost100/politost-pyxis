@@ -33,21 +33,19 @@ function dateText(at: number) {
 }
 
 /**
- * Every question whose latest answer was wrong, by exam and topic. With `planId` it shows that exam only, as a tab of
- * the plan; without, it is the Exams tab and can narrow to one exam. Redo asks the questions again as a quiz.
+ * Every question whose latest answer was wrong, by exam and topic: the Exams tab, which can narrow to one exam. Redo
+ * asks the questions again as a quiz.
  */
-export function MistakesNotebook({ planId }: { planId?: string }) {
+export function MistakesNotebook() {
   const { t } = useTranslation();
   const grade = useGradeScale();
   const navigate = useNavigate();
   const [exam, setExam] = useState("");
   const [page, setPage] = useState(1);
   const summary = useRef<HTMLParagraphElement>(null);
-  // On a plan the page heading is the exam, so topics come next; on Exams they sit under each exam's heading.
-  const TopicHeading = planId ? "h2" : "h3";
   const notebook = useQuery({
-    queryKey: ["mistakes", planId ?? null],
-    queryFn: () => invoke("study.mistakes", planId ? { planId } : {}),
+    queryKey: ["mistakes", null],
+    queryFn: () => invoke("study.mistakes", {}),
     refetchOnMount: "always",
   });
   const redo = useMutation({
@@ -62,7 +60,7 @@ export function MistakesNotebook({ planId }: { planId?: string }) {
     }) => invoke("study.mistakesRedo", { planId: plan, keys }),
     onSuccess: ({ attemptId }, input) =>
       navigate(
-        `/plans/${input.planId}/redo?attempt=${attemptId}&from=${planId ? "plan" : "exams"}`,
+        `/plans/${input.planId}/redo?attempt=${attemptId}`,
       ),
   });
   const data = notebook.data;
@@ -268,7 +266,7 @@ export function MistakesNotebook({ planId }: { planId?: string }) {
 
   return (
     <div className="px-notebook">
-      {!planId && plans.length > 1 ? (
+      {plans.length > 1 ? (
         <div className="px-notebook-toolbar">
           <div className="px-form-field">
             <label className="label" htmlFor="mistakes-exam">
@@ -311,12 +309,9 @@ export function MistakesNotebook({ planId }: { planId?: string }) {
             <section
               key={section.planId}
               className="px-notebook-exam"
-              aria-labelledby={
-                planId ? undefined : `mistakes-exam-${section.planId}`
-              }
+              aria-labelledby={`mistakes-exam-${section.planId}`}
             >
-              {planId ? null : (
-                <header>
+              <header>
                   <h2
                     className="title-3"
                     id={`mistakes-exam-${section.planId}`}
@@ -336,16 +331,15 @@ export function MistakesNotebook({ planId }: { planId?: string }) {
                       .join(" · ")}
                   </span>
                 </header>
-              )}
               {section.runs.map((run) => {
                 const keys = topicKeys.get(run.key) ?? [];
                 const heading = `mistakes-topic-${run.key.replace(/\W/g, "-")}`;
                 return (
                   <div key={run.key} className="px-notebook-run">
                     <div className="px-notebook-topic">
-                      <TopicHeading className="body-strong" id={heading}>
+                      <h3 className="body-strong" id={heading}>
                         {run.topicTitle ?? t("mistakes.noTopic")}
-                      </TopicHeading>
+                      </h3>
                       {keys.length > 1 ? (
                         <Button
                           type="text"

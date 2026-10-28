@@ -76,18 +76,21 @@ export function savePlannerHours(
 }
 
 
+/** One piece of a plan's remaining work: the start (introduction and diagnostic), a topic, or the simulation. */
+export type WorkPiece = { kind: "start" | "topic" | "simulation"; topicId: string | null; minutes: number };
+
 /**
- * The minutes of work a plan has left, from the path's view of it: the introduction and diagnostic while nothing was
- * studied, a lesson for each unread topic, graded activities for each topic below the target, and one simulation until
- * one is done. A topic at zero mastery needs `stayActivities` (3) graded activities; one part of the way there needs
- * that share of them, rounded up.
+ * The work a plan has left, from the path's view of it, in the path's order: the introduction and diagnostic while
+ * nothing was studied, then each topic below the target in the plan's order (its lesson if unread, and its graded
+ * activities), then one simulation until one is done. A topic at zero mastery needs `stayActivities` (3) graded
+ * activities; one part of the way there needs that share of them, rounded up.
  */
-export function remainingMinutes(input: {
+export function remainingWork(input: {
   topics: Array<Pick<TopicStatus, "id" | "mastery">>;
   steps: Array<Pick<Step, "activity" | "topicId">>;
   hasIntro: boolean;
   target: number;
-}): number {
+}): WorkPiece[] {
   const done = (activity: Activity) => input.steps.some((step) => step.activity === activity);
   const read = new Set(
     input.steps.filter((step) => step.activity === "lesson").map((step) => step.topicId),
@@ -95,19 +98,53 @@ export function remainingMinutes(input: {
   const studied =
     input.steps.some((step) => step.activity !== "intro" && step.activity !== "diagnostic") ||
     input.topics.some((topic) => topic.mastery > 0);
-  let minutes = 0;
-  if (!studied && !done("diagnostic") && input.topics.length) {
-    minutes += stepMinutes.diagnostic;
-    if (input.hasIntro && !done("intro")) minutes += stepMinutes.intro;
-  }
+  const pieces: WorkPiece[] = [];
+  if (!studied && !done("diagnostic") && input.topics.length)
+    pieces.push({
+      kind: "start",
+      topicId: null,
+      minutes:
+        stepMinutes.diagnostic + (input.hasIntro && !done("intro") ? stepMinutes.intro : 0),
+    });
   for (const topic of input.topics) {
     if (topic.mastery >= input.target) continue;
-    if (!read.has(topic.id)) minutes += stepMinutes.lesson;
     const share = (input.target - topic.mastery) / input.target;
-    minutes += Math.ceil(stayActivities * share - 1e-9) * stepMinutes.quiz;
+    pieces.push({
+      kind: "topic",
+      topicId: topic.id,
+      minutes:
+        (read.has(topic.id) ? 0 : stepMinutes.lesson) +
+        Math.ceil(stayActivities * share - 1e-9) * stepMinutes.quiz,
+    });
   }
-  if (input.topics.length && !done("simulation")) minutes += stepMinutes.simulation;
-  return minutes;
+  if (input.topics.length && !done("simulation"))
+    pieces.push({ kind: "simulation", topicId: null, minutes: stepMinutes.simulation });
+  return pieces;
+}
+
+/** The minutes of work a plan has left: the sum of `remainingWork`. */
+export function remainingMinutes(input: Parameters<typeof remainingWork>[0]): number {
+  return remainingWork(input).reduce((sum, piece) => sum + piece.minutes, 0);
+}
+
+/**
+ * The day each piece of work ends at the planner's pace, as an offset from today. The pieces are done in order with
+ * the minutes the planner gives the plan each day (`given`, from today); `offset` is the work already done today,
+ * which the day's minutes cover first because the planner lays a plan out from the start of today. A piece ends on the
+ * first day whose minutes so far cover it and every piece before it, within the 2.5 minutes Oggi allows; null when the
+ * days before the exam do not.
+ */
+export function finishDays(pieces: number[], offset: number, given: number[]): Array<number | null> {
+  let work = offset;
+  return pieces.map((minutes) => {
+    work += minutes;
+    let covered = 0;
+    for (let day = 0; day < given.length; day += 1) {
+      covered += given[day]!;
+      if (covered >= work - 2.5) return day;
+    }
+    return null;
+  });
 }
 
 export type SpreadExam = {
@@ -308,6 +345,39 @@ export function sessionPlan(db: Database.Database, now = Date.now()) {
     exams: dated.map((plan) => examView(plan, exams, result, today)),
     weeks,
     days,
+  };
+}
+
+/**
+ * When an exam's topics and simulation should be done at the session planner's pace: its remaining work in the path's
+ * order, laid on the minutes the planner gives the exam each day before it (`finishDays`). Null when the planner has no
+ * days for the exam: no hours set, no date, the exam is today or past, or the exam is archived. A topic already at the
+ * target has no entry; an entry with a null date does not fit before the exam at this pace.
+ */
+export function planSchedule(db: Database.Database, planId: string, now = Date.now()) {
+  const plans = studyState(db, now);
+  const { exams, result, today } = layout(db, plans, now);
+  const plan = plans.find((item) => item.row.id === planId);
+  const exam = exams.find((item) => item.id === planId);
+  if (!plan || !exam || !result) return null;
+  const pieces = remainingWork(plan.state);
+  const given = Array.from({ length: exam.examDay }, (_, day) => result.days[day]?.get(planId) ?? 0);
+  const ends = finishDays(
+    pieces.map((piece) => piece.minutes),
+    plan.doneMinutes,
+    given,
+  );
+  const date = (index: number) => {
+    const end = ends[index];
+    return end == null ? null : dayKey(addDays(today, end));
+  };
+  const simulation = pieces.findIndex((piece) => piece.kind === "simulation");
+  return {
+    topics: pieces.flatMap((piece, index) =>
+      piece.kind === "topic" && piece.topicId ? [{ topicId: piece.topicId, date: date(index) }] : [],
+    ),
+    simulation: simulation < 0 ? null : { date: date(simulation) },
+    behind: examView(plan, exams, result, today).behind,
   };
 }
 

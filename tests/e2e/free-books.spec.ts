@@ -93,7 +93,7 @@ test("Free books: the material step of setup puts a book into the new exam, and 
     await dialog.getByRole("button", { name: /Close|Chiudi/ }).click();
     // The book is in the exam, and the main button now creates it.
     await expect(
-      page.getByRole("list", { name: "Fonti del piano" }).getByText("Fisica di prova"),
+      page.getByRole("list", { name: "Fonti dell'esame" }).getByText("Fisica di prova"),
     ).toBeVisible();
     await expect(button(page, "Crea l'esame")).toBeVisible();
 

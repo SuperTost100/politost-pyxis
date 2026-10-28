@@ -33,8 +33,8 @@ Pill-shaped action button; maps to antd `Button` with `shape="round"`.
 
 - One `primary` per view: the next study step (Continua, Genera percorso, Invia). Everything else is `secondary` or `ghost`.
 - `lg` is for the single call to action at the bottom of a flow (the recommended-lesson dock, wizard steps).
-- `danger` only for destructive actions, always behind a confirm (Elimina piano, Elimina chat).
-- Labels are verbs in the interface language, sentence case: "Nuovo piano", not "NUOVO PIANO".
+- `danger` only for destructive actions, always behind a confirm (Elimina esame, Elimina chat).
+- Labels are verbs in the interface language, sentence case: "Nuovo esame", not "NUOVO ESAME".
 - antd: `<Button type="primary" shape="round">`, `type="default"` for secondary, `type="text"` for ghost, `danger` for danger.
 
 ## IconButton
@@ -53,7 +53,7 @@ Pill tab switcher with uppercase mono labels.
 
 **Consumer provides** `items` (`{value, label, icon?, badge?}`), `value` or uncontrolled default, `onChange`, and a `label` for the tablist.
 
-- Use for the header doors (Chiedi / Esami), plan pages (Percorso di studio / Argomenti / Fonti / Progressi), the Create lesson groups (Impara / Esercitati / Esame) and Progress tabs.
+- Use for the header doors (Chiedi / Esami), exam pages (Percorso / Fonti / Progressi), the Create lesson groups (Impara / Esercitati / Esame) and Progress tabs.
 - 2–5 items. The active item is an `ink` pill with `on-ink` text in both themes.
 - Labels are written in sentence case in code and uppercased by the style (`label` type style); keep them to one or two words.
 - antd: `<Segmented shape="round" options={…} />` themed through the `Segmented` component token block in `theme/pyxis-theme.ts`.
@@ -225,7 +225,7 @@ An engine in the Engine for AI settings (ENG-10…ENG-17): kind, name, versioned
 
 ## ListToolbar
 
-The toolbar above every list on the Exams page: Piani, Fonti and Flashcard (`components/ListToolbar.tsx`).
+The toolbar above every list on the Exams page: Esami, Fonti and Flashcard (`components/ListToolbar.tsx`).
 
 **Consumer provides** `search` (a `ToolbarSearch`), `filters` (Selects), `menu` (a `ToolbarMenu`) and `primary`; each is optional.
 

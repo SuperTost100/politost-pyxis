@@ -46,9 +46,8 @@ const routes = [
   ["cards-browser-none", "/exams/cards"],
   ["cards-browser-edit", "/exams/cards"],
   ["cards-browser-delete", "/exams/cards"],
-  // The mistakes notebook across exams and on one plan.
+  // The mistakes notebook, which lives only under Exams.
   ["mistakes", "/exams/mistakes"],
-  ["plan-mistakes", "/plans/audit-plan/mistakes"],
   // Oggi's flashcards from every plan, and the session planner (the fixture's one plan has no exam date).
   ["cards-due", "/cards/due"],
   ["planner", "/exams/planner"],
@@ -75,7 +74,11 @@ const routes = [
   ...[1, 2].map((step) => [`wizard-${step}`, "/plans/new"] as const),
   ["plan", "/plans/audit-plan"],
   ["plan-dated", "/plans/audit-ready-plan"],
-  ["plan-topics", "/plans/audit-plan/topics"],
+  // The same exam with hours set in the planner: its topic and simulation rows carry expected days.
+  ["plan-dated-planner", "/plans/audit-ready-plan"],
+  // The exam page with its finished steps listed, and with the Now card's other activities open.
+  ["plan-done", "/plans/audit-plan"],
+  ["plan-chooser", "/plans/audit-plan"],
   ["plan-sources", "/plans/audit-plan/sources"],
   ["plan-progress", "/plans/audit-plan/progress"],
   ["progress-gap-misconception", "/plans/audit-plan/progress"],
@@ -774,6 +777,8 @@ function auditScanBlob(): string {
 
 /** Whether the "practice-rated" state left its self-rating in the audit workspace. */
 let auditRating = false;
+let auditPlanner = false;
+let auditDone = false;
 
 /** Cards of a second subject and of an exam with no subject, for the flashcard browser only. Every other state removes them. */
 function prepareCardBrowser(name: string) {
@@ -927,6 +932,28 @@ function prepareState(name: string) {
         );
     });
   auditRating = name === "practice-rated";
+  // Hours in the session planner give the dated exam's topics and simulation their expected days; other states have none.
+  if (name === "plan-dated-planner" || auditPlanner)
+    withDb((db) => {
+      if (name === "plan-dated-planner")
+        db.prepare(
+          "INSERT INTO settings(key,value_json,updated_at) VALUES('planner',?,1) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+        ).run(JSON.stringify({ weeklyHours: 1, weeks: {} }));
+      else db.prepare("DELETE FROM settings WHERE key = 'planner'").run();
+    });
+  auditPlanner = name === "plan-dated-planner";
+  // Two finished steps on the audit exam, so its path folds them into the first row; other states start without.
+  if (name === "plan-done" || auditDone)
+    withDb((db) => {
+      db.exec("DELETE FROM learning_events WHERE id IN ('audit-done-lesson', 'audit-done-practice')");
+      if (name !== "plan-done") return;
+      const step = db.prepare(
+        "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES(?,'lesson_completed','audit-plan','audit-topic',?,?)",
+      );
+      step.run("audit-done-lesson", JSON.stringify({ activity: "lesson" }), Date.now() - 60_000);
+      step.run("audit-done-practice", JSON.stringify({ activity: "practice" }), Date.now());
+    });
+  auditDone = name === "plan-done";
   if (name.startsWith("library")) {
     // A stored syllabus comparison, keyed the way the core keys it: the source version and each plan's compared texts.
     withDb((db) => {
@@ -1554,7 +1581,7 @@ async function openState(page: Page, name: string) {
     case "rebuild-review":
       await page
         .getByRole("button", {
-          name: both("Impostazioni del piano", "Plan settings"),
+          name: both("Impostazioni dell'esame", "Exam settings"),
         })
         .click();
       await dialog
@@ -2436,7 +2463,7 @@ async function openState(page: Page, name: string) {
     case "export-plan-embed":
       await page
         .getByRole("button", {
-          name: both("Impostazioni del piano", "Plan settings"),
+          name: both("Impostazioni dell'esame", "Exam settings"),
         })
         .click();
       await openExport(page);
@@ -2821,17 +2848,27 @@ test("M14 every application route in both languages, themes and supported widths
               if (name === "plan-settings")
                 await page
                   .getByRole("button", {
-                    name: /Impostazioni del piano|Plan settings/,
+                    name: /Impostazioni dell'esame|Exam settings/,
                     exact: true,
                   })
                   .click();
-              if (name === "plan-create")
+              if (name === "plan-create") {
+                // Creating an activity by hand sits in the header's More menu.
+                await page.locator(".px-plan-header-actions").getByRole("button", { name: /^(Altro|More)$/ }).click();
+                await page.getByRole("menuitem", { name: /Crea lezione|Create lesson/ }).click();
+                await expect(page.getByRole("dialog")).toBeVisible();
+              }
+              if (name === "plan-done") {
+                await page.locator(".px-path-summary").click();
+                await expect(page.getByRole("list", { name: /Passi fatti|Steps done/ })).toBeVisible();
+              }
+              if (name === "plan-chooser") {
                 await page
-                  .getByRole("button", {
-                    name: /Crea lezione|Create lesson/,
-                    exact: true,
-                  })
+                  .locator(".px-path-next")
+                  .getByRole("button", { name: /^(Scegli un'altra attività|Choose another activity)$/ })
                   .click();
+                await expect(page.locator(".px-path-chooser")).toBeVisible();
+              }
               await openState(page, name);
               if (name === "diagnostic") {
                 await page

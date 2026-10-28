@@ -82,7 +82,7 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
       }, planId);
       await expect(
         header.getByRole("button", {
-          name: /^(Impostazioni del piano|Plan settings)$/,
+          name: /^(Impostazioni dell'esame|Exam settings)$/,
         }),
       ).toBeVisible();
     };
@@ -166,10 +166,10 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
       await saveShot(page, `calendar-plan-header-${language}-${theme}.png`);
     }
 
-    // Plan settings, English: only that exam, and the summary follows the interface language.
+    // Exam settings, English: only that exam, and the summary follows the interface language.
     await open("plan-near");
     await header
-      .getByRole("button", { name: /^(Impostazioni del piano|Plan settings)$/ })
+      .getByRole("button", { name: /^(Impostazioni dell'esame|Exam settings)$/ })
       .click();
     const dialog = page.getByRole("dialog");
     const settingsButton = () =>
@@ -189,7 +189,7 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     // A plan with no date cannot be exported.
     await page.keyboard.press("Escape");
     await open("plan-undated");
-    await header.getByRole("button", { name: "Plan settings" }).click();
+    await header.getByRole("button", { name: "Exam settings" }).click();
     await expect(settingsButton()).toBeDisabled();
     await settingsButton().locator("xpath=..").hover();
     await expect(
