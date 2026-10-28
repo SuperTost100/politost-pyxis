@@ -567,7 +567,12 @@ test("Run setup again: Settings reopens the profile and engine steps filled in, 
     await button(page, "Tecnico").click();
     await expect(pressed("Su 100")).toBeVisible();
     await expect.poll(async () => (await profile(page))?.gradeScale).toBeNull();
-    await expect(page.getByText("Se cambi livello di studio torna alla scala di quel livello", { exact: false })).toBeVisible();
+    await expect(
+      page.getByText(
+        "Vale per voti, obiettivi e preparazione in tutta l'app. Se cambi livello di studio torna alla scala di quel livello: su 30 all'università, su 100 negli altri casi.",
+        { exact: true },
+      ),
+    ).toBeVisible();
     await noAxeViolations(page);
   } finally {
     await app.close();
