@@ -28,6 +28,12 @@ test("route failure shows a plain recovery page without stack details", async ()
     await saveShot(page, "route-error-it.png");
     await page.getByRole("button", { name: "Torna a Esami" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
+    // A build that does not exist says so on the wait screen and offers the way back.
+    await page.evaluate(() => { window.location.hash = "/plans/new?build=missing"; });
+    await expect(page.getByText("Questa creazione non è più disponibile.", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Annulla", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Torna a Esami" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
     await expect(page.getByRole("heading", { name: "Non è stato possibile aprire questa pagina" })).toHaveCount(0);
   } finally {
     await app.close();

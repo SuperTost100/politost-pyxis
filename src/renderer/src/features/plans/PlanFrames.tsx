@@ -124,9 +124,10 @@ function BuildScreen({ planId }: { planId: string }) {
   const build = useQuery({
     queryKey: ["plan-build", planId],
     queryFn: () => invoke("plans.build", { planId }),
-    // Follows the job until it settles; Retry and Resume refetch by hand and bring the interval back.
+    // Follows the job until it settles; Retry and Resume refetch by hand and bring the interval back. A missing build
+    // (null) is final too: the screen says so and there is nothing to follow.
     refetchInterval: (query) =>
-      SETTLED.includes(query.state.data?.state ?? "") ? false : 500,
+      query.state.data === null || SETTLED.includes(query.state.data?.state ?? "") ? false : 500,
   });
   const plan = usePlan(planId);
   const busy =
