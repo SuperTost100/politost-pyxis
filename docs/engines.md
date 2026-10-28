@@ -99,13 +99,13 @@ The unit tests run every hardware parser on captured command output and the chec
 
 Every task runs at a reasoning effort that fits it, whether Pyxis or the student picked the model. `taskEffort()` in `src/shared/effort.ts` reads the level from `resources/model-tiers.json`:
 
-| Task                                       | Effort   |
-| ------------------------------------------ | -------- |
-| Chat (Ask), maps and flashcards            | `low`    |
-| Lessons, quizzes and drills, photos        | `medium` |
-| Grading of exercises and simulations       | `medium` |
-| The default engine                         | `medium` |
-| Plans                                      | `high`   |
+| Task                                 | Effort   |
+| ------------------------------------ | -------- |
+| Chat (Ask), maps and flashcards      | `low`    |
+| Lessons, quizzes and drills, photos  | `medium` |
+| Grading of exercises and simulations | `medium` |
+| The default engine                   | `medium` |
+| Plans                                | `high`   |
 
 `selectionFor` resolves the effort on every call, so a row saved before this existed gets its level without a migration.
 
