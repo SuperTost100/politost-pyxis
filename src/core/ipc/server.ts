@@ -5,7 +5,7 @@ import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
 import { setFallbackListener } from "../engine/generate";
-import { setUsageRecorder, storeUsage } from "../engine/usage";
+import { currentUsageScope, setUsageRecorder, storeUsage } from "../engine/usage";
 import type { z } from "zod";
 import {
   IpcError,
@@ -38,6 +38,7 @@ type CorePort = {
 type HandlerMap = ReturnType<typeof jobHandlers>;
 
 let handlers: HandlerMap | null = null;
+let jobRunner: Runner | null = null;
 let engines: ReturnType<typeof engineHandlers> | null = null;
 let sources: ReturnType<typeof sourceHandlers> | null = null;
 let chats: ReturnType<typeof chatHandlers> | null = null;
@@ -214,6 +215,7 @@ function boundHandlers(): { [K in keyof Handlers]: Handlers[K] | null } {
 type Route = readonly [keyof Handlers, string, ("signal" | "bare")?];
 const routes = {
   "jobs.list": ["jobs", "list", "bare"],
+  "jobs.finished": ["jobs", "finished", "bare"],
   "jobs.startDemo": ["jobs", "startDemo"],
   "jobs.cancel": ["jobs", "cancel"],
   "jobs.retry": ["jobs", "retry"],
@@ -631,6 +633,7 @@ async function dispatchValidated(
 }
 
 export function bindRunner(runner: Runner, dev: boolean): void {
+  jobRunner = runner;
   setJobHandlers(jobHandlers(runner, dev));
 }
 
@@ -650,6 +653,9 @@ export function bindEngines(
   configureDisclosure(db);
   setFallbackListener((event) => {
     broadcast("engine.fallback", event);
+    // A call a job made: the finished job tells which engine answered.
+    const jobId = currentUsageScope()?.jobId;
+    if (jobId) jobRunner?.noteFallback(jobId, event);
     // A refused model leaves the automatic choice, so the tasks that used it move now and Settings shows the new one.
     if (event.reason === "model") refreshAutoEngines();
   });

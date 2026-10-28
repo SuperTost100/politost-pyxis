@@ -1764,8 +1764,63 @@
     "newPerDayHint": "For each exam. Flashcards you have started come back when they are due, whatever the limit. With 0 no new ones start."
   },
   "jobs": {
-    "label_one": "{{count}} background task",
-    "label_other": "{{count}} background tasks",
+    "title": "Background tasks",
+    "buttonLabel": "Background tasks: {{parts}}",
+    "running_one": "{{count}} running",
+    "running_other": "{{count}} running",
+    "toFix_one": "{{count}} to fix",
+    "toFix_other": "{{count}} to fix",
+    "doneToday_one": "{{count}} finished today",
+    "doneToday_other": "{{count}} finished today",
+    "group": {
+      "toFix": "To fix · {{count}}",
+      "running": "Running · {{count}}",
+      "done": "Finished today · {{count}}"
+    },
+    "clearDone": "Clear finished",
+    "actionOn": "{{action}}: {{name}}",
+    "retryAll": "Retry all",
+    "resumeAll": "Resume all",
+    "dismissAll": "Dismiss all",
+    "openEngines": "Go to AI engines",
+    "showJobs_one": "Show the task",
+    "showJobs_other": "Show the {{count}} tasks",
+    "hideJobs": "Hide the list",
+    "technical": "Technical details",
+    "problem": {
+      "one": {
+        "failed": "{{name}}: failed",
+        "interrupted": "{{name}}: interrupted",
+        "cancelled": "{{name}}: cancelled"
+      },
+      "many": {
+        "failed": "{{count}} tasks stopped",
+        "interrupted": "{{count}} tasks interrupted",
+        "cancelled": "{{count}} tasks cancelled"
+      },
+      "interrupted_one": "Pyxis closed while it was working. Resume where it stopped.",
+      "interrupted_other": "Pyxis closed while they were working. Resume them where they stopped.",
+      "cancelled_one": "You cancelled this one. You can run it again any time.",
+      "cancelled_other": "You cancelled these. You can run them again any time."
+    },
+    "done": {
+      "planBuild": "Exam created",
+      "planRebuild": "Exam updated",
+      "sourceImport": "Source imported",
+      "sourceOcr": "Scanned pages read",
+      "paperRead": "Past exam read",
+      "quizBuild": "Quiz ready",
+      "quizGrade": "Quiz graded",
+      "simulationBuild": "Mock exam ready",
+      "simulationGrade": "Mock exam graded",
+      "cardsBuild": "Flashcards ready",
+      "exerciseBuild": "Exercises ready",
+      "gapDrill": "Targeted review ready",
+      "mapBuild": "Map ready",
+      "ocrData": "Scan reading data downloaded",
+      "embedding": "Search model downloaded",
+      "python": "Python downloaded"
+    },
     "cancel": "Cancel",
     "retry": "Retry",
     "resume": "Resume",

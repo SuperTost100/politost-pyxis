@@ -1,0 +1,258 @@
+/* The jobs list, a window under the top bar: what to fix, what is running, what finished today. */
+.ant-popover.px-jobs-popover .ant-popover-container {
+  padding: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-overlay);
+}
+
+.px-jobs {
+  width: min(448px, calc(100vw - 32px));
+  max-height: min(724px, calc(100vh - 96px));
+  overflow-y: auto;
+  outline: none;
+  border-radius: var(--radius-lg);
+}
+
+.px-jobs:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.px-jobs-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 14px var(--space-4) 10px var(--space-5);
+  background: var(--surface-overlay);
+  border-bottom: 1px solid var(--border);
+}
+
+.px-jobs-head h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+.px-jobs-group {
+  padding: 14px var(--space-5) 6px;
+}
+
+.px-jobs-group + .px-jobs-group {
+  border-top: 1px solid var(--border);
+}
+
+.px-jobs-group > .label {
+  margin: 0 0 var(--space-2);
+  display: block;
+}
+
+.px-jobs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.px-jobs-what {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.px-jobs-sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+/* A problem: one reason, one fix. The fix is a secondary button so it does not compete with the page behind. */
+.px-jobs-problem {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: var(--space-1) var(--space-3);
+  padding: 14px var(--space-4);
+  margin-bottom: 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.px-jobs-problem-mark {
+  color: var(--danger);
+  margin-top: 1px;
+}
+
+.px-jobs-problem > :not(.px-jobs-problem-mark) {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.px-jobs-why {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-muted);
+}
+
+.px-jobs-acts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.px-jobs-disclose {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 600 13px/18px var(--font-sans);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.px-jobs-caret {
+  transition: transform 0.15s;
+}
+
+.px-jobs-caret.is-open {
+  transform: rotate(180deg);
+}
+
+.px-jobs-affected {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+}
+
+.px-jobs-affected li {
+  display: flex;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.px-jobs-affected li::before {
+  content: "";
+  flex: none;
+  width: 4px;
+  height: 4px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--ink-subtle);
+}
+
+.px-jobs-tech {
+  margin-top: var(--space-2);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+}
+
+.px-jobs-tech summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.px-jobs-tech pre {
+  margin: var(--space-2) 0 0;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+/* A running or finished job. */
+.px-jobs-row {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: start;
+  gap: 2px var(--space-3);
+  padding: 10px 0;
+}
+
+.px-jobs-row + .px-jobs-row {
+  border-top: 1px solid var(--border);
+}
+
+.px-jobs-body {
+  min-width: 0;
+}
+
+.px-jobs-mark {
+  color: var(--ink-muted);
+  margin-top: 1px;
+}
+
+.px-jobs-mark.is-done {
+  color: var(--mastery-text);
+}
+
+.px-jobs-row .ant-progress {
+  margin: var(--space-2) 0 0;
+  line-height: 1;
+}
+
+.px-jobs-note {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: var(--space-2) 10px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.px-jobs-note svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--primary-text);
+}
+
+/* The top-bar button: how many are running, and how many problems wait. */
+.px-jobs-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.px-jobs-trigger .px-jobs-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.px-jobs-trigger .px-jobs-part.is-problem {
+  color: var(--danger);
+}
+
+.px-jobs-trigger .px-jobs-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+}

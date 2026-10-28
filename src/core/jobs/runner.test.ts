@@ -171,6 +171,7 @@ describe("job runner", () => {
       stepLabel: null,
       error: null,
       steps: [{ name: "tree", label: "tree", state: "succeeded" }],
+      updatedAt: expect.any(Number),
     });
   });
 
@@ -582,6 +583,53 @@ describe("job runner", () => {
     runner.dismiss(jobId);
     expect(seen).toEqual(["cancelled"]);
     expect(runner.list().some((job) => job.id === jobId)).toBe(false);
+  });
+
+  it("lists what finished today, newest first, and leaves out yesterday's and cleared jobs", () => {
+    const database = db();
+    const runner = createRunner(database, () => {});
+    runner.register("long", {
+      jobClass: "local",
+      steps: [{ name: "run", label: "run", run: async () => null }],
+    });
+    const now = new Date(2026, 9, 28, 15, 30).getTime();
+    const at = (hour: number, minute = 0) => new Date(2026, 9, 28, hour, minute).getTime();
+    const add = (id: string, state: string, updatedAt: number, dismissed = 0) =>
+      database
+        .prepare(
+          `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at, dismissed) VALUES (?, 'long', '{}', ?, 1, 1, ?, ?)`,
+        )
+        .run(id, state, updatedAt, dismissed);
+    add("morning", "succeeded", at(8));
+    add("afternoon", "succeeded", at(14, 5));
+    add("yesterday", "succeeded", at(23, 59) - 24 * 3_600_000);
+    add("cleared", "succeeded", at(9), 1);
+    add("broken", "failed", at(10));
+    expect(runner.finished(now).map((job) => job.id)).toEqual(["afternoon", "morning"]);
+    expect(runner.finished(now)[0]?.updatedAt).toBe(at(14, 5));
+  });
+
+  it("notes which engine answered on the job, and forgets it when the job is retried", () => {
+    const database = db();
+    const seen: JobView[] = [];
+    const runner = createRunner(database, (job) => seen.push(job));
+    runner.register("long", {
+      jobClass: "local",
+      steps: [{ name: "run", label: "run", run: async () => null }],
+    });
+    const now = Date.now();
+    database
+      .prepare(
+        `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES ('j', 'long', '{}', 'failed', 0, ?, ?)`,
+      )
+      .run(now, now);
+    const fallback = { from: "Cursor Agent", to: "Claude Code", reason: "model" as const };
+    runner.noteFallback("j", fallback);
+    runner.noteFallback("missing", fallback);
+    expect(seen.map((job) => job.fallback)).toEqual([fallback]);
+    expect(runner.list()[0]?.fallback).toEqual(fallback);
+    runner.retry("j");
+    expect(runner.list()[0]?.fallback).toBeUndefined();
   });
 });
 
