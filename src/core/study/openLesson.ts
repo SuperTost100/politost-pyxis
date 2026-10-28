@@ -458,8 +458,14 @@ const LESSON_SECTIONS = 6;
 
 function partNote(index: number, count: number) {
   if (count === 1) return "Teach this material.";
-  const share = Math.max(1, Math.round(LESSON_SECTIONS / count));
-  return `Part ${index + 1} of ${count}. Teach this part of the material, continuing from the earlier parts. The whole lesson has about ${LESSON_SECTIONS} sections across all parts, so write about ${share} section${share === 1 ? "" : "s"} for this part, with about one quick check per section.${index + 1 < count ? " This is not the last part: do not write the pyxis-recap." : " This is the last part: end with the pyxis-recap for the whole topic."}`;
+  // The parts' shares add up to the lesson's sections; the first part always opens one, and with more parts than
+  // sections some parts only continue the section before them.
+  const share =
+    Math.ceil(((index + 1) * LESSON_SECTIONS) / count) - Math.ceil((index * LESSON_SECTIONS) / count);
+  const budget = share
+    ? `write about ${share} section${share === 1 ? "" : "s"} for this part, with about one quick check per section.`
+    : "do not start a new ## section for this part: continue the section the earlier part ended with, and add no quick check.";
+  return `Part ${index + 1} of ${count}. Teach this part of the material, continuing from the earlier parts. The whole lesson has about ${LESSON_SECTIONS} sections across all parts, so ${budget}${index + 1 < count ? " This is not the last part: do not write the pyxis-recap." : " This is the last part: end with the pyxis-recap for the whole topic."}`;
 }
 
 /** The model's lesson, unwrapped when it put the whole answer in one Markdown fence; empty when there is no text. */

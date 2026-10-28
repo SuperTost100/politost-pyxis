@@ -526,6 +526,29 @@ it("splits the lesson's six sections over its parts, and asks a single-part less
       expect(prompt).toContain("about 6 sections across all parts");
       expect(prompt).toContain("write about 2 sections for this part");
     }
+
+    // Four or more parts still add up to the lesson's six sections.
+    const requested = () =>
+      prompts.reduce((sum, prompt) => {
+        if (prompt.includes("do not start a new ## section")) return sum;
+        return sum + Number(/write about (\d+) sections? for this part/.exec(prompt)![1]);
+      }, 0);
+    add("four", 20000, 4);
+    prompts.length = 0;
+    await writeLesson(db, "p", "t", run);
+    expect(prompts).toHaveLength(4);
+    expect(requested()).toBe(6);
+
+    // More parts than sections: the extra parts continue a section instead of opening one.
+    for (const [index, id] of ["five", "six", "seven", "eight"].entries()) add(id, 20000, 5 + index);
+    prompts.length = 0;
+    await writeLesson(db, "p", "t", run);
+    expect(prompts.length).toBeGreaterThan(6);
+    expect(requested()).toBe(6);
+    expect(prompts[0]).not.toContain("do not start a new ## section");
+    expect(prompts.filter((prompt) => prompt.includes("do not start a new ## section"))).toHaveLength(
+      prompts.length - 6,
+    );
   } finally {
     db.close();
   }

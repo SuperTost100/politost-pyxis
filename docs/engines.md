@@ -28,14 +28,14 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 
 Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.4 model lists:
 
-| Ready CLIs                | Chat and maps                                   | Lessons and default                              | Photos             | Plans       | Grading       |
-| ------------------------- | ----------------------------------------------- | ------------------------------------------------ | ------------------ | ----------- | ------------- |
-| Claude Code + Codex       | Codex luna                                      | Codex terra (lessons), Claude sonnet (default)   | Claude sonnet      | Claude opus | Claude sonnet |
-| Claude Code + Antigravity | Gemini Flash                                    | Gemini Pro (lessons), Claude sonnet (default)    | Claude sonnet      | Claude opus | Claude sonnet |
-| Claude Code + Cursor      | Cursor Gemini Flash                             | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet      | Claude opus | Claude sonnet |
-| Codex + Antigravity       | Gemini Flash                                    | Codex terra (lessons), Gemini Pro (default)      | Codex terra        | Codex sol   | Gemini Pro    |
-| Cursor + Antigravity      | Gemini Flash                                    | Gemini Pro (lessons), Cursor sonnet (default)    | OCR (no image CLI) | Cursor opus | Cursor sonnet |
-| All four                  | Gemini Flash (chat), Cursor Gemini Flash (maps) | Codex terra (lessons), Claude sonnet (default)   | Claude sonnet      | Claude opus | Cursor sonnet |
+| Ready CLIs                | Chat and maps                                   | Flashcards          | Lessons       | Default       | Photos             | Plans       | Grading       |
+| ------------------------- | ----------------------------------------------- | ------------------- | ------------- | ------------- | ------------------ | ----------- | ------------- |
+| Claude Code + Codex       | Codex luna                                      | Codex luna          | Claude sonnet | Claude sonnet | Claude sonnet      | Claude opus | Codex terra   |
+| Claude Code + Antigravity | Gemini Flash                                    | Gemini Flash        | Claude sonnet | Claude sonnet | Claude sonnet      | Claude opus | Gemini Pro    |
+| Claude Code + Cursor      | Cursor Gemini Flash                             | Cursor Gemini Flash | Claude sonnet | Claude sonnet | Claude sonnet      | Claude opus | Cursor sonnet |
+| Codex + Antigravity       | Gemini Flash                                    | Gemini Flash        | Codex terra   | Codex terra   | Codex terra        | Codex sol   | Gemini Pro    |
+| Cursor + Antigravity      | Gemini Flash                                    | Gemini Flash        | Cursor sonnet | Cursor sonnet | OCR (no image CLI) | Cursor opus | Gemini Pro    |
+| All four                  | Gemini Flash (chat), Cursor Gemini Flash (maps) | Gemini Flash        | Codex terra   | Claude sonnet | Claude sonnet      | Claude opus | Cursor sonnet |
 
 An automatic row in `feature_engines` carries `"auto": true` in its JSON. A row without it is pinned. `engines.setFeature` pins, and `engines.autoConfigure` with `reset` returns features to automatic. Only automatic rows are rewritten. When no engine is ready they are removed, which brings back `engine-missing`. If every ready engine fails to list models, the current rows stay.
 
