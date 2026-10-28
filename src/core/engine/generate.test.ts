@@ -14,6 +14,7 @@ import {
 import { generate, setFallbackListener } from "./generate";
 import { FunnelError, type EngineResult } from "./funnel";
 import { rememberReady, selectionFor } from "./selection";
+import { currentUsageScope, withUsageScope } from "./usage";
 
 const selection = { provider: "claude" as const, model: "claude-sonnet-4-6" };
 
@@ -312,6 +313,24 @@ describe("switching engines on a usage limit or sign-out", () => {
     expect(output.fallback).toEqual({ from: "Claude Code", to: "Codex", reason: "limit" });
     expect(heard).toEqual([output.fallback]);
     db.close();
+  });
+
+  it("tells the listener which job the refused call belonged to", async () => {
+    const db = automaticChat();
+    const heard: Array<string | undefined> = [];
+    setFallbackListener(() => heard.push(currentUsageScope()?.jobId));
+    const call = () =>
+      generate({
+        selection: selectionFor(db, "chat"),
+        prompt: "hi",
+        run: async (input) => {
+          if (input.selection.provider === "claude") throw limited;
+          return result({ text: "ciao", provider: "codex" });
+        },
+      });
+    await withUsageScope({ jobId: "job-1", kind: "cards-build" }, call);
+    db.close();
+    expect(heard).toEqual(["job-1"]);
   });
 
   // Cursor's words when a subscription leaves out the model Pyxis chose (seen on 2026-10-27).

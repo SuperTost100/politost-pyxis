@@ -17,7 +17,7 @@ function tempDb() {
 /** Removes what migrations 17 to 22 add, so a test can rewind the version past them. */
 function undoAfter16(db: Database.Database) {
   db.exec(
-    "DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at;",
+    "DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at; ALTER TABLE jobs DROP COLUMN fallback_json;",
   );
   db.exec(
     "DROP TRIGGER cards_search_stale; DROP INDEX cards_search_pending; ALTER TABLE cards DROP COLUMN search_text; ALTER TABLE messages DROP COLUMN figures_json;",
@@ -106,7 +106,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(22);
+    expect(db.pragma("user_version", { simple: true })).toBe(23);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -121,7 +121,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(22);
+    expect(again.pragma("user_version", { simple: true })).toBe(23);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -138,7 +138,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(22);
+    expect(again.pragma("user_version", { simple: true })).toBe(23);
     expect(
       again
         .prepare(
@@ -156,7 +156,7 @@ describe("migrate", () => {
     const db = openDatabase(file);
     db.pragma("user_version = 18");
     db.exec(
-      "ALTER TABLE messages DROP COLUMN figures_json; ALTER TABLE plan_sources DROP COLUMN role; ALTER TABLE plan_sources DROP COLUMN paper_json; DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at;",
+      "ALTER TABLE messages DROP COLUMN figures_json; ALTER TABLE plan_sources DROP COLUMN role; ALTER TABLE plan_sources DROP COLUMN paper_json; DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at; ALTER TABLE jobs DROP COLUMN fallback_json;",
     );
     undoUsage(db);
     db.prepare(
@@ -168,7 +168,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(22);
+    expect(again.pragma("user_version", { simple: true })).toBe(23);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });
@@ -184,7 +184,7 @@ describe("migrate", () => {
   it("adds the failure key to messages and the token usage table, keeping messages that already exist", () => {
     const file = join(tempDir("pyxis-db-"), "pyxis.db");
     const db = openDatabase(file);
-    db.exec("DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at;");
+    db.exec("DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at; ALTER TABLE jobs DROP COLUMN fallback_json;");
     db.pragma("user_version = 20");
     undoUsage(db);
     db.prepare(
@@ -196,7 +196,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(22);
+    expect(again.pragma("user_version", { simple: true })).toBe(23);
     expect(
       again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ error: null, passages_json: null });
@@ -238,7 +238,7 @@ describe("past paper role", () => {
     const file = join(tempDir("pyxis-db-"), "pyxis.db");
     const db = openDatabase(file);
     db.exec(
-      "ALTER TABLE plan_sources DROP COLUMN role; ALTER TABLE plan_sources DROP COLUMN paper_json; DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at;",
+      "ALTER TABLE plan_sources DROP COLUMN role; ALTER TABLE plan_sources DROP COLUMN paper_json; DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at; ALTER TABLE jobs DROP COLUMN fallback_json;",
     );
     undoUsage(db);
     db.pragma("user_version = 19");
@@ -252,7 +252,7 @@ describe("past paper role", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(22);
+    expect(again.pragma("user_version", { simple: true })).toBe(23);
     expect(again.prepare("SELECT role, paper_json FROM plan_sources").get()).toEqual({
       role: "material",
       paper_json: null,

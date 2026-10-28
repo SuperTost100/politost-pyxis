@@ -10,6 +10,8 @@ const ENGINE_CODES = new Set([
   "cli-failed",
   "refused",
   "quota",
+  "model-not-included",
+  "stream-truncated",
 ]);
 
 /** The message key for the raw error code a background job stopped with. */

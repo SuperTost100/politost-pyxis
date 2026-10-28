@@ -1,185 +1,113 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { App, Button, Popover, Progress } from "antd";
-import { ListChecks, LoaderCircle } from "lucide-react";
-import { useState } from "react";
+import { Button, Popover } from "antd";
+import { CircleAlert, ListChecks, LoaderCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { JobView } from "@shared/ipc";
-import { isPdfPasswordError } from "@shared/source-errors";
-import { Notice } from "../../components/Notice";
 import { PdfPasswordDialog } from "../../components/PdfPassword";
-import { invoke } from "../../lib/ipc";
-import { jobErrorKey } from "./jobErrors";
-import { useJobs } from "./queries";
+import { groupJobs } from "./jobGroups";
+import { JobsPanel } from "./JobsPanel";
+import { useFinishedJobs, useJobs } from "./queries";
 
-function stepText(label: string, t: (key: string) => string): string {
-  return t(label);
-}
-
-function JobList({
-  jobs,
-  onUnlock,
-}: {
-  jobs: JobView[];
-  /** Asks for the password of a locked PDF whose import stopped. */
-  onUnlock: (job: JobView) => void;
-}) {
-  const { t } = useTranslation();
-  const { message } = App.useApp();
-  const client = useQueryClient();
-  // A job that changed meanwhile, or a core that restarted, refuses the action. Say so and show the list as it is now.
-  const act = (
-    request: "jobs.cancel" | "jobs.retry" | "jobs.resume" | "jobs.dismiss",
-    jobId: string,
-  ) =>
-    void invoke(request, { jobId }).catch(() => {
-      void message.error(t("jobs.actionFailed"));
-      void client.invalidateQueries({ queryKey: ["jobs"] });
-    });
-  const stateText = (job: JobView) =>
-    job.stepLabel ? stepText(job.stepLabel, t) : t(`jobs.state.${job.state}`);
-  return (
-    <ul className="job-list">
-      {jobs.map((job) => (
-        <li key={job.id}>
-          <div className="job-row">
-            <span className="job-text">
-              {job.title ? (
-                <span className="body-strong job-title">{job.title}</span>
-              ) : null}
-              <span>{stateText(job)}</span>
-            </span>
-            {job.state === "queued" || job.state === "running" ? (
-              <Button
-                type="text"
-                size="small"
-                onClick={() => act("jobs.cancel", job.id)}
-              >
-                {t("jobs.cancel")}
-              </Button>
-            ) : null}
-            {job.state === "failed" || job.state === "cancelled" ? (
-              <span className="job-actions">
-                {/* Running a locked PDF again without its password would stop the same way. */}
-                {job.state === "failed" && isPdfPasswordError(job.error) ? (
-                  <Button
-                    type="text"
-                    size="small"
-                    aria-label={
-                      job.title
-                        ? t("sources.pdfPassword.enterNamed", {
-                            title: job.title,
-                          })
-                        : undefined
-                    }
-                    onClick={() => onUnlock(job)}
-                  >
-                    {t("sources.pdfPassword.enter")}
-                  </Button>
-                ) : (
-                  <Button
-                    type="text"
-                    size="small"
-                    onClick={() => act("jobs.retry", job.id)}
-                  >
-                    {t("jobs.retry")}
-                  </Button>
-                )}
-                <Button
-                  type="text"
-                  size="small"
-                  onClick={() => act("jobs.dismiss", job.id)}
-                >
-                  {t("jobs.dismiss")}
-                </Button>
-              </span>
-            ) : null}
-            {job.state === "interrupted" ? (
-              <span className="job-actions">
-                <Button
-                  type="text"
-                  size="small"
-                  onClick={() => act("jobs.resume", job.id)}
-                >
-                  {t("jobs.resume")}
-                </Button>
-                <Button
-                  type="text"
-                  size="small"
-                  onClick={() => act("jobs.dismiss", job.id)}
-                >
-                  {t("jobs.dismiss")}
-                </Button>
-              </span>
-            ) : null}
-          </div>
-          {job.error ? (
-            <Notice tone="danger" details={job.error.slice(0, 2000)}>
-              {t(jobErrorKey(job.error))}
-            </Notice>
-          ) : null}
-          {job.state === "running" || job.state === "queued" ? (
-            <Progress
-              percent={Math.round(job.progress * 100)}
-              showInfo={false}
-              aria-label={
-                job.title ? `${job.title}: ${stateText(job)}` : stateText(job)
-              }
-              size="small"
-              strokeColor="var(--primary)"
-            />
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
+/**
+ * The top-bar button of the jobs list: how many jobs are running and how many problems wait, and the list under it.
+ * It stays out of the way until a job has run today.
+ */
 export function JobsButton() {
   const { t } = useTranslation();
   const { data: jobs = [] } = useJobs();
+  const { data: done = [], refetch } = useFinishedJobs();
+  const groups = useMemo(() => groupJobs(jobs, done), [jobs, done]);
+  const [open, setOpen] = useState(false);
   const [unlocking, setUnlocking] = useState<{
     jobId: string;
     title: string;
   } | null>(null);
+  const panel = useRef<HTMLElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   // The dialog sits outside the popover, so it stays open when a click inside it closes the popover.
   const dialog = (
     <PdfPasswordDialog target={unlocking} onClose={() => setUnlocking(null)} />
   );
-  if (jobs.length === 0) return dialog;
-  const spinning = jobs.some(
-    (job) => job.state === "running" || job.state === "queued",
-  );
+  const { problems, running, finished } = groups;
+  const empty = problems.length + running.length + finished.length === 0;
+  // The button leaves with its last job; it should not reopen the list by itself when a job comes back.
+  useEffect(() => {
+    if (empty) setOpen(false);
+  }, [empty]);
+  if (empty) return dialog;
+  const label = t("jobs.buttonLabel", {
+    parts: [
+      running.length > 0 && t("jobs.running", { count: running.length }),
+      problems.length > 0 && t("jobs.toFix", { count: problems.length }),
+      running.length + problems.length === 0 &&
+        t("jobs.doneToday", { count: finished.length }),
+    ]
+      .filter(Boolean)
+      .join(", "),
+  });
+  const close = (restoreFocus: boolean) => {
+    setOpen(false);
+    if (restoreFocus) trigger.current?.focus();
+  };
   return (
     <>
       {dialog}
       <Popover
         trigger="click"
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          // A list left open past midnight would still show yesterday's jobs.
+          if (next) void refetch();
+        }}
+        afterOpenChange={(next) => {
+          if (next) panel.current?.focus();
+        }}
+        placement="bottomRight"
+        arrow={false}
+        rootClassName="px-jobs-popover"
         content={
-          <section
-            role="region"
-            aria-label={t("jobs.label", { count: jobs.length })}
-          >
-            <JobList
-              jobs={jobs}
-              onUnlock={(job) =>
-                setUnlocking({ jobId: job.id, title: job.title ?? "" })
-              }
-            />
-          </section>
+          <JobsPanel
+            ref={panel}
+            groups={groups}
+            onUnlock={(job) =>
+              setUnlocking({ jobId: job.id, title: job.title ?? "" })
+            }
+            onClose={() => close(false)}
+            onEscape={() => close(true)}
+          />
         }
       >
         <Button
+          ref={trigger}
           type="text"
           shape="round"
-          aria-label={t("jobs.label", { count: jobs.length })}
+          aria-expanded={open}
         >
-          <span className="jobs-trigger">
-            {spinning ? (
-              <LoaderCircle className="px-spin" size={16} strokeWidth={1.75} />
-            ) : (
+          {/* The counts are only a picture of this sentence, so a screen reader reads the sentence once. */}
+          <span className="visually-hidden">{label}</span>
+          <span className="px-jobs-trigger" aria-hidden>
+            {running.length > 0 ? (
+              <span className="px-jobs-part">
+                <LoaderCircle
+                  className="px-spin"
+                  size={16}
+                  strokeWidth={1.75}
+                />
+                <span className="meta">{running.length}</span>
+              </span>
+            ) : null}
+            {running.length > 0 && problems.length > 0 ? (
+              <span className="px-jobs-sep" />
+            ) : null}
+            {problems.length > 0 ? (
+              <span className="px-jobs-part is-problem">
+                <CircleAlert size={16} strokeWidth={1.75} />
+                <span className="meta">{problems.length}</span>
+              </span>
+            ) : null}
+            {running.length + problems.length === 0 ? (
               <ListChecks size={16} strokeWidth={1.75} />
-            )}
-            <span className="meta jobs-count">{jobs.length}</span>
+            ) : null}
           </span>
         </Button>
       </Popover>
