@@ -8,7 +8,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
  *
  * Ant Design's motion first marks an entering dialog with classes such as `ant-zoom-appear-prepare`, which hold it at
  * opacity 0 for a frame before its CSS animation starts. In that frame no animation is running yet, so the wait also
- * holds while any element still carries an `ant-…-appear`, `-enter` or `-leave` class.
+ * holds while any shown element still carries an `ant-…-appear`, `-enter` or `-leave` class.
  */
 export async function animationsSettled(page: Page, within?: Locator) {
   // Runs in the page: the finite animations still running under `root` (the whole document without one), plus the
@@ -20,7 +20,12 @@ export async function animationsSettled(page: Page, within?: Locator) {
     ).length;
     const motion = /(^|\s)ant-[\w-]+-(appear|enter|leave)(-[\w-]+)?(?=\s|$)/;
     const elements = root ? [root, ...root.querySelectorAll("[class]")] : [...document.querySelectorAll("[class]")];
-    return running + elements.filter((element) => motion.test(element.getAttribute("class") ?? "")).length;
+    // A closed drawer or popover can stay in the DOM, hidden, with its leave class; only a shown element can be mid-fade.
+    const shown = (element: Element) =>
+      element instanceof HTMLElement && element.checkVisibility({ checkVisibilityCSS: true });
+    return (
+      running + elements.filter((element) => motion.test(element.getAttribute("class") ?? "") && shown(element)).length
+    );
   };
   await expect.poll(() => (within ? within.evaluate(busy) : page.evaluate(busy, undefined))).toBe(0);
 }
