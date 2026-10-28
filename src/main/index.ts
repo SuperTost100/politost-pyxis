@@ -66,12 +66,20 @@ import {
   type UtilityProcess,
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
 import { rendererCsp } from "./csp";
 import { APP_PAGE, APP_SCHEME, appPrivileges, registerAppProtocol } from "./app-protocol";
 import { carryStorage } from "./carried-storage";
+import {
+  CRASH_ENDPOINT,
+  CrashReports,
+  discardUnconsentedDumps,
+  type ReportMeta,
+} from "./crash-reports";
+import { watchProcessErrors } from "../core/process-errors";
+import { errorFields } from "../shared/error-fields";
 import {
   recoverInterruptedWipe,
   wipePending,
@@ -117,10 +125,64 @@ if (userDataOverride) app.setPath("userData", userDataOverride);
 // interrupted and run them twice, and a move or restore in one would pull the folder from under the other.
 const primaryInstance = app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
-if (e2eSeam() && process.env.PYXIS_E2E === "1" && process.env.PYXIS_CRASH_DIR) {
-  mkdirSync(process.env.PYXIS_CRASH_DIR, { recursive: true });
-  app.setPath("crashDumps", resolve(process.env.PYXIS_CRASH_DIR));
-  crashReporter.start({ uploadToServer: false });
+// CI keeps the dumps of every test in one folder to name the faulting module (scripts/minidump-fault.mjs).
+const crashDirSeam = e2eSeam() && process.env.PYXIS_E2E === "1" && !!process.env.PYXIS_CRASH_DIR;
+if (crashDirSeam) {
+  mkdirSync(process.env.PYXIS_CRASH_DIR!, { recursive: true });
+  app.setPath("crashDumps", resolve(process.env.PYXIS_CRASH_DIR!));
+}
+
+/**
+ * Where crash reports go: the Worker in `crash-worker/` for an installed app. Tests may name a server on 127.0.0.1 and
+ * otherwise send nothing, and a development build sends nothing.
+ */
+function crashEndpoint(): string | null {
+  if (e2eSeam() && process.env["PYXIS_E2E"] === "1") {
+    const forced = process.env["PYXIS_E2E_CRASH_ENDPOINT"];
+    return forced && /^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(forced) ? forced : null;
+  }
+  return app.isPackaged ? CRASH_ENDPOINT : null;
+}
+const crashEndpointUrl = crashEndpoint();
+// The switch lives in the workspace database, which core owns. Main keeps the last value core reported in
+// userData/crash-reports.json, so it can start the crash reporter now; core confirms or corrects it once it is up.
+const crashReports = new CrashReports({
+  file: join(app.getPath("userData"), "crash-reports.json"),
+  endpoint: crashEndpointUrl,
+  meta: {
+    appVersion: app.getVersion(),
+    electronVersion: process.versions.electron,
+    os: process.platform as ReportMeta["os"],
+    arch: process.arch as ReportMeta["arch"],
+  },
+  roots: () => ({
+    app: [app.getAppPath(), process.resourcesPath, dirname(process.execPath)],
+    workspace: workspacePath,
+    userData: app.getPath("userData"),
+    home: app.getPath("home"),
+  }),
+});
+watchProcessErrors("pyxis", (fields) => crashReports.capture("main", fields));
+const crashReporterOn = primaryInstance && (crashEndpointUrl !== null || crashDirSeam);
+if (crashReporterOn) {
+  // Dumps written while the switch was off must never go, so they are deleted before Crashpad can see them.
+  if (!crashDirSeam)
+    discardUnconsentedDumps(app.getPath("crashDumps"), crashReports.enabled ? crashReports.since : null);
+  crashReporter.start({
+    ...(crashEndpointUrl ? { submitURL: `${crashEndpointUrl}/minidump` } : {}),
+    // electron-builder's productName, which the Worker requires. Named here because an unpackaged run says "Electron".
+    productName: "PoliTost Pyxis",
+    uploadToServer: crashEndpointUrl !== null && crashReports.enabled,
+    // At most one upload an hour on macOS and Windows; Linux ignores it.
+    rateLimit: true,
+  });
+}
+
+/** Applies the crash-report switch as core read it from the profile. Takes effect at once, with no restart. */
+function applyCrashConsent(enabled: boolean): void {
+  crashReports.setConsent(enabled);
+  if (crashReporterOn) crashReporter.setUploadToServer(crashEndpointUrl !== null && enabled);
+  if (enabled) void crashReports.flush();
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -699,6 +761,13 @@ function startCore(strict = false): Promise<void> {
       );
     },
   );
+  // Crash reports: the switch as core read it, and core's own uncaught errors. An error from a core that is already
+  // being replaced is still an error, so only the switch is tied to the current core.
+  child.on("message", (data: { type?: string; enabled?: unknown }) => {
+    if (data?.type === "crash-consent" && typeof data.enabled === "boolean") {
+      if (coreChild === child) applyCrashConsent(data.enabled);
+    } else if (data?.type === "js-error") crashReports.capture("core", errorFields(data));
+  });
   keysReadyFor = null;
   rendererPortFor = null;
   let timedOut = false;
@@ -967,6 +1036,10 @@ function registerIpc(): void {
     if (coreChild && !coreExited(coreChild)) return;
     coreRestartFailures = 0;
     await startCore();
+  });
+  ipcMain.on(mainChannels.crashReport, (event, raw: unknown) => {
+    if (event.sender.id !== mainWindow?.webContents.id || !raw || typeof raw !== "object") return;
+    crashReports.capture("renderer", errorFields(raw));
   });
   ipcMain.handle(mainChannels.appearanceGet, () => appearance());
   ipcMain.handle(mainChannels.appearanceSet, (event, source: ThemeSource) => {

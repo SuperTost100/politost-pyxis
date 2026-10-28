@@ -77,6 +77,27 @@ jobs:
             Where-Object { $_.Message -match '(?i)electron|politost|pyxis' } |
             Select-Object -First 5 -ExpandProperty Message
 
+  # The crash-report Worker (crash-worker/) has its own packages and tests, run in workerd. Nothing here deploys it.
+  crash-worker:
+    name: Crash Worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: crash-worker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: crash-worker/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
   # One job per platform and language; each covers both themes and widths (and large text on macOS arm64).
   audit:
     name: route audit ${{ matrix.target }} ${{ matrix.language }}

@@ -22,3 +22,8 @@
 .px-crash-row .ant-switch {
   flex: none;
 }
+.px-crash-facts {
+  display: grid;
+  gap: var(--space-1);
+  padding-left: var(--space-5);
+}

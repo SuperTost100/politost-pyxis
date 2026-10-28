@@ -1756,9 +1756,12 @@
       "study": "Studio",
       "app": "App"
     },
-    "crashOn": "Consentite: se Pyxis si chiude per errore, potrà usare un rapporto tecnico per correggerlo. Oggi non ne invia nessuno: la scelta resta su questo computer.",
+    "crashOn": "Consentite: se Pyxis va in errore, invia da solo un rapporto tecnico.",
     "crashOff": "Non consentite: nessun rapporto lascia questo computer.",
-    "crashContents": "Un rapporto di crash descrive lo stato tecnico del programma al momento dell'errore: versione, sistema e alcune porzioni di memoria. Pyxis non ci aggiunge i tuoi file né le tue chat, ma la memoria può contenere frammenti di ciò che stavi usando.",
+    "crashWhy": "Pyxis funziona sul tuo computer, quindi chi lo sviluppa non vede gli errori che capitano a te: questi rapporti sono l'unico modo per scoprirli e correggerli.",
+    "crashContents": "Un rapporto contiene la versione di Pyxis e del sistema, il messaggio di errore e il punto del programma in cui è nato.",
+    "crashNever": "Pyxis non ci aggiunge mai i tuoi file, i nomi dei documenti, le chat né le chiavi API. Se però si chiude di colpo, il rapporto include una parte della sua memoria, che può contenere frammenti di ciò che avevi sullo schermo.",
+    "crashKept": "I rapporti vengono cancellati dopo 90 giorni, e puoi togliere il consenso quando vuoi da Impostazioni, alla voce Privacy.",
     "flashcards": "Flashcard",
     "newPerDay": "Flashcard nuove al giorno",
     "newPerDayHint": "Per ogni esame. Le flashcard già iniziate tornano quando scadono, qualunque sia il limite. Con 0 non ne partono di nuove."

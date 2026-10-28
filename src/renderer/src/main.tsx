@@ -2,10 +2,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
+import { watchWindowErrors } from "./lib/errorReports";
 import "./locales/i18n";
 import "./lib/focusSource";
 import "./design-system/tokens/tokens.css";
 import "./styles/global.css";
+
+// Before the first render, so an error while the app starts is reported too (only while the crash-report switch is on).
+watchWindowErrors();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },

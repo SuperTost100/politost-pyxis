@@ -117,7 +117,7 @@ A welcome screen says what Pyxis does. Then come four short steps, and Skip jump
 1. **About you.** Name, level, school and course. They stay on your computer.
 2. **AI engines.** Pyxis asks which AI you already pay for, installs that engine with its maker's official installer and signs you in. Engines already on your computer are offered first. It sends nothing to a model at this step.
 3. **Photos and scans.** Optionally download the English and Italian OCR data (about 7 MB), so Pyxis can read photos and scans on your computer.
-4. **Privacy.** The crash-report switch. For now it only records your choice. Pyxis has no crash reporter yet.
+4. **Privacy.** The crash-report switch, off until you turn it on. While it is on, Pyxis sends a technical report when it hits an error, so crashes on your computer can be found and fixed.
 
 The last screen offers to create your first exam, or to start one from a free PoliTost book.
 
@@ -147,8 +147,9 @@ These actions send data off your computer:
 - **Optional downloads.** The search model, the Python runtime and the OCR language files are fetched once, after you agree, and checked against pinned SHA-256 hashes.
 - **Update check.** Pyxis asks GitHub for the latest release tag, at most once a day, or again after 15 minutes if the check failed. **Check for updates** asks again at once, at most once a minute. It sends no workspace content.
 - **Installing an update.** Only after you press Download and install, Pyxis downloads the installer for your system and `SHA256SUMS` from that GitHub release.
+- **Crash reports.** Only while the switch in Settings → Privacy is on. When Pyxis hits an error, it sends a report to PoliTost's crash server, which keeps it for 90 days. A report holds versions, the system and where the error happened, with folder paths removed; after a sudden close it also holds part of Pyxis's memory, which can contain fragments of what was on screen. [Crash reports](docs/crash-reports.md) lists exactly what is sent.
 
-Pyxis has no telemetry and uploads no crash reports. Backups and exported plans can contain your course material, so treat them as private files. API keys are never written to the workspace or to backups. [SECURITY.md](SECURITY.md) lists every network request and where each file lives.
+Pyxis has no telemetry, and it sends crash reports only while you allow them. Backups and exported plans can contain your course material, so treat them as private files. API keys are never written to the workspace or to backups. [SECURITY.md](SECURITY.md) lists every network request and where each file lives.
 
 ## Build from source
 
