@@ -145,6 +145,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await page.setViewportSize({ width: 420, height: 900 });
     await shoot(page, "sources-paper-en-dark-420");
     await look(page, "it", "light");
+    await expect(page.getByText(/6 domande · 150 min · aperte 2, numeriche 2/)).toBeVisible();
     await shoot(page, "sources-paper-it-light-420");
     await page.setViewportSize({ width: 1280, height: 900 });
     await look(page, "en", "light");
