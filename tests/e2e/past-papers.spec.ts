@@ -39,9 +39,11 @@ async function look(page: Page, language: "it" | "en", theme: "light" | "dark") 
     { language, theme },
   );
   await page.reload();
-  // The window draws nothing until it has its theme, then fades the page in: wait for both before a caller measures.
+  // The window draws nothing until it has its theme, then fades the page in: wait for both, and for the fade to end,
+  // before a caller takes a screenshot or measures.
   await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
   await expect(page.locator("h1:visible").first()).toBeVisible();
+  await animationsSettled(page);
 }
 
 async function shoot(page: Page, name: string) {
