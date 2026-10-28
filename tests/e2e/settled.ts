@@ -8,7 +8,8 @@ import { expect, type Locator, type Page } from "@playwright/test";
  *
  * Ant Design's motion first marks an entering dialog with classes such as `ant-zoom-appear-prepare`, which hold it at
  * opacity 0 for a frame before its CSS animation starts. In that frame no animation is running yet, so the wait also
- * holds while any shown element still carries an `ant-…-appear`, `-enter` or `-leave` class.
+ * holds while a shown element carries one of those pre-animation classes (`ant-…-appear`, `-enter` or `-leave`, then
+ * `-prepare` or `-start`). Once the animation runs, the count above covers it.
  */
 export async function animationsSettled(page: Page, within?: Locator) {
   // Runs in the page: the finite animations still running under `root` (the whole document without one), plus the
@@ -18,7 +19,7 @@ export async function animationsSettled(page: Page, within?: Locator) {
     const running = animations.filter(
       (animation) => animation.playState === "running" && animation.effect?.getTiming().iterations !== Infinity,
     ).length;
-    const motion = /(^|\s)ant-[\w-]+-(appear|enter|leave)(-[\w-]+)?(?=\s|$)/;
+    const motion = /(^|\s)ant-[\w-]+-(appear|enter|leave)-(prepare|start)(?=\s|$)/;
     const elements = root ? [root, ...root.querySelectorAll("[class]")] : [...document.querySelectorAll("[class]")];
     // A closed drawer or popover can stay in the DOM, hidden, with its leave class; only a shown element can be mid-fade.
     const shown = (element: Element) =>
