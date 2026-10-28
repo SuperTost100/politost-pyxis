@@ -399,7 +399,7 @@ export async function writeLesson(
         signal: options?.signal,
         onDelta: options?.onDelta && ((text) => options.onDelta?.(earlier + text)),
         prompt: grounded
-          ? `Topic: ${topic.title}\n${partNote(index, batches.length)}\n\nMaterial:\n\n${materialText(batch)}`
+          ? `Topic: ${topic.title}\n${partNote(index, batches.length)}${lessonSoFar(written)}\n\nMaterial:\n\n${materialText(batch)}`
           : `Topic: ${topic.title}`,
         system: [lessonSystem(context, grounded, python != null), interestsLine(db)]
           .filter(Boolean)
@@ -453,9 +453,39 @@ export async function writeLesson(
   };
 }
 
+/** Sections the whole lesson should have, split over its parts (the prompt asks a one-part lesson for the same). */
+const LESSON_SECTIONS = 6;
+
 function partNote(index: number, count: number) {
   if (count === 1) return "Teach this material.";
-  return `Part ${index + 1} of ${count}. Teach this part of the material, continuing from the earlier parts.${index + 1 < count ? " This is not the last part: do not write the pyxis-recap." : " This is the last part: end with the pyxis-recap for the whole topic."}`;
+  // The parts' shares add up to the lesson's sections; the first part always opens one, and with more parts than
+  // sections some parts only continue the section before them.
+  const share =
+    Math.ceil(((index + 1) * LESSON_SECTIONS) / count) - Math.ceil((index * LESSON_SECTIONS) / count);
+  const budget = share
+    ? `write about ${share} section${share === 1 ? "" : "s"} for this part, with about one quick check per section.`
+    : "do not start a new ## section for this part: continue the section the earlier part ended with, and add no quick check.";
+  return `Part ${index + 1} of ${count}. Teach this part of the material, continuing from the earlier parts. The whole lesson has about ${LESSON_SECTIONS} sections across all parts, so ${budget}${index + 1 < count ? " This is not the last part: do not write the pyxis-recap." : " This is the last part: end with the pyxis-recap for the whole topic."}`;
+}
+
+/** Characters of the lesson so far a later part sees: enough for the section it continues, without resending the lesson. */
+const TAIL_CHARS = 1500;
+
+/**
+ * Where the lesson written by the earlier parts ends: its last ## section, cut to its heading and its last characters
+ * when long. Empty for the first part.
+ */
+function lessonSoFar(written: string[]) {
+  if (!written.length) return "";
+  const text = written.join("\n\n");
+  // smartSections skips `## ` lines inside code fences, which are code, not headings.
+  const last = smartSections(text).at(-1);
+  const section = last ? text.split("\n").slice(last.start).join("\n") : text;
+  const tail =
+    section.length <= TAIL_CHARS
+      ? section
+      : `${section.slice(0, section.indexOf("\n") + 1)}…\n${section.slice(-TAIL_CHARS)}`;
+  return `\n\nThe lesson so far ends like this (do not repeat it):\n\n${tail}`;
 }
 
 /** The model's lesson, unwrapped when it put the whole answer in one Markdown fence; empty when there is no text. */

@@ -146,7 +146,7 @@ describe("local model in the automatic choice", () => {
   it("takes every task, photos included, when it is the only engine and passed the check", () => {
     const plan = planAuto([local(true)]);
     expect(Object.keys(plan).sort()).toEqual(
-      ["chat", "default", "grading", "lesson", "map", "plan", "vision"].sort(),
+      ["cards", "chat", "default", "grading", "lesson", "map", "plan", "vision"].sort(),
     );
     expect(plan.plan).toEqual({ provider: "ollama", model: "gemma3:12b" });
   });

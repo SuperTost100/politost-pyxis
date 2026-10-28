@@ -211,7 +211,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       },
       { planId, topicId: learn.topicId },
     );
-    const status = page.getByRole("status").filter({ hasText: "Sto scrivendo la lezione…" });
+    const status = page.getByRole("status").filter({ hasText: /^Sto scrivendo/ });
     await expect(status).toBeVisible();
     await expect(status.getByRole("button", { name: "Interrompi" })).toBeVisible();
     await saveShot(page, `smart-text/lesson-generating-it-light.png`);

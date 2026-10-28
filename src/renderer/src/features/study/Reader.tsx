@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { ArrowLeft, CircleCheck } from "lucide-react";
+import { ArrowLeft, CircleCheck, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -76,35 +76,46 @@ export function ReaderLayout({
 /** "Writing…" with a Stop action, and skeleton lines until the first words arrive. */
 export function ReaderProgress({
   label,
+  detail,
   stopLabel,
   onStop,
   empty,
+  pending = false,
 }: {
   label: string;
+  /** Names what is being written, after the label. */
+  detail?: ReactNode;
   stopLabel?: string;
   onStop?: () => void;
   empty: boolean;
+  /** More is coming below text already on screen: shows the lines of the next section, without a heading bar. */
+  pending?: boolean;
 }) {
   return (
     <>
-      <div className="px-reader-status" role="status">
-        <span className="px-reader-dot" aria-hidden />
+      <div className={`px-reader-status${pending && !empty ? " is-after" : ""}`} role="status">
+        <LoaderCircle className="px-reader-spinner" size={16} strokeWidth={1.75} aria-hidden />
         <span className="small">{label}</span>
+        {detail ? <span className="small body-strong px-reader-detail">{detail}</span> : null}
         {onStop ? (
           <Button size="small" type="text" onClick={onStop}>
             {stopLabel}
           </Button>
         ) : null}
       </div>
-      {empty ? (
+      {empty || pending ? (
         <div className="px-reader-skeleton" aria-hidden>
-          <span className="is-heading" />
+          {empty ? <span className="is-heading" /> : null}
           <span />
           <span />
           <span className="is-short" />
-          <span />
-          <span />
-          <span className="is-short" />
+          {empty ? (
+            <>
+              <span />
+              <span />
+              <span className="is-short" />
+            </>
+          ) : null}
         </div>
       ) : null}
     </>

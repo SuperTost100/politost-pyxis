@@ -68,7 +68,7 @@ describe("automatic engine choice", () => {
     // Cursor Agent is disabled, so it is never counted as ready.
     expect(result.ready).toEqual(["claude", "codex"]);
     expect(Object.keys(result.features).sort()).toEqual(
-      ["chat", "default", "grading", "lesson", "map", "plan", "vision"].sort(),
+      ["cards", "chat", "default", "grading", "lesson", "map", "plan", "vision"].sort(),
     );
     expect(result.features.chat).toEqual({
       provider: "codex",
@@ -86,6 +86,18 @@ describe("automatic engine choice", () => {
       model: "gpt-6-luna",
       effort: "low",
     });
+    // Flashcards are a short job: the fast model at low effort, not the lesson's.
+    expect(result.features.cards).toEqual({
+      provider: "codex",
+      model: "gpt-6-luna",
+      effort: "low",
+      auto: true,
+    });
+    expect(selectionFor(db, "cards")).toEqual({
+      provider: "codex",
+      model: "gpt-6-luna",
+      effort: "low",
+    });
     db.close();
   });
 
@@ -93,7 +105,7 @@ describe("automatic engine choice", () => {
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);
     await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
-    const features = ["chat", "default", "grading", "lesson", "map", "plan", "vision"];
+    const features = ["cards", "chat", "default", "grading", "lesson", "map", "plan", "vision"];
     // The lesson engine's model gets refused, whichever the split gave it.
     const refused = selectionFor(db, "lesson");
     benchModel(refused.provider, refused.model);

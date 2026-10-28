@@ -8,6 +8,10 @@
       "tier": "fast",
       "weight": 2
     },
+    "cards": {
+      "tier": "fast",
+      "weight": 2
+    },
     "lesson": {
       "tier": "mid",
       "weight": 3

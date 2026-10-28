@@ -839,6 +839,7 @@
     "failed": "Non è stato possibile aprire la lezione. Controlla il motore selezionato o riprova.",
     "retry": "Riprova la lezione",
     "writing": "Sto scrivendo la lezione…",
+    "writingSection": "Sto scrivendo la sezione {{n}}:",
     "cancelled": "Scrittura annullata. Questa bozza è incompleta. Riprova per completarla.",
     "wording": {
       "label": "Livello di linguaggio",
@@ -2279,6 +2280,7 @@
       "chat": "Chat",
       "plan": "Piani",
       "lesson": "Lezioni e quiz",
+      "cards": "Flashcard",
       "grading": "Correzione",
       "map": "Mappe",
       "vision": "Immagini"
@@ -2305,6 +2307,7 @@
       "map": "le mappe",
       "plan": "i piani",
       "lesson": "le lezioni",
+      "cards": "le flashcard",
       "vision": "le foto",
       "grading": "le correzioni"
     },
