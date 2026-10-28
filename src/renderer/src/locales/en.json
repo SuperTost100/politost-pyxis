@@ -1758,7 +1758,7 @@
     },
     "crashOn": "Allowed: when Pyxis hits an error, it sends a technical report on its own.",
     "crashOff": "Not allowed: no report leaves this computer.",
-    "crashWhy": "Pyxis runs on your computer, so the person who makes it can't see the errors that happen to you: these reports are the only way to find and fix them.",
+    "crashWhy": "Pyxis runs on your computer, so the person who makes it can't see the errors that happen to you: these reports are the only way to find and fix them. It doesn't slow Pyxis down and sends nothing while everything works.",
     "crashContents": "A report holds the Pyxis and system versions, the error message and the place in the program where it started.",
     "crashNever": "Pyxis never adds your files, document names, chats or API keys to it. If Pyxis closes suddenly, though, the report includes part of its memory, which can hold fragments of what was on your screen.",
     "crashKept": "Reports are deleted after 90 days, and you can take your consent back at any time in Settings, under Privacy.",

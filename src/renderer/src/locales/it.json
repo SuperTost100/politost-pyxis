@@ -1758,7 +1758,7 @@
     },
     "crashOn": "Consentite: se Pyxis va in errore, invia da solo un rapporto tecnico.",
     "crashOff": "Non consentite: nessun rapporto lascia questo computer.",
-    "crashWhy": "Pyxis funziona sul tuo computer, quindi chi lo sviluppa non vede gli errori che capitano a te: questi rapporti sono l'unico modo per scoprirli e correggerli.",
+    "crashWhy": "Pyxis funziona sul tuo computer, quindi chi lo sviluppa non vede gli errori che capitano a te: questi rapporti sono l'unico modo per scoprirli e correggerli. Non rallenta Pyxis e non manda niente finché tutto funziona.",
     "crashContents": "Un rapporto contiene la versione di Pyxis e del sistema, il messaggio di errore e il punto del programma in cui è nato.",
     "crashNever": "Pyxis non ci aggiunge mai i tuoi file, i nomi dei documenti, le chat né le chiavi API. Se però si chiude di colpo, il rapporto include una parte della sua memoria, che può contenere frammenti di ciò che avevi sullo schermo.",
     "crashKept": "I rapporti vengono cancellati dopo 90 giorni, e puoi togliere il consenso quando vuoi da Impostazioni, alla voce Privacy.",
