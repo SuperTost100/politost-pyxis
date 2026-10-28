@@ -57,4 +57,17 @@ describe("topicRows", () => {
     ]);
     expect(a).toMatchObject({ atGoal: true, current: false, date: undefined });
   });
+
+  it("measures a full-mark goal against the reachable target, as core does", () => {
+    const [a] = topicRows({
+      topics,
+      steps: [step("quiz", "a", 1, [99, 100])],
+      status: [{ topicId: "a", mastery: 0.995, dueCards: 0, gaps: 0 }],
+      next: null,
+      goal: 1,
+      schedule: null,
+    });
+    expect(a!.atGoal).toBe(true);
+    expect(a!.steps[2]).toMatchObject({ activity: "quiz", state: "done" });
+  });
 });

@@ -3,7 +3,7 @@ import { Button, Pagination, Select, Skeleton } from "antd";
 import { BookOpen, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
@@ -40,7 +40,10 @@ export function MistakesNotebook() {
   const { t } = useTranslation();
   const grade = useGradeScale();
   const navigate = useNavigate();
-  const [exam, setExam] = useState("");
+  // The exam filter lives in the URL, so a redo can bring the student back to the same exam.
+  const [search, setSearch] = useSearchParams();
+  const exam = search.get("exam") ?? "";
+  const setExam = (value: string) => setSearch(value ? { exam: value } : {}, { replace: true });
   const [page, setPage] = useState(1);
   const summary = useRef<HTMLParagraphElement>(null);
   const notebook = useQuery({
@@ -60,7 +63,7 @@ export function MistakesNotebook() {
     }) => invoke("study.mistakesRedo", { planId: plan, keys }),
     onSuccess: ({ attemptId }, input) =>
       navigate(
-        `/plans/${input.planId}/redo?attempt=${attemptId}`,
+        `/plans/${input.planId}/redo?attempt=${attemptId}${shownExam ? `&exam=${encodeURIComponent(shownExam)}` : ""}`,
       ),
   });
   const data = notebook.data;

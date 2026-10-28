@@ -304,17 +304,17 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await expect(page.getByRole("status")).toHaveText("4 questions to redo from quizzes, quick checks and simulations");
     await expect(page.getByRole("heading", { level: 3 })).toHaveText(["Dinamica", "Cinematica"]);
     await entry("Che cosa causa").getByRole("button", { name: "Redo" }).click();
-    await expect(page).toHaveURL(/#\/plans\/p-phys\/redo\?attempt=[^&]+$/);
+    await expect(page).toHaveURL(/#\/plans\/p-phys\/redo\?attempt=[^&]+&exam=p-phys$/);
     await expect(page.getByText("Redo mistakes")).toBeVisible();
     await page.getByRole("button", { name: /^A La forza$/ }).click();
     await page.getByRole("button", { name: "Check", exact: true }).click();
     await page
       .getByRole("button", { name: "See results", exact: true })
       .click();
-    // The notebook lives only under Exams, so that is where the redo returns.
     await page.getByRole("button", { name: "Back to the notebook" }).click();
-    await expect(page).toHaveURL(/#\/exams\/mistakes$/);
-    await expect(page.getByRole("status")).toHaveText("4 questions to redo from quizzes, quick checks and simulations");
+    // The notebook lives only under Exams, so that is where the redo returns, still narrowed to the same exam.
+    await expect(page).toHaveURL(/#\/exams\/mistakes\?exam=p-phys$/);
+    await expect(page.getByRole("status")).toHaveText("3 questions to redo from quizzes, quick checks and simulations");
     await expect(entry("Che cosa causa")).toHaveCount(0);
     const evidence = db
       .prepare(
@@ -328,7 +328,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await expect(page).toHaveURL(/#\/plans\/p-phys\/redo\?attempt=/);
     await expect(page.getByText("Question 1 of 2")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).first().click();
-    await expect(page).toHaveURL(/#\/exams\/mistakes$/);
+    await expect(page).toHaveURL(/#\/exams\/mistakes\?exam=p-phys$/);
 
     // The exam page has no notebook of its own: an old link to it opens the exam's path.
     await page.evaluate(() => {

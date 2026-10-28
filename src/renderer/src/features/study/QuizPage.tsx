@@ -125,8 +125,11 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const paper = searchParams.get("paper") ?? undefined;
   const savedAttempt = searchParams.get("attempt");
-  // The mistakes notebook lives only under Exams.
-  const back = !redo ? `/plans/${planId ?? ""}` : "/exams/mistakes";
+  // The mistakes notebook lives only under Exams; a redo returns to it narrowed to the exam it was narrowed to.
+  const notebookExam = searchParams.get("exam");
+  const back = !redo
+    ? `/plans/${planId ?? ""}`
+    : `/exams/mistakes${notebookExam ? `?exam=${encodeURIComponent(notebookExam)}` : ""}`;
   const restoredAttempt = useRef<string | null>(null);
   const [hydratedAttempt, setHydratedAttempt] = useState<string | null>(null);
   const [types, setTypes] = useState<Kind[]>([...KINDS]);

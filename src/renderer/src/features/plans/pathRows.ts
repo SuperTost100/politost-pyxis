@@ -1,3 +1,5 @@
+import { reachableTarget } from "../../../../shared/plan-file";
+
 /** The activities a topic row shows as its steps, in the order a student does them. */
 export const topicSteps = ["lesson", "practice", "quiz", "cards", "gaps"] as const;
 export type TopicStep = (typeof topicSteps)[number];
@@ -54,6 +56,8 @@ export function topicRows(input: {
   goal: number;
   schedule: ReadonlyArray<{ topicId: string; date: string | null }> | null;
 }): TopicRow[] {
+  // The goal as core counts it: a full-mark goal is reached at 0.99, since decayed mastery never returns to 1.
+  const goal = reachableTarget(input.goal);
   const status = new Map(input.status.map((row) => [row.topicId, row]));
   const dates = new Map(input.schedule?.map((row) => [row.topicId, row.date]));
   return input.topics.map((topic, position) => {
@@ -70,7 +74,7 @@ export function topicRows(input: {
       quiz
         ? {
             activity: "quiz",
-            state: quiz.total > 0 && quiz.correct / quiz.total >= input.goal ? "done" : "missed",
+            state: quiz.total > 0 && quiz.correct / quiz.total >= goal ? "done" : "missed",
             result: quiz,
           }
         : { activity: "quiz", state: "todo" },
@@ -83,7 +87,7 @@ export function topicRows(input: {
       title: topic.title,
       index: position + 1,
       mastery,
-      atGoal: mastery >= input.goal,
+      atGoal: mastery >= goal,
       gaps,
       current,
       done: own.length,
