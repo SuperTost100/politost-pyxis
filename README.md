@@ -112,16 +112,16 @@ If a download fails or doesn't match, Pyxis deletes it and offers the release pa
 
 ### First launch
 
-A welcome screen says what Pyxis does. Then come four short steps, and Skip jumps past all of them:
+Setup has four steps. Skip, on the first one, jumps past all of them:
 
-1. **About you.** Name, level, school and course. They stay on your computer.
-2. **AI engines.** Pyxis asks which AI you already pay for, installs that engine with its maker's official installer and signs you in. Engines already on your computer are offered first. It sends nothing to a model at this step.
-3. **Photos and scans.** Optionally download the English and Italian OCR data (about 7 MB), so Pyxis can read photos and scans on your computer.
-4. **Privacy.** The crash-report switch, off until you turn it on. While it is on, Pyxis sends a technical report when it hits an error, so crashes on your computer can be found and fixed.
+1. **About you.** What Pyxis does, then your name, study level, school, course and year. They stay on your computer. At university, grades, goals and preparation are shown out of 30, at other levels out of 100. You can change both in Settings → Profile.
+2. **AI engine.** Pyxis asks which AI you already pay for, installs that engine with its maker's official installer and signs you in. Engines already on your computer are offered first, with a note on what leaves your computer. It sends nothing to a model at this step. The crash-report switch sits here too, off until you turn it on. While it is on, Pyxis sends a technical report when it hits an error, so crashes on your computer can be found and fixed.
+3. **The exam.** Its name, subject, date and goal on one screen. "No exam for now" saves your profile and opens the exams list, where you can create one later.
+4. **Material.** Your files, your library or a free PoliTost book. Pyxis then shows the build steps and the topics it found as it prepares the exam.
 
-The last screen offers to create your first exam, or to start one from a free PoliTost book.
+Pyxis offers the OCR data for scans (about 7 MB) when you add your first scan, or in Settings → Data.
 
-To go through it again, open Settings → Profile and choose "Run setup again". The screens open with your current answers filled in and have no Skip. Your engines stay as they are unless you set one up. At the end you return to Settings → Profile.
+To go through it again, open Settings → Profile and choose "Run setup again". The first two steps open with your current answers filled in and have no Skip. Your engines stay as they are unless you set one up. At the end you return to Settings → Profile.
 
 | Engine        | How it connects                           |
 | ------------- | ----------------------------------------- |

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import en from "../../locales/en.json";
 import it_ from "../../locales/it.json";
+import { formatGrade } from "../../lib/grade";
 import { examDaysLabel, onTrackLabel } from "./examDays";
 
 const t = (key: string, params?: { count?: number }) => `${key}${params ? `:${params.count}` : ""}`;
@@ -18,14 +19,21 @@ describe("exam days label", () => {
 
 describe("on-track label", () => {
   const tt = (key: string, params?: Record<string, unknown>) => `${key}${params ? `:${JSON.stringify(params)}` : ""}`;
-  it("names the saved target when it is the threshold", () => {
-    expect(onTrackLabel(tt, 0, 11, 0.75)).toBe('progress.onTrack:{"ready":0,"count":11,"target":75}');
+  const on30 = (fraction: number) => formatGrade(fraction, 30, "it");
+  const on100 = (fraction: number) => formatGrade(fraction, 100, "it");
+  it("names the saved target, on the profile's scale, when it is the threshold", () => {
+    expect(onTrackLabel(tt, 0, 11, 0.75, on100)).toBe('progress.onTrack:{"ready":0,"count":11,"target":"75/100"}');
+    expect(onTrackLabel(tt, 0, 11, 0.75, on30)).toBe('progress.onTrack:{"ready":0,"count":11,"target":"22,5/30"}');
   });
-  it("names the 99% threshold a 100% target counts against, and the target", () => {
-    expect(onTrackLabel(tt, 2, 11, 1)).toBe(
-      'progress.onTrackReachable:{"ready":2,"count":11,"threshold":99,"target":100}',
+  it("names the threshold a full-mark target counts against, and the target", () => {
+    expect(onTrackLabel(tt, 2, 11, 1, on100)).toBe(
+      'progress.onTrackReachable:{"ready":2,"count":11,"threshold":"99/100","target":"100/100"}',
     );
-    expect(it_.progress.onTrackReachable_other).toContain("{{threshold}}%");
-    expect(en.progress.onTrackReachable_other).toContain("{{threshold}}%");
+    expect(onTrackLabel(tt, 2, 11, 1, on30)).toBe(
+      'progress.onTrackReachable:{"ready":2,"count":11,"threshold":"29,7/30","target":"30/30"}',
+    );
+    // The values come formatted with their scale, so the copy adds no percent sign.
+    expect(it_.progress.onTrackReachable_other).not.toContain("%");
+    expect(en.progress.onTrackReachable_other).not.toContain("%");
   });
 });

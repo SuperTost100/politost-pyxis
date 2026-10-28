@@ -30,7 +30,7 @@ export function plannerDate(key: string): Date {
   return new Date(year!, month! - 1, day!);
 }
 
-/** The falling-behind warning for one exam. */
+/** The falling-behind warning for one exam, with the goal and the forecast written by `format` on the profile's scale. */
 export function behindText(
   t: T,
   exam: {
@@ -38,9 +38,10 @@ export function behindText(
     target: number;
     behind: { daysLate: number | null; masteryAtExam: number } | null;
   },
+  format: (fraction: number) => string,
 ): string {
-  const target = Math.round(exam.target * 100);
-  const atExam = Math.round((exam.behind?.masteryAtExam ?? 0) * 100);
+  const target = format(exam.target);
+  const atExam = format(exam.behind?.masteryAtExam ?? 0);
   if (exam.behind?.daysLate == null)
     return t("planner.behindNoTime", { title: exam.title, target });
   return t("planner.behind", {

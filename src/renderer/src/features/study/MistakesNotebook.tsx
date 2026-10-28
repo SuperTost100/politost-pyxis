@@ -12,6 +12,7 @@ import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { QUIZ_MAX_QUESTIONS } from "@shared/quiz";
 import { invoke } from "../../lib/ipc";
+import { useGradeScale } from "../../lib/useGradeScale";
 import { i18n } from "../../locales/i18n";
 import { blanks, pairs, stemText, verdict } from "./quizText";
 import "./QuizPage.css";
@@ -37,6 +38,7 @@ function dateText(at: number) {
  */
 export function MistakesNotebook({ planId }: { planId?: string }) {
   const { t } = useTranslation();
+  const grade = useGradeScale();
   const navigate = useNavigate();
   const [exam, setExam] = useState("");
   const [page, setPage] = useState(1);
@@ -178,7 +180,7 @@ export function MistakesNotebook({ planId }: { planId?: string }) {
             <p className="label">
               {state === "partial"
                 ? t("mistakes.yourAnswerScore", {
-                    percent: Math.round(entry.score * 100),
+                    score: grade.format(entry.score),
                   })
                 : t("quiz.yourAnswer")}
             </p>

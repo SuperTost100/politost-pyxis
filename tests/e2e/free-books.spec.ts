@@ -62,7 +62,7 @@ async function openBooksFromMenu(page: Page) {
     .click();
 }
 
-test("Free books: from the end of setup a book goes into a new exam, and the Library shows it as already there", async () => {
+test("Free books: the material step of setup puts a book into the new exam, and the Library shows it as already there", async () => {
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-books-user-"));
   const books = booksSite();
@@ -70,16 +70,16 @@ test("Free books: from the end of setup a book goes into a new exam, and the Lib
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await button(page, "Inizia").click();
-    await page.getByLabel("Nome", { exact: true }).fill("Ada");
+    await page.getByLabel("Come ti chiami? (facoltativo)", { exact: true }).fill("Ada");
     await button(page, "Continua").click();
     await button(page, /^(Lo farò dopo|Continua)$/).click();
+    // The exam step needs a name and a date, or no date yet.
+    await page.getByLabel("Nome dell'esame", { exact: true }).fill("Fisica di prova");
+    await button(page, "Non ho ancora la data").click();
     await button(page, "Continua").click();
-    await button(page, "Continua").click();
-    await expect(page.getByRole("heading", { name: "Tutto pronto" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Da cosa studi?" })).toBeVisible();
 
-    // The wizard opens with the books already showing.
-    await button(page, "Parti da un libro PoliTost gratuito").click();
+    await button(page, "Libri PoliTost gratuiti").click();
     const dialog = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
     await expect(dialog.getByText("Fisica di prova")).toBeVisible({
       timeout: 30000,
@@ -91,9 +91,11 @@ test("Free books: from the end of setup a book goes into a new exam, and the Lib
     await dialog.getByRole("button", { name: "Aggiungi Fisica di prova" }).click();
     await expect(dialog.getByText("Aggiunto")).toBeVisible({ timeout: 30000 });
     await dialog.getByRole("button", { name: /Close|Chiudi/ }).click();
-    // The first book names the exam.
-    await expect(page.locator("#plan-title")).toHaveValue("Fisica di prova");
-    await expect(page.locator("#plan-subject")).toHaveValue("Fisica");
+    // The book is in the exam, and the main button now creates it.
+    await expect(
+      page.getByRole("list", { name: "Fonti del piano" }).getByText("Fisica di prova"),
+    ).toBeVisible();
+    await expect(button(page, "Crea l'esame")).toBeVisible();
 
     const imported = async () =>
       (

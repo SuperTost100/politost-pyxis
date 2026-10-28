@@ -326,13 +326,11 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     }
     await page.getByTitle("Piani", { exact: true }).click();
     await page
-      .getByRole("button", { name: "Nuovo piano", exact: true })
+      .getByRole("button", { name: "Nuovo esame", exact: true })
       .click();
     await page.locator("#plan-title").fill("Motion");
-    for (let step = 0; step < 3; step++) {
-      if (step === 1) await page.getByRole("button", { name: "Entro 10 giorni", exact: true }).click();
-      await page.getByRole("button", { name: "Continua", exact: true }).click();
-    }
+    await page.getByRole("button", { name: "Non ho ancora la data", exact: true }).click();
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
     // The book is in the library already, so it comes in through the library picker.
     await page
       .getByRole("button", { name: "Dalla tua libreria", exact: true })
@@ -341,14 +339,11 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     await picker.getByRole("checkbox", { name: /Motion/ }).check();
     await picker.getByRole("button", { name: /^Aggiungi 1 fonte$/ }).click();
     await expect(page.getByText("1 fonte nel piano")).toBeVisible();
-    for (let step = 0; step < 2; step++) {
-      await page.getByRole("button", { name: "Continua", exact: true }).click();
-    }
     await page
-      .getByRole("button", { name: "Crea il piano", exact: true })
+      .getByRole("button", { name: "Crea l'esame", exact: true })
       .click();
     await page
-      .getByRole("button", { name: "Apri il piano", exact: true })
+      .getByRole("button", { name: "Apri l'esame", exact: true })
       .click({ timeout: 240000 });
     await clean(page);
     console.log("release: plan");

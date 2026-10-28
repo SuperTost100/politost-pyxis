@@ -12,14 +12,14 @@ const stored: StoredProfile = {
 };
 
 describe("setup answers", () => {
-  it("first setup starts blank with crash reports on", () => {
+  it("first setup starts blank, at university, with crash reports off", () => {
     expect(firstAnswers(null)).toEqual({
       name: "",
       level: "university",
       year: "",
       school: "",
       course: "",
-      crashReports: true,
+      crashReports: false,
     });
   });
 

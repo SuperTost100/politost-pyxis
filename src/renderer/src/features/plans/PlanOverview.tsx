@@ -30,7 +30,8 @@ import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { MasteryBar } from "../../components/MasteryBar";
-import { PlanEducationLevel } from "./PlanEducationLevel";
+import { goalFraction, goalInput, goalRange } from "../../lib/grade";
+import { useGradeScale } from "../../lib/useGradeScale";
 import { Icon } from "../../components/Icon";
 import { Tag } from "../../components/Tag";
 import { LibraryPanel } from "../home/LibraryPanel";
@@ -82,6 +83,7 @@ type QuizKind = (typeof kinds)[number];
 
 export function PlanPage() {
   const { t, i18n } = useTranslation();
+  const grade = useGradeScale();
   const { planId = "", view } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -166,7 +168,7 @@ export function PlanPage() {
     if (!plan.data) return;
     form.setFieldsValue({
       title: plan.data.title,
-      target: Math.round(plan.data.target * 100),
+      target: goalInput(plan.data.target, grade.scale),
     });
     const saved = draftsFromSessions(plan.data.sessions);
     setDraftSessions(saved.length ? saved : [emptyDraft()]);
@@ -296,6 +298,7 @@ export function PlanPage() {
             progress?.preparation.onTrack ?? 0,
             progress?.preparation.totalTopics ?? 0,
             plan.data?.target ?? 0.75,
+            grade.format,
           )}
         </p>
         {plan.data &&
@@ -310,8 +313,9 @@ export function PlanPage() {
           </ul>
         ) : null}
         <MasteryBar
-          value={Math.round((progress?.preparation.mastery ?? 0) * 100)}
+          value={(progress?.preparation.mastery ?? 0) * 100}
           target={(plan.data?.target ?? 0.75) * 100}
+          scale={grade.scale}
           label={t("progress.title")}
         />
         {/* Topic bars show one topic each; this bar weighs every topic by its passages, so it reads much lower early on. */}
@@ -429,10 +433,11 @@ export function PlanPage() {
                     </span>
                     <MasteryBar
                       label={topic.title}
-                      value={Math.round(
+                      value={
                         (progress?.topics.find((row) => row.id === topic.id)
-                          ?.mastery ?? 0) * 100,
-                      )}
+                          ?.mastery ?? 0) * 100
+                      }
+                      scale={grade.scale}
                       showValue={false}
                     />
                   </summary>
@@ -714,7 +719,10 @@ export function PlanPage() {
                 await invoke("plans.settings", {
                   planId,
                   title: values.title,
-                  target: values.target / 100,
+                  // An untouched goal stays as stored: on another scale its rounded input would move it.
+                  target: form.isFieldTouched("target")
+                    ? goalFraction(values.target, grade.scale)
+                    : (plan.data?.target ?? goalFraction(values.target, grade.scale)),
                   // Noon on each day, as in the wizard, so a shared plan keeps its days in another time zone.
                   sessions: sessionsFromDrafts(draftSessions),
                 });
@@ -736,10 +744,16 @@ export function PlanPage() {
           </Form.Item>
           <Form.Item name="target" label={t("planOverview.target")}>
             <Slider
-              min={50}
-              max={100}
+              min={goalRange(grade.scale).min}
+              max={goalRange(grade.scale).max}
+              step={goalRange(grade.scale).step}
+              marks={Object.fromEntries(
+                goalRange(grade.scale).marks.map((mark) => [mark, String(mark)]),
+              )}
               disabled={busy}
               ariaLabelForHandle={t("planOverview.target")}
+              ariaValueTextFormatterForHandle={(value) => `${value ?? ""}/${grade.scale}`}
+              tooltip={{ formatter: (value) => `${value ?? ""}/${grade.scale}` }}
             />
           </Form.Item>
           <Form.Item>
@@ -760,7 +774,6 @@ export function PlanPage() {
                 : (plan.data?.contentLanguage ?? i18n.language)}
           </p>
         </Form>
-        <PlanEducationLevel planId={planId} disabled={busy} />
         <section className="px-plan-settings-tools">
           <ExportButton planId={planId} kind="plan" disabled={busy} />
           <CalendarButton

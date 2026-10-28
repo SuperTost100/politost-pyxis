@@ -36,6 +36,7 @@ import { i18n, setLanguage, type Locale } from "../../locales/i18n";
 import { EnginesPanel } from "./EnginesPanel";
 import { formatBytes } from "@shared/format-bytes";
 import { useProfile } from "../../lib/queries";
+import { gradeScaleOf, gradeScales, type GradeScale } from "../../lib/grade";
 
 const levels = [
   "primary",
@@ -146,6 +147,7 @@ export function SettingsPage() {
     interests?: string[];
     interestsOn?: boolean;
     crashReports?: boolean;
+    gradeScale?: GradeScale | null;
   }) {
     setSaveError(false);
     try {
@@ -212,10 +214,18 @@ export function SettingsPage() {
     about: t("settings.about"),
     diagnostics: t("settings.diagnostics"),
   };
+  // The profile is the one place for the study level: the tutor and new exams read it from here.
   const levelChoices = (
     <>
-      <div className="label section-label">{t("settings.level")}</div>
-      <div className="choice-list px-profile-levels">
+      <div className="label section-label" id="settings-level">
+        {t("settings.level")}
+      </div>
+      <div
+        className="choice-list px-profile-levels"
+        role="group"
+        aria-labelledby="settings-level"
+        aria-describedby="settings-level-help"
+      >
         {levels.map((item) => (
           <Choice
             key={item}
@@ -225,6 +235,35 @@ export function SettingsPage() {
           />
         ))}
       </div>
+      <p className="small section-hint" id="settings-level-help">
+        {t("settings.levelHelp")}
+      </p>
+    </>
+  );
+  const scale = gradeScaleOf(profile.data);
+  const scaleChoices = (
+    <>
+      <div className="label section-label" id="settings-scale">
+        {t("settings.gradeScale")}
+      </div>
+      <div
+        className="choice-list px-settings-scale"
+        role="group"
+        aria-labelledby="settings-scale"
+        aria-describedby="settings-scale-help"
+      >
+        {gradeScales.map((item) => (
+          <Choice
+            key={item}
+            label={t("settings.gradeScaleOn", { scale: item })}
+            selected={scale === item}
+            onClick={() => void patch({ gradeScale: item })}
+          />
+        ))}
+      </div>
+      <p className="small section-hint" id="settings-scale-help">
+        {t("settings.gradeScaleHelp")}
+      </p>
     </>
   );
   // Two groups: how you study, and the app itself. A group of one row only repeats its row.
@@ -336,7 +375,6 @@ export function SettingsPage() {
             }
           />
         </div>
-        {levelChoices}
       </>
     ),
     profile: (
@@ -364,6 +402,7 @@ export function SettingsPage() {
           ))}
         </div>
         {levelChoices}
+        {scaleChoices}
         <div className="label section-label">{t("settings.interests")}</div>
         <div className="choice-list">
           <Choice

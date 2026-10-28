@@ -54,7 +54,7 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
       page.getByRole("heading", { name: "Ancora nessuna mappa" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Nuovo piano" }),
+      page.getByRole("button", { name: "Nuovo esame" }),
     ).toBeVisible();
 
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {

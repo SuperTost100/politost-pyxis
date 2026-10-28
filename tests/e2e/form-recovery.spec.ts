@@ -26,7 +26,7 @@ test("onboarding save and invalid plan imports remain retryable", async () => {
       ).toBeVisible();
       await expect(skip).toBeEnabled();
       await expect(
-        page.getByRole("button", { name: "Inizia", exact: true }),
+        page.getByRole("button", { name: "Continua", exact: true }),
       ).toBeEnabled();
       db.exec("DROP TRIGGER fail_profile;");
       await skip.click();

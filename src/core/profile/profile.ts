@@ -33,7 +33,11 @@ export type Profile = {
   dyslexia: boolean;
   textSize: TextSize;
   crashReports: boolean;
+  /** Grades, goals and mastery shown out of 30 or 100. Null until the student picks one: the window then follows the study level. */
+  gradeScale: GradeScale | null;
 };
+
+export type GradeScale = 30 | 100;
 
 const empty: Profile = {
   displayName: "",
@@ -48,9 +52,10 @@ const empty: Profile = {
   followups: true,
   dyslexia: false,
   textSize: "md",
-  // Off unless a save says otherwise. First setup sends true when the student leaves its switch on. An install that
+  // Off unless a save says otherwise. First setup sends true when the student turns its switch on. An install that
   // never saw that switch reads as off and stays off, because every save writes the value it read.
   crashReports: false,
+  gradeScale: null,
 };
 
 function setting(db: Database.Database, key: string): unknown {
@@ -89,6 +94,7 @@ export function readProfile(db: Database.Database): Profile | null {
     | { dyslexia?: boolean; textSize?: string }
     | undefined;
   const privacy = setting(db, "privacy") as { crashReports?: boolean } | undefined;
+  const grades = setting(db, "grades") as { scale?: unknown } | undefined;
   const level = educationLevels.find((item) => item === row.education_level) ?? "university";
   const size = textSizes.find((item) => item === reading?.textSize) ?? "md";
   return {
@@ -105,12 +111,17 @@ export function readProfile(db: Database.Database): Profile | null {
     dyslexia: reading?.dyslexia === true,
     textSize: size,
     crashReports: privacy?.crashReports === true,
+    gradeScale: grades?.scale === 30 || grades?.scale === 100 ? grades.scale : null,
   };
 }
 
 export function saveProfile(db: Database.Database, input: Partial<Profile>, now = Date.now()): Profile {
   const current = readProfile(db) ?? empty;
   const next: Profile = { ...current, ...input };
+  // A new study level brings its own scale back (30 at university, 100 elsewhere) until the student picks one again.
+  // The same level, which setup sends on every save, keeps the pick; so does a scale sent with the new level.
+  if (input.educationLevel !== undefined && input.educationLevel !== current.educationLevel && input.gradeScale === undefined)
+    next.gradeScale = null;
   const existing = db.prepare(`SELECT id FROM profile LIMIT 1`).get() as { id: string } | undefined;
   if (existing) {
     db.prepare(
@@ -149,5 +160,6 @@ export function saveProfile(db: Database.Database, input: Partial<Profile>, now 
   putSetting(db, "tutor", { followups: next.followups, year: next.year }, now);
   putSetting(db, "reading", { dyslexia: next.dyslexia, textSize: next.textSize }, now);
   putSetting(db, "privacy", { crashReports: next.crashReports }, now);
+  putSetting(db, "grades", { scale: next.gradeScale }, now);
   return next;
 }

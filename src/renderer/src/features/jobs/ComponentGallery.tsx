@@ -432,7 +432,7 @@ export function ComponentGallery() {
       >
         <Stepper
           current={1}
-          steps={(["profile", "engines", "photos", "privacy"] as const).map(
+          steps={(["profile", "engines", "exam", "material"] as const).map(
             (id) => t(`onboarding.steps.${id}`),
           )}
         />

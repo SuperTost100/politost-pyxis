@@ -8,6 +8,7 @@ import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
+import { useGradeScale } from "../../lib/useGradeScale";
 import { activityIcons } from "../plans/PlanPath";
 import { examDaysLabel } from "../plans/examDays";
 import { stepPath } from "../plans/reopen";
@@ -24,6 +25,7 @@ type Item = Today["items"][number];
  */
 export function OggiBlock() {
   const { t } = useTranslation();
+  const grade = useGradeScale();
   const navigate = useNavigate();
   const heading = useId();
   const today = useQuery({
@@ -76,7 +78,7 @@ export function OggiBlock() {
           tone="warning"
           action={{ label: t("oggi.seePlanner"), onClick: () => navigate("/exams/planner") }}
         >
-          {behindText(t, behind[0]!)}
+          {behindText(t, behind[0]!, grade.format)}
           {behind.length > 1 ? ` ${t("oggi.moreBehind", { count: behind.length - 1 })}` : ""}
         </Notice>
       ) : null}

@@ -182,3 +182,8 @@
     gap: var(--space-3);
   }
 }
+/* Two scales side by side, as the levels above them. */
+.px-settings-scale {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}

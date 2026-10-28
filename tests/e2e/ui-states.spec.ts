@@ -89,14 +89,20 @@ test("UI-01 the menu works while a plan builds, a wizard error goes away, and th
   try {
     const sourceId = await addSource(page, app, userData);
 
-    // A failed "Add subject" says so on its step and not on the next one.
+    // A failed Create says so on its step and not on the step before it.
     await goto(page, "/plans/new");
-    await page.getByLabel("Titolo", { exact: true }).fill("Fisica");
+    await page.getByLabel("Nome dell'esame", { exact: true }).fill("Fisica");
     await page.getByLabel("Materia", { exact: true }).fill("x".repeat(130));
-    await page.getByRole("button", { name: "Aggiungi questa materia", exact: true }).click();
-    await expect(page.getByRole("alert")).toHaveText("Non riesco a preparare il piano.");
+    await page.getByRole("button", { name: "Non ho ancora la data", exact: true }).click();
     await page.getByRole("button", { name: "Continua", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Quando hai l'esame?" })).toBeVisible();
+    await page.getByRole("button", { name: "Dalla tua libreria", exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "Aggiungi dalla libreria" });
+    await picker.getByRole("checkbox").first().check();
+    await picker.getByRole("button", { name: "Aggiungi 1 fonte", exact: true }).click();
+    await page.getByRole("button", { name: "Crea l'esame", exact: true }).click();
+    await expect(page.getByRole("alert")).toHaveText("Inserisci una materia da 1 a 120 caratteri.");
+    await page.getByRole("button", { name: "Indietro", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Quale esame prepari?" })).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
 
     // The answers are saved once the plan exists: the build screen must not hold the menu.
@@ -105,7 +111,7 @@ test("UI-01 the menu works while a plan builds, a wizard error goes away, and th
       sourceId,
     )) as { planId: string };
     await goto(page, `/plans/new?build=${planId}`);
-    await expect(page.getByRole("heading", { name: "Sto preparando Fisica" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Preparo Fisica" })).toBeVisible();
     await pick(app, "settings");
     await expect(page).toHaveURL(/#\/settings/);
 
@@ -260,7 +266,7 @@ test("UI-03 the cards page announces the next card, names parked cards, and show
     // The wizard's progress line is a progress bar.
     await goto(page, "/plans/new");
     const progress = page.getByRole("progressbar");
-    await expect(progress).toHaveAttribute("aria-valuenow", "17");
+    await expect(progress).toHaveAttribute("aria-valuenow", "50");
     await expect(progress).toHaveAttribute("aria-valuemax", "100");
   } finally {
     await app.close();

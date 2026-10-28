@@ -22,7 +22,7 @@ describe("exam from the wizard", () => {
   });
 
   it("accepts a seed with no date yet", () => {
-    const seed = { title: "T", subject: "", sessions: [emptyDraft()], target: 75, language: "it" };
+    const seed = { title: "T", subject: "", sessions: [emptyDraft()], target: 0.75, language: "it" };
     expect(isWizardSeed({ ...seed, examChoice: "none" })).toBe(true);
     expect(isWizardSeed({ ...seed, examChoice: "" })).toBe(true);
     expect(isWizardSeed({ ...seed, examChoice: "7" })).toBe(false);

@@ -270,7 +270,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await expect(entry("Che cosa misura il newton?")).toContainText(
       "Correct answerLa forza",
     );
-    await expect(entry("legge oraria")).toContainText("Your answer · 40%");
+    await expect(entry("legge oraria")).toContainText("Your answer · 12/30");
     await expect(entry("legge oraria").locator(".katex").first()).toBeVisible();
     await expect(entry("Il numero atomico")).toContainText("Your answerTrue");
     await expect(entry("Il numero atomico")).toContainText(

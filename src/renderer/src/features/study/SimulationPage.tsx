@@ -13,6 +13,7 @@ import { MasteryBar } from "../../components/MasteryBar";
 import { StepLines } from "../../components/StepLines";
 import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
+import { useGradeScale } from "../../lib/useGradeScale";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
@@ -25,6 +26,7 @@ const DRAFT_DELAY_MS = 500;
 
 export function SimulationPage() {
   const { t } = useTranslation();
+  const grade = useGradeScale();
   const { planId = "", attemptId } = useParams();
   useActiveTime(planId, null);
   const navigate = useNavigate();
@@ -432,8 +434,8 @@ export function SimulationPage() {
         <section className="px-sim-results">
           {run.score !== undefined && (
             <div className="px-sim-score">
-              <span className="stat">{Math.round(run.score * 100)}</span>
-              <span className="small">{t("simulation.outOf100")}</span>
+              <span className="stat">{grade.number(run.score)}</span>
+              <span className="small">{t("simulation.outOf", { scale: grade.scale })}</span>
             </div>
           )}
           {noAnswers ? (
@@ -453,7 +455,8 @@ export function SimulationPage() {
                   <li key={topic.id}>
                     <span className="body-strong">{topic.title}</span>
                     <MasteryBar
-                      value={Math.round(topic.score * 100)}
+                      value={topic.score * 100}
+                      scale={grade.scale}
                       label={topic.title}
                     />
                   </li>
@@ -467,7 +470,7 @@ export function SimulationPage() {
                       {t("simulation.question", { count: i + 1 })}
                       {result && (
                         <span className="code">
-                          {Math.round(result.score * 100)} / 100
+                          {grade.format(result.score)}
                         </span>
                       )}
                     </summary>

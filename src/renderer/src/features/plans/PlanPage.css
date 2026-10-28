@@ -188,15 +188,6 @@
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border);
 }
-.px-plan-education {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
-}
-.px-plan-education p {
-  margin: 0;
-}
 .px-plan-topic-tag {
   margin-left: var(--space-2);
 }

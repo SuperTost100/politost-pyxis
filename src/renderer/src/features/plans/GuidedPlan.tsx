@@ -165,7 +165,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
         subject: seed.subject.trim() || undefined,
         sourceIds: [],
         sessions: seedSessions(seed),
-        target: seed.target / 100,
+        target: seed.target,
         language,
         style,
         draftTopics: topics,
@@ -183,7 +183,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
     cancel.current?.();
     setError(null);
     if (step === 0)
-      navigate("/plans/new", { state: { wizard: seed, step: 3 } });
+      navigate("/plans/new", { state: { wizard: seed, step: 1 } });
     else if (step === 1) setStep(0);
     else if (step === 2) setStep(0);
     else if (step === 3) setStep(2);
