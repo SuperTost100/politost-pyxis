@@ -1,5 +1,8 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { expect, it } from "vitest";
 import { readCapped } from "./capped-body";
+import { fetchPinned } from "./public-fetch";
 
 function stream(parts: number[][], onCancel?: () => void): ReadableStream<Uint8Array> {
   const queue = parts.map((part) => new Uint8Array(part));
@@ -37,4 +40,34 @@ it("stops before reading on when the signal is aborted", async () => {
   await expect(
     readCapped(stream([[1]]), 10, () => new Error("too-big"), { signal: controller.signal }),
   ).rejects.toThrow("stopped");
+});
+
+// Runs the real undici, so a release that stops honouring the connector's lookup fails here.
+it("connects to the pinned address, not to what the hostname resolves to", async () => {
+  const server = createServer((request, response) => response.end(`host=${request.headers.host}`));
+  // node:http reports a failed bind on "error", not to the listen callback.
+  await new Promise<void>((listening, failed) => {
+    const onError = (error: Error) => {
+      server.off("listening", onListening);
+      failed(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      listening();
+    };
+    server.once("error", onError).once("listening", onListening).listen(0, "127.0.0.1");
+  });
+  try {
+    const { port } = server.address() as AddressInfo;
+    // .invalid never resolves, so only the pinned lookup can reach the server.
+    const { agent, response } = await fetchPinned(new URL(`http://pinned.invalid:${port}/`), "127.0.0.1", {});
+    try {
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe(`host=pinned.invalid:${port}`);
+    } finally {
+      await agent.close();
+    }
+  } finally {
+    await new Promise((closed) => server.close(closed));
+  }
 });
