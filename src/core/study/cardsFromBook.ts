@@ -252,7 +252,7 @@ export async function generateTopicCards(
   onProgress?: (fraction: number) => void,
 ) {
   requireTopic(db, input.planId, input.topicId);
-  const selection = input.selection ?? selectionFor(db, "lesson");
+  const selection = input.selection ?? selectionFor(db, "cards");
   const system = [
     systemPrompt(TEMPLATE, { contentLanguage: planLanguage(db, input.planId) }),
     interestsLine(db),
@@ -312,7 +312,7 @@ export function registerCardJobs(
 ) {
   runner.register("cards-build", {
     jobClass: "model-cli",
-    retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "lesson") }),
+    retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "cards") }),
     steps: [
       {
         name: "cards",
@@ -346,7 +346,7 @@ export function enqueueTopicCards(
     jobId: runner.start("cards-build", {
       planId: input.planId,
       topicId: input.topicId,
-      selection: selectionFor(db, "lesson"),
+      selection: selectionFor(db, "cards"),
     }),
   };
 }

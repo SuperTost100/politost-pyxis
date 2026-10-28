@@ -104,12 +104,29 @@
   color: var(--ink-muted);
 }
 
-.px-reader-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary);
-  animation: px-reader-pulse 1.2s ease-in-out infinite;
+/* Below text already on screen, where the next section is being written. */
+.px-reader-status.is-after {
+  margin-top: var(--space-6);
+}
+
+.px-reader-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.px-reader-spinner {
+  flex: none;
+  color: var(--primary);
+  animation: px-reader-spin 1s linear infinite;
+}
+
+@keyframes px-reader-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes px-reader-pulse {
@@ -232,7 +249,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .px-reader-dot,
+  .px-reader-spinner,
   .px-reader-skeleton span {
     animation: none;
   }

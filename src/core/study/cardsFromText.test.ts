@@ -147,6 +147,28 @@ describe("cards proposed from a text", () => {
     db.close();
   });
 
+  it("runs on the cards engine, not the lesson's or the default one", async () => {
+    const db = fixture();
+    const row = (feature: string, model: string) =>
+      db
+        .prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES (?, ?, 1)")
+        .run(feature, JSON.stringify({ provider: "claude", model }));
+    row("lesson", "lesson-model");
+    row("cards", "fast-model");
+    const models: string[] = [];
+    const { run } = recorded(reply);
+    await proposeCards(
+      db,
+      { planId: "mech", topicId: "kin", text: "Velocity is a rate.\n\nAcceleration changes it.", passageIds: ["p2", "p1"] },
+      async (input) => {
+        models.push(input.selection.model);
+        return run(input);
+      },
+    );
+    expect(models).toEqual(["fast-model"]);
+    db.close();
+  });
+
   it("sends only the four passages closest to the text when many are cited", async () => {
     const db = fixture();
     for (let i = 0; i < 6; i += 1)

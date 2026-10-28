@@ -839,6 +839,7 @@
     "failed": "The lesson could not be opened. Check the selected engine or retry.",
     "retry": "Retry lesson",
     "writing": "Writing the lesson…",
+    "writingSection": "Writing section {{n}}:",
     "cancelled": "Writing cancelled. This draft is incomplete. Retry to finish it.",
     "wording": {
       "label": "Wording level",
@@ -2308,6 +2309,7 @@
       "chat": "Chat",
       "plan": "Exams",
       "lesson": "Lessons and quizzes",
+      "cards": "Flashcards",
       "grading": "Grading",
       "map": "Maps",
       "vision": "Images"
@@ -2334,6 +2336,7 @@
       "map": "maps",
       "plan": "exams",
       "lesson": "lessons",
+      "cards": "flashcards",
       "vision": "photos",
       "grading": "grading"
     },

@@ -50,6 +50,7 @@ const features = [
   "grading",
   "map",
   "vision",
+  "cards",
 ] as const;
 const providers = new Set<string>(engineProviders);
 

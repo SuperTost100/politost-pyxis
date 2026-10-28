@@ -1,7 +1,7 @@
 import type { TFunction } from "i18next";
 
 /** Tasks in the order the disclosure names them, the same order as the engine summary. */
-const tasks = ["chat", "map", "plan", "lesson", "vision", "grading"] as const;
+const tasks = ["chat", "map", "plan", "lesson", "cards", "vision", "grading"] as const;
 
 type Features = Record<string, { provider: string } | undefined>;
 

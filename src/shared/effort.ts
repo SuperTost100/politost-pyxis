@@ -19,7 +19,7 @@ type TierData = {
 };
 const data = tiers as unknown as TierData;
 
-/** The effort a task wants: `low` for chat and maps, `medium` for lessons and photos, `high` for plans and grading. */
+/** The effort a task wants: `low` for chat, maps and flashcards, `medium` for lessons and photos, `high` for plans and grading. */
 export function taskEffort(feature: string): string {
   const tier = (data.features[feature] ?? data.unknownFeature).tier;
   return data.effort[tier]!;

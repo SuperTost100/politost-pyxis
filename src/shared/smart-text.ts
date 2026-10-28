@@ -553,6 +553,26 @@ export function smartSections(markdown: string): SmartSection[] {
   return sections;
 }
 
+/**
+ * A lesson still being written, split for reading: `done` is every section the model has moved past (its next ##
+ * heading has appeared), so it reads the same as in the saved lesson. `writing` is the section in progress, with its
+ * 1-based number and title, or null before the first heading. Text before the first heading belongs to the first
+ * section. Block fences are ignored in headings, as in `smartSections`.
+ */
+export function writtenSections(markdown: string): {
+  done: string;
+  writing: { number: number; title: string } | null;
+} {
+  const sections = smartSections(markdown);
+  const last = sections.at(-1);
+  if (!last) return { done: "", writing: null };
+  const lines = markdown.split("\n");
+  return {
+    done: sections.length > 1 ? lines.slice(0, last.start).join("\n").trimEnd() : "",
+    writing: { number: sections.length, title: last.title },
+  };
+}
+
 export function replaceSection(
   markdown: string,
   index: number,

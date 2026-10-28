@@ -10,6 +10,7 @@ export const autoFeatures = [
   "grading",
   "map",
   "vision",
+  "cards",
 ] as const;
 export type AutoFeature = (typeof autoFeatures)[number];
 
