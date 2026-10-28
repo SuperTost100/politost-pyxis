@@ -395,9 +395,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
         })
         .click({ timeout: 120000 });
     }
-    await expect(
-      page.getByText(/su 10$/, { exact: false }).first(),
-    ).toBeVisible();
+    await expect(page.locator(".px-res-headline")).toContainText(/su 10\./);
     await clean(page);
     await page.evaluate(
       ({ planId, topicId }) => {
@@ -456,10 +454,10 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .getByRole("dialog")
       .getByRole("button", { name: "Consegna", exact: true })
       .click();
-    await expect(page.locator(".px-sim-results")).toBeVisible({
+    await expect(page.locator(".px-res")).toBeVisible({
       timeout: 120000,
     });
-    await expect(page.locator(".px-sim-results")).toContainText(
+    await expect(page.locator(".px-res")).toContainText(
       live ? /claude|sonnet/i : /fixture/i,
     );
     await clean(page);

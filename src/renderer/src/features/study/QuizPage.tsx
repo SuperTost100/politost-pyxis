@@ -25,7 +25,7 @@ import { useDraftSaver } from "./draftSaver";
 import { useReviewSession } from "./ReviewProgress";
 import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
-import { QuizResults } from "./QuizResults";
+import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
 import {
   blanks,
   pairs,
@@ -33,6 +33,7 @@ import {
   skipOrder,
   stemText,
   verdict,
+  verdictLine,
   type QuizAnswer,
 } from "./quizText";
 import "./QuizPage.css";
@@ -119,6 +120,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const { planId, topicId } = useParams();
   useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
+  const grade = useGradeScale();
   // Past questions: a quiz of the plan's past exam questions, opened at /plans/:planId/past.
   const past = useLocation().pathname.endsWith("/past");
   const diagnostic = !topicId && !redo && !past;
@@ -159,6 +161,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   // Questions the student skipped, in the order they did; they come back once, after all the others.
   const [skipped, setSkipped] = useState<string[]>([]);
   const [actionError, setActionError] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const heading = useRef<HTMLDivElement>(null);
   const start = useMutation({
     mutationFn: () =>
@@ -346,6 +349,11 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     grading.isSuccess &&
     grading.data.state === "none";
   const gradeState = grading.data?.state ?? "none";
+  // Each answer the grading job finishes is saved as a check; reading the session again shows it while the rest wait.
+  const gradedSoFar = grading.data?.done;
+  useEffect(() => {
+    if (gradedSoFar) void session.refetch();
+  }, [gradedSoFar]);
   const gradingStopped = ["failed", "cancelled", "interrupted"].includes(
     gradeState,
   );
@@ -778,6 +786,104 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
       )}
     </ErrorState>
   ) : null;
+  // The results screen: the score counts every answer not marked wrong by the student.
+  const points = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 });
+  const countedResults = finalResult?.results.filter((row) => !row.flagged) ?? [];
+  const resultPoints = countedResults.reduce((sum, row) => sum + row.score, 0);
+  const excludedResults = (finalResult?.results.length ?? 0) - countedResults.length;
+  const hasMistakes = !review && !redo && countedResults.some((row) => row.score < 1);
+  const backButton = (type: "primary" | "default") => (
+    <Button type={type} shape="round" size="large" onClick={() => navigate(back)}>
+      {t(redo ? "mistakes.back" : reopened ? "lesson.backToPath" : "quiz.continue")}
+    </Button>
+  );
+  // Only the saved session knows each question's topic; a quiz just started has not read it back yet.
+  const topicOf = (id: string) =>
+    session.data?.questions.find((item) => item.id === id)?.topicId;
+  const topicTitle = (id: string) =>
+    plan.data?.topics.find((entry) => entry.id === topicOf(id))?.title;
+  // Each topic's points, in the plan's order. A quiz on one topic has nothing to compare, so it shows none.
+  const quizTopics: ResultTopic[] = (() => {
+    if (!finalResult) return [];
+    const rows = (plan.data?.topics ?? []).flatMap((row) => {
+      const answers = countedResults.filter(
+        (answer) => topicOf(answer.id) === row.id,
+      );
+      if (!answers.length) return [];
+      const value = answers.reduce((sum, answer) => sum + answer.score, 0);
+      const share = value / answers.length;
+      const level = share >= 0.8 ? "solid" : share >= 0.5 ? "review" : "start";
+      return [
+        {
+          id: row.id,
+          title: row.title,
+          share,
+          value: t("quiz.topicScore", { points: points.format(value), total: answers.length }),
+          ...(diagnostic && !review ? { level: t(`quiz.topicLevel.${level}`) } : {}),
+        },
+      ];
+    });
+    return diagnostic && !review ? rows : rows.length > 1 ? rows : [];
+  })();
+  const resultItem = (
+    row: QuizAnswer,
+    mark: ResultItem["mark"],
+  ): ResultItem => {
+    const item = questions.find((entry) => entry.id === row.id);
+    const graded = checked[row.id];
+    const long = item?.grade.kind === "open";
+    return {
+      id: row.id,
+      stem: item?.stem ?? "",
+      topic: topicTitle(row.id),
+      mark,
+      ...(mark === "partial" ? { score: grade.format(row.score) } : {}),
+      answer: answerText(row.id),
+      long,
+      expected: expectedText(row),
+      expectedLabel: t(long ? "quiz.reference" : "quiz.expected"),
+      explanation: row.explanation,
+      citations: row.citations,
+      grader: graded?.model ?? row.model,
+      onAsk: () => void ask(row),
+      ...(finalResult
+        ? {
+            wrong: {
+              busy: markWrong.isPending && markWrong.variables?.questionId === row.id,
+              onChange: (wrong: boolean) => markWrong.mutate({ questionId: row.id, wrong }),
+            },
+          }
+        : {}),
+    };
+  };
+  // Numbered as the student met them: a skipped question is listed where it came back, not where it was stored.
+  // While grading runs, answers already graded read in full and the others say whether they are next or waiting.
+  const quizItems: ResultItem[] = finalResult
+    ? skipOrder(finalResult.results, skipped).map((row) =>
+        resultItem(row, row.flagged ? "flagged" : verdict(row.score)),
+      )
+    : ordered.map((item) => {
+        const queue = grading.data?.pending ?? [];
+        const place = queue.indexOf(item.id);
+        const done = grading.data?.done ?? 0;
+        const graded = checked[item.id];
+        if (graded && (place < 0 || place < done))
+          return resultItem(graded, verdict(graded.score));
+        const mark: ResultItem["mark"] = gradingStopped
+          ? "ungraded"
+          : place === done
+            ? "grading"
+            : "queued";
+        return {
+          id: item.id,
+          stem: item.stem,
+          topic: topicTitle(item.id),
+          mark,
+          answer: answerText(item.id),
+          long: item.grade.kind === "open",
+          expectedLabel: t("quiz.expected"),
+        };
+      });
   // A redo exists only as an attempt the notebook started; without one there is nothing to show.
   if (redo && !savedAttempt) return <Navigate to={back} replace />;
   return (
@@ -996,158 +1102,169 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             </Button>
           </span>
         </section>
-      ) : finalResult ? (
-        <QuizResults
-          diagnostic={diagnostic && !review}
-          questions={questions}
-          // Numbered as the student met them: a skipped question is listed where it came back, not where it was stored.
-          results={skipOrder(finalResult.results, skipped)}
-          score={finalResult.score}
-          topics={plan.data?.topics ?? []}
-          answerText={answerText}
-          expectedText={expectedText}
-          onAsk={(row) => void ask(row)}
-          onWrong={(row, wrong) =>
-            markWrong.mutate({ questionId: row.id, wrong })
-          }
-          wrongBusy={markWrong.isPending ? markWrong.variables?.questionId : undefined}
+      ) : finalResult || gradingStarted ? (
+        <ResultsScreen
+          kind="quiz"
+          attemptId={attemptId}
           eyebrow={
-            reopened && session.data?.submittedAt
-              ? t("quiz.answeredOn", {
-                  date: new Date(session.data.submittedAt).toLocaleDateString(i18n.language, {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  }),
-                })
-              : undefined
+            !finalResult
+              ? t("results.result")
+              : reopened && session.data?.submittedAt
+                ? t("quiz.answeredOn", {
+                    date: new Date(session.data.submittedAt).toLocaleDateString(i18n.language, {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    }),
+                  })
+                : t(diagnostic && !review ? "quiz.diagnosticDone" : "quiz.resultLabel")
           }
-          actions={
-            <>
-              <ExportButton
-                planId={planId ?? ""}
-                topicId={topicId}
-                kind="quiz"
-                attemptId={attemptId || undefined}
-              />
-              <span className="px-quiz-footer-main">
-                {!review &&
-                !redo &&
-                finalResult.results.some((row) => !row.flagged && row.score < 1) ? (
-                  <Button
-                    shape="round"
-                    size="large"
-                    onClick={() => navigate(`/plans/${planId ?? ""}/review`)}
-                  >
-                    {t("quiz.reviewMistakes")}
-                  </Button>
-                ) : null}
-                {reopened && !review && !redo ? (
-                  <Button
-                    shape="round"
-                    size="large"
-                    // A new quiz on the same topic (a drill's topic too), or a new diagnostic; this one stays as it is.
-                    onClick={() =>
-                      navigate(redoPath)
-                    }
-                  >
-                    {t("quiz.redo")}
-                  </Button>
-                ) : null}
+          grade={finalResult?.score}
+          headline={
+            finalResult
+              ? t(verdictLine(Math.round(finalResult.score * 100), diagnostic && !review))
+              : t("results.gradingHeadline")
+          }
+          detail={
+            finalResult
+              ? [
+                  t("results.points", {
+                    count: resultPoints,
+                    points: points.format(resultPoints),
+                    total: countedResults.length,
+                  }),
+                  excludedResults
+                    ? `${t("quiz.excludedCount", { count: excludedResults })}.`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+              : [
+                  grading.data?.total
+                    ? `${t("quiz.gradingProgress", {
+                        done: grading.data.done,
+                        total: grading.data.total,
+                        count: grading.data.total,
+                      })}.`
+                    : "",
+                  gradingStopped ? "" : t("results.gradeLater"),
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+          }
+          goal={plan.data?.target}
+          grading={
+            finalResult
+              ? undefined
+              : { done: grading.data?.done ?? 0, total: grading.data?.total ?? 0 }
+          }
+          notes={
+            gradingStopped && !finalResult ? (
+              grading.data?.error ? (
+                <Notice tone="danger" details={grading.data.error.slice(0, 2000)}>
+                  {t("quiz.gradingStopped")}
+                </Notice>
+              ) : (
+                <Notice tone="danger">
+                  {t(gradeState === "cancelled" ? "quiz.gradingCancelled" : "quiz.gradingStopped")}
+                </Notice>
+              )
+            ) : undefined
+          }
+          topics={quizTopics}
+          topicsLabel={t(diagnostic && !review ? "quiz.startHere" : "results.byTopic")}
+          primary={
+            !finalResult ? (
+              gradingStopped ? (
                 <Button
                   type="primary"
                   shape="round"
                   size="large"
-                  onClick={() => navigate(back)}
+                  loading={control.isPending}
+                  onClick={() =>
+                    control.mutate(gradeState === "interrupted" ? "jobs.resume" : "jobs.retry")
+                  }
                 >
-                  {t(
-                    redo
-                      ? "mistakes.back"
-                      : reopened
-                        ? "lesson.backToPath"
-                        : "quiz.continue",
-                  )}
+                  {t(gradeState === "interrupted" ? "quiz.gradeResume" : "quiz.gradeRetry")}
                 </Button>
-              </span>
-            </>
-          }
-        />
-      ) : gradingStarted ? (
-        <section className="px-quiz-wait" aria-busy={!gradingStopped}>
-          <p className="title-3">{t("quiz.gradingTitle")}</p>
-          <StepLines
-            label={t("quiz.gradingTitle")}
-            steps={[
-              {
-                id: "grading",
-                label: grading.data?.total
-                  ? t("quiz.gradingProgress", {
-                      done: grading.data.done,
-                      total: grading.data.total,
-                      count: grading.data.total,
-                    })
-                  : t("quiz.gradingTitle"),
-                state: gradingStopped ? "failed" : "running",
-              },
-            ]}
-          />
-          {!(gradingStopped && grading.data?.error) ? (
-            <p className="small" role={gradingStopped ? "alert" : "status"}>
-              {t(
-                !gradingStopped
-                  ? "quiz.gradingSaved"
-                  : gradeState === "cancelled"
-                    ? "quiz.gradingCancelled"
-                    : "quiz.gradingStopped",
-              )}
-            </p>
-          ) : null}
-          {gradingStopped && grading.data?.error ? (
-            <Notice tone="danger" details={grading.data.error.slice(0, 2000)}>
-              {t("quiz.gradingStopped")}
-            </Notice>
-          ) : null}
-          {grading.data?.model ? (
-            <p className="meta">
-              {t("quiz.gradedBy", { model: grading.data.model })}
-            </p>
-          ) : null}
-          <div className="px-quiz-nav">
-            {gradingStopped && gradeState !== "cancelled" ? (
-              <Button shape="round" onClick={() => navigate("/settings/engines")}>
-                {t("quiz.openEngines")}
-              </Button>
-            ) : (
-              <span />
-            )}
-            {gradingStopped ? (
+              ) : (
+                <Button type="primary" shape="round" size="large" onClick={() => void close()}>
+                  {t(redo ? "mistakes.back" : "lesson.backToPath")}
+                </Button>
+              )
+            ) : hasMistakes ? (
               <Button
                 type="primary"
                 shape="round"
-                loading={control.isPending}
-                onClick={() =>
-                  control.mutate(
-                    gradeState === "interrupted" ? "jobs.resume" : "jobs.retry",
-                  )
-                }
+                size="large"
+                onClick={() => navigate(`/plans/${planId ?? ""}/review`)}
               >
-                {t(
-                  gradeState === "interrupted"
-                    ? "quiz.gradeResume"
-                    : "quiz.gradeRetry",
-                )}
+                {t("quiz.reviewMistakes")}
               </Button>
             ) : (
-              <Button
-                shape="round"
-                disabled={!grading.data?.jobId || control.isPending}
-                onClick={() => control.mutate("jobs.cancel")}
-              >
-                {t("quiz.gradeCancel")}
-              </Button>
-            )}
-          </div>
-        </section>
+              backButton("primary")
+            )
+          }
+          secondary={
+            !finalResult ? (
+              gradingStopped ? (
+                <>
+                  {gradeState !== "cancelled" ? (
+                    <Button shape="round" size="large" onClick={() => navigate("/settings/engines")}>
+                      {t("quiz.openEngines")}
+                    </Button>
+                  ) : null}
+                  <Button type="text" shape="round" onClick={() => void close()}>
+                    {t(redo ? "mistakes.back" : "lesson.backToPath")}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="text"
+                  shape="round"
+                  disabled={!grading.data?.jobId || control.isPending}
+                  onClick={() => control.mutate("jobs.cancel")}
+                >
+                  {t("quiz.gradeCancel")}
+                </Button>
+              )
+            ) : hasMistakes ? (
+              backButton("default")
+            ) : undefined
+          }
+          extra={
+            finalResult ? (
+              <>
+                <Button type="text" shape="round" onClick={() => setExportOpen(true)}>
+                  {t("export.title")}
+                </Button>
+                <ExportButton
+                  planId={planId ?? ""}
+                  topicId={topicId}
+                  kind="quiz"
+                  attemptId={attemptId || undefined}
+                  open={exportOpen}
+                  onOpenChange={setExportOpen}
+                />
+                {reopened && !review && !redo ? (
+                  // A new quiz on the same topic (a drill's topic too), or a new diagnostic; this one stays as it is.
+                  <Button type="text" shape="round" onClick={() => navigate(redoPath)}>
+                    {t("quiz.redo")}
+                  </Button>
+                ) : null}
+              </>
+            ) : undefined
+          }
+          after={!finalResult && !gradingStopped ? t("quiz.gradingSaved") : undefined}
+          items={quizItems}
+          listNote={
+            !finalResult && grading.data?.model
+              ? t("results.gradingWith", {
+                  model: [grading.data.provider, grading.data.model].filter(Boolean).join(" · "),
+                })
+              : undefined
+          }
+        />
       ) : question ? (
         <section className="px-quiz-question" aria-labelledby="quiz-stem">
           {deadlineAt ? (

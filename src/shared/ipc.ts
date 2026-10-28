@@ -191,10 +191,15 @@ const simulationViewSchema = z.object({
   deadline: z.number(),
   leftMs: z.number(),
   submitted: z.boolean(),
+  /** When the answers froze, for an exam handed in. */
+  submittedAt: z.number().optional(),
+  minutes: z.number(),
   locked: z.boolean(),
   blocked: z.string().optional(),
   generated: z.object({ provider: z.string(), model: z.string() }).optional(),
-  questions: z.array(z.object({ id: z.string(), stem: z.string() })),
+  questions: z.array(
+    z.object({ id: z.string(), stem: z.string(), topicId: z.string().optional() }),
+  ),
   picks: z.record(z.string(), z.string()),
   topics: z.array(
     z.object({ id: z.string(), title: z.string(), score: z.number() }),
@@ -210,6 +215,7 @@ const simulationViewSchema = z.object({
     })
     .optional(),
   score: z.number().optional(),
+  // Every grade once handed in; while grading runs, the ones graded so far.
   results: z
     .array(
       z.object({
@@ -924,6 +930,8 @@ export const requests = {
       error: z.string().optional(),
       done: z.number(),
       total: z.number(),
+      // The answers the job grades, in order: the first `done` are graded, the next one is being graded.
+      pending: z.array(z.string()),
       provider: z.string().optional(),
       model: z.string().optional(),
       result: quizResultSchema
@@ -1084,6 +1092,30 @@ export const requests = {
   "study.simulationRead": {
     input: z.object({ attemptId: z.string() }),
     output: simulationViewSchema,
+  },
+  // What a handed-in quiz or simulation changed in the path, and which engine answered when the chosen one refused.
+  "study.attemptOutcome": {
+    input: z.object({ attemptId: z.string() }),
+    output: z.object({
+      topics: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          before: z.number(),
+          after: z.number(),
+        }),
+      ),
+      gaps: z.array(
+        z.object({
+          id: z.string(),
+          topicId: z.string(),
+          severity: z.enum(["severe", "minor"]).nullable(),
+          misconception: z.string().nullable(),
+          open: z.boolean(),
+        }),
+      ),
+      fallback: JobFallback.optional(),
+    }),
   },
   "study.simulationDraft": {
     input: z.object({

@@ -771,6 +771,7 @@ export function readQuizGrading(db: Database.Database, attemptId: string) {
     error: job?.error ?? undefined,
     done: params?.next ?? 0,
     total: params?.pending.length ?? 0,
+    pending: params?.pending ?? [],
     provider: last?.provider,
     model: last?.model,
     result: result

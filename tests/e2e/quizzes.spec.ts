@@ -93,7 +93,9 @@ async function axe(page: Page) {
   await expectNoAxeViolations(page);
 }
 
-const score = (page: Page) => page.locator(".px-quiz-score");
+// The results summary: the sentence with the points, and the grade on the student's scale.
+const score = (page: Page) => page.locator(".px-res-headline");
+const grade = (page: Page) => page.locator(".px-res-grade-num");
 
 test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each answer, back, keys and results", async () => {
   test.setTimeout(120000);
@@ -188,21 +190,26 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
         .getByRole("button", { name: i === 9 ? "Vedi risultato" : "Avanti", exact: true })
         .click();
     }
-    await expect(score(page)).toHaveText(/^9\s*su 10$/);
-    await expect(page.getByText("27/30", { exact: true })).toBeVisible();
+    await expect(score(page)).toContainText("9 punti su 10.");
+    await expect(grade(page)).toHaveText("27");
     await page.reload();
-    await expect(score(page)).toHaveText(/^9\s*su 10$/);
-    const second = page.locator(".px-quiz-row").nth(1);
-    await second.locator(".px-quiz-row-head").click();
-    await expect(second.locator(".px-quiz-answer.is-wrong")).toContainText("Falso");
-    await expect(second.locator(".px-quiz-answer.is-expected")).toContainText("Vero");
+    await expect(score(page)).toContainText("9 punti su 10.");
+    // The list opens on the one answer to review, already open; the nine right ones fold into a row.
+    await expect(page.locator(".px-res-q")).toHaveCount(1);
+    await expect(page.locator(".px-res-fold")).toContainText("9 risposte giuste: 1, 3, 4, 5, 6, 7, 8, 9, 10");
+    const second = page.locator(".px-res-q").first();
+    await expect(second.locator(".px-res-n")).toHaveText("2");
+    await expect(second.locator(".px-res-q-head")).toHaveAttribute("aria-expanded", "true");
+    await expect(second.locator(".px-res-answer.is-wrong")).toContainText("Falso");
+    await expect(second.locator(".px-res-answer.is-expected")).toContainText("Vero");
     await axe(page);
     // "Wrong question?" takes it out of the score at once; the toast can undo it.
     await second.getByRole("button", { name: "Domanda sbagliata?" }).click();
-    await expect(score(page)).toHaveText(/^9\s*su 9$/);
-    await expect(page.getByText("30/30", { exact: true })).toBeVisible();
+    await expect(score(page)).toContainText("9 punti su 9.");
+    await expect(grade(page)).toHaveText("30");
+    await expect(second).toContainText("Esclusa dal punteggio");
     await page.locator(".px-quiz-toast").getByRole("button", { name: "Annulla" }).click();
-    await expect(score(page)).toHaveText(/^9\s*su 10$/);
+    await expect(score(page)).toContainText("9 punti su 10.");
     await expect(second.getByRole("button", { name: "Domanda sbagliata?" })).toBeVisible();
     await second.getByRole("button", { name: "Chiedi al tutor", exact: true }).click();
     await expect(page.getByText(/La tua risposta: Falso/)).toContainText("Risposta corretta: Vero");
@@ -356,18 +363,19 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
     await expect(page.locator(".px-quiz-feedback.is-correct")).toBeVisible();
     await page.getByRole("button", { name: "Vedi risultato", exact: true }).click();
     // Nine right answers; the one "I don't know" is a wrong answer with no pick.
-    await expect(score(page)).toHaveText(/^9\s*su 10$/);
-    // The count covers this quiz only; the mistakes notebook also collects quick checks and simulations.
-    await expect(page.getByText("1 risposta da rivedere in questo quiz")).toBeVisible();
+    await expect(score(page)).toContainText("9 punti su 10.");
+    // The filter counts this quiz only; the mistakes notebook also collects quick checks and simulations.
+    await expect(page.locator(".px-res-q")).toHaveCount(1);
+    await page.locator(".px-res-filter .ant-segmented-item", { hasText: /^Tutte/ }).click();
     // Results are numbered as the questions were met: the "I don't know" one came first, the skipped one last.
-    const rows = page.locator(".px-quiz-row");
+    const rows = page.locator(".px-res-q");
+    await expect(rows).toHaveCount(10);
     const first = rows.nth(0);
-    await expect(first.locator(".px-quiz-row-number")).toHaveText("01");
-    await first.locator(".px-quiz-row-head").click();
-    await expect(first.locator(".px-quiz-answer-empty")).toHaveText("Nessuna risposta");
-    await expect(first.locator(".px-quiz-answer.is-expected")).toContainText("Vero");
-    await expect(rows.nth(9).locator(".px-quiz-row-number")).toHaveText("10");
-    await expect(rows.nth(9).locator(".px-quiz-row-stem")).toHaveText(skippedStem);
+    await expect(first.locator(".px-res-n")).toHaveText("1");
+    await expect(first.locator(".px-res-answer-empty")).toHaveText("Nessuna risposta");
+    await expect(first.locator(".px-res-answer.is-expected")).toContainText("Vero");
+    await expect(rows.nth(9).locator(".px-res-n")).toHaveText("10");
+    await expect(rows.nth(9).locator(".px-res-stem")).toHaveText(skippedStem);
 
     // The same three screens in English.
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
@@ -410,7 +418,7 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
     await expect.poll(async () => (await timedRead()).state).toBe("succeeded");
     // A new page, as from the path: the finished quiz's page state does not carry over.
     await go(page, "/exams");
-    await expect(page.locator(".px-quiz-results")).toHaveCount(0);
+    await expect(page.locator(".px-res")).toHaveCount(0);
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${timed.attemptId}`);
     await expect.poll(async () => (await timedRead()).deadlineAt).toBeGreaterThan(0);
     const deadline = (await timedRead()).deadlineAt;
@@ -478,18 +486,19 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
       await page.keyboard.press("Enter");
     }
     await expect(page.getByText("Diagnosi completata", { exact: true })).toBeVisible();
-    await expect(score(page)).toHaveText(/^9\s*su 10$/);
-    const topics = page.locator(".px-quiz-topics li");
+    await expect(score(page)).toContainText("9 punti su 10.");
+    const topics = page.locator(".px-res-topics li");
     await expect(topics).toHaveCount(2);
     await expect(topics.nth(0)).toContainText("Moti");
     await expect(topics.nth(0)).toContainText("Lo sai già");
     await expect(topics.nth(1)).toContainText("Energia");
     await axe(page);
-    const second = page.locator(".px-quiz-row").nth(1);
-    await second.locator(".px-quiz-row-head").click();
+    // The wrong answer is the one listed to review, open with its cited explanation.
+    const second = page.locator(".px-res-q").first();
+    await expect(second.locator(".px-res-n")).toHaveText("2");
     await expect(second.locator(".px-cite")).toHaveCount(1);
     await second.getByRole("button", { name: "Domanda sbagliata?" }).click();
-    await expect(score(page)).toHaveText(/^9\s*su 9$/);
+    await expect(score(page)).toContainText("9 punti su 9.");
     await expect(second).toContainText("Domanda tolta dal punteggio");
     // A new question takes its place in the next diagnostic.
     await expect
@@ -649,10 +658,14 @@ test("quiz screens in both languages and themes", async () => {
         .poll(async () => (await invoke<{ result?: unknown }>(page, "study.quizRead", { attemptId: started.attemptId })).result)
         .toBeTruthy();
       await page.reload();
-      await expect(page.locator(".px-quiz-results")).toBeVisible();
+      await expect(page.locator(".px-res")).toBeVisible();
       await shoot("results", true);
-      await page.locator(".px-quiz-row").nth(1).locator(".px-quiz-row-head").click();
-      await expect(page.locator(".px-quiz-row-body")).toBeVisible();
+      // A right answer stays folded until it is opened.
+      await page.locator(".px-res-filter .ant-segmented-item", { hasText: /^(Tutte|All)/ }).click();
+      const rightRow = page.locator(".px-res-q.is-correct").first();
+      await expect(rightRow.locator(".px-res-q-body")).toHaveCount(0);
+      await rightRow.locator(".px-res-q-head").click();
+      await expect(rightRow.locator(".px-res-q-body")).toBeVisible();
       await shoot("results-expanded", true);
 
       const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {

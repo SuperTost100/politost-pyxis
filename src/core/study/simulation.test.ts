@@ -402,6 +402,35 @@ describe("M11 model-graded simulations", () => {
     await until(db, opened.attemptId, "succeeded");
     db.close();
   });
+  it("shows the grades in so far, and each question's topic, while grading runs", async () => {
+    const { db, planId } = fixture();
+    let calls = 0;
+    let release!: () => void;
+    const runner = createRunner(db, () => {});
+    registerSimulationJobs(db, runner, async () => {
+      calls += 1;
+      if (calls === 2)
+        await new Promise<void>((r) => {
+          release = r;
+        });
+      return response();
+    });
+    const opened = startSimulation(db, planId, 30, Date.now(), "exam");
+    submitSimulation(
+      db,
+      opened.attemptId,
+      Object.fromEntries(opened.questions.map((q) => [q.id, "answer"])),
+    );
+    while (calls < 2) await new Promise((r) => setTimeout(r, 1));
+    const midway = readSimulation(db, opened.attemptId);
+    expect(midway.submitted).toBe(false);
+    expect(midway.results?.map((r) => r.id)).toEqual([opened.questions[0]!.id]);
+    expect(midway.questions.every((q) => typeof q.topicId === "string")).toBe(true);
+    release();
+    const done = await until(db, opened.attemptId, "succeeded");
+    expect(done.results).toHaveLength(2);
+    db.close();
+  });
   it("needs a grading engine before any attempt or job is written", () => {
     const { db, planId } = fixture();
     db.prepare("DELETE FROM feature_engines").run();
