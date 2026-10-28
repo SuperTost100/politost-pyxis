@@ -292,6 +292,64 @@ describe("consent", () => {
   });
 });
 
+describe("waiting for core", () => {
+  /** A profile whose saved copy says on: an earlier session where core confirmed the switch. */
+  async function onFromEarlierSession(h: ReturnType<typeof harness>) {
+    const earlier = h.make();
+    earlier.setConsent(true);
+    h.setStatus("offline");
+    earlier.capture("main", boom("queued earlier"));
+    await earlier.flush();
+    h.setStatus(204);
+    h.tick(60_000);
+  }
+
+  it("sends nothing, and writes no new report, until core has confirmed the switch", async () => {
+    const h = harness();
+    await onFromEarlierSession(h);
+    const before = readFileSync(h.file, "utf8");
+    const reports = h.make();
+    expect(reports.enabled).toBe(true);
+    reports.capture("main", boom("before core is up"));
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+    expect(readFileSync(h.file, "utf8")).toBe(before);
+  });
+
+  it("sends the held report and the earlier queue once core says on", async () => {
+    const h = harness();
+    await onFromEarlierSession(h);
+    const reports = h.make();
+    reports.capture("main", boom("before core is up"));
+    reports.setConsent(true);
+    await reports.flush();
+    expect(h.sent.map((item) => item.body["message"]).sort()).toEqual(["before core is up", "queued earlier"]);
+  });
+
+  it("drops the held report and the earlier queue once core says off", async () => {
+    const h = harness();
+    await onFromEarlierSession(h);
+    const reports = h.make();
+    reports.capture("main", boom("before core is up"));
+    reports.setConsent(false);
+    await reports.flush();
+    reports.setConsent(true);
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+    expect(readFileSync(h.file, "utf8")).not.toContain("before core is up");
+    expect(readFileSync(h.file, "utf8")).not.toContain("queued earlier");
+  });
+
+  it("holds nothing while the saved copy says off, even if core then says on", async () => {
+    const h = harness();
+    const reports = h.make();
+    reports.capture("main", boom("before core is up"));
+    reports.setConsent(true);
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+  });
+});
+
 describe("dedupe and caps", () => {
   it("sends the same error once a day, and again the next day", async () => {
     const h = harness();
@@ -314,6 +372,7 @@ describe("dedupe and caps", () => {
     reports.capture("main", boom());
     await reports.flush();
     const next = h.make();
+    next.setConsent(true);
     expect(next.capture("main", boom())).toBe(false);
   });
 
@@ -389,6 +448,7 @@ describe("queue", () => {
     await reports.flush();
     for (let start = 1; start <= CRASH_LIMITS.attempts; start += 1) {
       reports = h.make();
+      reports.setConsent(true);
       await reports.flush();
     }
     expect(reports.queued).toEqual([]);
@@ -403,6 +463,7 @@ describe("queue", () => {
     h.setStatus(204);
     h.tick(CRASH_LIMITS.maxAgeMs + 1);
     const next = h.make();
+    next.setConsent(true);
     await next.flush();
     expect(h.sent).toEqual([]);
     expect(next.queued).toEqual([]);

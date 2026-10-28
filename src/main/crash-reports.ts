@@ -312,6 +312,12 @@ export class CrashReports {
   /** A send failed this session: the queue waits for the next start. */
   private offline = false;
   private minute = { start: 0, count: 0 };
+  /**
+   * Whether core has reported the switch in this session. Until it has, the saved copy may be stale (a restore, or a
+   * workspace from elsewhere), so nothing is sent and no new report is written: errors wait in `held`, in memory.
+   */
+  private confirmed = false;
+  private held: Array<{ report: ErrorReport; at: number }> = [];
 
   constructor(private readonly options: CrashReportsOptions) {
     this.state = readState(options.file);
@@ -343,22 +349,33 @@ export class CrashReports {
   }
 
   /**
-   * Records the switch as core read it from the profile. Off empties the queue: nothing created before may go later.
-   * On starts a new consent period and sends what is waiting from earlier ones that were never turned off.
+   * Records the switch as core read it from the profile. Off empties the queue and drops the errors held since start:
+   * nothing created before may go later. On starts a new consent period, or confirms the saved one, in which case the
+   * held errors join the queue and the queue is sent.
    */
   setConsent(enabled: boolean): void {
+    this.confirmed = true;
+    const held = this.held;
+    this.held = [];
     const current = this.state.consent;
-    if (enabled && !current.enabled) this.state.consent = { enabled: true, since: this.now() };
-    else if (!enabled && (current.enabled || this.state.queue.length > 0)) {
+    if (enabled && current.enabled) {
+      // The saved copy was right: errors held since start were raised with the switch on.
+      for (const { report, at } of held) this.accept(report, at);
+      void this.flush();
+      return;
+    }
+    if (enabled) this.state.consent = { enabled: true, since: this.now() };
+    else if (current.enabled || this.state.queue.length > 0) {
       this.state.consent = { enabled: false, since: null };
       this.state.queue = [];
     } else return;
     this.save();
+    if (enabled) void this.flush();
   }
 
   /**
    * Scrubs one error and queues it, then sends the queue. Returns whether the error was kept. With the switch off it
-   * returns at once, before reading the error.
+   * returns at once, before reading the error. Before core has confirmed the switch, the error is held in memory.
    */
   capture(kind: ProcessKind, raw: ErrorFields): boolean {
     if (!this.state.consent.enabled) return false;
@@ -367,6 +384,18 @@ export class CrashReports {
     this.minute.count += 1;
     if (this.minute.count > CRASH_LIMITS.perMinute) return false;
     const report = buildReport(kind, raw, this.options.meta, this.options.roots());
+    if (!this.confirmed) {
+      if (this.held.length >= CRASH_LIMITS.queueItems) return false;
+      this.held.push({ report, at: now });
+      return true;
+    }
+    const fits = this.accept(report, now);
+    if (fits) void this.flush();
+    return fits;
+  }
+
+  /** Counts a report against the day's dedupe and cap, and queues it when it fits. Returns whether it was queued. */
+  private accept(report: ErrorReport, now: number): boolean {
     const print = fingerprint(report);
     const day = new Date(now).toISOString().slice(0, 10);
     if (this.state.day !== day) Object.assign(this.state, { day, accepted: 0, seen: [] });
@@ -378,12 +407,12 @@ export class CrashReports {
     const fits = this.state.queue.length < CRASH_LIMITS.queueItems && bytes <= CRASH_LIMITS.queueBytes;
     if (fits) this.state.queue = [...this.state.queue, item];
     this.save();
-    if (fits) void this.flush();
     return fits;
   }
 
   /** Sends the queue in order. Runs one at a time; a failed send leaves the rest for the next start. */
   flush(): Promise<void> {
+    if (!this.confirmed) return Promise.resolve();
     if (this.flushing) {
       this.again = true;
       return this.flushing;

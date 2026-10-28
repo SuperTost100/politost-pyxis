@@ -31,18 +31,21 @@ Known limits:
 
 ## Consent
 
-The switch is the `crashReports` field of the profile, stored in the workspace database (`settings` row `privacy`). Core owns it. Main needs it before core has started, so it keeps a copy:
+The switch is the `crashReports` field of the profile, stored in the workspace database (`settings` row `privacy`). Core owns it, and nothing leaves the computer until core has reported it in the current session:
 
 1. Core sends `crash-consent` with the stored value right after it opens the database, and again after every profile save (`src/core/index.ts`).
 2. Main records it in `userData/crash-reports.json` and applies it at once: `crashReporter.setUploadToServer` for minidumps, and the JavaScript reporter reads the current value. No restart is needed.
-3. At the next launch, main starts Crashpad with the copy's value before core is up, and core confirms or corrects it a few seconds later.
+3. At launch, main starts Crashpad early, so that a crash before core is up is still written, but always with uploads off. Uploads go on only when core reports the switch on.
+4. Until core has reported the switch, a JavaScript error is kept in memory only, and only if the saved copy says on: nothing is sent and nothing new is written to disk. Core's answer then decides. On, and the held errors join the queue and the queue is sent. Off, and the held errors and the queue are dropped.
+
+The copy can be out of date after a restore or with a workspace from another computer, which is why it never decides a send on its own. Crashpad marks a dump it finds while uploads are off as done without sending it, so a dump still waiting from an earlier session can be lost at launch. That is accepted: losing a report is better than sending one before core has confirmed the switch.
 
 A report created while the switch was off is never sent:
 
 - A JavaScript error raised while it is off is dropped before it is read. Nothing is written to disk.
 - Turning the switch off empties the queue of JavaScript errors waiting to be sent.
 - Each queued error records when it was created, and one older than the current consent period is dropped unsent.
-- Crashpad skips the upload of a dump written while uploads are off. At every launch, before Crashpad starts, main deletes every dump in `userData/Crashpad` while the switch is off, and the dumps older than the moment it was last turned on while it is on (`discardUnconsentedDumps`).
+- Crashpad skips the upload of a dump written while uploads are off, including every dump written at launch before core has answered. At every launch, before Crashpad starts, main deletes every dump in `userData/Crashpad` while the switch is off, and the dumps older than the moment it was last turned on while it is on (`discardUnconsentedDumps`).
 
 ## Sending
 

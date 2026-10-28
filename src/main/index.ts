@@ -145,7 +145,9 @@ function crashEndpoint(): string | null {
 }
 const crashEndpointUrl = crashEndpoint();
 // The switch lives in the workspace database, which core owns. Main keeps the last value core reported in
-// userData/crash-reports.json, so it can start the crash reporter now; core confirms or corrects it once it is up.
+// userData/crash-reports.json, but that copy can be stale (a restore, a workspace from another computer), so nothing
+// leaves until core has read the profile and sent `crash-consent`: JavaScript errors wait in memory, and Crashpad
+// starts with uploads off.
 const crashReports = new CrashReports({
   file: join(app.getPath("userData"), "crash-reports.json"),
   endpoint: crashEndpointUrl,
@@ -165,14 +167,17 @@ const crashReports = new CrashReports({
 watchProcessErrors("pyxis", (fields) => crashReports.capture("main", fields));
 const crashReporterOn = primaryInstance && (crashEndpointUrl !== null || crashDirSeam);
 if (crashReporterOn) {
-  // Dumps written while the switch was off must never go, so they are deleted before Crashpad can see them.
+  // Dumps written while the switch was off must never go, so they are deleted before Crashpad can see them. Crashpad
+  // marks the dumps it finds while uploads are off as done without sending them; a dump left from an earlier session
+  // can be lost that way, which is the price of sending nothing before core has answered.
   if (!crashDirSeam)
     discardUnconsentedDumps(app.getPath("crashDumps"), crashReports.enabled ? crashReports.since : null);
   crashReporter.start({
     ...(crashEndpointUrl ? { submitURL: `${crashEndpointUrl}/minidump` } : {}),
     // electron-builder's productName, which the Worker requires. Named here because an unpackaged run says "Electron".
     productName: "PoliTost Pyxis",
-    uploadToServer: crashEndpointUrl !== null && crashReports.enabled,
+    // Turned on by applyCrashConsent once core says the switch is on.
+    uploadToServer: false,
     // At most one upload an hour on macOS and Windows; Linux ignores it.
     rateLimit: true,
   });
@@ -182,7 +187,6 @@ if (crashReporterOn) {
 function applyCrashConsent(enabled: boolean): void {
   crashReports.setConsent(enabled);
   if (crashReporterOn) crashReporter.setUploadToServer(crashEndpointUrl !== null && enabled);
-  if (enabled) void crashReports.flush();
 }
 
 protocol.registerSchemesAsPrivileged([
