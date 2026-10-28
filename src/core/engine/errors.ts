@@ -40,12 +40,24 @@ function httpStatus(message: string): number {
  * Classifies a failure by its text when it carries no structured code or limit: the status it states first, then
  * whole words. Stderr goes through here too, so every pattern is anchored to a word or a stated status.
  */
-function textKind(rawCode: string, message: string): "refused" | "quota" | "" {
+function textKind(
+  rawCode: string,
+  message: string,
+): "refused" | "quota" | "model" | "" {
   const status =
     httpStatus(message) || (/^[1-5]\d\d$/.test(rawCode) ? Number(rawCode) : 0);
   if (status === 401) return "refused";
   if (status === 429) return "quota";
   const text = `${rawCode} ${message}`;
+  // A subscription that leaves out the chosen model, which the engine's other models may still have. Cursor says "is
+  // not included in your weekly usage. Buy credits or switch to a Grok model". Read before the limits below, because
+  // the same message offers credits.
+  if (
+    /\b(?:not included in your (?:plan|subscription|weekly usage|usage)|upgrade your (?:plan|subscription) to use (?:this|the) model)\b/i.test(
+      text,
+    )
+  )
+    return "model";
   if (
     /\b(?:invalid[ _-]api[ _-]key|unauthori[sz]ed|authentication(?:[ _-](?:error|failed|required))?)\b/i.test(
       text,
@@ -53,7 +65,7 @@ function textKind(rawCode: string, message: string): "refused" | "quota" | "" {
   )
     return "refused";
   if (
-    /\b(?:rate[ _-]limit(?:ed|[ _-]exceeded)?|too many requests|usage[ _-]limit|spend[ _-]limit|(?:insufficient[ _-])?quota)\b/i.test(
+    /\b(?:rate[ _-]limit(?:ed|[ _-]exceeded)?|too many requests|usage[ _-]limit|spend[ _-]limit|(?:insufficient[ _-])?quota|out of credits|insufficient credits|buy (?:more )?credits)\b/i.test(
       text,
     )
   )
@@ -91,18 +103,24 @@ export function translateEngineError(
   }
   if (kind === "quota")
     return { code: "quota", messageKey: "engines.errors.quota" };
+  if (kind === "model")
+    return {
+      code: "model-not-included",
+      messageKey: "engines.errors.model-not-included",
+    };
   const code = err instanceof FunnelError ? err.code : "cli-failed";
   return { code, messageKey: `engines.errors.${code}` };
 }
 
 /**
  * Why another engine could answer instead: the engine hit a usage limit (CLI Funnel attaches the `limit` it reported to
- * the error) or its sign-in or key was refused. Any other failure is not one a second engine would get round.
+ * the error), its sign-in or key was refused, or the subscription does not include the model. Any other failure is not
+ * one a second engine would get round.
  */
 export function fallbackReason(
   err: unknown,
   provider: string,
-): "limit" | "signed-out" | undefined {
+): "limit" | "signed-out" | "model" | undefined {
   if (!isEngineFailure(err) && !(err instanceof Error && "limit" in err))
     return undefined;
   if (err && typeof err === "object" && "limit" in err && err.limit)
@@ -110,6 +128,7 @@ export function fallbackReason(
   const { code } = translateEngineError(err, provider);
   if (code === "quota") return "limit";
   if (code === "not-logged-in" || code === "refused") return "signed-out";
+  if (code === "model-not-included") return "model";
   return undefined;
 }
 

@@ -4,6 +4,7 @@ import {
   attachable,
   draftKey,
   fileName,
+  keepUnsentQuestion,
   lastAskChat,
   readPendingFiles,
   takeBoardAttachment,
@@ -65,6 +66,18 @@ describe("Ask attachments", () => {
     expect(draftKey()).toBe("pyxis-draft");
     writePendingFiles(s, "a", []);
     expect([...s.data.keys()]).toEqual(["pyxis-files"]);
+  });
+
+  it("keeps an unsent question as its chat's draft, without replacing a draft already there", () => {
+    const s = store({ "pyxis-draft:b": "bozza di b" });
+    // A suggestion chip's question, whose text never was in the composer.
+    keepUnsentQuestion(s, "a", "Spiegami la cinematica");
+    expect(s.getItem(draftKey("a"))).toBe("Spiegami la cinematica");
+    // A typed question is still that chat's draft: it stays as typed.
+    keepUnsentQuestion(s, "b", "bozza di b");
+    expect(s.getItem(draftKey("b"))).toBe("bozza di b");
+    keepUnsentQuestion(s, undefined, "Che cos'è la velocità?");
+    expect(s.getItem(draftKey())).toBe("Che cos'è la velocità?");
   });
 
   it("reads no files from a value that is not a list of paths", () => {

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { IpcError, isAbort } from "../../shared/ipc";
 import { engineSeesImages } from "./capabilities";
-import { benchEngine, isBenched } from "./bench";
+import { benchEngine, benchModel, isBenched, isModelBenched } from "./bench";
 import { engineIpcError, fallbackReason } from "./errors";
 import {
   endConversation,
@@ -41,7 +41,7 @@ export type GenerateInput = {
 export type EngineFallback = {
   from: string;
   to: string;
-  reason: "limit" | "signed-out";
+  reason: "limit" | "signed-out" | "model";
 };
 
 export type GenerateOutput = EngineResult & {
@@ -103,10 +103,13 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     const { usage, ...rest } = input;
     return withUsageScope(usage, () => generate(rest));
   }
-  // An automatic engine still out after a usage limit or a sign-out is skipped until it is back.
+  // An automatic engine still out after a usage limit or a sign-out, or a model the subscription refused, is skipped
+  // until it is back.
   const instead = isBenched(input.selection.provider)
     ? usableFallback(input)
-    : undefined;
+    : isModelBenched(input.selection.provider, input.selection.model)
+      ? usableFallback(input, "model")
+      : undefined;
   if (instead) return answerOn(input, instead);
   try {
     return await generateOnce(input);
@@ -115,20 +118,28 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
       !input.signal?.aborted && !isAbort(err)
         ? fallbackReason(err, input.selection.provider)
         : undefined;
-    const next = reason ? usableFallback(input) : undefined;
+    // An engine Pyxis chose that hit its usage limit, was signed out or refused the model: the next ready engine, or
+    // the same engine's next model after a refusal, answers once instead. Later automatic calls skip it until its limit
+    // resets, it is signed in again or the refused model's day is over.
+    if (reason === "model")
+      benchModel(input.selection.provider, input.selection.model);
+    const next = reason ? usableFallback(input, reason) : undefined;
     if (!reason || !next) throw engineIpcError(err, input.selection.provider);
-    // An engine Pyxis chose that hit its usage limit or was signed out: the next ready engine answers once instead,
-    // and later automatic calls skip it until its limit resets or it is signed in again.
-    benchEngine(
-      input.selection.provider,
-      reason,
-      err && typeof err === "object" && "limit" in err
-        ? (err.limit as { resetAt?: string; retryAfterMs?: number })
-        : undefined,
-    );
+    if (reason !== "model")
+      benchEngine(
+        input.selection.provider,
+        reason,
+        err && typeof err === "object" && "limit" in err
+          ? (err.limit as { resetAt?: string; retryAfterMs?: number })
+          : undefined,
+      );
     const fallback = {
       from: providerName(input.selection.provider),
-      to: providerName(next.provider),
+      // The same engine answering on another model is named with that model.
+      to:
+        next.provider === input.selection.provider
+          ? `${providerName(next.provider)} (${next.model})`
+          : providerName(next.provider),
       reason,
     };
     const output = await answerOn(input, next);
@@ -138,8 +149,11 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
 }
 
 /** The engine an automatic selection moves to. A turn that carries a picture only moves to an engine that can see it. */
-function usableFallback(input: GenerateInput) {
-  const next = fallbackSelection(input.selection);
+function usableFallback(
+  input: GenerateInput,
+  reason?: "limit" | "signed-out" | "model",
+) {
+  const next = fallbackSelection(input.selection, reason);
   if (!next) return undefined;
   return !input.attachments?.length || engineSeesImages(next) ? next : undefined;
 }

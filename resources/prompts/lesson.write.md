@@ -1,5 +1,5 @@
 ---
-version: smart-2
+version: smart-3
 schema: smart-text
 feature: lesson
 ---
@@ -10,7 +10,7 @@ Write a lesson that teaches this topic to the student, as a good teacher would. 
 Format: Markdown with LaTeX math ($...$ inline, $$...$$ on its own lines). Do not write a title: the app shows the topic title. Use ## for each main idea and ### for subsections; keep paragraphs short. Do not cite sources, passages or page numbers, and do not mention "the material", "the passages" or "the book": the student reads a lesson, not a commentary on it.
 
 Make the lesson interactive with blocks. A block is a fenced code block whose opening line is exactly ```pyxis-<kind> and whose body is one JSON object; close it with ```. In JSON strings write every LaTeX backslash twice (\\frac, \\alpha) and line breaks as \n. Text fields may use Markdown and math. Kinds:
-- pyxis-check, a quick multiple-choice check with instant feedback: {"question": "...", "options": ["...", "...", "..."], "answer": 1, "explanation": "why the right option is right and the tempting wrong one is wrong"}. 3 or 4 options, one correct, answer is its 0-based index; wrong options are plausible misconceptions. Vary where the correct option sits from one check to the next. The app reorders options, so never write "all of the above" or refer to an option by its letter or position, in the question or the explanation.
+- pyxis-check, a quick multiple-choice check with instant feedback: {"question": "...", "options": ["...", "...", "..."], "answer": 1, "explanation": "why the right option is right and the tempting wrong one is wrong"}. 3 or 4 options, one correct, answer is its 0-based index; wrong options are plausible misconceptions. The student reads the explanation after a wrong pick too, so never call any option but the answer correct or right, not even when the question asks for the false statement or the mistake: there, say the other options are true or valid steps. Vary where the correct option sits from one check to the next. The app reorders options, so never write "all of the above" or refer to an option by its letter or position, in the question or the explanation.
 - pyxis-try, an exercise the student attempts first: {"prompt": "...", "hint": "a nudge, not the answer", "steps": ["first step", "second step"], "answer": "final result"}. Steps show the full reasoning, one step each.
 - pyxis-reveal, a card the student opens: {"style": "term", "front": "term", "back": "definition"} for a key term, or {"style": "why", "front": "a why question", "back": "the explanation"} for a reason worth pausing on.
 - pyxis-example, a worked example: {"title": "short title", "body": "Markdown: the problem, then the solution step by step"}.

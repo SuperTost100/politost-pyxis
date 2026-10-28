@@ -54,7 +54,7 @@ describe("effort by task", () => {
       vision: "medium",
       default: "medium",
       plan: "high",
-      grading: "high",
+      grading: "medium",
     });
     db.close();
   });
@@ -85,9 +85,9 @@ describe("effort by task", () => {
     ]);
     const db = openDatabase(":memory:");
     db.prepare(
-      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('grading', ?, 1)",
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('plan', ?, 1)",
     ).run(JSON.stringify({ provider: "codex", model: "gpt-6-sol" }));
-    expect(selectionFor(db, "grading")).toEqual({
+    expect(selectionFor(db, "plan")).toEqual({
       provider: "codex",
       model: "gpt-6-sol",
       effort: "high",
@@ -121,7 +121,7 @@ describe("effort by task", () => {
     expect(at("agent", "claude-4.6-sonnet", "chat")).toBe("medium");
     expect(at("agent", "claude-4.6-sonnet", "plan")).toBe("medium");
     expect(at("agent", "claude-4.6-opus", "chat")).toBe("high");
-    expect(at("agent", "claude-4.6-opus", "grading")).toBe("high");
+    expect(at("agent", "claude-4.6-opus", "plan")).toBe("high");
     // A model that lists no efforts runs without one.
     expect(at("agent", "composer-2.5", "plan")).toBeUndefined();
     expect(at("claude", "claude-haiku-4-5-20251001", "chat")).toBeUndefined();

@@ -85,6 +85,29 @@ describe("translateEngineError", () => {
       expect(translateEngineError(new Error(text)).code).toBe("quota");
   });
 
+  it("names a model the subscription does not include", () => {
+    for (const message of [
+      "Claude Sonnet 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.",
+      "This model is not included in your plan. Upgrade your plan to use it.",
+      "Upgrade your subscription to use this model.",
+    ])
+      expect(translateEngineError(new Error(message), "agent")).toEqual({
+        code: "model-not-included",
+        messageKey: "engines.errors.model-not-included",
+      });
+    // Credits that ran out stop every model on the account, so they are a usage limit, not one refused model.
+    for (const message of [
+      "You are out of credits.",
+      "Insufficient credits. Buy more credits to continue.",
+      "You are out of credits. Upgrade your plan to use more credits.",
+    ])
+      expect(translateEngineError(new Error(message), "agent").code).toBe("quota");
+    // Ordinary words around a plan or credits are not a refusal.
+    expect(
+      translateEngineError(new Error("Credits: the plan was included in the lesson"), "agent").code,
+    ).toBe("cli-failed");
+  });
+
   it("trusts the limit CLI Funnel attached before any text", () => {
     const limit = { kind: "quota", detail: "Weekly limit reached" };
     expect(

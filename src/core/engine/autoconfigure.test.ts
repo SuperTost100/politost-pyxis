@@ -3,6 +3,7 @@ import { openDatabase } from "../db/connection";
 import { engineHandlers } from "./handlers";
 import { selectionFor } from "./selection";
 import { getFunnel } from "./funnel";
+import { benchModel, clearBench } from "./bench";
 vi.mock("./funnel", async (original) => {
   const actual = await original<typeof import("./funnel")>();
   return { ...actual, getFunnel: vi.fn(actual.getFunnel), runTurn: vi.fn() };
@@ -85,6 +86,26 @@ describe("automatic engine choice", () => {
       model: "gpt-6-luna",
       effort: "low",
     });
+    db.close();
+  });
+
+  it("moves the tasks off a model the subscription refused", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    const features = ["chat", "default", "grading", "lesson", "map", "plan", "vision"];
+    // The lesson engine's model gets refused, whichever the split gave it.
+    const refused = selectionFor(db, "lesson");
+    benchModel(refused.provider, refused.model);
+    try {
+      await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+      const after = features.map((feature) => selectionFor(db, feature));
+      expect(after.some((choice) => choice.model === refused.model)).toBe(false);
+      // The engine's other models stay in use.
+      expect(after.some((choice) => choice.provider === refused.provider)).toBe(true);
+    } finally {
+      clearBench();
+    }
     db.close();
   });
 

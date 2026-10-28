@@ -20,7 +20,7 @@ The result carries text, provider, model and token usage: input and output token
 
 Pyxis picks the engine, model and effort for each feature itself. `planAuto()` in `src/core/engine/auto.ts` is a pure function of the ready providers and the models each one lists. It never calls a model, so it costs no usage. The tiers, weights and model patterns live in `resources/model-tiers.json`.
 
-- Each feature needs a tier: `chat` and `map` fast, `lesson`, `vision` and `default` mid, `grading` and `plan` strong. Vision only considers models that read images (`capabilities.ts`). A feature key missing from the file counts as mid.
+- Each feature needs a tier: `chat` and `map` fast, `lesson`, `vision`, `grading` and `default` mid, `plan` strong. Vision only considers models that read images (`capabilities.ts`). A feature key missing from the file counts as mid.
 - Model patterns are regular expressions per tier, cheapest sufficient first. Claude: haiku fast, sonnet mid, opus then fable strong. Codex and OpenAI: luna, mini and nano fast, terra mid, sol then astra strong. Antigravity: Gemini Flash fast, Gemini Pro mid and strong (Claude sonnet and opus as fallbacks). Cursor Agent: Gemini Flash, luna, Composer, then mini/nano fast; Claude sonnet, terra, then Gemini Pro mid; Claude opus then sol strong. Cursor's `-thinking` variants and Fable (listed there without zero data retention) never match. Within a pattern the highest version the provider lists wins. A tier with no match steps to the neighbouring tier, and the last resort is the first model the provider lists.
 - Effort follows the tier, see [Reasoning effort](#reasoning-effort).
 - A provider is ready when it is installed, signed in and not disabled. API providers count only with a stored key that the provider accepts. CLIs win. A local model the student turned on comes next, and API providers are used only when neither is ready, because they bill per token.
@@ -28,14 +28,14 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 
 Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.4 model lists:
 
-| Ready CLIs                | Chat and maps       | Lessons and default                              | Photos             | Plans       | Grading     |
-| ------------------------- | ------------------- | ------------------------------------------------ | ------------------ | ----------- | ----------- |
-| Claude Code + Codex       | Codex luna          | Claude sonnet                                    | Claude sonnet      | Claude opus | Codex sol   |
-| Claude Code + Antigravity | Gemini Flash        | Claude sonnet                                    | Claude sonnet      | Claude opus | Gemini Pro  |
-| Claude Code + Cursor      | Cursor Gemini Flash | Claude sonnet                                    | Claude sonnet      | Claude opus | Cursor opus |
-| Codex + Antigravity       | Gemini Flash        | Gemini Pro (lessons), Codex terra (default)      | Codex terra        | Codex sol   | Codex sol   |
-| Cursor + Antigravity      | Gemini Flash        | Cursor sonnet                                    | OCR (no image CLI) | Cursor opus | Gemini Pro  |
-| All four                  | Gemini Flash        | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet      | Claude opus | Codex sol   |
+| Ready CLIs                | Chat and maps                                   | Lessons and default                              | Photos             | Plans       | Grading       |
+| ------------------------- | ----------------------------------------------- | ------------------------------------------------ | ------------------ | ----------- | ------------- |
+| Claude Code + Codex       | Codex luna                                      | Codex terra (lessons), Claude sonnet (default)   | Claude sonnet      | Claude opus | Claude sonnet |
+| Claude Code + Antigravity | Gemini Flash                                    | Gemini Pro (lessons), Claude sonnet (default)    | Claude sonnet      | Claude opus | Claude sonnet |
+| Claude Code + Cursor      | Cursor Gemini Flash                             | Cursor sonnet (lessons), Claude sonnet (default) | Claude sonnet      | Claude opus | Claude sonnet |
+| Codex + Antigravity       | Gemini Flash                                    | Codex terra (lessons), Gemini Pro (default)      | Codex terra        | Codex sol   | Gemini Pro    |
+| Cursor + Antigravity      | Gemini Flash                                    | Gemini Pro (lessons), Cursor sonnet (default)    | OCR (no image CLI) | Cursor opus | Cursor sonnet |
+| All four                  | Gemini Flash (chat), Cursor Gemini Flash (maps) | Codex terra (lessons), Claude sonnet (default)   | Claude sonnet      | Claude opus | Cursor sonnet |
 
 An automatic row in `feature_engines` carries `"auto": true` in its JSON. A row without it is pinned. `engines.setFeature` pins, and `engines.autoConfigure` with `reset` returns features to automatic. Only automatic rows are rewritten. When no engine is ready they are removed, which brings back `engine-missing`. If every ready engine fails to list models, the current rows stay.
 
@@ -99,12 +99,13 @@ The unit tests run every hardware parser on captured command output and the chec
 
 Every task runs at a reasoning effort that fits it, whether Pyxis or the student picked the model. `taskEffort()` in `src/shared/effort.ts` reads the level from `resources/model-tiers.json`:
 
-| Task                                        | Effort   |
-| ------------------------------------------- | -------- |
-| Chat (Ask) and maps                         | `low`    |
-| Lessons, quizzes, cards and drills, photos  | `medium` |
-| The default engine                          | `medium` |
-| Plans, grading of exercises and simulations | `high`   |
+| Task                                       | Effort   |
+| ------------------------------------------ | -------- |
+| Chat (Ask) and maps                        | `low`    |
+| Lessons, quizzes, cards and drills, photos | `medium` |
+| Grading of exercises and simulations       | `medium` |
+| The default engine                         | `medium` |
+| Plans                                      | `high`   |
 
 `selectionFor` resolves the effort on every call, so a row saved before this existed gets its level without a migration.
 
@@ -127,14 +128,15 @@ In Settings, Engines, with Advanced options on, each task has an effort picker n
 
 ## Switching engines on a usage limit
 
-When the engine Pyxis chose for a task hits a usage limit or is signed out (a refused key counts for API providers), `generate()` asks once more on another engine. The replacement is what `planAuto()` would choose for the same task without the failed engine, among the engines the last automatic choice could use. Core then broadcasts `engine.fallback` and the window shows one line saying which engine answered.
+When the engine Pyxis chose for a task hits a usage limit, is signed out (a refused key counts for API providers) or says the student's subscription doesn't include the model, `generate()` asks once more on another engine. The replacement is what `planAuto()` would choose for the same task without the failed engine, among the engines the last automatic choice could use. Core then broadcasts `engine.fallback` and the window shows one line saying which engine answered.
 
 - Only automatic selections switch. `selectionFor` marks the selections it returns from an automatic row, so a task the student pinned keeps its engine and shows the error.
 - A background job that saved its selection when it was queued keeps that engine.
 - The retry happens once. If the second engine fails too, its error is shown.
-- Later automatic calls skip the failed engine and go straight to the replacement, without a notice. A usage limit keeps it out until the reset time CLI Funnel reports (`resetAt`, else `retryAfterMs`), or 30 minutes when it reports neither. A sign-out keeps it out until a scan finds it signed in again or its API key changes. This lives in core's memory only (`src/core/engine/bench.ts`), so a restart tries every engine again.
+- Later automatic calls skip the failed engine and go straight to the replacement, without a notice. A usage limit keeps it out until the reset time CLI Funnel reports (`resetAt`, else `retryAfterMs`), or 30 minutes when it reports neither. A sign-out keeps it out until a scan finds it signed in again or its API key changes. A refused model keeps only that model out, for 24 hours: core runs the automatic choice again at once, so the tasks that used it move to another model and Settings shows the new one, while the engine's other models stay in use. The replacement for a refused model may be the same engine on another model, and the notice then names that model. This lives in core's memory only (`src/core/engine/bench.ts`), so a restart tries every engine again.
 - A stopped turn never switches, and a turn with a picture switches only to an engine that can see it.
-- CLI Funnel already retries an API request twice on 429 and 5xx before any output. A limit is recognised from the `limit` CLI Funnel attaches to the error, and otherwise from the same classification that maps errors to `engines.errors.quota`, `not-logged-in` and `refused`.
+- CLI Funnel already retries an API request twice on 429 and 5xx before any output. A limit is recognised from the `limit` CLI Funnel attaches to the error, and otherwise from the same classification that maps errors to `engines.errors.quota`, `not-logged-in`, `refused` and `model-not-included`. The last one matches the wording vendors use when a plan leaves a model out, such as Cursor's "is not included in your weekly usage". Credits that ran out ("out of credits", "insufficient credits", "buy credits") stop every model on the account, so they count as a usage limit.
+- A lesson that falls back to the book text after an engine failure carries the failure's message key as `fallbackReason`, and the lesson page shows it with a link to the engine settings.
 
 ## Chat conversations and prompt caching
 

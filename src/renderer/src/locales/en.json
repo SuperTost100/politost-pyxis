@@ -761,7 +761,9 @@
     "redoTopic_other": "Redo {{count}} questions",
     "redoFailed": "The questions could not be opened again. Try once more.",
     "redoTitle": "Redo mistakes",
-    "back": "Back to the notebook"
+    "back": "Back to the notebook",
+    "summary_one": "{{count}} question to redo from quizzes, quick checks and simulations",
+    "summary_other": "{{count}} questions to redo from quizzes, quick checks and simulations"
   },
   "map": {
     "title": "Map",
@@ -1156,8 +1158,8 @@
     "verdictGood": "A solid base.",
     "verdictClose": "Almost there.",
     "verdictStart": "Now you know where to start.",
-    "toReview_one": "{{count}} answer to review",
-    "toReview_other": "{{count}} answers to review",
+    "toReview_one": "{{count}} answer to review in this quiz",
+    "toReview_other": "{{count}} answers to review in this quiz",
     "allCorrect": "Every answer is correct",
     "excludedCount_one": "{{count}} question not scored",
     "excludedCount_other": "{{count}} questions not scored",
@@ -1174,7 +1176,8 @@
     "reviewMistakes": "Review mistakes",
     "redo": "Redo",
     "answeredOn": "Your answers from {{date}}",
-    "answersNotShared": "The answers of this attempt weren't included in the shared plan."
+    "answersNotShared": "The answers of this attempt weren't included in the shared plan.",
+    "verdictLow": "Now you know what to review."
   },
   "practice": {
     "title": "Book exercises",
@@ -1264,7 +1267,7 @@
       },
       "reason": {
         "intro": "Start here: what you'll study and how.",
-        "diagnostic": "Find your starting point. You can skip it.",
+        "diagnostic": "Find your starting point. If you skip it, you start with the first lesson.",
         "due_one": "1 flashcard to review today.",
         "due_other": "{{count}} flashcards to review today.",
         "gaps_one": "One serious gap on this topic.",
@@ -1278,14 +1281,17 @@
         "stay": "This topic isn't solid yet. Stay on it a little longer.",
         "review_one": "You last studied it a day ago. See what you still remember.",
         "review_other": "You last studied it {{count}} days ago. See what you still remember."
-      }
+      },
+      "skipDiagnostic": "Skip the test"
     }
   },
   "progress": {
     "title": "Progress",
     "chart": "Last 14 days",
-    "onTrack_one": "{{ready}} of {{count}} topic on track",
-    "onTrack_other": "{{ready}} of {{count}} topics on track",
+    "onTrack_one": "{{ready}} of {{count}} topic at your {{target}}% target",
+    "onTrack_other": "{{ready}} of {{count}} topics at your {{target}}% target",
+    "onTrackReachable_one": "{{ready}} of {{count}} topic at {{threshold}}% (target {{target}}%)",
+    "onTrackReachable_other": "{{ready}} of {{count}} topics at {{threshold}}% (target {{target}}%)",
     "lessons": "{{count}} lessons finished",
     "gaps": "Gaps",
     "noGaps": "No open gap.",
@@ -1508,7 +1514,8 @@
       "read": "Start with an explanation, then practice.",
       "practice": "Try exercises first, then fill the gaps.",
       "decide": "Let the plan choose the order."
-    }
+    },
+    "ready": "{{title}} is ready"
   },
   "shared": {
     "title": "Open a shared plan",
@@ -2130,7 +2137,7 @@
     "effortAuto": "Automatic · {{level}}",
     "effortNone": "Not adjustable",
     "effortFellBack": "This model does not offer {{level}}, so Pyxis uses the automatic level.",
-    "effortAdvice": "Pyxis sets the reasoning effort by task: low for chat and maps, medium for lessons, quizzes and photos, high for plans and grading. Pick a level to override it for one task. Models without effort settings run as they are.",
+    "effortAdvice": "Pyxis sets the reasoning effort by task: low for chat and maps, medium for lessons, quizzes, photos and grading, high for plans. Pick a level to override it for one task. Models without effort settings run as they are.",
     "effortLevel": {
       "none": "None",
       "minimal": "Minimal",
@@ -2197,7 +2204,8 @@
     "sendCode": "Send",
     "fallback": {
       "limit": "{{from}} reached its usage limit, so {{to}} answered.",
-      "signed-out": "{{from}} is signed out, so {{to}} answered."
+      "signed-out": "{{from}} is signed out, so {{to}} answered.",
+      "model": "Your {{from}} subscription doesn't include this model, so {{to}} answered."
     },
     "errors": {
       "not-installed": "The program is not installed.",
@@ -2208,6 +2216,7 @@
       "aborted": "Cancelled.",
       "refused": "The key was refused. Check it.",
       "quota": "Usage limit reached. Try again later or pick another engine.",
+      "model-not-included": "Your subscription to this engine doesn't include the chosen model. Pick another one in Settings, AI engines.",
       "timeout": "The engine did not answer in time. Try again, or pick another engine.",
       "engine-missing": "Choose and test an engine in Settings before continuing.",
       "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines.",
@@ -2520,7 +2529,8 @@
     "archiveHelp": "Set a finished exam aside. It leaves your review queues, counts and recommendations. Lessons and progress stay, and you can restore it at any time.",
     "restore": "Restore exam",
     "restoreHelp": "Bring this exam back into your review queues and recommendations.",
-    "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations."
+    "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations.",
+    "planMastery": "The whole plan: each topic counts as much as its material."
   },
   "smart": {
     "check": "Quick check",

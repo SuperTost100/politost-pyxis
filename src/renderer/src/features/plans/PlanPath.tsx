@@ -9,7 +9,7 @@ import { MasteryBar } from "../../components/MasteryBar";
 import { PathNode } from "../../components/PathNode";
 import { Tag } from "../../components/Tag";
 import { searchMatcher } from "../../lib/search";
-import { reopenPath, stepPath } from "./reopen";
+import { reopenPath, skipDiagnosticPath, stepPath } from "./reopen";
 import "./PlanPath.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -77,6 +77,7 @@ export function PlanPath({
   const marked: Activity | null =
     picked && picked !== next?.topicId ? (topic?.suggested ?? null) : (next?.activity ?? null);
   const steps = plan.steps;
+  const skipTo = skipDiagnosticPath(planId, topics, steps);
   const planned = topics.filter(
     (item) => !read.has(item.id) && !(next?.activity === "lesson" && next.topicId === item.id),
   );
@@ -270,6 +271,9 @@ export function PlanPath({
             <Button type="primary" onClick={() => go(next.activity, next.topicId)}>
               {t("planOverview.start")}
             </Button>
+          ) : null}
+          {next?.activity === "diagnostic" && skipTo ? (
+            <Button onClick={() => navigate(skipTo)}>{t("plans.path.skipDiagnostic")}</Button>
           ) : null}
           <Button
             ref={moreButton}
