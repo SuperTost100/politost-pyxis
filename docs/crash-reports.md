@@ -36,7 +36,7 @@ The switch is the `crashReports` field of the profile, stored in the workspace d
 1. Core sends `crash-consent` with the stored value right after it opens the database, and again after every profile save (`src/core/index.ts`).
 2. Main records it in `userData/crash-reports.json` and applies it at once: `crashReporter.setUploadToServer` for minidumps, and the JavaScript reporter reads the current value. No restart is needed.
 3. At launch, main starts Crashpad early, so that a crash before core is up is still written, but always with uploads off. Uploads go on only when core reports the switch on.
-4. Until core has reported the switch, a JavaScript error is kept in memory only, and only if the saved copy says on: nothing is sent and nothing new is written to disk. Core's answer then decides. On, and the held errors join the queue and the queue is sent. Off, and the held errors and the queue are dropped.
+4. Until core has reported the switch, a JavaScript error is kept in memory only, and only if the saved copy says on: nothing is sent and nothing new is written to disk. Core's answer then decides. On, and the held errors go through the same once-a-day, daily-cap and queue-size checks as any other error, so the ones that pass join the queue and the queue is sent. Off, and the held errors and the queue are dropped.
 
 The copy can be out of date after a restore or with a workspace from another computer, which is why it never decides a send on its own. Crashpad marks a dump it finds while uploads are off as done without sending it, so a dump still waiting from an earlier session can be lost at launch. That is accepted: losing a report is better than sending one before core has confirmed the switch.
 
