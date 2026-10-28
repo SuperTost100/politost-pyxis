@@ -31,11 +31,23 @@ describe("profile", () => {
     // Changing the level leaves an unpicked scale unset, so the window follows the new level.
     saveProfile(db, { educationLevel: "upper-secondary" });
     expect(readProfile(db)?.gradeScale).toBeNull();
-    saveProfile(db, { gradeScale: 100 });
-    saveProfile(db, { educationLevel: "university", textSize: "lg" });
-    expect(readProfile(db)?.gradeScale).toBe(100);
+    saveProfile(db, { gradeScale: 30 });
+    saveProfile(db, { textSize: "lg" });
+    // Setup sends the level on every save: the same level keeps the pick.
+    saveProfile(db, { educationLevel: "upper-secondary", displayName: "Ada L." });
+    expect(readProfile(db)?.gradeScale).toBe(30);
     saveProfile(db, { gradeScale: null });
     expect(readProfile(db)?.gradeScale).toBeNull();
+  });
+
+  it("lets a new study level reset a picked grade scale, so the scale follows the level again", () => {
+    const db = openDatabase(":memory:");
+    saveProfile(db, { educationLevel: "university", gradeScale: 100 });
+    saveProfile(db, { educationLevel: "upper-secondary" });
+    expect(readProfile(db)?.gradeScale).toBeNull();
+    // A scale sent with the new level is the student's pick, so it stays.
+    saveProfile(db, { educationLevel: "university", gradeScale: 100 });
+    expect(readProfile(db)?.gradeScale).toBe(100);
   });
 
   describe("crash reports default", () => {

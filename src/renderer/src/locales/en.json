@@ -1758,7 +1758,7 @@
     "levelHelp": "The tutor explains at this level in chats and in the exams you create from now on.",
     "gradeScale": "Grades and goals",
     "gradeScaleOn": "Out of {{scale}}",
-    "gradeScaleHelp": "Applies to grades, goals and preparation everywhere in the app. University starts out of 30, every other level out of 100."
+    "gradeScaleHelp": "Applies to grades, goals and preparation everywhere in the app. Changing your study level sets it back to that level's scale: out of 30 at university, out of 100 at other levels."
   },
   "jobs": {
     "title": "Background tasks",

@@ -1758,7 +1758,7 @@
     "levelHelp": "Il tutor spiega a questo livello nelle chat e negli esami che crei da qui in poi.",
     "gradeScale": "Voti e obiettivi",
     "gradeScaleOn": "Su {{scale}}",
-    "gradeScaleHelp": "Vale per voti, obiettivi e preparazione in tutta l'app. All'università si parte da 30, negli altri casi da 100."
+    "gradeScaleHelp": "Vale per voti, obiettivi e preparazione in tutta l'app. Se cambi livello di studio torna alla scala di quel livello: su 30 all'università, su 100 negli altri casi."
   },
   "jobs": {
     "title": "Attività",

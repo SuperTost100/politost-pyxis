@@ -118,6 +118,10 @@ export function readProfile(db: Database.Database): Profile | null {
 export function saveProfile(db: Database.Database, input: Partial<Profile>, now = Date.now()): Profile {
   const current = readProfile(db) ?? empty;
   const next: Profile = { ...current, ...input };
+  // A new study level brings its own scale back (30 at university, 100 elsewhere) until the student picks one again.
+  // The same level, which setup sends on every save, keeps the pick; so does a scale sent with the new level.
+  if (input.educationLevel !== undefined && input.educationLevel !== current.educationLevel && input.gradeScale === undefined)
+    next.gradeScale = null;
   const existing = db.prepare(`SELECT id FROM profile LIMIT 1`).get() as { id: string } | undefined;
   if (existing) {
     db.prepare(

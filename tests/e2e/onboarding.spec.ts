@@ -557,6 +557,18 @@ test("Run setup again: Settings reopens the profile and engine steps filled in, 
     expect(
       await page.evaluate(() => window.pyxis.invoke("engines.features", {})),
     ).toEqual(featuresBefore);
+
+    // The scale: Superiore shows out of 100. A pick holds until the study level changes, which brings that level's scale back.
+    const pressed = (name: string) => button(page, name).and(page.locator("[aria-pressed=true]"));
+    await expect(pressed("Su 100")).toBeVisible();
+    await button(page, "Su 30").click();
+    await expect(pressed("Su 30")).toBeVisible();
+    await expect.poll(async () => (await profile(page))?.gradeScale).toBe(30);
+    await button(page, "Tecnico").click();
+    await expect(pressed("Su 100")).toBeVisible();
+    await expect.poll(async () => (await profile(page))?.gradeScale).toBeNull();
+    await expect(page.getByText("Se cambi livello di studio torna alla scala di quel livello", { exact: false })).toBeVisible();
+    await noAxeViolations(page);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
