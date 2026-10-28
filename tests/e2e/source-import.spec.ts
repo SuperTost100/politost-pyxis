@@ -167,12 +167,10 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await expect(dialog).toBeHidden();
 
     await page.getByTitle("Piani", { exact: true }).click();
-    await page.getByRole("button", { name: "Nuovo piano", exact: true }).click();
+    await page.getByRole("button", { name: "Nuovo esame", exact: true }).click();
     await page.locator("#plan-title").fill("Fisica");
-    for (let step = 0; step < 3; step++) {
-      if (step === 1) await page.getByRole("button", { name: "Entro 10 giorni", exact: true }).click();
-      await page.getByRole("button", { name: "Continua", exact: true }).click();
-    }
+    await page.getByRole("button", { name: "Non ho ancora la data", exact: true }).click();
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
     await expect(page.getByText("0 fonti nel piano")).toBeVisible();
     await expect(page.getByRole("button", { name: "Non ho materiale" })).toBeVisible();
     await expect(page.getByRole("button", { name: "vecchio", exact: true })).toHaveCount(0);
@@ -216,10 +214,8 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await expect(list.getByRole("listitem")).toHaveCount(2);
     await expect(list.getByText("vecchio")).toBeVisible();
 
-    // The summary on the last step counts the same sources.
-    for (let step = 0; step < 2; step++)
-      await page.getByRole("button", { name: "Continua", exact: true }).click();
-    await expect(page.getByText(/2 fonti nel piano/)).toBeVisible();
+    // With material in the exam the main button creates it.
+    await expect(page.getByRole("button", { name: "Crea l'esame", exact: true })).toBeEnabled();
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

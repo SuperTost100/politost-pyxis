@@ -12,6 +12,7 @@ export type WizardSeed = {
   examChoice: ExamChoice;
   /** The exam sessions as edited, with a blank row when none has a date. */
   sessions: SessionDraft[];
+  /** The goal as stored, a fraction from 0.5 to 1. */
   target: number;
   language: "it" | "en";
 };

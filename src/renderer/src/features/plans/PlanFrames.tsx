@@ -1,53 +1,38 @@
-import { StepLines } from "../../components/StepLines";
+import { StepLines, type StepLineState } from "../../components/StepLines";
 import { Stepper } from "../../components/Stepper";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./PlanPage.css";
-import { Button, Input, Slider } from "antd";
-import dayjs from "dayjs";
-import { WizardSources } from "./WizardSources";
+import { Button, Input, Progress } from "antd";
 import "./PlanWizard.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
-import { BuildingMark } from "../../components/BuildingMark";
 import { ErrorState } from "../../components/ErrorState";
+import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
-import { FreeBooks } from "../../components/FreeBooks";
-import { PLAN_TITLE_MAX, type PlanFile } from "@shared/plan-file";
+import { useGradeScale } from "../../lib/useGradeScale";
+import type { PlanFile } from "@shared/plan-file";
 import { useMenuLock } from "../../app/menu-state";
 import { ImportReview } from "./ImportReview";
 import { readPlanText, type ImportRequest } from "./importPreview";
 import { takePlanText } from "./openedPlan";
-import {
-  examChosen,
-  examFromChoice,
-  isWizardSeed,
-  type ExamChoice,
-  type WizardSeed,
-} from "./wizardSeed";
-import { ExamSessionsField } from "./ExamSessionsField";
-import { emptyDraft, sessionsFromDrafts, type SessionDraft } from "./examSessions";
-import { sourcesQuery, usePlan, useSubjects } from "../../lib/queries";
+import { isWizardSeed } from "./wizardSeed";
+import { ExamStep, MaterialPrimary, MaterialStep, useExamDraft } from "./ExamDraft";
+import { usePlan } from "../../lib/queries";
 
+/** The new exam wizard: the exam on one screen, its material on the next. With `?build=` it is the wait screen. */
 export function WizardFrame() {
-  const { t, i18n } = useTranslation();
+  const [params] = useSearchParams();
+  const buildPlanId = params.get("build");
+  return buildPlanId ? <BuildScreen planId={buildPlanId} /> : <Wizard />;
+}
+
+function Wizard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
-  const client = useQueryClient();
-  const sources = useQuery({
-    ...sourcesQuery,
-    // A source just imported is still being read. Its status follows until it settles.
-    refetchInterval: (query) =>
-      query.state.data?.some((source) =>
-        ["queued", "extracting", "indexing", "ocr-queued"].includes(
-          source.status,
-        ),
-      )
-        ? 1000
-        : false,
-  });
-  const subjects = useSubjects();
+  const { scale } = useGradeScale();
   // Back from the guided flow returns here with the answers already given.
   const location = useLocation();
   const back =
@@ -57,570 +42,233 @@ export function WizardFrame() {
       books?: boolean;
     } | null) ?? {};
   const seed = isWizardSeed(back.wizard) ? back.wizard : null;
-  const [wizardStep, setWizardStep] = useState(seed ? (back.step ?? 3) : 0);
-  const [title, setTitle] = useState(seed?.title ?? "");
-  const [subject, setSubject] = useState(seed?.subject ?? "");
-  const [picked, setPicked] = useState<string[]>([]);
-  // "Start from a free PoliTost book" at the end of setup opens the wizard with the books already showing.
-  const [booksOpen, setBooksOpen] = useState(back.books === true);
-  const pick = (ids: string[]) =>
-    setPicked((current) => [
-      ...current,
-      ...ids.filter((id) => !current.includes(id)),
-    ]);
-  // Nothing is chosen for the student: a made-up deadline would start pushing simulations within days.
-  const [examChoice, setExamChoice] = useState<ExamChoice>(
-    seed?.examChoice ?? "",
-  );
-  const [sessions, setSessions] = useState<SessionDraft[]>(
-    seed?.sessions.length ? seed.sessions : [emptyDraft()],
-  );
-  const [target, setTarget] = useState(seed?.target ?? 75);
-  const [language, setLanguage] = useState(
-    seed?.language ?? (i18n.language.startsWith("en") ? "en" : "it"),
-  );
-  const [style, setStyle] = useState<"read" | "practice" | "decide">("decide");
-  const [starting, setStarting] = useState(false);
-  const [params, setParams] = useSearchParams();
-  const buildPlanId = params.get("build");
-  // Answers given so far live only on this page, so the menu leaves it alone until it has some. Once the plan is
-  // created they are saved, and the build screen must not trap the student.
+  const [step, setStep] = useState(seed ? Math.min(back.step ?? 1, 1) : 0);
+  // "Start from a free PoliTost book" opens the wizard with the books already showing.
+  const draft = useExamDraft({ seed, books: back.books === true, scale });
+  const [, setParams] = useSearchParams();
+  // Answers given so far live only on this page, so the menu leaves it alone until it has some.
   useMenuLock(
-    !buildPlanId &&
-      (wizardStep > 0 || starting || title.trim() !== "" || picked.length > 0),
+    step > 0 || draft.starting || draft.title.trim() !== "" || draft.picked.length > 0,
   );
-  const build = useQuery({
-    queryKey: ["plan-build", buildPlanId],
-    queryFn: () => invoke("plans.build", { planId: buildPlanId! }),
-    enabled: Boolean(buildPlanId),
-    // Follows the job until it settles; Retry and Resume refetch by hand and bring the interval back.
-    refetchInterval: (query) =>
-      ["succeeded", "failed", "cancelled", "interrupted"].includes(
-        query.state.data?.state ?? "",
-      )
-        ? false
-        : 500,
-  });
-  const buildingPlan = usePlan(buildPlanId);
-  const busy =
-    starting ||
-    Boolean(
-      buildPlanId &&
-      (build.isPending ||
-        Boolean(
-          build.data && ["running", "queued"].includes(build.data.state),
-        )),
-    );
-  const built = build.data?.state === "succeeded" ? buildPlanId : null;
-  const failed = Boolean(
-    build.data &&
-    ["failed", "cancelled", "interrupted"].includes(build.data.state),
-  );
-  const [startError, setStartError] = useState<string | null>(null);
   // An error belongs to the step and the attempt that raised it.
-  function goTo(step: number) {
-    setStartError(null);
-    setWizardStep(step);
+  function goTo(next: number) {
+    draft.setStartError(null);
+    setStep(next);
   }
-
-  async function create() {
-    const name = title.trim();
-    if (!name || busy) return;
-    setStartError(null);
-    setStarting(true);
-    try {
-      const result = await invoke("plans.create", {
-        title: name,
-        subject: subject.trim() || undefined,
-        sourceIds: picked,
-        sessions: sessionsFromDrafts(sessions),
-        target: target / 100,
-        language: language === "en" ? "en" : "it",
-        style,
-        topicTitles: picked.map(
-          (id) =>
-            (sources.data ?? []).find((source) => source.id === id)?.title ||
-            "",
-        ),
-      });
-      if (!result) return;
-      await client.invalidateQueries({ queryKey: ["plans"] });
-      setParams({ build: result.planId });
-    } catch (err) {
-      const key =
-        err && typeof err === "object" && "messageKey" in err
-          ? String((err as { messageKey: unknown }).messageKey)
-          : "";
-      if (key !== "errors.aborted") setStartError(key || "wizard.failed");
-    } finally {
-      setStarting(false);
-    }
-  }
-
-  // PLAN-10: no material leads to the guided flow, which asks its own questions.
-  function startGuided() {
-    const answers: WizardSeed = {
-      title: title.trim(),
-      subject,
-      examChoice,
-      sessions,
-      target,
-      language: language === "en" ? "en" : "it",
-    };
-    navigate("/plans/new/guided", { state: answers });
-  }
-
-  if (buildPlanId || busy || built || failed) {
-    const name = buildingPlan.data?.title ?? title.trim();
-    const retryAction = {
-      label: t(
-        build.data?.state === "interrupted" ? "jobs.resume" : "wizard.retry",
-      ),
-      onClick: () => {
-        if (build.data)
-          void invoke(
-            build.data.state === "interrupted" ? "jobs.resume" : "jobs.retry",
-            { jobId: build.data.jobId },
-          ).then(() => build.refetch());
-      },
-    };
-    return (
-      <FocusLayout
-        title={
-          failed
-            ? t(
-                build.data?.state === "cancelled"
-                  ? "wizard.cancelledTitle"
-                  : "wizard.preparingFailed",
-              )
-            : t(built ? "wizard.ready" : "wizard.preparing", { title: name })
-        }
-        closable={!busy}
-      >
-        <div className="px-build">
-          <BuildingMark
-            inner={Math.min(1, (build.data?.progress ?? 0) * 6)}
-            middle={Math.max(
-              0,
-              Math.min(1, (build.data?.progress ?? 0) * 6 - 1),
-            )}
-            outer={Math.max(
-              0,
-              Math.min(1, ((build.data?.progress ?? 0) * 6 - 2) / 4),
-            )}
-            done={Boolean(built)}
-            failedTrail={failed ? 0 : undefined}
-          />
-          <StepLines
-            steps={(build.data?.steps ?? []).map((step) => ({
-              id: step.name,
-              // A step that failed is told in the past tense.
-              label:
-                step.state === "failed"
-                  ? t(`${step.label}Failed`, { defaultValue: t(step.label) })
-                  : t(step.label),
-              state: step.state === "succeeded" ? "done" : step.state,
-            }))}
-            label={t(built ? "wizard.ready" : "wizard.preparing", { title: name })}
-          />
-          {build.data?.stepLabel && !failed ? (
-            <p className="small px-build-status" role="status">
-              {t(build.data.stepLabel)}
-            </p>
-          ) : null}
-          {buildPlanId && !build.isPending && !build.data ? (
-            <div className="px-build-notice">
-              <ErrorState
-                action={{ label: t("nav.toExams"), onClick: () => navigate("/exams") }}
-              >
-                {t("wizard.buildMissing")}
-              </ErrorState>
-            </div>
-          ) : null}
-          {failed ? (
-            <div className="px-build-notice">
-              {build.data?.state === "cancelled" ? (
-                <Notice tone="warning" action={retryAction}>
-                  {t("wizard.cancelled")}
-                </Notice>
-              ) : (
-                <ErrorState
-                  action={retryAction}
-                  details={build.data?.error}
-                >
-                  {t("wizard.buildFailed")}
-                </ErrorState>
-              )}
-            </div>
-          ) : null}
-          <div className="px-build-actions">
-            {built ? (
-              <Button
-                type="primary"
-                shape="round"
-                size="large"
-                // The one thing left to do once the plan is ready, so Enter opens it.
-                autoFocus
-                onClick={() => navigate(`/plans/${built}`)}
-              >
-                {t("wizard.open")}
-              </Button>
-            ) : null}
-            {busy ? (
-              <Button
-                shape="round"
-                onClick={() => {
-                  if (build.data)
-                    void invoke("jobs.cancel", { jobId: build.data.jobId });
-                }}
-              >
-                {t("wizard.cancel")}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </FocusLayout>
-    );
-  }
-
-  const stepNames = [
-    t("wizard.subject"),
-    t("wizard.exam"),
-    t("wizard.targetStep"),
-    t("wizard.material"),
-    t("wizard.language"),
-    t("wizard.style"),
-  ];
-  const chosenSources = (sources.data ?? []).filter((source) =>
-    picked.includes(source.id),
-  );
-  const blockedSource = chosenSources.some((source) =>
-    ["failed", "needs-ocr", "cancelled", "interrupted"].includes(source.status),
-  );
-  const disabledReason = !title.trim()
-    ? t("wizard.titleRequired")
-    : blockedSource
-      ? t("wizard.sourceNotReady")
-      : null;
-  const examDays = sessionsFromDrafts(sessions).map((session) => session.date);
-  const examAt = examDays.length ? Math.min(...examDays) : null;
   return (
     <FocusLayout
       title={t("wizard.title")}
-      progress={(wizardStep + 1) / 6}
+      progress={(step + 1) / 2}
       secondary={
         <Button
           type="text"
           shape="round"
-          onClick={() =>
-            wizardStep === 0
-              ? navigate("/exams")
-              : goTo(wizardStep - 1)
-          }
+          onClick={() => (step === 0 ? navigate("/exams") : goTo(0))}
         >
           {t("nav.back")}
         </Button>
       }
       primary={
-        wizardStep < 5 ? (
+        step === 0 ? (
           <Button
             type="primary"
             shape="round"
-            disabled={
-              (wizardStep === 0 && !title.trim()) ||
-              (wizardStep === 1 && !examChosen(examChoice, sessions))
-            }
-            onClick={() =>
-              wizardStep === 3 && picked.length === 0
-                ? startGuided()
-                : goTo(wizardStep + 1)
-            }
+            disabled={!draft.examReady}
+            aria-describedby={!draft.title.trim() ? "wizard-title-required" : undefined}
+            onClick={() => goTo(1)}
           >
             {t("wizard.continue")}
           </Button>
         ) : (
-          <Button
-            type="primary"
-            shape="round"
-            disabled={busy || !!disabledReason}
-            aria-describedby={
-              disabledReason ? "wizard-create-reason" : undefined
-            }
-            onClick={() => void create()}
-          >
-            {t("wizard.create")}
-          </Button>
+          <MaterialPrimary
+            draft={draft}
+            onCreated={(planId) => setParams({ build: planId })}
+          />
         )
       }
     >
       <div className="px-plan-wizard">
-        <Stepper current={wizardStep} steps={stepNames} />
-        <h2 className="title-1 px-wizard-question">
-          {t(`wizard.questions.${wizardStep}`)}
-        </h2>
-        {startError ? (
+        <Stepper current={step} steps={[t("wizard.examStep"), t("wizard.material")]} />
+        <h2 className="title-1 px-wizard-question">{t(`wizard.questions.${step}`)}</h2>
+        {draft.startError ? (
           <p className="small" role="alert">
-            {t(startError)}
+            {t(draft.startError)}
           </p>
         ) : null}
-        {wizardStep === 0 ? (
+        {step === 0 ? (
           <>
-            <div className="px-form-field">
-              <label className="label" htmlFor="plan-title">
-                {t("wizard.planTitle")}
-              </label>
-              <Input
-                id="plan-title"
-                placeholder={t("wizard.planTitlePlaceholder")}
-                maxLength={PLAN_TITLE_MAX}
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </div>
-            <div className="px-form-field">
-              <label className="label" htmlFor="plan-subject">
-                {t("wizard.subject")}
-              </label>
-              <Input
-                id="plan-subject"
-                placeholder={t("wizard.subjectPlaceholder")}
-                list="plan-subjects"
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-              />
-              <datalist id="plan-subjects">
-                {(subjects.data ?? []).map((item) => (
-                  <option key={item.id} value={item.name} />
-                ))}
-              </datalist>
-            </div>
-            <div className="px-wizard-subjects">
-              {(subjects.data ?? []).map((item) => (
-                <button
-                  type="button"
-                  key={item.id}
-                  className={
-                    subject === item.name ? "choice is-selected" : "choice"
-                  }
-                  aria-pressed={subject === item.name}
-                  onClick={() => {
-                    setSubject(item.name);
-                    if (!title.trim()) setTitle(item.name);
-                  }}
-                >
-                  {item.name}
-                </button>
-              ))}
-            </div>
-            <Button
-              shape="round"
-              disabled={
-                !subject.trim() ||
-                (subjects.data ?? []).some(
-                  (item) => item.name === subject.trim(),
-                )
-              }
-              onClick={() => {
-                setStartError(null);
-                void invoke("subjects.add", { name: subject.trim() })
-                  .then(() =>
-                    client.invalidateQueries({ queryKey: ["subjects"] }),
-                  )
-                  .catch(() => setStartError("wizard.failed"));
-              }}
-            >
-              {t("wizard.addSubject")}
-            </Button>
-            {!title.trim() ? (
-              <p className="small ink-muted">{t("wizard.titleRequired")}</p>
+            <ExamStep draft={draft} />
+            {!draft.title.trim() ? (
+              <p id="wizard-title-required" className="small ink-muted">
+                {t("wizard.titleRequired")}
+              </p>
             ) : null}
           </>
-        ) : null}
-        {wizardStep === 1 ? (
-          <>
-            <div className="choice-list">
-              {(
-                [
-                  ["1", t("wizard.tomorrow")],
-                  ["3", t("wizard.inTwoOrThree")],
-                  ["10", t("wizard.inTen")],
-                  ["none", t("wizard.noDate")],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  type="button"
-                  key={id}
-                  className={examChoice === id ? "choice is-selected" : "choice"}
-                  aria-pressed={examChoice === id}
-                  onClick={() => {
-                    setExamChoice(id);
-                    // A quick choice answers for the first session; "No date yet" clears them all.
-                    setSessions((current) =>
-                      id === "none"
-                        ? [emptyDraft()]
-                        : current.map((row, index) =>
-                            index === 0
-                              ? {
-                                  ...row,
-                                  date: dayjs(examFromChoice(id, "")).format("YYYY-MM-DD"),
-                                }
-                              : row,
-                          ),
-                    );
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <ExamSessionsField
-              idPrefix="plan"
-              dateLabel={t("wizard.examDate")}
-              value={sessions}
-              onChange={(next) => {
-                // Picking a day by hand replaces the quick choice.
-                if (next[0]?.date !== sessions[0]?.date) setExamChoice("");
-                setSessions(next);
-              }}
+        ) : (
+          <MaterialStep draft={draft} />
+        )}
+      </div>
+    </FocusLayout>
+  );
+}
+
+const SETTLED = ["succeeded", "failed", "cancelled", "interrupted"];
+
+/**
+ * The wait while an exam is prepared: the build's steps as the job reports them, its overall progress, and the topics
+ * as soon as the path step has written them. The build runs in core, so closing the screen leaves it running.
+ */
+function BuildScreen({ planId }: { planId: string }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const build = useQuery({
+    queryKey: ["plan-build", planId],
+    queryFn: () => invoke("plans.build", { planId }),
+    // Follows the job until it settles; Retry and Resume refetch by hand and bring the interval back. A missing build
+    // (null) is final too: the screen says so and there is nothing to follow.
+    refetchInterval: (query) =>
+      query.state.data === null || SETTLED.includes(query.state.data?.state ?? "") ? false : 500,
+  });
+  const plan = usePlan(planId);
+  const busy =
+    build.isPending ||
+    Boolean(build.data && ["running", "queued"].includes(build.data.state));
+  const built = build.data?.state === "succeeded";
+  const failed = Boolean(
+    build.data && ["failed", "cancelled", "interrupted"].includes(build.data.state),
+  );
+  // The plan's topics exist once the path step has run. Each step that ends reads the plan again, so they appear then.
+  const settledSteps = (build.data?.steps ?? [])
+    .filter((step) => step.state === "succeeded")
+    .map((step) => step.name)
+    .join();
+  const refetchPlan = useRef(plan.refetch);
+  refetchPlan.current = plan.refetch;
+  useEffect(() => {
+    if (settledSteps) void refetchPlan.current();
+  }, [settledSteps]);
+  const name = plan.data?.title ?? "";
+  const topics = plan.data?.topics ?? [];
+  const retryAction = {
+    label: t(build.data?.state === "interrupted" ? "jobs.resume" : "wizard.retry"),
+    onClick: () => {
+      if (build.data)
+        void invoke(build.data.state === "interrupted" ? "jobs.resume" : "jobs.retry", {
+          jobId: build.data.jobId,
+        }).then(() => build.refetch());
+    },
+  };
+  const heading = failed
+    ? t(build.data?.state === "cancelled" ? "wizard.cancelledTitle" : "wizard.preparingFailed")
+    : name
+      ? t(built ? "wizard.ready" : "wizard.preparing", { title: name })
+      : t("wizard.waitTitle");
+  const percent = Math.round((build.data?.progress ?? 0) * 100);
+  return (
+    <FocusLayout
+      title={t("wizard.waitTitle")}
+      headerRight={
+        busy ? (
+          <Button
+            type="text"
+            shape="round"
+            onClick={() => {
+              if (build.data) void invoke("jobs.cancel", { jobId: build.data.jobId });
+            }}
+          >
+            {t("wizard.cancel")}
+          </Button>
+        ) : null
+      }
+      primary={
+        built ? (
+          <Button
+            type="primary"
+            shape="round"
+            size="large"
+            // The one thing left to do once the exam is ready, so Enter opens it.
+            autoFocus
+            onClick={() => navigate(`/plans/${planId}`)}
+          >
+            {t("wizard.open")}
+          </Button>
+        ) : null
+      }
+    >
+      <div className="px-build">
+        <header className="px-build-head">
+          <h2 className="title-1">{heading}</h2>
+          {busy ? <p className="body ink-muted">{t("wizard.waitBody")}</p> : null}
+        </header>
+        <div className={topics.length ? "px-build-grid has-topics" : "px-build-grid"}>
+          <div className="px-build-steps">
+            <StepLines
+              steps={(build.data?.steps ?? []).map((step) => ({
+                id: step.name,
+                // A step that failed is told in the past tense.
+                label:
+                  step.state === "failed"
+                    ? t(`${step.label}Failed`, { defaultValue: t(step.label) })
+                    : t(step.label),
+                state: (step.state === "succeeded" ? "done" : step.state) as StepLineState,
+              }))}
+              label={heading}
             />
-            <p className="body ink-muted" aria-live="polite">
-              {examAt != null
-                ? t(
-                    examDays.length > 1
-                      ? "wizard.examSummaryMany"
-                      : "wizard.examSummary",
-                    {
-                      count: examDays.length,
-                      date: new Intl.DateTimeFormat(i18n.language, {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      }).format(examAt),
-                    },
-                  )
-                : t(
-                    examChoice === "none"
-                      ? "wizard.noDateSummary"
-                      : "wizard.examRequired",
-                  )}
-            </p>
-          </>
-        ) : null}
-        {wizardStep === 2 ? (
-          <>
-            <div className="px-wizard-target-value stat" aria-live="polite">
-              {target}
-              <span className="body">/ 100</span>
-            </div>
-            <label className="label" htmlFor="plan-target">
-              {t("wizard.target", { score: target })}
-            </label>
-            <Slider
-              id="plan-target"
-              className="px-wizard-gold-slider"
-              min={50}
-              max={100}
-              step={5}
-              value={target}
-              onChange={setTarget}
-              ariaLabelForHandle={t("wizard.target", { score: target })}
-              tooltip={{ open: false }}
-              marks={{ 60: "60", 75: "75", 90: "90" }}
-            />
-            <div className="px-wizard-target-guide">
-              {[60, 75, 90].map((score) => (
-                <p key={score} className="small">
-                  <strong>{score}</strong>
-                  <span>{t(`wizard.targetGuide.${score}`)}</span>
+            {busy && build.data ? (
+              <>
+                <Progress
+                  className="px-build-progress"
+                  percent={percent}
+                  showInfo={false}
+                  aria-label={t("wizard.buildProgress", { percent })}
+                />
+                <p className="small px-build-status" role="status">
+                  {t("wizard.buildProgress", { percent })}
                 </p>
-              ))}
-            </div>
-          </>
-        ) : null}
-        {wizardStep === 3 ? (
-          <WizardSources
-            library={sources.data ?? []}
-            picked={picked}
-            onPick={pick}
-            onRemove={(id) =>
-              setPicked((current) => current.filter((item) => item !== id))
-            }
-            onGuided={startGuided}
-            onFreeBooks={() => setBooksOpen(true)}
-            blocked={blockedSource}
-          />
-        ) : null}
-        {wizardStep === 4 ? (
-          <>
-            <div className="choice-list">
-              {(
-                [
-                  ["it", t("wizard.italian")],
-                  ["en", t("wizard.english")],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  type="button"
-                  key={id}
-                  className={language === id ? "choice is-selected" : "choice"}
-                  aria-pressed={language === id}
-                  onClick={() => setLanguage(id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <p className="small ink-muted">{t("wizard.languageLocked")}</p>
-          </>
-        ) : null}
-        {wizardStep === 5 ? (
-          <>
-            <div className="choice-list">
-              {(
-                [
-                  ["read", t("wizard.read")],
-                  ["practice", t("wizard.practice")],
-                  ["decide", t("wizard.decide")],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  type="button"
-                  key={id}
-                  className={style === id ? "choice is-selected" : "choice"}
-                  aria-pressed={style === id}
-                  onClick={() => setStyle(id)}
-                >
-                  <span className="body-strong">{label}</span>
-                  <span className="small">{t(`wizard.styleHelp.${id}`)}</span>
-                </button>
-              ))}
-            </div>
-            <div className="px-wizard-summary">
-              <p className="body-strong">{title}</p>
-              <p className="small ink-muted">
-                {t("wizard.sourcesInPlan", { count: chosenSources.length })} ·{" "}
-                {t("wizard.target", { score: target })}
-              </p>
-            </div>
-            {disabledReason ? (
-              <p id="wizard-create-reason" className="small" role="status">
-                {disabledReason}
-              </p>
+              </>
             ) : null}
-          </>
+          </div>
+          {topics.length ? (
+            <section className="px-build-topics" aria-labelledby="px-build-topics">
+              <h3 id="px-build-topics" className="label">
+                {t("wizard.topicsFound", { count: topics.length })}
+              </h3>
+              <ol className="px-build-topic-list">
+                {topics.map((topic, index) => (
+                  <li key={topic.id}>
+                    <span className="meta px-build-topic-n" aria-hidden>
+                      {index + 1}
+                    </span>
+                    <span className="small">{topic.title}</span>
+                    <Icon name="check" size={16} />
+                  </li>
+                ))}
+              </ol>
+              <p className="small ink-muted">{t("wizard.topicsFoundNote")}</p>
+            </section>
+          ) : null}
+        </div>
+        {!build.isPending && !build.data ? (
+          <div className="px-build-notice">
+            <ErrorState action={{ label: t("nav.toExams"), onClick: () => navigate("/exams") }}>
+              {t("wizard.buildMissing")}
+            </ErrorState>
+          </div>
+        ) : null}
+        {failed ? (
+          <div className="px-build-notice">
+            {build.data?.state === "cancelled" ? (
+              <Notice tone="warning" action={retryAction}>
+                {t("wizard.cancelled")}
+              </Notice>
+            ) : (
+              <ErrorState action={retryAction} details={build.data?.error}>
+                {t("wizard.buildFailed")}
+              </ErrorState>
+            )}
+          </div>
         ) : null}
       </div>
-      <FreeBooks
-        open={booksOpen}
-        added={picked}
-        onClose={() => setBooksOpen(false)}
-        onAdded={(book) => {
-          pick([book.sourceId]);
-          // A first book names the exam, unless the student already did.
-          setTitle((current) => current || book.title);
-          setSubject((current) => current || book.subject);
-        }}
-      />
     </FocusLayout>
   );
 }

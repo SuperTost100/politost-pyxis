@@ -2,6 +2,7 @@ import { Tag } from "./Tag";
 import { Card } from "antd";
 import { Button } from "./Button";
 import { MasteryBar } from "./MasteryBar";
+import type { GradeScale } from "../lib/grade";
 import "./PlanCard.css";
 
 export function PlanCard({
@@ -11,6 +12,7 @@ export function PlanCard({
   title,
   mastery,
   target,
+  scale,
   meta,
   cta,
   onContinue,
@@ -21,6 +23,8 @@ export function PlanCard({
   title: string;
   mastery: number;
   target?: number;
+  /** Shows mastery as a grade on this scale; a percentage without it. */
+  scale?: GradeScale;
   meta: string;
   cta?: string;
   onContinue?: () => void;
@@ -37,7 +41,7 @@ export function PlanCard({
           {importedLabel && <Tag tone="neutral">{importedLabel}</Tag>}
           <h2 className="px-plan-title">{title}</h2>
         </div>
-        <MasteryBar value={mastery} target={target} label={title} />
+        <MasteryBar value={mastery} target={target} scale={scale} label={title} />
       </div>
       <div className="px-plan-foot">
         <span className="px-plan-meta">{meta}</span>

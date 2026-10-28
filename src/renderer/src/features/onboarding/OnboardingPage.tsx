@@ -5,12 +5,17 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
-import { OcrDataCard } from "../../components/OcrData";
 import { Stepper } from "../../components/Stepper";
 import { PROFILE_LIMITS } from "@shared/limits";
 import { invoke } from "../../lib/ipc";
+import { gradeScaleOf } from "../../lib/grade";
 import { useMenuLock } from "../../app/menu-state";
-import { useJobs } from "../jobs/queries";
+import {
+  ExamStep,
+  MaterialPrimary,
+  MaterialStep,
+  useExamDraft,
+} from "../plans/ExamDraft";
 import { EnginesStep } from "./EnginesStep";
 import {
   firstAnswers,
@@ -22,14 +27,17 @@ import {
 import "./OnboardingPage.css";
 import { profileQuery } from "../../lib/queries";
 
-/** The numbered setup steps. A welcome screen comes before them and a "ready" screen after. */
-const stepIds = ["profile", "engines", "photos", "privacy"] as const;
-const screens = ["welcome", ...stepIds, "ready"] as const;
-type ScreenId = (typeof screens)[number];
+/**
+ * First setup is four steps: about you, the AI engine, the exam, its material. The profile is saved when the engine
+ * step ends, so the exam step can be skipped and the student lands on the exams list. A rerun has the first two.
+ */
+const firstSteps = ["profile", "engines", "exam", "material"] as const;
+const rerunSteps = ["profile", "engines"] as const;
+type StepId = (typeof firstSteps)[number];
 
 /**
- * First setup, or with `?again=1` (Settings > Profile > Run setup again) the same screens for a student who already
- * has a profile. A rerun waits for the stored profile so the screens open filled in.
+ * First setup, or with `?again=1` (Settings > Profile > Run setup again) the profile and engine steps for a student
+ * who already has a profile. A rerun waits for the stored profile so the screens open filled in.
  */
 export function OnboardingPage() {
   const [params] = useSearchParams();
@@ -47,34 +55,38 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
   // Setup is not left through the menu: Shell sends a profile-less student back here, and a rerun has its own Cancel.
   useMenuLock(true);
   const again = stored !== null;
-  const [screen, setScreen] = useState(0);
+  const steps: readonly StepId[] = again ? rerunSteps : firstSteps;
+  const [index, setIndex] = useState(0);
   const [start] = useState(() => firstAnswers(stored));
   const [name, setName] = useState(start.name);
   const [level, setLevel] = useState<Level>(start.level);
   const [year, setYear] = useState(start.year);
   const [school, setSchool] = useState(start.school);
   const [course, setCourse] = useState(start.course);
-  // On for a new install, so the student sees the switch already on and can turn it off. A rerun shows the stored choice.
+  // Off for a new install, so nothing is sent unless the student turns it on. A rerun shows the stored choice.
   const [crashReports, setCrashReports] = useState(start.crashReports);
   // Unknown until the engines are read, so the button says Continue rather than flicker to "later".
   const [enginesReady, setEnginesReady] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // The exam's goal is shown on the scale of the level just chosen; a new profile has not picked a scale.
+  const draft = useExamDraft({
+    seed: null,
+    scale: gradeScaleOf({ educationLevel: level, gradeScale: null }),
+  });
   const heading = useRef<HTMLHeadingElement>(null);
-  const id: ScreenId = screens[screen]!;
-  const step = screen - 1;
-  const numbered = step >= 0 && step < stepIds.length;
+  const id = steps[index]!;
 
   // A new screen starts at its heading, so keyboard and screen reader users do not land in the old controls.
   const first = useRef(true);
   useEffect(() => {
     if (first.current) first.current = false;
     else heading.current?.focus();
-  }, [screen]);
+  }, [index]);
 
-  /** Saves the profile. Skip saves an empty one and leaves setup; otherwise the "ready" screen follows. */
-  async function finish(skip: boolean) {
-    if (busy) return;
+  /** Saves the profile. Skip saves an empty one and leaves setup. Resolves with whether it saved. */
+  async function save(skip: boolean): Promise<boolean> {
+    if (busy) return false;
     setBusy(true);
     setFailed(false);
     try {
@@ -89,10 +101,10 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
             ),
       );
       await client.invalidateQueries({ queryKey: ["profile"] });
-      if (skip) navigate("/exams");
-      else setScreen(screens.indexOf("ready"));
+      return true;
     } catch {
       setFailed(true);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -100,126 +112,109 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
 
   // A rerun ends where it started.
   const backToSettings = () => navigate("/settings/profile", { replace: true });
-  const next = () =>
-    setScreen((value) => Math.min(value + 1, screens.length - 1));
-  const back = () => setScreen((value) => Math.max(value - 1, 0));
+  const next = () => setIndex((value) => Math.min(value + 1, steps.length - 1));
+  const back = () => {
+    draft.setStartError(null);
+    setIndex((value) => Math.max(value - 1, 0));
+  };
 
   // Every screen ends in the same footer: one way back or out on the left, the way forward on the right.
-  const skipButton = (
-    <Button
-      type="text"
-      shape="round"
-      disabled={busy}
-      onClick={() => void finish(true)}
-    >
-      {t("onboarding.skip")}
-    </Button>
-  );
   const backButton = (
     <Button type="text" shape="round" disabled={busy} onClick={back}>
       {t("nav.back")}
     </Button>
   );
-  const continueButton = (
-    onClick: () => void,
-    label = "onboarding.continue",
-  ) => (
-    <Button type="primary" shape="round" onClick={onClick}>
-      {t(label)}
-    </Button>
-  );
   let secondary: ReactNode = null;
   let primary: ReactNode = null;
-  if (id === "welcome") {
+  if (id === "profile") {
     secondary = again ? (
       <Button type="text" shape="round" onClick={backToSettings}>
         {t("wizard.cancel")}
       </Button>
     ) : (
-      skipButton
+      <Button
+        type="text"
+        shape="round"
+        disabled={busy}
+        onClick={() =>
+          void save(true).then((saved) => {
+            if (saved) navigate("/exams");
+          })
+        }
+      >
+        {t("onboarding.skip")}
+      </Button>
     );
-    primary = continueButton(next, "onboarding.welcome.start");
-  } else if (id === "ready") {
-    if (again) {
-      primary = continueButton(backToSettings, "onboarding.again.done");
-    } else {
-      secondary = (
-        <Button type="text" shape="round" onClick={() => navigate("/exams")}>
-          {t("onboarding.done")}
+    primary = (
+      <Button type="primary" shape="round" onClick={next}>
+        {t("onboarding.continue")}
+      </Button>
+    );
+  } else if (id === "engines") {
+    secondary = backButton;
+    primary = (
+      <Button
+        type="primary"
+        shape="round"
+        loading={busy}
+        onClick={() =>
+          void save(false).then((saved) => {
+            if (!saved) return;
+            if (again) backToSettings();
+            else next();
+          })
+        }
+      >
+        {t(
+          again
+            ? "onboarding.again.done"
+            : enginesReady === false
+              ? "onboarding.later"
+              : "onboarding.continue",
+        )}
+      </Button>
+    );
+  } else if (id === "exam") {
+    secondary = backButton;
+    primary = (
+      <>
+        {/* The profile is saved: without an exam to set up, the exams list has the way to create one later. */}
+        <Button shape="round" onClick={() => navigate("/exams")}>
+          {t("onboarding.exam.skip")}
         </Button>
-      );
-      primary = (
-        <>
-          <Button
-            shape="round"
-            onClick={() => navigate("/plans/new", { state: { books: true } })}
-          >
-            {t("onboarding.ready.book")}
-          </Button>
-          {continueButton(
-            () => navigate("/plans/new"),
-            "onboarding.ready.create",
-          )}
-        </>
-      );
-    }
-  } else {
-    secondary = id === "profile" && !again ? skipButton : backButton;
-    if (id === "engines")
-      primary = continueButton(
-        next,
-        enginesReady === false ? "onboarding.later" : "onboarding.continue",
-      );
-    else if (id === "privacy")
-      primary = (
         <Button
           type="primary"
           shape="round"
-          loading={busy}
-          onClick={() => void finish(false)}
+          disabled={!draft.examReady}
+          aria-describedby={!draft.title.trim() ? "onboarding-title-required" : undefined}
+          onClick={next}
         >
           {t("onboarding.continue")}
         </Button>
-      );
-    else primary = continueButton(next);
+      </>
+    );
+  } else {
+    secondary = backButton;
+    primary = (
+      <MaterialPrimary
+        draft={draft}
+        onCreated={(planId) => navigate(`/plans/new?build=${planId}`)}
+      />
+    );
   }
 
   return (
     <div className="px-onboarding">
-      {numbered ? (
-        <Stepper
-          steps={stepIds.map((item) => t(`onboarding.steps.${item}`))}
-          current={step}
-        />
-      ) : null}
+      <Stepper
+        steps={steps.map((item) => t(`onboarding.steps.${item}`))}
+        current={index}
+      />
       <h1 className="display" tabIndex={-1} ref={heading}>
-        {t(
-          id === "profile"
-            ? "onboarding.title"
-            : again && id === "ready"
-              ? "onboarding.again.readyTitle"
-              : `onboarding.${id}.title`,
-        )}
+        {t(`onboarding.${id}.title`)}
       </h1>
-      <p className="body">
-        {t(
-          id === "profile"
-            ? "onboarding.body"
-            : again && id === "ready"
-              ? "onboarding.again.readyBody"
-              : `onboarding.${id}.body`,
-        )}
-      </p>
-
-      {id === "welcome" ? (
-        <ul className="px-onboarding-points">
-          {(["plan", "local", "account", "time"] as const).map((point) => (
-            <li key={point} className="body">
-              {t(`onboarding.welcome.points.${point}`)}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {id === "exam" ? null : (
+        <p className="body">{t(`onboarding.${id}.body`)}</p>
+      )}
 
       {id === "profile" ? (
         <ProfileStep
@@ -228,27 +223,36 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
         />
       ) : null}
       {id === "engines" ? (
-        <EnginesStep onReady={setEnginesReady} again={again} />
+        <>
+          <EnginesStep onReady={setEnginesReady} again={again} />
+          <CrashReportsSwitch
+            checked={crashReports}
+            disabled={busy}
+            onChange={setCrashReports}
+          />
+        </>
       ) : null}
-      {id === "photos" ? <PhotosStep /> : null}
-      {id === "privacy" ? (
-        <CrashReportsSwitch
-          checked={crashReports}
-          disabled={busy}
-          onChange={setCrashReports}
-        />
+      {id === "exam" ? (
+        <>
+          <ExamStep draft={draft} />
+          {!draft.title.trim() ? (
+            <p id="onboarding-title-required" className="small px-onboarding-note">
+              {t("wizard.titleRequired")}
+            </p>
+          ) : null}
+        </>
       ) : null}
+      {id === "material" ? <MaterialStep draft={draft} /> : null}
 
+      {draft.startError ? (
+        <p className="small" role="alert">
+          {t(draft.startError)}
+        </p>
+      ) : null}
       {failed ? (
         <Notice tone="danger">{t("onboarding.saveFailed")}</Notice>
       ) : null}
-      <div
-        className={
-          id === "ready" && !again
-            ? "px-onboarding-actions is-ready"
-            : "px-onboarding-actions"
-        }
-      >
+      <div className="px-onboarding-actions">
         <span>{secondary}</span>
         <span className="px-onboarding-primary">{primary}</span>
       </div>
@@ -278,7 +282,7 @@ function ProfileStep(props: {
     <>
       <div className="px-form-field">
         <label className="label" htmlFor="profile-name">
-          {t("onboarding.name")}
+          {t("onboarding.nameQuestion")}
         </label>
         <Input
           id="profile-name"
@@ -287,32 +291,33 @@ function ProfileStep(props: {
           onChange={(event) => set.setName(event.target.value)}
         />
       </div>
-      <div className="label section-label">{t("onboarding.level")}</div>
-      <div className="choice-list px-profile-levels">
-        {levels.map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={item === values.level ? "choice is-selected" : "choice"}
-            aria-pressed={item === values.level}
-            onClick={() => set.setLevel(item)}
-          >
-            {t(`onboarding.levels.${item}`)}
-          </button>
-        ))}
+      <div className="px-form-field">
+        <div className="label section-label" id="profile-level">
+          {t("onboarding.level")}
+        </div>
+        <div
+          className="choice-list px-profile-levels"
+          role="group"
+          aria-labelledby="profile-level"
+          aria-describedby="profile-level-help"
+        >
+          {levels.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={item === values.level ? "choice is-selected" : "choice"}
+              aria-pressed={item === values.level}
+              onClick={() => set.setLevel(item)}
+            >
+              {t(`onboarding.levels.${item}`)}
+            </button>
+          ))}
+        </div>
+        <p className="small px-onboarding-note" id="profile-level-help">
+          {t("onboarding.levelHelp")}
+        </p>
       </div>
       <div className="px-form-grid">
-        <div className="px-form-field">
-          <label className="label" htmlFor="profile-year">
-            {t("onboarding.year")}
-          </label>
-          <Input
-            id="profile-year"
-            maxLength={PROFILE_LIMITS.year}
-            value={values.year}
-            onChange={(event) => set.setYear(event.target.value)}
-          />
-        </div>
         <div className="px-form-field">
           <label className="label" htmlFor="profile-school">
             {t("onboarding.school")}
@@ -335,31 +340,18 @@ function ProfileStep(props: {
             onChange={(event) => set.setCourse(event.target.value)}
           />
         </div>
+        <div className="px-form-field">
+          <label className="label" htmlFor="profile-year">
+            {t("onboarding.year")}
+          </label>
+          <Input
+            id="profile-year"
+            maxLength={PROFILE_LIMITS.year}
+            value={values.year}
+            onChange={(event) => set.setYear(event.target.value)}
+          />
+        </div>
       </div>
     </>
-  );
-}
-
-/**
- * The same one-time OCR language download as Settings > Data, with its own consent text, progress and retry. Not
- * downloading is the default: Continue in the footer moves on, and a running download keeps going.
- */
-function PhotosStep() {
-  const { t } = useTranslation();
-  const { data: jobs = [] } = useJobs();
-  const downloading = jobs.some(
-    (job) =>
-      job.kind === "ocr-data-download" &&
-      (job.state === "queued" || job.state === "running"),
-  );
-  return (
-    <div className="px-onboarding-photos">
-      <OcrDataCard />
-      {downloading ? (
-        <p className="small px-onboarding-note">
-          {t("onboarding.photos.keepGoing")}
-        </p>
-      ) : null}
-    </div>
   );
 }

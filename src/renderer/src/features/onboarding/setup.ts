@@ -34,8 +34,9 @@ export type Answers = {
 };
 
 /**
- * Where the screens start. First setup is blank, with crash reports on for the student to turn off. A rerun starts
- * from the stored profile, so finishing without a change saves what was already there, crash reports included.
+ * Where the screens start. First setup is blank at university level, with crash reports off until the student turns
+ * them on. A rerun starts from the stored profile, so finishing without a change saves what was already there, crash
+ * reports included.
  */
 export function firstAnswers(profile: StoredProfile | null): Answers {
   if (!profile)
@@ -45,7 +46,7 @@ export function firstAnswers(profile: StoredProfile | null): Answers {
       year: "",
       school: "",
       course: "",
-      crashReports: true,
+      crashReports: false,
     };
   return {
     name: profile.displayName,

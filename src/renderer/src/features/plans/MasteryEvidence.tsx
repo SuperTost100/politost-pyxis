@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
+import { gradeDelta } from "../../lib/grade";
+import { useGradeScale } from "../../lib/useGradeScale";
 
 export type TopicBreakdown = RequestOutput<"plans.masteryBreakdown">[number];
 
@@ -14,6 +16,7 @@ export function MasteryEvidence({
   breakdown: TopicBreakdown | undefined;
 }) {
   const { t, i18n } = useTranslation();
+  const grade = useGradeScale();
   if (!breakdown)
     return (
       <div id={id} className="px-evidence" role="status">
@@ -24,7 +27,8 @@ export function MasteryEvidence({
     style: "percent",
     maximumFractionDigits: 0,
   });
-  const points = Math.round(breakdown.decay * 100);
+  // Answers are graded on the profile's scale. Flashcard recall is the share of cards remembered, so it stays a percent.
+  const points = gradeDelta(breakdown.decay, grade.scale);
   const rows = KINDS.filter((kind) => breakdown.parts[kind].count > 0);
   return (
     <div id={id} className="px-evidence">
@@ -41,7 +45,7 @@ export function MasteryEvidence({
                   {t(`progress.evidence.${kind}Count`, { count: part.count })}
                   {" · "}
                   {t(kind === "card" ? "progress.evidence.recall" : "progress.evidence.average", {
-                    value: percent.format(part.mean),
+                    value: kind === "card" ? percent.format(part.mean) : grade.format(part.mean),
                   })}
                 </dd>
               </div>
@@ -52,9 +56,7 @@ export function MasteryEvidence({
               <dt>{t("progress.evidence.decay")}</dt>
               <dd>
                 {t("progress.evidence.decayValue", {
-                  value: new Intl.NumberFormat(i18n.language, {
-                    signDisplay: "exceptZero",
-                  }).format(points),
+                  value: grade.delta(breakdown.decay),
                   count: Math.abs(points),
                 })}
               </dd>

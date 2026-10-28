@@ -81,7 +81,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await expect(
       page.getByRole("button", { name: "Annulla", exact: true }),
     ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Sto preparando Fisica 1" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Preparo Fisica 1" })).toBeVisible();
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
       for (const width of [1280, 960]) {
@@ -106,13 +106,13 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     }, created.planId);
     await page.getByRole("button", { name: "Riprova", exact: true }).click();
     await expect(
-      page.getByRole("button", { name: "Apri il piano", exact: true }),
+      page.getByRole("button", { name: "Apri l'esame", exact: true }),
     ).toBeVisible({ timeout: 20000 });
     // A built plan says so, and Enter opens it.
     await expect(page.getByRole("heading", { name: "Fisica 1 è pronto" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Apri il piano", exact: true })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Apri l'esame", exact: true })).toBeFocused();
     await page
-      .getByRole("button", { name: "Apri il piano", exact: true })
+      .getByRole("button", { name: "Apri l'esame", exact: true })
       .click();
     // The plan page loads on its first visit and the build page stays until it has; the URL moves once it is there.
     await expect(page).toHaveURL(new RegExp(`#/plans/${created.planId}$`));

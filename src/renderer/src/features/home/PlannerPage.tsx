@@ -11,6 +11,7 @@ import { Notice } from "../../components/Notice";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
+import { useGradeScale } from "../../lib/useGradeScale";
 import { addDays, dayKey } from "../../../../shared/local-day";
 import { examDaysLabel } from "../plans/examDays";
 import {
@@ -31,6 +32,7 @@ type Planner = RequestOutput<"plans.planner">;
  */
 export function PlannerPage() {
   const { t, i18n } = useTranslation();
+  const grade = useGradeScale();
   const navigate = useNavigate();
   const client = useQueryClient();
   const planner = useQuery({
@@ -121,7 +123,7 @@ export function PlannerPage() {
             .filter((exam) => exam.behind)
             .map((exam) => (
               <Notice key={exam.planId} tone="warning">
-                {behindText(t, exam)}
+                {behindText(t, exam, grade.format)}
               </Notice>
             ))}
           <section className="px-planner-section" aria-labelledby="planner-exams">
@@ -141,8 +143,9 @@ export function PlannerPage() {
                     </span>
                   </div>
                   <MasteryBar
-                    value={Math.round(exam.mastery * 100)}
+                    value={exam.mastery * 100}
                     target={exam.target * 100}
+                    scale={grade.scale}
                     label={t("planner.masteryOf", { title: exam.title })}
                   />
                   <p className="small ink-muted">

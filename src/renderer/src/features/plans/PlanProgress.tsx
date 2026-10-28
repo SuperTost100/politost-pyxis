@@ -25,6 +25,7 @@ import { GapItem } from "../../components/GapItem";
 import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { invoke } from "../../lib/ipc";
+import { useGradeScale } from "../../lib/useGradeScale";
 import { MasteryEvidence } from "./MasteryEvidence";
 import "./PlanProgress.css";
 
@@ -39,6 +40,7 @@ export function PlanProgress({
   simulations: RequestOutput<"plans.simulations">;
 }) {
   const { t, i18n } = useTranslation();
+  const grade = useGradeScale();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDrill = searchParams.get("drill");
@@ -115,7 +117,9 @@ export function PlanProgress({
     );
     void fill(requestedDrill);
   }, [requestedDrill]);
-  const target = Math.round(summary.target * 100);
+  // Bars run from 0 to 100; the chart and every number are on the profile's scale.
+  const target = summary.target * 100;
+  const chartTarget = grade.value(summary.target);
   // A topic row opens to the evidence behind its number. One request covers every topic, so rows open without a wait
   // after the first; it reloads when a shown number changes, so the evidence always matches the bar.
   const [openTopics, setOpenTopics] = useState<ReadonlySet<string>>(new Set());
@@ -131,7 +135,7 @@ export function PlanProgress({
   });
   const chart = progress.chart.map((point) => ({
     ...point,
-    value: Math.round(point.mastery * 100),
+    value: grade.value(point.mastery),
   }));
   const tick = {
     fill: "var(--ink-muted)",
@@ -158,12 +162,14 @@ export function PlanProgress({
           <StatTile
             compact
             label={t("progress.forecast")}
-            value={Math.round(summary.mastery * 100)}
+            value={summary.mastery * 100}
+            display={grade.number(summary.mastery)}
+            unit={`/${grade.scale}`}
             target={target}
             pills={[
-              t("progress.target", { value: target }),
+              t("progress.target", { value: grade.format(summary.target) }),
               t("progress.weeklyChange", {
-                value: `${summary.weeklyChange >= 0 ? "+" : ""}${Math.round(summary.weeklyChange * 100)}`,
+                value: grade.delta(summary.weeklyChange),
               }),
             ]}
             stats={[
@@ -197,30 +203,30 @@ export function PlanProgress({
                     minTickGap={32}
                   />
                   <YAxis
-                    domain={[0, 100]}
-                    ticks={[0, 25, 50, 75, 100]}
-                    tickFormatter={(value) => `${value}%`}
+                    domain={[0, grade.scale]}
+                    ticks={grade.scale === 30 ? [0, 6, 12, 18, 24, 30] : [0, 25, 50, 75, 100]}
+                    tickFormatter={(value) => `${value}/${grade.scale}`}
                     tick={tick}
                     axisLine={false}
                     tickLine={false}
-                    width={44}
+                    width={52}
                   />
                   <Tooltip
                     labelFormatter={(at) =>
                       date(Number(at), { day: "numeric", month: "long" })
                     }
                     formatter={(value) => [
-                      `${value}%`,
+                      `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(Number(value))}/${grade.scale}`,
                       t("progress.preparation"),
                     ]}
                     contentStyle={tooltip}
                   />
                   <ReferenceLine
-                    y={target}
+                    y={chartTarget}
                     stroke="var(--border-control)"
                     strokeDasharray="5 5"
                     label={{
-                      value: t("progress.target", { value: target }),
+                      value: t("progress.target", { value: grade.format(summary.target) }),
                       position: "insideTopRight",
                       fill: "var(--ink-muted)",
                       fontSize: 12,
@@ -433,8 +439,9 @@ export function PlanProgress({
                       </p>
                     </div>
                     <MasteryBar
-                      value={Math.round(topic.mastery * 100)}
+                      value={topic.mastery * 100}
                       target={target}
+                      scale={grade.scale}
                       label={topic.title}
                     />
                     {open ? (
@@ -526,7 +533,7 @@ export function PlanProgress({
                   <tr key={run.id}>
                     <td>{date(run.at)}</td>
                     <td>{t("simulation.minutes", { count: run.minutes })}</td>
-                    <td>{Math.round(run.score * 100)} / 100</td>
+                    <td>{grade.format(run.score)}</td>
                     <td>
                       <Button
                         shape="round"

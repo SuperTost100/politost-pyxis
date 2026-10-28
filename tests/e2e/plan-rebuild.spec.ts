@@ -66,19 +66,17 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
     await page.evaluate(() => {
       window.location.hash = "/plans/new";
     });
-    await page.getByLabel("Titolo", { exact: true }).fill("Fisica generale");
+    await page.getByLabel("Nome dell'esame", { exact: true }).fill("Fisica generale");
     // The exam step: nothing is chosen for the student, who has no date yet.
-    for (let i = 0; i < 3; i += 1) {
-      if (i === 1) {
-        await expect(page.getByRole("button", { name: "Continua", exact: true })).toBeDisabled();
-        await expect(page.getByText("Scegli una di queste opzioni per continuare.")).toBeVisible();
-        await page.getByRole("button", { name: "Nessuna data per ora", exact: true }).click();
-        await expect(
-          page.getByText("Nessuna data d'esame per ora. Puoi aggiungerla dopo nelle impostazioni del piano."),
-        ).toBeVisible();
-      }
-      await page.getByRole("button", { name: "Continua", exact: true }).click();
-    }
+    await expect(page.getByRole("button", { name: "Continua", exact: true })).toBeDisabled();
+    await expect(
+      page.getByText("Scegli la data, oppure Non ho ancora la data, per continuare."),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Non ho ancora la data", exact: true }).click();
+    await expect(
+      page.getByText("Nessuna data per ora. Puoi aggiungerla dopo nelle impostazioni dell'esame."),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
     // No material chosen: Continua leads to the guided flow.
     await page.getByRole("button", { name: "Continua", exact: true }).click();
     await expect(page.getByText("Piano senza materiale")).toBeVisible();
@@ -91,11 +89,11 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
     await expect(page.getByText("generato da AI").first()).toBeVisible();
     const first = page.getByLabel("Nome dell'argomento").first();
     await first.fill("Cinematica rivista");
-    await page.getByRole("button", { name: "Crea il piano" }).click();
+    await page.getByRole("button", { name: "Crea l'esame" }).click();
     await expect(
-      page.getByRole("button", { name: "Apri il piano", exact: true }),
+      page.getByRole("button", { name: "Apri l'esame", exact: true }),
     ).toBeVisible({ timeout: 30000 });
-    await page.getByRole("button", { name: "Apri il piano", exact: true }).click();
+    await page.getByRole("button", { name: "Apri l'esame", exact: true }).click();
     // PLAN-11: the permanent notice sits on the plan.
     await expect(
       page.getByText("dalla conoscenza generale del modello", { exact: false }),

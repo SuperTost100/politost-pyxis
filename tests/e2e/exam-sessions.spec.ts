@@ -164,15 +164,15 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     // With nothing archived the filter is gone.
     await expect(page.getByRole("combobox", { name: "Status" })).toHaveCount(0);
 
-    // Wizard, date step: a quick choice, then a second session with its own time and place.
+    // Wizard, exam step: the name, the first day, then a second session with its own time and place.
     for (const theme of ["dark", "light"] as const) {
       await setLook("en", theme);
       await page.evaluate(() => {
         location.hash = "/plans/new";
       });
-      await page.getByLabel("Title").fill("Chimica");
-      await page.getByRole("button", { name: "Continue" }).click();
-      await page.getByRole("button", { name: "In 2 or 3 days" }).click();
+      await page.getByLabel("Exam name").fill("Chimica");
+      await page.getByLabel("Exam date").fill(dmy(written));
+      await page.keyboard.press("Enter");
       await page.getByLabel("Time (optional)").fill("10:00");
       await page.keyboard.press("Enter");
       await page.getByRole("button", { name: "Add another session" }).click();
@@ -197,9 +197,9 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await page.evaluate(() => {
       location.hash = "/plans/new";
     });
-    await page.getByLabel("Titolo").fill("Chimica");
-    await page.getByRole("button", { name: "Continua" }).click();
-    await page.getByRole("button", { name: "Tra 2 o 3 giorni" }).click();
+    await page.getByLabel("Nome dell'esame").fill("Chimica");
+    await page.getByLabel("Data dell'esame").fill(dmy(written));
+    await page.keyboard.press("Enter");
     await page.getByRole("button", { name: "Aggiungi un'altra prova" }).click();
     await snap("wizard-date-narrow", "it", "dark");
     await page.evaluate(() => window.pyxis.invoke("plans.archive", { planId: "plan-b", archived: true }));

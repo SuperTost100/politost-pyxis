@@ -21,6 +21,7 @@ import { examDaysLabel } from "../plans/examDays";
 import { OggiBlock } from "./OggiBlock";
 import "./HomePages.css";
 import { usePlans } from "../../lib/queries";
+import { useGradeScale } from "../../lib/useGradeScale";
 
 // Cards and mistakes render Markdown and math, which load with their tab rather than with the window.
 const CardBrowser = lazy(() =>
@@ -40,6 +41,7 @@ const SubjectManagerModal = lazy(() =>
 
 export function ExamsHome() {
   const { t } = useTranslation();
+  const grade = useGradeScale();
   const navigate = useNavigate();
   const location = useLocation();
   const client = useQueryClient();
@@ -227,6 +229,7 @@ export function ExamsHome() {
                   subject={plan.subject ?? undefined}
                   mastery={plan.mastery * 100}
                   target={plan.target * 100}
+                  scale={grade.scale}
                   importedLabel={
                     plan.imported ? t("exams.imported") : undefined
                   }

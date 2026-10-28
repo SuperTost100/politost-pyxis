@@ -25,8 +25,16 @@
 .px-onboarding .section-label {
   margin-top: var(--space-2);
 }
-.px-onboarding-engines,
-.px-onboarding-photos {
+/* School and course take the room, the year is short. */
+.px-onboarding .px-form-grid {
+  grid-template-columns: 2fr 2fr 1fr;
+}
+@media (max-width: 640px) {
+  .px-onboarding .px-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.px-onboarding-engines {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -55,37 +63,11 @@
 .px-onboarding-actions .ant-btn-text {
   border-color: var(--border-control);
 }
-.px-onboarding-actions.is-ready {
-  align-items: flex-end;
-}
-@media (max-width: 640px) {
-  /* Three choices do not fit a row: the main one first, each as wide as the column. */
-  .px-onboarding-actions.is-ready,
-  .px-onboarding-actions.is-ready .px-onboarding-primary {
-    flex-direction: column-reverse;
-    align-items: stretch;
-  }
-  .px-onboarding-actions.is-ready .ant-btn {
-    width: 100%;
-  }
-}
 .px-onboarding-primary {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-3);
-}
-.px-onboarding-points {
-  margin: 0;
-  padding-left: 1.25em;
-  display: grid;
-  gap: var(--space-2);
-}
-.px-onboarding .px-onboarding-points li {
-  margin: 0;
-}
-.px-onboarding-points li::marker {
-  color: var(--primary);
 }
 .px-onboarding-plans {
   margin: 0;

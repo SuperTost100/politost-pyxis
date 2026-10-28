@@ -18,6 +18,7 @@ import { openSourceViewer } from "../../components/SourceViewer";
 import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
+import { useGradeScale } from "../../lib/useGradeScale";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
@@ -1403,6 +1404,7 @@ function Feedback({
   onWrong: (wrong: boolean) => void;
 }) {
   const { t } = useTranslation();
+  const grade = useGradeScale();
   const state = verdict(result.score);
   const closed = kind === "mcq" || kind === "tf";
   return (
@@ -1431,7 +1433,7 @@ function Feedback({
           )}
         </span>
         {state === "partial" ? (
-          <span className="meta">{Math.round(result.score * 100)}%</span>
+          <span className="meta">{grade.format(result.score)}</span>
         ) : null}
       </p>
       {dontKnow ? <p className="small px-quiz-dont-know">{t("quiz.dontKnowNote")}</p> : null}

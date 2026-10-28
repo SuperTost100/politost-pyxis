@@ -8,18 +8,63 @@
   margin: var(--space-8) 0 var(--space-2);
   text-align: center;
 }
-.px-wizard-subjects {
+/* Name and subject side by side, as one line of the exam. */
+.px-wizard-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.px-wizard-row .px-form-field p {
+  margin: var(--space-1) 0 0;
+}
+.px-wizard-date {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-wizard-date-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-3);
+}
+.px-wizard-date-line p {
+  margin: 0;
+}
+/* A toggle the size of its words, not a full-width choice row. */
+.choice.px-wizard-chip {
+  width: auto;
+  min-height: var(--control-md);
+  padding-block: var(--space-1);
+}
+.px-wizard-goal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-wizard-goal-body {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-wizard-goal-body p {
+  margin: var(--space-2) 0 0;
 }
 .px-wizard-target-value {
   color: var(--star-text);
   display: flex;
   align-items: baseline;
-  justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-8) 0;
+  gap: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+.px-wizard-target-value .body {
+  color: var(--ink-muted);
 }
 .px-wizard-gold-slider .ant-slider-track,
 .px-wizard-gold-slider:hover .ant-slider-track {
@@ -29,20 +74,40 @@
 .px-wizard-gold-slider:hover .ant-slider-handle::after {
   box-shadow: 0 0 0 2px var(--star) !important;
 }
-.px-wizard-target-guide {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-5);
-  margin-top: var(--space-3);
+.px-wizard-gold-slider .ant-slider-dot-active {
+  border-color: var(--star) !important;
 }
-.px-wizard-target-guide p {
+.px-wizard-options-line {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.px-wizard-options-line p {
+  margin: 0;
+}
+.px-wizard-options {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  color: var(--ink-muted);
+  gap: var(--space-5);
 }
-.px-wizard-target-guide strong {
-  color: var(--star-text);
+.px-wizard-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.px-wizard-fieldset legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+.px-wizard-fieldset .choice-list,
+.px-wizard-fieldset p {
+  margin: 0;
 }
 .px-wizard-material-actions {
   display: flex;
@@ -108,46 +173,86 @@
   display: flex;
   justify-content: flex-end;
 }
-.px-wizard-summary {
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-6);
-}
 @media (max-width: 640px) {
-  .px-wizard-target-guide {
-    grid-template-columns: 1fr;
-  }
-  .px-wizard-subjects {
+  .px-wizard-row,
+  .px-wizard-goal-body {
     grid-template-columns: 1fr;
   }
 }
 
-/* Build screen: one centred composition; the step rows stay left-aligned inside their block. */
+/* Wait screen: the heading, then the steps beside the topics found so far. */
+.focus-main .column:has(.px-build) {
+  width: min(920px, calc(100% - var(--space-6) * 2));
+}
 .px-build {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: var(--space-6);
-  padding-top: var(--space-6);
-  text-align: center;
+  padding-top: var(--space-4);
 }
-.px-build .px-steplines {
-  text-align: left;
+.px-build-head h2,
+.px-build-head p {
+  margin: 0;
+}
+.px-build-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-build-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-12);
+}
+.px-build-grid.has-topics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.px-build-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.px-build-progress {
+  margin: 0;
+  max-width: 280px;
 }
 .px-build-status {
   margin: 0;
   color: var(--ink-muted);
 }
+.px-build-topics h3 {
+  margin: 0 0 var(--space-2);
+}
+.px-build-topics > p {
+  margin: var(--space-3) 0 0;
+}
+.px-build-topic-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.px-build-topic-list li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 36px;
+  border-bottom: 1px solid var(--border);
+}
+.px-build-topic-list li > .px-icon,
+.px-build-topic-list li > svg {
+  color: var(--mastery-text);
+}
+.px-build-topic-n {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
 .px-build-notice {
   width: 100%;
-  max-width: 480px;
-  text-align: left;
+  max-width: 560px;
 }
-.px-build-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-3);
-}
-.px-build-actions:empty {
-  display: none;
+@media (max-width: 720px) {
+  .px-build-grid.has-topics {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
