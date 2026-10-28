@@ -138,10 +138,17 @@ test("Quiz: a matching question's menu draws math and picks with the keyboard", 
     // No hover tooltip with raw TeX either.
     await expect(menu.locator(".ant-select-item-option[title]:not([title=''])")).toHaveCount(0);
     await saveShot(page, "quiz-match-math-open.png");
-    // Arrow keys walk the options; take the first one that holds math.
-    for (let tries = 0; tries < 3; tries += 1) {
-      if ((await menu.locator(".ant-select-item-option-active .katex").count()) > 0) break;
-      await page.keyboard.press("ArrowDown");
+    // Arrow keys walk the options; take the first one that holds math. Each press waits for the highlight to move, so a
+    // slow window can't make the loop read the old option and press past the one it wants.
+    const options = menu.locator(".ant-select-item-option");
+    const active = () =>
+      options.evaluateAll((items) => items.findIndex((item) => item.classList.contains("ant-select-item-option-active")));
+    const target = await options.evaluateAll((items) => items.findIndex((item) => item.querySelector(".katex")));
+    expect(target).toBeGreaterThanOrEqual(0);
+    for (let tries = 0; tries < 10 && (await active()) !== target; tries += 1) {
+      const before = await active();
+      await page.keyboard.press(before < target ? "ArrowDown" : "ArrowUp");
+      await expect.poll(active).not.toBe(before);
     }
     await expect(menu.locator(".ant-select-item-option-active .katex").first()).toBeVisible();
     await page.keyboard.press("Enter");
