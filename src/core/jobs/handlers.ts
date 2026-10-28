@@ -10,6 +10,9 @@ export function jobHandlers(runner: Runner, dev: boolean) {
     list(): RequestOutput<"jobs.list"> {
       return runner.list();
     },
+    finished(): RequestOutput<"jobs.finished"> {
+      return runner.finished();
+    },
     startDemo(
       input: RequestInput<"jobs.startDemo">,
     ): RequestOutput<"jobs.startDemo"> {

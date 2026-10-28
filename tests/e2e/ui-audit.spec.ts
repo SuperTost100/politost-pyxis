@@ -533,6 +533,10 @@ function seed(db: DatabaseSync) {
     now,
     now,
   );
+  // Cursor refused the model, Claude Code answered: the finished job in the jobs list says so.
+  db.prepare(
+    "UPDATE jobs SET fallback_json = ? WHERE id = 'audit-ready-build'",
+  ).run(JSON.stringify({ from: "Cursor Agent", to: "Claude Code", reason: "model" }));
   seedPlan(db, {
     id: "audit-review-plan",
     title: "Review plan",
@@ -1097,6 +1101,26 @@ function prepareState(name: string) {
     db.prepare(
       "INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('audit-active-attempt','audit-plan','audit-active-exam',?)",
     ).run(now);
+  });
+  // The jobs list's running group: two jobs under way, one of them named after the photo it reads. Only the jobs list
+  // shows them, so the other routes keep their top bar.
+  withDb((db) => {
+    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%'");
+    if (name !== "jobs-popover") return;
+    const now = Date.now();
+    const running = db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?)",
+    );
+    running.run("audit-running-cards", "cards-build", "{}", 0.4, "jobs.cards", now, now);
+    running.run(
+      "audit-running-photo",
+      "source-import",
+      JSON.stringify({ sourceId: "audit-photo" }),
+      0.75,
+      "sources.jobs.extract",
+      now,
+      now,
+    );
   });
   const noFile = name === "library-scan-no-file";
   const ocrState =
@@ -1753,17 +1777,63 @@ async function openState(page: Page, name: string) {
       break;
     case "jobs-popover":
       await page
-        .getByRole("button", { name: /attività|background tasks|jobs running/ })
+        .getByRole("button", { name: /^(Attività|Background tasks):/ })
         .click();
-      await expect(page.locator(".job-list")).toBeVisible();
-      await expect(
-        page.getByText(
-          /Pyxis non riesce a leggere questa immagine|Pyxis cannot read this image/,
-        ),
-      ).toBeVisible();
-      await expect(
-        page.getByText(/troppi pixel|too many pixels/),
-      ).toBeVisible();
+      {
+        const list = page.getByRole("region", {
+          name: /^(Attività|Background tasks)$/,
+        });
+        await expect(list).toBeVisible();
+        // The keyboard lands in the list, not on the page behind it.
+        await expect(list).toBeFocused();
+        await expect(
+          list.getByRole("heading", { name: /^(Attività|Background tasks)$/ }),
+        ).toBeVisible();
+        await expect(
+          list.getByRole("heading", { name: /^(Da sistemare|To fix) · / }),
+        ).toBeVisible();
+        await expect(
+          list.getByText(
+            /Pyxis non riesce a leggere questa immagine|Pyxis cannot read this image/,
+          ),
+        ).toBeVisible();
+        await expect(list.getByText(/troppi pixel|too many pixels/)).toBeVisible();
+        await expect(
+          list.getByRole("heading", { name: /^(In corso|Running) · 2$/ }),
+        ).toBeVisible();
+        await expect(
+          list.getByRole("progressbar", {
+            name: /Scrivo le flashcard|Writing flashcards/,
+          }),
+        ).toBeVisible();
+        await expect(
+          list.getByRole("button", {
+            name: /^(Annulla|Cancel): (Scrivo le flashcard|Writing flashcards)$/,
+          }),
+        ).toBeVisible();
+        // Jobs that stopped for one reason are one problem with the count in its title. How many share the reason
+        // depends on which states ran before this one (a full run seeds one more), so only the merge is checked.
+        await expect(
+          list.getByText(/^([2-9]|\d\d+) (attività ferme|tasks stopped)$/),
+        ).toBeVisible();
+        await expect(
+          list.getByRole("button", {
+            name: /^(Mostra le \d+ attività|Show the \d+ tasks)$/,
+          }),
+        ).toBeVisible();
+        // Finished today, with the engine that answered after another one refused.
+        await expect(
+          list.getByRole("heading", { name: /^(Finite oggi|Finished today) · / }),
+        ).toBeVisible();
+        await expect(
+          list.getByText(
+            /Il tuo abbonamento a Cursor Agent non include questo modello, quindi ha risposto Claude Code\.|Your Cursor Agent subscription doesn't include this model, so Claude Code answered\./,
+          ),
+        ).toBeVisible();
+        await expect(
+          list.getByRole("button", { name: /^(Chiudi le finite|Clear finished)$/ }),
+        ).toBeVisible();
+      }
       break;
     case "ocr-settings-missing":
       await expect(
@@ -1853,9 +1923,11 @@ async function openState(page: Page, name: string) {
       break;
     case "ocr-jobs-popover":
       await page
-        .getByRole("button", { name: /attività|background tasks|jobs running/ })
+        .getByRole("button", { name: /^(Attività|Background tasks):/ })
         .click();
-      await expect(page.locator(".job-list")).toBeVisible();
+      await expect(
+        page.getByRole("region", { name: /^(Attività|Background tasks)$/ }),
+      ).toBeVisible();
       await expect(
         page.getByText(/non è riuscito a raggiungere raw|could not reach raw/),
       ).toBeVisible();

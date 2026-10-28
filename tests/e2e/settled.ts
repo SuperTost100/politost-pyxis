@@ -5,31 +5,28 @@ import { expect, type Locator, type Page } from "@playwright/test";
  * zooming in, and axe doesn't measure the contrast of a colour halfway through a fade. On a slow runner such a click is
  * lost. A student can't click that fast, so this is a test-only wait. Spinners loop forever and are not waited for.
  * `within` limits the wait to one element and what it contains.
+ *
+ * Ant Design's motion first marks an entering dialog with classes such as `ant-zoom-appear-prepare`, which hold it at
+ * opacity 0 for a frame before its CSS animation starts. In that frame no animation is running yet, so the wait also
+ * holds while a shown element carries one of those pre-animation classes (`ant-…-appear`, `-enter` or `-leave`, then
+ * `-prepare` or `-start`). Once the animation runs, the count above covers it.
  */
 export async function animationsSettled(page: Page, within?: Locator) {
-  await expect
-    .poll(() =>
-      within
-        ? within.evaluate(
-            (element) =>
-              element
-                .getAnimations({ subtree: true })
-                .filter(
-                  (animation) =>
-                    animation.playState === "running" &&
-                    animation.effect?.getTiming().iterations !== Infinity,
-                ).length,
-          )
-        : page.evaluate(
-            () =>
-              document
-                .getAnimations()
-                .filter(
-                  (animation) =>
-                    animation.playState === "running" &&
-                    animation.effect?.getTiming().iterations !== Infinity,
-                ).length,
-          ),
-    )
-    .toBe(0);
+  // Runs in the page: the finite animations still running under `root` (the whole document without one), plus the
+  // elements that still carry an Ant Design motion class.
+  const busy = (root: Element | undefined) => {
+    const animations = root ? root.getAnimations({ subtree: true }) : document.getAnimations();
+    const running = animations.filter(
+      (animation) => animation.playState === "running" && animation.effect?.getTiming().iterations !== Infinity,
+    ).length;
+    const motion = /(^|\s)ant-[\w-]+-(appear|enter|leave)-(prepare|start)(?=\s|$)/;
+    const elements = root ? [root, ...root.querySelectorAll("[class]")] : [...document.querySelectorAll("[class]")];
+    // A closed drawer or popover can stay in the DOM, hidden, with its leave class; only a shown element can be mid-fade.
+    const shown = (element: Element) =>
+      element instanceof HTMLElement && element.checkVisibility({ checkVisibilityCSS: true });
+    return (
+      running + elements.filter((element) => motion.test(element.getAttribute("class") ?? "") && shown(element)).length
+    );
+  };
+  await expect.poll(() => (within ? within.evaluate(busy) : page.evaluate(busy, undefined))).toBe(0);
 }
