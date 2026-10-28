@@ -17,7 +17,8 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   if (planKinds.has(job.kind)) keys.push("plan-build");
   if (job.kind === "ocr-data-download") keys.push("ocr-data");
   if (job.kind === "embedding-download") keys.push("embedding");
-  if (finished.has(job.state)) keys.push("plans", "plan");
+  // A job that ends joins or leaves the jobs list's "finished today" group.
+  if (finished.has(job.state)) keys.push("jobs-finished", "plans", "plan");
   const families = keys.map((key) => ({ key, refetch: true }));
   if (finished.has(job.state)) families.push({ key: "series", refetch: false });
   return families;

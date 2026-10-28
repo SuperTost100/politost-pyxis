@@ -38,6 +38,7 @@ const replayable = new Set([
   "plans.build",
   "plans.intro",
   "jobs.list",
+  "jobs.finished",
   "engines.overview",
   "engines.models",
   "engines.features",

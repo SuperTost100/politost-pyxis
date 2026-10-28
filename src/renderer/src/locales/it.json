@@ -1767,8 +1767,63 @@
     "newPerDayHint": "Per ogni esame. Le flashcard già iniziate tornano quando scadono, qualunque sia il limite. Con 0 non ne partono di nuove."
   },
   "jobs": {
-    "label_one": "{{count}} attività",
-    "label_other": "{{count}} attività",
+    "title": "Attività",
+    "buttonLabel": "Attività: {{parts}}",
+    "running_one": "{{count}} in corso",
+    "running_other": "{{count}} in corso",
+    "toFix_one": "{{count}} da sistemare",
+    "toFix_other": "{{count}} da sistemare",
+    "doneToday_one": "{{count}} finita oggi",
+    "doneToday_other": "{{count}} finite oggi",
+    "group": {
+      "toFix": "Da sistemare · {{count}}",
+      "running": "In corso · {{count}}",
+      "done": "Finite oggi · {{count}}"
+    },
+    "clearDone": "Chiudi le finite",
+    "actionOn": "{{action}}: {{name}}",
+    "retryAll": "Riprova tutte",
+    "resumeAll": "Riprendi tutte",
+    "dismissAll": "Chiudi tutte",
+    "openEngines": "Vai ai motori AI",
+    "showJobs_one": "Mostra l'attività",
+    "showJobs_other": "Mostra le {{count}} attività",
+    "hideJobs": "Nascondi l'elenco",
+    "technical": "Dettagli tecnici",
+    "problem": {
+      "one": {
+        "failed": "{{name}}: non riuscita",
+        "interrupted": "{{name}}: interrotta",
+        "cancelled": "{{name}}: annullata"
+      },
+      "many": {
+        "failed": "{{count}} attività ferme",
+        "interrupted": "{{count}} attività interrotte",
+        "cancelled": "{{count}} attività annullate"
+      },
+      "interrupted_one": "Pyxis si è chiuso mentre lavorava. Riprendi da dove si era fermata.",
+      "interrupted_other": "Pyxis si è chiuso mentre lavorava. Riprendile da dove si erano fermate.",
+      "cancelled_one": "L'hai annullata tu. Puoi rifarla quando vuoi.",
+      "cancelled_other": "Le hai annullate tu. Puoi rifarle quando vuoi."
+    },
+    "done": {
+      "planBuild": "Esame creato",
+      "planRebuild": "Esame aggiornato",
+      "sourceImport": "Fonte importata",
+      "sourceOcr": "Pagine scansionate lette",
+      "paperRead": "Appello letto",
+      "quizBuild": "Quiz pronto",
+      "quizGrade": "Quiz corretto",
+      "simulationBuild": "Simulazione d'esame pronta",
+      "simulationGrade": "Simulazione d'esame corretta",
+      "cardsBuild": "Flashcard pronte",
+      "exerciseBuild": "Esercizi pronti",
+      "gapDrill": "Ripasso mirato pronto",
+      "mapBuild": "Mappa pronta",
+      "ocrData": "Dati di lettura delle scansioni scaricati",
+      "embedding": "Modello di ricerca scaricato",
+      "python": "Python scaricato"
+    },
     "cancel": "Annulla",
     "retry": "Riprova",
     "resume": "Riprendi",

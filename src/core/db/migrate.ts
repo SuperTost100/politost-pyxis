@@ -190,6 +190,11 @@ INSERT INTO plan_sessions (id, plan_id, date, created_at)
   SELECT id, id, MIN(exam_at, 253402163999999), COALESCE(updated_at, created_at) FROM plans WHERE exam_at IS NOT NULL;
 ALTER TABLE plans ADD COLUMN archived_at INTEGER;`,
   },
+  // Which engine answered when the one Pyxis chose refused the call, so the jobs list can say so on the finished job.
+  {
+    version: 23,
+    sql: `ALTER TABLE jobs ADD COLUMN fallback_json TEXT CHECK (fallback_json IS NULL OR json_valid(fallback_json));`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

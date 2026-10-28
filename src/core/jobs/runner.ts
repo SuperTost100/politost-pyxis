@@ -52,6 +52,11 @@ type JobRow = {
   params_json: string;
 };
 
+type ViewRow = Omit<JobRow, "params_json"> & {
+  updated_at: number;
+  fallback_json: string | null;
+};
+
 type StepRow = {
   id: string;
   job_id: string;
@@ -80,6 +85,13 @@ export type Runner = {
   resumeLocal: (kinds: string[]) => string[];
   dismiss: (jobId: string) => void;
   list: () => JobView[];
+  /** Jobs that succeeded today and were not cleared, newest first. The day bounds the list, so it has no other limit: clearing it must reach every job. */
+  finished: (now?: number) => JobView[];
+  /** Notes that another engine answered a call of this job, for the job's list entry. The latest one is kept. */
+  noteFallback: (
+    jobId: string,
+    fallback: NonNullable<JobView["fallback"]>,
+  ) => void;
 };
 
 export function createRunner(
@@ -105,7 +117,7 @@ export function createRunner(
   // A view is built at every step start and end. Params and step outputs can hold whole topic trees, and the view
   // shows neither, so it reads params only for a title and never reads outputs.
   const jobViewStmt = db.prepare(
-    `SELECT id, kind, state, progress, step_label, error FROM jobs WHERE id = ?`,
+    `SELECT id, kind, state, progress, step_label, error, updated_at, fallback_json FROM jobs WHERE id = ?`,
   );
   const paramsStmt = db.prepare(`SELECT params_json FROM jobs WHERE id = ?`);
   const stepViewsStmt = db.prepare(
@@ -113,9 +125,7 @@ export function createRunner(
   );
 
   function viewOf(jobId: string): JobView | null {
-    const job = jobViewStmt.get(jobId) as
-      | Omit<JobRow, "params_json">
-      | undefined;
+    const job = jobViewStmt.get(jobId) as ViewRow | undefined;
     if (!job) return null;
     const steps = stepViewsStmt.all(jobId) as JobView["steps"];
     const titleOf = specs.get(job.kind)?.title;
@@ -131,6 +141,10 @@ export function createRunner(
       stepLabel: job.step_label,
       error: job.error,
       steps,
+      updatedAt: job.updated_at,
+      ...(job.fallback_json
+        ? { fallback: JSON.parse(job.fallback_json) as JobView["fallback"] }
+        : {}),
     };
   }
 
@@ -405,7 +419,7 @@ export function createRunner(
       }
       const changed = db
         .prepare(
-          `UPDATE jobs SET state = 'queued', dismissed = 0, error = NULL, updated_at = ? WHERE id = ? AND state IN ('failed', 'cancelled')`,
+          `UPDATE jobs SET state = 'queued', dismissed = 0, error = NULL, fallback_json = NULL, updated_at = ? WHERE id = ? AND state IN ('failed', 'cancelled')`,
         )
         .run(Date.now(), jobId);
       if (changed.changes === 0) return;
@@ -475,6 +489,27 @@ export function createRunner(
         abandoned(unfinished);
         onUpdate({ ...view, state: "cancelled" });
       }
+    },
+    noteFallback(jobId, fallback) {
+      const changed = db
+        .prepare(`UPDATE jobs SET fallback_json = ? WHERE id = ?`)
+        .run(JSON.stringify(fallback), jobId);
+      if (changed.changes > 0) publish(jobId);
+    },
+    finished(now = Date.now()) {
+      const midnight = new Date(now);
+      midnight.setHours(0, 0, 0, 0);
+      const rows = db
+        .prepare(
+          `SELECT id FROM jobs
+           WHERE dismissed = 0 AND state = 'succeeded' AND updated_at >= ?
+           ORDER BY updated_at DESC, rowid DESC`,
+        )
+        .all(midnight.getTime()) as Array<{ id: string }>;
+      return rows.flatMap((row) => {
+        const view = viewOf(row.id);
+        return view ? [view] : [];
+      });
     },
     list() {
       const rows = db
