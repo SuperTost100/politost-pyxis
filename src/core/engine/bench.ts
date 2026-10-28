@@ -37,7 +37,40 @@ export function clearSignOut(provider: string): void {
   if (benched.get(provider) === Infinity) benched.delete(provider);
 }
 
+/**
+ * Models a subscription does not include, by provider and model. The engine's other models stay usable, and the
+ * automatic choice leaves these out until the time is up or Pyxis restarts.
+ */
+const refusedModels = new Map<string, number>();
+
+/** How long a model the subscription refused stays out. Plans such as Cursor's count usage by the week. */
+export const MODEL_REFUSED_MS = 24 * 60 * 60_000;
+
+const modelKey = (provider: string, model: string) => `${provider}\n${model}`;
+
+export function benchModel(
+  provider: string,
+  model: string,
+  now = Date.now(),
+): void {
+  refusedModels.set(modelKey(provider, model), now + MODEL_REFUSED_MS);
+}
+
+export function isModelBenched(
+  provider: string,
+  model: string,
+  now = Date.now(),
+): boolean {
+  const key = modelKey(provider, model);
+  const until = refusedModels.get(key);
+  if (until === undefined) return false;
+  if (until > now) return true;
+  refusedModels.delete(key);
+  return false;
+}
+
 /** Tests start from a clean slate. */
 export function clearBench(): void {
   benched.clear();
+  refusedModels.clear();
 }

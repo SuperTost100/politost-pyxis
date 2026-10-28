@@ -648,7 +648,11 @@ export function bindEngines(
   installerFixture?: string,
 ): void {
   configureDisclosure(db);
-  setFallbackListener((event) => broadcast("engine.fallback", event));
+  setFallbackListener((event) => {
+    broadcast("engine.fallback", event);
+    // A refused model leaves the automatic choice, so the tasks that used it move now and Settings shows the new one.
+    if (event.reason === "model") refreshAutoEngines();
+  });
   setUsageRecorder((usage, where) => {
     // Counting is bookkeeping: a write that fails must not fail the answer it counts.
     try {

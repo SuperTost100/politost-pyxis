@@ -2204,7 +2204,8 @@
     "sendCode": "Invia",
     "fallback": {
       "limit": "{{from}} ha raggiunto il limite di utilizzo, quindi ha risposto {{to}}.",
-      "signed-out": "{{from}} non ha più l'accesso, quindi ha risposto {{to}}."
+      "signed-out": "{{from}} non ha più l'accesso, quindi ha risposto {{to}}.",
+      "model": "Il tuo abbonamento a {{from}} non include questo modello, quindi ha risposto {{to}}."
     },
     "errors": {
       "not-installed": "Il programma non è installato.",
@@ -2215,6 +2216,7 @@
       "aborted": "Annullato.",
       "refused": "La chiave è stata rifiutata. Controllala.",
       "quota": "Limite di utilizzo raggiunto. Riprova più tardi o scegli un altro motore.",
+      "model-not-included": "Il tuo abbonamento a questo motore non include il modello scelto. Scegline un altro in Impostazioni, Motori AI.",
       "timeout": "Il motore non ha risposto in tempo. Riprova o scegli un altro motore.",
       "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
       "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI.",

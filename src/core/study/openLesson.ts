@@ -315,6 +315,8 @@ export type LessonResult = {
   /** Model general knowledge, not the student's sources. */
   general?: boolean;
   fallback?: boolean;
+  /** The engine error's message key when an engine failure caused the fallback. */
+  fallbackReason?: string;
   /** Written by an earlier lesson prompt, before smart text; shown until rewritten. */
   earlier?: boolean;
   /** Images of the lesson's figure blocks, by `figureKey`. */
@@ -356,10 +358,11 @@ export async function writeLesson(
       ...(cached.grounding === "general" ? { general: true } : {}),
       ...(earlier ? { earlier: true } : {}),
     };
-  const bookFallback = () => ({
+  const bookFallback = (reason?: string) => ({
     ...openLesson(db, planId, topicId),
     wording,
     fallback: true,
+    ...(reason ? { fallbackReason: reason } : {}),
   });
   if (!run && process.env["PYXIS_LESSON_MODEL"] !== "1") {
     return { ...openLesson(db, planId, topicId), wording };
@@ -369,7 +372,12 @@ export async function writeLesson(
   const failed = (error?: unknown): LessonResult => {
     if (options?.regenerate && cached?.provider)
       throw error instanceof Error ? error : new Error("lesson-invalid");
-    return bookFallback();
+    // The engine's reason travels with the book text, so the page can say why there is no lesson.
+    return bookFallback(
+      error instanceof IpcError && error.messageKey.startsWith("engines.errors.")
+        ? error.messageKey
+        : undefined,
+    );
   };
   const topic = db
     .prepare("SELECT title FROM topics WHERE id = ?")
