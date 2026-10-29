@@ -323,10 +323,14 @@ export function SourceDetails({
   }
 
   const data = details.data ?? undefined;
-  // Core answers null for a source removed since the list was read: the panel says so, and the list drops the row.
+  // Core answers null for a source removed since the list was read: the panel says so, and the Library and every
+  // exam's Sources tab drop the row (removal also unlinks it from its exams).
   const gone = details.isSuccess && details.data === null;
   useEffect(() => {
-    if (gone) void client.invalidateQueries({ queryKey: ["sources"] });
+    if (!gone) return;
+    void client.invalidateQueries({ queryKey: ["sources"] });
+    void client.invalidateQueries({ queryKey: ["plan"] });
+    void client.invalidateQueries({ queryKey: ["plans"] });
   }, [gone, client]);
   const pending = source ? scanPending({ ...source, sections: source.sections ?? 0, blobSha: listed?.blobSha ?? null }) : false;
   const pages = data?.pages && !pending ? data.pages : undefined;
