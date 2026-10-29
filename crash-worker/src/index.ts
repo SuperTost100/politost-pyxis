@@ -1,8 +1,9 @@
+export { Budget } from "./budget";
 import { handle } from "./reports";
 import { deleteExpired } from "./retention";
 
-// The Workers runtime accepts only handlers as a module's exports, so everything else lives in reports.ts and
-// retention.ts.
+// The Workers runtime accepts only handlers and Durable Object classes as a module's exports, so everything else lives
+// in reports.ts, retention.ts and budget.ts.
 export default {
   fetch(request, env) {
     return handle(request, env);
