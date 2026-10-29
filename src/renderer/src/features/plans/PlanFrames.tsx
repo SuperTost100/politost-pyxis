@@ -274,6 +274,7 @@ function BuildScreen({ planId }: { planId: string }) {
 }
 
 export { PlanPage } from "./PlanOverview";
+export { ExamSettingsPage } from "./ExamSettings";
 export { GuidedPlanPage } from "./GuidedPlan";
 
 export function SharedPlanPage() {

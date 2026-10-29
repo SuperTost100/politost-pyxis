@@ -83,7 +83,10 @@ const routes = [
   ["plan-progress", "/plans/audit-plan/progress"],
   ["progress-gap-misconception", "/plans/audit-plan/progress"],
   ["progress-gaps-distinct", "/plans/audit-plan/progress"],
-  ["plan-settings", "/plans/audit-plan"],
+  ["plan-settings", "/plans/audit-plan/settings"],
+  // The same page with a goal and a name changed, so the save bar lists them.
+  ["plan-settings-changes", "/plans/audit-plan/settings"],
+  ["plan-settings-delete", "/plans/audit-plan/settings"],
   ["plan-create", "/plans/audit-plan"],
   ["library-import", "/exams/library"],
   // Overlay states below are reached by role-based interaction (Ant Design 6 drawers and modals are role="dialog").
@@ -167,11 +170,11 @@ const routes = [
     "review-quiz-pending",
     "/plans/audit-review-plan/diagnostic?attempt=audit-review-attempt",
   ],
-  ["rebuild-intro", "/plans/audit-plan/sources"],
-  ["rebuild-running", "/plans/audit-plan/sources"],
-  ["rebuild-failed", "/plans/audit-plan/sources"],
-  ["rebuild-interrupted", "/plans/audit-plan/sources"],
-  ["rebuild-review", "/plans/audit-plan/sources"],
+  ["rebuild-intro", "/plans/audit-plan/settings"],
+  ["rebuild-running", "/plans/audit-plan/settings"],
+  ["rebuild-failed", "/plans/audit-plan/settings"],
+  ["rebuild-interrupted", "/plans/audit-plan/settings"],
+  ["rebuild-review", "/plans/audit-plan/settings"],
   ["guided-period", "/plans/new"],
   ["guided-modules", "/plans/new"],
   ["guided-style", "/plans/new"],
@@ -1810,19 +1813,11 @@ async function openState(page: Page, name: string) {
     case "rebuild-failed":
     case "rebuild-interrupted":
     case "rebuild-review":
+      // The exam settings page opens the rebuild dialog.
       await page
-        .getByRole("button", {
-          name: both("Impostazioni dell'esame", "Exam settings"),
-        })
+        .getByRole("button", { name: both("Ricostruisci", "Rebuild") })
         .click();
-      await dialog
-        .getByRole("button", {
-          name: both("Ricostruisci gli argomenti", "Rebuild topics"),
-          exact: true,
-        })
-        .click();
-      // The rebuild dialog opens above the settings dialog.
-      await expect(dialog).toHaveCount(2);
+      await expect(dialog).toHaveCount(1);
       await expect(
         dialog
           .last()
@@ -2823,6 +2818,24 @@ async function openState(page: Page, name: string) {
         .click();
       await expect(dialog).toBeVisible();
       break;
+    case "plan-settings-changes":
+      await page
+        .getByLabel(both("Nome dell'esame", "Exam name"))
+        .fill("Fisica generale");
+      await page.getByRole("slider", { name: /^(Obiettivo|Goal)/ }).focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(
+        page.getByRole("region", {
+          name: both("Modifiche da salvare", "Changes to save"),
+        }),
+      ).toContainText(/2 (modifiche da salvare|changes to save)/);
+      break;
+    case "plan-settings-delete":
+      await page
+        .getByRole("button", { name: both("Elimina", "Delete") })
+        .click();
+      await expect(dialog.getByRole("listitem").first()).toBeVisible();
+      break;
     case "export-plan":
     case "export-plan-embed":
       await page
@@ -3209,13 +3222,6 @@ test("M14 every application route in both languages, themes and supported widths
                 // The dialog mounts a frame after the click; the keyboard check needs it there.
                 await expect(page.getByRole("dialog")).toBeVisible();
               }
-              if (name === "plan-settings")
-                await page
-                  .getByRole("button", {
-                    name: /Impostazioni dell'esame|Exam settings/,
-                    exact: true,
-                  })
-                  .click();
               if (name === "plan-create") {
                 // Creating an activity by hand sits in the header's More menu.
                 await page.locator(".px-plan-header-actions").getByRole("button", { name: /^(Altro|More)$/ }).click();

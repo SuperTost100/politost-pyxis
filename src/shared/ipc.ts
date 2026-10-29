@@ -1739,6 +1739,17 @@ export const requests = {
     input: z.object({ planId: z.string() }),
     output: z.object({ ok: z.boolean() }),
   },
+  /** What deleting the plan would remove, for the confirmation that lists it. */
+  "plans.footprint": {
+    input: z.object({ planId: z.string().min(1) }),
+    output: z.object({
+      topics: z.number().int().nonnegative(),
+      lessons: z.number().int().nonnegative(),
+      quizzes: z.number().int().nonnegative(),
+      simulations: z.number().int().nonnegative(),
+      cards: z.number().int().nonnegative(),
+    }),
+  },
   "plans.export": {
     input: z.object({
       planId: z.string(),

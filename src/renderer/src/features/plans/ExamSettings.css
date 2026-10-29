@@ -1,0 +1,237 @@
+/* The exam settings page: one group per row, what it controls on the left and the controls on the right. */
+.px-exam-settings > .title-1 {
+  margin: 0 0 var(--space-6);
+}
+
+.px-set-group {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  gap: var(--space-6);
+  padding: var(--space-6) 0;
+  border-top: 1px solid var(--border);
+}
+.px-set-group > header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.px-set-group > header h2,
+.px-set-group > header p {
+  margin: 0;
+}
+.px-set-group > header .px-tag {
+  margin-top: var(--space-2);
+}
+
+.px-set-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.px-set-body p {
+  margin: 0;
+}
+
+.px-set-error {
+  color: var(--danger);
+}
+
+/* Subject and language: set when the exam was made, shown as text. */
+.px-set-fixed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  margin: 0;
+}
+.px-set-fixed dt {
+  margin-bottom: var(--space-1);
+}
+.px-set-fixed dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The goal: the number on the scale beside its slider. */
+.px-set-goal {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-set-goal-value {
+  font: 600 calc(32px * var(--text-scale, 1)) / calc(36px * var(--text-scale, 1)) var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+.px-set-goal-value small {
+  font-size: calc(15px * var(--text-scale, 1));
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.px-set-goal .ant-slider {
+  margin-inline: var(--space-2);
+}
+
+.px-set-hours {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.px-set-hours .ant-input-number {
+  width: 88px;
+}
+
+.px-set-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-set-sources li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+}
+.px-set-sources li + li {
+  border-top: 1px solid var(--border);
+}
+.px-set-sources li > svg {
+  margin-top: 2px;
+  color: var(--ink-muted);
+}
+.px-set-sources .body {
+  overflow-wrap: anywhere;
+}
+
+.px-set-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+}
+
+/* Engines, read only: the task, then the engine and its model. */
+.px-set-engines {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-set-engines > div {
+  display: grid;
+  grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: 10px var(--space-4);
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
+}
+.px-set-engines > div + div {
+  border-top: 1px solid var(--border);
+}
+.px-set-engines dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* An action: its name and what it does, then its button. */
+.px-set-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: center;
+}
+.px-set-action .ant-btn {
+  white-space: nowrap;
+}
+
+/* Shown only while something is unsaved; it stays at the bottom of the window. */
+.px-savebar {
+  position: sticky;
+  bottom: var(--space-4);
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-overlay);
+  box-shadow: 0 8px 24px rgba(21, 24, 30, 0.12);
+}
+[data-theme="dark"] .px-savebar {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.px-savebar > p {
+  flex: 1 1 240px;
+  margin: 0;
+}
+.px-savebar strong {
+  font-weight: 600;
+}
+.px-savebar-buttons {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* The delete confirmation. */
+.px-delete-lose {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.px-delete-lose li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+.px-delete-lose svg {
+  margin-top: 2px;
+  color: var(--danger);
+}
+.px-delete-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.px-delete-footer-gap {
+  flex: 1;
+}
+/* White on the dark theme's lighter red is too faint to read, so the label takes the ink that sits on bright fills. */
+.px-delete-footer .ant-btn.px-delete-confirm:not(:disabled),
+.px-delete-footer .ant-btn.px-delete-confirm:not(:disabled):hover,
+.px-delete-footer .ant-btn.px-delete-confirm:not(:disabled):active {
+  color: var(--on-ink);
+}
+
+@media (max-width: 720px) {
+  .px-set-group {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+}
+@media (max-width: 520px) {
+  .px-set-fixed,
+  .px-set-goal,
+  .px-set-action,
+  .px-set-engines > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

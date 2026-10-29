@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { animationsSettled } from "./settled";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -35,7 +36,8 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     });
     const written = noonIn(21);
     const oral = noonIn(33);
-    seedPlan(db, { id: "plan-a", title: "Fisica 1", language: "it", topics: [{ id: "topic-a", title: "Cinematica" }] });
+    // A goal off the slider's steps: saving other settings must leave it exactly as stored.
+    seedPlan(db, { id: "plan-a", title: "Fisica 1", language: "it", target: 0.77, topics: [{ id: "topic-a", title: "Cinematica" }] });
     seedPlan(db, { id: "plan-b", title: "Analisi 2", language: "it", topics: [{ id: "topic-b", title: "Integrali" }] });
     db.exec(`
       INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('card-a','plan-a','topic-a','Cos''è la velocità?','Spazio sul tempo',1);
@@ -66,25 +68,31 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
       location.hash = "/plans/plan-a";
     });
     await page.getByRole("button", { name: "Exam settings" }).click();
-    const dialog = page.getByRole("dialog", { name: "Exam settings" });
-    await dialog.getByLabel("Exam date").fill(dmy(written));
+    await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);
+    await expect(page.getByRole("heading", { name: "Exam settings", level: 1 })).toBeVisible();
+    const settingsPage = page.locator(".px-exam-settings");
+    const saveBar = page.getByRole("region", { name: "Changes to save" });
+    // Nothing changed yet, so there is nothing to save.
+    await expect(saveBar).toHaveCount(0);
+    await settingsPage.getByLabel("Exam date").fill(dmy(written));
     await page.keyboard.press("Enter");
-    await dialog.getByLabel("Time (optional)").fill("09:30");
+    await settingsPage.getByLabel("Time (optional)").fill("09:30");
     await page.keyboard.press("Enter");
-    await dialog.getByLabel("Name (optional)").fill("Written");
-    await dialog.getByLabel("Place (optional)").fill("Aula 5");
-    await dialog.getByRole("button", { name: "Add another session" }).click();
-    await dialog.getByLabel("Date", { exact: true }).fill(dmy(oral));
+    await settingsPage.getByLabel("Name (optional)").fill("Written");
+    await settingsPage.getByLabel("Place (optional)").fill("Aula 5");
+    await settingsPage.getByRole("button", { name: "Add another session" }).click();
+    await settingsPage.getByLabel("Date", { exact: true }).fill(dmy(oral));
     await page.keyboard.press("Enter");
-    await dialog.getByLabel("Time (optional)").nth(1).fill("14:00");
+    await settingsPage.getByLabel("Time (optional)").nth(1).fill("14:00");
     await page.keyboard.press("Enter");
-    await dialog.getByLabel("Name (optional)").nth(1).fill("Oral");
-    await dialog.getByLabel("Place (optional)").nth(1).fill("Studio 14");
-    // The calendar button waits for the sessions to be saved.
-    await expect(dialog.getByRole("button", { name: "Add to calendar" })).toBeDisabled();
+    await settingsPage.getByLabel("Name (optional)").nth(1).fill("Oral");
+    await settingsPage.getByLabel("Place (optional)").nth(1).fill("Studio 14");
+    // The bar names what changed, and the calendar button waits for the sessions to be saved.
+    await expect(saveBar).toContainText("1 change to save: the sessions.");
+    await expect(settingsPage.getByRole("button", { name: "Add to calendar" })).toBeDisabled();
     await snap("plan-settings-sessions", "en", "light");
-    await dialog.getByRole("button", { name: "Save changes" }).click();
-    await expect(dialog).toBeHidden();
+    await saveBar.getByRole("button", { name: "Save changes" }).click();
+    await expect(saveBar).toHaveCount(0);
 
     const plan = await read("plan-a");
     expect(plan!.sessions.map((s) => [s.label, s.time, s.place])).toEqual([
@@ -92,6 +100,10 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
       ["Oral", "14:00", "Studio 14"],
     ]);
     expect(plan!.examAt).toBe(written.getTime());
+    // The untouched goal is saved back exactly as stored.
+    expect(plan!.target).toBe(0.77);
+    await settingsPage.getByRole("link", { name: "Fisica 1" }).click();
+    await expect(page).toHaveURL(/#\/plans\/plan-a$/);
     // The header lists them, and the calendar file has one timed event each with the place as its location.
     const list = page.getByRole("list", { name: "Exam sessions" });
     await expect(list.getByRole("listitem")).toHaveCount(2);
@@ -109,23 +121,72 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await setLook("en", "dark");
     await snap("plan-header-sessions", "en", "dark");
     await page.getByRole("button", { name: "Exam settings" }).click();
+    await expect(page.getByRole("heading", { name: "Exam settings", level: 1 })).toBeVisible();
     await snap("plan-settings-sessions", "en", "dark");
     await expectNoAxeViolations(page);
 
     // Remove the second session again: one session left, no frame around it.
-    await dialog.getByRole("button", { name: "Remove session 2" }).click();
-    await expect(dialog.getByRole("button", { name: /^Remove session/ })).toHaveCount(0);
-    await page.keyboard.press("Escape");
+    await settingsPage.getByRole("button", { name: "Remove session 2" }).click();
+    await expect(settingsPage.getByRole("button", { name: /^Remove session/ })).toHaveCount(0);
+    // A new name and goal join the list. The goal moves from the keyboard.
+    await settingsPage.getByLabel("Exam name").fill("Fisica generale");
+    await settingsPage.getByRole("slider", { name: "Goal, out of 30" }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(settingsPage.getByText("It was 23.1/30 before.")).toBeVisible();
+    await expect(saveBar).toContainText("3 changes to save: the name, the sessions and the goal.");
+    await snap("plan-settings-changes", "en", "dark");
+    await expectNoAxeViolations(page);
+    // Leaving with unsaved changes asks first.
+    await settingsPage.getByRole("link", { name: "Fisica 1" }).click();
+    const leave = page.getByRole("dialog", { name: "Leave without saving?" });
+    await expect(leave).toContainText("You changed the name, the sessions and the goal.");
+    await leave.getByRole("button", { name: "Stay here" }).click();
+    await expect(leave).toBeHidden();
+    await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);
+    await saveBar.getByRole("button", { name: "Discard changes" }).click();
+    await expect(saveBar).toHaveCount(0);
+    await expect(settingsPage.getByLabel("Exam name")).toHaveValue("Fisica 1");
+
+    // Delete asks first, lists what would go from the real counts, and offers to archive instead.
+    await settingsPage.getByRole("button", { name: "Delete", exact: true }).click();
+    const confirm = page.getByRole("dialog", { name: "Delete Fisica 1?" });
+    await expect(confirm.getByRole("listitem")).toHaveText([
+      "1 topic and the path",
+      "1 flashcard and its reviews",
+      "The mastery of each topic and the gaps found",
+    ]);
+    await expect(confirm.getByRole("button", { name: "Archive instead" })).toBeVisible();
+    await animationsSettled(page);
+    await snap("plan-settings-delete", "en", "dark");
+    await expectNoAxeViolations(page);
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await expect(confirm).toBeHidden();
+    expect(await read("plan-a")).not.toBeNull();
+    // Sources are added from here with the same picker as the Sources tab.
+    await settingsPage.getByRole("button", { name: "Add sources" }).click();
+    const picker = page.getByRole("dialog", { name: "Add sources" });
+    await expect(picker.getByRole("button", { name: "Attach selected sources" })).toBeDisabled();
+    await picker.getByRole("button", { name: "Cancel" }).click();
+    await expect(picker).toBeHidden();
 
     // Archive the other exam from its settings.
     await page.evaluate(() => {
       location.hash = "/plans/plan-b";
     });
     await page.getByRole("button", { name: "Exam settings" }).click();
-    await dialog.getByRole("button", { name: "Archive exam" }).click();
-    await expect(dialog).toBeHidden();
-    await expect(page.getByText("This exam is archived.")).toBeVisible();
+    // An unsaved edit is not dropped without asking: the archive is done, then the page asks before leaving.
+    await settingsPage.getByLabel("Exam name").fill("Analisi 2 bis");
+    await settingsPage.getByRole("button", { name: "Archive", exact: true }).click();
+    const leaveAfter = page.getByRole("dialog", { name: "Leave without saving?" });
+    await expect(leaveAfter).toContainText("You changed the name.");
     expect((await read("plan-b"))!.archivedAt).not.toBeNull();
+    await leaveAfter.getByRole("button", { name: "Stay here" }).click();
+    await expect(settingsPage.getByRole("button", { name: "Restore", exact: true })).toBeVisible();
+    await expect(settingsPage.getByLabel("Exam name")).toHaveValue("Analisi 2 bis");
+    await saveBar.getByRole("button", { name: "Discard changes" }).click();
+    await settingsPage.getByRole("link", { name: "Analisi 2" }).click();
+    await expect(page).toHaveURL(/#\/plans\/plan-b$/);
+    await expect(page.getByText("This exam is archived.")).toBeVisible();
     await snap("plan-archived", "en", "dark");
 
     // Exams page: Analisi 2 left the Active list, and the Archived filter brings it back.
@@ -190,10 +251,8 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
       location.hash = "/plans/plan-a";
     });
     await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
-    const settings = page.getByRole("dialog", { name: "Impostazioni dell'esame" });
-    await expect(settings.getByRole("button", { name: "Aggiungi un'altra prova" })).toBeVisible();
+    await expect(settingsPage.getByRole("button", { name: "Aggiungi un'altra prova" })).toBeVisible();
     await snap("plan-settings-sessions-narrow", "it", "dark");
-    await settings.getByRole("button", { name: "Annulla" }).click().catch(() => page.keyboard.press("Escape"));
     await page.evaluate(() => {
       location.hash = "/plans/new";
     });

@@ -24,8 +24,16 @@ runs:
         sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libfuse2 apparmor
     # onnxruntime-node's install script downloads a CUDA build on Linux x64. Embeddings run on the CPU, and the
     # packaging step would delete it again.
+    # npm ci downloads Electron and the Node headers node-gyp builds against; on hosted runners those downloads
+    # sometimes stall ("Completion callback never invoked", "fetch failed"), so a failed install gets two more tries.
     - shell: bash
-      run: npm ci
+      run: |
+        for attempt in 1 2 3; do
+          npm ci && exit 0
+          echo "::warning::npm ci failed (attempt $attempt of 3)"
+          if [ "$attempt" -lt 3 ]; then sleep $((attempt * 15)); fi
+        done
+        exit 1
       env:
         ONNXRUNTIME_NODE_INSTALL_CUDA: skip
     - name: Allow the Electron test binary to use its namespace sandbox

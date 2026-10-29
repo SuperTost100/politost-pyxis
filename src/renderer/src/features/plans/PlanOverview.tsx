@@ -1,38 +1,19 @@
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Button,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Slider,
-  Table,
-  Dropdown,
-} from "antd";
+import { Button, Form, Modal, Select, Dropdown } from "antd";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
-import { PLAN_TITLE_MAX, reachableTarget } from "@shared/plan-file";
+import { reachableTarget } from "@shared/plan-file";
 import { examDaysLabel, onTrackLabel } from "./examDays";
-import { ExamSessionsField } from "./ExamSessionsField";
-import {
-  draftsFromSessions,
-  emptyDraft,
-  nextUpcomingDay,
-  sameSessions,
-  sessionsFromDrafts,
-  type SessionDraft,
-} from "./examSessions";
+import { draftsFromSessions, nextUpcomingDay } from "./examSessions";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
-import { goalFraction, goalInput, goalRange } from "../../lib/grade";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { Tag } from "../../components/Tag";
-import { LibraryPanel } from "../home/LibraryPanel";
 import { IconButton } from "../../components/IconButton";
 import type { IconName } from "../../components/Icon";
 import { LessonTile } from "../../components/LessonTile";
@@ -42,7 +23,8 @@ import { Notice } from "../../components/Notice";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { CalendarButton } from "../share/CalendarButton";
-import { ExportButton } from "../share/ExportButton";
+import { AttachSourcesDialog } from "./AttachSourcesDialog";
+import { setPlanArchived } from "./archivePlan";
 import { PlanProgress } from "./PlanProgress";
 import { RebuildDialog } from "./RebuildDialog";
 import { NextStep, PlanPath, type TopicAction } from "./PlanPath";
@@ -100,19 +82,12 @@ export function PlanPage() {
     queryFn: () => invoke("plans.series", { planId }),
   });
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [selectedSources, setSelectedSources] = useState<string[]>([]);
   // The source whose details panel is open, from a row of the Sources tab.
   const [detailSourceId, setDetailSourceId] = useState<string | null>(null);
   const [itemPreview, setItemPreview] =
     useState<RequestOutput<"plans.item"> | null>(null);
   // The Sources tab reads the library too, for the file sizes its rows show.
-  const library = useQuery({
-    ...sourcesQuery,
-    enabled: pickerOpen || view === "sources",
-    refetchInterval: pickerOpen ? 1000 : false,
-  });
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const library = useQuery({ ...sourcesQuery, enabled: view === "sources" });
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [group, setGroup] = useState("learn");
@@ -124,9 +99,6 @@ export function PlanPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const busyRef = useRef(false);
-  const [form] = Form.useForm();
-  // The sessions as edited, so the calendar button never exports older saved ones.
-  const [draftSessions, setDraftSessions] = useState<SessionDraft[]>([emptyDraft()]);
   const [modal, modalContext] = Modal.useModal();
   // Old links to the removed Topics and Mistakes tabs land on the path.
   const tab = ["progress", "sources"].includes(view ?? "")
@@ -157,36 +129,7 @@ export function PlanPage() {
     setError("");
     setCreateOpen(true);
   }
-  const savedSessions = draftsFromSessions(plan.data?.sessions ?? []);
-  const upcomingDay = nextUpcomingDay(savedSessions);
-  const calendarBlocked = !sameSessions(draftSessions, savedSessions)
-    ? t("calendar.saveFirst")
-    : savedSessions.length === 0
-      ? t("calendar.oneNoDate")
-      : upcomingDay === null
-        ? t("calendar.onePast")
-        : undefined;
-  function openSettings() {
-    if (!plan.data) return;
-    form.setFieldsValue({
-      title: plan.data.title,
-      target: goalInput(plan.data.target, grade.scale),
-    });
-    const saved = draftsFromSessions(plan.data.sessions);
-    setDraftSessions(saved.length ? saved : [emptyDraft()]);
-    setError("");
-    setSettingsOpen(true);
-  }
-  /** Archiving changes what every review queue, count and card list shows, so they all read again. */
-  async function setArchived(archived: boolean) {
-    await invoke("plans.archive", { planId, archived });
-    await Promise.all([
-      refresh(),
-      ...["card-browse", "cards", "card-queue", "review-session"].map((key) =>
-        client.invalidateQueries({ queryKey: [key] }),
-      ),
-    ]);
-  }
+  const upcomingDay = nextUpcomingDay(draftsFromSessions(plan.data?.sessions ?? []));
   function chooseLesson(kind: string) {
     if (["quiz", "simulation"].includes(kind)) {
       setLessonKind(kind);
@@ -289,7 +232,6 @@ export function PlanPage() {
         onClose={() => setRebuildOpen(false)}
         onDone={async () => {
           await refresh();
-          setSettingsOpen(false);
         }}
       />
       <Link to="/exams" className="px-plan-back">
@@ -325,7 +267,7 @@ export function PlanPage() {
           <IconButton
             icon="settings"
             label={t("planOverview.settings")}
-            onClick={openSettings}
+            onClick={() => navigate(`/plans/${planId}/settings`)}
             disabled={!plan.data}
           />
         </div>
@@ -429,7 +371,7 @@ export function PlanPage() {
             tone="info"
             action={{
               label: t("planOverview.restore"),
-              onClick: () => void action(() => setArchived(false)),
+              onClick: () => void action(() => setPlanArchived(client, planId, false)),
             }}
           >
             {t("planOverview.archivedNotice")}
@@ -465,7 +407,7 @@ export function PlanPage() {
           </span>
         ) : null}
       </div>
-      {error && !settingsOpen && !createOpen && (
+      {error && !createOpen && (
         <Notice tone="danger">{error}</Notice>
       )}
       {tab === "path" && plan.data && (
@@ -537,10 +479,7 @@ export function PlanPage() {
           ) : null}
           <Button
             shape="round"
-            onClick={() => {
-              setSelectedSources([]);
-              setPickerOpen(true);
-            }}
+            onClick={() => setPickerOpen(true)}
           >
             {t("planOverview.addSources")}
           </Button>
@@ -552,85 +491,12 @@ export function PlanPage() {
           />
         </section>
       )}
-      <Modal
-        width={720}
-        title={t("planOverview.addSources")}
+      <AttachSourcesDialog
+        planId={planId}
+        attached={plan.data?.sources.map((source) => source.id) ?? []}
         open={pickerOpen}
-        onCancel={() => !busy && setPickerOpen(false)}
-        confirmLoading={busy}
-        okText={t("planOverview.attachSources")}
-        okButtonProps={{ disabled: !selectedSources.length }}
-        onOk={() =>
-          void action(async () => {
-            await invoke("plans.attachSources", {
-              planId,
-              sourceIds: selectedSources,
-            });
-            await refresh();
-            setPickerOpen(false);
-          })
-        }
-      >
-        {error && <Notice tone="danger">{error}</Notice>}
-        <p className="small ink-muted">{t("planOverview.pickerHelp")}</p>
-        <Table
-          tableLayout="fixed"
-          className="px-plan-source-table"
-          size="small"
-          rowKey="id"
-          loading={library.isPending}
-          dataSource={(library.data ?? []).filter(
-            (source) =>
-              !plan.data?.sources.some((attached) => attached.id === source.id) &&
-              !pastPapers.data?.papers.some((paper) =>
-                paper.sourceIds.includes(source.id),
-              ),
-          )}
-          rowSelection={{
-            selectedRowKeys: selectedSources,
-            onChange: (keys) => setSelectedSources(keys.map(String)),
-            getCheckboxProps: (source) => ({
-              disabled: busy || source.status !== "ready",
-              name: source.title,
-              "aria-label": source.title,
-            }),
-          }}
-          columns={[
-            { title: t("sources.nameColumn"), dataIndex: "title" },
-            {
-              title: t("sources.typeColumn"),
-              dataIndex: "kind",
-              render: (kind: string) =>
-                t(`sources.kind.${kind}`, { defaultValue: kind }),
-            },
-            {
-              title: t("sources.statusColumn"),
-              dataIndex: "status",
-              render: (status: string) =>
-                t(`sources.status.${status}`, { defaultValue: status }),
-            },
-          ]}
-        />
-        <Button onClick={() => setImportOpen(true)}>
-          {t("planOverview.importSource")}
-        </Button>
-      </Modal>
-      <Modal
-        width={720}
-        open={importOpen}
-        title={t("planOverview.importSource")}
-        onCancel={() => setImportOpen(false)}
-        footer={null}
-        destroyOnHidden
-      >
-        <LibraryPanel
-          importOnly
-          onClose={() => {
-            setImportOpen(false);
-            void library.refetch();
-          }}
-        />
-      </Modal>
+        onClose={() => setPickerOpen(false)}
+      />
       <Modal
         width={720}
         title={
@@ -677,133 +543,6 @@ export function PlanPage() {
           simulations={simulations.data ?? []}
         />
       )}
-      <Modal
-        open={settingsOpen}
-        title={t("planOverview.settings")}
-        onCancel={() => !busy && setSettingsOpen(false)}
-        confirmLoading={busy}
-        okText={t("planOverview.save")}
-        onOk={() =>
-          void form
-            .validateFields()
-            .then((values) =>
-              action(async () => {
-                await invoke("plans.settings", {
-                  planId,
-                  title: values.title,
-                  // An untouched goal stays as stored: on another scale its rounded input would move it.
-                  target: form.isFieldTouched("target")
-                    ? goalFraction(values.target, grade.scale)
-                    : (plan.data?.target ?? goalFraction(values.target, grade.scale)),
-                  // Noon on each day, as in the wizard, so a shared plan keeps its days in another time zone.
-                  sessions: sessionsFromDrafts(draftSessions),
-                });
-                await refresh();
-                setSettingsOpen(false);
-              }),
-            )
-            .catch(() => {})
-        }
-      >
-        {error && <Notice tone="danger">{error}</Notice>}
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="title"
-            label={t("wizard.planTitle")}
-            rules={[{ required: true, whitespace: true }]}
-          >
-            <Input maxLength={PLAN_TITLE_MAX} disabled={busy} />
-          </Form.Item>
-          <Form.Item name="target" label={t("planOverview.target")}>
-            <Slider
-              min={goalRange(grade.scale).min}
-              max={goalRange(grade.scale).max}
-              step={goalRange(grade.scale).step}
-              marks={Object.fromEntries(
-                goalRange(grade.scale).marks.map((mark) => [mark, String(mark)]),
-              )}
-              disabled={busy}
-              ariaLabelForHandle={t("planOverview.target")}
-              ariaValueTextFormatterForHandle={(value) => `${value ?? ""}/${grade.scale}`}
-              tooltip={{ formatter: (value) => `${value ?? ""}/${grade.scale}` }}
-            />
-          </Form.Item>
-          <Form.Item>
-            <ExamSessionsField
-              idPrefix="settings"
-              dateLabel={t("wizard.exam")}
-              value={draftSessions}
-              onChange={setDraftSessions}
-              disabled={busy}
-            />
-          </Form.Item>
-          <p className="small">
-            <strong>{t("planOverview.language")}: </strong>
-            {plan.data?.contentLanguage === "it"
-              ? t("wizard.italian")
-              : plan.data?.contentLanguage === "en"
-                ? t("wizard.english")
-                : (plan.data?.contentLanguage ?? i18n.language)}
-          </p>
-        </Form>
-        <section className="px-plan-settings-tools">
-          <ExportButton planId={planId} kind="plan" disabled={busy} />
-          <CalendarButton
-            planId={planId}
-            disabled={busy}
-            blocked={calendarBlocked}
-          />
-          <Button
-            disabled={busy || !plan.data?.sources.length}
-            onClick={() => setRebuildOpen(true)}
-          >
-            {t("plans.rebuild")}
-          </Button>
-        </section>
-        <section className="px-plan-archive">
-          <p className="small ink-muted">
-            {plan.data?.archivedAt != null
-              ? t("planOverview.restoreHelp")
-              : t("planOverview.archiveHelp")}
-          </p>
-          <Button
-            disabled={busy}
-            onClick={() =>
-              void action(async () => {
-                await setArchived(plan.data?.archivedAt == null);
-                setSettingsOpen(false);
-              })
-            }
-          >
-            {plan.data?.archivedAt != null
-              ? t("planOverview.restore")
-              : t("planOverview.archive")}
-          </Button>
-        </section>
-        <section className="px-plan-danger">
-          <p className="small ink-muted">{t("planOverview.deleteHelp")}</p>
-          <Button
-            danger
-            disabled={busy}
-            onClick={() =>
-              modal.confirm({
-                title: t("plans.delete"),
-                content: t("planOverview.deleteConfirm"),
-                okButtonProps: { danger: true },
-                okText: t("plans.delete"),
-                onOk: () =>
-                  action(async () => {
-                    await invoke("plans.delete", { planId });
-                    await client.invalidateQueries({ queryKey: ["plans"] });
-                    navigate("/exams");
-                  }),
-              })
-            }
-          >
-            {t("plans.delete")}
-          </Button>
-        </section>
-      </Modal>
       <Modal
         width={640}
         open={createOpen}
