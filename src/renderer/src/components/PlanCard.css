@@ -33,10 +33,8 @@
   margin: 0;
 }
 .px-plan-subject {
-  font: 500 calc(12px * var(--text-scale, 1))/calc(16px * var(--text-scale, 1))
-    var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font: 600 calc(13px * var(--text-scale, 1))/calc(18px * var(--text-scale, 1))
+    var(--font-sans);
   color: var(--ink-muted);
 }
 .px-plan-foot {

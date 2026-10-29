@@ -4,11 +4,13 @@ import {
   defaultGradeScale,
   formatGrade,
   formatGradeDelta,
+  formatGradeWhole,
   goalFraction,
   goalInput,
   goalRange,
   gradeScaleOf,
   gradeValue,
+  gradeWhole,
 } from "./grade";
 
 describe("grade scale", () => {
@@ -71,5 +73,27 @@ describe("grade scale", () => {
     expect(goalInput(0.75, 100)).toBe(75);
     expect(defaultGoal(100)).toBe(75);
     expect(defaultGoal(30)).toBe(23);
+  });
+
+  it("rounds mastery down to a whole number so a topic never looks at the goal before it is", () => {
+    expect(gradeWhole(18.6 / 30, 30)).toBe(18);
+    expect(gradeWhole(29.99 / 30, 30)).toBe(29);
+    expect(gradeWhole(1, 30)).toBe(30);
+    expect(gradeWhole(0, 30)).toBe(0);
+    // 0.57 × 30 is 17.0999… in floating point, and the pass mark itself stays 18.
+    expect(gradeWhole(0.57, 30)).toBe(17);
+    expect(gradeWhole(0.6, 30)).toBe(18);
+    expect(gradeWhole(0.599, 30)).toBe(17);
+    expect(gradeWhole(0.759, 100)).toBe(75);
+    expect(gradeWhole(0.2999, 100)).toBe(29);
+    expect(gradeWhole(1, 100)).toBe(100);
+    expect(gradeWhole(1.2, 30)).toBe(30);
+    expect(gradeWhole(-0.1, 100)).toBe(0);
+  });
+
+  it("writes a whole mastery with the scale", () => {
+    expect(formatGradeWhole(18.6 / 30, 30)).toBe("18/30");
+    expect(formatGradeWhole(0.759, 100)).toBe("75/100");
+    expect(formatGradeWhole(1, 30)).toBe("30/30");
   });
 });

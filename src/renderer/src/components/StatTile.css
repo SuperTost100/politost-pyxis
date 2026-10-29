@@ -1,7 +1,7 @@
 /* StatTile */
 .px-stat { padding: var(--space-5) var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); border-radius: var(--radius-xl); }
 .px-stat-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
-.px-stat-label { font-size: calc(13px * var(--text-scale)); line-height: calc(18px * var(--text-scale)); color: var(--ink-muted); }
+.px-stat-label { font-size: calc(13px * var(--text-scale)); line-height: calc(18px * var(--text-scale)); font-weight: 600; color: var(--ink-muted); }
 .px-stat-num { font: 600 calc(56px * var(--text-scale))/calc(56px * var(--text-scale)) var(--font-sans); letter-spacing: -.02em; }
 .px-stat-num small { font: 400 calc(22px * var(--text-scale))/calc(28px * var(--text-scale)) var(--font-sans); color: var(--ink-muted); margin-left: 4px; }
 .px-stat-pills { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
@@ -9,6 +9,6 @@
 .px-stat-foot { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); padding-top: var(--space-4); text-align: center; }
 .px-stat-foot > div + div { border-left: 1px solid var(--border); }
 .px-stat-foot b { display: block; font: 600 calc(20px * var(--text-scale))/calc(26px * var(--text-scale)) var(--font-sans); }
-.px-stat-foot span { font-size: calc(12px * var(--text-scale)); line-height: calc(16px * var(--text-scale)); color: var(--ink-muted); }
+.px-stat-foot span { font-size: calc(13px * var(--text-scale)); line-height: calc(18px * var(--text-scale)); font-weight: 600; color: var(--ink-muted); }
 .px-stat.is-compact .px-stat-head { align-items: flex-end; flex-wrap: wrap; }
 .px-stat.is-compact .px-stat-pills { flex-direction: row; flex-wrap: wrap; align-items: center; }

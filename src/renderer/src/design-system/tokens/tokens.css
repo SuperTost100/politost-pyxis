@@ -171,13 +171,13 @@
   line-height: calc(18px * var(--text-scale, 1));
   font-weight: 400;
 }
+/* The one label style: Figtree 13 semibold, sentence case. Monospace stays for values (grades, dates, durations, model names). */
 .label {
-  font-family: var(--font-mono);
-  font-size: calc(12px * var(--text-scale, 1));
-  line-height: calc(16px * var(--text-scale, 1));
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: calc(18px * var(--text-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .meta {
   font-family: var(--font-mono);
