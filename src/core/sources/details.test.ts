@@ -125,7 +125,7 @@ describe("source details", () => {
     );
     cite(db, "a", "lesson", "lesson", p2!, p3!);
     cite(db, "a", "quiz", "quiz", p2!);
-    cite(db, "a", "intro", "intro", p3!);
+    cite(db, "a", "diagnostic", "diagnostic", p3!);
     cite(db, "a", "old-lesson", "lesson", old);
     // One item citing two passages of one section counts once.
     cite(db, "a", "review", "review", old, p2!);
@@ -140,6 +140,33 @@ describe("source details", () => {
     expect(details?.bySection[0]).toMatchObject({ passageId: p2, firstPage: 2, lastPage: 2 });
     // The second version is newer than the first, but its own passages are not OCR pages.
     expect(details?.pages).toEqual({ count: 3, ocr: [], blank: [] });
+  });
+
+  it("counts lessons and quizzes, not the exam's introduction, and reads the passages quiz questions cite", () => {
+    const db = openDatabase(":memory:");
+    const sourceId = store(db, pdf([text(1), text(2)]));
+    plan(db, "a", sourceId);
+    const [p1, p2] = [passage(db, sourceId, 1), passage(db, sourceId, 2)] as const;
+    // The introduction to the exam links its passages too, but it is neither a lesson nor a quiz.
+    cite(db, "a", "intro", "intro", p1);
+    // A quiz names the passages behind each question in its body, not in item_passages.
+    db.prepare(`INSERT INTO items (id, plan_id, kind, body_json, created_at) VALUES ('quiz', 'a', 'quiz', ?, 1)`).run(
+      JSON.stringify({
+        questions: [
+          { id: "q1", stem: "?", sourceIds: [p2] },
+          { id: "q2", stem: "?", sourceIds: [p2] },
+          { id: "q3", stem: "?" },
+        ],
+      }),
+    );
+
+    const details = sourceDetails(db, sourceId);
+    // Two questions on one page are one quiz citing it once.
+    expect(details?.bySection.map(({ section, count }) => [section, count])).toEqual([
+      ["p. 2", 1],
+      ["p. 1", 0],
+    ]);
+    expect(details?.citations).toBe(1);
   });
 
   it("lists the exams that use the source with the topics drawing on it", () => {

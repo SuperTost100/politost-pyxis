@@ -83,13 +83,23 @@ export function sourceDetails(db: Database.Database, sourceId: string): SourceDe
     lastPage: number | null;
     chapter: number | null;
   }>;
-  // A citation of an older version still counts for the section of the same name in the current one.
+  // Lessons and quizzes only: a lesson links its passages in item_passages, a quiz names them per question in its body.
+  // The exam's introduction links passages too, but it is neither, so it is left out. A citation of an older version
+  // still counts for the section of the same name in the current one.
   const counts = new Map(
     (
       db
         .prepare(
-          `SELECT p.section_path AS section, COUNT(DISTINCT ip.item_id) AS n
-           FROM item_passages ip JOIN passages p ON p.id = ip.passage_id
+          `WITH cited(item_id, passage_id) AS (
+             SELECT ip.item_id, ip.passage_id FROM item_passages ip JOIN items i ON i.id = ip.item_id
+             WHERE i.kind != 'intro'
+             UNION
+             SELECT i.id, s.value FROM items i,
+               json_each(i.body_json, '$.questions') q,
+               json_each(CASE WHEN q.type = 'object' THEN q.value END, '$.sourceIds') s
+             WHERE i.kind IN ('quiz', 'diagnostic', 'review', 'review_session'))
+           SELECT p.section_path AS section, COUNT(DISTINCT cited.item_id) AS n
+           FROM cited JOIN passages p ON p.id = cited.passage_id
            WHERE p.source_id = ? AND p.section_path IS NOT NULL
            GROUP BY p.section_path`,
         )
