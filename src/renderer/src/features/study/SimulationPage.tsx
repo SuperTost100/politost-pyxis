@@ -493,6 +493,7 @@ export function SimulationPage() {
         <section className="px-sim-results">
           <Notice tone="info">{t("quiz.answersNotShared")}</Notice>
           <div className="px-sim-export">
+            <ExportButton planId={planId} kind="simulation" attemptId={run.attemptId} />
             <Button shape="round" onClick={() => navigate(`/plans/${planId}/simulation`)}>
               {t("quiz.redo")}
             </Button>
