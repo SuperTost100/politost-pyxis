@@ -68,9 +68,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font: 500 11px/16px var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font: 600 13px/18px var(--font-sans);
   white-space: nowrap;
 }
 

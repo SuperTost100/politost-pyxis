@@ -148,8 +148,8 @@ export function pyxisTheme(
         itemHoverBg: "transparent",
         itemSelectedBg: c.ink,
         itemSelectedColor: c.onInk,
-        fontFamily: FONT_MONO,
-        fontSize: 12 * textScale,
+        fontFamily: FONT_SANS,
+        fontSize: 14 * textScale,
       },
       Input: {
         borderRadius: 999,
@@ -193,7 +193,7 @@ export function pyxisTheme(
         borderRadiusSM: 8,
         defaultBg: c.surfaceRaised,
         defaultColor: c.inkMuted,
-        fontFamily: FONT_MONO,
+        fontFamily: FONT_SANS,
       },
       Tabs: {
         itemColor: c.inkMuted,
