@@ -5,7 +5,7 @@ import {
   openPlanQuiz,
   planImportedFrom,
 } from "./views";
-import { savePlanSettings, setPlanArchived } from "./settings";
+import { planFootprint, savePlanSettings, setPlanArchived } from "./settings";
 import {
   applyStoredRebuild,
   enqueuePlan,
@@ -174,6 +174,9 @@ export function planHandlers(
     },
     archive(input: { planId: string; archived: boolean }) {
       return setPlanArchived(db, input.planId, input.archived);
+    },
+    footprint(input: { planId: string }) {
+      return planFootprint(db, input.planId);
     },
     attachSources(input: { planId: string; sourceIds: string[] }) {
       return recheck(input.planId, attachPlanSources(db, input.planId, input.sourceIds));

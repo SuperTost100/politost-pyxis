@@ -311,6 +311,7 @@ const routes = {
   "subjects.remove": ["plans", "removeSubject"],
   "plans.archive": ["plans", "archive"],
   "plans.delete": ["plans", "delete"],
+  "plans.footprint": ["plans", "footprint"],
   "plans.export": ["plans", "export"],
   "plans.import": ["plans", "import"],
   "plans.series": ["plans", "series"],

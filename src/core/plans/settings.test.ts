@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { savePlanSettings } from "./settings";
+import { planFootprint, savePlanSettings, setPlanArchived } from "./settings";
 import { requests } from "../../shared/ipc";
 import { PLAN_TITLE_MAX } from "../../shared/plan-file";
 
@@ -57,6 +57,36 @@ describe("plan settings", () => {
     expect(db.prepare("SELECT title FROM plans").get()).toEqual({
       title: "Mechanics",
     });
+    db.close();
+  });
+});
+
+describe("plan footprint", () => {
+  it("counts what deleting the plan would remove, archived or not, and nothing of another plan", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans(id,title,status,created_at,updated_at) VALUES('p','Fisica','ready',1,1),('q','Chimica','ready',1,1);
+      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('t1','p','Cinematica',0,1),('t2','p','Dinamica',1,1),('t3','q','Atomi',0,1);
+      INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES
+        ('l1','p','t1','lesson','{}',1),('l2','p','t2','lesson','{}',1),('lq','q','t3','lesson','{}',1),
+        ('qz','p','t1','quiz','{}',1),('dg','p',NULL,'diagnostic','{}',1),('sm','p',NULL,'simulation','{}',1);
+      INSERT INTO attempts(id,plan_id,item_id,started_at,submitted_at) VALUES
+        ('a1','p','qz',1,2),('a2','p','qz',3,NULL),('a3','p','dg',1,2),('a4','p','sm',1,2),('a5','p','sm',3,NULL);
+      INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
+        ('c1','p','t1','a','b',1),('c2','p','t1','a','b',1),('c3','q','t3','a','b',1);
+      -- A card the student removed: the card browser can still bring it back, and the delete removes it too.
+      UPDATE cards SET removed = 1 WHERE id = 'c2';
+      -- A topic a rebuild set aside, with its lesson and a flashcard: the delete removes them with the plan.
+      INSERT INTO topics(id,plan_id,title,position,created_at,archived_at) VALUES('t4','p','Statica',2,1,4);
+      INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES('l4','p','t4','lesson','{}',1);
+      INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('c4','p','t4','a','b',1);
+    `);
+    const expected = { topics: 3, lessons: 3, quizzes: 2, simulations: 1, cards: 3 };
+    expect(planFootprint(db, "p")).toEqual(expected);
+    // The card browser leaves archived plans out; the footprint must not.
+    setPlanArchived(db, "p", true, 5);
+    expect(planFootprint(db, "p")).toEqual(expected);
+    expect(() => planFootprint(db, "missing")).toThrow("plan-missing");
     db.close();
   });
 });

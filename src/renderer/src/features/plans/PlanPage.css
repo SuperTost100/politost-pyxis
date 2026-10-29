@@ -93,21 +93,6 @@
   gap: var(--space-2) var(--space-3);
   margin: var(--space-3) 0 0;
 }
-.px-plan-settings-tools {
-  display: flex;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin: var(--space-4) 0;
-}
-.px-plan-archive,
-.px-plan-danger {
-  margin-top: var(--space-6);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-}
-.px-plan-archive + .px-plan-danger {
-  margin-top: var(--space-4);
-}
 .px-plan-archived {
   margin-top: var(--space-4);
 }

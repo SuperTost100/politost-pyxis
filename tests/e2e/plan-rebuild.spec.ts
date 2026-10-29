@@ -133,12 +133,14 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
     // The date can come later, from the plan's settings.
     const year = new Date().getFullYear() + 1;
     await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
-    const settings = page.getByRole("dialog", { name: "Impostazioni dell'esame" });
+    const settings = page.locator(".px-exam-settings");
     await expect(settings.getByLabel("Data dell'esame")).toHaveValue("");
     await settings.getByLabel("Data dell'esame").fill(`15/03/${year}`);
     await page.keyboard.press("Enter");
-    await settings.getByRole("button", { name: "Salva modifiche" }).click();
-    await expect(settings).toBeHidden();
+    const saveBar = page.getByRole("region", { name: "Modifiche da salvare" });
+    await expect(saveBar).toContainText("1 modifica da salvare: le prove.");
+    await saveBar.getByRole("button", { name: "Salva modifiche" }).click();
+    await expect(saveBar).toHaveCount(0);
     expect(new Date((await read(planId))!.examAt!)).toEqual(new Date(year, 2, 15, 12));
     await page.evaluate((id) => {
       window.location.hash = `/plans/${id}`;
