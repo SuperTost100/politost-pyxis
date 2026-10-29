@@ -156,6 +156,18 @@ describe("daily budget", () => {
     expect((await handle(postError(), testEnv(name), now)).status).toBe(204);
   });
 
+  it("asks the budget again ten minutes after it found the day full, so room given back elsewhere is seen", async () => {
+    const name = "recheck";
+    const stub = budget(name);
+    const noon = new Date(Date.UTC(2027, 10, 1, 12));
+    for (let i = 0; i < BUDGET.reportsPerDay; i++) await stub.reserve("2027-11-01", "error", 100);
+    expect((await handle(postError(), testEnv(name), noon)).status).toBe(503);
+    // Another isolate's failed write gives a place back.
+    await stub.release("2027-11-01", "error", 100);
+    expect((await handle(postError(), testEnv(name), new Date(noon.getTime() + 60_000))).status).toBe(503);
+    expect((await handle(postError(), testEnv(name), new Date(noon.getTime() + 11 * 60_000))).status).toBe(204);
+  });
+
   it("stores a report while the budget lasts", async () => {
     const now = new Date(Date.UTC(2027, 6, 1, 12));
     expect((await handle(postError(), testEnv("ok"), now)).status).toBe(204);

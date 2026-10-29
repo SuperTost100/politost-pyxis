@@ -142,11 +142,19 @@ function day(now: Date): string {
 }
 
 /**
- * The days this isolate already saw the budget run out, per kind, so a flood after that costs no Durable Object call
- * and no body read. Only a full day is remembered, never a report that was merely too big for the bytes left. A full
- * day for errors (the report count or the bytes are gone) is full for minidumps too.
+ * When this isolate last found the budget full, per kind: until that time a flood costs no Durable Object call and no
+ * body read. It holds ten minutes (never past midnight UTC), so room given back by another isolate's failed write is
+ * seen again, and this isolate forgets it at once when it gives room back itself. Only a full answer is remembered,
+ * never a report that was merely too big for the bytes left. A full answer for errors (the report count or the bytes
+ * are gone) holds for minidumps too.
  */
-const spent: Partial<Record<ReportKind, string>> = {};
+const spent: Partial<Record<ReportKind, { day: string; until: number }>> = {};
+const RECHECK_MS = 10 * 60_000;
+
+function isSpent(kind: ReportKind, now: Date): boolean {
+  const seen = spent[kind];
+  return seen !== undefined && seen.day === day(now) && seen.until > now.getTime();
+}
 
 function full(now: Date): Response {
   const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
@@ -159,8 +167,10 @@ async function reserve(env: Env, now: Date, kind: ReportKind, bytes: number): Pr
   const answer = await budget.reserve(day(now), kind, bytes);
   if (answer === "stored") return true;
   if (answer === "full") {
-    spent[kind] = day(now);
-    if (kind === "error") spent.minidump = day(now);
+    const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+    const until = { day: day(now), until: Math.min(now.getTime() + RECHECK_MS, midnight) };
+    spent[kind] = until;
+    if (kind === "error") spent.minidump = until;
   }
   return false;
 }
@@ -183,7 +193,11 @@ async function put(
     await env.REPORTS.put(key, value, options);
   } catch (error) {
     const there = await env.REPORTS.head(key).catch(() => undefined);
-    if (there === null) await env.BUDGET.get(env.BUDGET.idFromName("global")).release(day(now), kind, bytes);
+    if (there === null) {
+      await env.BUDGET.get(env.BUDGET.idFromName("global")).release(day(now), kind, bytes);
+      delete spent.error;
+      delete spent.minidump;
+    }
     throw error;
   }
 }
@@ -302,7 +316,7 @@ export async function handle(request: Request, env: Env, now = new Date()): Prom
     env.ROUTE_LIMIT.limit({ key: pathname }),
   ]);
   if (!perClient.success || !perRoute.success) return text(429, "too many reports", { "retry-after": "60" });
-  if (spent[pathname === "/error" ? "error" : "minidump"] === day(now)) return full(now);
+  if (isSpent(pathname === "/error" ? "error" : "minidump", now)) return full(now);
   try {
     return await route(request, env, now);
   } catch (error) {
