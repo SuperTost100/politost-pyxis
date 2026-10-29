@@ -96,6 +96,8 @@ const routes = [
   ["library-panel-removed", "/exams/library"],
   // The same from an exam's Sources tab: the row leaves the tab, and closing the panel puts focus on the page heading.
   ["plan-sources-removed", "/plans/audit-plan/sources"],
+  // A source saved from a link says where and when it was saved.
+  ["library-panel-link", "/exams/library"],
   // An exam's Sources tab opens the same panel; Escape closes it and focus goes back to the row.
   ["plan-sources-panel", "/plans/audit-plan/sources"],
   ["library-folder", "/exams/library"],
@@ -1060,7 +1062,7 @@ function prepareMapsEmpty(name: string) {
  * and a scan whose OCR job is reading it, 2 pages in. Every other state starts without them.
  */
 function preparePanelSources(name: string) {
-  const ids = "('audit-panel-pdf', 'audit-panel-scan')";
+  const ids = "('audit-panel-pdf', 'audit-panel-scan', 'audit-panel-link')";
   withDb((db) => {
     db.exec(`DELETE FROM jobs WHERE id = 'audit-panel-ocr';
       DELETE FROM item_passages WHERE passage_id IN (SELECT id FROM passages WHERE source_id IN ${ids});
@@ -1070,7 +1072,11 @@ function preparePanelSources(name: string) {
       DELETE FROM plan_sources WHERE source_id IN ${ids};
       DELETE FROM sources WHERE id IN ${ids};`);
   });
-  if (!["library-panel-pdf", "library-panel-scan", "library-panel-removed", "plan-sources-removed"].includes(name))
+  if (
+    !["library-panel-pdf", "library-panel-scan", "library-panel-removed", "plan-sources-removed", "library-panel-link"].includes(
+      name,
+    )
+  )
     return;
   const sha = auditScanBlob();
   const day = 24 * 60 * 60 * 1000;
@@ -1101,6 +1107,19 @@ function preparePanelSources(name: string) {
     for (let n = 1; n <= 12; n += 1)
       if (n !== 11) page("audit-panel-pdf", n, n <= 4 ? added : added + 5 * 60 * 1000);
     source.run("audit-panel-scan", "Appello 10 febbraio 2025", "ocr-queued", sha, scanned, scanned);
+    db.prepare(
+      "INSERT INTO sources(id,kind,title,status,library,origin_url,fetched_at,created_at,updated_at) VALUES('audit-panel-link','link','Serie di Fourier','ready',1,'https://appunti.example.org/fourier',?,?,?)",
+    ).run(scanned, added, added);
+    document.run("audit-panel-link-document", "audit-panel-link", added);
+    passage.run(
+      "audit-panel-link-p1",
+      "audit-panel-link",
+      "audit-panel-link-document",
+      "Una funzione periodica si scrive come somma di seni e coseni.",
+      JSON.stringify({ heading: "Coefficienti" }),
+      "Coefficienti",
+      added,
+    );
     document.run("audit-panel-scan-document", "audit-panel-scan", scanned);
     for (const n of [1, 2]) page("audit-panel-scan", n, scanned + n * 60 * 1000);
     db.exec(`INSERT INTO plan_sources(plan_id,source_id) VALUES('audit-plan','audit-panel-pdf'), ('audit-plan','audit-panel-scan');
@@ -2544,6 +2563,13 @@ async function openState(page: Page, name: string) {
         dialog.getByRole("button", {
           name: /^(Pagina 5\s*2 citazioni|Page 5\s*2 citations)$/,
         }),
+      ).toBeVisible();
+      break;
+    case "library-panel-link":
+      await page.getByRole("button", { name: "Serie di Fourier", exact: true }).click();
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByText(/^(Salvata da appunti\.example\.org il|Saved from appunti\.example\.org on) /),
       ).toBeVisible();
       break;
     case "plan-sources-removed": {
