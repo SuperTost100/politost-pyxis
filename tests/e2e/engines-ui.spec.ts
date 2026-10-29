@@ -225,7 +225,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await notice.getByRole("button", { name: "I understand" }).click();
     await expect(notice).toHaveCount(0);
     await expect(page.locator(".engines-summary")).toContainText(
-      "Pyxis uses Codex for chat, maps, flashcards and grading and Claude Code for plans, lessons and photos.",
+      "Pyxis uses Codex for chat, maps, flashcards and grading and Claude Code for exams, lessons and photos.",
       { timeout: 30000 },
     );
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(2);
@@ -239,7 +239,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
       .locator(".engines-feature-model .ant-select");
     await expect(chat).toContainText("Automatic");
     await expect(page.locator(".engines-auto-model").first()).toBeVisible();
-    // Every task starts at its own reasoning level: low for chat, high for plans.
+    // Every task starts at its own reasoning level: low for chat, high for exams.
     const effortOf = (task: string) =>
       page.getByRole("combobox", { name: `${task}: Reasoning effort` });
     await expect(effortOf("Chat")).toBeEnabled();
@@ -247,16 +247,16 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
       page.locator(".engines-feature-effort", { has: effortOf("Chat") }),
     ).toContainText("Automatic · Low");
     await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Plans") }),
+      page.locator(".engines-feature-effort", { has: effortOf("Exams") }),
     ).toContainText("Automatic · High");
     // The student's pick is kept, and shows after a reload of the stored choices.
-    await effortOf("Plans").click();
+    await effortOf("Exams").click();
     await page
       .locator(".ant-select-item-option")
       .filter({ hasText: /^Maximum$/ })
       .click();
     await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Plans") }),
+      page.locator(".engines-feature-effort", { has: effortOf("Exams") }),
     ).toContainText("Maximum");
     const stored = await page.evaluate(
       () => window.pyxis.invoke("engines.features", {}) as Promise<Record<string, { effort?: string; effortChoice?: string }>>,
@@ -279,7 +279,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await expect(back).toBeDisabled();
     // Back to automatic also returns the efforts to the tasks' own levels.
     await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Plans") }),
+      page.locator(".engines-feature-effort", { has: effortOf("Exams") }),
     ).toContainText("Automatic · High");
   } finally {
     await app.close();

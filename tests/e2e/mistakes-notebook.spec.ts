@@ -296,23 +296,15 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
       .click();
     await expect(page.getByRole("status")).toHaveText("1 question to redo from quizzes, quick checks and simulations");
 
-    // Redo a question from its exam's tab: answered right, it leaves; the topic's mastery moves.
-    await page.evaluate(() => {
-      location.hash = "#/plans/p-phys/mistakes";
-    });
-    await expect(
-      page.locator(".px-seg .ant-segmented-item-selected"),
-    ).toHaveText("Mistakes notebook");
+    // Redo a question from the notebook narrowed to one exam: answered right, it leaves; the topic's mastery moves.
+    await page.getByRole("combobox", { name: "Exam" }).click();
+    await page
+      .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica 1"]')
+      .click();
     await expect(page.getByRole("status")).toHaveText("4 questions to redo from quizzes, quick checks and simulations");
-    // The exam is the page; its topics are the next level.
-    await expect(page.getByRole("heading", { level: 2 })).toHaveText([
-      "Dinamica",
-      "Cinematica",
-    ]);
+    await expect(page.getByRole("heading", { level: 3 })).toHaveText(["Dinamica", "Cinematica"]);
     await entry("Che cosa causa").getByRole("button", { name: "Redo" }).click();
-    await expect(page).toHaveURL(
-      /#\/plans\/p-phys\/redo\?attempt=.+&from=plan$/,
-    );
+    await expect(page).toHaveURL(/#\/plans\/p-phys\/redo\?attempt=[^&]+&exam=p-phys$/);
     await expect(page.getByText("Redo mistakes")).toBeVisible();
     await page.getByRole("button", { name: /^A La forza$/ }).click();
     await page.getByRole("button", { name: "Check", exact: true }).click();
@@ -320,7 +312,8 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
       .getByRole("button", { name: "See results", exact: true })
       .click();
     await page.getByRole("button", { name: "Back to the notebook" }).click();
-    await expect(page).toHaveURL(/#\/plans\/p-phys\/mistakes$/);
+    // The notebook lives only under Exams, so that is where the redo returns, still narrowed to the same exam.
+    await expect(page).toHaveURL(/#\/exams\/mistakes\?exam=p-phys$/);
     await expect(page.getByRole("status")).toHaveText("3 questions to redo from quizzes, quick checks and simulations");
     await expect(entry("Che cosa causa")).toHaveCount(0);
     const evidence = db
@@ -335,15 +328,15 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await expect(page).toHaveURL(/#\/plans\/p-phys\/redo\?attempt=/);
     await expect(page.getByText("Question 1 of 2")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).first().click();
-    await expect(page).toHaveURL(/#\/plans\/p-phys\/mistakes$/);
+    await expect(page).toHaveURL(/#\/exams\/mistakes\?exam=p-phys$/);
 
-    // An exam without mistakes says what will appear.
+    // The exam page has no notebook of its own: an old link to it opens the exam's path.
     await page.evaluate(() => {
       location.hash = "#/plans/p-none/mistakes";
     });
-    await expect(
-      page.getByRole("heading", { name: "No mistakes to go over" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Appunti sparsi" })).toBeVisible();
+    await expect(page.locator(".px-seg .ant-segmented-item-selected")).toHaveText("Path");
+    await expect(page.locator(".px-seg").getByText("Mistakes notebook")).toHaveCount(0);
     db.close();
   } finally {
     await app.close();

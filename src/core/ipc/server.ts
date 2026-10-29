@@ -314,6 +314,7 @@ const routes = {
   "plans.import": ["plans", "import"],
   "plans.series": ["plans", "series"],
   "plans.planner": ["plans", "planner", "bare"],
+  "plans.schedule": ["plans", "schedule"],
   "plans.plannerHours": ["plans", "plannerHours"],
   "plans.complete": ["plans", "complete"],
   "plans.attachSources": ["plans", "attachSources"],

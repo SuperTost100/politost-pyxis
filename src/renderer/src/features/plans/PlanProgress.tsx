@@ -264,7 +264,6 @@ export function PlanProgress({
               </h3>
               {gaps[0] && (
                 <Button
-                  type="primary"
                   shape="round"
                   disabled={preparing}
                   onClick={() => void fill(gaps[0]!.topicId, gaps[0]!.gapId)}

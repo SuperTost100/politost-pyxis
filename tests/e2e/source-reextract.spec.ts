@@ -82,7 +82,7 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
 
     // Declining the plan-use confirmation starts nothing.
     const message = await readAgain(page, "La mia fisica", "dismiss");
-    expect(message).toMatch(/1 piano usa questa fonte/);
+    expect(message).toMatch(/1 esame usa questa fonte/);
     // Declining must start nothing. A job that never starts has no signal to wait for, so this is a fixed wait.
     await page.waitForTimeout(500);
     expect(jobs()).toEqual([]);

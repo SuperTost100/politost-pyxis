@@ -231,7 +231,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     });
     await update.click();
     await expect.poll(() => asked.length).toBe(1);
-    expect(asked[0]).toMatch(/1 piano usa questo libro/);
+    expect(asked[0]).toMatch(/1 esame usa questo libro/);
     // Declining must start nothing. A job that never starts has no signal to wait for, so this is a fixed wait.
     await page.waitForTimeout(500);
     const versions = () =>

@@ -1,108 +1,17 @@
-.px-path {
-  position: relative;
-  isolation: isolate;
-  width: min(480px, 100%);
-  margin: 0 auto;
-  padding: var(--space-4) 0 var(--space-16);
-}
-/* Finished steps fold into one line on the path's axis, so the suggested step sits near the top. */
-.px-path-summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control-sm);
-  margin: 0 auto;
-  padding: 0 var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg);
-  color: var(--ink-muted);
-  font: 400 calc(13px * var(--text-scale, 1)) / 18px var(--font-sans);
-  cursor: pointer;
-  transition: background-color 150ms ease-out, border-color 150ms ease-out;
-}
-.px-path-summary:hover {
-  border-color: var(--border-control);
-  background: var(--surface-raised);
-}
-.px-path-summary:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-.px-path-summary-icon {
-  color: var(--mastery-text);
-}
-.px-path-summary-toggle {
-  color: var(--primary-text);
-  font-weight: 500;
-}
-.px-path-summary + .px-path-list,
-.px-path-summary + .px-path-next {
-  margin-top: var(--space-8);
-}
-.px-path-list {
-  display: grid;
-  gap: var(--space-12);
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-.px-path-list + .px-path-next,
-.px-path-next + .px-path-heading {
-  margin-top: var(--space-12);
-}
-.px-path-item {
-  display: flex;
-  justify-content: center;
-}
-.px-path-item .px-node-wrap {
-  width: 152px;
-}
-.px-path-item.is-left .px-node-wrap {
-  transform: translateX(-72px);
-}
-.px-path-item.is-right .px-node-wrap {
-  transform: translateX(72px);
-}
-.px-path-item .px-node-label {
-  font: 400 12px/16px var(--font-sans);
-  letter-spacing: 0;
-  text-transform: none;
-}
-.px-path-item .px-node-title {
-  color: var(--ink);
-  font-weight: 500;
-}
-.px-path-item .is-planned .px-node-title {
-  color: var(--ink-muted);
-  font-weight: 400;
-}
-.px-path-item .px-node-detail {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.px-path-item .px-node-meta {
-  font: 400 11px/16px var(--font-mono);
-}
-
+/* "Now": the one suggested step, with the page's only primary button. */
 .px-path-next {
-  position: relative;
   display: grid;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border-radius: var(--radius-xl);
-  background: var(--surface-overlay);
-  box-shadow: var(--glow-star);
-}
-.px-path-next-head {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-6);
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--star);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 .px-path-next-icon {
-  flex: none;
+  grid-row: span 2;
   display: grid;
   place-items: center;
   width: 48px;
@@ -110,6 +19,10 @@
   border-radius: var(--radius-md);
   background: var(--star-soft);
   color: var(--star-text);
+}
+.px-path-next-icon.is-gap {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 .px-path-next-copy {
   min-width: 0;
@@ -122,13 +35,320 @@
   margin: var(--space-1) 0;
   overflow-wrap: anywhere;
 }
+.px-path-next-copy .small {
+  max-width: 60ch;
+}
 .px-path-eyebrow {
   color: var(--star-text);
 }
 .px-path-next-actions {
+  grid-column: 2;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.px-path-chooser {
+  grid-column: 1 / -1;
+}
+
+/* The path: one column of rows, joined by a line through the nodes. */
+.px-path {
+  padding-bottom: var(--space-16);
+}
+.px-path-rows {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.px-path-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  min-height: 56px;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  border-radius: var(--radius-md);
+}
+.px-path-row.is-topic {
+  grid-template-columns: 32px minmax(0, 1fr) 200px 20px;
+}
+/* The line through the node column; it stops at the first and last node. */
+.px-path-row::before {
+  content: "";
+  position: absolute;
+  left: 23px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+/* 28px is the centre of the node: the row's top padding, the node's top margin and half the node. */
+.px-path-row:first-child::before {
+  top: 28px;
+}
+.px-path-row:last-child::before {
+  bottom: auto;
+  height: 28px;
+}
+.px-path-row.is-done-line::before {
+  background: var(--mastery);
+  opacity: 0.6;
+}
+.px-path-row.is-open,
+.px-path-row.is-current {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.px-path-node {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  align-self: start;
+  margin-top: 4px;
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--border-control);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--ink-muted);
+  font: 400 13px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.px-path-row.is-open .px-path-node,
+.px-path-row.is-current .px-path-node {
+  background: var(--surface);
+}
+.px-path-node.is-done {
+  border-color: var(--mastery);
+  background: var(--mastery-soft) !important;
+  color: var(--mastery-text);
+}
+.px-path-node.is-now,
+.px-path-row.is-current .px-path-node {
+  border-color: var(--star);
+  background: var(--star-soft) !important;
+  color: var(--star-text);
+  box-shadow: var(--glow-star);
+}
+.px-path-node.is-gap {
+  border-color: var(--danger);
+  background: var(--danger-soft) !important;
+  color: var(--danger);
+}
+.px-path-node.is-step {
+  border-style: dashed;
+}
+.px-path-node.is-goal {
+  border-color: var(--star);
+  color: var(--star-text);
+}
+.px-path-row-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+button.px-path-row-main {
+  cursor: pointer;
+}
+button.px-path-row-main:focus-visible,
+.px-path-summary:focus-visible,
+.px-path-done button:focus-visible,
+.px-path-step:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+/* The whole row answers the pointer, not only its text. */
+button.px-path-row-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+}
+.px-path-row:has(> button.px-path-row-main):hover {
+  background: var(--surface);
+}
+.px-path-meter,
+.px-path-detail {
+  position: relative;
+  z-index: 1;
+}
+.px-path-name {
+  font: 600 calc(15px * var(--text-scale, 1)) / calc(22px * var(--text-scale, 1)) var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.px-path-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.px-path-sub > span + span::before {
+  content: "·";
+  margin-right: var(--space-2);
+}
+.px-path-sub .px-tag {
+  margin: 0;
+}
+.px-path-chev {
+  color: var(--ink-subtle);
+  transition: transform 150ms ease-out;
+}
+.px-path-chev.is-open {
+  transform: rotate(180deg);
+}
+.px-path-group {
+  padding: var(--space-4) var(--space-2) var(--space-1) 56px;
+  position: relative;
+}
+.px-path-group::before {
+  content: "";
+  position: absolute;
+  left: 23px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+.px-path-group h2 {
+  margin: 0;
+}
+
+/* The topic the student is on: its steps on one row, then what it covers and what was made for it. */
+.px-path-detail {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+.px-path-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.px-path-steps ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.px-path-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  color: var(--ink-muted);
+  font: 400 calc(13px * var(--text-scale, 1)) / 1 var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
+}
+.px-path-step:hover {
+  border-color: var(--border-control);
+  background: var(--surface-raised);
+}
+.px-path-step.is-done {
+  color: var(--mastery-text);
+}
+.px-path-step.is-missed {
+  color: var(--danger);
+}
+.px-path-step.is-now {
+  border-color: var(--star);
+  color: var(--ink);
+  font-weight: 600;
+}
+.px-path-about {
+  margin: 0;
+  max-width: 72ch;
+}
+.px-path-items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-1);
+}
+.px-path-items .ant-btn {
+  height: auto;
+  padding: 0 var(--space-1);
+  font-size: calc(13px * var(--text-scale, 1));
+  font-weight: 400;
+}
+
+/* Finished steps fold into the first row; open, they list under it to look at again. */
+.px-path-summary {
+  justify-self: start;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.px-path-summary-toggle {
+  color: var(--primary-text);
+  font-weight: 500;
+}
+.px-path-done {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: 2px;
+  padding: 0 0 var(--space-2);
+  margin: 0;
+  list-style: none;
+}
+.px-path-done button {
+  display: grid;
+  grid-template-columns: 16px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: 400 calc(13px * var(--text-scale, 1)) / calc(18px * var(--text-scale, 1)) var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.px-path-done button:hover {
+  background: var(--surface-raised);
+}
+.px-path-done .px-icon {
+  color: var(--mastery-text);
+}
+.px-path-done-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-path-done-meta {
+  color: var(--mastery-text);
+}
+/* Commas and the state for the button's name: inline, so the name has no space before them, and drawn at no size. */
+.px-path-sep {
+  font-size: 0;
+}
+.px-path-row.is-exam .px-path-name {
+  font-weight: 600;
 }
 .px-path-more {
   display: inline-flex;
@@ -268,48 +488,22 @@
   text-align: right;
 }
 
-/* "Planned" sits on the path's axis, between the suggested step and the first planned one. */
-.px-path-heading {
-  width: fit-content;
-  margin: 0 auto var(--space-8);
-  padding: var(--space-1) var(--space-3);
-  color: var(--ink-muted);
-}
-.px-path-lines {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-}
-.px-path-lines path {
-  fill: none;
-  stroke-width: 1.5;
-}
-.px-path-lines path.is-done {
-  stroke: var(--mastery);
-}
-.px-path-lines path.is-planned {
-  stroke: var(--border-control);
-  stroke-dasharray: 4 5;
-}
 
-@media (max-width: 600px) {
-  .px-path-item.is-left .px-node-wrap {
-    transform: translateX(-48px);
-  }
-  .px-path-item.is-right .px-node-wrap {
-    transform: translateX(48px);
+@media (max-width: 760px) {
+  .px-path-row.is-topic {
+    grid-template-columns: 32px minmax(0, 1fr) 140px 20px;
   }
   .px-path-options {
     grid-template-columns: minmax(0, 1fr);
   }
+  .px-path-next-actions {
+    grid-column: 1 / -1;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .px-path-more svg,
-  .px-path-summary {
+  .px-path-chev,
+  .px-path-step {
     transition: none;
   }
 }

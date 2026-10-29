@@ -1862,6 +1862,18 @@ export const requests = {
       ),
     }),
   },
+  "plans.schedule": {
+    // The day each topic below the target and the simulation should be done at the planner's pace (YYYY-MM-DD, null
+    // when it does not fit before the exam). Null when the planner has no days for this exam.
+    input: z.object({ planId: z.string() }),
+    output: z
+      .object({
+        topics: z.array(z.object({ topicId: z.string(), date: z.string().nullable() })),
+        simulation: z.object({ date: z.string().nullable() }).nullable(),
+        behind: plannerExam.shape.behind,
+      })
+      .nullable(),
+  },
   "plans.plannerHours": {
     // The usual hours a week, or with `week` (its Monday) the hours of that week; null clears that week's own value.
     input: z.object({

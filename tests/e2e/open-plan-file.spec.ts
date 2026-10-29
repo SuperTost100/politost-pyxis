@@ -104,7 +104,7 @@ test("main refuses a name or type that is not a plan file, and the renderer cann
     await app.evaluate(({ app: electron }, path) => {
       electron.emit("open-file", { preventDefault() {} }, path);
     }, folder);
-    await expect(page.getByText("Quel file non è un piano di Pyxis.")).toBeVisible();
+    await expect(page.getByText("Quel file non è un esame di Pyxis.")).toBeVisible();
     await expect(page.locator(".px-import-review")).toHaveCount(0);
   } finally {
     await app.close();
@@ -137,7 +137,7 @@ test("a .pyxis file dropped on the window opens the import review, and other dro
     await expect(page.locator(".px-import-review")).toContainText("Dropped");
     // A file that is not a plan says why instead of failing silently.
     await drop("Broken.pyxis", "not json");
-    await expect(page.getByText("Questo file non è un piano di Pyxis.")).toBeVisible();
+    await expect(page.getByText("Questo file non è un esame di Pyxis.")).toBeVisible();
     await drop("Newer.pyxis", JSON.stringify({ version: 9, title: "x", topics: [], nodes: [], cards: [] }));
     await expect(page.getByText(/versione più recente di Pyxis/)).toBeVisible();
   } finally {
@@ -153,7 +153,7 @@ test("a plan with broken exercises names the problem and imports the rest", asyn
     await skipSetup(page);
     await page.goto(page.url().replace(/#.*$/, "#/exams/get"));
     // The page loads on its first visit; until then the previous page and its own file input are still there.
-    await expect(page.getByRole("heading", { level: 1, name: "Apri un piano condiviso" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Apri un esame condiviso" })).toBeVisible();
     const broken = plan("Con esercizi rotti", {
       exercises: [
         {
@@ -175,7 +175,7 @@ test("a plan with broken exercises names the problem and imports the rest", asyn
     await expect(page.locator(".px-import-review")).toBeVisible();
     await page.getByRole("button", { name: "Importa", exact: true }).click();
     const notice = page.locator(".px-import-review .px-notice");
-    await expect(notice).toContainText("Nel file manca un brano citato dal piano.");
+    await expect(notice).toContainText("Nel file manca un brano citato dall'esame.");
     await expect(notice).toContainText("Il problema è solo negli esercizi");
     expect(await page.evaluate(() => window.pyxis.invoke("plans.list", {}))).toHaveLength(0);
     await shoot(page, "partial");
@@ -196,7 +196,7 @@ test("a plan broken outside the exercises and maps offers nothing to leave out",
     await skipSetup(page);
     await page.goto(page.url().replace(/#.*$/, "#/exams/get"));
     // The page loads on its first visit; until then the previous page and its own file input are still there.
-    await expect(page.getByRole("heading", { level: 1, name: "Apri un piano condiviso" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Apri un esame condiviso" })).toBeVisible();
     const broken = plan("Senza argomento", {
       nodes: [{ title: "Passo", kind: "learn", position: 0, topic: 7 }],
     });

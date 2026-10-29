@@ -116,17 +116,14 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
       .click();
     // The plan page loads on its first visit and the build page stays until it has; the URL moves once it is there.
     await expect(page).toHaveURL(new RegExp(`#/plans/${created.planId}$`));
-    await page.getByText("Argomenti", { exact: true }).click();
-    await page.getByText("Moto", { exact: true }).first().click();
-    await expect(
-      page.getByText("Accelerazione", { exact: true }),
-    ).toBeVisible();
+    // The topics are the path: a topic's row opens to show its steps and what it covers.
+    await page.getByRole("button", { name: /^Moto/ }).click();
+    await expect(page.locator(".px-path-about")).toContainText("Accelerazione");
     const result = (await page.evaluate(
       (id) => window.pyxis.invoke("plans.read", { planId: id }),
       created.planId,
     )) as { topics: Array<{ title: string }> };
     expect(result.topics).toHaveLength(1);
-    await page.locator(".px-plan-page .px-seg-wrap").getByText("Percorso", { exact: true }).click();
     // A new plan suggests the introduction first.
     await page
       .locator(".px-path-next")

@@ -157,7 +157,7 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       location.hash = "/plans/export-plan";
     });
     await page
-      .getByRole("button", { name: /^(Impostazioni del piano|Plan settings)$/ })
+      .getByRole("button", { name: /^(Impostazioni dell'esame|Exam settings)$/ })
       .click();
     await page
       .getByRole("button", { name: /^(Esporta|Export)$/, exact: true })

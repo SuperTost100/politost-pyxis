@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,7 +15,7 @@ import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
-import { PLAN_TITLE_MAX } from "@shared/plan-file";
+import { PLAN_TITLE_MAX, reachableTarget } from "@shared/plan-file";
 import { examDaysLabel, onTrackLabel } from "./examDays";
 import { ExamSessionsField } from "./ExamSessionsField";
 import {
@@ -29,10 +29,8 @@ import {
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
-import { MasteryBar } from "../../components/MasteryBar";
 import { goalFraction, goalInput, goalRange } from "../../lib/grade";
 import { useGradeScale } from "../../lib/useGradeScale";
-import { Icon } from "../../components/Icon";
 import { Tag } from "../../components/Tag";
 import { LibraryPanel } from "../home/LibraryPanel";
 import { IconButton } from "../../components/IconButton";
@@ -47,12 +45,11 @@ import { CalendarButton } from "../share/CalendarButton";
 import { ExportButton } from "../share/ExportButton";
 import { PlanProgress } from "./PlanProgress";
 import { RebuildDialog } from "./RebuildDialog";
-import { PlanPath } from "./PlanPath";
-import { MistakesNotebook } from "../study/MistakesNotebook";
+import { NextStep, PlanPath, type TopicAction } from "./PlanPath";
 import { SourceRow } from "../../components/SourceRow";
 import { PastPapers } from "./PastPapers";
 import "./PlanPage.css";
-import { pastPapersQuery, sourcesQuery, usePlan, useRecommend } from "../../lib/queries";
+import { pastPapersQuery, scheduleQuery, sourcesQuery, usePlan, useRecommend } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -95,6 +92,7 @@ export function PlanPage() {
     queryFn: () => invoke("plans.simulations", { planId }),
   });
   const pastPapers = useQuery({ ...pastPapersQuery(planId), enabled: !!planId });
+  const schedule = useQuery({ ...scheduleQuery(planId), enabled: !!planId });
   const series = useQuery({
     queryKey: ["series", planId],
     enabled: !!planId,
@@ -127,7 +125,8 @@ export function PlanPage() {
   // The sessions as edited, so the calendar button never exports older saved ones.
   const [draftSessions, setDraftSessions] = useState<SessionDraft[]>([emptyDraft()]);
   const [modal, modalContext] = Modal.useModal();
-  const tab = ["progress", "topics", "sources", "mistakes"].includes(view ?? "")
+  // Old links to the removed Topics and Mistakes tabs land on the path.
+  const tab = ["progress", "sources"].includes(view ?? "")
     ? view!
     : "path";
   const progress = series.data;
@@ -230,12 +229,26 @@ export function PlanPage() {
       navigate(`/ask/${thread.chatId}`);
     });
   }
+  function topicAction(kind: TopicAction, topic: Plan["topics"][number]) {
+    if (kind === "map") navigate(`/plans/${planId}/map/${topic.id}`);
+    if (kind === "viewer" && topic.firstPassageId) openSourceViewer({ passageId: topic.firstPassageId });
+    if (kind === "create") showCreate(topic.id);
+    if (kind === "ask") askTopic(topic);
+  }
   const previewBody = itemPreview
     ? (JSON.parse(itemPreview.bodyJson) as {
         markdown?: string;
         questions?: Array<{ stem: string; options?: string[] }>;
       })
     : null;
+  function examDays(examAt: number) {
+    const days = dayjs(examAt).startOf("day").diff(dayjs().startOf("day"), "day");
+    return days > 0 ? t("wizard.daysLeft", { count: days }) : examDaysLabel(t, days);
+  }
+  // Nothing measured yet: no topic has mastery and nothing graded was done.
+  const unmeasured =
+    (progress?.preparation.mastery ?? 0) === 0 &&
+    !plan.data?.steps.some((step) => !["intro", "lesson"].includes(step.activity));
   if (plan.data?.status === "building")
     return (
       <section>
@@ -281,236 +294,187 @@ export function PlanPage() {
         {t("doors.exams")}
       </Link>
       <header className="px-plan-header">
-        {plan.data?.subject && (
-          <p className="label ink-muted">{plan.data.subject}</p>
-        )}
-        <h1 className="title-1">{plan.data?.title ?? t("wizard.title")}</h1>
-        <p className="meta ink-muted">
-          {plan.data?.examAt != null
-            ? examDaysLabel(
-                t,
-                dayjs(plan.data.examAt).startOf("day").diff(dayjs().startOf("day"), "day"),
-              )
-            : t("plans.noExam")}{" "}
-          ·{" "}
-          {onTrackLabel(
-            t,
-            progress?.preparation.onTrack ?? 0,
-            progress?.preparation.totalTopics ?? 0,
-            plan.data?.target ?? 0.75,
-            grade.format,
-          )}
-        </p>
-        {plan.data &&
-        (plan.data.sessions.length > 1 ||
-          plan.data.sessions.some((s) => s.time || s.place || s.label)) ? (
-          <ul className="px-plan-sessions small ink-muted" aria-label={t("sessions.list")}>
-            {plan.data.sessions.map((session) => (
-              <li key={session.id}>
-                {sessionLine(session, i18n.language, t)}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <MasteryBar
-          value={(progress?.preparation.mastery ?? 0) * 100}
-          target={(plan.data?.target ?? 0.75) * 100}
-          scale={grade.scale}
-          label={t("progress.title")}
-        />
-        {/* Topic bars show one topic each; this bar weighs every topic by its passages, so it reads much lower early on. */}
-        <p className="small ink-muted px-plan-mastery-note">{t("planOverview.planMastery")}</p>
+        <div className="px-plan-title">
+          {plan.data?.subject && <p className="label ink-muted">{plan.data.subject}</p>}
+          <h1 className="title-1">{plan.data?.title ?? t("wizard.title")}</h1>
+        </div>
         <div className="px-plan-header-actions">
-          <Button
-            shape="round"
-            onClick={() => navigate(`/plans/${planId}/review`)}
+          <Dropdown
+            trigger={["click"]}
             disabled={!plan.data}
+            menu={{
+              items: [
+                { key: "review", label: t("cards.reviewTitle") },
+                { key: "create", label: t("planOverview.create"), disabled: !plan.data?.topics.length },
+              ],
+              onClick: ({ key }) => (key === "review" ? navigate(`/plans/${planId}/review`) : showCreate()),
+            }}
           >
-            {t("cards.reviewTitle")}
-          </Button>
+            <Button shape="round" disabled={!plan.data}>
+              <span className="px-plan-more">
+                {t("planOverview.more")}
+                <ChevronDown size={16} strokeWidth={1.75} aria-hidden />
+              </span>
+            </Button>
+          </Dropdown>
           {/* Only an exam with a session today or later has anything to save. */}
-          {upcomingDay !== null ? (
-            <CalendarButton planId={planId} icon />
-          ) : null}
+          {upcomingDay !== null ? <CalendarButton planId={planId} icon /> : null}
           <IconButton
             icon="settings"
             label={t("planOverview.settings")}
             onClick={openSettings}
             disabled={!plan.data}
           />
-          {/* Not primary: the path's suggested step is the one main action on this page. */}
-          <Button
-            onClick={() => showCreate()}
-            disabled={!plan.data?.topics.length}
-          >
-            {t("planOverview.create")}
-          </Button>
         </div>
-        {plan.data?.imported && (
-          <p className="px-plan-origin">
-            <Tag>{t("planOverview.imported")}</Tag>
-            <span className="small ink-muted">
-              {[
-                plan.data.importedFrom?.author,
-                new Date(
-                  plan.data.importedFrom?.exportedAt ??
-                    plan.data.importedFrom?.importedAt ??
-                    0,
-                ).toLocaleDateString(i18n.language),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
-          </p>
-        )}
-        {plan.data?.archivedAt != null && (
-          <div className="px-plan-archived">
-            <Notice
-              tone="info"
-              action={{
-                label: t("planOverview.restore"),
-                onClick: () => void action(() => setArchived(false)),
-              }}
-            >
-              {t("planOverview.archivedNotice")}
-            </Notice>
-          </div>
-        )}
-        {(plan.data?.status === "draft" ||
-          plan.data?.topics.some((topic) => topic.grounding === "general")) && (
-          <Notice tone="warning">{t("plans.draft")}</Notice>
-        )}
       </header>
-      <SegmentedTabs
-        label={t("plans.views")}
-        value={tab}
-        onChange={(next) => navigate(`/plans/${planId}/${next}`)}
-        items={[
-          { value: "path", label: t("plans.tabPath") },
-          { value: "topics", label: t("plans.tabTopics") },
-          { value: "sources", label: t("plans.tabSources") },
-          { value: "progress", label: t("progress.title") },
-          { value: "mistakes", label: t("mistakes.title") },
-        ]}
-      />
+      {plan.data ? (
+        <dl className="px-plan-facts">
+          <div>
+            <dt className="label ink-muted">{t("planOverview.factExam")}</dt>
+            {plan.data.examAt != null ? (
+              <>
+                <dd className="px-plan-fact">
+                  {new Intl.DateTimeFormat(i18n.language, {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "long",
+                  }).format(plan.data.examAt)}
+                </dd>
+                <dd className="small ink-muted">{examDays(plan.data.examAt)}</dd>
+              </>
+            ) : (
+              <>
+                <dd className="px-plan-fact">{t("plans.noExam")}</dd>
+                <dd className="small ink-muted">{t("planOverview.noExamSub")}</dd>
+              </>
+            )}
+          </div>
+          <div>
+            <dt className="label ink-muted">{t("planOverview.factGoal")}</dt>
+            <dd className="px-plan-fact">
+              {grade.number(plan.data.target)}
+              <small>/{grade.scale}</small>
+            </dd>
+            <dd className="small ink-muted">
+              {!progress
+                ? null
+                : grade.format(reachableTarget(plan.data.target)) === grade.format(plan.data.target)
+                  ? t("planOverview.goalSub", {
+                      ready: progress.preparation.onTrack,
+                      count: progress.preparation.totalTopics,
+                    })
+                  : // A full-mark goal counts topics at a reachable mark, and this line names it.
+                    onTrackLabel(
+                      t,
+                      progress.preparation.onTrack,
+                      progress.preparation.totalTopics,
+                      plan.data.target,
+                      grade.format,
+                    )}
+            </dd>
+          </div>
+          <div>
+            <dt className="label ink-muted">{t("planOverview.factPreparation")}</dt>
+            {!progress ? null : unmeasured ? (
+              <>
+                <dd className="px-plan-fact">{t("planOverview.unmeasured")}</dd>
+                <dd className="small ink-muted">{t("planOverview.unmeasuredSub")}</dd>
+              </>
+            ) : (
+              <>
+                <dd className="px-plan-fact">
+                  {grade.number(progress.preparation.mastery)}
+                  <small>/{grade.scale}</small>
+                </dd>
+                <dd className="small ink-muted">
+                  {schedule.data?.behind
+                    ? t("planOverview.atExam", { grade: grade.format(schedule.data.behind.masteryAtExam) })
+                    : t("planOverview.planMastery")}
+                </dd>
+              </>
+            )}
+          </div>
+        </dl>
+      ) : null}
+      {plan.data &&
+      (plan.data.sessions.length > 1 ||
+        plan.data.sessions.some((s) => s.time || s.place || s.label)) ? (
+        <ul className="px-plan-sessions small ink-muted" aria-label={t("sessions.list")}>
+          {plan.data.sessions.map((session) => (
+            <li key={session.id}>{sessionLine(session, i18n.language, t)}</li>
+          ))}
+        </ul>
+      ) : null}
+      {plan.data?.imported && (
+        <p className="px-plan-origin">
+          <Tag>{t("planOverview.imported")}</Tag>
+          <span className="small ink-muted">
+            {[
+              plan.data.importedFrom?.author,
+              new Date(
+                plan.data.importedFrom?.exportedAt ?? plan.data.importedFrom?.importedAt ?? 0,
+              ).toLocaleDateString(i18n.language),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        </p>
+      )}
+      {plan.data?.archivedAt != null && (
+        <div className="px-plan-archived">
+          <Notice
+            tone="info"
+            action={{
+              label: t("planOverview.restore"),
+              onClick: () => void action(() => setArchived(false)),
+            }}
+          >
+            {t("planOverview.archivedNotice")}
+          </Notice>
+        </div>
+      )}
+      {(plan.data?.status === "draft" ||
+        plan.data?.topics.some((topic) => topic.grounding === "general")) && (
+        <div className="px-plan-archived">
+          <Notice tone="warning">{t("plans.draft")}</Notice>
+        </div>
+      )}
+      {plan.data ? <NextStep planId={planId} plan={plan.data} guide={recommended.data ?? undefined} /> : null}
+      <div className="px-plan-tabs">
+        <SegmentedTabs
+          label={t("plans.views")}
+          value={tab}
+          onChange={(next) => navigate(`/plans/${planId}/${next}`)}
+          items={[
+            { value: "path", label: t("plans.tabPath") },
+            {
+              value: "sources",
+              label: t("plans.tabSources"),
+              badge: plan.data?.sources.length ? String(plan.data.sources.length) : undefined,
+            },
+            { value: "progress", label: t("progress.title") },
+          ]}
+        />
+        {tab === "path" && plan.data ? (
+          <span className="px-plan-legend small ink-muted">
+            <span className="px-plan-legend-tick" aria-hidden />
+            {t("plans.path.legend", { goal: grade.format(plan.data.target) })}
+          </span>
+        ) : null}
+      </div>
       {error && !settingsOpen && !createOpen && (
         <Notice tone="danger">{error}</Notice>
       )}
       {tab === "path" && plan.data && (
-        <PlanPath planId={planId} plan={plan.data} guide={recommended.data ?? undefined} />
-      )}
-      {tab === "topics" && (
-        <ul className="px-plan-topics">
-          {plan.data?.topics.map((topic) => (
-            <li key={topic.id}>
-              <div className="px-plan-topic-row">
-                <details>
-                  <summary>
-                    <span>
-                      <span className="body-strong">
-                        {topic.chapter !== null && (
-                          <Icon name="book-marked" size={16} />
-                        )}{" "}
-                        {topic.title}
-                        {topic.grounding === "general" && (
-                          <span className="px-plan-topic-tag">
-                            <Tag>{t("components.tags.ai")}</Tag>
-                          </span>
-                        )}
-                      </span>
-                      <span className="meta ink-muted px-plan-topic-meta">
-                        {t("planOverview.topicPassages", {
-                          count: topic.passageCount,
-                        })}{" "}
-                        ·{" "}
-                        {t("planOverview.topicLessons", {
-                          count: topic.lessons,
-                        })}
-                        {topic.chapter !== null
-                          ? ` · ${t("planOverview.chapter", { number: topic.chapter })}`
-                          : ""}
-                      </span>
-                    </span>
-                    <MasteryBar
-                      label={topic.title}
-                      value={
-                        (progress?.topics.find((row) => row.id === topic.id)
-                          ?.mastery ?? 0) * 100
-                      }
-                      scale={grade.scale}
-                      showValue={false}
-                    />
-                  </summary>
-                  {topic.summary && <p>{topic.summary}</p>}
-                  <ul>
-                    {topic.subtopics.map((name, index) => (
-                      <li key={index}>{name}</li>
-                    ))}
-                  </ul>
-                  {topic.items.length ? (
-                    <ul className="px-plan-generated-items">
-                      {topic.items.map((item) => (
-                        <li key={item.id}>
-                          <Button
-                            type="text"
-                            disabled={busy}
-                            onClick={() => openItem(item, topic.id)}
-                          >
-                            {t(
-                              item.kind === "lesson"
-                                ? "lesson.title"
-                                : item.kind === "quiz"
-                                  ? "quiz.title"
-                                  : item.kind === "map"
-                                    ? "map.title"
-                                    : `plans.${item.kind}`,
-                            )}{" "}
-                            ·{" "}
-                            {new Date(item.createdAt).toLocaleDateString(
-                              i18n.language,
-                            )}
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="small ink-muted">
-                      {t("planOverview.noLessons")}
-                    </p>
-                  )}
-                </details>
-                <Dropdown
-                  menu={{
-                    items: [
-                      {
-                        key: "viewer",
-                        label: t("planOverview.openViewer"),
-                        disabled: !topic.firstPassageId,
-                      },
-                      { key: "create", label: t("planOverview.create") },
-                      { key: "ask", label: t("planOverview.askTopic") },
-                    ],
-                    onClick: ({ key }) => {
-                      if (key === "viewer" && topic.firstPassageId)
-                        openSourceViewer({ passageId: topic.firstPassageId });
-                      if (key === "create") showCreate(topic.id);
-                      if (key === "ask") askTopic(topic);
-                    },
-                  }}
-                  trigger={["click"]}
-                >
-                  <Button
-                    type="text"
-                    aria-label={t("planOverview.topicActions", {
-                      title: topic.title,
-                    })}
-                    icon={<Icon name="settings" size={16} />}
-                  />
-                </Dropdown>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <PlanPath
+          planId={planId}
+          plan={plan.data}
+          guide={recommended.data ?? undefined}
+          schedule={schedule.data}
+          onTopicAction={topicAction}
+          onOpenItem={openItem}
+          itemsBusy={busy}
+        />
       )}
       {tab === "sources" && (
         <section className="px-plan-sources">
@@ -704,7 +668,6 @@ export function PlanPage() {
           simulations={simulations.data ?? []}
         />
       )}
-      {tab === "mistakes" && <MistakesNotebook planId={planId} />}
       <Modal
         open={settingsOpen}
         title={t("planOverview.settings")}

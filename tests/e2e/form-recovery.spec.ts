@@ -44,7 +44,7 @@ test("onboarding save and invalid plan imports remain retryable", async () => {
         await input.setInputFiles(invalid);
         await expect(
           page.getByText(
-            "Il piano non è stato importato. Scegli un file di piano .pyxis valido e riprova.",
+            "L'esame non è stato importato. Scegli un file d'esame .pyxis valido e riprova.",
           ),
         ).toBeVisible();
         await expect(input).toHaveValue("");

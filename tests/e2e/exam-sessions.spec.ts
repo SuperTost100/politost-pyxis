@@ -61,12 +61,12 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     const read = (planId: string) =>
       page.evaluate((id) => window.pyxis.invoke("plans.read", { planId: id }), planId);
 
-    // Plan settings: two sessions, the first with a time and a place.
+    // Exam settings: two sessions, the first with a time and a place.
     await page.evaluate(() => {
       location.hash = "/plans/plan-a";
     });
-    await page.getByRole("button", { name: "Plan settings" }).click();
-    const dialog = page.getByRole("dialog", { name: "Plan settings" });
+    await page.getByRole("button", { name: "Exam settings" }).click();
+    const dialog = page.getByRole("dialog", { name: "Exam settings" });
     await dialog.getByLabel("Exam date").fill(dmy(written));
     await page.keyboard.press("Enter");
     await dialog.getByLabel("Time (optional)").fill("09:30");
@@ -108,7 +108,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await snap("plan-header-sessions", "en", "light");
     await setLook("en", "dark");
     await snap("plan-header-sessions", "en", "dark");
-    await page.getByRole("button", { name: "Plan settings" }).click();
+    await page.getByRole("button", { name: "Exam settings" }).click();
     await snap("plan-settings-sessions", "en", "dark");
     await expectNoAxeViolations(page);
 
@@ -121,7 +121,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await page.evaluate(() => {
       location.hash = "/plans/plan-b";
     });
-    await page.getByRole("button", { name: "Plan settings" }).click();
+    await page.getByRole("button", { name: "Exam settings" }).click();
     await dialog.getByRole("button", { name: "Archive exam" }).click();
     await expect(dialog).toBeHidden();
     await expect(page.getByText("This exam is archived.")).toBeVisible();
@@ -189,8 +189,8 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await page.evaluate(() => {
       location.hash = "/plans/plan-a";
     });
-    await page.getByRole("button", { name: "Impostazioni del piano" }).click();
-    const settings = page.getByRole("dialog", { name: "Impostazioni del piano" });
+    await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
+    const settings = page.getByRole("dialog", { name: "Impostazioni dell'esame" });
     await expect(settings.getByRole("button", { name: "Aggiungi un'altra prova" })).toBeVisible();
     await snap("plan-settings-sessions-narrow", "it", "dark");
     await settings.getByRole("button", { name: "Annulla" }).click().catch(() => page.keyboard.press("Escape"));
