@@ -94,6 +94,8 @@ const routes = [
   ["library-panel-scan", "/exams/library"],
   // A source removed after the list was read: the panel says it is gone instead of staying blank.
   ["library-panel-removed", "/exams/library"],
+  // The same from an exam's Sources tab: the row leaves the tab, and closing the panel puts focus on the page heading.
+  ["plan-sources-removed", "/plans/audit-plan/sources"],
   // An exam's Sources tab opens the same panel; Escape closes it and focus goes back to the row.
   ["plan-sources-panel", "/plans/audit-plan/sources"],
   ["library-folder", "/exams/library"],
@@ -1068,7 +1070,8 @@ function preparePanelSources(name: string) {
       DELETE FROM plan_sources WHERE source_id IN ${ids};
       DELETE FROM sources WHERE id IN ${ids};`);
   });
-  if (!["library-panel-pdf", "library-panel-scan", "library-panel-removed"].includes(name)) return;
+  if (!["library-panel-pdf", "library-panel-scan", "library-panel-removed", "plan-sources-removed"].includes(name))
+    return;
   const sha = auditScanBlob();
   const day = 24 * 60 * 60 * 1000;
   const added = Date.now() - 10 * day;
@@ -2543,6 +2546,27 @@ async function openState(page: Page, name: string) {
         }),
       ).toBeVisible();
       break;
+    case "plan-sources-removed": {
+      const row = page.getByRole("button", { name: "Esercitazioni Analisi 1 2025", exact: true });
+      await expect(row).toBeVisible();
+      // Removed elsewhere after the exam was read, as a confirmed removal does: the source and its link to the exam.
+      withDb((db) =>
+        db.exec(`UPDATE sources SET status = 'removed' WHERE id = 'audit-panel-pdf';
+          DELETE FROM plan_sources WHERE source_id = 'audit-panel-pdf';`),
+      );
+      await row.click();
+      await expect(
+        dialog.getByText(
+          both("Questa fonte non è più nella libreria.", "This source is no longer in the library."),
+        ),
+      ).toBeVisible();
+      await expect(row).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      // The row it came from is gone, so focus goes to the page heading rather than nowhere.
+      await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+      break;
+    }
     case "library-panel-removed": {
       const row = page.getByRole("button", { name: "Esercitazioni Analisi 1 2025", exact: true });
       await expect(row).toBeVisible();

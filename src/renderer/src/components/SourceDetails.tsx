@@ -523,7 +523,15 @@ export function SourceDetails({
         const row = document.querySelector<HTMLElement>(
           `[data-source-id="${CSS.escape(id)}"] .px-source-row-title`,
         );
-        row?.focus();
+        // A source removed meanwhile has no row left; the page's visible heading keeps focus from staying on the closed
+        // panel. The page can hold an empty, hidden h1 before it, which cannot take focus.
+        const target =
+          row ??
+          Array.from(document.querySelectorAll<HTMLElement>("h1")).find(
+            (heading) => heading.textContent?.trim() && heading.getClientRects().length > 0,
+          );
+        if (target && target !== row && !target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+        target?.focus();
         const next = afterClose.current;
         afterClose.current = null;
         next?.();
