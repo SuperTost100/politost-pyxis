@@ -75,8 +75,12 @@ describe("plan footprint", () => {
       INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
         ('c1','p','t1','a','b',1),('c2','p','t1','a','b',1),('c3','q','t3','a','b',1);
       UPDATE cards SET removed = 1 WHERE id = 'c2';
+      -- A topic a rebuild set aside, with its lesson and a flashcard: the delete removes them with the plan.
+      INSERT INTO topics(id,plan_id,title,position,created_at,archived_at) VALUES('t4','p','Statica',2,1,4);
+      INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES('l4','p','t4','lesson','{}',1);
+      INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('c4','p','t4','a','b',1);
     `);
-    const expected = { topics: 2, lessons: 2, quizzes: 2, simulations: 1, cards: 1 };
+    const expected = { topics: 3, lessons: 3, quizzes: 2, simulations: 1, cards: 2 };
     expect(planFootprint(db, "p")).toEqual(expected);
     // The card browser leaves archived plans out; the footprint must not.
     setPlanArchived(db, "p", true, 5);
