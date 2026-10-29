@@ -92,6 +92,13 @@ describe("daily budget", () => {
     expect(await counter.reserve("2027-03-01", "error", 1)).toBe("full");
   });
 
+  it("still takes the smallest valid report when only 200 bytes are left", async () => {
+    const counter = budget("edge");
+    expect(await counter.reserve("2027-09-01", "minidump", BUDGET.bytesPerDay - 200)).toBe("stored");
+    expect(await counter.reserve("2027-09-01", "error", 199)).toBe("stored");
+    expect(await counter.reserve("2027-09-01", "error", 1)).toBe("full");
+  });
+
   it("keeps a whole month under the monthly byte cap, and starts again the next month", async () => {
     const counter = budget("month");
     let allowed = 0;

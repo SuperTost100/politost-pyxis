@@ -27,8 +27,8 @@ export type ReportKind = "error" | "minidump";
  */
 export type Reservation = "stored" | "full" | "too-big";
 
-/** Below this many bytes left, no report fits any more: the smallest valid error report is larger. */
-const MIN_REPORT_BYTES = 256;
+/** Below this many bytes left, no report fits any more: the smallest valid minidump is 32 bytes, and an error more. */
+const MIN_REPORT_BYTES = 32;
 
 /** Days of counts kept; older rows are deleted as new days start. */
 const KEEP_DAYS = 40;
