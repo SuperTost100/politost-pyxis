@@ -85,6 +85,8 @@ The Worker lives in [`crash-worker/`](../crash-worker), with its own `package.js
 
 The Worker stores no IP address and no request headers. It uses the client address only as a rate-limit key, which Cloudflare counts in memory at each location: 10 reports a minute per address on each route (`CLIENT_LIMIT`), and 300 a minute per route for everyone together (`ROUTE_LIMIT`), which caps what a flood can write. Workers Logs are off in `wrangler.jsonc`, because they would keep request headers.
 
+Reports are kept 90 days. Two things delete them. The bucket's lifecycle rule (step 3 below) is the first line of defence. The Worker also runs once a day at 03:17 UTC (the cron trigger in `wrangler.jsonc`) and deletes every object under a `<day>/` prefix more than 90 days old (`src/retention.ts`), so reports still go if the rule is missing or was changed. A report from exactly 90 days ago goes at the next day's run, and keys that don't start with a real date are left alone.
+
 ## Deploy and maintain the Worker
 
 These commands need a Cloudflare account with R2 enabled and `wrangler login` done once. Run them from `crash-worker/`.
@@ -103,7 +105,7 @@ These commands need a Cloudflare account with R2 enabled and `wrangler login` do
    npx wrangler r2 bucket create pyxis-crash-reports
    ```
 
-3. Delete reports after 90 days with a lifecycle rule on the whole bucket:
+3. Delete reports after 90 days with a lifecycle rule on the whole bucket. The Worker's daily sweep deletes them too, but the rule is the first line of defence:
 
    ```bash
    npx wrangler r2 bucket lifecycle add pyxis-crash-reports delete-after-90-days --expire-days 90
@@ -115,7 +117,7 @@ These commands need a Cloudflare account with R2 enabled and `wrangler login` do
    npx wrangler r2 bucket lifecycle list pyxis-crash-reports
    ```
 
-5. Deploy. The Worker answers at `https://pyxis-crash.tost100bar.workers.dev`, the address `CRASH_ENDPOINT` in `src/main/crash-reports.ts` names:
+5. Deploy. The Worker answers at `https://pyxis-crash.tost100bar.workers.dev`, the address `CRASH_ENDPOINT` in `src/main/crash-reports.ts` names, and the deploy also registers the daily cron trigger:
 
    ```bash
    npx wrangler deploy
