@@ -6,6 +6,7 @@ import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { pastPapersQuery, sourcesQuery } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
+import { attachableSources } from "./examSettingsData";
 import { LibraryPanel } from "../home/LibraryPanel";
 
 /**
@@ -32,6 +33,9 @@ export function AttachSourcesDialog({
   const [importOpen, setImportOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  const offered = attachableSources(library.data, attached, pastPapers.data);
+  // A source that stops being offered (attached meanwhile, or made a past paper) drops out of the selection.
+  const picked = selected.filter((id) => offered.some((source) => source.id === id));
   const close = () => {
     setSelected([]);
     setError(false);
@@ -42,7 +46,7 @@ export function AttachSourcesDialog({
     setBusy(true);
     setError(false);
     try {
-      await invoke("plans.attachSources", { planId, sourceIds: selected });
+      await invoke("plans.attachSources", { planId, sourceIds: picked });
       await refreshPlan(client, planId);
       close();
     } catch {
@@ -60,24 +64,23 @@ export function AttachSourcesDialog({
         onCancel={() => !busy && close()}
         confirmLoading={busy}
         okText={t("planOverview.attachSources")}
-        okButtonProps={{ disabled: !selected.length }}
+        okButtonProps={{ disabled: !picked.length }}
         onOk={() => void attach()}
       >
-        {error && <Notice tone="danger">{t("planOverview.failed")}</Notice>}
+        {/* Without the past papers nothing is offered, so their failure has to show. */}
+        {error || pastPapers.isError ? (
+          <Notice tone="danger">{t("planOverview.failed")}</Notice>
+        ) : null}
         <p className="small ink-muted">{t("planOverview.pickerHelp")}</p>
         <Table
           tableLayout="fixed"
           className="px-plan-source-table"
           size="small"
           rowKey="id"
-          loading={library.isPending}
-          dataSource={(library.data ?? []).filter(
-            (source) =>
-              !attached.includes(source.id) &&
-              !pastPapers.data?.papers.some((paper) => paper.sourceIds.includes(source.id)),
-          )}
+          loading={library.isPending || pastPapers.isPending}
+          dataSource={offered}
           rowSelection={{
-            selectedRowKeys: selected,
+            selectedRowKeys: picked,
             onChange: (keys) => setSelected(keys.map(String)),
             getCheckboxProps: (source) => ({
               disabled: busy || source.status !== "ready",

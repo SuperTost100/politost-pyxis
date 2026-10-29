@@ -34,6 +34,7 @@ import { CalendarButton } from "../share/CalendarButton";
 import { ExportButton } from "../share/ExportButton";
 import { AttachSourcesDialog } from "./AttachSourcesDialog";
 import { setPlanArchived } from "./archivePlan";
+import { saveThenRefresh } from "./examSettingsData";
 import { ExamSessionsField } from "./ExamSessionsField";
 import { RebuildDialog } from "./RebuildDialog";
 import {
@@ -185,18 +186,22 @@ export function ExamSettingsPage() {
   }
   function save() {
     if (!data || nameMissing) return;
-    void action(async () => {
-      if (changed.name || changed.sessions || changed.goal)
-        await invoke("plans.settings", {
+    const steps: Array<() => Promise<unknown>> = [];
+    if (changed.name || changed.sessions || changed.goal)
+      steps.push(() =>
+        invoke("plans.settings", {
           planId,
           title: shownTitle.trim(),
           // An untouched goal stays as stored: on another scale its rounded input would move it.
           target: changed.goal ? goalFraction(shownGoal, grade.scale) : data.target,
           // Noon on each day, as in the wizard, so a shared plan keeps its days in another time zone.
           sessions: sessionsFromDrafts(shownSessions),
-        });
-      if (changed.hours) await invoke("plans.plannerHours", { hours: shownHours });
-      await refreshPlan(client, planId);
+        }),
+      );
+    if (changed.hours) steps.push(() => invoke("plans.plannerHours", { hours: shownHours }));
+    void action(async () => {
+      // If the hours fail after the settings were stored, the plan is read again, so only the hours stay unsaved.
+      await saveThenRefresh(steps, () => refreshPlan(client, planId));
       discard();
     });
   }
