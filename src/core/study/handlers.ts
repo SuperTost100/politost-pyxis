@@ -83,6 +83,7 @@ import {
   submitQuiz,
   timedPicks,
 } from "./quizGrading";
+import { attemptOutcome } from "./outcome";
 import { startConfiguredQuiz, type QuizInput } from "./configuredQuiz";
 
 import type { Runner } from "../jobs/runner";
@@ -534,6 +535,9 @@ export function studyHandlers(
     },
     simulationRead(input: { attemptId: string }) {
       return readSimulation(db, input.attemptId);
+    },
+    attemptOutcome(input: { attemptId: string }) {
+      return attemptOutcome(db, input.attemptId);
     },
     rate(input: { cardId: string; rating: Rating }) {
       return rateCard(db, input.cardId, input.rating, Date.now());

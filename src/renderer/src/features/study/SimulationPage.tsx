@@ -9,7 +9,6 @@ import { useMenuLock } from "../../app/menu-state";
 import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
-import { MasteryBar } from "../../components/MasteryBar";
 import { StepLines } from "../../components/StepLines";
 import { ExportButton } from "../share/ExportButton";
 import { invoke } from "../../lib/ipc";
@@ -18,6 +17,8 @@ import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
 import { ActivityChoice, ActivityIntro } from "./ActivityIntro";
+import { ResultsScreen, type ResultItem } from "./ResultsScreen";
+import { verdict, verdictLine } from "./quizText";
 import "./SimulationPage.css";
 import { pastPapersQuery, usePlan } from "../../lib/queries";
 
@@ -25,7 +26,7 @@ import { pastPapersQuery, usePlan } from "../../lib/queries";
 const DRAFT_DELAY_MS = 500;
 
 export function SimulationPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const grade = useGradeScale();
   const { planId = "", attemptId } = useParams();
   useActiveTime(planId, null);
@@ -42,6 +43,7 @@ export function SimulationPage() {
   const [notice, setNotice] = useState("");
   const [noEngine, setNoEngine] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   // Typing saves at most every DRAFT_DELAY_MS; time-up, submit and leaving the page save at once.
   const drafts = useDraftSaver(
     (draft: { attemptId: string; picks: Record<string, string> }) =>
@@ -259,6 +261,59 @@ export function SimulationPage() {
       {notice}
     </Notice>
   ) : null;
+  // The results screen. While grading runs the job grades the exercises in order, so the first `gradedCount` have a grade.
+  const gradingStopped =
+    Boolean(run && !run.submitted && run.grading) &&
+    ["failed", "cancelled", "interrupted"].includes(run?.grading?.state ?? "");
+  const gradedCount = run?.submitted
+    ? run.questions.length
+    : Math.round((run?.grading?.progress ?? 0) * (run?.questions.length ?? 0));
+  const simMistakes = Boolean(run?.results?.some((result) => result.score < 1));
+  async function ask(stem: string, answer: string, expected: string, feedback: string) {
+    try {
+      const seeded = await invoke("chats.seed", {
+        kind: "answer",
+        title: stem.slice(0, 80),
+        body: `${t("quiz.question")}: ${stem}\n${t("quiz.yourAnswer")}: ${answer}\n${t("simulation.reference")}: ${expected}\n${feedback}`,
+      });
+      navigate(`/ask/${seeded.chatId}`);
+    } catch {
+      setNotice(t("simulation.actionFailed"));
+    }
+  }
+  const simItems: ResultItem[] = (run?.questions ?? []).map((q, i) => {
+    const result = run?.results?.find((row) => row.id === q.id);
+    const answer = run?.picks[q.id] ?? "";
+    const topic = plan.data?.topics.find((row) => row.id === q.topicId)?.title;
+    if (!result)
+      return {
+        id: q.id,
+        stem: q.stem,
+        topic,
+        mark: gradingStopped ? "ungraded" : i === gradedCount ? "grading" : "queued",
+        answer,
+        long: true,
+        expectedLabel: t("simulation.reference"),
+      };
+    return {
+      id: q.id,
+      stem: q.stem,
+      topic,
+      mark: verdict(result.score),
+      score: grade.format(result.score),
+      answer,
+      long: true,
+      expected: result.expected,
+      expectedLabel: t("simulation.reference"),
+      explanation: result.feedback,
+      missed: result.missed,
+      grader: result.provider && result.model ? `${result.provider} · ${result.model}` : undefined,
+      // The tutor unlocks once the exam is handed in.
+      ...(run?.submitted
+        ? { onAsk: () => void ask(q.stem, answer || t("simulation.blank"), result.expected, result.feedback) }
+        : {}),
+    };
+  });
   return (
     <FocusLayout
       title={
@@ -268,7 +323,8 @@ export function SimulationPage() {
       }
       closable={!run || run.submitted || locked}
       headerRight={
-        run && !run.submitted ? (
+        // The clock and Submit belong to the exam; once it is being graded the results screen takes over.
+        run && !run.submitted && !run.grading ? (
           <div className="px-sim-header-actions">
             <SimulationClock
               deadline={run.deadline}
@@ -287,7 +343,8 @@ export function SimulationPage() {
         ) : undefined
       }
       secondary={
-        run && (run.submitted || locked) ? (
+        // The results screen has its own way back; a locked exam waiting for an engine needs one here.
+        run && !run.submitted && !run.grading && locked ? (
           <Button
             type="text"
             shape="round"
@@ -310,7 +367,9 @@ export function SimulationPage() {
           {t("simulation.noEngineLocked")}
         </Notice>
       )}
-      {generated && <Notice tone="warning">{generated}</Notice>}
+      {generated && !(run && (run.submitted || run.grading)) && (
+        <Notice tone="warning">{generated}</Notice>
+      )}
       {open.isError && (
         <Notice tone="warning">{t("simulation.actionFailed")}</Notice>
       )}
@@ -430,124 +489,148 @@ export function SimulationPage() {
             </Notice>
           )}
         </ActivityIntro>
-      ) : run.submitted ? (
+      ) : run.submitted && noAnswers ? (
         <section className="px-sim-results">
-          {run.score !== undefined && (
-            <div className="px-sim-score">
-              <span className="stat">{grade.number(run.score)}</span>
-              <span className="small">{t("simulation.outOf", { scale: grade.scale })}</span>
-            </div>
-          )}
-          {noAnswers ? (
-            <Notice tone="info">{t("quiz.answersNotShared")}</Notice>
-          ) : (
-            <Notice tone="info">
-              {provenance
-                ? t("simulation.modelGrade", { model: provenance })
-                : t("simulation.localGrade")}
-            </Notice>
-          )}
-          {noAnswers ? null : (
+          <Notice tone="info">{t("quiz.answersNotShared")}</Notice>
+          <div className="px-sim-export">
+            <ExportButton planId={planId} kind="simulation" attemptId={run.attemptId} />
+            <Button shape="round" onClick={() => navigate(`/plans/${planId}/simulation`)}>
+              {t("quiz.redo")}
+            </Button>
+            <Button type="primary" shape="round" onClick={() => navigate(`/plans/${planId}`)}>
+              {t("lesson.backToPath")}
+            </Button>
+          </div>
+        </section>
+      ) : run.submitted || run.grading ? (
+        <ResultsScreen
+          kind="simulation"
+          attemptId={run.attemptId}
+          eyebrow={
+            run.submitted && run.submittedAt
+              ? t("results.resultOn", {
+                  date: `${new Date(run.submittedAt).toLocaleDateString(i18n.language, {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  })} · ${t("simulation.minutes", { count: run.minutes })}`,
+                })
+              : t("results.result")
+          }
+          grade={run.submitted ? run.score : undefined}
+          headline={
+            run.submitted && run.score !== undefined
+              ? t(verdictLine(Math.round(run.score * 100), false))
+              : t("results.gradingHeadline")
+          }
+          detail={
+            run.submitted
+              ? undefined
+              : [
+                  t("results.gradingCount", {
+                    done: gradedCount,
+                    total: run.questions.length,
+                    count: run.questions.length,
+                  }),
+                  gradingStopped ? "" : t("results.gradeLater"),
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+          }
+          goal={plan.data?.target}
+          grading={
+            run.submitted ? undefined : { done: gradedCount, total: run.questions.length }
+          }
+          notes={
             <>
-              <h2 className="title-2">{t("simulation.byTopic")}</h2>
-              <ul className="px-sim-topics">
-                {run.topics.map((topic) => (
-                  <li key={topic.id}>
-                    <span className="body-strong">{topic.title}</span>
-                    <MasteryBar
-                      value={topic.score * 100}
-                      scale={grade.scale}
-                      label={topic.title}
-                    />
-                  </li>
-                ))}
-              </ul>
-              {run.questions.map((q, i) => {
-                const result = run.results?.find((r) => r.id === q.id);
-                return (
-                  <details className="px-sim-feedback" key={q.id}>
-                    <summary className="body-strong">
-                      {t("simulation.question", { count: i + 1 })}
-                      {result && (
-                        <span className="code">
-                          {grade.format(result.score)}
-                        </span>
-                      )}
-                    </summary>
-                    <MarkdownView>{q.stem}</MarkdownView>
-                    <h3 className="body-strong">{t("quiz.yourAnswer")}</h3>
-                    <MarkdownView>
-                      {shown[q.id] || t("simulation.blank")}
-                    </MarkdownView>
-                    {result && (
-                      <>
-                        <MarkdownView>{result.feedback}</MarkdownView>
-                        {result.missed.length > 0 && (
-                          <>
-                            <h3 className="body-strong">
-                              {t("simulation.missed")}
-                            </h3>
-                            <ul>
-                              {result.missed.map((text, j) => (
-                                <li key={j}>
-                                  <MarkdownView variant="body">{text}</MarkdownView>
-                                </li>
-                              ))}
-                            </ul>
-                          </>
-                        )}
-                        <h3 className="body-strong">{t("simulation.reference")}</h3>
-                        <MarkdownView>{result.expected}</MarkdownView>
-                      </>
-                    )}
-                  </details>
-                );
-              })}
+              {run.submitted ? (
+                <p className="small">
+                  {provenance
+                    ? t("simulation.modelGrade", { model: provenance })
+                    : t("simulation.localGrade")}
+                </p>
+              ) : null}
+              {generated ? <Notice tone="warning">{generated}</Notice> : null}
+              {gradingStopped ? (
+                <Notice tone="danger" details={run.grading?.error?.slice(0, 2000)}>
+                  {t("simulation.gradeFailed")}
+                </Notice>
+              ) : null}
             </>
-          )}
-        </section>
-      ) : run.grading ? (
-        <section className="px-sim-grading">
-          <h2 className="title-2">{t("simulation.grading")}</h2>
-          <Notice tone="info">{t("simulation.frozen")}</Notice>
-          <StepLines
-            label={t("simulation.grading")}
-            steps={run.questions.map((q, i) => {
-              const complete = Math.floor(
-                run.grading!.progress * run.questions.length,
-              );
-              const failed = ["failed", "cancelled", "interrupted"].includes(
-                run.grading!.state,
-              );
-              return {
-                id: q.id,
-                label: t("simulation.question", { count: i + 1 }),
-                state:
-                  i < complete
-                    ? "done"
-                    : i === complete
-                      ? failed
-                        ? "failed"
-                        : "running"
-                      : "pending",
-              };
-            })}
-          />
-          {["failed", "cancelled", "interrupted"].includes(
-            run.grading.state,
-          ) && (
-            <Notice
-              tone="danger"
-              details={run.grading.error?.slice(0, 2000)}
-              action={{
-                label: t("simulation.retryGrade"),
-                onClick: () => void submit(),
-              }}
-            >
-              {t("simulation.gradeFailed")}
-            </Notice>
-          )}
-        </section>
+          }
+          topics={
+            run.submitted
+              ? run.topics.map((topic) => ({
+                  id: topic.id,
+                  title: topic.title,
+                  share: topic.score,
+                  value: grade.format(topic.score),
+                }))
+              : []
+          }
+          topicsLabel={t("simulation.byTopic")}
+          primary={
+            gradingStopped ? (
+              <Button type="primary" shape="round" size="large" disabled={busy} onClick={() => void submit()}>
+                {t("simulation.retryGrade")}
+              </Button>
+            ) : run.submitted && simMistakes ? (
+              <Button
+                type="primary"
+                shape="round"
+                size="large"
+                onClick={() => navigate(`/plans/${planId}/review`)}
+              >
+                {t("quiz.reviewMistakes")}
+              </Button>
+            ) : (
+              <Button type="primary" shape="round" size="large" onClick={() => navigate(`/plans/${planId}`)}>
+                {t("lesson.backToPath")}
+              </Button>
+            )
+          }
+          secondary={
+            gradingStopped || (run.submitted && simMistakes) ? (
+              <Button
+                type={gradingStopped ? "text" : "default"}
+                shape="round"
+                size="large"
+                onClick={() => navigate(`/plans/${planId}`)}
+              >
+                {t("lesson.backToPath")}
+              </Button>
+            ) : undefined
+          }
+          extra={
+            run.submitted ? (
+              <>
+                <Button type="text" shape="round" onClick={() => setExportOpen(true)}>
+                  {t("export.title")}
+                </Button>
+                <ExportButton
+                  planId={planId}
+                  kind="simulation"
+                  attemptId={run.attemptId}
+                  open={exportOpen}
+                  onOpenChange={setExportOpen}
+                />
+                {/* A new simulation from the setup; this one keeps its answers and grade. */}
+                <Button type="text" shape="round" onClick={() => navigate(`/plans/${planId}/simulation`)}>
+                  {t("quiz.redo")}
+                </Button>
+              </>
+            ) : undefined
+          }
+          after={!run.submitted && !gradingStopped ? t("simulation.frozen") : undefined}
+          items={simItems}
+          listNote={
+            !run.submitted && run.grading?.model
+              ? t("results.gradingWith", {
+                  model: [run.grading.provider, run.grading.model].filter(Boolean).join(" · "),
+                })
+              : undefined
+          }
+        />
       ) : (
         <section className="px-sim-run">
           <nav
@@ -599,19 +682,6 @@ export function SimulationPage() {
             </>
           )}
         </section>
-      )}
-      {run?.submitted && (
-        <div className="px-sim-export">
-          <ExportButton
-            planId={planId}
-            kind="simulation"
-            attemptId={run.attemptId}
-          />
-          {/* A new simulation from the setup; this one keeps its answers and grade. */}
-          <Button shape="round" onClick={() => navigate(`/plans/${planId}/simulation`)}>
-            {t("quiz.redo")}
-          </Button>
-        </div>
       )}
       <Modal
         title={t("simulation.deliver")}

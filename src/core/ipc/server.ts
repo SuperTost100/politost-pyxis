@@ -265,6 +265,7 @@ const routes = {
   "study.simulationBuild": ["study", "simulationBuild"],
   "study.simulationSubmit": ["study", "simulationSubmit"],
   "study.simulationRead": ["study", "simulationRead"],
+  "study.attemptOutcome": ["study", "attemptOutcome"],
   "study.simulationDraft": ["study", "simulationDraft"],
   "study.cardsGenerate": ["study", "cardsGenerate"],
   "study.cardsBuild": ["study", "cardsBuild"],

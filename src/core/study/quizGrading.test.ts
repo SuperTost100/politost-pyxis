@@ -130,6 +130,8 @@ describe("quiz grading job", () => {
     );
     expect(done.jobId).toBe(jobId);
     expect(seen).toEqual(["chosen:ten", "chosen:about ten"]);
+    // The answers the job grades, in its order; the page shows which one is being graded.
+    expect(done.pending).toEqual(["a", "b"]);
     expect(done.result!.results.map((row) => row.score)).toEqual([
       1, 0.5, 1, 0,
     ]);

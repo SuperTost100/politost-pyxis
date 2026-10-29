@@ -448,7 +448,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await showDone(page);
     await done.getByRole("button", { name: new RegExp(`^Quiz, ${topic.title}, 6/10`) }).click();
     await expect(page).toHaveURL(new RegExp(`quiz/${topic.id}\\?attempt=${quiz.attemptId}$`));
-    await expect(page.locator(".px-quiz-score")).toHaveText(/^6\s*su 10$/);
+    await expect(page.locator(".px-res-headline")).toContainText("6 punti su 10.");
     await expect(page.getByText(/^Le tue risposte del /)).toBeVisible();
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
     await expect(page.locator(".px-quiz-question")).toHaveCount(0);
@@ -492,7 +492,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       await page.getByRole("button", { name: "Verifica", exact: true }).click();
       await page.getByRole("button", { name: i === 9 ? "Vedi risultato" : "Avanti", exact: true }).click();
     }
-    await expect(page.locator(".px-quiz-score")).toHaveText(/^10\s*su 10$/);
+    await expect(page.locator(".px-res-headline")).toContainText("10 punti su 10.");
     // A quiz just handed in is not a review: it continues the path and offers no Redo.
     await expect(page.getByRole("button", { name: "Continua" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Rifai" })).toHaveCount(0);
@@ -561,7 +561,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/quiz/[^/?]+\\?attempt=`));
     await expect(page.getByText("Le risposte di questo tentativo non erano incluse nell'esame condiviso.")).toBeVisible();
     await expect(page.locator(".px-quiz-question")).toHaveCount(0);
-    await expect(page.locator(".px-quiz-score")).toHaveCount(0);
+    await expect(page.locator(".px-res")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
     await expectNoAxeViolations(page);
     for (const [lang, theme] of [

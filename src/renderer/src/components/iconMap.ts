@@ -6,8 +6,11 @@ import {
   CalendarPlus,
   ChartLine,
   Check,
+  ChevronDown,
   ChevronRight,
   Circle,
+  CircleDashed,
+  CircleDot,
   CircleAlert,
   CircleCheck,
   CircleX,
@@ -24,6 +27,7 @@ import {
   GraduationCap,
   HardDrive,
   Image,
+  Info,
   KeyRound,
   Layers,
   ListChecks,
@@ -45,6 +49,8 @@ import {
   Terminal,
   ThumbsDown,
   ThumbsUp,
+  TrendingDown,
+  TrendingUp,
   X,
 } from "lucide-react";
 
@@ -94,7 +100,13 @@ export type IconName =
   | "circle-check"
   | "circle-x"
   | "loader-circle"
-  | "circle";
+  | "circle"
+  | "circle-dashed"
+  | "circle-dot"
+  | "chevron-down"
+  | "info"
+  | "trending-up"
+  | "trending-down";
 
 export const ICON_MAP: Record<IconName, LucideIcon> = {
   "message-circle": MessageCircle,
@@ -143,4 +155,10 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   "circle-x": CircleX,
   "loader-circle": LoaderCircle,
   circle: Circle,
+  "circle-dashed": CircleDashed,
+  "circle-dot": CircleDot,
+  "chevron-down": ChevronDown,
+  info: Info,
+  "trending-up": TrendingUp,
+  "trending-down": TrendingDown,
 };

@@ -142,6 +142,9 @@ const routes = [
     "/plans/audit-plan/quiz/audit-topic?attempt=audit-grading-attempt",
   ],
   ["simulation-grading-failed", "/plans/audit-plan/exam/audit-frozen-attempt"],
+  // The results screen with what the exam changed in the path, and while grading runs.
+  ["simulation-result-changes", "/plans/audit-ready-plan/exam/audit-results-attempt"],
+  ["simulation-grading", "/plans/audit-plan/exam/audit-live-attempt"],
   ["review-start", "/plans/audit-plan/review"],
   ["review-building", "/plans/audit-review-plan/review"],
   ["review-failed", "/plans/audit-review-plan/review"],
@@ -638,6 +641,144 @@ function seed(db: DatabaseSync) {
       now - day * 86400000 + 1,
     );
   }
+  seedResults(db, now);
+}
+
+/**
+ * A simulation handed in an hour ago on the prepared exam, with what it changed in the path: it moved both topics,
+ * its wrong answer counts for a serious gap with the model's reading of the mistake, and Codex graded it because
+ * Claude Code hit its limit. The evidence is written before any page reads the plan, so core's cache holds it.
+ */
+function seedResults(db: DatabaseSync, now: number) {
+  const at = now - 3_600_000;
+  db.prepare(
+    "INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-ready-energy','audit-ready-plan','Energy',1,1)",
+  ).run();
+  const questions = [
+    { id: "result-force", topicId: "audit-ready-topic", stem: "Calculate the force on a $2$ kg mass accelerating at $3$ m/s²." },
+    { id: "result-energy", topicId: "audit-ready-energy", stem: "Find the kinetic energy of a $2$ kg mass moving at $3$ m/s." },
+    { id: "result-weight", topicId: "audit-ready-topic", stem: "A $2$ kg lift accelerates upwards at $1$ m/s². Find the cable tension." },
+  ].map((question) => ({ ...question, answer: { kind: "completion", accepted: [["x"]] } }));
+  const results = [
+    { id: "result-force", score: 1, expected: "$F=ma=6$ N", feedback: "Right, with the unit.", missed: [], provider: "Codex", model: "gpt-audit" },
+    { id: "result-energy", score: 1, expected: "$E=\\tfrac12 mv^2=9$ J", feedback: "Right.", missed: [], provider: "Codex", model: "gpt-audit" },
+    {
+      id: "result-weight",
+      score: 0,
+      expected: "$T=m(g+a)\\approx 21.6$ N",
+      feedback: "The tension also has to carry the weight.",
+      missed: ["The weight $mg$ in the balance of forces", "The direction of the acceleration"],
+      provider: "Codex",
+      model: "gpt-audit",
+    },
+  ];
+  const picks = { "result-force": "$F=6$ N", "result-energy": "$9$ J", "result-weight": "$T=ma=2$ N" };
+  db.prepare(
+    "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('audit-results-exam','audit-ready-plan','audit-ready-topic','simulation',?,'fixture','sources',?)",
+  ).run(
+    JSON.stringify({
+      minutes: 60,
+      questions,
+      picks,
+      gradingStartedAt: at,
+      gradingJobId: "audit-results-grade",
+      result: { score: 2 / 3, results },
+    }),
+    at,
+  );
+  db.prepare(
+    "INSERT INTO attempts(id,plan_id,item_id,started_at,submitted_at) VALUES('audit-results-attempt','audit-ready-plan','audit-results-exam',?,?)",
+  ).run(at - 3_600_000, at);
+  db.prepare(
+    "INSERT INTO attempt_answers(id,attempt_id,payload_json,created_at) VALUES('audit-results-answers','audit-results-attempt',?,?)",
+  ).run(JSON.stringify({ picks, score: 2 / 3, results }), at);
+  const event = db.prepare(
+    "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES(?,'answer_given','audit-ready-plan',?,?,?)",
+  );
+  event.run("audit-results-before-force", "audit-ready-topic", '{"score":1,"scores":[1]}', at - 86_400_000);
+  event.run("audit-results-before-energy", "audit-ready-energy", '{"score":0.5,"scores":[0.5]}', at - 86_400_000);
+  event.run(
+    "audit-results-force",
+    "audit-ready-topic",
+    JSON.stringify({ attemptId: "audit-results-attempt", score: 0.5, scores: [1, 0], evidenceKind: "simulation" }),
+    at,
+  );
+  event.run(
+    "audit-results-energy",
+    "audit-ready-energy",
+    JSON.stringify({ attemptId: "audit-results-attempt", score: 1, scores: [1], evidenceKind: "simulation" }),
+    at + 1,
+  );
+  db.prepare(
+    "INSERT INTO gaps(id,plan_id,topic_id,opened_at,origin,misconception,severity) VALUES('audit-results-gap','audit-ready-plan','audit-ready-topic',?,'misconception',?,'severe')",
+  ).run(at, "You leave the weight out when the body accelerates vertically.");
+  db.prepare(
+    "INSERT INTO gap_answers(gap_id,attempt_id,question_id) VALUES('audit-results-gap','audit-results-attempt','result-weight')",
+  ).run();
+  db.prepare(
+    "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at,fallback_json) VALUES('audit-results-grade','simulation-grade',?,'succeeded',1,?,?,?)",
+  ).run(
+    JSON.stringify({ attemptId: "audit-results-attempt", planId: "audit-ready-plan", questions: [], results: [], next: 3 }),
+    at,
+    at,
+    JSON.stringify({ from: "Claude Code", to: "Codex", reason: "limit" }),
+  );
+}
+
+/**
+ * A simulation being graded: the first exercise has its grade, the second is being graded and the third waits. Only
+ * this state has it, so no other page sees an exam in grading or a running job.
+ */
+function prepareGradingLive(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM jobs WHERE id = 'audit-live-grade';
+      DELETE FROM attempts WHERE id = 'audit-live-attempt';
+      DELETE FROM items WHERE id = 'audit-live-exam';`);
+    if (name !== "simulation-grading") return;
+    const now = Date.now();
+    const questions = [
+      { id: "live-1", topicId: "audit-topic", stem: "Calcola la forza con $m=2$ e $a=3$." },
+      { id: "live-2", topicId: "audit-topic", stem: "Una massa di $4$ kg accelera a $2$ m/s². Quanto vale la forza?" },
+      { id: "live-3", topicId: "audit-topic", stem: "Spiega la seconda legge di Newton con un esempio." },
+    ].map((question) => ({ ...question, answer: { kind: "completion", accepted: [["x"]] } }));
+    const picks = { "live-1": "6", "live-2": "$F=8$ N", "live-3": "La forza è massa per accelerazione." };
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('audit-live-exam','audit-plan','audit-topic','simulation',?,'fixture','sources',?)",
+    ).run(
+      JSON.stringify({ minutes: 30, questions, picks, gradingStartedAt: now - 5000, gradingJobId: "audit-live-grade" }),
+      now,
+    );
+    db.prepare(
+      "INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('audit-live-attempt','audit-plan','audit-live-exam',?)",
+    ).run(now - 1_800_000);
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at,fallback_json) VALUES('audit-live-grade','simulation-grade',?,'running',?,'jobs.simulationGrading',?,?,?)",
+    ).run(
+      JSON.stringify({
+        attemptId: "audit-live-attempt",
+        planId: "audit-plan",
+        picks,
+        questions,
+        next: 1,
+        frozenAt: now - 5000,
+        results: [
+          {
+            id: "live-1",
+            score: 0.8,
+            expected: "$F=6$ N",
+            feedback: "Il valore è giusto; manca l’unità di misura.",
+            missed: ["Unità di misura"],
+            provider: "Codex",
+            model: "gpt-audit",
+          },
+        ],
+      }),
+      1 / 3,
+      now,
+      now,
+      JSON.stringify({ from: "Claude Code", to: "Codex", reason: "limit" }),
+    );
+  });
 }
 
 /** A raw locale key on screen: any top-level section of en.json followed by a dotted path, so no section is skipped. */
@@ -911,6 +1052,7 @@ function prepareState(name: string) {
   prepareCardBrowser(name);
   prepareBackupState(name);
   prepareUpdate(name);
+  prepareGradingLive(name);
   // A rating from this visit shows as chosen on the practice page; every other state starts without one.
   if (name === "practice-rated" || auditRating)
     withDb((db) => {
@@ -2110,12 +2252,49 @@ async function openState(page: Page, name: string) {
         }),
       ).toBeVisible();
       break;
+    case "simulation-result-changes": {
+      // What the exam changed comes from mastery before and after it and the gap its wrong answer counts for.
+      const changes = page.locator(".px-res-changes");
+      await expect(changes).toContainText(/Lacuna seria su Force|Serious gap in Force/);
+      await expect(changes).toContainText("You leave the weight out");
+      await expect(changes).toContainText(/Energy (migliora|went up)/);
+      await expect(page.locator(".px-res-fallback")).toContainText("Codex");
+      // One primary button, the next step; the list opens on the one exercise to review.
+      await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+      await expect(page.locator(".px-res-q")).toHaveCount(1);
+      await expect(page.locator(".px-res-q")).toContainText(/Sbagliato|Wrong/);
+      break;
+    }
+    case "simulation-grading":
+      await expect(
+        page.getByRole("progressbar", { name: /Risposte valutate finora|Answers graded so far/ }),
+      ).toBeVisible();
+      // The graded exercise reads in full; the others say in words where they are.
+      await expect(page.locator(".px-res-q.is-partial")).toContainText(/Cosa manca|What was missed/);
+      await expect(page.locator(".px-res-q.is-grading")).toContainText(/In correzione|Grading/);
+      await expect(page.locator(".px-res-q.is-queued")).toContainText(/In coda|Queued/);
+      await expect(page.locator(".px-res-changes-later")).toBeVisible();
+      await expect(page.locator(".px-res-fallback")).toContainText("Codex");
+      await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+      break;
     case "simulation-grading-failed":
+      // The results screen while grading is stopped: retry is the one primary action, the way back sits under it,
+      // and the exercise not graded yet says so in words.
       await expect(
         page.getByRole("button", { name: /Chiudi|Close/, exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: /Indietro|Back/, exact: true }),
+        page.getByRole("button", {
+          name: /^(Riprendi la correzione|Retry grading)$/,
+        }),
+      ).toHaveClass(/ant-btn-primary/);
+      await expect(
+        page.getByRole("button", {
+          name: /^(Torna al percorso|Back to the path)$/,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.locator(".px-res-q.is-ungraded").getByText(/^(Da correggere|Not graded yet)$/),
       ).toBeVisible();
       break;
     case "reading-large-lesson":

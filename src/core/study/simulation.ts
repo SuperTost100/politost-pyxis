@@ -842,18 +842,30 @@ export function readSimulation(
         ? 0
         : Math.max(0, deadline - now),
     submitted: row.submitted_at != null,
+    submittedAt: row.submitted_at ?? undefined,
+    minutes: row.body.minutes,
     locked:
       row.submitted_at != null ||
       row.body.gradingStartedAt != null ||
       now >= deadline,
     blocked,
     generated: row.body.generated,
-    questions: row.body.questions.map((q) => ({ id: q.id, stem: q.stem })),
+    questions: row.body.questions.map((q) => ({
+      id: q.id,
+      stem: q.stem,
+      ...(q.topicId ? { topicId: q.topicId } : {}),
+    })),
     picks: row.body.picks ?? {},
     topics: topicScores(db, row.body, attemptId, row.submitted_at != null),
     grading,
     score: row.body.result?.score,
-    results: row.submitted_at != null ? row.body.result?.results : undefined,
+    // While grading runs, the grades so far, so the page can show them before the rest are in.
+    results:
+      row.submitted_at != null
+        ? row.body.result?.results
+        : params?.results?.length
+          ? params.results
+          : undefined,
   };
 }
 export function submitSimulation(

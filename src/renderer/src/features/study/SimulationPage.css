@@ -8,7 +8,6 @@
   font-variant-numeric: tabular-nums;
 }
 .px-sim-run,
-.px-sim-grading,
 .px-sim-results {
   display: flex;
   flex-direction: column;
@@ -51,54 +50,14 @@
 .px-sim-results h2 {
   margin: 0;
 }
-.px-sim-feedback summary {
-  cursor: pointer;
-}
-.px-sim-score {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-.px-sim-topics {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: var(--space-4);
-}
-.px-sim-topics li {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr);
-  gap: var(--space-4);
-  align-items: center;
-}
-.px-sim-feedback {
-  border-top: 1px solid var(--border);
-  padding: var(--space-4) 0;
-}
-.px-sim-feedback summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-.px-sim-feedback[open] summary {
-  margin-bottom: var(--space-5);
-}
-.px-sim-feedback h3 {
-  margin: var(--space-4) 0 var(--space-2);
-}
 .px-sim-export {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-6);
+  justify-content: flex-end;
+  gap: var(--space-3);
 }
 @media (max-width: 700px) {
-  .px-sim-topics li {
-    grid-template-columns: 1fr;
-  }
   .px-sim-header-actions {
     gap: var(--space-2);
   }
