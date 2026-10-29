@@ -47,6 +47,7 @@ import { PlanProgress } from "./PlanProgress";
 import { RebuildDialog } from "./RebuildDialog";
 import { NextStep, PlanPath, type TopicAction } from "./PlanPath";
 import { SourceRow } from "../../components/SourceRow";
+import { SourceDetails } from "../../components/SourceDetails";
 import { PastPapers } from "./PastPapers";
 import "./PlanPage.css";
 import { pastPapersQuery, scheduleQuery, sourcesQuery, usePlan, useRecommend } from "../../lib/queries";
@@ -101,6 +102,8 @@ export function PlanPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  // The source whose details panel is open, from a row of the Sources tab.
+  const [detailSourceId, setDetailSourceId] = useState<string | null>(null);
   const [itemPreview, setItemPreview] =
     useState<RequestOutput<"plans.item"> | null>(null);
   // The Sources tab reads the library too, for the file sizes its rows show.
@@ -499,7 +502,8 @@ export function PlanPage() {
                     bytes: library.data?.find((item) => item.id === source.id)
                       ?.bytes,
                   }}
-                  onOpen={() => openSourceViewer({ sourceId: source.id })}
+                  selected={source.id === detailSourceId}
+                  onOpen={() => setDetailSourceId(source.id)}
                   actions={{
                     disabled: busy,
                     items: [
@@ -541,6 +545,11 @@ export function PlanPage() {
             {t("planOverview.addSources")}
           </Button>
           <PastPapers planId={planId} />
+          <SourceDetails
+            sourceId={detailSourceId}
+            known={plan.data?.sources.find((source) => source.id === detailSourceId)}
+            onClose={() => setDetailSourceId(null)}
+          />
         </section>
       )}
       <Modal

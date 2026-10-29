@@ -13,7 +13,7 @@ export type StaleFamily = { key: string; refetch: boolean };
  */
 export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily[] {
   const keys = ["jobs"];
-  if (sourceKinds.has(job.kind)) keys.push("sources", "source-chapters", "source-meta");
+  if (sourceKinds.has(job.kind)) keys.push("sources", "source-chapters", "source-meta", "source-details");
   if (planKinds.has(job.kind)) keys.push("plan-build");
   if (job.kind === "ocr-data-download") keys.push("ocr-data");
   if (job.kind === "embedding-download") keys.push("embedding");

@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Input, Modal, Progress, Select, Drawer, Skeleton } from "antd";
+import { Button, Input, Modal, Progress, Select, Skeleton } from "antd";
 import { FileText, CheckCircle2, LoaderCircle } from "lucide-react";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import {
@@ -14,6 +14,7 @@ import {
   ToolbarSearch,
 } from "../../components/ListToolbar";
 import { SourceRow, sizeText } from "../../components/SourceRow";
+import { SourceDetails } from "../../components/SourceDetails";
 import "./LibraryPanel.css";
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -42,7 +43,6 @@ import {
   REPLACE_EXTENSIONS,
   SOURCE_EXTENSIONS,
 } from "@shared/source-types";
-import { i18n } from "../../locales/i18n";
 import { useSources } from "../../lib/queries";
 
 const messageKeyOf = (err: unknown): string =>
@@ -87,6 +87,8 @@ export function LibraryPanel({
   const [searched, setSearched] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // The row menu's Rename opens the details with the title field ready.
+  const [renameOnOpen, setRenameOnOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(() => {
     try {
       return localStorage.getItem("pyxis-source-quality") !== "closed";
@@ -117,7 +119,6 @@ export function LibraryPanel({
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
-  const [renameTo, setRenameTo] = useState("");
   const [folderFiles, setFolderFiles] = useState<
     Array<{ path: string; name: string; duplicate: boolean; selected: boolean }>
   >([]);
@@ -139,33 +140,10 @@ export function LibraryPanel({
     limit: number;
   } | null>(null);
 
-  const meta = useQuery({
-    queryKey: ["source-meta", sourceId],
-    enabled: sourceId != null,
-    queryFn: () => invoke("sources.meta", { sourceId: sourceId ?? "" }),
-  });
   const chapters = useQuery({
     queryKey: ["source-chapters", sourceId],
     enabled: sourceId != null,
     queryFn: () => invoke("sources.chapters", { sourceId: sourceId ?? "" }),
-  });
-  const detailSource = (list.data ?? []).find(
-    (source) => source.id === sourceId,
-  );
-  // SRC-08: which sections of this source sit off the syllabus of the plans that use it. Local vectors only.
-  const syllabus = useQuery({
-    queryKey: [
-      "source-syllabus",
-      sourceId,
-      detailSource?.status,
-      detailSource?.sections,
-    ],
-    enabled:
-      detailsOpen &&
-      detailSource != null &&
-      detailSource.planCount > 0 &&
-      detailSource.status === "ready",
-    queryFn: () => invoke("sources.syllabus", { sourceId: sourceId ?? "" }),
   });
   const passageId = searchPicked ? pickedPassage : params.get("passage");
   const opened = useQuery({
@@ -416,7 +394,6 @@ export function LibraryPanel({
   }
   function select(source: LibrarySource) {
     setSourceId(source.id);
-    setRenameTo(source.title);
     setChapter(null);
     setParagraph(undefined);
   }
@@ -962,7 +939,10 @@ export function LibraryPanel({
       else if (key === "reextract") void reextract(source).catch(fail);
       else if (key === "refresh") void refresh(source).catch(fail);
       else if (key === "remove") void remove(source).catch(fail);
-      else setDetailsOpen(true);
+      else {
+        setRenameOnOpen(key === "rename");
+        setDetailsOpen(true);
+      }
     },
     unlock: setUnlocking,
     updateBook(source) {
@@ -1131,218 +1111,14 @@ export function LibraryPanel({
           onReplace={() => void replace(source.id).catch(fail)}
         />
       ))}
-      <Drawer
-        open={detailsOpen}
-        onClose={() => setDetailsOpen(false)}
-        title={
-          sources.find((source) => source.id === sourceId)?.title ??
-          t("sources.details")
-        }
-        width={520}
-        className="px-library-details"
-      >
-        <Button
-          shape="round"
-          disabled={!sourceId}
-          onClick={() => {
-            setDetailsOpen(false);
-            openSourceViewer({ sourceId: sourceId ?? undefined });
-          }}
-        >
-          {t("components.citation.open")}
-        </Button>
-        {meta.data &&
-        (meta.data.authors.length > 0 ||
-          meta.data.version ||
-          meta.data.specVersion) ? (
-          <p className="small section-hint">
-            {[
-              meta.data.authors.join(", "),
-              meta.data.version
-                ? t("sources.version", { version: meta.data.version })
-                : "",
-              meta.data.specVersion
-                ? t("sources.spec", { spec: meta.data.specVersion })
-                : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-        ) : null}
-        {meta.data?.extractor ? (
-          <p className="small section-hint">
-            {meta.data.extractor.path === "vision"
-              ? t("sources.readByVision", {
-                  model: meta.data.extractor.model,
-                })
-              : meta.data.extractor.after
-                ? t("sources.readByOcrAfter")
-                : t("sources.readByOcr")}
-          </p>
-        ) : null}
-        {meta.data?.extractor?.path === "vision" && meta.data.extractor.sent ? (
-          <p className="small section-hint">
-            {(() => {
-              const sent = meta.data.extractor.sent;
-              const size = sizeText(sent.bytes);
-              if (sent.resizedFrom && sent.width && sent.height)
-                return [
-                  t("sources.sentResized", {
-                    fromWidth: sent.resizedFrom.width,
-                    fromHeight: sent.resizedFrom.height,
-                    fromSize: sizeText(sent.resizedFrom.bytes),
-                    width: sent.width,
-                    height: sent.height,
-                    size,
-                  }),
-                  sent.orientation ? t("sources.sentUpright") : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ");
-              return sent.width && sent.height
-                ? t("sources.sentAsIs", {
-                    width: sent.width,
-                    height: sent.height,
-                    size,
-                  })
-                : t("sources.sentAsIsSize", { size });
-            })()}
-          </p>
-        ) : null}
-        {detailSource && detailSource.planCount > 0
-          ? (syllabus.data ?? []).map((check) =>
-              check.state === "checked" && check.off > 0 ? (
-                <Notice key={check.planId} tone="warning">
-                  {t("sources.offSyllabus", {
-                    count: check.off,
-                    total: check.sections,
-                    plan: check.planTitle,
-                    sections: check.worst
-                      .map((entry) => entry.section)
-                      .join(", "),
-                  })}
-                </Notice>
-              ) : check.state === "checked" ? (
-                <p key={check.planId} className="small section-hint">
-                  {t("sources.syllabusFits", {
-                    total: check.sections,
-                    plan: check.planTitle,
-                  })}
-                </p>
-              ) : check.state === "unindexed" ? (
-                <p key={check.planId} className="small section-hint">
-                  {t("sources.syllabusUnindexed", { plan: check.planTitle })}
-                </p>
-              ) : null,
-            )
-          : null}
-        {detailSource &&
-        detailSource.planCount > 0 &&
-        (syllabus.data ?? []).some((check) => check.state === "unavailable") ? (
-          <p className="small section-hint">
-            {t("sources.syllabusUnavailable")}
-          </p>
-        ) : null}
-        {detailSource?.originUrl ? (
-          <p className="small section-hint">
-            {t("sources.savedFrom", {
-              host: (() => {
-                try {
-                  return new URL(detailSource.originUrl).hostname;
-                } catch {
-                  return detailSource.originUrl;
-                }
-              })(),
-              date: detailSource.fetchedAt
-                ? new Intl.DateTimeFormat(i18n.language, {
-                    dateStyle: "medium",
-                  }).format(detailSource.fetchedAt)
-                : "—",
-            })}
-          </p>
-        ) : null}
-        {meta.data && !meta.data.knownSpec ? (
-          <Notice tone="warning">{t("sources.specUnknown")}</Notice>
-        ) : null}
-        {sourceId ? (
-          <form
-            className="engine-key"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void invoke("sources.rename", { sourceId, title: renameTo })
-                .then(() => client.invalidateQueries({ queryKey: ["sources"] }))
-                .catch(fail);
-            }}
-          >
-            <Input
-              value={renameTo}
-              aria-label={t("sources.rename")}
-              onChange={(event) => setRenameTo(event.target.value)}
-            />
-            <Button htmlType="submit" shape="round">
-              {t("sources.rename")}
-            </Button>
-            <Button
-              shape="round"
-              onClick={() => void replace(sourceId).catch(fail)}
-            >
-              {t("sources.replace")}
-            </Button>
-            <Button
-              shape="round"
-              disabled={
-                detailSource?.kind === "smartbook" || !detailSource?.blobSha
-              }
-              onClick={() => {
-                if (detailSource) void reextract(detailSource).catch(fail);
-              }}
-            >
-              {t("sources.reextract")}
-            </Button>
-            {detailSource?.originUrl ? (
-              <Button
-                shape="round"
-                loading={refreshing === detailSource.id}
-                disabled={refreshing !== null && refreshing !== detailSource.id}
-                onClick={() => void refresh(detailSource).catch(fail)}
-              >
-                {t("sources.refresh")}
-              </Button>
-            ) : null}
-            <Button
-              shape="round"
-              danger
-              onClick={() => {
-                const source = sources.find((item) => item.id === sourceId);
-                if (source) void remove(source).catch(fail);
-              }}
-            >
-              {t("sources.remove")}
-            </Button>
-          </form>
-        ) : null}
-        <div className="choice-list">
-          {(chapters.data ?? []).map((item) => (
-            <button
-              key={item.number}
-              type="button"
-              className={
-                item.number === chapter ? "choice is-selected" : "choice"
-              }
-              onClick={() => {
-                openSourceViewer({
-                  sourceId: sourceId ?? undefined,
-                  chapter: item.number,
-                });
-                setChapter(item.number);
-                setParagraph(undefined);
-              }}
-            >
-              {item.number}. {item.title}
-            </button>
-          ))}
-        </div>
-      </Drawer>
+      <SourceDetails
+        sourceId={detailsOpen ? sourceId : null}
+        startRename={renameOnOpen}
+        onClose={() => {
+          setDetailsOpen(false);
+          setRenameOnOpen(false);
+        }}
+      />
     </div>
   );
 }

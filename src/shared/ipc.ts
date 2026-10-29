@@ -2269,6 +2269,48 @@ export const requests = {
     input: z.object({ sourceId: z.string() }),
     output: z.array(z.object({ number: z.number(), title: z.string() })),
   },
+  /**
+   * What the source details panel shows, read from what is stored: when the source was added, its sections with how
+   * many lessons and quizzes cite each, which pages have text and which OCR read, and the exams and topics that use it.
+   * A field that cannot be read for this source is absent. Null for a missing or removed source.
+   */
+  "sources.details": {
+    input: z.object({ sourceId: z.string() }),
+    output: z
+      .object({
+        addedAt: z.number(),
+        sections: z.number().int().nonnegative(),
+        pages: z
+          .object({
+            count: z.number().int().positive(),
+            ocr: z.array(z.number().int().positive()),
+            blank: z.array(z.number().int().positive()),
+            ocrAt: z.number().optional(),
+          })
+          .optional(),
+        citations: z.number().int().nonnegative(),
+        bySection: z.array(
+          z.object({
+            section: z.string(),
+            count: z.number().int().nonnegative(),
+            passageId: z.string(),
+            chapter: z.number().optional(),
+            firstPage: z.number().optional(),
+            lastPage: z.number().optional(),
+          }),
+        ),
+        exams: z.array(
+          z.object({
+            planId: z.string(),
+            title: z.string(),
+            role: z.enum(["material", "past_paper"]),
+            archived: z.boolean(),
+            topics: z.array(z.string()),
+          }),
+        ),
+      })
+      .nullable(),
+  },
   "sources.meta": {
     input: z.object({ sourceId: z.string() }),
     output: z

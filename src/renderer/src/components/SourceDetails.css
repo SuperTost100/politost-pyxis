@@ -1,0 +1,327 @@
+/* The source details panel: 520 px, as tall as the window, a fixed header and a body that scrolls. */
+.px-source-panel .ant-drawer-body {
+  min-height: 0;
+}
+/* On the dark overlay surface the usual hairline is too faint. */
+[data-theme="dark"] .px-source-panel {
+  --border: #353c4a;
+}
+
+.px-source-panel-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-3);
+  align-items: start;
+  padding: var(--space-5) var(--space-4) var(--space-4) 28px;
+  border-bottom: 1px solid var(--border);
+}
+.px-source-kind {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+}
+.px-source-kind svg {
+  flex-shrink: 0;
+}
+.px-source-panel-close {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  margin-top: -6px;
+}
+.px-source-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.px-source-title h2 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.px-source-title .px-iconbtn {
+  flex-shrink: 0;
+  color: var(--ink-muted);
+}
+.px-source-rename {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+}
+.px-source-panel-wide {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.px-source-panel-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) var(--space-3) 0 0;
+}
+.px-grow {
+  flex: 1;
+}
+
+/* A state: icon and word, coloured by tone. */
+.px-source-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 calc(13px * var(--text-scale, 1)) / calc(18px * var(--text-scale, 1)) var(--font-sans);
+  color: var(--ink-muted);
+}
+.px-source-state svg {
+  flex-shrink: 0;
+}
+.px-source-state.is-ok {
+  color: var(--mastery-text);
+}
+.px-source-state.is-warn {
+  color: var(--warning);
+}
+.px-source-state.is-info {
+  color: var(--primary-text);
+}
+
+.px-source-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-1) 28px 28px;
+}
+.px-source-panel-body > .px-notice {
+  margin-top: var(--space-4);
+}
+
+/* Facts on hairlines, as on the exam page. */
+.px-source-facts {
+  display: grid;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+}
+.px-source-facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3) 0 var(--space-3) var(--space-4);
+}
+.px-source-facts > div:first-child {
+  padding-left: 0;
+}
+.px-source-facts > div + div {
+  border-left: 1px solid var(--border);
+}
+.px-source-facts dd {
+  margin: 0;
+}
+.px-source-fact {
+  font: 600 calc(19px * var(--text-scale, 1)) / calc(26px * var(--text-scale, 1)) var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.px-source-sec {
+  padding-top: var(--space-5);
+}
+.px-source-sec + .px-source-sec {
+  margin-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+.px-source-sec > h3,
+.px-source-sec-head h3 {
+  margin: 0 0 10px;
+}
+.px-source-sec-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.px-source-sec .px-ocr,
+.px-source-sec .px-notice {
+  margin-top: var(--space-2);
+}
+
+/* Page strip: one mark per page. */
+.px-source-strip {
+  display: grid;
+  height: 20px;
+  margin-top: var(--space-1);
+}
+.px-source-strip i,
+.px-source-legend i {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--border-control) 40%, transparent);
+}
+.px-source-strip i.is-ocr,
+.px-source-legend i.is-ocr {
+  background: var(--primary);
+}
+.px-source-strip i.is-blank,
+.px-source-legend i.is-blank {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-control) 55%, transparent);
+}
+.px-source-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 10px 0 0;
+}
+.px-source-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.px-source-legend i {
+  width: 10px;
+  height: 10px;
+}
+
+.px-source-reads {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.px-source-reads li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 0 var(--space-3);
+}
+.px-source-reads li > :not(.px-source-read-icon) {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+}
+.px-source-read-icon {
+  grid-row: 1 / span 2;
+  display: flex;
+  color: var(--ink-muted);
+  padding-top: 1px;
+}
+.px-source-read-icon.is-ok {
+  color: var(--mastery-text);
+}
+.px-source-read-icon.is-run {
+  color: var(--primary-text);
+}
+
+/* The exams that use the source. */
+.px-source-uses {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-source-uses li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 2px var(--space-3);
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.px-source-uses li > svg {
+  grid-row: 1 / span 4;
+  color: var(--ink-muted);
+  margin-top: 1px;
+}
+.px-source-uses li > :not(svg) {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+}
+.px-source-uses .px-source-state {
+  margin-top: var(--space-1);
+}
+.px-source-empty {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: 0;
+}
+.px-source-empty.is-filled {
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.px-source-note {
+  margin: var(--space-3) 0 0;
+}
+.px-source-add {
+  margin-top: var(--space-3);
+}
+
+/* What lessons and quizzes cite: one row per section, opening the viewer there. */
+.px-source-cites {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-source-cites li + li {
+  border-top: 1px solid var(--border);
+}
+.px-source-cites button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 28px 16px;
+  gap: var(--space-3);
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.px-source-cites button:hover .px-source-cite-name .body-strong {
+  color: var(--primary-text);
+}
+.px-source-cites button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.px-source-cites button > svg {
+  color: var(--ink-subtle);
+}
+.px-source-cites .meta {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.px-source-cite-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.px-source-cite-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-raised);
+}
+[data-theme="dark"] .px-source-cite-bar {
+  background: var(--border);
+}
+.px-source-cite-bar span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--ink-muted);
+}
+.px-source-cites-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}

@@ -1,5 +1,6 @@
 import { fetchSnapshot, parseLinkUrl } from "./link";
 import { blobSize } from "../blobs";
+import { sourceDetails } from "./details";
 import { latestDocument } from "./documents";
 import { statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
@@ -613,6 +614,10 @@ export function sourceHandlers(
     },
     async search(input: { query: string }, signal?: AbortSignal) {
       return (await retrieveWithModel(db, input.query, { signal })).hits;
+    },
+    /** The facts the source details panel shows. Reads only what is stored; nothing is embedded or estimated. */
+    details(input: { sourceId: string }) {
+      return sourceDetails(db, input.sourceId);
     },
     chapters(input: { sourceId: string }) {
       return smartbookChapters(db, input.sourceId);

@@ -31,6 +31,7 @@ describe("job update invalidation", () => {
       "sources",
       "source-chapters",
       "source-meta",
+      "source-details",
     ]);
     expect(keys(staleFamilies({ kind: "ocr-data-download", state: "queued" }))).toEqual(["jobs", "ocr-data"]);
     expect(keys(staleFamilies({ kind: "embedding-download", state: "running" }))).toEqual(["jobs", "embedding"]);
@@ -56,6 +57,7 @@ describe("stale batcher", () => {
       "sources",
       "source-chapters",
       "source-meta",
+      "source-details",
       "plan-build",
       "jobs-finished",
       "plans",
