@@ -77,4 +77,16 @@ export class Budget extends DurableObject<Env> {
     sql.exec("DELETE FROM usage WHERE day < ?", oldest);
     return "stored";
   }
+
+  /** Gives back the room `reserve` took for a report that was then not stored. */
+  release(day: string, kind: ReportKind, bytes: number): void {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isSafeInteger(bytes) || bytes < 0) return;
+    this.ctx.storage.sql.exec(
+      `UPDATE usage SET reports = MAX(reports - 1, 0), minidumps = MAX(minidumps - ?, 0), bytes = MAX(bytes - ?, 0)
+       WHERE day = ?`,
+      kind === "minidump" ? 1 : 0,
+      bytes,
+      day,
+    );
+  }
 }

@@ -165,6 +165,29 @@ async function reserve(env: Env, now: Date, kind: ReportKind, bytes: number): Pr
   return false;
 }
 
+/**
+ * Writes a report whose room is already reserved. If the write throws and the object isn't there, the room goes back
+ * to the budget, so an R2 outage can't spend the day's allowance on reports that were never stored. If the check
+ * itself fails, the room stays taken: counting a report that wasn't stored is the safe side of a cost cap.
+ */
+async function put(
+  env: Env,
+  now: Date,
+  kind: ReportKind,
+  key: string,
+  value: string | Uint8Array,
+  options: R2PutOptions,
+): Promise<void> {
+  const bytes = typeof value === "string" ? new TextEncoder().encode(value).byteLength : value.byteLength;
+  try {
+    await env.REPORTS.put(key, value, options);
+  } catch (error) {
+    const there = await env.REPORTS.head(key).catch(() => undefined);
+    if (there === null) await env.BUDGET.get(env.BUDGET.idFromName("global")).release(day(now), kind, bytes);
+    throw error;
+  }
+}
+
 async function storeError(request: Request, env: Env, now: Date): Promise<Response> {
   if (!/^application\/json\s*(?:;|$)/i.test(request.headers.get("content-type") ?? ""))
     return text(415, "expected application/json");
@@ -183,14 +206,10 @@ async function storeError(request: Request, env: Env, now: Date): Promise<Respon
   const group = await fingerprint(clean);
   const stored = JSON.stringify({ receivedAt: now.toISOString(), fingerprint: group, ...clean });
   if (!(await reserve(env, now, "error", new TextEncoder().encode(stored).byteLength))) return full(now);
-  await env.REPORTS.put(
-    `${day(now)}/error/${id}.json`,
-    stored,
-    {
-      httpMetadata: { contentType: "application/json" },
-      customMetadata: { fingerprint: group, process: clean.process, appVersion: clean.appVersion },
-    },
-  );
+  await put(env, now, "error", `${day(now)}/error/${id}.json`, stored, {
+    httpMetadata: { contentType: "application/json" },
+    customMetadata: { fingerprint: group, process: clean.process, appVersion: clean.appVersion },
+  });
   return new Response(null, { status: 204 });
 }
 
@@ -261,7 +280,7 @@ async function storeMinidump(request: Request, env: Env, now: Date): Promise<Res
   if (!fields) return text(400, "invalid fields");
   if (!(await reserve(env, now, "minidump", dumpBytes.byteLength))) return full(now);
   const id = crypto.randomUUID();
-  await env.REPORTS.put(`${day(now)}/minidump/${id}.dmp`, dumpBytes, {
+  await put(env, now, "minidump", `${day(now)}/minidump/${id}.dmp`, dumpBytes, {
     httpMetadata: { contentType: "application/octet-stream" },
     customMetadata: { receivedAt: now.toISOString(), ...fields },
   });

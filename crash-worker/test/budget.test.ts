@@ -134,6 +134,28 @@ describe("daily budget", () => {
     expect((await handle(postError(), testEnv(name), now)).status).toBe(204);
   });
 
+  it("gives the room back when the write to R2 fails and nothing was stored", async () => {
+    const name = "write-fails";
+    const stub = budget(name);
+    const failing = {
+      ...env,
+      CLIENT_LIMIT: allow,
+      ROUTE_LIMIT: allow,
+      BUDGET: { idFromName: () => stub.id, get: () => stub },
+      REPORTS: {
+        put: async () => {
+          throw new Error("R2 unavailable");
+        },
+        head: async () => null,
+      },
+    } as unknown as Env;
+    const now = new Date(Date.UTC(2027, 9, 1, 12));
+    for (let i = 0; i < BUDGET.reportsPerDay; i++)
+      await expect(handle(postError(), failing, now)).rejects.toThrow("R2 unavailable");
+    // Every failed write gave its place back, so the day still has room for all of them.
+    expect((await handle(postError(), testEnv(name), now)).status).toBe(204);
+  });
+
   it("stores a report while the budget lasts", async () => {
     const now = new Date(Date.UTC(2027, 6, 1, 12));
     expect((await handle(postError(), testEnv("ok"), now)).status).toBe(204);
