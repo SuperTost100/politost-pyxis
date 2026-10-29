@@ -80,10 +80,26 @@ The Worker lives in [`crash-worker/`](../crash-worker), with its own `package.js
 | Bad JSON, bad fields, not a minidump                                                                                                                                      | `400`                                                           |
 | Too large                                                                                                                                                                 | `413`                                                           |
 | Over the rate limit                                                                                                                                                       | `429`                                                           |
+| The day's or month's storage budget is spent                                                                                                                              | `503` with `Retry-After` set to the next UTC midnight           |
 
 `<day>` is the UTC date (`2026-10-28`), so one day lists with one prefix. A minidump keeps four fields as R2 custom metadata (`appVersion`, `electronVersion`, `platform`, `processType`) and every other form field is dropped. An error report is stored with the time it arrived and its fingerprint.
 
-The Worker stores no IP address and no request headers. It uses the client address only as a rate-limit key, which Cloudflare counts in memory at each location: 10 reports a minute per address on each route (`CLIENT_LIMIT`), and 300 a minute per route for everyone together (`ROUTE_LIMIT`), which caps what a flood can write. Workers Logs are off in `wrangler.jsonc`, because they would keep request headers.
+The Worker stores no IP address and no request headers. It uses the client address only as a rate-limit key, which Cloudflare counts in memory at each location: 10 reports a minute per address on each route (`CLIENT_LIMIT`), and 300 a minute per route at each location (`ROUTE_LIMIT`). Workers Logs are off in `wrangler.jsonc`, because they would keep request headers.
+
+### Cost limits
+
+The endpoint is public and its address is in this repository, so anyone can send to it. The rate limits count per Cloudflare location, so a sender spread over many locations could still write a lot. What bounds the bill is a storage budget kept in one Durable Object (`Budget` in `src/budget.ts`), a single counter for every location. Every report takes room in it before it is written, and once it is spent the Worker answers `503` until the next UTC day without writing anything:
+
+| Budget          | Value   | Why                                                              |
+| --------------- | ------- | ---------------------------------------------------------------- |
+| Reports a day   | 300     | About 9,000 R2 writes a month, against 1 million free            |
+| Minidumps a day | 50      | Inside the 300                                                   |
+| Bytes a day     | 100 MiB |                                                                  |
+| Bytes a month   | 3 GiB   | Kept 90 days, at most about 9 GiB, against 10 GB of free storage |
+
+Within these numbers R2 stays inside its free tier. A flood can spend the day's budget, which stops real reports until midnight UTC, but it can't raise the bill. Each isolate also remembers a spent day, so the requests after that cost neither a Durable Object call nor a body read.
+
+What the budget doesn't bound is the number of requests the Worker answers. On the Workers Free plan Cloudflare refuses requests past 100,000 a day and charges nothing. On Workers Paid, 10 million requests a month are included and each further million costs $0.30, so a flood big enough to matter would need tens of millions of requests. Set a billing notification in the Cloudflare dashboard to hear about one early.
 
 Reports are kept 90 days. Two things delete them. The bucket's lifecycle rule (step 3 below) is the first line of defence. The Worker also runs once a day at 03:17 UTC (the cron trigger in `wrangler.jsonc`) and deletes every object under a `<day>/` prefix more than 90 days old (`src/retention.ts`), so reports still go if the rule is missing or was changed. A report from exactly 90 days ago goes at the next day's run, and keys that don't start with a real date are left alone.
 

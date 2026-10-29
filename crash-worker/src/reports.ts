@@ -9,6 +9,8 @@
  * deletes them after 90 days (docs/crash-reports.md).
  */
 
+import type { ReportKind } from "./budget";
+
 export const LIMITS = {
   /** A JSON error report. The app sends a few kilobytes at most. */
   errorBytes: 64 * 1024,
@@ -139,6 +141,26 @@ function day(now: Date): string {
   return now.toISOString().slice(0, 10);
 }
 
+/**
+ * The days this isolate already saw the budget run out, per kind, so a flood after that costs no Durable Object call
+ * and no body read. An error refused means the day's count or bytes ran out, which stops minidumps too.
+ */
+const spent: Partial<Record<ReportKind, string>> = {};
+
+function full(now: Date): Response {
+  const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return text(503, "daily limit reached", { "retry-after": String(Math.ceil((midnight - now.getTime()) / 1000)) });
+}
+
+/** Takes room in the global budget before a report is written; false when the day or month is full. */
+async function reserve(env: Env, now: Date, kind: ReportKind, bytes: number): Promise<boolean> {
+  const budget = env.BUDGET.get(env.BUDGET.idFromName("global"));
+  if (await budget.reserve(day(now), kind, bytes)) return true;
+  spent[kind] = day(now);
+  if (kind === "error") spent.minidump = day(now);
+  return false;
+}
+
 async function storeError(request: Request, env: Env, now: Date): Promise<Response> {
   if (!/^application\/json\s*(?:;|$)/i.test(request.headers.get("content-type") ?? ""))
     return text(415, "expected application/json");
@@ -155,9 +177,11 @@ async function storeError(request: Request, env: Env, now: Date): Promise<Respon
   const clean: ErrorReport = { ...report, message: redactHome(report.message), stack: redactHome(report.stack) };
   const id = crypto.randomUUID();
   const group = await fingerprint(clean);
+  const stored = JSON.stringify({ receivedAt: now.toISOString(), fingerprint: group, ...clean });
+  if (!(await reserve(env, now, "error", new TextEncoder().encode(stored).byteLength))) return full(now);
   await env.REPORTS.put(
     `${day(now)}/error/${id}.json`,
-    JSON.stringify({ receivedAt: now.toISOString(), fingerprint: group, ...clean }),
+    stored,
     {
       httpMetadata: { contentType: "application/json" },
       customMetadata: { fingerprint: group, process: clean.process, appVersion: clean.appVersion },
@@ -231,6 +255,7 @@ async function storeMinidump(request: Request, env: Env, now: Date): Promise<Res
     return text(400, "not a minidump");
   const fields = minidumpFields(form);
   if (!fields) return text(400, "invalid fields");
+  if (!(await reserve(env, now, "minidump", dumpBytes.byteLength))) return full(now);
   const id = crypto.randomUUID();
   await env.REPORTS.put(`${day(now)}/minidump/${id}.dmp`, dumpBytes, {
     httpMetadata: { contentType: "application/octet-stream" },
@@ -254,6 +279,7 @@ export async function handle(request: Request, env: Env, now = new Date()): Prom
     env.ROUTE_LIMIT.limit({ key: pathname }),
   ]);
   if (!perClient.success || !perRoute.success) return text(429, "too many reports", { "retry-after": "60" });
+  if (spent[pathname === "/error" ? "error" : "minidump"] === day(now)) return full(now);
   try {
     return await route(request, env, now);
   } catch (error) {
