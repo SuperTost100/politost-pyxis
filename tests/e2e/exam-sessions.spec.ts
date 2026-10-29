@@ -174,10 +174,19 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
       location.hash = "/plans/plan-b";
     });
     await page.getByRole("button", { name: "Exam settings" }).click();
+    // An unsaved edit is not dropped without asking: the archive is done, then the page asks before leaving.
+    await settingsPage.getByLabel("Exam name").fill("Analisi 2 bis");
     await settingsPage.getByRole("button", { name: "Archive", exact: true }).click();
+    const leaveAfter = page.getByRole("dialog", { name: "Leave without saving?" });
+    await expect(leaveAfter).toContainText("You changed the name.");
+    expect((await read("plan-b"))!.archivedAt).not.toBeNull();
+    await leaveAfter.getByRole("button", { name: "Stay here" }).click();
+    await expect(settingsPage.getByRole("button", { name: "Restore", exact: true })).toBeVisible();
+    await expect(settingsPage.getByLabel("Exam name")).toHaveValue("Analisi 2 bis");
+    await saveBar.getByRole("button", { name: "Discard changes" }).click();
+    await settingsPage.getByRole("link", { name: "Analisi 2" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-b$/);
     await expect(page.getByText("This exam is archived.")).toBeVisible();
-    expect((await read("plan-b"))!.archivedAt).not.toBeNull();
     await snap("plan-archived", "en", "dark");
 
     // Exams page: Analisi 2 left the Active list, and the Archived filter brings it back.
