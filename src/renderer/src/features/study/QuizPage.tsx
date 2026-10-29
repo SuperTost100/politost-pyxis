@@ -869,7 +869,10 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         const graded = checked[item.id];
         if (graded && (place < 0 || place < done))
           return resultItem(graded, verdict(graded.score));
-        const mark: ResultItem["mark"] = gradingStopped
+        // Not in the grading job's list (an unanswered question when the time ran out): nothing will grade it. Before the
+        // list has loaded, every answer still reads as queued.
+        const outOfJob = grading.data != null && place < 0;
+        const mark: ResultItem["mark"] = gradingStopped || outOfJob
           ? "ungraded"
           : place === done
             ? "grading"
