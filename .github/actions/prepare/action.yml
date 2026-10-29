@@ -31,7 +31,7 @@ runs:
         for attempt in 1 2 3; do
           npm ci && exit 0
           echo "::warning::npm ci failed (attempt $attempt of 3)"
-          sleep $((attempt * 15))
+          if [ "$attempt" -lt 3 ]; then sleep $((attempt * 15)); fi
         done
         exit 1
       env:
