@@ -323,6 +323,11 @@ export function SourceDetails({
   }
 
   const data = details.data ?? undefined;
+  // Core answers null for a source removed since the list was read: the panel says so, and the list drops the row.
+  const gone = details.isSuccess && details.data === null;
+  useEffect(() => {
+    if (gone) void client.invalidateQueries({ queryKey: ["sources"] });
+  }, [gone, client]);
   const pending = source ? scanPending({ ...source, sections: source.sections ?? 0, blobSha: listed?.blobSha ?? null }) : false;
   const pages = data?.pages && !pending ? data.pages : undefined;
   // A scan still being read, or a PDF whose pages OCR read, gets the scan icon.
@@ -608,7 +613,7 @@ export function SourceDetails({
             type="primary"
             shape="round"
             icon={<BookOpen size={18} strokeWidth={1.75} aria-hidden />}
-            disabled={!id || (source?.kind === "smartbook" && !chapters.data?.length)}
+            disabled={!id || gone || (source?.kind === "smartbook" && !chapters.data?.length)}
             onClick={() =>
               openSource(source?.kind === "smartbook" ? { chapter: chapters.data?.[0]?.number } : {})
             }
@@ -623,7 +628,11 @@ export function SourceDetails({
         {details.isError ? (
           <LoadError onRetry={() => void details.refetch()}>{t("sources.panel.loadFailed")}</LoadError>
         ) : !data ? (
-          details.isPending && open ? <Skeleton active paragraph={{ rows: 6 }} /> : null
+          details.isPending && open ? (
+            <Skeleton active paragraph={{ rows: 6 }} />
+          ) : gone ? (
+            <Notice tone="warning">{t("sources.panel.gone")}</Notice>
+          ) : null
         ) : (
           <>
             {meta.data && !meta.data.knownSpec ? <Notice tone="warning">{t("sources.specUnknown")}</Notice> : null}

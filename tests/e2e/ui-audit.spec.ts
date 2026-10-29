@@ -92,6 +92,8 @@ const routes = [
   // The source details panel on a PDF whose scanned pages OCR read, and on a scan being read now.
   ["library-panel-pdf", "/exams/library"],
   ["library-panel-scan", "/exams/library"],
+  // A source removed after the list was read: the panel says it is gone instead of staying blank.
+  ["library-panel-removed", "/exams/library"],
   // An exam's Sources tab opens the same panel; Escape closes it and focus goes back to the row.
   ["plan-sources-panel", "/plans/audit-plan/sources"],
   ["library-folder", "/exams/library"],
@@ -1066,7 +1068,7 @@ function preparePanelSources(name: string) {
       DELETE FROM plan_sources WHERE source_id IN ${ids};
       DELETE FROM sources WHERE id IN ${ids};`);
   });
-  if (name !== "library-panel-pdf" && name !== "library-panel-scan") return;
+  if (!["library-panel-pdf", "library-panel-scan", "library-panel-removed"].includes(name)) return;
   const sha = auditScanBlob();
   const day = 24 * 60 * 60 * 1000;
   const added = Date.now() - 10 * day;
@@ -2541,6 +2543,24 @@ async function openState(page: Page, name: string) {
         }),
       ).toBeVisible();
       break;
+    case "library-panel-removed": {
+      const row = page.getByRole("button", { name: "Esercitazioni Analisi 1 2025", exact: true });
+      await expect(row).toBeVisible();
+      // Removed behind the list's back, as another window or a cleanup would: the row is still on screen.
+      withDb((db) =>
+        db.prepare("UPDATE sources SET status = 'removed' WHERE id = 'audit-panel-pdf'").run(),
+      );
+      await row.click();
+      await expect(
+        dialog.getByText(
+          both("Questa fonte non è più nella libreria.", "This source is no longer in the library."),
+        ),
+      ).toBeVisible();
+      await expect(
+        dialog.getByRole("button", { name: both("Apri la fonte", "Open source") }),
+      ).toBeDisabled();
+      break;
+    }
     case "plan-sources-panel": {
       const row = page.getByRole("button", { name: source });
       await row.click();

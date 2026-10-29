@@ -608,7 +608,8 @@
       "wholeText": "Tutto il testo",
       "uncitedPages_one": "{{count}} pagina non è mai citata.",
       "uncitedPages_other": "{{count}} pagine non sono mai citate.",
-      "addToFirstExam": "Aggiungi a un esame"
+      "addToFirstExam": "Aggiungi a un esame",
+      "gone": "Questa fonte non è più nella libreria."
     }
   },
   "cards": {
