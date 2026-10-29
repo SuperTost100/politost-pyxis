@@ -45,3 +45,27 @@ export function setPlanArchived(
   if (!result.changes) throw new Error("plan-missing-or-building");
   return { ok: true as const };
 }
+
+/**
+ * What deleting a plan takes with it, for the confirmation that lists it: its topics, the lessons Pyxis wrote, the
+ * quizzes and simulations the student handed in, and the flashcards still in use. An archived plan counts the same.
+ */
+export function planFootprint(db: Database.Database, planId: string) {
+  const row = db
+    .prepare(
+      `SELECT
+        (SELECT count(*) FROM topics WHERE plan_id = @plan AND archived_at IS NULL) AS topics,
+        (SELECT count(*) FROM items WHERE plan_id = @plan AND kind = 'lesson') AS lessons,
+        (SELECT count(*) FROM attempts a JOIN items i ON i.id = a.item_id
+          WHERE a.plan_id = @plan AND a.submitted_at IS NOT NULL AND i.kind IN ('quiz', 'diagnostic')) AS quizzes,
+        (SELECT count(*) FROM attempts a JOIN items i ON i.id = a.item_id
+          WHERE a.plan_id = @plan AND a.submitted_at IS NOT NULL AND i.kind = 'simulation') AS simulations,
+        (SELECT count(*) FROM cards WHERE plan_id = @plan AND removed = 0) AS cards
+      FROM plans WHERE id = @plan`,
+    )
+    .get({ plan: planId }) as
+    | { topics: number; lessons: number; quizzes: number; simulations: number; cards: number }
+    | undefined;
+  if (!row) throw new Error("plan-missing");
+  return row;
+}

@@ -171,9 +171,9 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     await header
       .getByRole("button", { name: /^(Impostazioni dell'esame|Exam settings)$/ })
       .click();
-    const dialog = page.getByRole("dialog");
+    const settingsPage = page.locator(".px-exam-settings");
     const settingsButton = () =>
-      dialog.getByRole("button", { name: calendarName });
+      settingsPage.getByRole("button", { name: calendarName });
     await expect(settingsButton()).toBeEnabled();
     await saveShot(page, "calendar-plan-settings-en-light.png");
     rmSync(saved, { force: true });
@@ -187,7 +187,6 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     expect(lines).toContain(`DTSTART;VALUE=DATE:${ymd(near)}`);
 
     // A plan with no date cannot be exported.
-    await page.keyboard.press("Escape");
     await open("plan-undated");
     await header.getByRole("button", { name: "Exam settings" }).click();
     await expect(settingsButton()).toBeDisabled();
