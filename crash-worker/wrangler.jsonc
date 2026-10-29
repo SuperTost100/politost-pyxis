@@ -10,6 +10,9 @@
   // Workers Logs would keep each request's headers, client IP among them. The Worker keeps none, so logs stay off.
   "observability": { "enabled": false },
   "r2_buckets": [{ "binding": "REPORTS", "bucket_name": "pyxis-crash-reports" }],
+  // One global counter of what was stored today and this month (src/budget.ts): the cap on what R2 can cost.
+  "durable_objects": { "bindings": [{ "name": "BUDGET", "class_name": "Budget" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Budget"] }],
   // Once a day: delete reports older than 90 days (src/retention.ts), behind the bucket's lifecycle rule.
   "triggers": { "crons": ["17 3 * * *"] },
   "ratelimits": [
