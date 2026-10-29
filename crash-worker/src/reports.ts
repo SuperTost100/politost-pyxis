@@ -143,7 +143,8 @@ function day(now: Date): string {
 
 /**
  * The days this isolate already saw the budget run out, per kind, so a flood after that costs no Durable Object call
- * and no body read. An error refused means the day's count or bytes ran out, which stops minidumps too.
+ * and no body read. Only a full day is remembered, never a report that was merely too big for the bytes left. A full
+ * day for errors (the report count or the bytes are gone) is full for minidumps too.
  */
 const spent: Partial<Record<ReportKind, string>> = {};
 
@@ -152,12 +153,15 @@ function full(now: Date): Response {
   return text(503, "daily limit reached", { "retry-after": String(Math.ceil((midnight - now.getTime()) / 1000)) });
 }
 
-/** Takes room in the global budget before a report is written; false when the day or month is full. */
+/** Takes room in the global budget before a report is written; false when it doesn't fit. */
 async function reserve(env: Env, now: Date, kind: ReportKind, bytes: number): Promise<boolean> {
   const budget = env.BUDGET.get(env.BUDGET.idFromName("global"));
-  if (await budget.reserve(day(now), kind, bytes)) return true;
-  spent[kind] = day(now);
-  if (kind === "error") spent.minidump = day(now);
+  const answer = await budget.reserve(day(now), kind, bytes);
+  if (answer === "stored") return true;
+  if (answer === "full") {
+    spent[kind] = day(now);
+    if (kind === "error") spent.minidump = day(now);
+  }
   return false;
 }
 

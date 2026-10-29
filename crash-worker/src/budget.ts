@@ -21,6 +21,15 @@ export const BUDGET = {
 
 export type ReportKind = "error" | "minidump";
 
+/**
+ * `stored`: room was taken. `full`: no report of this kind fits until the next day (or month), so a caller may stop
+ * asking. `too-big`: this report doesn't fit in the bytes left, but a smaller one still might.
+ */
+export type Reservation = "stored" | "full" | "too-big";
+
+/** Below this many bytes left, no report fits any more: the smallest valid error report is larger. */
+const MIN_REPORT_BYTES = 256;
+
 /** Days of counts kept; older rows are deleted as new days start. */
 const KEEP_DAYS = 40;
 
@@ -36,9 +45,9 @@ export class Budget extends DurableObject<Env> {
     );
   }
 
-  /** Takes room for one report on `day` (YYYY-MM-DD, UTC) and answers whether it fit. A refusal takes nothing. */
-  reserve(day: string, kind: ReportKind, bytes: number): boolean {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isSafeInteger(bytes) || bytes < 0) return false;
+  /** Takes room for one report on `day` (YYYY-MM-DD, UTC) and says whether it fit. A refusal takes nothing. */
+  reserve(day: string, kind: ReportKind, bytes: number): Reservation {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isSafeInteger(bytes) || bytes < 0) return "too-big";
     const sql = this.ctx.storage.sql;
     const today = sql.exec<{ reports: number; minidumps: number; bytes: number }>(
       "SELECT reports, minidumps, bytes FROM usage WHERE day = ?",
@@ -49,13 +58,14 @@ export class Budget extends DurableObject<Env> {
       `${day.slice(0, 7)}-%`,
     ).one().bytes;
     const minidump = kind === "minidump" ? 1 : 0;
+    const bytesLeft = Math.min(BUDGET.bytesPerDay - today.bytes, BUDGET.bytesPerMonth - month);
     if (
       today.reports + 1 > BUDGET.reportsPerDay ||
       today.minidumps + minidump > BUDGET.minidumpsPerDay ||
-      today.bytes + bytes > BUDGET.bytesPerDay ||
-      month + bytes > BUDGET.bytesPerMonth
+      bytesLeft < MIN_REPORT_BYTES
     )
-      return false;
+      return "full";
+    if (bytes > bytesLeft) return "too-big";
     sql.exec(
       `INSERT INTO usage (day, reports, minidumps, bytes) VALUES (?, 1, ?, ?)
        ON CONFLICT(day) DO UPDATE SET reports = reports + 1, minidumps = minidumps + excluded.minidumps, bytes = bytes + excluded.bytes`,
@@ -65,6 +75,6 @@ export class Budget extends DurableObject<Env> {
     );
     const oldest = new Date(Date.parse(`${day}T00:00:00Z`) - KEEP_DAYS * 86_400_000).toISOString().slice(0, 10);
     sql.exec("DELETE FROM usage WHERE day < ?", oldest);
-    return true;
+    return "stored";
   }
 }

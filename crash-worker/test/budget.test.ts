@@ -41,6 +41,28 @@ function postError(): Request {
   });
 }
 
+/** An uncompressed Crashpad-style upload with a minidump of `size` bytes. */
+async function postMinidump(size: number): Promise<Request> {
+  const dump = new Uint8Array(size);
+  dump.set(new TextEncoder().encode("MDMP"));
+  const form = new FormData();
+  for (const [key, value] of Object.entries({
+    _productName: "PoliTost Pyxis",
+    _version: "0.4.1",
+    ver: "45.0.0",
+    platform: "linux",
+    process_type: "browser",
+  }))
+    form.append(key, value);
+  form.append("upload_file_minidump", new File([dump], "upload_file_minidump"));
+  const encoded = new Response(form);
+  return new Request(`${base}/minidump`, {
+    method: "POST",
+    headers: { "content-type": encoded.headers.get("content-type")!, "cf-connecting-ip": "203.0.113.9" },
+    body: await encoded.arrayBuffer(),
+  });
+}
+
 async function stored(day: string): Promise<number> {
   return (await env.REPORTS.list({ prefix: `${day}/` })).objects.length;
 }
@@ -48,25 +70,26 @@ async function stored(day: string): Promise<number> {
 describe("daily budget", () => {
   it("allows reports up to the daily count, then refuses until the next UTC day", async () => {
     const counter = budget("count");
-    for (let i = 0; i < BUDGET.reportsPerDay; i++) expect(await counter.reserve("2027-01-01", "error", 100)).toBe(true);
-    expect(await counter.reserve("2027-01-01", "error", 100)).toBe(false);
-    expect(await counter.reserve("2027-01-01", "minidump", 100)).toBe(false);
-    expect(await counter.reserve("2027-01-02", "error", 100)).toBe(true);
+    for (let i = 0; i < BUDGET.reportsPerDay; i++) expect(await counter.reserve("2027-01-01", "error", 100)).toBe("stored");
+    expect(await counter.reserve("2027-01-01", "error", 100)).toBe("full");
+    expect(await counter.reserve("2027-01-01", "minidump", 100)).toBe("full");
+    expect(await counter.reserve("2027-01-02", "error", 100)).toBe("stored");
   });
 
   it("caps minidumps on their own, inside the daily count", async () => {
     const counter = budget("minidumps");
     for (let i = 0; i < BUDGET.minidumpsPerDay; i++)
-      expect(await counter.reserve("2027-02-01", "minidump", 1000)).toBe(true);
-    expect(await counter.reserve("2027-02-01", "minidump", 1000)).toBe(false);
-    expect(await counter.reserve("2027-02-01", "error", 1000)).toBe(true);
+      expect(await counter.reserve("2027-02-01", "minidump", 1000)).toBe("stored");
+    expect(await counter.reserve("2027-02-01", "minidump", 1000)).toBe("full");
+    expect(await counter.reserve("2027-02-01", "error", 1000)).toBe("stored");
   });
 
-  it("caps the bytes stored a day, and a refused report uses none of them", async () => {
+  it("caps the bytes stored a day: a report too big for what is left is refused without using any of it", async () => {
     const counter = budget("bytes");
-    expect(await counter.reserve("2027-03-01", "minidump", BUDGET.bytesPerDay - 10)).toBe(true);
-    expect(await counter.reserve("2027-03-01", "error", 11)).toBe(false);
-    expect(await counter.reserve("2027-03-01", "error", 10)).toBe(true);
+    expect(await counter.reserve("2027-03-01", "minidump", BUDGET.bytesPerDay - 1000)).toBe("stored");
+    expect(await counter.reserve("2027-03-01", "minidump", 1001)).toBe("too-big");
+    expect(await counter.reserve("2027-03-01", "error", 1000)).toBe("stored");
+    expect(await counter.reserve("2027-03-01", "error", 1)).toBe("full");
   });
 
   it("keeps a whole month under the monthly byte cap, and starts again the next month", async () => {
@@ -75,12 +98,12 @@ describe("daily budget", () => {
     let refused = 0;
     for (let d = 1; d <= 31; d++) {
       const day = `2027-05-${String(d).padStart(2, "0")}`;
-      if (await counter.reserve(day, "minidump", BUDGET.bytesPerDay)) allowed += BUDGET.bytesPerDay;
+      if ((await counter.reserve(day, "minidump", BUDGET.bytesPerDay)) === "stored") allowed += BUDGET.bytesPerDay;
       else refused += 1;
     }
     expect(allowed).toBeLessThanOrEqual(BUDGET.bytesPerMonth);
     expect(refused).toBeGreaterThan(0);
-    expect(await counter.reserve("2027-06-01", "minidump", BUDGET.bytesPerDay)).toBe(true);
+    expect(await counter.reserve("2027-06-01", "minidump", BUDGET.bytesPerDay)).toBe("stored");
   });
 
   it("answers 503 and stores nothing once the day's budget is spent", async () => {
@@ -92,6 +115,16 @@ describe("daily budget", () => {
     expect(response.status).toBe(503);
     expect(Number(response.headers.get("retry-after"))).toBe(12 * 3600);
     expect(await stored("2027-06-01")).toBe(0);
+  });
+
+  it("keeps taking reports in this isolate after one was only too big for the bytes left", async () => {
+    const name = "too-big";
+    const counter = budget(name);
+    const now = new Date(Date.UTC(2027, 7, 1, 12));
+    expect(await counter.reserve("2027-08-01", "minidump", BUDGET.bytesPerDay - 2000)).toBe("stored");
+    const big = await handle(await postMinidump(4000), testEnv(name), now);
+    expect(big.status).toBe(503);
+    expect((await handle(postError(), testEnv(name), now)).status).toBe(204);
   });
 
   it("stores a report while the budget lasts", async () => {
