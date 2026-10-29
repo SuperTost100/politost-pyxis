@@ -133,11 +133,9 @@ html[data-platform="darwin"] {
 }
 
 .px-doors .ant-segmented-item-label {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .px-doors .ant-segmented-item,

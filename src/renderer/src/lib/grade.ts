@@ -32,6 +32,15 @@ export function gradeValue(fraction: number, scale: GradeScale): number {
   return Math.floor(clamped * scale * steps + 1e-9) / steps;
 }
 
+/**
+ * A fraction as a whole number on the scale, rounded down: 18,6 out of 30 is 18, and 29,99 is 29. The path bars use it
+ * so a topic never looks at its goal before it is. Grades and goals that are precise (results, the goal itself) keep
+ * `gradeValue`. The tolerance matches `gradeValue`'s.
+ */
+export function gradeWhole(fraction: number, scale: GradeScale): number {
+  return Math.floor(Math.max(0, Math.min(1, fraction)) * scale + 1e-9);
+}
+
 /** A change between two fractions (a weekly gain, a decay) in the scale's points, to the nearest step. */
 export function gradeDelta(delta: number, scale: GradeScale): number {
   const steps = scale === 30 ? 10 : 1;
@@ -47,6 +56,11 @@ export function formatGradeNumber(value: number, locale: string): string {
 /** A fraction as the student reads it: "18/30", "22,5/30" or "75/100". */
 export function formatGrade(fraction: number, scale: GradeScale, locale: string): string {
   return `${formatGradeNumber(gradeValue(fraction, scale), locale)}/${scale}`;
+}
+
+/** A fraction as a whole mastery on the scale: "18/30" for 18,6 out of 30. */
+export function formatGradeWhole(fraction: number, scale: GradeScale): string {
+  return `${gradeWhole(fraction, scale)}/${scale}`;
 }
 
 /** A change with its sign: "+1,5", "−3" or "0". */

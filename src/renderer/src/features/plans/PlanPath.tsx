@@ -7,6 +7,7 @@ import type { RequestOutput } from "@shared/ipc";
 import { Icon, type IconName } from "../../components/Icon";
 import { MasteryBar } from "../../components/MasteryBar";
 import { Tag } from "../../components/Tag";
+import { formatGradeWhole } from "../../lib/grade";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { searchMatcher } from "../../lib/search";
 import { topicRows, type StepChip, type TopicRow } from "./pathRows";
@@ -203,6 +204,7 @@ export function NextStep({
                   value={topic.mastery * 100}
                   target={plan.target * 100}
                   scale={grade.scale}
+                  whole
                   label={t("plans.path.mastery", { topic: title(topicId) })}
                 />
               </div>
@@ -239,7 +241,7 @@ export function NextStep({
               {matches.length ? (
                 <ul className="px-path-picker-list" aria-label={t("plans.path.topics")}>
                   {matches.map((item) => {
-                    const mastery = grade.format(status.get(item.id)?.mastery ?? 0);
+                    const mastery = formatGradeWhole(status.get(item.id)?.mastery ?? 0, grade.scale);
                     return (
                       <li key={item.id}>
                         <button
@@ -505,6 +507,7 @@ export function PlanPath({
                   value={row.mastery * 100}
                   target={plan.target * 100}
                   scale={grade.scale}
+                  whole
                   label={t("plans.path.mastery", { topic: row.title })}
                 />
               </div>
