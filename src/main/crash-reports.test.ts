@@ -484,6 +484,42 @@ describe("queue", () => {
     expect(readFileSync(h.file, "utf8").length).toBeLessThan(CRASH_LIMITS.queueBytes + 2_000);
   });
 
+  it("aborts the request in flight when the switch goes off, and drops its report", async () => {
+    const dir = tempDir("pyxis-crash-");
+    let signal: AbortSignal | undefined;
+    let started: () => void = () => {};
+    const inFlight = new Promise<void>((resolve) => (started = resolve));
+    const reports = new CrashReports({
+      file: join(dir, "crash-reports.json"),
+      endpoint: "https://crash.test",
+      meta,
+      roots: () => posix,
+      // Answers only when its request is aborted, as a stalled connection would.
+      fetch: ((_url: string, init: RequestInit) => {
+        signal = init.signal ?? undefined;
+        started();
+        return new Promise<Response>((_resolve, reject) =>
+          signal?.addEventListener("abort", () => reject(signal?.reason)),
+        );
+      }) as unknown as typeof fetch,
+      log: () => {},
+    });
+    reports.setConsent(true);
+    reports.capture("main", boom("in flight"));
+    const flushing = reports.flush();
+    await inFlight;
+    expect(signal?.aborted).toBe(false);
+    reports.setConsent(false);
+    expect(signal?.aborted).toBe(true);
+    await flushing;
+    expect(reports.queued).toEqual([]);
+    expect(readFileSync(join(dir, "crash-reports.json"), "utf8")).not.toContain("in flight");
+    // Turned on again, nothing comes back to send.
+    reports.setConsent(true);
+    await reports.flush();
+    expect(reports.queued).toEqual([]);
+  });
+
   it("does not send a report whose queue was emptied while its request was out", async () => {
     const dir = tempDir("pyxis-crash-");
     let release: (value: Response) => void = () => {};

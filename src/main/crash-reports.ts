@@ -308,6 +308,8 @@ export class CrashReports {
   private readonly now: () => number;
   private readonly log: (message: string) => void;
   private flushing: Promise<void> | null = null;
+  /** The request being sent now; turning the switch off aborts it. */
+  private inFlight: AbortController | null = null;
   private again = false;
   /** A send failed this session: the queue waits for the next start. */
   private offline = false;
@@ -364,6 +366,8 @@ export class CrashReports {
       void this.flush();
       return;
     }
+    // A report already on its way stops here; its item leaves the queue below, so it is never sent again.
+    if (!enabled) this.inFlight?.abort();
     if (enabled) this.state.consent = { enabled: true, since: this.now() };
     else if (current.enabled || this.state.queue.length > 0) {
       this.state.consent = { enabled: false, since: null };
@@ -444,16 +448,22 @@ export class CrashReports {
         continue;
       }
       let status = 0;
+      const request = new AbortController();
+      this.inFlight = request;
+      const timeout = setTimeout(() => request.abort(), 15_000);
       try {
         const response = await this.fetcher(`${endpoint}/error`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(item.report),
-          signal: AbortSignal.timeout(15_000),
+          signal: request.signal,
         });
         status = response.status;
       } catch {
         status = 0;
+      } finally {
+        clearTimeout(timeout);
+        if (this.inFlight === request) this.inFlight = null;
       }
       // The switch went off, or the queue was emptied, while the request was out.
       if (!this.state.queue.includes(item)) continue;
