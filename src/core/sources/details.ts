@@ -63,12 +63,17 @@ export function sourceDetails(db: Database.Database, sourceId: string): SourceDe
 
   const sections = db
     .prepare(
-      `SELECT section_path AS section, id AS passageId, MIN(rowid) AS firstRow,
+      // A bare column next to several MIN()/MAX() is taken from an unspecified row, so the first passage is picked by
+      // its rank instead, in the same single pass over the document.
+      `WITH ranked AS (
+         SELECT id, rowid AS row, section_path, locator_json,
+           ROW_NUMBER() OVER (PARTITION BY section_path ORDER BY rowid) AS n
+         FROM passages WHERE document_id = ? AND section_path IS NOT NULL)
+       SELECT section_path AS section, MAX(CASE WHEN n = 1 THEN id END) AS passageId, MIN(row) AS firstRow,
          MIN(json_extract(locator_json, '$.page')) AS firstPage,
          MAX(json_extract(locator_json, '$.page')) AS lastPage,
          MIN(json_extract(locator_json, '$.chapter')) AS chapter
-       FROM passages WHERE document_id = ? AND section_path IS NOT NULL
-       GROUP BY section_path`,
+       FROM ranked GROUP BY section_path`,
     )
     .all(source.documentId) as Array<{
     section: string;

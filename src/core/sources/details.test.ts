@@ -75,6 +75,28 @@ describe("source details", () => {
     expect(sourceDetails(db, sourceId)?.pages).toEqual({ count: 4, ocr: [], blank: [2] });
   });
 
+  it("opens a section spanning several passages at its first one", () => {
+    const db = openDatabase(":memory:");
+    // One chapter over three pages: three passages share the section, the first stored on page 1.
+    const sourceId = storeExtracted(db, "", {
+      title: "Dispensa",
+      kind: "pdf",
+      mime: "application/pdf",
+      ext: ".pdf",
+      extracted: {
+        pages: [1, 2, 3].map((page) => ({ text: text(page), locator: { page }, section: "1. Limiti" })),
+        scanned: false,
+      },
+      sha: "sha",
+    }).sourceId;
+    const first = (
+      db.prepare(`SELECT id FROM passages WHERE source_id = ? ORDER BY rowid LIMIT 1`).get(sourceId) as { id: string }
+    ).id;
+    expect(sourceDetails(db, sourceId)?.bySection).toEqual([
+      { section: "1. Limiti", count: 0, passageId: first, firstPage: 1, lastPage: 3 },
+    ]);
+  });
+
   it("counts each lesson or quiz once per section it cites, most cited first, older versions included", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(1_000);
