@@ -115,7 +115,7 @@ If a download fails or doesn't match, Pyxis deletes it and offers the release pa
 Setup has four steps. Skip, on the first one, jumps past all of them:
 
 1. **About you.** What Pyxis does, then your name, study level, school, course and year. They stay on your computer. At university, grades, goals and preparation are shown out of 30, at other levels out of 100. You can change both in Settings → Profile.
-2. **AI engine.** Pyxis asks which AI you already pay for, installs that engine with its maker's official installer and signs you in. Engines already on your computer are offered first, with a note on what leaves your computer. It sends nothing to a model at this step. The crash-report switch sits here too, off until you turn it on. For now it only records your choice.
+2. **AI engine.** Pyxis asks which AI you already pay for, installs that engine with its maker's official installer and signs you in. Engines already on your computer are offered first, with a note on what leaves your computer. It sends nothing to a model at this step. The crash-report switch sits here too, off until you turn it on. While it is on, Pyxis sends a technical report when it hits an error, so crashes on your computer can be found and fixed.
 3. **The exam.** Its name, subject, date and goal on one screen. "No exam for now" saves your profile and opens the exams list, where you can create one later.
 4. **Material.** Your files, your library or a free PoliTost book. Pyxis then shows the build steps and the topics it found as it prepares the exam.
 
@@ -147,8 +147,9 @@ These actions send data off your computer:
 - **Optional downloads.** The search model, the Python runtime and the OCR language files are fetched once, after you agree, and checked against pinned SHA-256 hashes.
 - **Update check.** Pyxis asks GitHub for the latest release tag, at most once a day, or again after 15 minutes if the check failed. **Check for updates** asks again at once, at most once a minute. It sends no workspace content.
 - **Installing an update.** Only after you press Download and install, Pyxis downloads the installer for your system and `SHA256SUMS` from that GitHub release.
+- **Crash reports.** Only while the switch in Settings → Privacy is on. When Pyxis hits an error, it sends a report to PoliTost's crash server, which keeps it for 90 days. A report holds versions, the system and where the error happened, and Pyxis removes folder paths from the error message. After a sudden close, the report is a native crash dump that Pyxis sends unchanged: it holds part of Pyxis's memory, which can contain fragments of what was on screen, and paths of the program's files, which can include your account name. [Crash reports](docs/crash-reports.md) lists exactly what is sent.
 
-Pyxis has no telemetry and uploads no crash reports. Backups and exported plans can contain your course material, so treat them as private files. API keys are never written to the workspace or to backups. [SECURITY.md](SECURITY.md) lists every network request and where each file lives.
+Pyxis has no telemetry, and it sends crash reports only while you allow them. Backups and exported plans can contain your course material, so treat them as private files. API keys are never written to the workspace or to backups. [SECURITY.md](SECURITY.md) lists every network request and where each file lives.
 
 ## Build from source
 

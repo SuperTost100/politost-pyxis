@@ -347,6 +347,7 @@ const bridge: PyxisBridge = {
   },
   revealUpdate: () => ipcRenderer.invoke(mainChannels.updatesReveal),
   finishUpdate: (input) => ipcRenderer.invoke(mainChannels.updatesFinish, input),
+  reportError: (fields) => ipcRenderer.send(mainChannels.crashReport, fields),
 };
 
 contextBridge.exposeInMainWorld("pyxis", bridge);

@@ -1,0 +1,21 @@
+// The public endpoint Pyxis sends crash reports to. See docs/crash-reports.md for the deploy and bucket commands.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pyxis-crash",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-20",
+  // Served at https://pyxis-crash.tost100bar.workers.dev only: no preview URLs, which would be more public addresses.
+  "workers_dev": true,
+  "preview_urls": false,
+  // Workers Logs would keep each request's headers, client IP among them. The Worker keeps none, so logs stay off.
+  "observability": { "enabled": false },
+  "r2_buckets": [{ "binding": "REPORTS", "bucket_name": "pyxis-crash-reports" }],
+  // Once a day: delete reports older than 90 days (src/retention.ts), behind the bucket's lifecycle rule.
+  "triggers": { "crons": ["17 3 * * *"] },
+  "ratelimits": [
+    // One computer: at most 10 reports a minute on each route. Pyxis itself sends far fewer.
+    { "name": "CLIENT_LIMIT", "namespace_id": "4101", "simple": { "limit": 10, "period": 60 } },
+    // Every computer together, per Cloudflare location: a ceiling on what a flood can write to the bucket.
+    { "name": "ROUTE_LIMIT", "namespace_id": "4102", "simple": { "limit": 300, "period": 60 } },
+  ],
+}

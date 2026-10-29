@@ -1,3 +1,4 @@
+import type { ErrorFields } from "./error-fields";
 import type { MenuCommand, MenuLanguage } from "./menu";
 import type {
   UpdateFinishResult,
@@ -173,6 +174,11 @@ export interface PyxisBridge {
     activeJobs: number;
     confirmed: boolean;
   }): Promise<UpdateFinishResult>;
+  /**
+   * Hands a window error to main's crash reporter. Main drops it at once while the crash-report switch is off, and
+   * otherwise scrubs it before it is stored or sent (src/main/crash-reports.ts).
+   */
+  reportError(fields: ErrorFields): void;
 }
 
 export const mainChannels = {
@@ -220,6 +226,7 @@ export const mainChannels = {
   updatesChanged: "updates:changed",
   updatesReveal: "updates:reveal",
   updatesFinish: "updates:finish",
+  crashReport: "crash:report",
 } as const;
 
 /** The most a plan file opened from disk or dropped on the window may hold: as much as a linked plan (`MAX_LINKED_PLAN_BYTES`). */

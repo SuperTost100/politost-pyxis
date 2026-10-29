@@ -1,9 +1,10 @@
 import { createHashRouter, isRouteErrorResponse, replace, useNavigate, useRouteError } from "react-router";
 import { useTranslation } from "react-i18next";
-import type { ComponentType } from "react";
+import { useEffect, type ComponentType } from "react";
 import { ExamsHome } from "../features/home/HomePages";
 import { ErrorState } from "../components/ErrorState";
 import { errorDetails } from "../lib/errorDetails";
+import { reportError } from "../lib/errorReports";
 import { rememberDoorPath, Shell } from "./layouts/Shell";
 
 /**
@@ -14,6 +15,11 @@ function RouteError({ standalone }: { standalone?: boolean }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const error = useRouteError();
+  // A page that threw while rendering ends here rather than at the window's error handler. A missing page (a route
+  // error response) is not a crash.
+  useEffect(() => {
+    if (!isRouteErrorResponse(error)) reportError(error);
+  }, [error]);
   const details = isRouteErrorResponse(error)
     ? `${error.status} ${error.statusText}`.trim()
     : errorDetails(error);

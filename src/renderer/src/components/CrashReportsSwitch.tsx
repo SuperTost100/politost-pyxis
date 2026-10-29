@@ -5,7 +5,8 @@ import "./CrashReportsSwitch.css";
 
 /**
  * The crash-report choice as a labelled switch row. First setup and Settings > Privacy render this same component, so
- * both screens say the same true thing: today the switch only records a preference, and nothing is sent.
+ * both screens say the same thing: why the reports matter, what one holds and never holds, and how long it is kept.
+ * The copy must match what src/main/crash-reports.ts and crash-worker/ really send and keep.
  */
 export function CrashReportsSwitch({
   checked,
@@ -33,11 +34,18 @@ export function CrashReportsSwitch({
           id={id}
           checked={checked}
           disabled={disabled}
-          aria-describedby={`${id}-hint`}
+          aria-describedby={`${id}-hint ${id}-why ${id}-facts`}
           onChange={onChange}
         />
       </div>
-      <p className="small px-crash-detail">{t("settings.crashContents")}</p>
+      <p className="small px-crash-detail" id={`${id}-why`}>
+        {t("settings.crashWhy")}
+      </p>
+      <ul className="small px-crash-detail px-crash-facts" id={`${id}-facts`}>
+        <li>{t("settings.crashContents")}</li>
+        <li>{t("settings.crashNever")}</li>
+        <li>{t("settings.crashKept")}</li>
+      </ul>
     </div>
   );
 }

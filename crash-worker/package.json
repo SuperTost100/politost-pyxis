@@ -1,0 +1,17 @@
+{
+  "name": "pyxis-crash",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that receives Pyxis crash reports and stores them in R2.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "wrangler types --check && tsc --noEmit",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.9",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5",
+    "wrangler": "4.154.0"
+  }
+}

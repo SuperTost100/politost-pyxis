@@ -36,6 +36,8 @@ import { folderTransport } from "./sources/books";
 import { retireExerciseCards } from "./study/exerciseCards";
 import { onEvidenceChanged } from "./plans/evidenceCache";
 import { reminderSummary } from "./plans/reminder";
+import { readProfile } from "./profile/profile";
+import { watchProcessErrors } from "./process-errors";
 
 setSourceWorkerDirectory(import.meta.dirname);
 addInstallDirsToPath();
@@ -78,6 +80,9 @@ if (!parent) {
   console.error("pyxis-core: parentPort missing");
 } else {
   const port = parent;
+  // Main decides, by the crash-report switch, whether an error is reported; these only carry it there. A message posted
+  // while the process is ending still arrives.
+  watchProcessErrors("pyxis-core", (fields) => port.postMessage({ type: "js-error", ...fields }));
   let booted = false;
   let jobRunner: ReturnType<typeof createRunner> | undefined;
   let developmentSeam = false;
@@ -166,7 +171,12 @@ if (!parent) {
       dev ? process.env["PYXIS_E2E_REPLY"] : undefined,
       dev ? Math.min(Number(process.env["PYXIS_E2E_REPLY_DELAY"]) || 0, 15_000) : 0,
     );
-    bindProfile(db);
+    // Main keeps a copy of the crash-report switch so it can start the crash reporter before core is up. Core sends
+    // the stored value now (a restore or a new workspace can change it) and again after every profile save.
+    port.postMessage({ type: "crash-consent", enabled: readProfile(db)?.crashReports === true });
+    bindProfile(db, (profile) =>
+      port.postMessage({ type: "crash-consent", enabled: profile.crashReports === true }),
+    );
     const planFixture = dev ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined;
     bindPlans(
       db,

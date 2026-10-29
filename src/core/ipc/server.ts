@@ -708,8 +708,11 @@ export function bindPlans(
   plans = planHandlers(db, workspace, runner, run);
 }
 
-export function bindProfile(db: Parameters<typeof profileHandlers>[0]): void {
-  profile = profileHandlers(db);
+export function bindProfile(
+  db: Parameters<typeof profileHandlers>[0],
+  onSaved?: Parameters<typeof profileHandlers>[1],
+): void {
+  profile = profileHandlers(db, onSaved);
 }
 
 export function bindChat(

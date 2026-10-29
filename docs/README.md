@@ -17,6 +17,7 @@ These pages are for people who change Pyxis or want to know exactly what it does
 
 - [Plan file](plan-file.md). The `.pyxis` format for shared plans, what it carries with and without progress, and the import checks. The JSON Schema is [plan-file.schema.json](plan-file.schema.json).
 - [Security](../SECURITY.md). Where each file is stored, every network request, and how to report a problem.
+- [Crash reports](crash-reports.md). What a crash report holds, how the switch is enforced, and how to deploy the Worker and read the reports.
 
 ## Interface
 
