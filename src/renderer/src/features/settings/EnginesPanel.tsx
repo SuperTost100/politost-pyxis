@@ -46,6 +46,7 @@ const featureNames = [
   "chat",
   "plan",
   "lesson",
+  "cards",
   "grading",
   "map",
   "vision",
@@ -57,6 +58,7 @@ const summaryTasks = [
   "map",
   "plan",
   "lesson",
+  "cards",
   "vision",
   "grading",
 ] as const;

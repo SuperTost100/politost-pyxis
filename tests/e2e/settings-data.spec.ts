@@ -254,7 +254,7 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
     await page.evaluate(() => {
       location.hash = "/settings/data";
     });
-    await expect(page.getByText(/^Elimina i file salvati che nessun piano/)).toBeVisible();
+    await expect(page.getByText(/^Elimina i file salvati che nessun esame/)).toBeVisible();
     const button = page.getByRole("button", { name: "Libera spazio", exact: true });
     await button.click();
     await expect(page.getByText(/^Liberati \d/)).toBeVisible();

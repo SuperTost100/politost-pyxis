@@ -17,6 +17,7 @@ import {
   splitCitationGroups,
   stripPassageRefs,
   stripPassageRefsOutsideCode,
+  writtenSections,
 } from "./smart-text";
 
 const check = {
@@ -161,6 +162,33 @@ describe("smart text", () => {
     expect(next.startsWith("## Seconda legge\n\nNuovo testo.\n\n## Ripasso")).toBe(true);
     expect(next).toContain("```pyxis-recap");
     expect(() => replaceSection(lesson, 5, "x")).toThrow("section-missing");
+  });
+
+  it("reads a lesson still being written one finished section at a time", () => {
+    // Nothing is readable before the first heading, and the first section is not done until the second begins.
+    expect(writtenSections("")).toEqual({ done: "", writing: null });
+    expect(writtenSections("Premessa senza titolo.")).toEqual({ done: "", writing: null });
+    expect(writtenSections("Premessa.\n\n## Prima idea\n\nUna for")).toEqual({
+      done: "",
+      writing: { number: 1, title: "Prima idea" },
+    });
+    // The next heading finishes the first section; the section after it is the one being written.
+    const partial = `${lesson.split("## Ripasso")[0]}## Ripasso\n\n\`\`\`pyxis-recap\n{"questions": [`;
+    const read = writtenSections(partial);
+    expect(read.writing).toEqual({ number: 2, title: "Ripasso" });
+    expect(read.done.startsWith("## Seconda legge")).toBe(true);
+    expect(read.done).toContain("```pyxis-check");
+    expect(read.done).not.toContain("Ripasso");
+    // The finished part parses to the same blocks, with the same ids, as in the whole lesson.
+    const ids = (text: string) =>
+      parseSmartText(text).flatMap((segment) => (segment.type === "block" ? [segment.block.id] : []));
+    expect(ids(lesson).slice(0, ids(read.done).length)).toEqual(ids(read.done));
+    // A heading inside a code fence is not a section.
+    expect(writtenSections("## Uno\n\n```python\n## commento\n```\n\n## Due\n\nx")).toMatchObject({
+      writing: { number: 2, title: "Due" },
+    });
+    // The whole lesson ends with every section but the last one done: the page shows the saved text then.
+    expect(writtenSections(lesson).writing).toEqual({ number: 2, title: "Ripasso" });
   });
 
   it("writes blocks out with answers for export", () => {

@@ -290,7 +290,7 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
     await expect(manage).toHaveCount(0);
 
     // Text typed into a field that the app does not keep.
-    const search = page.getByRole("textbox", { name: "Cerca un piano" });
+    const search = page.getByRole("textbox", { name: "Cerca un esame" });
     await search.fill("fisica");
     await pick(app, "ask");
     await settle(page);

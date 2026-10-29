@@ -195,7 +195,7 @@ export async function proposeCards(
   ).map((row) => ({ id: row.id, text: row.text.slice(0, PASSAGE_CHARS) }));
   const schema = proposalSchema(passages, text);
   const result = await generate({
-    selection: selectionFor(db, "lesson"),
+    selection: selectionFor(db, "cards"),
     run,
     signal,
     schema,

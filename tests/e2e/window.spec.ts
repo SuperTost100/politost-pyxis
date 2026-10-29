@@ -324,7 +324,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
         );
       }
     }
-    await page.getByTitle("Piani", { exact: true }).click();
+    await page.getByTitle("Esami", { exact: true }).click();
     await page
       .getByRole("button", { name: "Nuovo esame", exact: true })
       .click();
@@ -338,7 +338,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     const picker = page.getByRole("dialog", { name: "Aggiungi dalla libreria" });
     await picker.getByRole("checkbox", { name: /Motion/ }).check();
     await picker.getByRole("button", { name: /^Aggiungi 1 fonte$/ }).click();
-    await expect(page.getByText("1 fonte nel piano")).toBeVisible();
+    await expect(page.getByText("1 fonte nell'esame")).toBeVisible();
     await page
       .getByRole("button", { name: "Crea l'esame", exact: true })
       .click();
@@ -475,7 +475,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       process.env.PYXIS_E2E_SAVE = path;
     }, exported);
     await page
-      .getByRole("button", { name: "Impostazioni del piano", exact: true })
+      .getByRole("button", { name: "Impostazioni dell'esame", exact: true })
       .click();
     await page.getByRole("button", { name: "Esporta", exact: true }).click();
     await page

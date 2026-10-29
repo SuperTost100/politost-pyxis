@@ -51,6 +51,13 @@ export const recommendQuery = (planId: string) =>
     queryFn: () => invoke("plans.recommend", { planId }),
   });
 
+/** The day each topic should be done at the session planner's pace, or null when the planner has no days for it. */
+export const scheduleQuery = (planId: string) =>
+  queryOptions({
+    queryKey: ["schedule", planId],
+    queryFn: () => invoke("plans.schedule", { planId }),
+  });
+
 export const pastPapersQuery = (planId: string) =>
   queryOptions({
     queryKey: ["past-papers", planId],

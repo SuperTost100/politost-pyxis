@@ -13,7 +13,7 @@ Pyxis is a free, open-source study tutor that runs on the student's own computer
 
 - Two interface languages, Italian and English. Write Italian first; it runs about 20% longer, so layouts must allow it.
 - Address the student as **tu** / **you**. Pyxis speaks in the first person only inside tutor replies.
-- Sentence case everywhere: "Nuovo piano", "Crea lezione". UPPERCASE only through the `label` style (tabs, eyebrows, the Consigliato badge).
+- Sentence case everywhere: "Nuovo esame", "Crea lezione". UPPERCASE only through the `label` style (tabs, eyebrows, the Consigliato badge).
 - Short, concrete, no hype: "18 giorni all'esame · 0 su 9 argomenti", "Non hai eseguito l'accesso a Codex. Accedi". Never "AI-powered magic".
 - Numbers as data: `meta` mono for percentages, dates and model ids ("obiettivo 80 %", "claude-sonnet-4-6").
 - No emoji in UI copy or suggestions.

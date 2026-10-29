@@ -166,12 +166,12 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
     await expect(dialog).toBeHidden();
 
-    await page.getByTitle("Piani", { exact: true }).click();
+    await page.getByTitle("Esami", { exact: true }).click();
     await page.getByRole("button", { name: "Nuovo esame", exact: true }).click();
     await page.locator("#plan-title").fill("Fisica");
     await page.getByRole("button", { name: "Non ho ancora la data", exact: true }).click();
     await page.getByRole("button", { name: "Continua", exact: true }).click();
-    await expect(page.getByText("0 fonti nel piano")).toBeVisible();
+    await expect(page.getByText("0 fonti nell'esame")).toBeVisible();
     await expect(page.getByRole("button", { name: "Non ho materiale" })).toBeVisible();
     await expect(page.getByRole("button", { name: "vecchio", exact: true })).toHaveCount(0);
 
@@ -180,8 +180,8 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     dialog = await openAdd(page);
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
     await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
-    await expect(page.getByText("2 fonti nel piano")).toBeVisible();
-    const list = page.getByRole("list", { name: "Fonti del piano" });
+    await expect(page.getByText("2 fonti nell'esame")).toBeVisible();
+    const list = page.getByRole("list", { name: "Fonti dell'esame" });
     await expect(list.getByRole("listitem")).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Non ho materiale" })).toHaveCount(0);
 
@@ -191,16 +191,16 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
     await expect(dialog.getByText("Nessun file nuovo.")).toBeVisible();
     await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
-    await expect(page.getByText("3 fonti nel piano")).toBeVisible();
+    await expect(page.getByText("3 fonti nell'esame")).toBeVisible();
     await expect(list.getByText("vecchio")).toBeVisible();
     expect(
       (await page.evaluate(() => window.pyxis.invoke("sources.list", {}))).length,
     ).toBe(3);
 
     // Taking them out leaves them in the library, where the picker finds them again.
-    await list.getByRole("button", { name: "Togli dinamica dal piano" }).click();
-    await list.getByRole("button", { name: "Togli vecchio dal piano" }).click();
-    await expect(page.getByText("1 fonte nel piano")).toBeVisible();
+    await list.getByRole("button", { name: "Togli dinamica dall'esame" }).click();
+    await list.getByRole("button", { name: "Togli vecchio dall'esame" }).click();
+    await expect(page.getByText("1 fonte nell'esame")).toBeVisible();
     await page.getByRole("button", { name: "Dalla tua libreria", exact: true }).click();
     dialog = page.getByRole("dialog", { name: "Aggiungi dalla libreria" });
     await expect(dialog.getByRole("checkbox")).toHaveCount(2);
@@ -210,7 +210,7 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await animationsSettled(page);
     await dialog.getByRole("checkbox").check();
     await dialog.getByRole("button", { name: "Aggiungi 1 fonte", exact: true }).click();
-    await expect(page.getByText("2 fonti nel piano")).toBeVisible();
+    await expect(page.getByText("2 fonti nell'esame")).toBeVisible();
     await expect(list.getByRole("listitem")).toHaveCount(2);
     await expect(list.getByText("vecchio")).toBeVisible();
 

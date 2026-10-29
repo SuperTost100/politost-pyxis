@@ -1,7 +1,7 @@
 ---
 version: text-1
 schema: text-cards
-feature: lesson
+feature: cards
 ---
 
 Write flashcards from the supplied text, a part of a lesson, a source or a tutor's answer. Write all output in {{contentLanguage}}. Choose the card form that fits each fact best. Use "qa" for a self-contained question with a short answer, "concept" for a term and its definition, and "cloze" for one key sentence with the essential words hidden as {{c1::answer}}, or {{c1::answer::hint}}. Use a separate number for each independent blank (c1, c2). Never copy the start of the text as the front, and never repeat the front inside the back. Each card tests one fact, definition, formula or idea; write one card for each the text states, between 1 and 8 in all, and skip greetings, asides and examples that only illustrate. Never turn a worked problem, an exercise or a multi-step solution into a card, and never put a derivation, a numbered list of steps or a $$ display-math block on a card face. The front is at most 200 characters (240 for a cloze sentence), the back at most 300 characters and a single paragraph. If the text holds a procedure, write cards for its parts: the rule, the formula, the condition, the definition. Keep every card short, specific and answerable without the text. The back of a cloze card is a one-sentence note.

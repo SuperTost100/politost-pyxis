@@ -56,7 +56,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           await expect(
             page.locator(".engines-list .px-engine").first(),
           ).toBeVisible({ timeout: 30000 });
-          await expect(page.locator(".engines-feature-row")).toHaveCount(7);
+          await expect(page.locator(".engines-feature-row")).toHaveCount(8);
           // Each task has its own reasoning effort next to its model.
           await expect(
             page.getByRole("combobox", {
@@ -66,7 +66,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
                   : "Chat: Livello di ragionamento",
             }),
           ).toBeVisible();
-          await expect(page.locator('[id^="engine-effort-"]')).toHaveCount(7);
+          await expect(page.locator('[id^="engine-effort-"]')).toHaveCount(8);
           // CLI Funnel enforces text-only access for every offered engine, so none is disabled.
           for (const name of ["Cursor Agent", "Antigravity"])
             await expect(
@@ -225,13 +225,13 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await notice.getByRole("button", { name: "I understand" }).click();
     await expect(notice).toHaveCount(0);
     await expect(page.locator(".engines-summary")).toContainText(
-      "Pyxis uses Codex for chat, maps and lessons and Claude Code for plans, photos and grading.",
+      "Pyxis uses Codex for chat, maps, flashcards and grading and Claude Code for exams, lessons and photos.",
       { timeout: 30000 },
     );
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(2);
     await expect(page.locator(".engines-feature-row")).toHaveCount(0);
     await page.getByRole("switch", { name: "Advanced options" }).click();
-    await expect(page.locator(".engines-feature-row")).toHaveCount(7);
+    await expect(page.locator(".engines-feature-row")).toHaveCount(8);
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(4);
     const chat = page
       .locator(".engines-feature-row")
@@ -239,7 +239,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
       .locator(".engines-feature-model .ant-select");
     await expect(chat).toContainText("Automatic");
     await expect(page.locator(".engines-auto-model").first()).toBeVisible();
-    // Every task starts at its own reasoning level: low for chat, high for plans.
+    // Every task starts at its own reasoning level: low for chat, high for exams.
     const effortOf = (task: string) =>
       page.getByRole("combobox", { name: `${task}: Reasoning effort` });
     await expect(effortOf("Chat")).toBeEnabled();
@@ -247,16 +247,16 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
       page.locator(".engines-feature-effort", { has: effortOf("Chat") }),
     ).toContainText("Automatic · Low");
     await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Plans") }),
+      page.locator(".engines-feature-effort", { has: effortOf("Exams") }),
     ).toContainText("Automatic · High");
     // The student's pick is kept, and shows after a reload of the stored choices.
-    await effortOf("Plans").click();
+    await effortOf("Exams").click();
     await page
       .locator(".ant-select-item-option")
       .filter({ hasText: /^Maximum$/ })
       .click();
     await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Plans") }),
+      page.locator(".engines-feature-effort", { has: effortOf("Exams") }),
     ).toContainText("Maximum");
     const stored = await page.evaluate(
       () => window.pyxis.invoke("engines.features", {}) as Promise<Record<string, { effort?: string; effortChoice?: string }>>,
@@ -279,7 +279,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await expect(back).toBeDisabled();
     // Back to automatic also returns the efforts to the tasks' own levels.
     await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Plans") }),
+      page.locator(".engines-feature-effort", { has: effortOf("Exams") }),
     ).toContainText("Automatic · High");
   } finally {
     await app.close();

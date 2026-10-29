@@ -79,7 +79,7 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
     await page.getByRole("button", { name: "Continua", exact: true }).click();
     // No material chosen: Continua leads to the guided flow.
     await page.getByRole("button", { name: "Continua", exact: true }).click();
-    await expect(page.getByText("Piano senza materiale")).toBeVisible();
+    await expect(page.getByText("Esame senza materiale")).toBeVisible();
     await page.getByRole("button", { name: "1° anno" }).click();
     await page.getByRole("button", { name: "Continua", exact: true }).click();
     await page.getByLabel("Cinematica", { exact: true }).check();
@@ -132,8 +132,8 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
 
     // The date can come later, from the plan's settings.
     const year = new Date().getFullYear() + 1;
-    await page.getByRole("button", { name: "Impostazioni del piano" }).click();
-    const settings = page.getByRole("dialog", { name: "Impostazioni del piano" });
+    await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
+    const settings = page.getByRole("dialog", { name: "Impostazioni dell'esame" });
     await expect(settings.getByLabel("Data dell'esame")).toHaveValue("");
     await settings.getByLabel("Data dell'esame").fill(`15/03/${year}`);
     await page.keyboard.press("Enter");

@@ -491,6 +491,80 @@ it("streams every earlier part as a prefix and keeps it when stopped mid-part", 
   }
 });
 
+it("splits the lesson's six sections over its parts, and asks a single-part lesson for none of that", async () => {
+  const db = openDatabase(":memory:");
+  try {
+    db.exec(`
+      INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('p','Physics','ready',1,1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','Motion',0,1);
+      INSERT INTO sources (id,title,kind,status,created_at,updated_at) VALUES ('s','Notes','txt','ready',1,1);
+      INSERT INTO source_documents (id,source_id,version,tree_json,created_at) VALUES ('d','s',1,'{}',1);
+      INSERT INTO feature_engines (feature,selection_json,updated_at) VALUES ('default','{"provider":"claude","model":"test"}',1);
+    `);
+    const add = (id: string, size: number, at: number) => {
+      db.prepare(
+        "INSERT INTO passages (id,source_id,document_id,text,created_at) VALUES (?, 's','d',?,?)",
+      ).run(id, "x".repeat(size), at);
+      db.prepare("INSERT INTO topic_passages (topic_id,passage_id) VALUES ('t',?)").run(id);
+    };
+    const prompts: string[] = [];
+    const run: Parameters<typeof writeLesson>[3] = async (input) => {
+      prompts.push(input.prompt);
+      // A fenced `## ` line is code, not a heading: the next part must still see the section's own heading.
+      return {
+        text: "## Idea\n\nText.\n\n```python\n## not a heading\nx = 1\n```",
+        provider: "claude",
+        model: "test",
+        inputTokens: 1,
+      };
+    };
+    add("one", 20000, 1);
+    await writeLesson(db, "p", "t", run);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).not.toContain("sections across all parts");
+
+    prompts.length = 0;
+    add("two", 20000, 2);
+    add("three", 20000, 3);
+    await writeLesson(db, "p", "t", run);
+    expect(prompts).toHaveLength(3);
+    for (const prompt of prompts) {
+      expect(prompt).toContain("about 6 sections across all parts");
+      expect(prompt).toContain("write about 2 sections for this part");
+    }
+    // A later part sees where the lesson so far ends, so it can continue it; the first part has nothing before it.
+    expect(prompts[0]).not.toContain("The lesson so far ends like this");
+    expect(prompts[1]).toContain("The lesson so far ends like this");
+    expect(prompts[1]).toContain("## Idea\n\nText.");
+    expect(prompts[1]).toContain("so far ends like this (do not repeat it):\n\n## Idea");
+
+    // Four or more parts still add up to the lesson's six sections.
+    const requested = () =>
+      prompts.reduce((sum, prompt) => {
+        if (prompt.includes("do not start a new ## section")) return sum;
+        return sum + Number(/write about (\d+) sections? for this part/.exec(prompt)![1]);
+      }, 0);
+    add("four", 20000, 4);
+    prompts.length = 0;
+    await writeLesson(db, "p", "t", run);
+    expect(prompts).toHaveLength(4);
+    expect(requested()).toBe(6);
+
+    // More parts than sections: the extra parts continue a section instead of opening one.
+    for (const [index, id] of ["five", "six", "seven", "eight"].entries()) add(id, 20000, 5 + index);
+    prompts.length = 0;
+    await writeLesson(db, "p", "t", run);
+    expect(prompts.length).toBeGreaterThan(6);
+    expect(requested()).toBe(6);
+    expect(prompts[0]).not.toContain("do not start a new ## section");
+    expect(prompts.filter((prompt) => prompt.includes("do not start a new ## section"))).toHaveLength(
+      prompts.length - 6,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 it("opens the newest imported lesson when none matches the reader's profile, and writing again makes one for the profile", async () => {
   const db = openDatabase(":memory:");
   try {

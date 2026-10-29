@@ -73,8 +73,9 @@ describe("automatic engine policy", () => {
     expect(summary(planAuto([claude, codex]))).toEqual({
       chat: "codex:gpt-6-luna:low",
       map: "codex:gpt-6-luna:low",
-      grading: "claude:claude-sonnet-5:medium",
-      lesson: "codex:gpt-5.6-terra:medium",
+      cards: "codex:gpt-6-luna:low",
+      grading: "codex:gpt-5.6-terra:medium",
+      lesson: "claude:claude-sonnet-5:medium",
       vision: "claude:claude-sonnet-5:medium",
       default: "claude:claude-sonnet-5:medium",
       plan: "claude:claude-opus-5-5:high",
@@ -91,6 +92,7 @@ describe("automatic engine policy", () => {
     expect(summary(planAuto([claude]))).toEqual({
       chat: "claude:claude-haiku-4-5-20251001",
       map: "claude:claude-haiku-4-5-20251001",
+      cards: "claude:claude-haiku-4-5-20251001",
       lesson: "claude:claude-sonnet-5:medium",
       vision: "claude:claude-sonnet-5:medium",
       default: "claude:claude-sonnet-5:medium",
@@ -132,6 +134,7 @@ describe("automatic engine policy", () => {
     expect(summary(planAuto([codex]))).toEqual({
       chat: "codex:gpt-6-luna:low",
       map: "codex:gpt-6-luna:low",
+      cards: "codex:gpt-6-luna:low",
       lesson: "codex:gpt-5.6-terra:medium",
       // gpt-6-luna is not a known image model, so photos use the newest model that is.
       vision: "codex:gpt-5.6-terra:medium",
@@ -263,32 +266,32 @@ const antigravity: AutoProvider = {
   ].map((id) => model(id, [])),
 };
 
-/** provider/model per feature, in the order default chat plan lesson grading map vision. */
+/** provider/model per feature, in the order default chat plan lesson grading map vision cards. */
 const combinations: Record<string, string> = {
   agent:
-    "agent/claude-sonnet-5-5 agent/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 agent/claude-sonnet-5-5 agent/gemini-3.8-flash agent/claude-sonnet-5-5",
+    "agent/claude-sonnet-5-5 agent/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 agent/claude-sonnet-5-5 agent/gemini-3.8-flash agent/claude-sonnet-5-5 agent/gemini-3.8-flash",
   antigravity:
-    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro",
+    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash",
   "claude+agent":
-    "claude/claude-sonnet-5 agent/gemini-3.8-flash claude/claude-opus-5-5 agent/claude-sonnet-5-5 claude/claude-sonnet-5 agent/gemini-3.8-flash claude/claude-sonnet-5",
+    "claude/claude-sonnet-5 agent/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5 agent/claude-sonnet-5-5 agent/gemini-3.8-flash claude/claude-sonnet-5 agent/gemini-3.8-flash",
   "codex+agent":
-    "agent/claude-sonnet-5-5 codex/gpt-6-luna codex/gpt-6-sol agent/claude-sonnet-5-5 agent/claude-sonnet-5-5 codex/gpt-6-luna codex/gpt-5.6-terra",
+    "agent/claude-sonnet-5-5 codex/gpt-6-luna codex/gpt-6-sol agent/claude-sonnet-5-5 agent/claude-sonnet-5-5 codex/gpt-6-luna codex/gpt-5.6-terra codex/gpt-6-luna",
   "claude+antigravity":
-    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 antigravity/gemini-3.1-pro claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5",
+    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5 antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash claude/claude-sonnet-5 antigravity/gemini-3.8-flash",
   "codex+antigravity":
-    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash codex/gpt-6-sol codex/gpt-5.6-terra antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash codex/gpt-5.6-terra",
+    "codex/gpt-5.6-terra antigravity/gemini-3.8-flash codex/gpt-6-sol codex/gpt-5.6-terra antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash codex/gpt-5.6-terra antigravity/gemini-3.8-flash",
   "agent+antigravity":
-    "agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash agent/claude-opus-5-5 antigravity/gemini-3.1-pro agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash agent/claude-sonnet-5-5",
+    "agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
   "claude+codex+agent":
-    "claude/claude-sonnet-5 codex/gpt-6-luna agent/claude-opus-5-5 agent/claude-sonnet-5-5 claude/claude-sonnet-5 codex/gpt-6-luna claude/claude-sonnet-5",
+    "claude/claude-sonnet-5 codex/gpt-6-luna agent/claude-opus-5-5 agent/claude-sonnet-5-5 claude/claude-sonnet-5 codex/gpt-6-luna claude/claude-sonnet-5 codex/gpt-6-luna",
   "claude+codex+antigravity":
-    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash codex/gpt-6-sol codex/gpt-5.6-terra claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5",
+    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash codex/gpt-6-sol codex/gpt-5.6-terra claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5 antigravity/gemini-3.8-flash",
   "claude+agent+antigravity":
-    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5",
+    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5 antigravity/gemini-3.8-flash",
   "codex+agent+antigravity":
-    "agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash codex/gpt-6-sol agent/claude-sonnet-5-5 codex/gpt-5.6-terra antigravity/gemini-3.8-flash codex/gpt-5.6-terra",
+    "agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash codex/gpt-6-sol agent/claude-sonnet-5-5 codex/gpt-5.6-terra antigravity/gemini-3.8-flash codex/gpt-5.6-terra antigravity/gemini-3.8-flash",
   "claude+codex+agent+antigravity":
-    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 codex/gpt-5.6-terra agent/claude-sonnet-5-5 agent/gemini-3.8-flash claude/claude-sonnet-5",
+    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 codex/gpt-5.6-terra agent/claude-sonnet-5-5 agent/gemini-3.8-flash claude/claude-sonnet-5 antigravity/gemini-3.8-flash",
 };
 const order = [
   "default",
@@ -298,6 +301,7 @@ const order = [
   "grading",
   "map",
   "vision",
+  "cards",
 ] as const;
 const byId: Record<string, AutoProvider> = {
   claude,

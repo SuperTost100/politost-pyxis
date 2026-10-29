@@ -4,9 +4,12 @@ import { setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
 import {
   dueEverywhere,
+  finishDays,
   neededHours,
+  planSchedule,
   readPlannerSettings,
   remainingMinutes,
+  remainingWork,
   savePlannerHours,
   sessionPlan,
   spread,
@@ -212,6 +215,76 @@ describe("session plan", () => {
     // Three days later nothing was done: the same work has fewer days, so each day gets more.
     const later = sessionPlan(db, day(3, 10)).days[0]!.plans[0]!.minutes;
     expect(later).toBeGreaterThan(first);
+  });
+});
+
+describe("expected dates", () => {
+  it("splits the remaining work into the start, each topic in order and the simulation", () => {
+    const pieces = remainingWork({
+      topics: [
+        { id: "a", mastery: 0 },
+        { id: "b", mastery: 0.8 },
+        { id: "c", mastery: 0 },
+      ],
+      steps: [],
+      hasIntro: true,
+      target: 0.75,
+    });
+    // b is at the target, so it has no piece, and the student has studied, so there is no start either.
+    expect(pieces).toEqual([
+      { kind: "topic", topicId: "a", minutes: 90 },
+      { kind: "topic", topicId: "c", minutes: 90 },
+      { kind: "simulation", topicId: null, minutes: 60 },
+    ]);
+    expect(
+      remainingWork({ topics: [{ id: "a", mastery: 0 }], steps: [], hasIntro: true, target: 0.75 })[0],
+    ).toEqual({ kind: "start", topicId: null, minutes: 25 });
+  });
+
+  it("ends each piece on the day the minutes so far cover it, after the work done today", () => {
+    expect(finishDays([15, 90, 90, 60], 0, Array(6).fill(42.5))).toEqual([0, 2, 4, 5]);
+    // 30 minutes done today come first: 90 minutes of work end on the third day.
+    expect(finishDays([60], 30, [40, 40, 40])).toEqual([2]);
+    expect(finishDays([10, 100], 0, [50])).toEqual([0, null]);
+  });
+
+  it("dates each topic and the simulation at the planner's pace", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 6 });
+    savePlannerHours(db, { hours: 14 }, now);
+    // 255 minutes, 42.5 a day: the start on day 0, the topics end on days 2 and 4, the simulation on day 5.
+    expect(planSchedule(db, "a", now)).toEqual({
+      topics: [
+        { topicId: "a-t0", date: "2026-10-19" },
+        { topicId: "a-t1", date: "2026-10-21" },
+      ],
+      simulation: { date: "2026-10-22" },
+      behind: null,
+    });
+  });
+
+  it("leaves out what does not fit before the exam", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 2 });
+    savePlannerHours(db, { hours: 7 }, now);
+    const schedule = planSchedule(db, "a", now)!;
+    expect(schedule.topics).toEqual([
+      { topicId: "a-t0", date: "2026-10-18" },
+      { topicId: "a-t1", date: null },
+    ]);
+    expect(schedule.simulation).toEqual({ date: null });
+    expect(schedule.behind).not.toBeNull();
+  });
+
+  it("has no dates without hours, without an exam date or for an archived exam", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "dated", { examIn: 6 });
+    addPlan(db, "undated");
+    expect(planSchedule(db, "dated", now)).toBeNull();
+    savePlannerHours(db, { hours: 14 }, now);
+    expect(planSchedule(db, "undated", now)).toBeNull();
+    db.prepare("UPDATE plans SET archived_at = 1 WHERE id = 'dated'").run();
+    expect(planSchedule(db, "dated", now)).toBeNull();
   });
 });
 
