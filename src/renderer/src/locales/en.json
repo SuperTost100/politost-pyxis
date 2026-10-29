@@ -2695,6 +2695,7 @@
     "addSources": "Add sources",
     "attachSources": "Attach selected sources",
     "pickerHelp": "Choose sources from your library. Sources still being prepared will become available when indexing finishes.",
+    "sourcesUnreadable": "Pyxis could not read your library, so it can't show which sources to add.",
     "importSource": "Import a source",
     "rebuildIntro": "Pyxis builds a new topic tree from the attached sources, matches it to your current topics and shows what would change. Nothing changes until you apply it.",
     "rebuildStart": "Compare with sources",

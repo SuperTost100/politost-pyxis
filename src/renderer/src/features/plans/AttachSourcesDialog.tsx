@@ -6,7 +6,7 @@ import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { pastPapersQuery, sourcesQuery } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
-import { attachableSources } from "./examSettingsData";
+import { attachableSources, sourcesUnreadable } from "./examSettingsData";
 import { LibraryPanel } from "../home/LibraryPanel";
 
 /**
@@ -67,9 +67,21 @@ export function AttachSourcesDialog({
         okButtonProps={{ disabled: !picked.length }}
         onOk={() => void attach()}
       >
-        {/* Without the past papers nothing is offered, so their failure has to show. */}
-        {error || pastPapers.isError ? (
-          <Notice tone="danger">{t("planOverview.failed")}</Notice>
+        {error ? <Notice tone="danger">{t("planOverview.failed")}</Notice> : null}
+        {/* Without both lists nothing is offered, so an empty table must not pass for "nothing to add". */}
+        {sourcesUnreadable(library, pastPapers) ? (
+          <Notice
+            tone="danger"
+            action={{
+              label: t("components.notice.retry"),
+              onClick: () => {
+                if (library.isError) void library.refetch();
+                if (pastPapers.isError) void pastPapers.refetch();
+              },
+            }}
+          >
+            {t("planOverview.sourcesUnreadable")}
+          </Notice>
         ) : null}
         <p className="small ink-muted">{t("planOverview.pickerHelp")}</p>
         <Table

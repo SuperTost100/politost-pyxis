@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attachableSources, saveThenRefresh } from "./examSettingsData";
+import { attachableSources, saveThenRefresh, sourcesUnreadable } from "./examSettingsData";
 
 describe("saving exam settings", () => {
   it("reads the plan again after a save that went through, even when a later step fails", async () => {
@@ -42,6 +42,17 @@ describe("attachable sources", () => {
   it("offers library sources the plan neither has nor uses as a past paper", () => {
     const papers = { papers: [{ sourceIds: ["paper"] }] };
     expect(attachableSources(library, ["attached"], papers).map((source) => source.id)).toEqual(["book", "notes"]);
+  });
+
+  it("calls the picker unreadable when either list failed and has nothing to show", () => {
+    const loaded = { isError: false, data: [] };
+    const failed = { isError: true, data: undefined };
+    expect(sourcesUnreadable(loaded, loaded)).toBe(false);
+    // A first read that failed leaves an empty table, which must not pass for "nothing to add".
+    expect(sourcesUnreadable(failed, loaded)).toBe(true);
+    expect(sourcesUnreadable(loaded, failed)).toBe(true);
+    // The library is read again every second; one failed refetch still has the last list to show.
+    expect(sourcesUnreadable({ isError: true, data: [] }, loaded)).toBe(false);
   });
 
   it("offers nothing until the past papers are known, so one can't be picked before it is filtered out", () => {

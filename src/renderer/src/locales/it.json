@@ -2695,6 +2695,7 @@
     "addSources": "Aggiungi fonti",
     "attachSources": "Collega le fonti selezionate",
     "pickerHelp": "Scegli le fonti dalla libreria. Quelle in preparazione saranno disponibili al termine dell’indicizzazione.",
+    "sourcesUnreadable": "Non riesco a leggere le fonti della libreria, quindi non posso mostrarti quali aggiungere.",
     "importSource": "Importa una fonte",
     "rebuildIntro": "Pyxis costruisce un nuovo albero di argomenti dalle fonti collegate, lo confronta con i tuoi argomenti attuali e mostra cosa cambierebbe. Non cambia nulla finché non lo applichi.",
     "rebuildStart": "Confronta con le fonti",

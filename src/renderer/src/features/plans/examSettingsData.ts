@@ -21,6 +21,17 @@ export async function saveThenRefresh(
 }
 
 /**
+ * Whether the source picker cannot build its list: the library or the past papers failed to load and there is no
+ * earlier copy to show. A failed refetch with data still in hand is not a failure the student needs to see.
+ */
+export function sourcesUnreadable(
+  library: { isError: boolean; data: unknown },
+  pastPapers: { isError: boolean; data: unknown },
+): boolean {
+  return (library.isError && library.data === undefined) || (pastPapers.isError && pastPapers.data === undefined);
+}
+
+/**
  * The library sources a plan can add: not already in it and not one of its past papers. Until both lists are known
  * nothing is offered, so a past paper can't be picked in the moment before it would be filtered out.
  */
