@@ -1,10 +1,12 @@
 import { useTranslation } from "react-i18next";
-import { formatGrade, type GradeScale } from "../lib/grade";
+import { formatGrade, formatGradeWhole, type GradeScale } from "../lib/grade";
 import "./MasteryBar.css";
 
 /**
  * A bar from 0 to 100 with an optional target mark. `value` and `target` are percentages of the bar. With `scale` they
- * are grades, and the text shows them on that scale ("22,5/30"); without it, as a percentage.
+ * are grades, and the text shows them on that scale ("22,5/30"); without it, as a percentage. `whole` rounds the value
+ * down to a whole mark ("22/30"), as the exam path does, so a topic never looks at its goal before it is. The goal mark
+ * keeps its decimals.
  */
 export function MasteryBar({
   value,
@@ -13,6 +15,7 @@ export function MasteryBar({
   showValue = true,
   label,
   scale,
+  whole = false,
 }: {
   value: number;
   target?: number;
@@ -20,13 +23,15 @@ export function MasteryBar({
   showValue?: boolean;
   label: string;
   scale?: GradeScale;
+  whole?: boolean;
 }) {
   const { i18n } = useTranslation();
   const v = Math.round(Math.max(0, Math.min(100, value)));
-  const text = (percent: number) =>
-    scale
-      ? formatGrade(Math.max(0, Math.min(100, percent)) / 100, scale, i18n.language)
-      : `${Math.round(Math.max(0, Math.min(100, percent)))}%`;
+  const text = (percent: number, exact = false) => {
+    const fraction = Math.max(0, Math.min(100, percent)) / 100;
+    if (!scale) return `${Math.round(fraction * 100)}%`;
+    return whole && !exact ? formatGradeWhole(fraction, scale) : formatGrade(fraction, scale, i18n.language);
+  };
   return (
     <div
       className="px-mbar"
@@ -48,7 +53,7 @@ export function MasteryBar({
           <div
             className="px-mbar-target"
             style={{ left: `${Math.max(0, Math.min(100, target))}%` }}
-            title={text(target)}
+            title={text(target, true)}
           />
         ) : null}
       </div>

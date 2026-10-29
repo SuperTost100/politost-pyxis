@@ -162,6 +162,8 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expect(page.locator(".px-node.is-locked, .lucide-lock")).toHaveCount(0);
     const path = page.getByRole("list", { name: `Percorso: ${topics.length} argomenti` });
     await expect(path.getByRole("meter")).toHaveCount(topics.length);
+    // Mastery on the path is a whole mark, never a decimal: the goal tick stays the only precise number.
+    await expect(path.getByRole("meter").first()).toHaveAttribute("aria-valuetext", /^\d+\/30$/);
     // No topic is open while the path suggests the introduction.
     await expect(path.getByRole("button", { expanded: true })).toHaveCount(0);
     for (const [lang, theme] of combos) {
