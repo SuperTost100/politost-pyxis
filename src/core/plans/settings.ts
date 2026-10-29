@@ -48,8 +48,8 @@ export function setPlanArchived(
 
 /**
  * What deleting a plan takes with it, for the confirmation that lists it: its topics, the lessons Pyxis wrote, the
- * quizzes and simulations the student handed in, and the flashcards still in use. An archived plan counts the same,
- * and so do topics a rebuild set aside, because the delete removes them and their lessons and cards with the plan.
+ * quizzes and simulations the student handed in, and its flashcards. Everything the delete removes counts: an archived
+ * plan, topics a rebuild set aside with their lessons and cards, and cards the student removed but could still restore.
  */
 export function planFootprint(db: Database.Database, planId: string) {
   const row = db
@@ -61,7 +61,7 @@ export function planFootprint(db: Database.Database, planId: string) {
           WHERE a.plan_id = @plan AND a.submitted_at IS NOT NULL AND i.kind IN ('quiz', 'diagnostic')) AS quizzes,
         (SELECT count(*) FROM attempts a JOIN items i ON i.id = a.item_id
           WHERE a.plan_id = @plan AND a.submitted_at IS NOT NULL AND i.kind = 'simulation') AS simulations,
-        (SELECT count(*) FROM cards WHERE plan_id = @plan AND removed = 0) AS cards
+        (SELECT count(*) FROM cards WHERE plan_id = @plan) AS cards
       FROM plans WHERE id = @plan`,
     )
     .get({ plan: planId }) as
