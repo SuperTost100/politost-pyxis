@@ -29,6 +29,15 @@ export function removeTestFolder(root: string) {
       }
     };
     walk(root);
+    if (held.length === 0) {
+      // Every held file came free during the walk, so only the folders are left to remove.
+      try {
+        rmSync(root, { recursive: true, force: true });
+        return;
+      } catch (retry) {
+        throw new Error(`${(retry as Error).message}; still held: only folders`);
+      }
+    }
     throw new Error(
       `${(error as Error).message}; still held: ${held.join(", ") || "only folders"}`,
     );
