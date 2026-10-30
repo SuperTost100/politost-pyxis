@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 
 test("Ask: a suggested follow-up with math draws the formula, and sends its own text", async () => {
@@ -162,6 +163,8 @@ test("Quiz: a matching question's menu draws math and picks with the keyboard", 
     await expect(rows.first().locator(".ant-select-content .katex").first()).toBeVisible();
     await expect(rows.first()).not.toContainText("$");
     await saveShot(page.locator(".px-quiz-matching"), "quiz-match-math-picked.png");
+    // The closed menu's list stays in the page until its leave animation ends; axe must not measure it halfway.
+    await animationsSettled(page);
     await expectNoAxeViolations(page);
   } finally {
     await app.close();
