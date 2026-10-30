@@ -16,7 +16,7 @@ import {
   Target,
   Trash2,
 } from "lucide-react";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
@@ -165,6 +165,12 @@ export function ExamSettingsPage() {
     type: "conjunction",
   });
   const changeList = listFormat.format(changes.map((key) => t(`examSettings.change.${key}`)));
+
+  // The bar slides in over the bottom of the window; lift the group being edited above it (the page's scroll padding leaves the room).
+  useEffect(() => {
+    if (!dirty || !(document.activeElement instanceof HTMLElement)) return;
+    (document.activeElement.closest(".px-set-group") ?? document.activeElement).scrollIntoView({ block: "nearest" });
+  }, [dirty]);
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>

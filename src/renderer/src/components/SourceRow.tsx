@@ -80,12 +80,15 @@ export function SourceRow(props: {
       </span>
       <div className="px-source-row-main">
         {props.onOpen ? (
+          // One control for the whole row: its ::after covers the row, so the meta line opens it too and the name stays the only tab stop.
           <button
             type="button"
-            className="body-strong px-source-row-title"
+            className="px-source-row-open"
             onClick={props.onOpen}
           >
-            {source.title}
+            <span className="body-strong px-source-row-title">
+              {source.title}
+            </span>
           </button>
         ) : (
           <span className="body-strong px-source-row-title">

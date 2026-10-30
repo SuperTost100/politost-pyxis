@@ -278,6 +278,10 @@ button.px-path-row-main::after {
   margin: 0;
   max-width: 72ch;
 }
+/* A sub-topic with math follows the line's small muted type, not the 15px body copy's. */
+.px-path-about .px-markdown.is-body {
+  font: inherit;
+}
 .px-path-items {
   display: flex;
   flex-wrap: wrap;

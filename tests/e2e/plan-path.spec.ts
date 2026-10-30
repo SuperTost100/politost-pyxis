@@ -176,12 +176,12 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     // The chooser lets the student skip the introduction and the diagnostic.
     await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
     const forFirst = page.getByRole("list", { name: `Attività su ${topics[0]!.title}` });
-    for (const name of ["Testo smart", "Esercizio assistito", "Quiz", "Flashcard"])
+    for (const name of ["Lezione", "Esercizio assistito", "Quiz", "Flashcard"])
       await expect(forFirst.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
     const whole = page.getByRole("list", { name: "Tutto l'esame" });
     for (const name of ["Simulazione d'esame", "Test diagnostico", "Introduzione"])
       await expect(whole.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
-    await forFirst.getByRole("button", { name: /^Testo smart/ }).click();
+    await forFirst.getByRole("button", { name: /^Lezione/ }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topics[0]!.id}$`));
     // Opening records nothing.
     await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
@@ -202,14 +202,14 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expect(next.getByText("Fissa quello che hai appena letto.")).toBeVisible();
     const done = page.getByRole("list", { name: "Passi fatti" });
     await showDone(page);
-    await expect(done.getByRole("button", { name: new RegExp(`^Testo smart, ${topics[0]!.title}, letto`) })).toBeVisible();
+    await expect(done.getByRole("button", { name: new RegExp(`^Lezione, ${topics[0]!.title}, letto`) })).toBeVisible();
     // The topic the path is on opens with its steps, and the suggested one says so.
     const firstSteps = page.getByRole("list", { name: `Passi di ${topics[0]!.title}` });
     await expect(firstSteps.getByRole("button", { name: "Lezione, fatto" })).toBeVisible();
     await expect(firstSteps.getByRole("button", { name: "Esercizi, adesso" })).toBeVisible();
     await expect(firstSteps.getByRole("button", { name: "Quiz, da fare" })).toBeVisible();
     await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
-    for (const name of ["Testo smart", "Quiz", "Flashcard"])
+    for (const name of ["Lezione", "Quiz", "Flashcard"])
       await expect(forFirst.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
     await expect(forFirst.getByRole("button", { name: /^Esercizio assistito.*Consigliato/ })).toBeVisible();
 
@@ -235,11 +235,11 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     const forThird = page.getByRole("list", { name: `Attività su ${topics[2]!.title}` });
     await expect(forThird).toBeVisible();
     // For a topic not read yet the smart text is what fits.
-    await expect(forThird.getByRole("button", { name: /^Testo smart.*Consigliato/ })).toBeVisible();
+    await expect(forThird.getByRole("button", { name: /^Lezione.*Consigliato/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Cambia argomento" })).toBeFocused();
 
     // A lesson on a topic the path did not suggest still records a done step.
-    await forThird.getByRole("button", { name: /^Testo smart/ }).click();
+    await forThird.getByRole("button", { name: /^Lezione/ }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topics[2]!.id}$`));
     await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
       timeout: 20000,
@@ -435,7 +435,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     db.prepare("UPDATE profile SET wording_level = 'technical'").run();
     db.close();
-    await done.getByRole("button", { name: new RegExp(`^Testo smart, ${topic.title}`) }).click();
+    await done.getByRole("button", { name: new RegExp(`^Lezione, ${topic.title}`) }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topic.id}\\?item=${lessonItem}$`));
     await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
       timeout: 20000,

@@ -496,9 +496,16 @@ textarea.ant-input {
 .px-shared-form .px-form-inline {
   margin-top: var(--space-2);
 }
+/* Seven levels: four on the first row, three on the second, so no row ends with one option on its own. */
 .px-profile-levels {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+.px-profile-levels > * {
+  grid-column: span 3;
+}
+.px-profile-levels > :nth-child(n + 5) {
+  grid-column: span 4;
 }
 .px-onboarding .gallery-row {
   margin-top: var(--space-4);
