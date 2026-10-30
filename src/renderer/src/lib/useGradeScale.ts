@@ -8,6 +8,7 @@ import {
   gradeScaleOf,
   gradeValue,
   gradeWhole,
+  scaledMastery,
 } from "./grade";
 import { profileQuery } from "./queries";
 
@@ -19,10 +20,10 @@ export function useGradeScale() {
   const locale = i18n.language;
   return {
     scale,
-    /** A grade on the scale, one decimal, for bars and charts. Mastery uses `masteryValue`. */
+    /** A grade on the scale, one decimal, for bars and charts. */
     value: (fraction: number) => gradeValue(fraction, scale),
-    /** Mastery on the scale, a whole number rounded down, for charts. */
-    masteryValue: (fraction: number) => gradeWhole(fraction, scale),
+    /** Mastery's exact position on the scale, for chart coordinates; the text shows it with `mastery`. */
+    masteryPoint: (fraction: number) => scaledMastery(fraction, scale),
     /** Mastery as a whole number alone: "22". Mastery and preparation are never shown with a decimal. */
     masteryNumber: (fraction: number) => formatGradeNumber(gradeWhole(fraction, scale), locale),
     /** Mastery with its scale, whole: "22/30". */

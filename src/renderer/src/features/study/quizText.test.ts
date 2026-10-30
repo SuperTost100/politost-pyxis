@@ -50,6 +50,12 @@ describe("verdictLine", () => {
       expect(verdictLine(79, diagnostic, 90)).toBe("quiz.verdictGood");
     }
   });
+  it("compares the exact score with the exact goal, so 74.6% against 75% is not the goal", () => {
+    expect(verdictLine(74.6, false, 75)).toBe("quiz.verdictClose");
+    expect(verdictLine(74.6, true, 75)).toBe("quiz.verdictClose");
+    // A sum of partial credits can land a hair under the percentage it stands for.
+    expect(verdictLine(90 - 1e-12, false, 90)).toBe("quiz.verdictGreat");
+  });
   it("calls a score over 60% of the goal a good base", () => {
     expect(verdictLine(50, true)).toBe("quiz.verdictGood");
     expect(verdictLine(54, false, 90)).toBe("quiz.verdictGood");

@@ -2699,6 +2699,7 @@
     "hoursLabel": "Ore a settimana",
     "hoursUnit": "ore a settimana",
     "hoursUse": "Usa {{hours}} h",
+    "hoursTooMany": "Con questa data e questo obiettivo servirebbero più di {{max}} ore a settimana. Sposta la data o abbassa l'obiettivo.",
     "saved": "Modifiche salvate",
     "hoursThisWeek": "Questa settimana il piano della sessione dedica circa {{time}} a questo esame.",
     "openPlanner": "Apri il piano della sessione",

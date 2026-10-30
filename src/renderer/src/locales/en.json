@@ -2699,6 +2699,7 @@
     "hoursLabel": "Hours a week",
     "hoursUnit": "hours a week",
     "hoursUse": "Use {{hours}} h",
+    "hoursTooMany": "This date and goal would need more than {{max}} hours a week. Move the date or lower the goal.",
     "saved": "Changes saved",
     "hoursThisWeek": "This week the session plan gives this exam about {{time}}.",
     "openPlanner": "Open the session plan",

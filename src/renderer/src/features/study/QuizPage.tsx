@@ -1127,9 +1127,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             finalResult
               ? t(
                   verdictLine(
-                    Math.round(finalResult.score * 100),
+                    finalResult.score * 100,
                     diagnostic && !review,
-                    plan.data ? Math.round(plan.data.target * 100) : undefined,
+                    plan.data ? plan.data.target * 100 : undefined,
                   ),
                 )
               : t("results.gradingHeadline")

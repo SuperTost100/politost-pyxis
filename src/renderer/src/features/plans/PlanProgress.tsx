@@ -135,7 +135,7 @@ export function PlanProgress({
   });
   const chart = progress.chart.map((point) => ({
     ...point,
-    value: grade.masteryValue(point.mastery),
+    value: grade.masteryPoint(point.mastery),
   }));
   const tick = {
     fill: "var(--ink-muted)",
@@ -215,8 +215,9 @@ export function PlanProgress({
                     labelFormatter={(at) =>
                       date(Number(at), { day: "numeric", month: "long" })
                     }
+                    // The point sits at its exact place; the text is the whole mastery, as everywhere else.
                     formatter={(value) => [
-                      `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(Number(value))}/${grade.scale}`,
+                      grade.mastery(Number(value) / grade.scale),
                       t("progress.preparation"),
                     ]}
                     contentStyle={tooltip}

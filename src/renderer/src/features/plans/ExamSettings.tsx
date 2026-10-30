@@ -34,7 +34,7 @@ import { CalendarButton } from "../share/CalendarButton";
 import { ExportButton } from "../share/ExportButton";
 import { AttachSourcesDialog } from "./AttachSourcesDialog";
 import { setPlanArchived } from "./archivePlan";
-import { saveThenRefresh } from "./examSettingsData";
+import { hoursSuggestion, keptHoursEdit, MAX_WEEKLY_HOURS, saveThenRefresh } from "./examSettingsData";
 import { ExamSessionsField } from "./ExamSessionsField";
 import { RebuildDialog } from "./RebuildDialog";
 import {
@@ -117,7 +117,7 @@ export function ExamSettingsPage() {
   const [title, setTitle] = useState<string | null>(null);
   const [goal, setGoal] = useState<number | null>(null);
   const [sessions, setSessions] = useState<SessionDraft[] | null>(null);
-  const [hours, setHours] = useState<{ value: number | null } | null>(null);
+  const [hoursEdit, setHours] = useState<{ value: number | null; suggested?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState(false);
@@ -141,13 +141,20 @@ export function ExamSettingsPage() {
   const shownTitle = title ?? data?.title ?? "";
   const shownGoal = goal ?? savedGoal;
   const shownSessions = sessions ?? savedSessions;
+  const sessionsChanged = sessions !== null && !sameSessions(sessions, savedSessions);
+  const goalChanged = goal !== null && goal !== savedGoal;
+  // The planner's estimate belongs to the saved date and goal: edits to either withdraw it, and an accepted one with it.
+  const planEdited = sessionsChanged || goalChanged;
+  const hours = keptHoursEdit(hoursEdit, planEdited);
   const shownHours = hours ? hours.value : savedHours;
-  // The planner's estimate, offered while the student has saved no weekly hours.
-  const suggestion = planner.isSuccess && savedHours === null && !hours ? planner.data.neededHours : null;
+  const suggestion =
+    planner.isSuccess && !hours
+      ? hoursSuggestion({ needed: planner.data.neededHours, saved: savedHours, planEdited })
+      : null;
   const changed: Record<Change, boolean> = {
     name: title !== null && title.trim() !== data?.title,
-    sessions: sessions !== null && !sameSessions(sessions, savedSessions),
-    goal: goal !== null && goal !== savedGoal,
+    sessions: sessionsChanged,
+    goal: goalChanged,
     hours: hours !== null && planner.isSuccess && hours.value !== savedHours,
   };
   const changes = (Object.keys(changed) as Change[]).filter((key) => changed[key]);
@@ -353,24 +360,32 @@ export function ExamSettingsPage() {
                 id="set-hours"
                 aria-label={t("examSettings.hoursLabel")}
                 min={0}
-                max={100}
+                max={MAX_WEEKLY_HOURS}
                 step={1}
                 decimalSeparator={decimalSeparator(i18n.language)}
                 value={shownHours}
                 // With no hours saved, the planner's estimate shows in the field as a suggestion.
-                placeholder={suggestion != null ? formatHours(i18n.language, suggestion) : undefined}
+                placeholder={suggestion?.kind === "hours" ? formatHours(i18n.language, suggestion.hours) : undefined}
                 disabled={busy || !planner.isSuccess}
                 onChange={(value) => setHours({ value: typeof value === "number" ? value : null })}
               />
               <label htmlFor="set-hours" className="body">
                 {t("examSettings.hoursUnit")}
               </label>
-              {suggestion != null ? (
-                <Button shape="round" size="small" disabled={busy} onClick={() => setHours({ value: suggestion })}>
-                  {t("examSettings.hoursUse", { hours: formatHours(i18n.language, suggestion) })}
+              {suggestion?.kind === "hours" ? (
+                <Button
+                  shape="round"
+                  size="small"
+                  disabled={busy}
+                  onClick={() => setHours({ value: suggestion.hours, suggested: true })}
+                >
+                  {t("examSettings.hoursUse", { hours: formatHours(i18n.language, suggestion.hours) })}
                 </Button>
               ) : null}
             </div>
+            {suggestion?.kind === "tooMany" ? (
+              <p className="small ink-muted">{t("examSettings.hoursTooMany", { max: MAX_WEEKLY_HOURS })}</p>
+            ) : null}
             {planner.data?.neededHours != null && !changed.hours ? (
               <p className="small ink-muted">
                 {t("planner.needed", {

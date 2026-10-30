@@ -90,6 +90,8 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     // The bar names what changed, and the calendar button waits for the sessions to be saved.
     await expect(saveBar).toContainText("1 change to save: the sessions.");
     await expect(settingsPage.getByRole("button", { name: "Add to calendar" })).toBeDisabled();
+    // The planner's estimate was made for the saved date, so it is not offered while the date is edited.
+    await expect(settingsPage.getByRole("button", { name: /^Use .+ h$/ })).toHaveCount(0);
     await snap("plan-settings-sessions", "en", "light");
     await saveBar.getByRole("button", { name: "Save changes" }).click();
     await expect(saveBar).toHaveCount(0);
