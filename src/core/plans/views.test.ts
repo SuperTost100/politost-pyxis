@@ -119,6 +119,28 @@ describe("plan views and material", () => {
     expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["quiz", "model", "imported"]);
     db.close();
   });
+  it("keeps the book text of new material that the older model lesson does not cover", () => {
+    const db = fixture();
+    db.prepare(
+      "INSERT INTO passages(id,source_id,text,locator_json,section_path,created_at) VALUES('rebuilt','s','Acceleration changes velocity','{}','Motion',2)",
+    ).run();
+    const insert = db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,created_at) VALUES(?,'p','t','lesson',?,?,?)",
+    );
+    const link = db.prepare("INSERT INTO item_passages(item_id,passage_id) VALUES(?,?)");
+    const bookKey = (passage: string) =>
+      JSON.stringify({ kind: "lesson", scopeId: "t", promptVersion: "book-1", passageIds: [passage] });
+    // A model lesson on the topic's first material, and the book text shown before it, on the same passage.
+    insert.run("model", JSON.stringify({ cacheKey: "model", markdown: "Velocity [P1]" }), "claude", 1);
+    link.run("model", "passage");
+    insert.run("old-book", JSON.stringify({ cacheKey: bookKey("passage"), markdown: "Velocity" }), null, 2);
+    link.run("old-book", "passage");
+    // A rebuild gave the topic other passages, and the engine failed on them: their book text is all there is.
+    insert.run("new-book", JSON.stringify({ cacheKey: bookKey("rebuilt"), markdown: "Acceleration" }), null, 3);
+    link.run("new-book", "rebuilt");
+    expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["new-book", "model"]);
+    db.close();
+  });
   it("marks real imports and opens an existing topic quiz without duplicating an unfinished attempt", () => {
     const db = fixture();
     markPlanImported(db, "p", 1);

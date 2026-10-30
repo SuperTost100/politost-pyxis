@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { retryPick, skipOrder, verdictLine } from "./quizText";
+import { quizBack, retryPick, skipOrder, verdictLine } from "./quizText";
+
+describe("where closing a quiz goes", () => {
+  it("goes back to the Review page from a Review's questions, to the notebook from a redo, else to the exam", () => {
+    expect(quizBack({ planId: "p", review: true })).toBe("/plans/p/review");
+    expect(quizBack({ planId: "p", redo: true, notebookExam: "e 1" })).toBe("/exams/mistakes?exam=e%201");
+    expect(quizBack({ planId: "p", redo: true })).toBe("/exams/mistakes");
+    expect(quizBack({ planId: "p" })).toBe("/plans/p");
+  });
+});
 
 const questions = ["a", "b", "c", "d"].map((id) => ({ id }));
 const ids = (rows: Array<{ id: string }>) => rows.map((row) => row.id);
