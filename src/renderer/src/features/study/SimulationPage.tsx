@@ -20,7 +20,7 @@ import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
 import { ActivityChoice, ActivityIntro } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem } from "./ResultsScreen";
-import { verdict, verdictLine } from "./quizText";
+import { questionPoints, verdict, verdictLine } from "./quizText";
 import "./SimulationPage.css";
 import { pastPapersQuery, usePlan } from "../../lib/queries";
 
@@ -309,7 +309,9 @@ export function SimulationPage() {
       stem: q.stem,
       topic,
       mark: verdict(result.score),
-      score: grade.format(result.score),
+      ...(verdict(result.score) === "partial"
+        ? { score: t("quiz.questionPoints", { points: questionPoints(result.score, i18n.language) }) }
+        : {}),
       answer,
       typed: "math",
       long: true,
@@ -595,7 +597,7 @@ export function SimulationPage() {
                 type="primary"
                 shape="round"
                 size="large"
-                onClick={() => navigate(`/plans/${planId}/review`)}
+                onClick={() => navigate(`/plans/${planId}/review?from=${encodeURIComponent(run.attemptId)}`)}
               >
                 {t("quiz.reviewMistakes")}
               </Button>

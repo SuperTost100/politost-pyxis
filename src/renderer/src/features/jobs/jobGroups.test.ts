@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JobView } from "../../../../shared/ipc";
-import { checkJobFor, finishedLabelKey, groupJobs, jobContext, runningLabelKey } from "./jobGroups";
+import { checkJobFor, finishedLabelKey, groupJobs, jobContext, jobTopicName, runningLabelKey } from "./jobGroups";
 
 function job(id: string, over: Partial<JobView> = {}): JobView {
   return {
@@ -173,5 +173,12 @@ describe("jobs list groups", () => {
     expect(jobContext(job("d", { activity: "diagnostic" }))).toBe("diagnostic");
     expect(jobContext(job("r", { activity: "review", topic: "Vettori" }))).toBe("review");
     expect(jobContext(job("p"))).toBeUndefined();
+    // A Review that lists its topics names them; a Review's topics read as a short list.
+    expect(jobContext(job("r", { activity: "review", topics: ["Vettori"] }))).toBe("reviewTopic");
+    const more = (first: string, others: number) => `${first} +${others}`;
+    expect(jobTopicName({ topics: ["Vettori"] }, "it", more)).toBe("Vettori");
+    expect(jobTopicName({ topics: ["Vettori", "Cinematica"] }, "it", more)).toBe("Vettori e Cinematica");
+    expect(jobTopicName({ topics: ["A", "B", "C"] }, "en", more)).toBe("A +2");
+    expect(jobTopicName({ topic: "Dinamica" }, "it", more)).toBe("Dinamica");
   });
 });

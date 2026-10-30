@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 
 const plan = (title: string, extra: object = {}) =>
@@ -79,7 +80,7 @@ test("a plan file named on the command line opens the import review once setup i
     await expect(page.locator(".px-import-review .px-notice")).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -108,7 +109,7 @@ test("main refuses a name or type that is not a plan file, and the renderer cann
     await expect(page.locator(".px-import-review")).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -142,7 +143,7 @@ test("a .pyxis file dropped on the window opens the import review, and other dro
     await expect(page.getByText(/versione più recente di Pyxis/)).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -185,7 +186,7 @@ test("a plan with broken exercises names the problem and imports the rest", asyn
     expect(plans.map((p: { title: string }) => p.title)).toEqual(["Con esercizi rotti"]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -211,6 +212,6 @@ test("a plan broken outside the exercises and maps offers nothing to leave out",
     await expect(page.getByRole("button", { name: "Importa il resto" })).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

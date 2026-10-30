@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { interestsLine } from "../profile/context";
 import { uuidv7 } from "../../shared/ids";
+import { fullCredit } from "../../shared/quiz";
 import { syncGaps } from "../plans/progress";
 import { enqueueGapInsights } from "./gapInsight";
 import { checkMath } from "./mathGrade";
@@ -626,7 +627,7 @@ export function registerSimulationJobs(
               z.infer<typeof gradingSchema> | undefined;
             const grade: SimulationGrade = {
               id: question.id,
-              score: data?.score ?? 0,
+              score: fullCredit(data?.score ?? 0),
               expected,
               feedback:
                 data?.feedback ??

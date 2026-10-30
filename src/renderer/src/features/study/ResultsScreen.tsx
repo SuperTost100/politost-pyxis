@@ -513,6 +513,9 @@ function Changes({
           </li>
         ))}
       </ul>
+      {rows.some((row) => row.values) ? (
+        <p className="small px-res-changes-later">{t("results.changesNote")}</p>
+      ) : null}
     </section>
   );
 }

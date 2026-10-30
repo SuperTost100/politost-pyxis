@@ -4,7 +4,7 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +12,7 @@ import { startFakeOllama } from "../../src/core/engine/fake-ollama";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const GIB = 1024 ** 3;
 
@@ -137,7 +138,7 @@ test("LOCAL-01 a computer that cannot run a model gets no suggestion, and Settin
   } finally {
     await app.close();
     await ollama.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -268,6 +269,6 @@ test("LOCAL-02 a capable computer gets the suggestion, links to Ollama, download
   } finally {
     await app.close();
     await ollama?.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

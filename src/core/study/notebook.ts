@@ -54,7 +54,7 @@ type Outcome = Omit<Mistake, "citations" | "passageId" | "chapter"> & {
   question: StoredQuestion;
 };
 
-type AttemptQuestion = {
+export type AttemptQuestion = {
   id: string;
   sourceId?: string;
   sourceIds?: string[];
@@ -96,7 +96,7 @@ function keyOf(question: {
  * The question asked again as a quiz question. A simulation answer is free text graded against a reference, so it comes
  * back as an open answer; any other question keeps its form. Only these fields travel, so a drill's gap link does not.
  */
-function redoQuestion(
+export function redoQuestion(
   question: AttemptQuestion,
   topicId: string | null,
   simulation: boolean,

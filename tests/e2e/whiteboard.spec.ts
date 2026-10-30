@@ -14,6 +14,7 @@ import { PNG } from "pngjs";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 async function draw(page: Page) {
   // A freshly routed board has no layout box yet; measuring it earlier throws "canvas-missing".
@@ -180,7 +181,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
     await expect(page.getByAltText("Lavagna")).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -237,6 +238,6 @@ test("ASK-05 an empty board cannot be saved, one eraser drag removes what it cro
     await expect(page).toHaveURL(/#\/ask$/);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

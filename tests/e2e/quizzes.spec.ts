@@ -5,7 +5,7 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +13,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 /** Ten diagnostic questions over the book's two chapters; each explanation cites a passage by ID. */
 const diagnosticReply = {
@@ -78,7 +79,7 @@ async function launch(replies: Record<string, unknown>, delay = 0) {
   });
   const done = async () => {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   };
   return { app, page, userData, planId, topics: plan.topics, done };
 }
@@ -576,7 +577,7 @@ test("open answer: checked right away, the check can be cancelled and the answer
     await page.getByRole("button", { name: "Verifica", exact: true }).click();
     const feedback = page.locator(".px-quiz-feedback");
     await expect(feedback).toContainText("Parzialmente corretto", { timeout: 15000 });
-    await expect(feedback).toContainText("18/30");
+    await expect(feedback).toContainText("0,6 su 1");
     await expect(feedback).toContainText("Risposta modello");
     await expect(answer).toBeDisabled();
     await axe(page);
@@ -857,6 +858,6 @@ test("LES-01 LES-11 FC-01 live smartbook study loop", async () => {
     );
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

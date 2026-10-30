@@ -27,6 +27,7 @@ import {
 } from "./rebuild";
 import { embedWithModel } from "../sources/retrieve";
 import { queueSyllabusChecks } from "../sources/syllabus";
+import { aboutPlan } from "../study/jobAbout";
 import { shuffleChoices } from "../../shared/choices";
 import { topicTitle } from "../../shared/book-text";
 import { stripPassageRefs } from "../../shared/smart-text";
@@ -614,6 +615,7 @@ export function registerPlanJobs(
   }
 
   runner.register("plan-build", {
+    about: (params) => aboutPlan(db, (params as Params).planId),
     retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "plan") }),
     jobClass: "local",
     steps: [
@@ -701,6 +703,7 @@ export function registerPlanJobs(
   });
   // PLAN-13: the same sources and topics steps build a fresh tree, then one more step matches it to the plan.
   runner.register("plan-rebuild", {
+    about: (params) => aboutPlan(db, (params as Params).planId),
     retryParams: (params) => ({
       ...(params as Params),
       selection: selectionFor(db, "plan"),

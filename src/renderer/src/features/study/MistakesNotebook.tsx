@@ -12,10 +12,9 @@ import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { QUIZ_MAX_QUESTIONS } from "@shared/quiz";
 import { invoke } from "../../lib/ipc";
-import { useGradeScale } from "../../lib/useGradeScale";
 import { i18n } from "../../locales/i18n";
 import { TypedAnswer } from "./TypedAnswer";
-import { answerSource, blanks, pairs, stemText, verdict } from "./quizText";
+import { answerSource, blanks, pairs, questionPoints, stemText, verdict } from "./quizText";
 import "./QuizPage.css";
 import "./MistakesNotebook.css";
 
@@ -38,8 +37,7 @@ function dateText(at: number) {
  * asks the questions again as a quiz.
  */
 export function MistakesNotebook() {
-  const { t } = useTranslation();
-  const grade = useGradeScale();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   // The exam filter lives in the URL, so a redo can bring the student back to the same exam.
   const [search, setSearch] = useSearchParams();
@@ -183,7 +181,7 @@ export function MistakesNotebook() {
             <p className="label">
               {state === "partial"
                 ? t("mistakes.yourAnswerScore", {
-                    score: grade.format(entry.score),
+                    score: t("quiz.questionPoints", { points: questionPoints(entry.score, i18n.language) }),
                   })
                 : t("quiz.yourAnswer")}
             </p>

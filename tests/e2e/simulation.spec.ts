@@ -1,6 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 test("LES-20 through LES-23 exam timer restart, auto-submit and named grading model", async () => {
   test.setTimeout(240000);
@@ -304,6 +305,6 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       );
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

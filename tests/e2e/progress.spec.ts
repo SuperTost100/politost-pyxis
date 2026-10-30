@@ -1,6 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 test("PRO-01 through PRO-06 preparation layout, flagged content, activity and progress tabs", async () => {
   test.setTimeout(90000);
@@ -270,6 +271,6 @@ test("PRO-01 through PRO-06 preparation layout, flagged content, activity and pr
     expect(errors).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

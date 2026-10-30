@@ -4,7 +4,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  rmSync,
   realpathSync,
   readFileSync,
   writeFileSync,
@@ -16,6 +15,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -175,7 +175,7 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
     ).toBe(text);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -212,7 +212,7 @@ test("a manual backup saved over the live database is refused and the data stays
     ).not.toBeNull();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -273,6 +273,6 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
     }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

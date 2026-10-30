@@ -9,6 +9,7 @@ import { importSmartbook } from "../sources/smartbook";
 import { saveQuiz, startAttempt } from "./attempt";
 import { dueCards, rateCard } from "./cards";
 import { studyHandlers } from "./handlers";
+import { flagTarget } from "./flags";
 import { saveQuizDraft } from "./quizJobs";
 import { finalizeAttempt } from "./quizGrading";
 import { readGapDrill } from "./gapDrill";
@@ -209,6 +210,138 @@ describe("mixed review (LES-13)", () => {
     }
     expect(events.some((row) => row.topic_id === topics[1])).toBe(false);
     expect(completed()).toEqual(seenCompleted);
+  });
+});
+
+/** A finished quiz of one question per form, answered right only where `right` lists the id. */
+function mixedQuiz(fx: Fixture, topicId: string, right: string[]) {
+  const { db, planId } = fx;
+  const itemId = saveQuiz(db, planId, [
+    { id: "m-mcq", stem: "Scelta?", options: ["a", "b"], grade: { kind: "mcq", picked: -1, correct: 0 } },
+    { id: "m-tf", stem: "Vero?", grade: { kind: "tf", picked: false, correct: true } },
+    { id: "m-fill", stem: "Completa {{1}}", grade: { kind: "completion", answers: [], accepted: [["x"]] } },
+    {
+      id: "m-pairs",
+      stem: "Abbina",
+      left: ["1", "2"],
+      right: ["a", "b"],
+      grade: { kind: "matching", pairs: [], correct: [["1", "a"], ["2", "b"]] },
+    },
+  ]);
+  db.prepare("UPDATE items SET topic_id = ? WHERE id = ?").run(topicId, itemId);
+  const { attemptId } = startAttempt(db, planId, itemId);
+  const picks: Record<string, string> = {
+    "m-mcq": right.includes("m-mcq") ? "0" : "1",
+    "m-tf": right.includes("m-tf") ? "true" : "false",
+    "m-fill": right.includes("m-fill") ? '["x"]' : '["y"]',
+    "m-pairs": right.includes("m-pairs") ? '[["1","a"],["2","b"]]' : "[]",
+  };
+  finalizeAttempt(db, attemptId, picks);
+  return attemptId;
+}
+
+describe("a review of one quiz's mistakes", () => {
+  it("asks the questions the student got wrong, in their own form, before any extra practice", () => {
+    const fx = setup();
+    const { db, planId, topics } = fx;
+    seedCards(db, { planId, topicId: topics[0]!, pairs: [{ front: "a", back: "a" }] });
+    const attemptId = mixedQuiz(fx, topics[0]!, ["m-tf"]);
+    const session = startReview(db, planId, { fromAttemptId: attemptId });
+    const stored = storedQuestions(db, session.attemptId);
+    expect(stored.slice(0, 3).map((question) => [question.id, question.answer.kind])).toEqual([
+      ["m-mcq", "mcq"],
+      ["m-fill", "completion"],
+      ["m-pairs", "matching"],
+    ]);
+    // The right answer stays out; extra practice fills up to eight, and the due card is not part of it.
+    expect(stored.some((question) => question.id === "m-tf")).toBe(false);
+    expect(stored.length).toBeGreaterThan(3);
+    expect(stored.length).toBeLessThanOrEqual(8);
+    expect(session.progress.cardsTotal).toBe(0);
+    expect(session.fromAttemptId).toBe(attemptId);
+    expect(session.next).toBe("questions");
+  });
+
+  it("adds no extra practice when the mistakes already fill the review", () => {
+    const fx = setup();
+    const { db, planId, topics } = fx;
+    openGap(fx, topics[2]!);
+    // A quiz of nine open questions, all blank.
+    const itemId = saveQuiz(
+      db,
+      planId,
+      Array.from({ length: 9 }, (_, index) => ({
+        id: `o${index}`,
+        stem: `Aperta ${index}?`,
+        grade: { kind: "open" as const, answer: "", reference: "r" },
+      })),
+    );
+    const { attemptId } = startAttempt(db, planId, itemId);
+    finalizeAttempt(db, attemptId, {});
+    const session = startReview(db, planId, { fromAttemptId: attemptId });
+    expect(storedQuestions(db, session.attemptId).map((question) => question.id)).toEqual(
+      Array.from({ length: 9 }, (_, index) => `o${index}`),
+    );
+  });
+
+  it("leaves out a question the student marked wrong, and falls back to a normal review when nothing was missed", () => {
+    const fx = setup();
+    const { db, planId, topics } = fx;
+    const attemptId = mixedQuiz(fx, topics[0]!, ["m-tf", "m-fill", "m-pairs"]);
+    flagTarget(db, "exercise", "m-mcq", "");
+    const plain = startReview(db, planId, { fromAttemptId: attemptId });
+    // The request is remembered, so asking again resumes this review.
+    expect(plain.fromAttemptId).toBe(attemptId);
+    expect(storedQuestions(db, plain.attemptId).some((question) => question.id === "m-mcq")).toBe(false);
+  });
+
+  it("starts from a simulation's mistakes too, a blank asked as free text", () => {
+    const { db, planId } = setup();
+    db.prepare(
+      "INSERT INTO items (id, plan_id, kind, body_json, created_at) VALUES ('sim', ?, 'simulation', ?, 1)",
+    ).run(
+      planId,
+      JSON.stringify({
+        questions: [
+          { id: "s1", stem: "Ricava la legge.", answer: { kind: "completion", answers: [], accepted: [["x = v t"]] } },
+          { id: "s2", stem: "Vero?", answer: { kind: "tf", picked: true, correct: true } },
+        ],
+      }),
+    );
+    db.prepare("INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES ('sa', ?, 'sim', 5, 6)").run(planId);
+    db.prepare("INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('aa', 'sa', ?, 6)").run(
+      JSON.stringify({
+        picks: {},
+        results: [
+          { id: "s1", score: 0.4 },
+          { id: "s2", score: 1 },
+        ],
+      }),
+    );
+    const session = startReview(db, planId, { fromAttemptId: "sa" });
+    const [first] = storedQuestions(db, session.attemptId);
+    expect([first?.id, first?.answer.kind]).toEqual(["s1", "open"]);
+  });
+
+  it("resumes a review built for an attempt with nothing missed, when the same attempt asks again", () => {
+    const fx = setup();
+    const { db, planId, topics } = fx;
+    openGap(fx, topics[2]!);
+    const attemptId = mixedQuiz(fx, topics[0]!, ["m-mcq", "m-tf", "m-fill", "m-pairs"]);
+    const first = startReview(db, planId, { fromAttemptId: attemptId });
+    expect(startReview(db, planId, { fromAttemptId: attemptId }).sessionId).toBe(first.sessionId);
+  });
+
+  it("replaces an unfinished review of something else, and resumes its own", () => {
+    const fx = setup();
+    const { db, planId, topics } = fx;
+    openGap(fx, topics[2]!);
+    const general = startReview(db, planId);
+    const attemptId = mixedQuiz(fx, topics[0]!, []);
+    const mine = startReview(db, planId, { fromAttemptId: attemptId });
+    expect(mine.sessionId).not.toBe(general.sessionId);
+    expect(startReview(db, planId, { fromAttemptId: attemptId }).sessionId).toBe(mine.sessionId);
+    expect(readReview(db, planId)?.sessionId).toBe(mine.sessionId);
   });
 });
 

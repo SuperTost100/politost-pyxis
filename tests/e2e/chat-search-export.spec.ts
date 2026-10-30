@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedSource } from "./seed";
+import { removeTestFolder } from "./cleanup";
 
 const ANSWER = [
   "Il calore passa per conduzione: \\(Q=mc\\Delta T\\) [P1].",
@@ -149,6 +150,6 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     expect(english).toContain("**Sources**");
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

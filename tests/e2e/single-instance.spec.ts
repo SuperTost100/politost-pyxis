@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 test("the running copy holds the single-instance lock for its profile", async () => {
   test.setTimeout(120000);
@@ -26,7 +27,7 @@ test("the running copy holds the single-instance lock for its profile", async ()
     ).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -55,6 +56,6 @@ test("answers outside a plan follow the interface language", async () => {
     await expect.poll(language).toBe("English");
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

@@ -332,10 +332,13 @@ export function PlanPage() {
                   <small>/{grade.scale}</small>
                 </dd>
                 <dd className="small ink-muted">
-                  {schedule.data?.behind
-                    ? t("planOverview.atExam", { grade: grade.mastery(schedule.data.behind.masteryAtExam) })
-                    : t("planOverview.planMastery")}
+                  {t("planOverview.planMastery", { count: progress.preparation.totalTopics })}
                 </dd>
+                {schedule.data?.behind ? (
+                  <dd className="small ink-muted">
+                    {t("planOverview.atExam", { grade: grade.mastery(schedule.data.behind.masteryAtExam) })}
+                  </dd>
+                ) : null}
               </>
             )}
           </div>

@@ -4,13 +4,14 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { animationsSettled } from "./settled";
+import { removeTestFolder } from "./cleanup";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -103,7 +104,7 @@ async function chat(page: Page) {
 
 async function finish(app: ElectronApplication, userData: string) {
   await app.close();
-  rmSync(userData, { recursive: true, force: true });
+  removeTestFolder(userData);
 }
 
 test("Ask: the composer chip is the only subject control and picks the subject's sources", async () => {

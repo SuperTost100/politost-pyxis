@@ -4,12 +4,13 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
+import { removeTestFolder } from "./cleanup";
 
 const mac = process.platform === "darwin";
 
@@ -125,7 +126,7 @@ test("the menu follows the interface language and hides its bar on Windows and L
     );
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -231,7 +232,7 @@ test("menu items open their pages, the shortcuts list, the updates check and the
       .toEqual(["https://github.com/SuperTost100/politost-pyxis/issues/new"]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -255,7 +256,7 @@ test("a menu pick does nothing during setup", async () => {
     }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -420,6 +421,6 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
     }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

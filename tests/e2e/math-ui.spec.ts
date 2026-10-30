@@ -5,7 +5,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,6 +13,7 @@ import type { MathCheck } from "../../src/shared/math-check";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 async function launch(reply?: string) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -100,7 +100,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     await saveShot(page, "m9-failed-light.png");
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -135,7 +135,7 @@ test("Graph several functions and mark where they meet", async () => {
     await expectNoAxeViolations(page);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -263,6 +263,6 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
     );
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

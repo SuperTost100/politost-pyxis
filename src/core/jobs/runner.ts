@@ -52,7 +52,7 @@ export type JobSpec = {
 
 export type Limits = Record<JobClass, number>;
 
-export type JobAbout = Pick<JobView, "topic" | "exam" | "activity">;
+export type JobAbout = Pick<JobView, "topic" | "topics" | "exam" | "activity">;
 
 /** Work a request does itself, as the runner lists it while it lasts. */
 export type Tracked = {
@@ -175,6 +175,7 @@ export function createRunner(
       kind: job.kind,
       ...(title ? { title } : {}),
       ...(about.topic ? { topic: about.topic } : {}),
+      ...(about.topics?.length ? { topics: about.topics } : {}),
       ...(about.exam ? { exam: about.exam } : {}),
       ...(about.activity ? { activity: about.activity } : {}),
       ...(ref ? { ref } : {}),
@@ -606,6 +607,7 @@ export function createRunner(
       // Only what is set: the view goes over IPC, where an absent field and an undefined one differ.
       const known: JobAbout = {
         ...(about.topic ? { topic: about.topic } : {}),
+        ...(about.topics?.length ? { topics: about.topics } : {}),
         ...(about.exam ? { exam: about.exam } : {}),
         ...(about.activity ? { activity: about.activity } : {}),
       };
