@@ -118,6 +118,12 @@ describe("engineStatus", () => {
     });
   });
 
+  it("offers a test, not a sign-in, for an API key the provider refused", () => {
+    expect(
+      engineStatus({ ...cli({ loggedIn: false, refused: true }), kind: "api" }),
+    ).toEqual({ tone: "error", label: "engines.state.refused", fix: null });
+  });
+
   it("offers sign-in for a signed-out CLI and install for a missing one", () => {
     expect(engineStatus(cli({ loggedIn: false })).fix).toBe("signIn");
     expect(engineStatus(cli({ installed: false, loggedIn: false }))).toEqual({

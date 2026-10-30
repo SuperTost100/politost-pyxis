@@ -28,6 +28,21 @@ export function jobErrorKey(error: string): string {
   return ocrErrorKey(error) ?? sourceErrorKey(error) ?? "jobs.failedGeneral";
 }
 
+/**
+ * A job failure that reached the screen as a request error: a request that waits for its job (an open answer's check)
+ * rethrows the job's error, which arrives as the request's `detail`.
+ */
+export function requestJobError(err: unknown): {
+  key: string;
+  engine: string | undefined;
+} {
+  const detail =
+    err && typeof err === "object" && "detail" in err && typeof err.detail === "string"
+      ? err.detail
+      : "";
+  return { key: jobErrorKey(detail), engine: jobErrorEngine(detail) };
+}
+
 /** The engine a job's engine failure came from, when the runner recorded it. */
 export function jobErrorEngine(error: string): string | undefined {
   const match = ENGINE_ERROR.exec(error);

@@ -29,8 +29,13 @@ export function engineStatus(row: EngineState): EngineStatus {
       label: "engines.notInstalled",
       fix: row.kind === "cli" ? "install" : null,
     };
+  // An API key has no sign-in: its row keeps the test, which checks the key again.
   if (row.refused)
-    return { tone: "error", label: "engines.state.refused", fix: "signIn" };
+    return {
+      tone: "error",
+      label: "engines.state.refused",
+      fix: row.kind === "cli" ? "signIn" : null,
+    };
   if (!row.loggedIn)
     return {
       tone: "warn",

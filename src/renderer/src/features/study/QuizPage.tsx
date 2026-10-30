@@ -18,7 +18,7 @@ import { openSourceViewer } from "../../components/SourceViewer";
 import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
 import { errorProvider, useEngineError } from "../../lib/engineError";
-import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
+import { jobErrorEngine, jobErrorKey, requestJobError } from "../jobs/jobErrors";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { useActiveTime } from "./activeTime";
@@ -313,6 +313,11 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     check.isError &&
     check.variables?.questionId === question?.id &&
     cancelledCheck.current !== question?.id;
+  // A check that stopped on a refused sign-in names the engine and offers its sign-in next to Try again.
+  const checkJobError = check.isError ? requestJobError(check.error) : undefined;
+  const checkFailure = checkJobError
+    ? describeEngineError(checkJobError.key, checkJobError.engine)
+    : undefined;
   // Answers are corrected one by one; submitting only closes the attempt (and grades anything still unchecked).
   const grading = useQuery({
     queryKey: ["quiz-grading", attemptId],
@@ -1448,8 +1453,11 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             <Notice
               tone="danger"
               action={{ label: t("quiz.checkRetry"), onClick: retryCheck }}
+              secondary={checkFailure?.action}
             >
-              {t("quiz.checkFailed")}
+              {checkFailure?.action
+                ? `${t("quiz.checkFailed")} ${checkFailure.text}`
+                : t("quiz.checkFailed")}
             </Notice>
           ) : null}
           {!result ? (
