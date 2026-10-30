@@ -57,6 +57,11 @@ const FONT_SANS = 'Figtree, system-ui, -apple-system, "Segoe UI", sans-serif';
 const FONT_MONO =
   '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
+const DANGER_STATES: Record<PyxisMode, { hover: string; active: string }> = {
+  dark: { hover: "#e8918e", active: "#c65c5c" },
+  light: { hover: "#c74a4f", active: "#99222c" },
+};
+
 export function pyxisTheme(
   mode: PyxisMode = "dark",
   reducedMotion = false,
@@ -74,6 +79,11 @@ export function pyxisTheme(
       colorSuccess: c.mastery,
       colorWarning: c.star,
       colorError: c.danger,
+      // The solid danger button paints its hover and active states with these. Ant Design derives them from the seed,
+      // and the derived light hover and dark active fills are too faint or too dark under the label (see
+      // danger-contrast.test.ts). The other two are the derived values, pinned so the three states stay a set.
+      colorErrorHover: DANGER_STATES[mode].hover,
+      colorErrorActive: DANGER_STATES[mode].active,
       colorInfo: c.primary,
       colorLink: c.primaryText,
       fontFamily: FONT_SANS,
