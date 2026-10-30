@@ -121,10 +121,10 @@ describe("lessons in the jobs list", () => {
     });
     await handlers.lesson({ planId, topicId }, { onDelta: () => {} });
     expect(during).toMatchObject([
-      { kind: "lesson-write", state: "running", stepLabel: "jobs.lessonWriting", topic: "1. Moti", exam: "Fisica 1" },
+      { kind: "lesson-write", state: "running", stepLabel: "jobs.lessonWriting", topic: "Moti", exam: "Fisica 1" },
     ]);
     expect(runner.list()).toEqual([]);
-    expect(runner.finished()).toMatchObject([{ kind: "lesson-write", topic: "1. Moti", exam: "Fisica 1" }]);
+    expect(runner.finished()).toMatchObject([{ kind: "lesson-write", topic: "Moti", exam: "Fisica 1" }]);
     // The saved lesson opens at once: no second entry.
     await handlers.lesson({ planId, topicId });
     expect(runner.finished()).toHaveLength(1);
