@@ -1054,14 +1054,17 @@ esac`,
   };
 }
 
-/** Setup step 2 signs the stand-ins in; every other state finds them signed out and nothing chosen or confirmed. */
+/**
+ * Setup step 2 signs the stand-ins in; every other state finds them signed out and nothing chosen or confirmed. The
+ * pinned default engine of the recorded replies stays: the guided flow and the chats answer through it.
+ */
 function prepareEngines(name: string) {
   const on = join(auditEngines, "on");
   const engines = name.startsWith("onboarding-engines");
   if (engines) writeFileSync(on, "");
   else rmSync(on, { force: true });
   withDb((db) => {
-    db.exec(`DELETE FROM feature_engines;
+    db.exec(`DELETE FROM feature_engines WHERE json_extract(selection_json, '$.auto') = 1;
       DELETE FROM settings WHERE key LIKE 'engine-disclosure:%' OR key LIKE 'engine-signed-out:%' OR key = 'engines.allowed';`);
     if (name === "onboarding-engines-chosen")
       db.prepare(
