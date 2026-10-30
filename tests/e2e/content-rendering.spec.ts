@@ -150,7 +150,7 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
       { planId, topicId },
     );
     const body = page.locator(".px-markdown").first();
-    await expect(body).toContainText("Il modulo è eq. 1.5", { timeout: 30000 });
+    await expect(body).toContainText(/Il modulo è eq\. 1\.5(?!\d)/, { timeout: 30000 });
     expect(await body.innerText()).not.toMatch(/\{\{|ref:|\[testo\]/);
     const tex = await body.locator('annotation[encoding="application/x-tex"]').allTextContents();
     expect(tex).toContain("m\\vec{g}\\sin\\theta");
@@ -204,6 +204,13 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     // The quote waits in the composer once, drawn as math; the chat's name reads as text, not as TeX.
     const quote = page.locator(".px-context-excerpt");
     await expect(quote).toContainText("Un punto");
+    // The whole quote as drawn, without the formula's screen-reader copy.
+    const drawn = await quote.evaluate((node) => {
+      const copy = node.cloneNode(true) as HTMLElement;
+      for (const hidden of copy.querySelectorAll(".katex-mathml")) hidden.remove();
+      return copy.textContent!.replace(/\s+/g, " ").trim();
+    });
+    expect(drawn).toBe("Un punto P nello spazio.");
     await expect(quote.locator(".katex")).toHaveCount(1);
     expect((await quote.innerText()).match(/Un punto/g)).toHaveLength(1);
     await expect(page.locator(".ask-bar-name")).toHaveText("Un punto P nello spazio.");
@@ -213,6 +220,8 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     await page.getByRole("textbox", { name: "Messaggio" }).fill("Cos'è un punto?");
     await page.keyboard.press("Enter");
     await expect(page.locator(".px-msg-user")).toHaveCount(1);
+    // Checked once the tutor has answered, so a send that fails late can't pass for one that went through.
+    await expect(page.locator(".px-msg-body").filter({ hasText: "è una posizione." })).toBeVisible();
     await expect(quote).toHaveCount(0);
 
     // A selection that starts inside the drawn formula, past its screen-reader copy, keeps what is drawn of it.
