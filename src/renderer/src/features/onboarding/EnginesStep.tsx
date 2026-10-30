@@ -17,7 +17,11 @@ import { EngineUseChoice, engineBox } from "../../components/EngineUseChoice";
 import { LocalModelCard, useLocalModel } from "../../components/LocalModel";
 import { Notice } from "../../components/Notice";
 import { ProviderSetup } from "../../components/ProviderSetup";
-import { choiceRows, engineStatus } from "../../lib/engineStatus";
+import {
+  engineStatus,
+  keyStatus,
+  manualChoice,
+} from "../../lib/engineStatus";
 import { invoke } from "../../lib/ipc";
 import { useEngineSetup } from "../settings/useEngineSetup";
 import "../settings/EnginesPanel.css";
@@ -75,10 +79,12 @@ export function EnginesStep({
     queryKey: ["engine-key-status"],
     queryFn: () => window.pyxis.keys.status(),
   });
-  const pickable = choiceRows(
+  // Until the keys are read, "I choose" waits: a pick without the keyed API engines would drop them and their tasks.
+  const manual = manualChoice(
     [...cliRows, ...rows.filter((row) => row.kind === "api")],
-    keys.data?.configured ?? [],
+    keyStatus(keys),
   );
+  const pickable = manual.rows;
   // With nothing installed the student first says what they pay for. Otherwise every engine gets its own row.
   const noneInstalled =
     overview.isSuccess && installedCli.length === 0 && readyRows.length === 0;
@@ -193,6 +199,8 @@ export function EnginesStep({
           <EngineUseChoice
             allowed={allowed}
             rows={pickable}
+            keys={manual.state}
+            onRetryKeys={() => void keys.refetch()}
             disabled={choose.isPending || choice.isPending}
             onChange={(next) => choose.mutate(next)}
           />

@@ -37,7 +37,11 @@ import {
   type InstallableProvider,
 } from "@shared/installers";
 import { EngineUseChoice, engineBox } from "../../components/EngineUseChoice";
-import { choiceRows, engineStatus } from "../../lib/engineStatus";
+import {
+  engineStatus,
+  keyStatus,
+  manualChoice,
+} from "../../lib/engineStatus";
 import { invoke } from "../../lib/ipc";
 import { disclosureText } from "./disclosure";
 import { EngineUsage } from "./EngineUsage";
@@ -302,7 +306,9 @@ export function EnginesPanel() {
       ),
   );
   // The engines the student can tick, the same list as in first setup: CLIs and API providers with a saved key.
-  const pickable = choiceRows(overview.data ?? [], keys.data?.configured ?? []);
+  // Until the keys are read, "I choose" waits: a pick without the keyed API engines would drop them and their tasks.
+  const manual = manualChoice(overview.data ?? [], keyStatus(keys));
+  const pickable = manual.rows;
   function refresh() {
     engines.refresh();
     for (const queryKey of [["engine-models"], ["engine-key-status"]])
@@ -679,6 +685,8 @@ export function EnginesPanel() {
         <EngineUseChoice
           allowed={allowed}
           rows={pickable}
+          keys={manual.state}
+          onRetryKeys={() => void keys.refetch()}
           disabled={choose.isPending || choice.isPending}
           onChange={(next) => choose.mutate(next)}
         />

@@ -1,4 +1,4 @@
-import { Radio } from "antd";
+import { Button, Radio } from "antd";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { chosenStart, type EngineState } from "../lib/engineStatus";
@@ -14,11 +14,16 @@ export function EngineUseChoice({
   rows,
   onChange,
   disabled,
+  keys,
+  onRetryKeys,
 }: {
   allowed: string[] | null;
   rows: ReadonlyArray<EngineState & { id: string }>;
   onChange: (allowed: string[] | null) => void;
   disabled?: boolean;
+  /** Whether the saved API keys are read (see `manualChoice`). "I choose" waits for them. */
+  keys: "loading" | "failed" | "ready";
+  onRetryKeys: () => void;
 }) {
   const { t } = useTranslation();
   const legend = useId();
@@ -34,7 +39,11 @@ export function EngineUseChoice({
         disabled={disabled}
         aria-labelledby={legend}
         onChange={(event) =>
-          onChange(event.target.value === "auto" ? null : start)
+          event.target.value === "auto"
+            ? onChange(null)
+            : keys === "ready" && start.length
+              ? onChange(start)
+              : undefined
         }
       >
         <Radio value="auto">
@@ -43,13 +52,29 @@ export function EngineUseChoice({
             {t("engines.choice.autoHint")}
           </span>
         </Radio>
-        <Radio value="chosen" disabled={disabled || start.length === 0}>
+        <Radio
+          value="chosen"
+          disabled={disabled || keys !== "ready" || start.length === 0}
+        >
           <span className="body-strong">{t("engines.choice.chosen")}</span>
           <span className="small px-engine-choice-hint">
             {t("engines.choice.chosenHint")}
           </span>
         </Radio>
       </Radio.Group>
+      {/* Until the saved keys are read, a pick would leave the keyed API engines out, so it waits or offers a retry. */}
+      {keys === "loading" ? (
+        <p className="small px-engine-choice-hint" role="status">
+          {t("engines.choice.keysLoading")}
+        </p>
+      ) : keys === "failed" ? (
+        <div className="px-engine-choice-retry" role="alert">
+          <span className="small">{t("engines.choice.keysFailed")}</span>
+          <Button size="small" shape="round" onClick={onRetryKeys}>
+            {t("engines.choice.keysRetry")}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

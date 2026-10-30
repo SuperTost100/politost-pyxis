@@ -58,6 +58,36 @@ export function choiceRows<T extends ChoiceRow>(
   );
 }
 
+/** The saved API keys as the screen has them: still being read, unreadable, or read. */
+export type KeyStatus =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "loaded"; configured: readonly string[] };
+
+/** The key status of a `keys.status()` query, read the way `manualChoice` needs it. */
+export function keyStatus(query: {
+  isPending: boolean;
+  isError: boolean;
+  data?: { configured: readonly string[] };
+}): KeyStatus {
+  if (query.data) return { status: "loaded", configured: query.data.configured };
+  return { status: query.isError ? "failed" : "loading" };
+}
+
+/**
+ * Whether the student can pick engines by hand, and the rows to show. Until the saved keys are read the list cannot
+ * know the keyed API engines, so "I choose" would save a pick without them and drop their pinned tasks: it waits
+ * (`loading`) or offers a retry (`failed`), and the rows show the CLIs alone meanwhile.
+ */
+export function manualChoice<T extends ChoiceRow>(
+  rows: readonly T[],
+  keys: KeyStatus,
+): { state: "loading" | "failed" | "ready"; rows: T[] } {
+  if (keys.status === "loaded")
+    return { state: "ready", rows: choiceRows(rows, keys.configured) };
+  return { state: keys.status, rows: choiceRows(rows, []) };
+}
+
 /**
  * Where "I choose" starts: every engine that is ready, API providers included, so nothing changes until a box is
  * unticked. With none ready, the installed ones.

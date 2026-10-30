@@ -3,6 +3,8 @@ import {
   choiceRows,
   chosenStart,
   engineStatus,
+  keyStatus,
+  manualChoice,
   type EngineState,
 } from "./engineStatus";
 
@@ -50,6 +52,42 @@ describe("the engines the student can pick", () => {
     expect(chosenStart([row("claude", "cli", { loggedIn: false })])).toEqual([
       "claude",
     ]);
+  });
+});
+
+describe("whether the student can pick engines by hand", () => {
+  const row = (id: string, kind: "cli" | "api") => ({ id, ...cli({ kind }) });
+  const rows = [row("claude", "cli"), row("openai-api", "api")];
+
+  it("waits for the saved keys, so a keyed API engine is never left out of the pick", () => {
+    const loading = manualChoice(rows, { status: "loading" });
+    expect(loading.state).toBe("loading");
+    expect(loading.rows.map((item) => item.id)).toEqual(["claude"]);
+  });
+
+  it("offers a retry when the saved keys cannot be read", () => {
+    expect(manualChoice(rows, { status: "failed" }).state).toBe("failed");
+  });
+
+  it("reads the key query as loading, failed or loaded", () => {
+    expect(keyStatus({ isPending: true, isError: false })).toEqual({
+      status: "loading",
+    });
+    expect(keyStatus({ isPending: false, isError: true })).toEqual({
+      status: "failed",
+    });
+    expect(
+      keyStatus({ isPending: false, isError: false, data: { configured: [] } }),
+    ).toEqual({ status: "loaded", configured: [] });
+  });
+
+  it("offers the pick once the keys are read, with the keyed API engines in it", () => {
+    const loaded = manualChoice(rows, {
+      status: "loaded",
+      configured: ["openai"],
+    });
+    expect(loaded.state).toBe("ready");
+    expect(loaded.rows.map((item) => item.id)).toEqual(["claude", "openai-api"]);
   });
 });
 

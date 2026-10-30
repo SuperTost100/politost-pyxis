@@ -2535,7 +2535,10 @@
       "auto": "Automatic",
       "autoHint": "Pyxis shares the work among every ready engine, including ones you sign in to later.",
       "chosen": "Let me choose",
-      "chosenHint": "Pyxis uses only the engines you tick in the list."
+      "chosenHint": "Pyxis uses only the engines you tick in the list.",
+      "keysLoading": "Reading your saved API keys, then you can choose the engines.",
+      "keysFailed": "Pyxis can't read your saved API keys, so you can't choose the engines for now.",
+      "keysRetry": "Try again"
     },
     "testErrors": {
       "modelNotIncluded": "Your {{name}} subscription doesn't include the chosen model. Pick another one in the engine's details.",

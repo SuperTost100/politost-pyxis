@@ -2535,7 +2535,10 @@
       "auto": "Automatico",
       "autoHint": "Pyxis divide il lavoro tra tutti i motori pronti, compresi quelli a cui accederai più avanti.",
       "chosen": "Scelgo io",
-      "chosenHint": "Pyxis usa solo i motori che spunti nell'elenco."
+      "chosenHint": "Pyxis usa solo i motori che spunti nell'elenco.",
+      "keysLoading": "Leggo le chiavi API salvate, poi puoi scegliere i motori.",
+      "keysFailed": "Non riesco a leggere le chiavi API salvate, quindi per ora non puoi scegliere i motori.",
+      "keysRetry": "Riprova"
     },
     "testErrors": {
       "modelNotIncluded": "Il tuo abbonamento a {{name}} non include il modello scelto. Scegline un altro nei dettagli del motore.",
