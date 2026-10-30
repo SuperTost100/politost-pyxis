@@ -148,12 +148,24 @@ export function studyHandlers(
     succeeded: (result: T) => boolean = () => true,
   ): Promise<T> {
     let entry: Tracked | undefined;
+    // The jobs list entry is a side note: if it cannot be made or saved, the student still gets the lesson or the
+    // cards, or the error the work itself ended with.
+    const noted = <R>(step: () => R): R | undefined => {
+      try {
+        return step();
+      } catch (error) {
+        console.error("pyxis: jobs list entry not saved", error);
+        return undefined;
+      }
+    };
     try {
-      const result = await work(() => (entry ??= runner?.track(kind, aboutPlan(db, about.planId, about.topicId), label)));
-      entry?.finish(succeeded(result));
+      const result = await work(() =>
+        (entry ??= noted(() => runner?.track(kind, aboutPlan(db, about.planId, about.topicId), label))),
+      );
+      noted(() => entry?.finish(succeeded(result)));
       return result;
     } catch (error) {
-      entry?.finish(false);
+      noted(() => entry?.finish(false));
       throw error;
     }
   }

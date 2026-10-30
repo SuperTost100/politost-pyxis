@@ -101,3 +101,8 @@ export function quizBack(input: { planId: string | undefined; redo?: boolean; re
   if (input.redo) return `/exams/mistakes${input.notebookExam ? `?exam=${encodeURIComponent(input.notebookExam)}` : ""}`;
   return `/plans/${input.planId ?? ""}${input.review ? "/review" : ""}`;
 }
+
+/** The label of the button that goes where `quizBack` leads. */
+export function quizBackLabel(input: { redo?: boolean; review?: boolean }): string {
+  return input.redo ? "mistakes.back" : input.review ? "cards.reviewBack" : "lesson.backToPath";
+}

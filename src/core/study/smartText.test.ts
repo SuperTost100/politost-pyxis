@@ -1,5 +1,5 @@
 import { strToU8, zipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan, readPlan } from "../plans/create";
 import { planMastery, planSeries } from "../plans/progress";
@@ -129,6 +129,32 @@ describe("lessons in the jobs list", () => {
     await handlers.lesson({ planId, topicId });
     expect(runner.finished()).toHaveLength(1);
     db.close();
+  });
+
+  it("gives the student the lesson even when the jobs list cannot record it, and keeps an engine's own error", async () => {
+    const { db, planId, topicId } = setup();
+    const runner = createRunner(db, () => {});
+    // The jobs list entry fails to save, as it would with a full disk.
+    runner.track = () => ({
+      progress: () => {},
+      finish: () => {
+        throw new Error("disk-full");
+      },
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const handlers = studyHandlers(db, runner, async () => ({ text: smartLesson, provider: "claude", model: "m", inputTokens: 1 }));
+      await expect(handlers.lesson({ planId, topicId })).resolves.toMatchObject({ markdown: expect.stringContaining("Velocità") });
+      expect(logged).toHaveBeenCalledWith("pyxis: jobs list entry not saved", expect.objectContaining({ message: "disk-full" }));
+      // A section rewrite whose engine fails reports the engine's error, not the jobs list's.
+      const failing = studyHandlers(db, runner, async () => {
+        throw new Error("engine-down");
+      });
+      await expect(failing.lessonSection({ planId, topicId, section: 0 })).rejects.toThrow(/engine-down/);
+    } finally {
+      logged.mockRestore();
+      db.close();
+    }
   });
 });
 

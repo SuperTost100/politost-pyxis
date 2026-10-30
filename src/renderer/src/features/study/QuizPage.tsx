@@ -32,6 +32,7 @@ import {
   blanks,
   pairs,
   quizBack,
+  quizBackLabel,
   retryPick,
   skipOrder,
   stemText,
@@ -836,7 +837,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const hasMistakes = !review && !redo && countedResults.some((row) => row.score < 1);
   const backButton = (type: "primary" | "default") => (
     <Button type={type} shape="round" size="large" onClick={() => navigate(back)}>
-      {t(redo ? "mistakes.back" : reopened ? "lesson.backToPath" : "quiz.continue")}
+      {t(reopened || redo ? quizBackLabel({ redo, review: reviewRoute }) : "quiz.continue")}
     </Button>
   );
   // Only the saved session knows each question's topic; a quiz just started has not read it back yet.
@@ -1154,7 +1155,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               size="large"
               onClick={() => navigate(back)}
             >
-              {t(redo ? "mistakes.back" : "lesson.backToPath")}
+              {t(quizBackLabel({ redo, review: reviewRoute }))}
             </Button>
           </span>
         </section>
@@ -1251,7 +1252,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                 </Button>
               ) : (
                 <Button type="primary" shape="round" size="large" onClick={() => void close()}>
-                  {t(redo ? "mistakes.back" : "lesson.backToPath")}
+                  {t(quizBackLabel({ redo, review: reviewRoute }))}
                 </Button>
               )
             ) : hasMistakes ? (
@@ -1277,7 +1278,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                     </Button>
                   ) : null}
                   <Button type="text" shape="round" onClick={() => void close()}>
-                    {t(redo ? "mistakes.back" : "lesson.backToPath")}
+                    {t(quizBackLabel({ redo, review: reviewRoute }))}
                   </Button>
                 </>
               ) : (
