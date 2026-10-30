@@ -104,7 +104,7 @@ export function requireTopic(
 }
 
 /** Everything that decides which model lesson is cached: topic passages sent, wording, education level and language. */
-function modelContext(
+export function modelContext(
   db: Database.Database,
   planId: string,
   topicId: string,
@@ -194,7 +194,7 @@ function withoutFigures(text: string): string {
 }
 
 /** Without a sandbox no new figure draws: the blocks are dropped, and figures drawn before keep their images. */
-function withFigures(
+export function withFigures(
   markdown: string,
   python: FigureRunner | null,
   options: { known?: Record<string, string>; signal?: AbortSignal },
@@ -202,7 +202,7 @@ function withFigures(
   return drawFigures(markdown, { ...options, python: python ?? noSandbox });
 }
 
-function lessonSystem(
+export function lessonSystem(
   context: ReturnType<typeof modelContext>,
   grounded: boolean,
   figures: boolean,
@@ -492,7 +492,7 @@ function lessonSoFar(written: string[]) {
 }
 
 /** The model's lesson, unwrapped when it put the whole answer in one Markdown fence; empty when there is no text. */
-function lessonText(text: string) {
+export function lessonText(text: string) {
   const trimmed = text.trim();
   const wrapped = /^```(?:markdown|md)?\n([\s\S]*)\n```$/.exec(trimmed);
   return (wrapped ? wrapped[1]! : trimmed).trim();

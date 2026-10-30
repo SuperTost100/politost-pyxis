@@ -41,6 +41,7 @@ import {
   writeLesson,
   type Wording,
 } from "./openLesson";
+import { writeAgentLesson } from "./agentLesson";
 import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
 import { currentSelfRatings, rateExercise, type SelfRating } from "./selfRating";
 import type { Rating } from "./schedule";
@@ -118,7 +119,10 @@ export function studyHandlers(
   runner?: Runner,
   run: GenerateInput["run"] = runTurn,
   simulationRun: GenerateInput["run"] = runTurn,
+  /** `agentLesson`: write lessons with the agent loop prototype instead of the pipeline (developer builds only). */
+  options: { agentLesson?: boolean } = {},
 ) {
+  const write = options.agentLesson ? writeAgentLesson : writeLesson;
   if (runner) {
     registerQuizJobs(db, runner, run);
     registerExerciseJobs(db, runner, run);
@@ -206,7 +210,7 @@ export function studyHandlers(
         "jobs.lessonWriting",
         (start) => {
           let entry: Tracked | undefined;
-          return writeLesson(db, input.planId, input.topicId, run ?? runTurn, {
+          return write(db, input.planId, input.topicId, run ?? runTurn, {
             ...options,
             // The jobs list's bar follows the sections written so far; the last one ends with the lesson.
             onDelta:

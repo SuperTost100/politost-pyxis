@@ -12,6 +12,7 @@ These pages are for people who change Pyxis or want to know exactly what it does
 
 - [Mastery and recommendations](mastery.md). The mastery formula with worked numbers, the path gates, knowledge gaps, and the score that picks the next step.
 - [Card scheduler](scheduler.md). FSRS settings and how the four rating buttons map to FSRS ratings.
+- [Agent lessons](agent-lesson.md). A prototype that lets the model read the sources through study tools, measured against the lesson pipeline, and the recommendation.
 
 ## Files Pyxis reads and writes
 
