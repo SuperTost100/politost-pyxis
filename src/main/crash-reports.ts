@@ -300,6 +300,11 @@ export type CrashReportsOptions = {
   fetch?: typeof fetch;
   now?: () => number;
   log?: (message: string) => void;
+  /**
+   * Crashpad's upload permission for minidumps. Called with true only when core confirms the switch on, and with false
+   * when it confirms off and when a workspace replacement suspends sending.
+   */
+  setUploads?: (on: boolean) => void;
 };
 
 export class CrashReports {
@@ -315,11 +320,14 @@ export class CrashReports {
   private offline = false;
   private minute = { start: 0, count: 0 };
   /**
-   * Whether core has reported the switch in this session. Until it has, the saved copy may be stale (a restore, or a
-   * workspace from elsewhere), so nothing is sent and no new report is written: errors wait in `held`, in memory.
+   * Whether core has reported the switch for the workspace now open. Until it has, the saved copy may be stale (a
+   * workspace from elsewhere, or one that a restore or a wipe is replacing), so nothing is sent and no new report is
+   * written: errors wait in `held`, in memory. False at start and again from `suspend` until core answers.
    */
   private confirmed = false;
   private held: Array<{ report: ErrorReport; at: number }> = [];
+  /** Counts `suspend` calls, so a request that was out when sending stopped is not counted as a failed send. */
+  private suspensions = 0;
 
   constructor(private readonly options: CrashReportsOptions) {
     this.state = readState(options.file);
@@ -356,6 +364,7 @@ export class CrashReports {
    * held errors join the queue and the queue is sent.
    */
   setConsent(enabled: boolean): void {
+    this.options.setUploads?.(enabled);
     this.confirmed = true;
     const held = this.held;
     this.held = [];
@@ -375,6 +384,23 @@ export class CrashReports {
     } else return;
     this.save();
     if (enabled) void this.flush();
+  }
+
+  /**
+   * Stops all sending until core confirms the switch again, because the workspace is about to be replaced (a restore,
+   * the rollback of one, a wipe) and the one that comes back may have the switch off. Crashpad's uploads go off and the
+   * request in flight is stopped; its report stays queued and is not counted as a failed send. From here on errors are
+   * held or dropped as at launch: held in memory while the saved copy says on, dropped while it says off.
+   *
+   * The queue belongs to the consent that created it. It stays on disk unsent, and goes only once the workspace that
+   * ends up open confirms on. If any core confirms off on the way (the restored copy, before a rollback brings the old
+   * workspace back), the queue and the held errors are dropped then and do not come back with a later on.
+   */
+  suspend(): void {
+    this.confirmed = false;
+    this.suspensions += 1;
+    this.options.setUploads?.(false);
+    this.inFlight?.abort();
   }
 
   /**
@@ -439,7 +465,7 @@ export class CrashReports {
 
   private async sendQueue(): Promise<void> {
     const endpoint = this.options.endpoint;
-    while (endpoint && !this.offline && this.state.consent.enabled) {
+    while (endpoint && !this.offline && this.confirmed && this.state.consent.enabled) {
       const item = this.state.queue[0];
       if (!item) return;
       const since = this.state.consent.since ?? Infinity;
@@ -448,6 +474,7 @@ export class CrashReports {
         continue;
       }
       let status = 0;
+      const suspensions = this.suspensions;
       const request = new AbortController();
       this.inFlight = request;
       const timeout = setTimeout(() => request.abort(), 15_000);
@@ -472,6 +499,9 @@ export class CrashReports {
         // The Worker refused this report; sending it again would get the same answer.
         this.log(`pyxis: crash report refused (${status})`);
         this.drop(item);
+      } else if (suspensions !== this.suspensions) {
+        // Sending was suspended while the request was out: the report waits, unchanged, for core's next answer.
+        continue;
       } else {
         item.attempts += 1;
         this.offline = true;

@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -196,5 +196,86 @@ test("crash reports: a native crash uploads a minidump only while the switch is 
     if (app) await app.close().catch(() => {});
     server.close();
     rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+/** Whether a process still runs. A zombie on Linux has exited and only waits to be reaped. */
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  if (process.platform !== "linux") return true;
+  try {
+    return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
+test("crash reports: a restore that brings back the switch off sends nothing raised during it, and a failed one resumes", async () => {
+  test.setTimeout(120_000);
+  const root = mkdtempSync(join(tmpdir(), "pyxis-crash-restore-"));
+  // Backups go next to the profile: Pyxis refuses to save one inside it.
+  const userData = join(root, "userData");
+  const zip = join(root, "backup.zip");
+  const offBackup = join(root, "switch-off.zip");
+  const { server, endpoint, received } = await crashServer();
+  const app = await launchPyxis({
+    userData,
+    env: { PYXIS_E2E_CRASH_ENDPOINT: endpoint, PYXIS_CRASH_DIR: undefined, PYXIS_E2E_SAVE: zip, PYXIS_E2E_ZIP: zip },
+  });
+  // Main names each core when the window connects to it.
+  const cores: number[] = [];
+  app.process().stderr?.on("data", (chunk) => {
+    // The pid may come wrapped in a terminal color code.
+    for (const match of String(chunk).matchAll(/pyxis-e2e: renderer connected\D*(\d+)/g)) cores.push(Number(match[1]));
+  });
+  const messages = () =>
+    received.map((item) => String((JSON.parse(item.body.toString("utf8")) as { message: unknown }).message));
+  try {
+    const page = await app.firstWindow();
+    await skipSetup(page);
+    // A backup of this workspace with the switch off, then the switch goes on.
+    await expect(page.evaluate(() => window.pyxis.backupWorkspace())).resolves.toBe("saved");
+    copyFileSync(zip, offBackup);
+    await page.evaluate(() => window.pyxis.invoke("profile.save", { crashReports: true }));
+    await expect.poll(() => consent(userData)).toBe(true);
+    await throwInWindow(page, "before any restore");
+    await expect.poll(() => received.length).toBe(2);
+
+    // A restore that fails puts the same workspace back: its core says on again, and reports go once more.
+    writeFileSync(zip, "corrupt backup");
+    await expect(page.evaluate(() => window.pyxis.restoreWorkspace())).rejects.toThrow(/backup-corrupt/);
+    await throwInWindow(page, "after the failed restore");
+    await expect.poll(() => received.length).toBe(4);
+
+    // A restore that brings back the switch off. Errors raised once the old core has stopped, before the restored
+    // workspace has answered, are never sent: the workspace now open never agreed to them.
+    copyFileSync(offBackup, zip);
+    await expect.poll(() => cores.length).toBeGreaterThan(0);
+    const oldCore = cores.at(-1)!;
+    const restoring = page.evaluate(() => window.pyxis.restoreWorkspace());
+    await expect.poll(() => running(oldCore), { intervals: [25] }).toBe(false);
+    await throwInWindow(page, "during the restore");
+    await app.evaluate(() => {
+      void Promise.reject(new Error("main during the restore"));
+    });
+    await expect(restoring).resolves.toBe("restored");
+    await expect.poll(() => consent(userData)).toBe(false);
+    await throwInWindow(page, "after the restore");
+    await page.waitForTimeout(2_000);
+    expect(messages().sort()).toEqual([
+      "after the failed restore",
+      "before any restore",
+      "rejected: after the failed restore",
+      "rejected: before any restore",
+    ]);
+    expect(readFileSync(join(userData, "crash-reports.json"), "utf8")).not.toContain("during the restore");
+  } finally {
+    await app.close().catch(() => {});
+    server.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });

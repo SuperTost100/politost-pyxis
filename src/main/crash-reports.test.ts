@@ -11,6 +11,7 @@ import {
   scrubMessage,
   scrubStack,
   buildReport,
+  type CrashReportsOptions,
   type ScrubRoots,
 } from "./crash-reports";
 
@@ -159,19 +160,27 @@ describe("scrubbing", () => {
 
 type Sent = { url: string; body: Record<string, unknown> };
 
-function harness(options: { status?: number | "offline"; endpoint?: string | null; start?: number } = {}) {
+/** "stall": the request never answers, as on a stalled connection, until it is aborted. */
+type Status = number | "offline" | "stall";
+
+function harness(options: { status?: Status; endpoint?: string | null; start?: number } = {}) {
   const dir = tempDir("pyxis-crash-");
   const file = join(dir, "crash-reports.json");
   const sent: Sent[] = [];
   let clock = options.start ?? Date.UTC(2026, 9, 28, 10);
-  let status = options.status ?? 204;
+  let status: Status = options.status ?? 204;
   const fetcher = (async (url: string, init: RequestInit) => {
     if (status === "offline") throw new TypeError("fetch failed");
+    if (status === "stall")
+      return new Promise<Response>((_resolve, reject) =>
+        init.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+      );
     sent.push({ url, body: JSON.parse(String(init.body)) as Record<string, unknown> });
     return new Response(null, { status });
   }) as unknown as typeof fetch;
-  const make = () =>
+  const make = (extra: Partial<CrashReportsOptions> = {}) =>
     new CrashReports({
+      ...extra,
       file,
       endpoint: options.endpoint === undefined ? "https://crash.test" : options.endpoint,
       meta,
@@ -185,7 +194,7 @@ function harness(options: { status?: number | "offline"; endpoint?: string | nul
     sent,
     make,
     tick: (ms: number) => (clock += ms),
-    setStatus: (next: number | "offline") => (status = next),
+    setStatus: (next: Status) => (status = next),
   };
 }
 
@@ -347,6 +356,169 @@ describe("waiting for core", () => {
     reports.setConsent(true);
     await reports.flush();
     expect(h.sent).toEqual([]);
+  });
+});
+
+describe("workspace replaced while Pyxis runs", () => {
+  /** A session where core confirmed the switch on, with one report queued and its request still out. */
+  function onWithQueue(h: ReturnType<typeof harness>) {
+    const uploads: boolean[] = [];
+    const reports = h.make({ setUploads: (on) => uploads.push(on) });
+    reports.setConsent(true);
+    h.setStatus("stall");
+    reports.capture("main", boom("queued under the old workspace"));
+    // Only this request stalls; the next ones are answered.
+    h.setStatus(204);
+    h.tick(60_000);
+    return { reports, uploads };
+  }
+
+  it("sends nothing, uploads nothing and writes no new report while suspended", async () => {
+    const h = harness();
+    const { reports, uploads } = onWithQueue(h);
+    const before = readFileSync(h.file, "utf8");
+    reports.suspend();
+    expect(uploads.at(-1)).toBe(false);
+    expect(reports.capture("renderer", boom("during the restore"))).toBe(true);
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+    expect(readFileSync(h.file, "utf8")).toBe(before);
+  });
+
+  it("drops the queue and the held errors, and keeps uploads off, when the new workspace says off", async () => {
+    const h = harness();
+    const { reports, uploads } = onWithQueue(h);
+    reports.suspend();
+    reports.capture("renderer", boom("during the restore"));
+    reports.setConsent(false);
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+    expect(reports.queued).toEqual([]);
+    expect(uploads.at(-1)).toBe(false);
+    expect(readFileSync(h.file, "utf8")).not.toContain("queued under the old workspace");
+    expect(readFileSync(h.file, "utf8")).not.toContain("during the restore");
+    expect(reports.capture("renderer", boom("after the restore"))).toBe(false);
+  });
+
+  it("resumes, with the queue and the held errors, when the new workspace says on", async () => {
+    const h = harness();
+    const { reports, uploads } = onWithQueue(h);
+    reports.suspend();
+    reports.capture("renderer", boom("during the restore"));
+    reports.setConsent(true);
+    await reports.flush();
+    expect(uploads.at(-1)).toBe(true);
+    expect(h.sent.map((item) => item.body["message"]).sort()).toEqual([
+      "during the restore",
+      "queued under the old workspace",
+    ]);
+  });
+
+  it("ignores the switch for errors raised while the old workspace said off", async () => {
+    const h = harness();
+    const reports = h.make();
+    reports.setConsent(false);
+    reports.suspend();
+    expect(reports.capture("renderer", boom("during the restore"))).toBe(false);
+    reports.setConsent(true);
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+  });
+
+  it("stops the request in flight without counting it as failed, and sends it only once the switch is confirmed on", async () => {
+    const dir = tempDir("pyxis-crash-");
+    const sent: string[] = [];
+    let stall = true;
+    let started: () => void = () => {};
+    const inFlight = new Promise<void>((resolve) => (started = resolve));
+    const reports = new CrashReports({
+      file: join(dir, "crash-reports.json"),
+      endpoint: "https://crash.test",
+      meta,
+      roots: () => posix,
+      fetch: ((_url: string, init: RequestInit) => {
+        if (!stall) {
+          sent.push(String(init.body));
+          return Promise.resolve(new Response(null, { status: 204 }));
+        }
+        const signal = init.signal;
+        started();
+        return new Promise<Response>((_resolve, reject) =>
+          signal?.addEventListener("abort", () => reject(signal.reason)),
+        );
+      }) as unknown as typeof fetch,
+      log: () => {},
+    });
+    reports.setConsent(true);
+    reports.capture("main", boom("on its way"));
+    const flushing = reports.flush();
+    await inFlight;
+    reports.suspend();
+    await flushing;
+    expect(sent).toEqual([]);
+    expect(reports.queued).toHaveLength(1);
+    const saved = JSON.parse(readFileSync(join(dir, "crash-reports.json"), "utf8")) as {
+      queue: Array<{ attempts: number }>;
+    };
+    expect(saved.queue[0]!.attempts).toBe(0);
+    stall = false;
+    reports.setConsent(true);
+    await reports.flush();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("on its way");
+  });
+
+  it("rollback: the restored copy said off, so the old workspace saying on again sends nothing from before", async () => {
+    const h = harness();
+    const { reports, uploads } = onWithQueue(h);
+    // The restore: the restored copy says off.
+    reports.suspend();
+    reports.capture("renderer", boom("during the restore"));
+    reports.setConsent(false);
+    // Its commit fails, so the old workspace comes back, and its core says on.
+    reports.suspend();
+    reports.capture("renderer", boom("during the rollback"));
+    reports.setConsent(true);
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+    expect(uploads.at(-1)).toBe(true);
+    // A new consent period: errors from now on go.
+    h.tick(1_000);
+    reports.capture("renderer", boom("after the rollback"));
+    await reports.flush();
+    expect(h.sent.map((item) => item.body["message"])).toEqual(["after the rollback"]);
+  });
+
+  it("rollback: both copies say on, so the queue goes once the old workspace confirms", async () => {
+    const h = harness();
+    const { reports } = onWithQueue(h);
+    reports.suspend();
+    reports.setConsent(true);
+    // The restored copy's core confirmed on, then the commit failed: core stops again before the rollback.
+    reports.suspend();
+    reports.capture("renderer", boom("during the rollback"));
+    await reports.flush();
+    reports.setConsent(true);
+    await reports.flush();
+    expect(h.sent.map((item) => item.body["message"]).sort()).toEqual([
+      "during the rollback",
+      "queued under the old workspace",
+    ]);
+  });
+
+  it("a rollback that core never confirms keeps everything held and unsent", async () => {
+    const h = harness();
+    const { reports, uploads } = onWithQueue(h);
+    reports.suspend();
+    reports.setConsent(true);
+    await reports.flush();
+    // The commit fails and core stops for the rollback, which never brings a core back.
+    reports.suspend();
+    reports.capture("renderer", boom("core stays stopped"));
+    await reports.flush();
+    expect(h.sent.map((item) => item.body["message"])).toEqual(["queued under the old workspace"]);
+    expect(uploads.at(-1)).toBe(false);
+    expect(readFileSync(h.file, "utf8")).not.toContain("core stays stopped");
   });
 });
 
