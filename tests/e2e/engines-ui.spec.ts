@@ -450,6 +450,39 @@ esac`,
     await expect(
       page.getByRole("dialog", { name: "Set up Cursor Agent" }),
     ).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // A task screen says the same: a chat pinned to Cursor Agent names it and opens its sign-in, instead of pointing
+    // at Settings in words.
+    await page.evaluate(() =>
+      window.pyxis.invoke("engines.setFeature", {
+        feature: "chat",
+        provider: "agent",
+        model: "gemini-3.8-flash",
+      }),
+    );
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    const box = page.getByRole("textbox", { name: "Message" });
+    await box.fill("What is a vector?");
+    await box.press("Enter");
+    const named = page.getByText(
+      "Cursor Agent refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
+    );
+    await expect(named.first()).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText(/Sign in again in Settings, AI engines/)).toHaveCount(0);
+    await expectNoAxeViolations(page, {
+      tags: ["wcag2a", "wcag2aa", "wcag21aa"],
+    });
+    await page
+      .getByRole("button", { name: "Sign in to Cursor Agent" })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/#\/settings\/engines$/);
+    await expect(
+      page.getByRole("dialog", { name: "Set up Cursor Agent" }),
+    ).toBeVisible();
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

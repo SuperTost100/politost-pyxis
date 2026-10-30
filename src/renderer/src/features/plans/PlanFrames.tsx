@@ -11,8 +11,10 @@ import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { ErrorState } from "../../components/ErrorState";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
+import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
+import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import type { PlanFile } from "@shared/plan-file";
 import { useMenuLock } from "../../app/menu-state";
 import { ImportReview } from "./ImportReview";
@@ -137,6 +139,12 @@ function BuildScreen({ planId }: { planId: string }) {
   const failed = Boolean(
     build.data && ["failed", "cancelled", "interrupted"].includes(build.data.state),
   );
+  // A build that stopped on a refused sign-in names the engine and offers its sign-in.
+  const describeEngineError = useEngineError();
+  const buildError = build.data?.error;
+  const buildFailure = buildError
+    ? describeEngineError(jobErrorKey(buildError), jobErrorEngine(buildError))
+    : undefined;
   // The plan's topics exist once the path step has run. Each step that ends reads the plan again, so they appear then.
   const settledSteps = (build.data?.steps ?? [])
     .filter((step) => step.state === "succeeded")
@@ -262,8 +270,14 @@ function BuildScreen({ planId }: { planId: string }) {
                 {t("wizard.cancelled")}
               </Notice>
             ) : (
-              <ErrorState action={retryAction} details={build.data?.error}>
-                {t("wizard.buildFailed")}
+              <ErrorState
+                action={retryAction}
+                secondary={buildFailure?.action}
+                details={build.data?.error}
+              >
+                {buildFailure?.action
+                  ? `${t("wizard.buildFailed")} ${buildFailure.text}`
+                  : t("wizard.buildFailed")}
               </ErrorState>
             )}
           </div>

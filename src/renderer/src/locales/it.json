@@ -2435,7 +2435,8 @@
       "timeout": "Il motore non ha risposto in tempo. Riprova o scegli un altro motore.",
       "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
       "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI.",
-      "stream-truncated": "Il motore si è fermato prima di finire la risposta."
+      "stream-truncated": "Il motore si è fermato prima di finire la risposta.",
+      "signedOutNamed": "{{name}} ha rifiutato l'accesso, che probabilmente è scaduto. Finché non accedi di nuovo, Pyxis non lo usa."
     },
     "feature": {
       "default": "Motore predefinito",
@@ -2537,7 +2538,6 @@
       "chosenHint": "Pyxis usa solo i motori che spunti nell'elenco."
     },
     "testErrors": {
-      "signedOut": "{{name}} ha rifiutato l'accesso, che probabilmente è scaduto. Finché non accedi di nuovo, Pyxis non lo usa.",
       "modelNotIncluded": "Il tuo abbonamento a {{name}} non include il modello scelto. Scegline un altro nei dettagli del motore.",
       "other": "Prova di {{name}}: {{message}}"
     },

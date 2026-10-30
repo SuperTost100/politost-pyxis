@@ -10,6 +10,7 @@ import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
 import { Stepper } from "../../components/Stepper";
 import { Tag } from "../../components/Tag";
+import { errorProvider, useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import {
   addSubtopic,
@@ -71,6 +72,14 @@ function Guided({ seed }: { seed: WizardSeed }) {
   const [expanded, setExpanded] = useState<string[]>([]);
   const [focusKey, setFocusKey] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [errorEngine, setErrorEngine] = useState<string | undefined>();
+  const describeEngineError = useEngineError();
+  // A failed call keeps its message and the engine it ran on, so a refused sign-in can name it and offer its sign-in.
+  function failWith(err: unknown) {
+    setError(errorKey(err));
+    setErrorEngine(errorProvider(err));
+  }
+  const failure = error ? describeEngineError(error, errorEngine) : null;
   const [creating, setCreating] = useState(false);
   // Each model call is tagged so a result that arrives after Back is ignored.
   const call = useRef(0);
@@ -122,7 +131,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
       setFocus([]);
       setStep(2);
     } catch (err) {
-      if (id === call.current) setError(errorKey(err));
+      if (id === call.current) failWith(err);
     }
   }
 
@@ -150,7 +159,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
       setExpanded(tree.map((node) => node.key));
       setStep(5);
     } catch (err) {
-      if (id === call.current) setError(errorKey(err));
+      if (id === call.current) failWith(err);
     }
   }
 
@@ -173,7 +182,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
       await client.invalidateQueries({ queryKey: ["plans"] });
       navigate(`/plans/new?build=${result.planId}`, { replace: true });
     } catch (err) {
-      setError(errorKey(err));
+      failWith(err);
       setCreating(false);
     }
   }
@@ -265,8 +274,9 @@ function Guided({ seed }: { seed: WizardSeed }) {
                   label: t("wizard.retry"),
                   onClick: () => void (step === 1 ? propose() : buildTree()),
                 }}
+                secondary={failure?.action}
               >
-                {t(error, { defaultValue: t("wizard.guided.failed") })}
+                {failure?.action ? failure.text : t(error, { defaultValue: t("wizard.guided.failed") })}
               </Notice>
             ) : null}
           </>
@@ -392,7 +402,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
             />
             {error ? (
               <p className="small" role="alert">
-                {t(error, { defaultValue: t("wizard.guided.failed") })}
+                {failure?.action ? failure.text : t(error, { defaultValue: t("wizard.guided.failed") })}
               </p>
             ) : null}
           </>

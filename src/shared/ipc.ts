@@ -419,6 +419,8 @@ const LessonOutput = z.object({
   fallback: z.boolean().optional(),
   /** Why the lesson fell back to the book text: an `engines.errors.*` message key. */
   fallbackReason: z.string().startsWith("engines.errors.").optional(),
+  /** The engine that failed, so the page can name it and offer its sign-in. */
+  fallbackProvider: z.string().optional(),
   /** The lesson row its answers belong to. */
   itemId: z.string().optional(),
   wording: z.enum(["simple", "balanced", "technical"]).optional(),

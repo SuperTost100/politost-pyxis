@@ -15,6 +15,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { automaticEffort, studentEffort } from "@shared/effort";
@@ -155,7 +156,7 @@ function messageKey(err: unknown): string {
 }
 /** Failures whose usual wording sends the student to this page, said here with the engine's name instead. */
 const testErrors: Record<string, string> = {
-  "engines.errors.not-logged-in": "engines.testErrors.signedOut",
+  "engines.errors.not-logged-in": "engines.errors.signedOutNamed",
   "engines.errors.model-not-included": "engines.testErrors.modelNotIncluded",
 };
 
@@ -266,8 +267,16 @@ export function EnginesPanel() {
   );
   const [keyValue, setKeyValue] = useState("");
   const [keyBusy, setKeyBusy] = useState(false);
-  // A CLI that still needs installing or a sign-in, shown in the same setup card as first setup.
+  // A CLI that still needs installing or a sign-in, shown in the same setup card as first setup. "Sign in to …" on an
+  // engine error elsewhere opens this page with `?signIn=<engine>`, which opens that engine's sign-in at once.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const signInParam = searchParams.get("signIn");
   const [setupFor, setSetupFor] = useState<InstallableProvider | null>(null);
+  useEffect(() => {
+    if (!signInParam) return;
+    if (isInstallable(signInParam)) setSetupFor(signInParam);
+    setSearchParams({}, { replace: true });
+  }, [signInParam, setSearchParams]);
   // The notice for engines that are ready but not acknowledged. `then` runs the action the student was after.
   const [notice, setNotice] = useState<{
     engines: NoticeEngine[];

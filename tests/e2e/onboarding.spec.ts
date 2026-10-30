@@ -78,6 +78,8 @@ const button = (page: Page | Locator, name: string | RegExp) =>
 // The stepper says where the student is once, to screen readers; the same text is not printed again on screen.
 const stepper = (page: Page) => page.getByRole("list", { name: "Avanzamento" });
 const currentStep = (page: Page) => page.locator("[aria-current=step]");
+// The visible primary buttons: each state of a step has exactly one.
+const primaryButtons = (page: Page) => page.locator(".ant-btn-primary:visible");
 // The engine rows of setup step 2.
 const engineRows = (page: Page) =>
   page.getByRole("list", { name: "Motori su questo computer" }).getByRole("listitem");
@@ -138,6 +140,8 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     // Until the notice is confirmed Pyxis plans nothing with them, so no row names a model yet.
     await expect(rows.locator(".px-engine-model")).toHaveCount(0);
     await expect(button(page, "Continua")).toHaveCount(0);
+    // One primary button per state: while the notice waits, it is "Ho capito", and carrying on later is secondary.
+    await expect(primaryButtons(page)).toHaveText(["Ho capito"]);
     // Crash reports sit next to the notice, off until the student turns them on.
     const crash = page.getByRole("switch", {
       name: "Consenti segnalazioni di crash",
@@ -154,6 +158,7 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     // With engines ready the subscription question stays out of the way, and the missing ones offer Install.
     await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
     await expect(button(page, "Installa Cursor Agent")).toBeVisible();
+    await expect(primaryButtons(page)).toHaveText(["Continua"]);
     expect(
       (await page.evaluate(() => window.pyxis.invoke("engines.overview", {})))
         .filter((row) => row.id === "claude" || row.id === "codex")
@@ -357,6 +362,8 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
     const setup = page.getByRole("region", { name: "Configura Claude Code" });
     await expect(setup.getByText("Installato, versione 2.1.0.")).toBeVisible();
     await expect(button(setup, "Accedi con Claude")).toBeVisible();
+    // The sign-in is secondary: the step's own button is the one primary, here "Lo farò dopo".
+    await expect(primaryButtons(page)).toHaveText(["Lo farò dopo"]);
     // Every engine has a row, so the subscription question is only for a computer with none installed.
     await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
     await noAxeViolations(page);

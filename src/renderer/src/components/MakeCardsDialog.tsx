@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import { isCloze } from "../../../core/study/cloze";
+import { errorProvider, useEngineError } from "../lib/engineError";
 import { invoke } from "../lib/ipc";
 import { CitationChip } from "./CitationChip";
 import { IconButton } from "./IconButton";
@@ -55,6 +56,7 @@ function failureKey(err: unknown): string {
 export function MakeCardsDialog() {
   const { t } = useTranslation();
   const { message } = App.useApp();
+  const describeEngineError = useEngineError();
   const client = useQueryClient();
   const [source, setSource] = useState<CardSource | null>(null);
   const [places, setPlaces] = useState<Places | null>(null);
@@ -65,9 +67,15 @@ export function MakeCardsDialog() {
   const [made, setMade] = useState<Pick<Proposal, "provider" | "model"> | null>(
     null,
   );
-  const [error, setError] = useState<{ key: string; save: boolean } | null>(
-    null,
-  );
+  // The engine a failed call ran on, so a refused sign-in can name it and offer its sign-in.
+  const [error, setError] = useState<{
+    key: string;
+    save: boolean;
+    provider?: string;
+  } | null>(null);
+  const failure = error
+    ? describeEngineError(error.key, error.provider)
+    : undefined;
   const [saving, setSaving] = useState(false);
   const cancel = useRef<(() => void) | null>(null);
   const run = useRef(0);
@@ -148,7 +156,7 @@ export function MakeCardsDialog() {
       setStep("review");
     } catch (err) {
       if (id !== run.current) return;
-      setError({ key: failureKey(err), save: false });
+      setError({ key: failureKey(err), save: false, provider: errorProvider(err) });
       setStep("pick");
     } finally {
       if (cancel.current === handle.cancel) cancel.current = null;
@@ -317,8 +325,23 @@ export function MakeCardsDialog() {
             <Notice tone="info">{t("makeCards.noPlans")}</Notice>
           ) : null}
           {error ? (
-            <Notice tone="danger">
-              {t(error.key, { defaultValue: t("makeCards.failed") })}
+            <Notice
+              tone="danger"
+              action={
+                failure?.action
+                  ? {
+                      label: failure.action.label,
+                      onClick: () => {
+                        close();
+                        failure.action!.onClick();
+                      },
+                    }
+                  : undefined
+              }
+            >
+              {failure?.action
+                ? failure.text
+                : t(error.key, { defaultValue: t("makeCards.failed") })}
             </Notice>
           ) : null}
           {step === "pick" && !noPlans && !error ? (

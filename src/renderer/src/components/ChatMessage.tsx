@@ -26,6 +26,7 @@ export function ChatMessage({
   regenerateDisabled,
   stopped,
   failure,
+  failureAction,
   onContinue,
   checking,
   streaming,
@@ -49,6 +50,8 @@ export function ChatMessage({
   stopped?: boolean;
   /** Why the engine cut the reply short. Such a reply is kept and can be continued. */
   failure?: string;
+  /** What fixes the failure, such as signing in to the engine again. */
+  failureAction?: { label: string; onClick: () => void };
   onContinue?: () => void;
   /** The math check for this reply is still running. */
   checking?: boolean;
@@ -91,6 +94,15 @@ export function ChatMessage({
         {failure ? (
           <div className="px-msg-cut">
             <p className="px-msg-status">{failure}</p>
+            {failureAction ? (
+              <AntButton
+                shape="round"
+                size="small"
+                onClick={failureAction.onClick}
+              >
+                {failureAction.label}
+              </AntButton>
+            ) : null}
             {onContinue ? (
               <AntButton
                 shape="round"

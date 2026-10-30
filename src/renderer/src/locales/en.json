@@ -2435,7 +2435,8 @@
       "timeout": "The engine did not answer in time. Try again, or pick another engine.",
       "engine-missing": "Choose and test an engine in Settings before continuing.",
       "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines.",
-      "stream-truncated": "The engine stopped before the answer was finished."
+      "stream-truncated": "The engine stopped before the answer was finished.",
+      "signedOutNamed": "{{name}} refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again."
     },
     "feature": {
       "default": "Default engine",
@@ -2537,7 +2538,6 @@
       "chosenHint": "Pyxis uses only the engines you tick in the list."
     },
     "testErrors": {
-      "signedOut": "{{name}} refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
       "modelNotIncluded": "Your {{name}} subscription doesn't include the chosen model. Pick another one in the engine's details.",
       "other": "{{name}} test: {{message}}"
     },

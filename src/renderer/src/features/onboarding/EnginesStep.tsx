@@ -44,9 +44,12 @@ type Plan = (typeof plans)[number]["id"];
  */
 export function EnginesStep({
   onReady,
+  onNotice,
   again = false,
 }: {
   onReady: (ready: boolean) => void;
+  /** True while the notice of what leaves this computer waits for "I understand", the step's primary action then. */
+  onNotice?: (open: boolean) => void;
   again?: boolean;
 }) {
   const { t, i18n } = useTranslation();
@@ -85,6 +88,11 @@ export function EnginesStep({
     if (overview.isSuccess)
       onReady((usableKey !== "" || localOn) && toAcknowledge.length === 0);
   }, [overview.isSuccess, usableKey, localOn, toAcknowledge.length, onReady]);
+  const noticeOpen = toAcknowledge.length > 0;
+  useEffect(() => {
+    onNotice?.(noticeOpen);
+  }, [noticeOpen, onNotice]);
+  useEffect(() => () => onNotice?.(false), [onNotice]);
 
   const openedWith = useRef<string | null>(null);
   // Let core choose the models once the set of usable engines is known, and again when it changes.

@@ -67,6 +67,8 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
   const [crashReports, setCrashReports] = useState(start.crashReports);
   // Unknown until the engines are read, so the button says Continue rather than flicker to "later".
   const [enginesReady, setEnginesReady] = useState<boolean | null>(null);
+  // While the notice of what leaves this computer is open, its "I understand" is the step's one primary button.
+  const [engineNoticeOpen, setEngineNoticeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   // The exam's goal is shown on the scale of the level just chosen; a new profile has not picked a scale.
@@ -154,7 +156,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
     secondary = backButton;
     primary = (
       <Button
-        type="primary"
+        type={engineNoticeOpen ? "default" : "primary"}
         shape="round"
         loading={busy}
         onClick={() =>
@@ -224,7 +226,11 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
       ) : null}
       {id === "engines" ? (
         <>
-          <EnginesStep onReady={setEnginesReady} again={again} />
+          <EnginesStep
+            onReady={setEnginesReady}
+            onNotice={setEngineNoticeOpen}
+            again={again}
+          />
           <CrashReportsSwitch
             checked={crashReports}
             disabled={busy}

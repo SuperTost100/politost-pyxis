@@ -8,6 +8,7 @@ import type { JobView } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/Icon";
 import { IconButton } from "../../components/IconButton";
+import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import {
   finishedLabelKey,
@@ -52,7 +53,12 @@ function ProblemCard({
   const nameOf = useJobName();
   const [open, setOpen] = useState(false);
   const listId = useId();
-  const { jobs, kind, messageKey } = problem;
+  const { jobs, kind, messageKey, engine } = problem;
+  // A refused sign-in names its engine, and its sign-in replaces the general way to the engines page.
+  const describeEngineError = useEngineError(onNavigate);
+  const engineFailure = describeEngineError(messageKey, engine, {
+    count: jobs.length,
+  });
   const first = jobs[0]!;
   const many = jobs.length > 1;
   const Mark = PROBLEM_ICONS[kind];
@@ -89,7 +95,7 @@ function ProblemCard({
           ? t(`jobs.problem.many.${first.state}`, { count: jobs.length })
           : t(`jobs.problem.one.${first.state}`, { name: nameOf(first) })}
       </p>
-      <p className="px-jobs-why">{t(messageKey, { count: jobs.length })}</p>
+      <p className="px-jobs-why">{engineFailure.text}</p>
       <div className="px-jobs-acts">
         {kind === "locked-pdf" ? (
           <Button
@@ -109,9 +115,12 @@ function ProblemCard({
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => onNavigate("/settings/engines")}
+            onClick={
+              engineFailure.action?.onClick ??
+              (() => onNavigate("/settings/engines"))
+            }
           >
-            {t("jobs.openEngines")}
+            {engineFailure.action?.label ?? t("jobs.openEngines")}
           </Button>
         ) : null}
         {kind === "interrupted" ? (

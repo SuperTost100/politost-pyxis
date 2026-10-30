@@ -260,12 +260,17 @@ export function createRunner(
             finishCancelled(jobId);
             return;
           }
-          // An engine failure keeps its code first, so the screen can name it, and the engine's own text after it.
+          // An engine failure keeps its code first, so the screen can name it, then the engine in brackets when it is
+          // known, then the engine's own text: "not-logged-in [codex]: 401 Unauthorized".
+          const engine =
+            err instanceof IpcError && typeof err.params.provider === "string"
+              ? ` [${err.params.provider}]`
+              : "";
           const message =
             err instanceof IpcError &&
             err.detail &&
             err.messageKey.startsWith("engines.errors.")
-              ? `${err.code}: ${err.detail}`
+              ? `${err.code}${engine}: ${err.detail}`
               : err instanceof Error
                 ? err.message
                 : "failed";
