@@ -1,8 +1,8 @@
+/** Where the block opened by a fence ends: just after the first line from `from` on that closes it, or -1. */
 function fenceClose(input: string, from: number, tick: string, width: number): number {
-  let at = from;
-  while (at < input.length) {
-    const line = input.indexOf("\n", at);
-    const start = line === -1 ? input.length : line + 1;
+  // `from` is the start of the first line after the opening fence, and that line may already be the closing one.
+  let start = from;
+  while (start <= input.length) {
     let widthHere = 0;
     while (input[start + widthHere] === tick) widthHere += 1;
     if (widthHere >= width) {
@@ -12,8 +12,9 @@ function fenceClose(input: string, from: number, tick: string, width: number): n
         return input[cursor] === "\n" ? cursor + 1 : input.length;
       }
     }
+    const line = input.indexOf("\n", start);
     if (line === -1) return -1;
-    at = line + 1;
+    start = line + 1;
   }
   return -1;
 }

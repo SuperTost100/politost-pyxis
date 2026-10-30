@@ -11,6 +11,16 @@ describe("normalizeMathDelimiters and control characters", () => {
   });
 });
 
+describe("normalizeMathDelimiters and empty fences", () => {
+  it("sees an empty fenced block as closed, so the prose after it is still normalized", () => {
+    expect(normalizeMathDelimiters("```\n```\nVale \\(x\\) qui")).toBe("```\n```\nVale $x$ qui");
+    expect(normalizeMathDelimiters("~~~\n~~~\nVale \\(x\\) qui")).toBe("~~~\n~~~\nVale $x$ qui");
+    // A fence with one line of code still closes, and a fence that never closes runs to the end.
+    expect(normalizeMathDelimiters("```\ncode \\(x\\)\n```\n\\(y\\)")).toBe("```\ncode \\(x\\)\n```\n$y$");
+    expect(normalizeMathDelimiters("```\ncode \\(x\\)")).toBe("```\ncode \\(x\\)");
+  });
+});
+
 describe("normalizeMathDelimiters and backslash delimiters", () => {
   it("repairs a command inside \\( … \\) and \\[ … \\] math", () => {
     expect(normalizeMathDelimiters("\\(a\neq b\\)")).toBe("$a\\neq b$");
