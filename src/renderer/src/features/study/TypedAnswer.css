@@ -1,0 +1,5 @@
+/* Line breaks and spaces stay; a long unbroken word wraps instead of widening the box. */
+.px-plain-answer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

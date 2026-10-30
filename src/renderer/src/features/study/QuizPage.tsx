@@ -32,6 +32,7 @@ import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
 import {
+  answerSource,
   blanks,
   pairs,
   quizBack,
@@ -911,7 +912,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       mark,
       ...(mark === "partial" ? { score: grade.format(row.score) } : {}),
       answer: answerText(row.id),
-      typed: item?.grade.kind === "open" || item?.grade.kind === "completion",
+      typed: answerSource(item?.grade.kind ?? ""),
       long,
       expected: expectedText(row),
       expectedLabel: t(long ? "quiz.reference" : "quiz.expected"),
@@ -956,7 +957,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           topic: topicTitle(item.id),
           mark,
           answer: answerText(item.id),
-          typed: item.grade.kind === "open" || item.grade.kind === "completion",
+          typed: answerSource(item.grade.kind),
           long: item.grade.kind === "open",
           expectedLabel: t("quiz.expected"),
         };

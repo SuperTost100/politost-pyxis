@@ -10,12 +10,12 @@ import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
-import { MathText } from "../../components/math/MathText";
 import { QUIZ_MAX_QUESTIONS } from "@shared/quiz";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { i18n } from "../../locales/i18n";
-import { blanks, pairs, stemText, verdict } from "./quizText";
+import { TypedAnswer } from "./TypedAnswer";
+import { answerSource, blanks, pairs, stemText, verdict } from "./quizText";
 import "./QuizPage.css";
 import "./MistakesNotebook.css";
 
@@ -161,6 +161,7 @@ export function MistakesNotebook() {
     const long = entry.kind === "open";
     const state = verdict(entry.score) === "partial" ? "partial" : "wrong";
     const answer = answerText(entry);
+    const written = answerSource(entry.kind);
     const expected = expectedText(entry);
     const source = entry.passageId
       ? { passageId: entry.passageId }
@@ -186,9 +187,9 @@ export function MistakesNotebook() {
                   })
                 : t("quiz.yourAnswer")}
             </p>
-            {long || entry.kind === "completion" ? (
+            {written ? (
               <p className="body">
-                <MathText text={answer} />
+                <TypedAnswer text={answer} source={written} />
               </p>
             ) : (
               <p className="body">
