@@ -266,6 +266,8 @@ export const JobView = z.object({
   activity: z.enum(["diagnostic", "review"]).optional(),
   /** Work a page does itself, such as a lesson being written: that page stops it, the jobs list cannot. */
   inPage: z.literal(true).optional(),
+  /** What a page waiting on the job knows it by, such as the attempt and question an answer check is for. */
+  ref: z.string().optional(),
   state: JobState,
   progress: z.number(),
   stepLabel: z.string().nullable(),

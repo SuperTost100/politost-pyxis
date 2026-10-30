@@ -794,6 +794,7 @@ describe("job runner", () => {
     runner.register("grade", {
       jobClass: "local",
       about: () => ({ exam: "Fisica 1", activity: "diagnostic" }),
+      ref: () => "a1/q2",
       steps: [{ name: "run", label: "jobs.quizGrading", run: async () => null }],
     });
     const quiz = runner.start("quiz", { topic: "Misure e vettori" });
@@ -803,7 +804,8 @@ describe("job runner", () => {
     await until(database, grade, ["succeeded"]);
     const finished = runner.finished();
     expect(finished.find((job) => job.id === quiz)).toMatchObject({ exam: "Fisica 1", topic: "Misure e vettori" });
-    expect(finished.find((job) => job.id === grade)).toMatchObject({ activity: "diagnostic" });
+    expect(finished.find((job) => job.id === grade)).toMatchObject({ activity: "diagnostic", ref: "a1/q2" });
+    expect(finished.find((job) => job.id === quiz)).not.toHaveProperty("ref");
     expect(finished.find((job) => job.id === grade)).not.toHaveProperty("topic");
   });
 

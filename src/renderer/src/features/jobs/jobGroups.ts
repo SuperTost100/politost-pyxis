@@ -1,4 +1,5 @@
 import type { JobView } from "../../../../shared/ipc";
+import { checkRef } from "../../../../shared/quiz";
 import { isPdfPasswordError } from "../../../../shared/source-errors";
 import { jobErrorKey } from "./jobErrors";
 
@@ -88,6 +89,14 @@ export function finishedLabelKey(kind: string): string | undefined {
 /** The message key for running study work of this kind, or undefined when its step says what it does. */
 export function runningLabelKey(kind: string): string | undefined {
   return RUNNING_LABELS[kind];
+}
+
+/** The check of this answer that is still waiting or running, among every job; another answer's check is not it. */
+export function checkJobFor(jobs: readonly JobView[], attemptId: string, questionId: string): JobView | undefined {
+  const ref = checkRef(attemptId, questionId);
+  return jobs.find(
+    (job) => job.kind === "quiz-check" && job.ref === ref && (job.state === "queued" || job.state === "running"),
+  );
 }
 
 /** The i18next context a job's wording takes: a diagnostic test or a Review, else its topic when it has one. */

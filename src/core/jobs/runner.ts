@@ -35,6 +35,8 @@ export type JobSpec = {
   title?: (params: unknown) => string | null;
   /** The exam and topic study work is about, for the jobs list. */
   about?: (params: unknown) => JobAbout;
+  /** What a page waiting on the job knows it by (`JobView.ref`). */
+  ref?: (params: unknown) => string | null;
   /**
    * A student is waiting on screen for this job, such as an answer being corrected. It takes a model slot of its own
    * class next to background work (writing a quiz, analysing mistakes) instead of queueing behind it; interactive jobs
@@ -162,11 +164,12 @@ export function createRunner(
     const steps = stepViewsStmt.all(jobId) as JobView["steps"];
     const spec = specs.get(job.kind);
     const params =
-      spec?.title || spec?.about
+      spec?.title || spec?.about || spec?.ref
         ? (JSON.parse((paramsStmt.get(jobId) as { params_json: string }).params_json) as unknown)
         : undefined;
     const title = spec?.title?.(params);
     const about = spec?.about?.(params) ?? {};
+    const ref = spec?.ref?.(params);
     return {
       id: job.id,
       kind: job.kind,
@@ -174,6 +177,7 @@ export function createRunner(
       ...(about.topic ? { topic: about.topic } : {}),
       ...(about.exam ? { exam: about.exam } : {}),
       ...(about.activity ? { activity: about.activity } : {}),
+      ...(ref ? { ref } : {}),
       state: job.state,
       progress: job.progress,
       stepLabel: job.step_label,

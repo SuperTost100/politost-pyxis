@@ -24,6 +24,7 @@ import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
 import { useReviewSession } from "./ReviewProgress";
 import { useJobs } from "../jobs/queries";
+import { checkJobFor } from "../jobs/jobGroups";
 import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
@@ -89,13 +90,19 @@ function QuizClock({
  * An open answer being corrected: whether the correction waits for another one or is running, and for how long, so a
  * long wait never looks stuck. The seconds stay out of the live region; only the state change is announced.
  */
-function CheckStatus({ onCancel }: { onCancel: () => void }) {
+function CheckStatus({
+  attemptId,
+  questionId,
+  onCancel,
+}: {
+  attemptId: string;
+  questionId: string;
+  onCancel: () => void;
+}) {
   const { t } = useTranslation();
   const [since] = useState(() => Date.now());
   const seconds = Math.floor((useNow(1000) - since) / 1000);
-  const job = useJobs().data?.find(
-    (row) => row.kind === "quiz-check" && (row.state === "queued" || row.state === "running"),
-  );
+  const job = checkJobFor(useJobs().data ?? [], attemptId, questionId);
   const queued = job?.state === "queued";
   return (
     <div className="px-quiz-checking">
@@ -1454,7 +1461,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             </div>
           )}
           {checking === question.id && kind === "open" ? (
-            <CheckStatus key={question.id} onCancel={stopCheck} />
+            <CheckStatus key={question.id} attemptId={attemptId} questionId={question.id} onCancel={stopCheck} />
           ) : null}
           {checkFailed ? (
             <Notice
