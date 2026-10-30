@@ -21,6 +21,14 @@ describe("normalizeMathDelimiters and empty fences", () => {
   });
 });
 
+describe("normalizeMathDelimiters and Windows line ends", () => {
+  it("sees a fenced block as closed when its lines end in CRLF, so the prose after it is still normalized", () => {
+    expect(normalizeMathDelimiters("```\r\ncode \\(x\\)\r\n```\r\n\\(y\\)")).toBe("```\r\ncode \\(x\\)\r\n```\r\n$y$");
+    expect(normalizeMathDelimiters("~~~\r\n~~~\r\n\\(y\\)")).toBe("~~~\r\n~~~\r\n$y$");
+    expect(normalizeMathDelimiters("```python\r\ncode\r\n```  \r\n\\(y\\)")).toBe("```python\r\ncode\r\n```  \r\n$y$");
+  });
+});
+
 describe("normalizeMathDelimiters and backslash delimiters", () => {
   it("repairs a command inside \\( … \\) and \\[ … \\] math", () => {
     expect(normalizeMathDelimiters("\\(a\neq b\\)")).toBe("$a\\neq b$");

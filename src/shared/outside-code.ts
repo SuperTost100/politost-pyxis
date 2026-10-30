@@ -8,9 +8,10 @@ function fenceClose(input: string, from: number, tick: string, width: number): n
     if (widthHere >= width) {
       let cursor = start + widthHere;
       while (input[cursor] === " " || input[cursor] === "\t") cursor += 1;
-      if (input[cursor] === "\n" || input[cursor] === undefined) {
-        return input[cursor] === "\n" ? cursor + 1 : input.length;
-      }
+      // A line ends in LF or CRLF; the opening fence is found by its LF, so it needs no such care.
+      const lineEnd = input[cursor] === "\r" && input[cursor + 1] === "\n" ? 2 : input[cursor] === "\n" ? 1 : 0;
+      if (lineEnd > 0) return cursor + lineEnd;
+      if (input[cursor] === undefined) return input.length;
     }
     const line = input.indexOf("\n", start);
     if (line === -1) return -1;
