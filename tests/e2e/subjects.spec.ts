@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by keyboard, remove", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-subject-check-"));
@@ -81,5 +82,5 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     await page.getByRole("button", { name: /^Materia:/ }).click();
     await page.getByRole("button", { name: "Fisica", exact: true }).click();
     await expect(page.getByRole("button", { name: "Materia: Fisica" })).toHaveText("Fisica");
-  } finally { await app.close(); rmSync(userData, { recursive: true, force: true }); }
+  } finally { await app.close(); removeTestFolder(userData); }
 });

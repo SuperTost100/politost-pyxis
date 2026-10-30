@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 /** The pinned files the runtime task downloaded once, when they are on this machine and match their pins. */
 function stagedTessdata(): string | null {
@@ -67,5 +68,5 @@ test("SRC-04 real HEIC preview runs in a worker and blank OCR is not ready", asy
     }, { timeout: 90000 }).toBe("failed");
     const rows = await page.evaluate(() => window.pyxis.invoke("sources.list", {}));
     expect(rows.find((row) => row.id === result.sourceId)?.kind).toBe("image");
-  } finally { await app.close(); rmSync(userData, { recursive: true, force: true }); }
+  } finally { await app.close(); removeTestFolder(userData); }
 });

@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 test("SRC-07 a dropped file gets a native grant and nothing else does", async () => {
   test.setTimeout(120000);
@@ -113,6 +114,6 @@ test("SRC-07 a dropped file gets a native grant and nothing else does", async ()
     expect(titles.map((row) => row.title)).toEqual(["note"]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

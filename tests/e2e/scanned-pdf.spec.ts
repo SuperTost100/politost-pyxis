@@ -4,7 +4,7 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -17,6 +17,7 @@ import {
   stagedTessdata,
   writeScanPdf,
 } from "./scanned-pdf-fixture";
+import { removeTestFolder } from "./cleanup";
 
 /*
  * A generated image-only PDF goes through the real path: core's job draws each page with pdf.js and reads it with the
@@ -78,7 +79,7 @@ async function openScan({ data = false } = {}): Promise<Run> {
 
 async function close(run: Run) {
   await run.app.close();
-  rmSync(run.userData, { recursive: true, force: true });
+  removeTestFolder(run.userData);
 }
 
 const status = async ({ page, sourceId }: Pick<Run, "page" | "sourceId">) =>
@@ -233,7 +234,7 @@ test.describe("with the pinned OCR data", () => {
         await reopened.close();
       }
     } finally {
-      rmSync(run.userData, { recursive: true, force: true });
+      removeTestFolder(run.userData);
     }
   });
 

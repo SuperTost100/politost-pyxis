@@ -1,6 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
@@ -8,6 +8,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async () => {
   test.setTimeout(240_000);
@@ -279,6 +280,6 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     expect(errors).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

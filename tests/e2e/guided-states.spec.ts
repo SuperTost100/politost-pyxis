@@ -1,10 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 // Guided plan loading and failure (PLAN-10 to PLAN-12). The recorded-reply fixture answers every call the
 // same way for a whole launch, so each failing step gets its own launch. No model is called.
@@ -138,7 +139,7 @@ for (const state of Object.keys(FIXTURES) as State[]) {
           }
     } finally {
       await app.close();
-      rmSync(userData, { recursive: true, force: true });
+      removeTestFolder(userData);
     }
     expect(failures, failures.join("\n")).toEqual([]);
   });
@@ -171,7 +172,7 @@ test("PLAN-10 a failed guided call can be retried and answers survive Back", asy
     await expect(page.getByRole("checkbox").first()).toBeChecked();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -199,6 +200,6 @@ test("PLAN-10 Back while the modules load returns to the period step and the lat
     await expect(page.getByRole("checkbox")).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

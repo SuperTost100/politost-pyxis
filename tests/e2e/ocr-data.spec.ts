@@ -9,7 +9,6 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   truncateSync,
 } from "node:fs";
 import { createServer, type Server } from "node:net";
@@ -19,6 +18,7 @@ import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { expectNoAxeViolations } from "./axe";
+import { removeTestFolder } from "./cleanup";
 
 const HEIC = join(process.cwd(), "tests/fixtures/synthetic-note.heic");
 const totalBytes = Object.values(OCR_DATA_FILES).reduce(
@@ -198,7 +198,7 @@ test("OCR data: a refused photo asks first, the app downloads the pinned files o
     expectPinned(userData);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -270,6 +270,6 @@ test("OCR data: cancel and a failed connection leave a clear way back, and Try a
   } finally {
     await app.close();
     proxy.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

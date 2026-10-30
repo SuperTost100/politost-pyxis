@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 test("ENG-10 engine details, add paths and secure key-storage notice in both themes and languages", async () => {
   test.setTimeout(180000);
@@ -171,7 +172,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
         }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -287,7 +288,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     ).toContainText("Automatic · High");
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });
@@ -364,7 +365,7 @@ esac`,
     await saveShot(page, "engines-four-en.png");
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });

@@ -6,7 +6,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +16,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { SHOTS, saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PNG", async () => {
   test.setTimeout(240_000);
@@ -326,6 +326,6 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       console.log("Live map model", maps[0]!.model);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

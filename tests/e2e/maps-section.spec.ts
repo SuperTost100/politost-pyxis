@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSubjects } from "./seed";
+import { removeTestFolder } from "./cleanup";
 
 function graph(labels: string[]) {
   return {
@@ -206,6 +207,6 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
     expect(errors).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

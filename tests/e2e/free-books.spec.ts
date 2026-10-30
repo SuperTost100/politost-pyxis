@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { removeTestFolder } from "./cleanup";
 
 // A folder laid out like books.politost.it: the catalog and one package. `tamper` lists a checksum that does not match.
 function booksSite(options: { tamper?: boolean } = {}) {
@@ -134,7 +135,7 @@ test("Free books: the material step of setup puts a book into the new exam, and 
     await expect(again.getByText("Nella tua libreria")).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(books, { recursive: true, force: true });
   }
 });
@@ -165,7 +166,7 @@ test("Free books: a package that does not match the catalog is refused and nothi
     ).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(books, { recursive: true, force: true });
   }
 });

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -259,6 +260,6 @@ test("a quick check can be answered while the lesson is still being written, and
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

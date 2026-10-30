@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { removeTestFolder } from "./cleanup";
 
 /** One topic with three cards Pyxis wrote (one from a passage), one hand-made card, and a finished card build. */
 function seed(db: DatabaseSync) {
@@ -180,7 +181,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     db.close();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -226,7 +227,7 @@ test("card build: cards show as each batch is stored, and Export waits for the f
     db.close();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -274,6 +275,6 @@ test("card browser: a card forgotten six times is tagged and filtered", async ()
     await expect(page.getByRole("dialog", { name: "Edit flashcard" })).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

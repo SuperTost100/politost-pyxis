@@ -9,7 +9,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +18,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const figure = (caption: string, code: string) =>
   ["```pyxis-figure", JSON.stringify({ caption, code }), "```"].join("\n");
@@ -250,6 +250,6 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
     }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

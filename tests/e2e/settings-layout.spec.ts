@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 test("settings show a sidebar from 960px and drill down below it", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-settings-layout-"));
@@ -76,6 +77,6 @@ test("settings show a sidebar from 960px and drill down below it", async () => {
     await expect(back).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

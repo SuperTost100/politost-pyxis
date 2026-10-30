@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
+import { removeTestFolder } from "./cleanup";
 
 /** Two dated exams and one without a date, with one due card in each dated plan. */
 function seed(db: DatabaseSync) {
@@ -99,6 +100,6 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
     db.close();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

@@ -1,11 +1,12 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-keyboard-"));
@@ -142,7 +143,7 @@ test("Composer: the formula keyboard types into a formula opened at the caret", 
     expect(violations).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -162,7 +163,7 @@ test("Composer: the keyboard follows the interface language", async () => {
     await expect(keys.getByRole("tab", { name: "Calculus" })).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -263,6 +264,6 @@ test("Quiz: an open answer takes a formula from the keyboard inline", async () =
     await saveShot(page.locator(".px-mathinput"), "math-input-quiz.png");
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
