@@ -306,6 +306,7 @@ describe("askTurn", () => {
     expect(stored.at(-1)?.citations[0]?.locator).toEqual({
       chapter: 1,
       paragraph: "p1",
+      title: "Energia",
     });
     expect(chatScope(db, result.chatId)).toEqual([imported.sourceId]);
     const messageId = result.message?.id ?? "";

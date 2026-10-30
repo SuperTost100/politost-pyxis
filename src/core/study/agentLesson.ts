@@ -352,6 +352,8 @@ export type AgentLessonOptions = {
   limits?: Partial<AgentLimits>;
   /** Clock for the stats; tests pass a fake one. */
   now?: () => number;
+  /** Called once a model starts writing, which a saved lesson never does. */
+  onWriting?: () => void;
 };
 
 /**
@@ -532,6 +534,7 @@ export async function writeAgentLesson(
       wording: context.wording,
       ...(Object.keys(cached.figures).length ? { figures: cached.figures } : {}),
     };
+  options.onWriting?.();
   try {
     return (await agentLesson(db, planId, topicId, run, options)).lesson;
   } catch (error) {

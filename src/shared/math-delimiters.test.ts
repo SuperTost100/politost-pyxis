@@ -1,6 +1,45 @@
 import { describe, expect, it } from "vitest";
 import { displayMathLines, normalizeMathDelimiters } from "./math-delimiters";
 
+describe("normalizeMathDelimiters and control characters", () => {
+  it("restores LaTeX commands in prose but leaves code as written", () => {
+    expect(normalizeMathDelimiters("Vale $\\theta\theta$ qui")).toBe("Vale $\\theta\\theta$ qui");
+    const code = "```\na\times b\nprice $ 5\nnot_found\n```";
+    expect(normalizeMathDelimiters(code)).toBe(code);
+    const inline = "uso `a\times b` e $\theta$";
+    expect(normalizeMathDelimiters(inline)).toBe("uso `a\times b` e $\\theta$");
+  });
+});
+
+describe("normalizeMathDelimiters and empty fences", () => {
+  it("sees an empty fenced block as closed, so the prose after it is still normalized", () => {
+    expect(normalizeMathDelimiters("```\n```\nVale \\(x\\) qui")).toBe("```\n```\nVale $x$ qui");
+    expect(normalizeMathDelimiters("~~~\n~~~\nVale \\(x\\) qui")).toBe("~~~\n~~~\nVale $x$ qui");
+    // A fence with one line of code still closes, and a fence that never closes runs to the end.
+    expect(normalizeMathDelimiters("```\ncode \\(x\\)\n```\n\\(y\\)")).toBe("```\ncode \\(x\\)\n```\n$y$");
+    expect(normalizeMathDelimiters("```\ncode \\(x\\)")).toBe("```\ncode \\(x\\)");
+  });
+});
+
+describe("normalizeMathDelimiters and Windows line ends", () => {
+  it("sees a fenced block as closed when its lines end in CRLF, so the prose after it is still normalized", () => {
+    expect(normalizeMathDelimiters("```\r\ncode \\(x\\)\r\n```\r\n\\(y\\)")).toBe("```\r\ncode \\(x\\)\r\n```\r\n$y$");
+    expect(normalizeMathDelimiters("~~~\r\n~~~\r\n\\(y\\)")).toBe("~~~\r\n~~~\r\n$y$");
+    expect(normalizeMathDelimiters("```python\r\ncode\r\n```  \r\n\\(y\\)")).toBe("```python\r\ncode\r\n```  \r\n$y$");
+  });
+});
+
+describe("normalizeMathDelimiters and backslash delimiters", () => {
+  it("repairs a command inside \\( … \\) and \\[ … \\] math", () => {
+    expect(normalizeMathDelimiters("\\(a\neq b\\)")).toBe("$a\\neq b$");
+    expect(normalizeMathDelimiters("\\[x\nu\\]")).toBe("\n$$\nx\\nu\n$$\n");
+  });
+
+  it("repairs a command right after inline code, where the chunk starts mid-line", () => {
+    expect(normalizeMathDelimiters("uso `x`\theta qui")).toBe("uso `x`\\theta qui");
+  });
+});
+
 describe("normalizeMathDelimiters", () => {
   it("converts inline \\( \\) to dollar math", () => {
     expect(normalizeMathDelimiters("a \\(x^2\\) b")).toBe("a $x^2$ b");

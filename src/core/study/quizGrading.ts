@@ -1,11 +1,13 @@
 import { setTimeout as wait } from "node:timers/promises";
 import type Database from "better-sqlite3";
 import { z } from "zod";
+import { checkRef } from "../../shared/quiz";
 import { uuidv7 } from "../../shared/ids";
 import { generate, type GenerateInput } from "../engine/generate";
 import { promptProvenance, systemPrompt } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { aboutAttempt } from "./jobAbout";
 import { recordStep, stepResult, topicActive } from "../plans/steps";
 import { syncGaps } from "../plans/progress";
 import { enqueueGapInsights } from "./gapInsight";
@@ -475,6 +477,9 @@ export function registerQuizGradingJobs(
       selection: selectionFor(db, "grading"),
     }),
     jobClass: "model-cli",
+    // The results screen waits for it.
+    interactive: true,
+    about: (params) => aboutAttempt(db, (params as GradeParams).attemptId),
     steps: [
       {
         name: "grading",
@@ -526,13 +531,18 @@ export function registerQuizGradingJobs(
       },
     ],
   });
-  // One interactive check still takes a model slot like any other model call.
+  // The student waits on the question for this check: it never queues behind a quiz being written or an analysis,
+  // and checks share the model slots only among themselves.
   runner.register("quiz-check", {
     retryParams: (params) => ({
       ...(params as CheckParams),
       selection: selectionFor(db, "grading"),
     }),
     jobClass: "model-cli",
+    interactive: true,
+    about: (params) => aboutAttempt(db, (params as CheckParams).attemptId),
+    // The quiz page shows the state of its own answer's check.
+    ref: (params) => checkRef((params as CheckParams).attemptId, (params as CheckParams).questionId),
     steps: [
       {
         name: "check",

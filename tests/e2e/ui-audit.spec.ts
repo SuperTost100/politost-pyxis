@@ -174,7 +174,7 @@ const routes = [
   ["review-cards-waiting", "/plans/audit-review-plan/review/cards"],
   [
     "review-quiz-pending",
-    "/plans/audit-review-plan/diagnostic?attempt=audit-review-attempt",
+    "/plans/audit-review-plan/review/questions?attempt=audit-review-attempt",
   ],
   ["rebuild-intro", "/plans/audit-plan/settings"],
   ["rebuild-running", "/plans/audit-plan/settings"],
@@ -1441,7 +1441,20 @@ function prepareState(name: string) {
     const running = db.prepare(
       "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?)",
     );
-    running.run("audit-running-cards", "cards-build", "{}", 0.4, "jobs.cards", now, now);
+    // Study work names its topic and exam.
+    running.run(
+      "audit-running-cards",
+      "cards-build",
+      JSON.stringify({ planId: "audit-plan", topicId: "audit-topic" }),
+      0.4,
+      "jobs.cards",
+      now,
+      now,
+    );
+    // A lesson the lesson page wrote itself, finished today.
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('audit-running-lesson','lesson-write',?,'succeeded',1,?,?)",
+    ).run(JSON.stringify({ exam: "Analisi 1", topic: "Limiti" }), now - 60_000, now - 30_000);
     running.run(
       "audit-running-photo",
       "source-import",
@@ -1907,6 +1920,8 @@ async function openState(page: Page, name: string) {
           .or(page.getByText(/in preparazione|being prepared/))
           .first(),
       ).toBeVisible();
+      // The Review's questions are its own screen, not the diagnostic test's.
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(both("Ripasso", "Review"));
       break;
     case "rebuild-intro":
     case "rebuild-running":
@@ -2186,9 +2201,13 @@ async function openState(page: Page, name: string) {
         ).toBeVisible();
         await expect(
           list.getByRole("button", {
-            name: /^(Annulla|Cancel): (Scrivo le flashcard|Writing flashcards)$/,
+            name: /^(Annulla|Cancel): (Scrivo le flashcard su|Writing flashcards on) .+$/,
           }),
         ).toBeVisible();
+        // A lesson the lesson page wrote shows as finished work, named after its topic, with its exam.
+        await expect(
+          list.locator("li", { hasText: /^(Lezione su Limiti scritta|Lesson on Limiti written)/ }),
+        ).toContainText("Analisi 1 · ");
         // Jobs that stopped for one reason are one problem with the count in its title. How many share the reason
         // depends on which states ran before this one (a full run seeds one more), so only the merge is checked.
         await expect(

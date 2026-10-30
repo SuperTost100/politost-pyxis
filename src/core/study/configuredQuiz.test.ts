@@ -209,6 +209,23 @@ describe("configured quizzes", () => {
     expect(readQuiz(db, started.attemptId).questions).toHaveLength(10);
     db.close();
   });
+  it("writes a quiz a few questions at a time, so the count of ready questions moves while it builds", async () => {
+    const db = fixture();
+    const runner = createRunner(db, () => {});
+    // What the quiz screen reads, each time the build asks the engine for more.
+    const seen: number[] = [];
+    let attemptId = "";
+    registerQuizJobs(db, runner, async (input) => {
+      seen.push(readQuiz(db, attemptId).questions.length);
+      return tfRun!(input);
+    });
+    attemptId = enqueueQuiz(db, runner, { planId: "plan", topicId: "topic", count: 10, types: ["tf"] }).attemptId;
+    await until(db, attemptId, "succeeded");
+    // Ten questions in calls of four, three and three; each call finds the ones before it already saved.
+    expect(seen).toEqual([0, 4, 7]);
+    expect(readQuiz(db, attemptId).questions).toHaveLength(10);
+    db.close();
+  });
   it("stores model feedback once, locks checked answers, and reuses grades on submit", async () => {
     const db = fixture();
     const started = await startConfiguredQuiz(

@@ -1,7 +1,14 @@
 import { splitCitationGroups } from "../../../shared/smart-text";
 import { mapOutsideCode } from "../../../shared/math-delimiters";
 
-export type CitationResolver = (passageId: number) => string | undefined;
+/**
+ * The label a citation shows. `group` names what its chip stands for when the label alone does not tell, such as two
+ * plain-text sources that both read "text": neighbouring chips with the same group are one chip, the label being the
+ * group when there is none.
+ */
+export type CitationResolver = ((passageId: number) => string | undefined) & {
+  group?: (passageId: number) => string | undefined;
+};
 
 const ENTITY: Record<string, string> = { "[": "&#91;", "]": "&#93;", "\\": "&#92;" };
 
@@ -13,19 +20,47 @@ function literal(text: string): string {
   return text.replace(/[[\]\\]/g, (char) => ENTITY[char]!);
 }
 
+/** Chips one run of neighbouring citations may show. */
+const CHIPS_PER_RUN = 3;
+const CITE_LINK = String.raw`\[[^\]]*\]\(cite:p\d+\)`;
+const CITE_RUN = new RegExp(`${CITE_LINK}(?:[ \\t]*[,;]?[ \\t]*${CITE_LINK})*`, "g");
+
+/**
+ * Neighbouring citations ("[P1], [P2], [P3]") that name the same section are one chip, and a run shows at most
+ * CHIPS_PER_RUN chips: a reply that leans on one chapter would otherwise end every sentence with a row of identical pills.
+ * The chip that stays opens the first passage of the run.
+ */
+function thinCitationRuns(text: string, resolver: CitationResolver): string {
+  return text.replace(CITE_RUN, (run) => {
+    const seen = new Set<string>();
+    const kept: Array<{ link: string; separator: string }> = [];
+    for (const [, link, label, id, separator] of run.matchAll(/(\[([^\]]*)\]\(cite:p(\d+)\))([ \t]*[,;]?[ \t]*)/g) as Iterable<
+      [string, string, string, string, string]
+    >) {
+      const key = resolver.group?.(Number(id)) ?? label;
+      if (seen.has(key) || kept.length >= CHIPS_PER_RUN) continue;
+      seen.add(key);
+      kept.push({ link, separator });
+    }
+    return kept.map((item, index) => (index < kept.length - 1 ? item.link + item.separator : item.link)).join("");
+  });
+}
+
 /**
  * Turns each [Pn] marker into a citation link. With a resolver, a marker it does not know (the model cited a passage the
  * reply never stored) stays plain text, since there is nothing to open. Without one, every marker links by its number.
  */
 export function linkCitations(markdown: string, resolver?: CitationResolver): string {
-  return mapOutsideCode(markdown, (text) =>
-    splitCitationGroups(text).replace(/\[P(\d+)\]/g, (_, raw: string) => {
+  return mapOutsideCode(markdown, (text) => {
+    const linked = splitCitationGroups(text).replace(/\[P(\d+)\]/g, (_, raw: string) => {
       const id = Number(raw);
       if (!resolver) return `[P${id}](cite:p${id})`;
       const label = resolver(id);
       return label === undefined ? literal(`[P${id}]`) : `[${literal(label)}](cite:p${id})`;
-    }),
-  );
+    });
+    // Without a resolver the page owns the numbered list and every number must stay reachable.
+    return resolver ? thinCitationRuns(linked, resolver) : linked;
+  });
 }
 
 /**

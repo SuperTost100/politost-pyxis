@@ -125,9 +125,7 @@ describe("PLAN-21 durable plan build", () => {
     });
     await until(db, built.planId, "failed");
     const topic = readPlan(db, built.planId)!.topics[0]!;
-    expect(topic.subtopics).toHaveLength(2);
-    expect(topic.subtopics[0]).toContain("p1");
-    expect(topic.subtopics[1]).toContain("p2");
+    expect(topic.subtopics).toEqual(["Velocità", "Tempo"]);
     expect(
       db.prepare("SELECT COUNT(*) AS n FROM items WHERE kind = 'intro'").get(),
     ).toEqual({ n: 1 });
@@ -181,6 +179,60 @@ describe("PLAN-21 durable plan build", () => {
         prompt_version: templateVersion("plan.intro"),
       },
     ]);
+    db.close();
+  });
+  it("names a topic's subtopics from clean paragraph titles, never raw book Markdown or paragraph ids", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const sourceId = importSmartbook(
+      db,
+      zipSync({
+        "smartbook.json": strToU8(
+          JSON.stringify({
+            id: "physics",
+            title: "Fisica",
+            access: "public",
+            chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+          }),
+        ),
+        "chapters/01.md": strToU8(
+          [
+            "## p1 | Misurare",
+            "Misurare significa confrontare una grandezza con un'unità e dichiarare quanto è affidabile il risultato.",
+            "",
+            "## p2 | Grandezze e punto $P$",
+            "### Grandezze fisiche e incertezza di misura",
+            "",
+            "## p3 | Vettori",
+            "I vettori descrivono grandezze, come in [testo](ref:chapter/1#p2): un punto $P$ nello spazio.",
+            "",
+          ].join("\n"),
+        ),
+      }),
+    ).sourceId;
+    const stored = async () => {
+      const runner = createRunner(db, () => {});
+      registerPlanJobs(db, runner, async () => {
+        throw new Error("offline");
+      });
+      const built = enqueuePlan(db, runner, { title: "Fisica", sourceIds: [sourceId] });
+      await until(db, built.planId, "failed");
+      return readPlan(db, built.planId)!.topics[0]!.subtopics;
+    };
+    // The book's own paragraph titles, with their math kept for the renderer.
+    expect(await stored()).toEqual(["Misurare", "Grandezze e punto $P$", "Vettori"]);
+    // A book imported before the titles were kept: the first line, cleaned and cut at a word.
+    db.prepare("UPDATE passages SET locator_json = json_remove(locator_json, '$.title')").run();
+    db.prepare("DELETE FROM plans").run();
+    const fallback = await stored();
+    expect(fallback).toEqual([
+      "Misurare significa confrontare una grandezza con un'unità e dichiarare quanto è…",
+      "Grandezze fisiche e incertezza di misura",
+      "I vettori descrivono grandezze, come in testo: un punto $P$ nello spazio.",
+    ]);
+    for (const title of fallback) expect(title).not.toMatch(/\bp\d\b|ref:|###/);
     db.close();
   });
   it("cancels a real model step and resumes the same plan", async () => {

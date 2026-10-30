@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -162,8 +163,15 @@ const Reply = memo(function Reply({
   const failure = row.error
     ? describeEngineError(row.error, row.provider ?? undefined)
     : undefined;
-  const citationResolver = useCallback(
-    (index: number) => row.citations.find((cite) => cite.index === index)?.label,
+  const citationResolver = useMemo(
+    () =>
+      Object.assign((index: number) => row.citations.find((cite) => cite.index === index)?.label, {
+        // Two plain-text sources can both be labelled "text": a chip stands for a source and a section.
+        group: (index: number) => {
+          const cite = row.citations.find((item) => item.index === index);
+          return cite && `${cite.sourceId}|${cite.label}`;
+        },
+      }),
     [row.citations],
   );
   const onCitationClick = useCallback(

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { IpcError, isAbort } from "../../shared/ipc";
+import { repairModelStrings } from "../../shared/latex-repair";
+import { parseLooseJson } from "../../shared/smart-text";
 import { engineSeesImages } from "./capabilities";
 import {
   benchEngine,
@@ -88,18 +90,19 @@ function lock(node: unknown): void {
 }
 
 function parsed(schema: z.ZodType, result: EngineResult): unknown {
-  const candidate = result.structured ?? tryJson(result.text);
+  const candidate =
+    result.structured == null ? tryJson(result.text) : repairModelStrings(result.structured);
   const check = schema.safeParse(candidate);
   return check.success ? check.data : null;
 }
 
-/** The value a text holds as JSON, or undefined when it holds none. */
+/**
+ * The value a text holds as JSON, or undefined when it holds none. LaTeX a model wrote with single backslashes is
+ * restored here and in every structured answer, so no feature shows "m", a tab and "heta" for `m\theta`.
+ */
 export function tryJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
+  const value = parseLooseJson(text);
+  return value === undefined ? undefined : repairModelStrings(value);
 }
 
 /**

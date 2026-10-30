@@ -47,6 +47,8 @@ export type ParsedSmartbook = {
     text: string;
     chapter: number;
     paragraph: string;
+    /** The title in the paragraph's `## p1 | Title` line. */
+    title?: string;
     section: string;
     start: number;
     end: number;
@@ -89,6 +91,7 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
             ...chunk,
             chapter: chapter.number,
             paragraph: paragraph.id,
+            title: paragraph.title,
             section: `${chapter.number}. ${chapter.title}`,
           });
         }
@@ -313,7 +316,11 @@ function insertBookPassages(
       documentId,
       version,
       paragraph.text,
-      JSON.stringify({ chapter: paragraph.chapter, paragraph: paragraph.paragraph }),
+      JSON.stringify({
+        chapter: paragraph.chapter,
+        paragraph: paragraph.paragraph,
+        ...(paragraph.title ? { title: paragraph.title } : {}),
+      }),
       paragraph.section,
       paragraph.start,
       paragraph.end,

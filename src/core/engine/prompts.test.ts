@@ -36,7 +36,7 @@ describe("prompt templates", () => {
       expect(loadTemplate(id).body, id).toContain(
         "The student reads the explanation after a wrong pick too, so never call any option but the answer correct",
       );
-    expect(loadTemplate("quiz.batch").version).toBe("quiz-4");
+    expect(loadTemplate("quiz.batch").version).toBe("quiz-5");
     expect(loadTemplate("chat.socratic").version).toBe("5");
     // Answers may ask for a figure drawn in the Python sandbox.
     expect(loadTemplate("chat.general").version).toBe("6");
@@ -68,13 +68,20 @@ describe("prompt templates", () => {
       expect(loadTemplate(id).version, id).toBe("2");
     }
     // Version 3 reads the SymPy mathCheck.
-    expect(loadTemplate("simulation.grade").version).toBe("3");
+    expect(loadTemplate("simulation.grade").version).toBe("4");
     expect(loadTemplate("plan.topics").version).toBe("3");
     // Diagnostic passages now name their topic, so citations can match the question's topic. Version 5 asks the
     // model to vary the correct option's position and not to refer to options by letter.
-    expect(loadTemplate("plan.diagnostic").version).toBe("5");
+    expect(loadTemplate("plan.diagnostic").version).toBe("6");
     // Version 2 reads the SymPy mathCheck; solve checks now require every real root.
-    expect(loadTemplate("quiz.open-grade").version).toBe("2");
+    expect(loadTemplate("quiz.open-grade").version).toBe("3");
+    // Questions, options and feedback write math as LaTeX in `$`, with backslashes doubled inside JSON (diagnostic 6,
+    // quiz-5, simulation questions 3, open-answer and simulation grading 3 and 4), so no formula reaches the student as plain text.
+    expect(loadTemplate("simulation.questions").version).toBe("3");
+    for (const id of ["plan.diagnostic", "quiz.batch", "simulation.questions", "quiz.open-grade", "simulation.grade"] as const) {
+      expect(loadTemplate(id).body, id).toContain("as LaTeX between $...$");
+      expect(loadTemplate(id).body, id).toContain("write every LaTeX backslash twice");
+    }
     expect(loadTemplate("chat.checks").version).toBe("2");
     expect(loadTemplate("exercise.generate").version).toBe("exercise-2");
   });

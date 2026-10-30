@@ -58,6 +58,10 @@ const quizRedo = async () => {
   const { QuizPage } = await import("../features/study/QuizPage");
   return { Component: () => <QuizPage redo /> };
 };
+const reviewQuestions = async () => {
+  const { QuizPage } = await import("../features/study/QuizPage");
+  return { Component: () => <QuizPage review /> };
+};
 const cards = page(() => import("../features/study/CardsPage"), "CardsPage");
 const simulation = page(() => import("../features/study/SimulationPage"), "SimulationPage");
 const review = page(() => import("../features/study/ReviewPage"), "ReviewPage");
@@ -98,6 +102,7 @@ export const router = createHashRouter([
   { path: "/plans/:planId/cards/:topicId", lazy: cards },
   { path: "/plans/:planId/review", lazy: review },
   { path: "/plans/:planId/review/cards", lazy: cards },
+  { path: "/plans/:planId/review/questions", lazy: reviewQuestions },
   { path: "/cards/due", lazy: cards },
   { path: "/plans/:planId/simulation", lazy: simulation },
   { path: "/plans/:planId/exam/:attemptId", lazy: simulation },

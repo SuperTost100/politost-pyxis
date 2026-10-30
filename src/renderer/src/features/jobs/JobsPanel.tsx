@@ -12,6 +12,8 @@ import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import {
   finishedLabelKey,
+  jobContext,
+  runningLabelKey,
   type JobGroups,
   type Problem,
   type ProblemKind,
@@ -30,12 +32,28 @@ const PROBLEM_ICONS = {
   retry: CircleAlert,
 } satisfies Record<ProblemKind, unknown>;
 
+/**
+ * What a running job does, naming its topic for study work ("Writing the lesson on Vectors"); other kinds say the step
+ * they are at.
+ */
+function useJobDoing() {
+  const { t } = useTranslation();
+  return (job: JobView) => {
+    const key = runningLabelKey(job.kind);
+    if (key) return t(key, { context: jobContext(job), topic: job.topic });
+    return job.stepLabel ? t(job.stepLabel) : t(`jobs.state.${job.state}`);
+  };
+}
+
+/** Where a job belongs, under what it does: the file or exam it works on, and the exam of study work. */
+function jobWhere(job: JobView): string {
+  return [job.title, job.exam].filter(Boolean).join(" · ");
+}
+
 /** What the student calls a job: the file or exam it works on, else what it does. */
 function useJobName() {
-  const { t } = useTranslation();
-  return (job: JobView) =>
-    job.title ||
-    (job.stepLabel ? t(job.stepLabel) : t(`jobs.state.${job.state}`));
+  const doing = useJobDoing();
+  return (job: JobView) => job.title || doing(job);
 }
 
 function ProblemCard({
@@ -184,7 +202,8 @@ function ProblemCard({
 function RunningRow({ job, act }: { job: JobView; act: Act }) {
   const { t } = useTranslation();
   const nameOf = useJobName();
-  const what = job.stepLabel ? t(job.stepLabel) : t(`jobs.state.${job.state}`);
+  const what = useJobDoing()(job);
+  const where = jobWhere(job);
   return (
     <li className="px-jobs-row">
       <Icon
@@ -196,29 +215,40 @@ function RunningRow({ job, act }: { job: JobView; act: Act }) {
       />
       <div className="px-jobs-body">
         <p className="px-jobs-what">{what}</p>
-        {job.title ? <p className="px-jobs-sub">{job.title}</p> : null}
+        {where || job.state === "queued" ? (
+          <p className="px-jobs-sub">
+            {[job.state === "queued" ? t("jobs.state.queued") : "", where].filter(Boolean).join(" · ")}
+          </p>
+        ) : null}
         <Progress
           percent={Math.round(job.progress * 100)}
           showInfo={false}
-          aria-label={job.title ? `${job.title}: ${what}` : what}
+          aria-label={where ? `${what}, ${where}` : what}
           size="small"
           strokeColor="var(--primary)"
         />
       </div>
-      <IconButton
-        icon="x"
-        size="sm"
-        variant="ghost"
-        label={t("jobs.actionOn", { action: t("jobs.cancel"), name: nameOf(job) })}
-        onClick={() => act("jobs.cancel", [job])}
-      />
+      {/* Work a page does itself stops on that page. */}
+      {job.inPage ? null : (
+        <IconButton
+          icon="x"
+          size="sm"
+          variant="ghost"
+          label={t("jobs.actionOn", { action: t("jobs.cancel"), name: nameOf(job) })}
+          onClick={() => act("jobs.cancel", [job])}
+        />
+      )}
     </li>
   );
 }
 
 function FinishedRow({ job, act }: { job: JobView; act: Act }) {
   const { t, i18n } = useTranslation();
-  const what = t(finishedLabelKey(job.kind) ?? "jobs.state.succeeded");
+  const what = t(finishedLabelKey(job.kind) ?? "jobs.state.succeeded", {
+    context: jobContext(job),
+    topic: job.topic,
+  });
+  const where = jobWhere(job);
   const at = new Date(job.updatedAt);
   const time = new Intl.DateTimeFormat(i18n.language, {
     hour: "2-digit",
@@ -230,7 +260,7 @@ function FinishedRow({ job, act }: { job: JobView; act: Act }) {
       <div className="px-jobs-body">
         <p className="px-jobs-what">{what}</p>
         <p className="px-jobs-sub">
-          {job.title ? `${job.title} · ` : ""}
+          {where ? `${where} · ` : ""}
           <time dateTime={at.toISOString()}>{time}</time>
         </p>
         {job.fallback ? (
@@ -251,7 +281,7 @@ function FinishedRow({ job, act }: { job: JobView; act: Act }) {
         variant="ghost"
         label={t("jobs.actionOn", {
           action: t("jobs.dismiss"),
-          name: job.title ? `${what}, ${job.title}` : what,
+          name: where ? `${what}, ${where}` : what,
         })}
         onClick={() => act("jobs.dismiss", [job])}
       />

@@ -1,9 +1,22 @@
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+/** How many times the runner has waited for a free slot; the wait itself is unchanged. */
+const slotWaits = vi.hoisted(() => ({ count: 0 }));
+vi.mock("node:timers/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:timers/promises")>();
+  return {
+    ...actual,
+    setTimeout: ((...args: Parameters<typeof actual.setTimeout>) => {
+      slotWaits.count += 1;
+      return actual.setTimeout(...args);
+    }) as typeof actual.setTimeout,
+  };
+});
 import { uuidv7 } from "../../shared/ids";
 import { IpcError, type JobView } from "../../shared/ipc";
 import { openDatabase } from "../db/connection";
-import { createRunner, type JobSpec } from "./runner";
+import { createRunner, trackedJob, type JobSpec } from "./runner";
 import { tempDir } from "../test-temp";
 
 const opened: Array<{ close: () => void }> = [];
@@ -57,6 +70,36 @@ describe("job runner", () => {
     runner.cancel(jobId);
     expect(stateOf(database, jobId)).toBe("cancelled");
     expect(seen).toEqual([{ sourceId: "s" }]);
+  });
+
+  it("starts interactive work next to busy background slots, limited among interactive jobs only", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 1, demo: 1 });
+    const release: Array<() => void> = [];
+    const held: JobSpec["steps"] = [
+      { name: "call", label: "call", run: () => new Promise<void>((resolve) => release.push(resolve)) },
+    ];
+    runner.register("background", { jobClass: "model-cli", steps: held });
+    runner.register("check", { jobClass: "model-cli", interactive: true, steps: held });
+    const busy = runner.start("background");
+    const waiting = runner.start("background");
+    await until(database, busy, ["running"]);
+    const first = runner.start("check");
+    const second = runner.start("check");
+    // The check runs beside the background call; a second check waits for the first, not for the background.
+    await until(database, first, ["running"]);
+    expect(stateOf(database, second)).toBe("queued");
+    expect(stateOf(database, waiting)).toBe("queued");
+    release.shift()!();
+    // The background call ended, but the running check still takes the class's one slot from new background work.
+    await until(database, busy, ["succeeded"]);
+    expect(stateOf(database, waiting)).toBe("queued");
+    release.shift()!();
+    await until(database, second, ["running"]);
+    release.shift()!();
+    await until(database, waiting, ["running"]);
+    release.shift()!();
+    await until(database, waiting, ["succeeded"]);
   });
 
   it("treats dismissing an interrupted job as giving it up, and a finished one as not", async () => {
@@ -600,6 +643,119 @@ describe("job runner", () => {
     ]);
   });
 
+  it("lets a step that ends after its database closed finish quietly, without writing or publishing", async () => {
+    const database = db();
+    const seen: string[] = [];
+    const runner = createRunner(database, (job) => seen.push(job.state));
+    let release!: () => void;
+    runner.register("slow", {
+      jobClass: "local",
+      steps: [{ name: "run", label: "run", run: () => new Promise<void>((resolve) => (release = resolve)) }],
+    });
+    runner.register("failing", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "run",
+          label: "run",
+          run: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            throw new Error("boom");
+          },
+        },
+      ],
+    });
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    try {
+      const slow = runner.start("slow");
+      runner.start("failing");
+      await until(database, slow, ["running"]);
+      const published = seen.length;
+      // Core shuts down, or a test ends, while both steps are still going.
+      database.close();
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(rejections).toEqual([]);
+      expect(seen).toHaveLength(published);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
+
+  it("starts nothing on a closed database: neither a job queued just before nor one waiting for a slot", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 1, demo: 1 });
+    let release!: () => void;
+    let waiterRan = false;
+    runner.register("holder", {
+      jobClass: "local",
+      steps: [{ name: "run", label: "run", run: () => new Promise<void>((resolve) => (release = resolve)) }],
+    });
+    // Starts on a free slot, then wants the local slot the holder keeps.
+    runner.register("waiter", {
+      jobClass: "model-cli",
+      steps: [
+        { name: "model", label: "model", run: async () => null },
+        {
+          name: "local",
+          label: "local",
+          jobClass: "local",
+          run: async () => {
+            waiterRan = true;
+            return null;
+          },
+        },
+      ],
+    });
+    runner.register("late", { jobClass: "model-api", steps: [{ name: "run", label: "run", run: async () => null }] });
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    try {
+      const holder = runner.start("holder");
+      const waiter = runner.start("waiter");
+      await until(database, holder, ["running"]);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(stateOf(database, waiter)).toBe("running");
+      // A job whose run is scheduled when the database closes: the close lands between the kick and the run.
+      runner.start("late");
+      await new Promise<void>((resolve) =>
+        queueMicrotask(() => {
+          database.close();
+          resolve();
+        }),
+      );
+      const polled = slotWaits.count;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(rejections).toEqual([]);
+      // The holder has not settled; the waiter stopped polling for its slot at the close (at most the wait under way ends).
+      expect(slotWaits.count - polled).toBeLessThanOrEqual(1);
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(waiterRan).toBe(false);
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
+
+  it("keeps a finished mistake analysis when it is cleared from the list, since its row stops a second analysis", () => {
+    const database = db();
+    const runner = createRunner(database, () => {});
+    const add = database.prepare(
+      `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES (?, 'gap-insight', '{}', ?, 1, ?, ?)`,
+    );
+    const now = Date.now();
+    add.run("done", "succeeded", now, now);
+    add.run("broken", "failed", now, now);
+    runner.dismiss("done");
+    runner.dismiss("broken");
+    expect(runner.finished().map((job) => job.id)).toEqual([]);
+    expect(database.prepare("SELECT id, dismissed FROM jobs ORDER BY id").all()).toEqual([{ id: "done", dismissed: 1 }]);
+  });
+
   it("drops a dismissed job from listeners", () => {
     const database = db();
     const seen: string[] = [];
@@ -657,6 +813,66 @@ describe("job runner", () => {
     expect(listed).toHaveLength(120);
     for (const job of listed) runner.dismiss(job.id);
     expect(runner.finished(now)).toEqual([]);
+  });
+
+  it("says which exam and topic a job is about, running and finished", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {});
+    runner.register("quiz", {
+      jobClass: "local",
+      about: (params) => ({ exam: "Fisica 1", topic: (params as { topic: string }).topic }),
+      steps: [{ name: "run", label: "quiz.generating", run: async () => null }],
+    });
+    runner.register("grade", {
+      jobClass: "local",
+      about: () => ({ exam: "Fisica 1", activity: "diagnostic" }),
+      ref: () => "a1/q2",
+      steps: [{ name: "run", label: "jobs.quizGrading", run: async () => null }],
+    });
+    const quiz = runner.start("quiz", { topic: "Misure e vettori" });
+    const grade = runner.start("grade", {});
+    expect(runner.list().find((job) => job.id === quiz)).toMatchObject({ exam: "Fisica 1", topic: "Misure e vettori" });
+    await until(database, quiz, ["succeeded"]);
+    await until(database, grade, ["succeeded"]);
+    const finished = runner.finished();
+    expect(finished.find((job) => job.id === quiz)).toMatchObject({ exam: "Fisica 1", topic: "Misure e vettori" });
+    expect(finished.find((job) => job.id === grade)).toMatchObject({ activity: "diagnostic", ref: "a1/q2" });
+    expect(finished.find((job) => job.id === quiz)).not.toHaveProperty("ref");
+    expect(finished.find((job) => job.id === grade)).not.toHaveProperty("topic");
+  });
+
+  it("lists a page's own model work while it runs, keeps it once it succeeded, and drops it when it did not", () => {
+    const database = db();
+    const seen: JobView[] = [];
+    const runner = createRunner(database, (job) => seen.push(job));
+    const lesson = runner.track("lesson-write", { exam: "Fisica 1", topic: "Misure e vettori" }, "jobs.lessonWriting");
+    const running = runner.list();
+    expect(running).toHaveLength(1);
+    expect(running[0]).toMatchObject({
+      kind: "lesson-write",
+      state: "running",
+      stepLabel: "jobs.lessonWriting",
+      topic: "Misure e vettori",
+      exam: "Fisica 1",
+      inPage: true,
+    });
+    lesson.progress(0.5);
+    expect(runner.list()[0]?.progress).toBe(0.5);
+    lesson.finish(true);
+    lesson.finish(false);
+    expect(runner.list()).toEqual([]);
+    expect(seen.at(-1)).toMatchObject({ state: "succeeded", topic: "Misure e vettori" });
+    // After a restart the finished entry still says what it was about.
+    const again = createRunner(database, () => {});
+    again.register("lesson-write", trackedJob);
+    expect(again.finished()).toMatchObject([{ kind: "lesson-write", topic: "Misure e vettori", exam: "Fisica 1" }]);
+    // Work that fails or stops leaves nothing behind.
+    const cards = runner.track("cards-propose", { topic: "Vettori" }, "jobs.cards");
+    expect(runner.list()).toHaveLength(1);
+    cards.finish(false);
+    expect(runner.list()).toEqual([]);
+    expect(seen.at(-1)).toMatchObject({ kind: "cards-propose", state: "cancelled" });
+    expect(runner.finished().map((job) => job.kind)).toEqual(["lesson-write"]);
   });
 
   it("notes which engine answered on the job, and forgets it when the job is retried", () => {

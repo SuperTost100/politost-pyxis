@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
+import { cardOffer } from "./reviewOffer";
 import { usePlan, useRecommend } from "../../lib/queries";
 
 const COUNTS = [5, 10, 20];
@@ -72,7 +73,7 @@ export function ReviewPage() {
     if (session.next === "cards") navigate(`/plans/${planId}/review/cards`);
     else if (session.next === "questions")
       navigate(
-        `/plans/${planId}/diagnostic?attempt=${encodeURIComponent(session.attemptId)}`,
+        `/plans/${planId}/review/questions?attempt=${encodeURIComponent(session.attemptId)}`,
       );
   }
   const active = saved.data ?? null;
@@ -80,7 +81,14 @@ export function ReviewPage() {
   const empty =
     start.isSuccess && start.data.next === "done" && !start.data.drills.length;
   // What a new review draws on: the flashcards due and the topics with open gaps. A review in progress counts its own.
-  const due = guide.data?.topics.reduce((sum, topic) => sum + topic.dueCards, 0) ?? 0;
+  // The plan's due cards, as the review picks them: also cards an imported plan keeps without a topic.
+  const dueCards = useQuery({
+    queryKey: ["review-due", planId],
+    queryFn: () => invoke("study.cards", { planId }),
+    enabled: Boolean(planId),
+  });
+  const offer = cardOffer(dueCards.isSuccess ? dueCards.data.length : undefined);
+  const due = dueCards.data?.length ?? 0;
   const gapTopics = guide.data?.topics.filter((topic) => topic.gaps > 0).length ?? 0;
   const questions = active ? active.progress.questionsTotal + active.progress.questionsPending : 0;
   const facts: ActivityFact[] = active
@@ -108,10 +116,11 @@ export function ReviewPage() {
       <ActivityIntro
         eyebrow={plan.data?.title ?? t("cards.reviewTitle")}
         title={t("cards.reviewTitle")}
-        sentence={t("cards.reviewIntro")}
+        sentence={t(!active && offer.noneDue ? "cards.reviewIntroNoCards" : "cards.reviewIntro")}
         facts={facts}
         options={
-          active ? undefined : (
+          // How many flashcards to take is a choice unless the plan is known to have none due.
+          active || !offer.choice ? undefined : (
             <ActivityChoice
               label={t("cards.reviewCount")}
               value={count}

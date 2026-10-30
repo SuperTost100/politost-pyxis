@@ -606,7 +606,7 @@ it("carries lessons, questions, maps and quoted citations into a fresh workspace
     const t = copy.topics[0]!;
     expect(p.text).toBe(file.passages![0]!.text);
     expect(p.textSha).toBe(file.passages![0]!.textSha);
-    expect(p.locator).toEqual({ chapter: 1, paragraph: "p1" });
+    expect(p.locator).toEqual({ chapter: 1, paragraph: "p1", title: "Energia" });
     expect(copy.cards[0]?.passageId).toBe(p.id);
     expect(copy.cards[0]?.grounding).toBe("sources");
     expect(t.passageIds).toEqual([p.id]);

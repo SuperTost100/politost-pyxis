@@ -1,5 +1,5 @@
 import { strToU8, zipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan, readPlan } from "../plans/create";
 import { planMastery, planSeries } from "../plans/progress";
@@ -10,6 +10,7 @@ import { rewriteLessonSection, writeLesson } from "./openLesson";
 import { cacheKey, saveLesson } from "./lesson";
 import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
 import { studyHandlers } from "./handlers";
+import { createRunner } from "../jobs/runner";
 import { planHandlers } from "../plans/handlers";
 import { exportMarkdown } from "../share/markdown";
 import { appendEvent } from "../events";
@@ -108,6 +109,54 @@ const completed = (db: ReturnType<typeof openDatabase>) =>
       .prepare("SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'lesson_completed'")
       .get() as { n: number }
   ).n;
+
+describe("lessons in the jobs list", () => {
+  it("lists a lesson while a model writes it and once it is written, and nothing when a saved one opens", async () => {
+    const { db, planId, topicId } = setup();
+    const runner = createRunner(db, () => {});
+    let during: ReturnType<typeof runner.list> = [];
+    const handlers = studyHandlers(db, runner, async () => {
+      during = runner.list();
+      return { text: smartLesson, provider: "claude", model: "m", inputTokens: 1 };
+    });
+    await handlers.lesson({ planId, topicId }, { onDelta: () => {} });
+    expect(during).toMatchObject([
+      { kind: "lesson-write", state: "running", stepLabel: "jobs.lessonWriting", topic: "Moti", exam: "Fisica 1" },
+    ]);
+    expect(runner.list()).toEqual([]);
+    expect(runner.finished()).toMatchObject([{ kind: "lesson-write", topic: "Moti", exam: "Fisica 1" }]);
+    // The saved lesson opens at once: no second entry.
+    await handlers.lesson({ planId, topicId });
+    expect(runner.finished()).toHaveLength(1);
+    db.close();
+  });
+
+  it("gives the student the lesson even when the jobs list cannot record it, and keeps an engine's own error", async () => {
+    const { db, planId, topicId } = setup();
+    const runner = createRunner(db, () => {});
+    // The jobs list entry fails to save, as it would with a full disk.
+    runner.track = () => ({
+      progress: () => {},
+      finish: () => {
+        throw new Error("disk-full");
+      },
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const handlers = studyHandlers(db, runner, async () => ({ text: smartLesson, provider: "claude", model: "m", inputTokens: 1 }));
+      await expect(handlers.lesson({ planId, topicId })).resolves.toMatchObject({ markdown: expect.stringContaining("Velocità") });
+      expect(logged).toHaveBeenCalledWith("pyxis: jobs list entry not saved", expect.objectContaining({ message: "disk-full" }));
+      // A section rewrite whose engine fails reports the engine's error, not the jobs list's.
+      const failing = studyHandlers(db, runner, async () => {
+        throw new Error("engine-down");
+      });
+      await expect(failing.lessonSection({ planId, topicId, section: 0 })).rejects.toThrow(/engine-down/);
+    } finally {
+      logged.mockRestore();
+      db.close();
+    }
+  });
+});
 
 describe("smart lessons", () => {
   it("never completes a lesson on open; the closing recap does, and answers stay", async () => {

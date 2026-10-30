@@ -4,6 +4,7 @@ import { generate, type GenerateInput } from "../engine/generate";
 import { planLanguage, systemPrompt } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { aboutPlan } from "./jobAbout";
 import { cosine } from "../plans/rebuild";
 import { embedWithModel } from "../sources/retrieve";
 import { questionFlagged } from "./attempt";
@@ -320,6 +321,7 @@ export function registerGapInsightJobs(
 ) {
   runner.register("gap-insight", {
     jobClass: "model-cli",
+    about: (raw) => aboutPlan(db, (raw as InsightParams).planId, (raw as InsightParams).topicId),
     retryParams: (raw) => ({ ...(raw as InsightParams), selection: selectionFor(db, "grading") }),
     steps: [
       {
