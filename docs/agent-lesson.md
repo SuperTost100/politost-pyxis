@@ -16,19 +16,19 @@ Pyxis calls every model through cli-funnel 0.6.1 with access `none`. The tools m
 
 These come from the capabilities cli-funnel 0.6.1 reports in code and from its source (`node_modules/cli-funnel/dist`), checked on devbox on 2026-10-30.
 
-| | Claude Code | Codex | Cursor Agent | Antigravity | API providers, Ollama |
-| --- | --- | --- | --- | --- | --- |
-| Text only (`none`) | yes | yes | yes | yes | always |
-| HTTP MCP server, lowest access | `supervised` | `supervised` | `auto` | `full` | no MCP |
-| What that access also gives the model | read tools, and any approval Pyxis forgets to deny | commands on Codex's known-safe list, such as `cat`, run without asking | shell commands | everything | nothing |
-| Native function calling (`tools`) | refused | refused | refused | refused | yes |
-| Keeps the conversation between turns | live process | live process | new process each turn | new process each turn | history in Pyxis |
+|                                       | Claude Code                                        | Codex                                                                  | Cursor Agent          | Antigravity           | API providers, Ollama |
+| ------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------- | --------------------- | --------------------- | --------------------- |
+| Text only (`none`)                    | yes                                                | yes                                                                    | yes                   | yes                   | always                |
+| HTTP MCP server, lowest access        | `supervised`                                       | `supervised`                                                           | `auto`                | `full`                | no MCP                |
+| What that access also gives the model | read tools, and any approval Pyxis forgets to deny | commands on Codex's known-safe list, such as `cat`, run without asking | shell commands        | everything            | nothing               |
+| Native function calling (`tools`)     | refused                                            | refused                                                                | refused               | refused               | yes                   |
+| Keeps the conversation between turns  | live process                                       | live process                                                           | new process each turn | new process each turn | history in Pyxis      |
 
 cli-funnel refuses an HTTP MCP server at `none` for every CLI ("An HTTP MCP server" needs `supervised` or higher), and a stdio server needs `full`. Leaving `none` also loads the user's own CLI settings again: the cli-funnel docs measure about 21,800 input tokens per Claude Code call before stripping them and about 400 after.
 
 ### The three options
 
-1. **Text protocol (chosen).** The model replies with a ```` ```pyxis-tool ```` block holding JSON tool calls; core runs them and sends the results back in the same conversation. It works at `none` on all eight providers, and core runs every tool, so the model never touches the machine. The cost is one model call per round of reading. Claude Code and Codex keep the session, so a round sends only the results; Cursor Agent and Antigravity get the whole transcript again each round.
+1. **Text protocol (chosen).** The model replies with a ` ```pyxis-tool ` block holding JSON tool calls; core runs them and sends the results back in the same conversation. It works at `none` on all eight providers, and core runs every tool, so the model never touches the machine. The cost is one model call per round of reading. Claude Code and Codex keep the session, so a round sends only the results; Cursor Agent and Antigravity get the whole transcript again each round.
 2. **MCP server in core.** Portable in principle, but no CLI accepts an MCP server at `none`. Each level that accepts one also lets the model read files or run commands, which breaks the rule above, and Antigravity needs `full`. It would also put a local HTTP server with a token inside core.
 3. **Native tool calling.** Clean and fast, but only the API providers and Ollama take `tools`; the four CLIs, which most students use, refuse them. It is worth adding later as a second transport for those providers, behind the same tool executor.
 
@@ -58,24 +58,24 @@ The text protocol is the only option that keeps Pyxis independent of the provide
 
 ### Results
 
-| Topic | Approach | First section | Total | Model calls | Tool calls | Input tokens | Output tokens | `##` sections | Lesson size | Citations |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1. Misure e vettori (21 passages, 27k chars) | pipeline | 254 s | 486 s | 2 | none | 110k | 29k | 5 | 24.1k chars | none |
-| | agent | 266 s | 321 s | 3 | 4 | 86k | 20k | 5 | 17.6k chars | 41 to 21 passages |
-| 4. Lavoro ed energia (41 passages, 51k chars) | pipeline | 186 s | 713 s | 3 | none | 180k | 43k | 5 | 29.3k chars | none |
-| | agent | 337 s | 393 s | 4 | 7 | 138k | 25k | 6 | 19.1k chars | 56 to 35 passages |
-| 5. Momento angolare (33 passages, 42k chars) | pipeline | 275 s | 656 s | 2 | none | 118k | 38k | 6 | 27.5k chars | none |
-| | agent | 388 s | 451 s | 3 | 8 | 90k | 22k | 5 | 19.5k chars | 48 to 28 passages |
+| Topic                                         | Approach | First section | Total | Model calls | Tool calls | Input tokens | Output tokens | `##` sections | Lesson size | Citations         |
+| --------------------------------------------- | -------- | ------------- | ----- | ----------- | ---------- | ------------ | ------------- | ------------- | ----------- | ----------------- |
+| 1. Misure e vettori (21 passages, 27k chars)  | pipeline | 254 s         | 486 s | 2           | none       | 110k         | 29k           | 5             | 24.1k chars | none              |
+|                                               | agent    | 266 s         | 321 s | 3           | 4          | 86k          | 20k           | 5             | 17.6k chars | 41 to 21 passages |
+| 4. Lavoro ed energia (41 passages, 51k chars) | pipeline | 186 s         | 713 s | 3           | none       | 180k         | 43k           | 5             | 29.3k chars | none              |
+|                                               | agent    | 337 s         | 393 s | 4           | 7          | 138k         | 25k           | 6             | 19.1k chars | 56 to 35 passages |
+| 5. Momento angolare (33 passages, 42k chars)  | pipeline | 275 s         | 656 s | 2           | none       | 118k         | 38k           | 6             | 27.5k chars | none              |
+|                                               | agent    | 388 s         | 451 s | 3           | 8          | 90k          | 22k           | 5             | 19.5k chars | 48 to 28 passages |
 
 ### Citation accuracy
 
 I read every cited sentence or formula next to the passage it cites.
 
 | Topic | Citations | Passage supports it | Partly | Wrong |
-| --- | --- | --- | --- | --- |
-| 1 | 41 | 38 | 3 | 0 |
-| 4 | 56 | 55 | 1 | 0 |
-| 5 | 48 | 48 | 0 | 0 |
+| ----- | --------- | ------------------- | ------ | ----- |
+| 1     | 41        | 38                  | 3      | 0     |
+| 4     | 56        | 55                  | 1      | 0     |
+| 5     | 48        | 48                  | 0      | 0     |
 
 The partial ones cite the right section for a paragraph whose last sentence comes from the next passage, for example $|\dot{\hat\lambda}| = |\dot\theta|$ cited to the Poisson-formula passage when it is in the one before. No citation named a passage the model had not read, so `citeLesson` dropped nothing. In chapter 5, 10 citations sit at the start of the paragraph after a display formula, so on screen the chip follows the formula it supports but reads as if it opened the next sentence.
 
