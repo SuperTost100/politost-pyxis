@@ -309,6 +309,7 @@
     "search": "Cerca nei brani",
     "searchGo": "Cerca",
     "viewerFailed": "Non è stato possibile caricare questo brano.",
+    "viewerBack": "Dettagli della fonte",
     "searchNone": "Nessun brano delle tue fonti corrisponde a “{{query}}”.",
     "loadFailed": "Non è stato possibile caricare le fonti.",
     "encrypted": "Questo smartbook è protetto. Pyxis apre solo i pacchetti in chiaro.",
@@ -367,7 +368,6 @@
       }
     },
     "version": "versione {{version}}",
-    "spec": "spec {{spec}}",
     "specUnknown": "Questa versione dello smartbook non è riconosciuta. Il file è stato aperto lo stesso.",
     "qualityTitle": "Materiale che funziona",
     "qualityBody": "Compiti degli anni passati con le soluzioni, slide, appunti e formulari.",
@@ -547,7 +547,6 @@
       "readSoFarSub_one": "pagina finora",
       "readSoFarSub_other": "pagine finora",
       "sections": "Sezioni",
-      "chapters": "Capitoli",
       "allCited": "tutte citate",
       "neverCited_one": "{{count}} mai citata",
       "neverCited_other": "{{count}} mai citate",
@@ -801,7 +800,7 @@
   "mistakes": {
     "title": "Quaderno degli errori",
     "emptyTitle": "Nessun errore da rivedere",
-    "emptyBody": "Qui si raccolgono le domande che sbagli nei quiz, nelle simulazioni, nella diagnosi e nelle verifiche rapide delle lezioni. Ognuna esce quando rispondi giusto.",
+    "emptyBody": "Qui si raccolgono le domande che sbagli nei quiz, nelle simulazioni, nel test diagnostico e nelle verifiche rapide delle lezioni. Ognuna esce quando rispondi giusto.",
     "loadFailed": "Non sono riuscito a caricare il quaderno.",
     "retry": "Riprova",
     "count_one": "{{count}} domanda da rifare",
@@ -814,7 +813,7 @@
     "origin": {
       "redo": "Rifatta",
       "quiz": "Quiz",
-      "diagnostic": "Diagnosi",
+      "diagnostic": "Test diagnostico",
       "review": "Ripasso",
       "simulation": "Simulazione",
       "check": "Verifica rapida"
@@ -1171,7 +1170,7 @@
     "false": "Falso",
     "types": "Tipi di domanda",
     "tfOnly": "Solo vero o falso",
-    "diagnostic": "Diagnosi",
+    "diagnostic": "Test diagnostico",
     "diagnosticTitle": "Test diagnostico",
     "preparing": "Preparo le domande…",
     "preparingFailed": "Non sono riuscito a preparare le domande",
@@ -1264,7 +1263,7 @@
     "options": "Personalizza",
     "continueAttempt": "Riprendi",
     "resultLabel": "Risultato",
-    "diagnosticDone": "Diagnosi completata",
+    "diagnosticDone": "Test diagnostico completato",
     "outOf": "su {{total}}",
     "verdictGreat": "Ottimo lavoro.",
     "verdictGood": "Buona base.",
@@ -1325,7 +1324,7 @@
     "rebuild": "Ricostruisci gli argomenti",
     "delete": "Elimina l'esame",
     "intro": "Introduzione",
-    "diagnostic": "Diagnosi",
+    "diagnostic": "Test diagnostico",
     "learn": "Studio",
     "practice": "Esercizi",
     "cards": "Flashcard",
@@ -1416,8 +1415,11 @@
         "cards": "Flashcard",
         "gaps": "Ripasso mirato"
       },
+      "hoursHint": "Imposta le ore a settimana per vedere quando studierai ogni argomento.",
+      "hoursAction": "Imposta le ore",
       "stepNow": "{{step}}, adesso",
-      "stepScore": "{{step}}, {{correct}} su {{total}}",
+      "stepScore_one": "{{step}}, {{points}} punto su {{total}}",
+      "stepScore_other": "{{step}}, {{points}} punti su {{total}}",
       "state": {
         "done": "fatto",
         "missed": "sotto l'obiettivo",
@@ -1548,7 +1550,7 @@
     "stepTopicsFailed": "Non sono riuscito a creare gli argomenti",
     "stepPathFailed": "Non sono riuscito a costruire il percorso",
     "stepIntroFailed": "Non sono riuscito a scrivere l’introduzione",
-    "stepDiagnosticFailed": "Non sono riuscito a preparare il test iniziale",
+    "stepDiagnosticFailed": "Non sono riuscito a preparare il test diagnostico",
     "stepTopics": "Creo gli argomenti",
     "stepPath": "Costruisco il percorso",
     "failed": "Non riesco a preparare l'esame.",
@@ -1599,8 +1601,8 @@
     "practice": "Esercitarsi",
     "decide": "Decidi tu",
     "stepIntro": "Scrivo l’introduzione",
-    "stepIntroDiagnostic": "Scrivo l’introduzione e il test iniziale",
-    "stepDiagnostic": "Preparo il test iniziale",
+    "stepIntroDiagnostic": "Scrivo l’introduzione e il test diagnostico",
+    "stepDiagnostic": "Preparo il test diagnostico",
     "stepReady": "Esame pronto",
     "sourceNotReady": "Una fonte richiede attenzione. Completa l’importazione o l’OCR, poi riprova a costruire l’esame.",
     "cancelled": "Creazione annullata. Riprova per riprendere dal passaggio salvato.",
@@ -1621,6 +1623,7 @@
     "examSummaryMany_one": "{{count}} prove, la prima il {{date}}",
     "examSummaryMany_other": "{{count}} prove, la prima il {{date}}",
     "examRequired": "Scegli la data, oppure Non ho ancora la data, per continuare.",
+    "dropHint": "Trascina qui i file, oppure scegli da dove aggiungerli.",
     "sourcesInPlan_one": "{{count}} fonte nell'esame",
     "sourcesInPlan_other": "{{count}} fonti nell'esame",
     "sourcesListLabel": "Fonti dell'esame",
@@ -1911,7 +1914,8 @@
     "crashWhy": "Pyxis funziona sul tuo computer, quindi chi lo sviluppa non vede gli errori che capitano a te: questi rapporti sono l'unico modo per scoprirli e correggerli. Non rallentano Pyxis, e un rapporto parte solo dopo un errore.",
     "crashContents": "Un rapporto contiene la versione di Pyxis e del sistema, il messaggio di errore e il punto del programma in cui è nato.",
     "crashNever": "Pyxis non ci aggiunge i tuoi file, le chat né le chiavi API, e dal messaggio di errore toglie i percorsi delle cartelle e il testo tra virgolette, lasciando solo i nomi tecnici come readFile. Se però si chiude di colpo, il rapporto include una parte della sua memoria, che può contenere frammenti di ciò che avevi sullo schermo.",
-    "crashKept": "I rapporti vengono cancellati dopo 90 giorni, e puoi togliere il consenso quando vuoi da Impostazioni, alla voce Privacy.",
+    "crashKept": "I rapporti vengono cancellati dopo 90 giorni, e puoi togliere il consenso quando vuoi.",
+    "crashKeptSetup": "I rapporti vengono cancellati dopo 90 giorni, e puoi togliere il consenso quando vuoi da Impostazioni, alla voce Privacy.",
     "flashcards": "Flashcard",
     "newPerDay": "Flashcard nuove al giorno",
     "newPerDayHint": "Per ogni esame. Le flashcard già iniziate tornano quando scadono, qualunque sia il limite. Con 0 non ne partono di nuove.",
@@ -2075,6 +2079,10 @@
     "trueFalse": "Vero / falso"
   },
   "components": {
+    "numberInput": {
+      "increase": "Aumenta",
+      "decrease": "Diminuisci"
+    },
     "citation": {
       "open": "Apri la fonte"
     },
@@ -2159,11 +2167,11 @@
       "disabled": "Disattivato"
     },
     "tags": {
-      "smartbook": "smartbook",
-      "ai": "generato da AI",
-      "general": "conoscenza generale",
-      "mastered": "padroneggiato",
-      "severe": "lacuna grave",
+      "smartbook": "Dal libro",
+      "ai": "Generato da AI",
+      "general": "Conoscenza generale",
+      "mastered": "Padroneggiato",
+      "severe": "Lacuna grave",
       "recommended": "Consigliato"
     },
     "chips": {
@@ -2221,7 +2229,7 @@
       "topics": "Creo gli argomenti",
       "link": "Collego i brani agli argomenti",
       "path": "Costruisco il percorso",
-      "lessons": "Preparo introduzione e verifica iniziale",
+      "lessons": "Preparo introduzione e test diagnostico",
       "metaRead": "3 fonti · 212 brani"
     }
   },
@@ -2690,6 +2698,9 @@
     "hoursHelp": "Le ore valgono per tutti i tuoi esami, e il piano della sessione le divide tra loro.",
     "hoursLabel": "Ore a settimana",
     "hoursUnit": "ore a settimana",
+    "hoursUse": "Usa {{hours}} h",
+    "hoursTooMany": "Con questa data e questo obiettivo servirebbero più di {{max}} ore a settimana. Sposta la data o abbassa l'obiettivo.",
+    "saved": "Modifiche salvate",
     "hoursThisWeek": "Questa settimana il piano della sessione dedica circa {{time}} a questo esame.",
     "openPlanner": "Apri il piano della sessione",
     "sourcesHeading": "Fonti",

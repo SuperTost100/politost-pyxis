@@ -3,10 +3,9 @@ import { formatGrade, formatGradeWhole, type GradeScale } from "../lib/grade";
 import "./MasteryBar.css";
 
 /**
- * A bar from 0 to 100 with an optional target mark. `value` and `target` are percentages of the bar. With `scale` they
- * are grades, and the text shows them on that scale ("22,5/30"); without it, as a percentage. `whole` rounds the value
- * down to a whole mark ("22/30"), as the exam path does, so a topic never looks at its goal before it is. The goal mark
- * keeps its decimals.
+ * A bar from 0 to 100 with an optional target mark. `value` and `target` are percentages of the bar. With `scale` the
+ * value is a mastery on that scale, always a whole number rounded down ("22/30") so a topic never looks at its goal
+ * before it is; without it, a percentage. The goal mark keeps its decimals.
  */
 export function MasteryBar({
   value,
@@ -15,7 +14,6 @@ export function MasteryBar({
   showValue = true,
   label,
   scale,
-  whole = false,
 }: {
   value: number;
   target?: number;
@@ -23,14 +21,13 @@ export function MasteryBar({
   showValue?: boolean;
   label: string;
   scale?: GradeScale;
-  whole?: boolean;
 }) {
   const { i18n } = useTranslation();
   const v = Math.round(Math.max(0, Math.min(100, value)));
   const text = (percent: number, exact = false) => {
     const fraction = Math.max(0, Math.min(100, percent)) / 100;
     if (!scale) return `${Math.round(fraction * 100)}%`;
-    return whole && !exact ? formatGradeWhole(fraction, scale) : formatGrade(fraction, scale, i18n.language);
+    return exact ? formatGrade(fraction, scale, i18n.language) : formatGradeWhole(fraction, scale);
   };
   return (
     <div

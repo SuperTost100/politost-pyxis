@@ -119,7 +119,7 @@ export function PlanProgress({
   }, [requestedDrill]);
   // Bars run from 0 to 100; the chart and every number are on the profile's scale.
   const target = summary.target * 100;
-  const chartTarget = grade.value(summary.target);
+  const chartTarget = grade.masteryPoint(summary.target);
   // A topic row opens to the evidence behind its number. One request covers every topic, so rows open without a wait
   // after the first; it reloads when a shown number changes, so the evidence always matches the bar.
   const [openTopics, setOpenTopics] = useState<ReadonlySet<string>>(new Set());
@@ -135,7 +135,7 @@ export function PlanProgress({
   });
   const chart = progress.chart.map((point) => ({
     ...point,
-    value: grade.value(point.mastery),
+    value: grade.masteryPoint(point.mastery),
   }));
   const tick = {
     fill: "var(--ink-muted)",
@@ -163,7 +163,7 @@ export function PlanProgress({
             compact
             label={t("progress.forecast")}
             value={summary.mastery * 100}
-            display={grade.number(summary.mastery)}
+            display={grade.masteryNumber(summary.mastery)}
             unit={`/${grade.scale}`}
             target={target}
             pills={[
@@ -215,8 +215,9 @@ export function PlanProgress({
                     labelFormatter={(at) =>
                       date(Number(at), { day: "numeric", month: "long" })
                     }
+                    // The point sits at its exact place; the text is the whole mastery, as everywhere else.
                     formatter={(value) => [
-                      `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(Number(value))}/${grade.scale}`,
+                      grade.mastery(Number(value) / grade.scale),
                       t("progress.preparation"),
                     ]}
                     contentStyle={tooltip}

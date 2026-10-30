@@ -41,6 +41,14 @@ export function gradeWhole(fraction: number, scale: GradeScale): number {
   return Math.floor(Math.max(0, Math.min(1, fraction)) * scale + 1e-9);
 }
 
+/**
+ * A fraction's exact position on the scale (22,8 out of 30), for chart coordinates. Nothing is rounded, so a point never
+ * lands under a goal it has passed; the numbers the student reads go through `gradeWhole` or `gradeValue`.
+ */
+export function scaledMastery(fraction: number, scale: GradeScale): number {
+  return Math.max(0, Math.min(1, fraction)) * scale;
+}
+
 /** A change between two fractions (a weekly gain, a decay) in the scale's points, to the nearest step. */
 export function gradeDelta(delta: number, scale: GradeScale): number {
   const steps = scale === 30 ? 10 : 1;

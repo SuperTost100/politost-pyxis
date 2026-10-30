@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { attachableSources, saveThenRefresh, sourcesUnreadable } from "./examSettingsData";
+import {
+  attachableSources,
+  hoursSuggestion,
+  keptHoursEdit,
+  saveThenRefresh,
+  sourcesUnreadable,
+} from "./examSettingsData";
+
+describe("suggested weekly hours", () => {
+  it("offers the planner's estimate only while none is saved and the exam's date and goal are as saved", () => {
+    expect(hoursSuggestion({ needed: 6.5, saved: null, planEdited: false })).toEqual({ kind: "hours", hours: 6.5 });
+    // The estimate was made for the saved date and goal, so it says nothing about edits still unsaved.
+    expect(hoursSuggestion({ needed: 6.5, saved: null, planEdited: true })).toBeNull();
+    expect(hoursSuggestion({ needed: 6.5, saved: 4, planEdited: false })).toBeNull();
+    expect(hoursSuggestion({ needed: null, saved: null, planEdited: false })).toBeNull();
+  });
+  it("never offers more than the 100 hours a week the planner saves", () => {
+    expect(hoursSuggestion({ needed: 100, saved: null, planEdited: false })).toEqual({ kind: "hours", hours: 100 });
+    expect(hoursSuggestion({ needed: 130.5, saved: null, planEdited: false })).toEqual({ kind: "tooMany" });
+  });
+  it("drops an accepted suggestion once the date or goal changes, and keeps typed hours", () => {
+    expect(keptHoursEdit({ value: 6, suggested: true }, false)).toEqual({ value: 6, suggested: true });
+    expect(keptHoursEdit({ value: 6, suggested: true }, true)).toBeNull();
+    expect(keptHoursEdit({ value: 6 }, true)).toEqual({ value: 6 });
+    expect(keptHoursEdit(null, true)).toBeNull();
+  });
+});
 
 describe("saving exam settings", () => {
   it("reads the plan again after a save that went through, even when a later step fails", async () => {

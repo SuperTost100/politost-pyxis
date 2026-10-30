@@ -2,16 +2,19 @@ import { Fragment, useId, useMemo, useRef, useState } from "react";
 import { Button, Dropdown, Input } from "antd";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Icon, type IconName } from "../../components/Icon";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MasteryBar } from "../../components/MasteryBar";
+import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { formatGradeWhole } from "../../lib/grade";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { searchMatcher } from "../../lib/search";
-import { topicRows, type StepChip, type TopicRow } from "./pathRows";
+import { plannerQuery } from "../../lib/queries";
+import { needsWeeklyHours, topicRows, type StepChip, type TopicRow } from "./pathRows";
 import { reopenPath, skipDiagnosticPath, stepPath } from "./reopen";
 import "./PlanPath.css";
 
@@ -205,7 +208,6 @@ export function NextStep({
                   value={topic.mastery * 100}
                   target={plan.target * 100}
                   scale={grade.scale}
-                  whole
                   label={t("plans.path.mastery", { topic: title(topicId) })}
                 />
               </div>
@@ -316,6 +318,8 @@ export function PlanPath({
 }) {
   const { t, i18n } = useTranslation();
   const grade = useGradeScale();
+  // A quiz's points, as the results screen writes them: partial credit keeps one decimal.
+  const points = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 });
   const navigate = useNavigate();
   const ids = useId();
   const [showDone, setShowDone] = useState(false);
@@ -327,6 +331,15 @@ export function PlanPath({
     next,
     goal: plan.target,
     schedule: schedule?.topics ?? null,
+  });
+  const planner = useQuery(plannerQuery);
+  const hoursHint = needsWeeklyHours({
+    schedule,
+    weeklyHours: planner.data?.weeklyHours,
+    examAt: plan.examAt,
+    archived: plan.archivedAt != null,
+    open: rows.filter((row) => !row.atGoal).length,
+    now: Date.now(),
   });
   // The topic the path is on starts open; a click opens another one instead, and a second click closes it.
   const [chosen, setChosen] = useState<string | null | undefined>(undefined);
@@ -348,7 +361,7 @@ export function PlanPath({
     if (step.activity === "lesson" || step.activity === "intro") return t(`plans.path.result.${step.activity}`);
     if (!step.result) return t("plans.path.result.done");
     if (step.activity === "cards") return t("plans.path.result.cards", { count: step.result.total });
-    return `${step.result.correct}/${step.result.total}`;
+    return `${points.format(step.result.correct)}/${step.result.total}`;
   }
   function when(date: string | null | undefined) {
     if (date === undefined) return null;
@@ -383,7 +396,13 @@ export function PlanPath({
   function chipText(chip: StepChip) {
     const step = t(`plans.path.step.${chip.activity}`);
     if (chip.state === "now") return t("plans.path.stepNow", { step });
-    if (chip.result) return t("plans.path.stepScore", { step, correct: chip.result.correct, total: chip.result.total });
+    if (chip.result)
+      return t("plans.path.stepScore", {
+        step,
+        count: chip.result.correct,
+        points: points.format(chip.result.correct),
+        total: chip.result.total,
+      });
     if (chip.activity === "cards") return `${step}, ${t("plans.path.due", { count: chip.count ?? 0 })}`;
     if (chip.activity === "gaps") return `${step}, ${t("plans.path.gaps", { count: chip.count ?? 0 })}`;
     return step;
@@ -392,6 +411,11 @@ export function PlanPath({
   const simulation = schedule?.simulation;
   return (
     <div className="px-path">
+      {hoursHint ? (
+        <Notice tone="info" action={{ label: t("plans.path.hoursAction"), onClick: () => navigate(`/plans/${planId}/settings`) }}>
+          {t("plans.path.hoursHint")}
+        </Notice>
+      ) : null}
       <ol className="px-path-rows" aria-label={t("plans.path.label", { count: rows.length })}>
         {steps.length ? (
           <li className="px-path-row is-done-line">
@@ -508,7 +532,6 @@ export function PlanPath({
                   value={row.mastery * 100}
                   target={plan.target * 100}
                   scale={grade.scale}
-                  whole
                   label={t("plans.path.mastery", { topic: row.title })}
                 />
               </div>

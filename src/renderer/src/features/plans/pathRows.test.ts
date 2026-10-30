@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { topicRows } from "./pathRows";
+import { needsWeeklyHours, topicRows } from "./pathRows";
 
 const topics = [
   { id: "a", title: "Limits" },
@@ -58,6 +58,26 @@ describe("topicRows", () => {
     expect(a).toMatchObject({ atGoal: true, current: false, date: undefined });
   });
 
+  it("drops a leading number that repeats the row's own, since the row draws it", () => {
+    const titles = ["1. Misure e vettori", "2. Cinematica del punto", "Limiti", "3. Serie", "2020. Storia"];
+    const rows = topicRows({
+      topics: titles.map((title, i) => ({ id: `t${i}`, title })),
+      steps: [],
+      status: [],
+      next: null,
+      goal: 0.75,
+      schedule: null,
+    });
+    // Row 4 holds "3. Serie": that number is not the row's, so it stays.
+    expect(rows.map((row) => row.title)).toEqual([
+      "Misure e vettori",
+      "Cinematica del punto",
+      "Limiti",
+      "3. Serie",
+      "2020. Storia",
+    ]);
+  });
+
   it("measures a full-mark goal against the reachable target, as core does", () => {
     const [a] = topicRows({
       topics,
@@ -69,5 +89,34 @@ describe("topicRows", () => {
     });
     expect(a!.atGoal).toBe(true);
     expect(a!.steps[2]).toMatchObject({ activity: "quiz", state: "done" });
+  });
+});
+
+describe("needsWeeklyHours", () => {
+  const now = new Date(2026, 9, 30, 15).getTime();
+  const base = {
+    schedule: null,
+    weeklyHours: null,
+    examAt: new Date(2026, 10, 20, 9).getTime(),
+    archived: false,
+    open: 3,
+    now,
+  };
+  it("asks for hours when an upcoming exam has none and topics are still short of the goal", () => {
+    expect(needsWeeklyHours(base)).toBe(true);
+  });
+  it("stays quiet while loading, once hours or a schedule exist, and when there is nothing to date", () => {
+    expect(needsWeeklyHours({ ...base, schedule: undefined })).toBe(false);
+    expect(needsWeeklyHours({ ...base, weeklyHours: undefined })).toBe(false);
+    expect(needsWeeklyHours({ ...base, weeklyHours: 6 })).toBe(false);
+    expect(needsWeeklyHours({ ...base, schedule: { topics: [] } })).toBe(false);
+    expect(needsWeeklyHours({ ...base, examAt: null })).toBe(false);
+    expect(needsWeeklyHours({ ...base, archived: true })).toBe(false);
+    expect(needsWeeklyHours({ ...base, open: 0 })).toBe(false);
+  });
+  it("stays quiet on the exam day and after it, when the planner has no days to give", () => {
+    expect(needsWeeklyHours({ ...base, examAt: new Date(2026, 9, 30, 18).getTime() })).toBe(false);
+    expect(needsWeeklyHours({ ...base, examAt: new Date(2026, 9, 29, 9).getTime() })).toBe(false);
+    expect(needsWeeklyHours({ ...base, examAt: new Date(2026, 9, 31, 9).getTime() })).toBe(true);
   });
 });

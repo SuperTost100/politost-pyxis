@@ -194,6 +194,23 @@ describe("source details", () => {
     ]);
   });
 
+  it("names topics as their path rows do, without a number that repeats the row's", () => {
+    const db = openDatabase(":memory:");
+    const sourceId = store(db, pdf([text(1), text(2), text(3)]));
+    plan(db, "a", sourceId);
+    const topic = db.prepare(`INSERT INTO topics (id, plan_id, title, position, archived_at, created_at) VALUES (?, ?, ?, ?, ?, 1)`);
+    // An archived topic leaves no gap in the numbering: "2. Forze" is the second row the student sees.
+    topic.run("t1", "a", "1. Moti", 0, null);
+    topic.run("t0", "a", "Archiviato", 1, 9);
+    topic.run("t2", "a", "2. Forze", 2, null);
+    topic.run("t3", "a", "2020. Storia", 3, null);
+    const link = db.prepare(`INSERT INTO topic_passages (topic_id, passage_id) VALUES (?, ?)`);
+    link.run("t1", passage(db, sourceId, 1));
+    link.run("t2", passage(db, sourceId, 2));
+    link.run("t3", passage(db, sourceId, 3));
+    expect(sourceDetails(db, sourceId)?.exams[0]?.topics).toEqual(["Moti", "Forze", "2020. Storia"]);
+  });
+
   it("shows no pages for a book or a photo, and nothing for a removed or unknown source", () => {
     const db = openDatabase(":memory:");
     const photo = storeExtracted(db, "", {

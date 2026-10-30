@@ -350,7 +350,7 @@ export function registerPlanJobs(
                 .chapter === chapter.number,
           );
           return {
-            title: `${chapter.number}. ${chapter.title}`,
+            title: chapter.title,
             summary: chapter.title,
             subtopics: paragraphTitles(chapterRows),
             passageIds: chapterRows.map((row) => row.id),
