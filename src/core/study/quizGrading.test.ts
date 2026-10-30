@@ -493,6 +493,34 @@ describe("quiz grading job", () => {
     db.close();
   });
 
+  it("checks an answer right away while background model work holds every slot", async () => {
+    // The walkthrough: a quiz was still being written and mistakes from the diagnostic were being analysed when the
+    // student checked an open answer. The engine answered the check in ~29 s; the student waited 121 s.
+    const { db, attemptId } = fixture([open("cfg")], "quiz");
+    const runner = createRunner(db, () => {});
+    const slow = (ms: number) => ({
+      jobClass: "model-cli" as const,
+      steps: [{ name: "call", label: "jobs.cards", run: () => new Promise((resolve) => setTimeout(resolve, ms)) }],
+    });
+    // Stand-ins with the timing of the real jobs, scaled down: a quiz batch and two mistake analyses.
+    runner.register("quiz-build", slow(600));
+    runner.register("gap-insight", slow(600));
+    runner.start("gap-insight", {});
+    runner.start("quiz-build", {});
+    runner.start("gap-insight", {});
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const run: GenerateInput["run"] = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return reply(1);
+    };
+    registerQuizGradingJobs(db, runner, run);
+    const started = Date.now();
+    await checkQuestion(db, runner, run, attemptId, "cfg", "ten");
+    // The check costs its own call, not the background work queued before it.
+    expect(Date.now() - started).toBeLessThan(400);
+    db.close();
+  });
+
   it("checks a diagnostic open answer right away, and a cancelled check leaves it editable", async () => {
     const { db, attemptId } = fixture([open("a")], "diagnostic");
     let hang = true;

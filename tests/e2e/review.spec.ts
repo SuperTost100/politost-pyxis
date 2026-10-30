@@ -156,9 +156,16 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     await expect(progress).toHaveText(new RegExp(`^5 di ${total} fatti`));
     await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Continua il ripasso" }).click();
-    await expect(page).toHaveURL(/\/diagnostic\?attempt=/);
+    await expect(page).toHaveURL(/\/review\/questions\?attempt=/);
     // The question screen continues the same queue: card count first, then the question.
     await expect(page.getByText(`6 di ${total}`)).toBeVisible();
+    // It is the Review's own screen, not the diagnostic test's.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Ripasso");
+    // Each book exercise here has a short answer, so a multiple choice offers only answers of the same chapter.
+    const firstChapter = ["risposta 1", "risposta 2", "risposta 3", "risposta 4"];
+    for (const question of (await invoke<{ questions: Array<{ options?: string[] }> }>("study.reviewSession", { planId }))
+      .questions)
+      for (const option of question.options ?? []) expect(firstChapter).toContain(option);
 
     // Submitting the questions closes the session; the next start builds a new one.
     const open = await invoke<{ sessionId: string; attemptId: string } | null>("study.reviewSession", { planId });

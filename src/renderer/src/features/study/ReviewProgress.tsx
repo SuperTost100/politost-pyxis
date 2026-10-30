@@ -2,12 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { MasteryBar } from "../../components/MasteryBar";
 import { invoke } from "../../lib/ipc";
+import { ownReview, reviewSessionKey } from "./reviewSession";
 import "./ReviewProgress.css";
 
-/** The mixed review's session, read from the core so every screen shows the same queue and progress. */
+/** The mixed review's session, read from the core so every screen shows the same queue and progress; none when `enabled` is off. */
 export function useReviewSession(planId: string | undefined, enabled = true) {
-  return useQuery({
-    queryKey: ["review-session", planId],
+  const query = useQuery({
+    queryKey: reviewSessionKey(planId),
     enabled: enabled && Boolean(planId),
     queryFn: () => invoke("study.reviewSession", { planId: planId ?? "" }),
     // A gap drill is built in the background; keep its status fresh while it runs.
@@ -18,6 +19,7 @@ export function useReviewSession(planId: string | undefined, enabled = true) {
         ? 1500
         : false,
   });
+  return ownReview(enabled, query);
 }
 
 /** One progress line over the whole review: its cards, then its questions, plus the drill questions still owed. */

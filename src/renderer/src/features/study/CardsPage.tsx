@@ -812,7 +812,7 @@ export function CardsPage() {
             shape="round"
             onClick={() =>
               navigate(
-                `/plans/${planId ?? ""}/diagnostic?attempt=${encodeURIComponent(reviewQueue.data?.attemptId ?? "")}`,
+                `/plans/${planId ?? ""}/review/questions?attempt=${encodeURIComponent(reviewQueue.data?.attemptId ?? "")}`,
               )
             }
           >

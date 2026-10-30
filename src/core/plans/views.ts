@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { IpcError } from "../../shared/ipc";
 import { startAttempt } from "../study/attempt";
+import { BOOK_VERSION } from "../study/lesson";
 import { putSetting } from "../settings";
 import { topicTitle } from "../../shared/book-text";
 
@@ -111,11 +112,25 @@ export function topicContent(
   const chapter = smartbook
     ? (JSON.parse(smartbook.locator_json) as { chapter?: number }).chapter
     : undefined;
+  // What the student can open again. The book text shown while the engine failed is saved without an engine under the
+  // book's cache key; once a model lesson on the topic covers all of its passages it is a leftover, not a second
+  // lesson. Book text of passages no model lesson covers (new material after a rebuild) stays, and so does a lesson
+  // without an engine under any other key (one from a shared plan file). A quiz without a question is a build that
+  // failed or has not written anything yet.
   const items = db
     .prepare(
-      "SELECT id,kind,created_at AS createdAt FROM items WHERE plan_id=? AND topic_id=? ORDER BY created_at DESC,id",
+      `SELECT id,kind,created_at AS createdAt FROM items i WHERE plan_id=@plan AND topic_id=@topic
+         AND NOT (kind='lesson' AND engine_provider IS NULL
+           AND coalesce((SELECT CASE WHEN json_valid(k) THEN json_extract(k,'$.promptVersion') END
+                FROM (SELECT json_extract(i.body_json,'$.cacheKey') AS k)), '') = @book
+           AND EXISTS (SELECT 1 FROM items m WHERE m.plan_id=i.plan_id AND m.topic_id=i.topic_id AND m.kind='lesson'
+             AND m.engine_provider IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM item_passages b WHERE b.item_id=i.id
+               AND b.passage_id NOT IN (SELECT passage_id FROM item_passages c WHERE c.item_id=m.id))))
+         AND NOT (kind='quiz' AND coalesce(json_array_length(body_json,'$.questions'),0)=0)
+       ORDER BY created_at DESC,id`,
     )
-    .all(planId, topicId) as Array<{
+    .all({ plan: planId, topic: topicId, book: BOOK_VERSION }) as Array<{
     id: string;
     source_id: string | null;
     kind: string;

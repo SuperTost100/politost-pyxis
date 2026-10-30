@@ -95,3 +95,14 @@ export function skipOrder<T extends { id: string }>(
 export function retryPick(failed: string, pickAtFailure: string, current: string): string {
   return current === pickAtFailure ? failed : current;
 }
+
+/** Where closing a quiz goes: the Review page from a Review's questions, the notebook (narrowed as it was) from a redo, else the exam. */
+export function quizBack(input: { planId: string | undefined; redo?: boolean; review?: boolean; notebookExam?: string | null }): string {
+  if (input.redo) return `/exams/mistakes${input.notebookExam ? `?exam=${encodeURIComponent(input.notebookExam)}` : ""}`;
+  return `/plans/${input.planId ?? ""}${input.review ? "/review" : ""}`;
+}
+
+/** The label of the button that goes where `quizBack` leads. */
+export function quizBackLabel(input: { redo?: boolean; review?: boolean }): string {
+  return input.redo ? "mistakes.back" : input.review ? "cards.reviewBack" : "lesson.backToPath";
+}

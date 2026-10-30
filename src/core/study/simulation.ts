@@ -15,6 +15,7 @@ import {
 } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { aboutPlan } from "./jobAbout";
 import { recordStep, stepResult } from "../plans/steps";
 import { topicExercises } from "./exercises";
 import { flaggedIds } from "./flags";
@@ -483,6 +484,7 @@ export function registerSimulationJobs(
 ) {
   runtimes.set(db, runner);
   runner.register("simulation-build", {
+    about: (params) => aboutPlan(db, (params as BuildParams).planId),
     retryParams: (params) => ({
       ...(params as BuildParams),
       selection: selectionFor(db, "lesson"),
@@ -580,6 +582,7 @@ export function registerSimulationJobs(
     ],
   });
   runner.register("simulation-grade", {
+    about: (params) => aboutPlan(db, (params as GradeParams).planId),
     retryParams: (params) => ({
       ...(params as GradeParams),
       selection: selectionFor(db, "grading"),

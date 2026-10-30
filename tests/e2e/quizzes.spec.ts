@@ -553,14 +553,20 @@ test("open answer: checked right away, the check can be cancelled and the answer
       topicId: topics[0]!.id,
       types: ["open"],
     });
+    // Ten questions are written in three calls, each with the recorded model's delay.
     await expect
-      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state)
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
+        timeout: 20000,
+      })
       .toBe("succeeded");
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
     const answer = page.getByRole("textbox", { name: "La tua risposta" });
     await answer.fill("È lo spostamento.");
     await page.getByRole("button", { name: "Verifica", exact: true }).click();
     await expect(page.getByText("Correggo…", { exact: true })).toBeVisible();
+    // While it checks, the button keeps its name and says it is busy. Its spinner is no part of the name: in a hidden
+    // window on a slow runner the spinner's exit can lag, and the button would be "loading Verifica" after the check.
+    await expect(page.getByRole("button", { name: "Verifica", exact: true })).toHaveAttribute("aria-busy", "true");
     await expect(answer).toBeDisabled();
     await page.locator(".px-quiz-checking").getByRole("button", { name: "Annulla" }).click();
     await expect(page.getByText("Correggo…", { exact: true })).toHaveCount(0);
@@ -673,8 +679,11 @@ test("quiz screens in both languages and themes", async () => {
         topicId: topics[0]!.id,
         types: ["open"],
       });
+      // Ten questions are written in three calls, each with the recorded model's delay.
       await expect
-        .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state)
+        .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
+          timeout: 20000,
+        })
         .toBe("succeeded");
       await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
       await page.locator(".px-quiz-open").getByRole("textbox").fill(

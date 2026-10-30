@@ -10,3 +10,8 @@ export function quizMinutes(kinds: string[]): number {
   );
   return Math.max(1, Math.round(seconds / 60));
 }
+
+/** How an answer check job names the answer it corrects, for the quiz page waiting on it (`JobView.ref`). */
+export function checkRef(attemptId: string, questionId: string): string {
+  return `${attemptId}/${questionId}`;
+}

@@ -5,6 +5,7 @@ import { runTurn } from "../engine/funnel";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { aboutPlan } from "./jobAbout";
 import { generateQuiz, prepareQuiz, saveQuizSnapshot, type QuizSnapshot } from "./configuredQuiz";
 import { gapEvidence } from "./gapInsight";
 import { startAttempt } from "./attempt";
@@ -172,6 +173,7 @@ export function registerGapJobs(
 ) {
   runner.register("gap-drill", {
     jobClass: "model-cli",
+    about: (raw) => aboutPlan(db, (raw as Params).planId, (raw as Params).topicId),
     retryParams: (raw) => {
       const params = raw as Params;
       const selection = selectionFor(db, "lesson");
