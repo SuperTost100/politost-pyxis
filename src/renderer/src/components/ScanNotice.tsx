@@ -52,11 +52,15 @@ const messageKeyOf = (err: unknown): string =>
 export function ScanNotice({
   source,
   onReplace,
+  quiet = false,
 }: {
   source: ScanSource;
   /** Adds the file again, for a scan whose file Pyxis no longer has. */
   onReplace?: () => void;
+  /** Inside a panel that has its own primary button, its buttons stay secondary. */
+  quiet?: boolean;
 }) {
+  const primary = quiet ? "default" : "primary";
   const { t } = useTranslation();
   const client = useQueryClient();
   const headingId = useId();
@@ -111,7 +115,7 @@ export function ScanNotice({
         refusal={t(refusal)}
         onLater={() => setRefusal(null)}
         readyAction={
-          <Button type="primary" shape="round" loading={busy} onClick={() => void read()}>
+          <Button type={primary} shape="round" loading={busy} onClick={() => void read()}>
             {t("sources.offerOcr")}
           </Button>
         }
@@ -141,7 +145,7 @@ export function ScanNotice({
         {job ? (
           <div className="px-ocr-actions">
             {paused ? (
-              <Button type="primary" shape="round" loading={busy} onClick={() => void onJob("jobs.resume", job.id)}>
+              <Button type={primary} shape="round" loading={busy} onClick={() => void onJob("jobs.resume", job.id)}>
                 {t("sources.ocrResume")}
               </Button>
             ) : null}

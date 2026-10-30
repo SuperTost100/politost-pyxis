@@ -348,6 +348,7 @@ const routes = {
   "sources.search": ["sources", "search", "signal"],
   "sources.chapters": ["sources", "chapters"],
   "sources.meta": ["sources", "meta"],
+  "sources.details": ["sources", "details"],
   "sources.ocr": ["sources", "ocr"],
   "sources.paste": ["sources", "paste"],
   "sources.linkPreview": ["sources", "linkPreview", "signal"],

@@ -99,11 +99,6 @@
 .px-library-import-pane > .ant-btn {
   align-self: flex-start;
 }
-.px-library-details .engine-key {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
 .px-library-import-actions {
   display: flex;
   gap: var(--space-3);

@@ -120,9 +120,11 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     expect(await page.evaluate(() => window.pyxis.invoke("jobs.list", {}))).toEqual([]);
 
     await page.getByRole("button", { name: "Appunti", exact: true }).click();
-    const details = page.locator(".px-library-details");
+    // The details panel says where and when the link was saved. The check itself stays in the row menu used above:
+    // an action the row menu has is not repeated as a panel button.
+    const details = page.getByRole("dialog", { name: "Appunti" });
     await expect(details.getByText(/Salvata da appunti\.invalid il/)).toBeVisible();
-    await expect(details.getByRole("button", { name: "Controlla se c'è una nuova versione" })).toBeVisible();
+    await expect(details.getByRole("button", { name: "Controlla se c'è una nuova versione" })).toHaveCount(0);
     await shoot(page, "source-refresh-details");
     await expectNoAxeViolations(page);
   } finally {

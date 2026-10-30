@@ -74,6 +74,7 @@ const replayable = new Set([
   "sources.search",
   "sources.chapters",
   "sources.meta",
+  "sources.details",
   "sources.passage",
   "sources.chapter",
   "sources.viewerDocument",

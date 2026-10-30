@@ -92,6 +92,17 @@ const routes = [
   // Overlay states below are reached by role-based interaction (Ant Design 6 drawers and modals are role="dialog").
   ["library-row-menu", "/exams/library"],
   ["library-details", "/exams/library"],
+  // The source details panel on a PDF whose scanned pages OCR read, and on a scan being read now.
+  ["library-panel-pdf", "/exams/library"],
+  ["library-panel-scan", "/exams/library"],
+  // A source removed after the list was read: the panel says it is gone instead of staying blank.
+  ["library-panel-removed", "/exams/library"],
+  // The same from an exam's Sources tab: the row leaves the tab, and closing the panel puts focus on the page heading.
+  ["plan-sources-removed", "/plans/audit-plan/sources"],
+  // A source saved from a link says where and when it was saved.
+  ["library-panel-link", "/exams/library"],
+  // An exam's Sources tab opens the same panel; Escape closes it and focus goes back to the row.
+  ["plan-sources-panel", "/plans/audit-plan/sources"],
   ["library-folder", "/exams/library"],
   ["library-link", "/exams/library"],
   ["library-text", "/exams/library"],
@@ -1048,8 +1059,86 @@ function prepareMapsEmpty(name: string) {
   });
 }
 
+/**
+ * Two sources for the details panel states, attached to the audit exam: a 12-page PDF whose first 4 pages had a text
+ * layer, the others read by OCR five minutes after the import except page 11, which is blank, cited by a lesson and two quizzes;
+ * and a scan whose OCR job is reading it, 2 pages in. Every other state starts without them.
+ */
+function preparePanelSources(name: string) {
+  const ids = "('audit-panel-pdf', 'audit-panel-scan', 'audit-panel-link')";
+  withDb((db) => {
+    db.exec(`DELETE FROM jobs WHERE id = 'audit-panel-ocr';
+      DELETE FROM item_passages WHERE passage_id IN (SELECT id FROM passages WHERE source_id IN ${ids});
+      DELETE FROM topic_passages WHERE passage_id IN (SELECT id FROM passages WHERE source_id IN ${ids});
+      DELETE FROM passages WHERE source_id IN ${ids};
+      DELETE FROM source_documents WHERE source_id IN ${ids};
+      DELETE FROM plan_sources WHERE source_id IN ${ids};
+      DELETE FROM sources WHERE id IN ${ids};`);
+  });
+  if (
+    !["library-panel-pdf", "library-panel-scan", "library-panel-removed", "plan-sources-removed", "library-panel-link"].includes(
+      name,
+    )
+  )
+    return;
+  const sha = auditScanBlob();
+  const day = 24 * 60 * 60 * 1000;
+  const added = Date.now() - 10 * day;
+  const scanned = Date.now() - day;
+  withDb((db) => {
+    const source = db.prepare(
+      "INSERT INTO sources(id,kind,title,status,library,blob_sha,mime,created_at,updated_at) VALUES(?,'pdf',?,?,1,?,'application/pdf',?,?)",
+    );
+    const document = db.prepare(
+      "INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES(?,?,1,'{}',?)",
+    );
+    const passage = db.prepare(
+      "INSERT INTO passages(id,source_id,document_id,version,text,locator_json,section_path,created_at) VALUES(?,?,?,1,?,?,?,?)",
+    );
+    const page = (sourceId: string, n: number, at: number) =>
+      passage.run(
+        `${sourceId}-p${n}`,
+        sourceId,
+        `${sourceId}-document`,
+        `Esercizio ${n}: calcola il limite della successione proposta e giustifica ogni passaggio.`,
+        JSON.stringify({ page: n }),
+        `p. ${n}`,
+        at,
+      );
+    source.run("audit-panel-pdf", "Esercitazioni Analisi 1 2025", "ready", sha, added, added);
+    document.run("audit-panel-pdf-document", "audit-panel-pdf", added);
+    for (let n = 1; n <= 12; n += 1)
+      if (n !== 11) page("audit-panel-pdf", n, n <= 4 ? added : added + 5 * 60 * 1000);
+    source.run("audit-panel-scan", "Appello 10 febbraio 2025", "ocr-queued", sha, scanned, scanned);
+    db.prepare(
+      "INSERT INTO sources(id,kind,title,status,library,origin_url,fetched_at,created_at,updated_at) VALUES('audit-panel-link','link','Serie di Fourier','ready',1,'https://appunti.example.org/fourier',?,?,?)",
+    ).run(scanned, added, added);
+    document.run("audit-panel-link-document", "audit-panel-link", added);
+    passage.run(
+      "audit-panel-link-p1",
+      "audit-panel-link",
+      "audit-panel-link-document",
+      "Una funzione periodica si scrive come somma di seni e coseni.",
+      JSON.stringify({ heading: "Coefficienti" }),
+      "Coefficienti",
+      added,
+    );
+    document.run("audit-panel-scan-document", "audit-panel-scan", scanned);
+    for (const n of [1, 2]) page("audit-panel-scan", n, scanned + n * 60 * 1000);
+    db.exec(`INSERT INTO plan_sources(plan_id,source_id) VALUES('audit-plan','audit-panel-pdf'), ('audit-plan','audit-panel-scan');
+      INSERT INTO topic_passages(topic_id,passage_id) VALUES('audit-topic','audit-panel-pdf-p5');
+      INSERT INTO item_passages(item_id,passage_id) VALUES('audit-lesson','audit-panel-pdf-p3'), ('audit-lesson','audit-panel-pdf-p5'),
+        ('audit-quiz','audit-panel-pdf-p5'), ('audit-diagnostic','audit-panel-pdf-p6');`);
+    const now = Date.now();
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at) VALUES('audit-panel-ocr','source-ocr',?,'running',0.5,'sources.jobs.ocr',?,?)",
+    ).run(JSON.stringify({ sourceId: "audit-panel-scan" }), now, now);
+  });
+}
+
 function prepareState(name: string) {
   prepareExamsEmpty(name);
+  preparePanelSources(name);
   prepareLibraryEmpty(name);
   prepareMapsEmpty(name);
   prepareCardBrowser(name);
@@ -2445,6 +2534,102 @@ async function openState(page: Page, name: string) {
       await expect(dialog).toBeVisible();
       await expect(
         dialog.getByRole("button", { name: both("Rinomina", "Rename") }),
+      ).toBeVisible();
+      // Replace, read again and remove live in the row menu only.
+      await expect(
+        dialog.getByRole("button", { name: both("Rimuovi", "Remove") }),
+      ).toHaveCount(0);
+      break;
+    case "library-panel-pdf":
+      await page
+        .getByRole("button", { name: "Esercitazioni Analisi 1 2025", exact: true })
+        .click();
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByRole("button", { name: both("Apri la fonte", "Open source") }),
+      ).toBeVisible();
+      await expect(dialog.locator(".px-source-strip i")).toHaveCount(12);
+      await expect(
+        dialog.getByText(
+          both("7 pagine scansionate, lette con l'OCR", "7 scanned pages, read with OCR"),
+        ),
+      ).toBeVisible();
+      await expect(
+        dialog.getByRole("button", {
+          name: /^(Pagina 5\s*2 citazioni|Page 5\s*2 citations)$/,
+        }),
+      ).toBeVisible();
+      break;
+    case "library-panel-link":
+      await page.getByRole("button", { name: "Serie di Fourier", exact: true }).click();
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByText(/^(Salvata da appunti\.example\.org il|Saved from appunti\.example\.org on) /),
+      ).toBeVisible();
+      break;
+    case "plan-sources-removed": {
+      const row = page.getByRole("button", { name: "Esercitazioni Analisi 1 2025", exact: true });
+      await expect(row).toBeVisible();
+      // Removed elsewhere after the exam was read, as a confirmed removal does: the source and its link to the exam.
+      withDb((db) =>
+        db.exec(`UPDATE sources SET status = 'removed' WHERE id = 'audit-panel-pdf';
+          DELETE FROM plan_sources WHERE source_id = 'audit-panel-pdf';`),
+      );
+      await row.click();
+      await expect(
+        dialog.getByText(
+          both("Questa fonte non è più nella libreria.", "This source is no longer in the library."),
+        ),
+      ).toBeVisible();
+      await expect(row).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      // The row it came from is gone, so focus goes to the page heading rather than nowhere.
+      await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+      break;
+    }
+    case "library-panel-removed": {
+      const row = page.getByRole("button", { name: "Esercitazioni Analisi 1 2025", exact: true });
+      await expect(row).toBeVisible();
+      // Removed behind the list's back, as another window or a cleanup would: the row is still on screen.
+      withDb((db) =>
+        db.prepare("UPDATE sources SET status = 'removed' WHERE id = 'audit-panel-pdf'").run(),
+      );
+      await row.click();
+      await expect(
+        dialog.getByText(
+          both("Questa fonte non è più nella libreria.", "This source is no longer in the library."),
+        ),
+      ).toBeVisible();
+      await expect(
+        dialog.getByRole("button", { name: both("Apri la fonte", "Open source") }),
+      ).toBeDisabled();
+      break;
+    }
+    case "plan-sources-panel": {
+      const row = page.getByRole("button", { name: source });
+      await row.click();
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await expect(row).toBeFocused();
+      await row.click();
+      await expect(
+        dialog.getByRole("heading", { name: both("Negli esami", "In exams") }),
+      ).toBeVisible();
+      await expect(dialog.getByText("Fisica 1", { exact: true })).toBeVisible();
+      break;
+    }
+    case "library-panel-scan":
+      await page
+        .getByRole("button", { name: "Appello 10 febbraio 2025", exact: true })
+        .click();
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByRole("heading", { name: both("Come la sto leggendo", "How I'm reading it") }),
+      ).toBeVisible();
+      await expect(
+        dialog.getByRole("button", { name: both("Interrompi la lettura", "Stop reading") }),
       ).toBeVisible();
       break;
     case "library-folder": {

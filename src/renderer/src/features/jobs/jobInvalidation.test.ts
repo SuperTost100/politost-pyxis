@@ -13,6 +13,7 @@ describe("job update invalidation", () => {
       "jobs-finished",
       "plans",
       "plan",
+      "source-details",
       "series:later",
     ]);
     expect(keys(staleFamilies({ kind: "quiz-build", state: "running" }))).toEqual(["jobs"]);
@@ -25,12 +26,20 @@ describe("job update invalidation", () => {
     ]);
   });
 
+  it("refreshes a source's citation counts when a job that cites passages ends", () => {
+    for (const kind of ["plan-build", "plan-rebuild", "quiz-build", "quiz-replace", "gap-drill"])
+      expect(keys(staleFamilies({ kind, state: "succeeded" }))).toContain("source-details");
+    expect(keys(staleFamilies({ kind: "quiz-build", state: "running" }))).not.toContain("source-details");
+    expect(keys(staleFamilies({ kind: "cards-build", state: "succeeded" }))).not.toContain("source-details");
+  });
+
   it("refreshes sources for imports and each download its own state", () => {
     expect(keys(staleFamilies({ kind: "source-import", state: "running" }))).toEqual([
       "jobs",
       "sources",
       "source-chapters",
       "source-meta",
+      "source-details",
     ]);
     expect(keys(staleFamilies({ kind: "ocr-data-download", state: "queued" }))).toEqual(["jobs", "ocr-data"]);
     expect(keys(staleFamilies({ kind: "embedding-download", state: "running" }))).toEqual(["jobs", "embedding"]);
@@ -56,6 +65,7 @@ describe("stale batcher", () => {
       "sources",
       "source-chapters",
       "source-meta",
+      "source-details",
       "plan-build",
       "jobs-finished",
       "plans",

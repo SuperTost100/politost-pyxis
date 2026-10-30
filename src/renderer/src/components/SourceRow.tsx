@@ -69,6 +69,7 @@ export function SourceRow(props: {
   return (
     <li
       className={props.selected ? "px-source-row is-selected" : "px-source-row"}
+      data-source-id={source.id}
     >
       <span className="px-source-row-icon" aria-hidden>
         {source.kind === "smartbook" ? (
