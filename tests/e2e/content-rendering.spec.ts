@@ -206,20 +206,27 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     );
     const again = page.locator(".px-markdown p", { hasText: "Un punto" });
     await expect(again).toBeVisible();
-    await again.evaluate((node) => {
-      const glyphs = node.querySelector(".katex-html")!;
-      const first = document.createTreeWalker(glyphs, NodeFilter.SHOW_TEXT).nextNode()!;
-      const last = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-      let end = first;
-      for (let next = last.nextNode(); next; next = last.nextNode()) end = next;
-      const range = document.createRange();
-      range.setStart(first, 0);
-      range.setEnd(end, end.textContent!.length);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-    });
-    await expect(menu).toBeVisible();
+    await again.scrollIntoViewIfNeeded();
+    const selectFromGlyphs = () =>
+      again.evaluate((node) => {
+        const glyphs = node.querySelector(".katex-html")!;
+        const first = document.createTreeWalker(glyphs, NodeFilter.SHOW_TEXT).nextNode()!;
+        const last = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        let end = first;
+        for (let next = last.nextNode(); next; next = last.nextNode()) end = next;
+        const range = document.createRange();
+        range.setStart(first, 0);
+        range.setEnd(end, end.textContent!.length);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+    // The page has only just opened: a scroll or a re-render while it settles closes the menu by design, so a user
+    // selects again. Hosted Windows and macOS windows settle later than Linux.
+    await expect(async () => {
+      await selectFromGlyphs();
+      await expect(menu).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30000 });
     await menu.getByRole("button", { name: "Chiedi al tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\//);
     const partial = await invoke<{ context: { body: string } }>("chats.read", {

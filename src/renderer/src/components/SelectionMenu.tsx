@@ -30,7 +30,7 @@ export function SelectionMenu({ children, sourceIds = [], planId, topicId, passa
     const update = () => {
       if (menu.current?.contains(document.activeElement)) return;
       const current = window.getSelection();
-      if (!current?.rangeCount || !current.toString().trim() || !root.current) return setSelection(null);
+      if (!current?.rangeCount || current.isCollapsed || !root.current) return setSelection(null);
       // A dialog open over the text (the flashcard maker) has the focus; the menu would float above it.
       if ([...document.querySelectorAll(".ant-modal")].some((modal) => modal.getClientRects().length > 0)) return setSelection(null);
       const range = current.getRangeAt(0);
