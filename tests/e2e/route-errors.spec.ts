@@ -65,7 +65,9 @@ test("a plan build the engine's subscription refused names the engine and offers
 
     await page.evaluate(() => { window.location.hash = "/plans/new?build=m"; });
     const state = page.getByRole("alert");
-    await expect(state).toContainText("Il tuo abbonamento a Cursor Agent non include il modello che serviva qui.");
+    await expect(state.locator(".px-notice-text")).toHaveText(
+      "Il tuo abbonamento a Cursor Agent non include il modello che serviva qui. Scegli un altro modello o un altro motore nelle Impostazioni. Riprova per continuare dall\u2019ultimo passaggio salvato.",
+    );
     await expect(state).not.toContainText("Un passaggio si \u00e8 fermato");
     await expect(state.getByRole("button", { name: "Riprova", exact: true })).toBeVisible();
     await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
