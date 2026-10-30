@@ -31,12 +31,13 @@ Known limits:
 
 ## Consent
 
-The switch is the `crashReports` field of the profile, stored in the workspace database (`settings` row `privacy`). Core owns it, and nothing leaves the computer until core has reported it in the current session:
+The switch is the `crashReports` field of the profile, stored in the workspace database (`settings` row `privacy`). Core owns it, and nothing leaves the computer until core has reported it for the workspace that is open now:
 
 1. Core sends `crash-consent` with the stored value right after it opens the database, and again after every profile save (`src/core/index.ts`).
 2. Main records it in `userData/crash-reports.json` and applies it at once: `crashReporter.setUploadToServer` for minidumps, and the JavaScript reporter reads the current value. No restart is needed.
 3. At launch, main starts Crashpad early, so that a crash before core is up is still written, but always with uploads off. Uploads go on only when core reports the switch on.
 4. Until core has reported the switch, a JavaScript error is kept in memory only, and only if the saved copy says on: nothing is sent and nothing new is written to disk. Core's answer then decides. On, and the held errors go through the same once-a-day, daily-cap and queue-size checks as any other error, so the ones that pass join the queue and the queue is sent. Off, and the held errors and the queue are dropped.
+5. Before a workspace is replaced while Pyxis runs, main goes back to the state of step 4 (`CrashReports.suspend`), and only a core started on the new workspace can confirm the switch again. See [When the workspace is replaced](#when-the-workspace-is-replaced).
 
 The copy can be out of date after a restore or with a workspace from another computer, which is why it never decides a send on its own. Crashpad marks a dump it finds while uploads are off as done without sending it, so a dump still waiting from an earlier session can be lost at launch. That is accepted: losing a report is better than sending one before core has confirmed the switch.
 
@@ -46,6 +47,31 @@ A report created while the switch was off is never sent:
 - Turning the switch off empties the queue of JavaScript errors waiting to be sent.
 - Each queued error records when it was created, and one older than the current consent period is dropped unsent.
 - Crashpad skips the upload of a dump written while uploads are off, including every dump written at launch before core has answered. At every launch, before Crashpad starts, main deletes every dump in `userData/Crashpad` while the switch is off, and the dumps older than the moment it was last turned on while it is on (`discardUnconsentedDumps`).
+
+### When the workspace is replaced
+
+A restore or a wipe swaps the workspace while Pyxis runs, and the workspace that comes back can have the switch off while main still holds on from the old one. Main closes that gap in `src/main/index.ts`. Before core stops for one of these paths (`pauseCoreToReplace`), sending stops:
+
+| Path                                                                          | What comes back                                           |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Restore from a file or from the list of automatic backups                     | The restored copy                                         |
+| A restore that fails before or during the start of core on the restored copy  | The old workspace, put back by `runArchive("recover")`    |
+| A restore whose commit fails (`commitRestore`), stopping core again           | The restored copy, or the old workspace after a rollback  |
+| A restore that can be neither kept nor rolled back (`holdForRestoreRecovery`) | Nothing until the next launch: core stays stopped         |
+| Delete all data (`workspaceWipe`)                                             | An empty workspace, or the old one if the wipe was undone |
+
+While sending is stopped:
+
+- Crashpad's uploads are off (`setUploadToServer(false)`).
+- The JavaScript report on its way is aborted. It stays queued and does not count as a failed send.
+- New JavaScript errors follow the rules of step 4: held in memory while the saved copy says on, dropped while it says off.
+- A profile save on the core being stopped can only turn sending off. Its off applies at once and drops the queue and the held errors, so an error raised after it never goes, even if the workspace that comes back says on. Its on is ignored: only the next core main starts can turn sending back on (`CoreConsent`).
+
+The first core that reports the switch on the new workspace decides. On, and sending resumes with the queue and the held errors. Off, and the queue and the held errors are dropped and uploads stay off.
+
+The queue belongs to the consent that created it. A report created under one workspace's switch goes out under another only if that switch is on too. Across a rollback that means the restored copy and the old workspace each confirm in turn. If the restored copy says off, the queue is dropped at that moment and does not come back when the old workspace returns with the switch on, which starts a new consent period. If both say on, the queue goes once the old workspace's core confirms.
+
+A move and a manual backup also stop core, but they reopen the same data, so they leave sending as it is. Neither do the launch paths need this: at launch main always waits for core, after `ensureWorkspace`, the recovery of an interrupted restore or wipe, and any failed bootstrap and its restarts. If core does not stop when asked, nothing is replaced, so that core counts again at once with the switch it last reported, including a change it reported while it was being stopped (`CoreConsent.reinstate`).
 
 ## Sending
 
@@ -64,7 +90,7 @@ A `4xx` answer other than `408` or `429` drops the report, since sending it agai
 
 Crashpad sends minidumps itself, gzip-compressed, as `POST /minidump` multipart uploads. On macOS and Windows it sends at most one an hour (`rateLimit`). Linux has no such limit, so the Worker's rate limit is the only one there.
 
-Development builds send nothing. End-to-end tests send only to a server on `127.0.0.1` named in `PYXIS_E2E_CRASH_ENDPOINT` (with `PYXIS_E2E=1`), and nothing when it is unset; `tests/e2e/crash-reports.spec.ts` uses it.
+Development builds send nothing. End-to-end tests send only to a server on `127.0.0.1` named in `PYXIS_E2E_CRASH_ENDPOINT` (with `PYXIS_E2E=1`), and nothing when it is unset; `tests/e2e/crash-reports.spec.ts` uses it. That spec also sets `PYXIS_E2E_CONSENT_HOLD=1`, which lets it hold core's `crash-consent` in main during a restore and raise errors before the restored workspace's switch applies.
 
 ## The Worker
 

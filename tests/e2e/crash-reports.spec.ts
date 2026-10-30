@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -196,5 +196,84 @@ test("crash reports: a native crash uploads a minidump only while the switch is 
     if (app) await app.close().catch(() => {});
     server.close();
     rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+/** The hold on core's crash-consent that main installs for tests with PYXIS_E2E_CONSENT_HOLD=1 (src/main/index.ts). */
+type ConsentHold = {
+  pyxisE2eHoldConsent: () => void;
+  pyxisE2eConsentWaiting: () => number;
+  pyxisE2eReleaseConsent: () => void;
+};
+
+test("crash reports: a restore that brings back the switch off sends nothing raised during it, and a failed one resumes", async () => {
+  test.setTimeout(120_000);
+  const root = mkdtempSync(join(tmpdir(), "pyxis-crash-restore-"));
+  // Backups go next to the profile: Pyxis refuses to save one inside it.
+  const userData = join(root, "userData");
+  const zip = join(root, "backup.zip");
+  const offBackup = join(root, "switch-off.zip");
+  const { server, endpoint, received } = await crashServer();
+  const app = await launchPyxis({
+    userData,
+    env: {
+      PYXIS_E2E_CRASH_ENDPOINT: endpoint,
+      PYXIS_CRASH_DIR: undefined,
+      PYXIS_E2E_SAVE: zip,
+      PYXIS_E2E_ZIP: zip,
+      PYXIS_E2E_CONSENT_HOLD: "1",
+    },
+  });
+  const messages = () =>
+    received.map((item) => String((JSON.parse(item.body.toString("utf8")) as { message: unknown }).message));
+  try {
+    const page = await app.firstWindow();
+    await skipSetup(page);
+    // A backup of this workspace with the switch off, then the switch goes on.
+    await expect(page.evaluate(() => window.pyxis.backupWorkspace())).resolves.toBe("saved");
+    copyFileSync(zip, offBackup);
+    await page.evaluate(() => window.pyxis.invoke("profile.save", { crashReports: true }));
+    await expect.poll(() => consent(userData)).toBe(true);
+    await throwInWindow(page, "before any restore");
+    await expect.poll(() => received.length).toBe(2);
+
+    // A restore that fails puts the same workspace back: its core says on again, and reports go once more.
+    writeFileSync(zip, "corrupt backup");
+    await expect(page.evaluate(() => window.pyxis.restoreWorkspace())).rejects.toThrow(/backup-corrupt/);
+    await throwInWindow(page, "after the failed restore");
+    await expect.poll(() => received.length).toBe(4);
+
+    // A restore that brings back the switch off. Main holds core's switch here, so the errors below are raised at a
+    // known point: the old core has gone, and the restored core has read its switch but main has not applied it. Main
+    // still has the old workspace's on, and only the suspension for the restore keeps these errors from being sent.
+    copyFileSync(offBackup, zip);
+    await app.evaluate(() => (globalThis as unknown as ConsentHold).pyxisE2eHoldConsent());
+    const restoring = page.evaluate(() => window.pyxis.restoreWorkspace());
+    await expect
+      .poll(() => app.evaluate(() => (globalThis as unknown as ConsentHold).pyxisE2eConsentWaiting()))
+      .toBeGreaterThan(0);
+    await throwInWindow(page, "during the restore");
+    await app.evaluate(() => {
+      void Promise.reject(new Error("main during the restore"));
+    });
+    // Time for the errors to reach main, and the server too if main were still sending.
+    await page.waitForTimeout(1_500);
+    expect(received).toHaveLength(4);
+    await app.evaluate(() => (globalThis as unknown as ConsentHold).pyxisE2eReleaseConsent());
+    await expect(restoring).resolves.toBe("restored");
+    await expect.poll(() => consent(userData)).toBe(false);
+    await throwInWindow(page, "after the restore");
+    await page.waitForTimeout(2_000);
+    expect(messages().sort()).toEqual([
+      "after the failed restore",
+      "before any restore",
+      "rejected: after the failed restore",
+      "rejected: before any restore",
+    ]);
+    expect(readFileSync(join(userData, "crash-reports.json"), "utf8")).not.toContain("during the restore");
+  } finally {
+    await app.close().catch(() => {});
+    server.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });

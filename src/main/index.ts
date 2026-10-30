@@ -73,6 +73,7 @@ import { rendererCsp } from "./csp";
 import { APP_PAGE, APP_SCHEME, appPrivileges, registerAppProtocol } from "./app-protocol";
 import { carryStorage } from "./carried-storage";
 import {
+  CoreConsent,
   CRASH_ENDPOINT,
   CrashReports,
   discardUnconsentedDumps,
@@ -147,7 +148,7 @@ const crashEndpointUrl = crashEndpoint();
 // The switch lives in the workspace database, which core owns. Main keeps the last value core reported in
 // userData/crash-reports.json, but that copy can be stale (a restore, a workspace from another computer), so nothing
 // leaves until core has read the profile and sent `crash-consent`: JavaScript errors wait in memory, and Crashpad
-// starts with uploads off.
+// starts with uploads off. A restore or a wipe suspends sending the same way until the new workspace's core answers.
 const crashReports = new CrashReports({
   file: join(app.getPath("userData"), "crash-reports.json"),
   endpoint: crashEndpointUrl,
@@ -163,6 +164,9 @@ const crashReports = new CrashReports({
     userData: app.getPath("userData"),
     home: app.getPath("home"),
   }),
+  setUploads: (on) => {
+    if (crashReporterOn) crashReporter.setUploadToServer(crashEndpointUrl !== null && on);
+  },
 });
 watchProcessErrors("pyxis", (fields) => crashReports.capture("main", fields));
 const crashReporterOn = primaryInstance && (crashEndpointUrl !== null || crashDirSeam);
@@ -176,18 +180,36 @@ if (crashReporterOn) {
     ...(crashEndpointUrl ? { submitURL: `${crashEndpointUrl}/minidump` } : {}),
     // electron-builder's productName, which the Worker requires. Named here because an unpackaged run says "Electron".
     productName: "PoliTost Pyxis",
-    // Turned on by applyCrashConsent once core says the switch is on.
+    // Turned on through crashReports.setConsent once core says the switch is on.
     uploadToServer: false,
     // At most one upload an hour on macOS and Windows; Linux ignores it.
     rateLimit: true,
   });
 }
 
-/** Applies the crash-report switch as core read it from the profile. Takes effect at once, with no restart. */
-function applyCrashConsent(enabled: boolean): void {
-  crashReports.setConsent(enabled);
-  if (crashReporterOn) crashReporter.setUploadToServer(crashEndpointUrl !== null && enabled);
-}
+/** Which core's `crash-consent` counts. See CoreConsent and CrashReports.suspend. */
+const coreConsent = new CoreConsent<UtilityProcess>(crashReports);
+
+/**
+ * Tests only (PYXIS_E2E_CONSENT_HOLD=1): `crash-consent` from core waits while the test holds it, so the test can raise
+ * errors at a known point of a restore, after the old core has gone and before the new one's switch applies. The test
+ * calls these through app.evaluate (tests/e2e/crash-reports.spec.ts).
+ */
+const consentHold =
+  e2eSeam() && process.env["PYXIS_E2E"] === "1" && process.env["PYXIS_E2E_CONSENT_HOLD"] === "1"
+    ? { held: false, waiting: [] as Array<() => void> }
+    : null;
+if (consentHold)
+  Object.assign(globalThis, {
+    pyxisE2eHoldConsent: () => {
+      consentHold.held = true;
+    },
+    pyxisE2eConsentWaiting: () => consentHold.waiting.length,
+    pyxisE2eReleaseConsent: () => {
+      consentHold.held = false;
+      for (const apply of consentHold.waiting.splice(0)) apply();
+    },
+  });
 
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: appPrivileges },
@@ -715,6 +737,7 @@ function startCore(strict = false): Promise<void> {
     child.stderr?.on("data", (chunk) => process.stderr.write(chunk));
   }
   coreChild = child;
+  coreConsent.started(child);
   configurePythonRuntime(workspacePath);
   watchCoreExit(child);
   let childExited = false;
@@ -766,10 +789,12 @@ function startCore(strict = false): Promise<void> {
     },
   );
   // Crash reports: the switch as core read it, and core's own uncaught errors. An error from a core that is already
-  // being replaced is still an error, so only the switch is tied to the current core.
+  // being replaced is still an error, so only the switch is tied to the current core. The switch takes effect at once.
   child.on("message", (data: { type?: string; enabled?: unknown }) => {
     if (data?.type === "crash-consent" && typeof data.enabled === "boolean") {
-      if (coreChild === child) applyCrashConsent(data.enabled);
+      const enabled = data.enabled;
+      if (consentHold?.held) consentHold.waiting.push(() => coreConsent.report(child, enabled));
+      else coreConsent.report(child, enabled);
     } else if (data?.type === "js-error") crashReports.capture("core", errorFields(data));
   });
   keysReadyFor = null;
@@ -935,6 +960,20 @@ function pauseCore(): Promise<void> {
   );
 }
 
+/**
+ * Stops core before its workspace is replaced: a restore, the recovery or rollback of one, a wipe. Crash reports stop
+ * first, because the workspace that comes back may have the switch off; the next core's report decides.
+ */
+function pauseCoreToReplace(): Promise<void> {
+  const child = coreChild;
+  coreConsent.suspend();
+  return pauseCore().catch((error: unknown) => {
+    // Core did not stop, so nothing was replaced and it is still the core of the open workspace.
+    if (child && coreChild === child && !coreExited(child)) coreConsent.reinstate(child);
+    throw error;
+  });
+}
+
 /** cleanupComplete: a commit deleted the old copy. outcome: what a recovery left live. */
 type ArchiveResult = { cleanupComplete: boolean; outcome?: RestoreOutcome };
 
@@ -1004,6 +1043,7 @@ function verifyArchives(zips: string[]): Promise<Array<boolean | null>> {
  */
 function holdForRestoreRecovery(): void {
   restoreRecoveryRequired = true;
+  coreConsent.suspend();
   holdCore = true;
   const child = coreChild;
   if (child?.pid && !coreExited(child)) {
@@ -1356,7 +1396,7 @@ function registerIpc(): void {
         filePath = result.filePaths[0];
         if (result.canceled || !filePath) return "cancelled";
       }
-      await pauseCore();
+      await pauseCoreToReplace();
       try {
         await runArchive("restore", filePath);
         ensureWorkspaceDirs(workspacePath);
@@ -1366,7 +1406,7 @@ function registerIpc(): void {
         // Core comes back only on a workspace recovery has made safe. Otherwise it stays stopped and says so: a core
         // on an uncommitted copy would collect edits the next launch deletes.
         try {
-          await pauseCore();
+          await pauseCoreToReplace();
           await runArchive("recover");
         } catch (recoveryError) {
           holdForRestoreRecovery();
@@ -1381,7 +1421,7 @@ function registerIpc(): void {
       // workspace. Cleanup must not roll back a working new copy.
       const { cleanupComplete } = await commitRestore({
         commit: async () => (await runArchive("commit")).cleanupComplete,
-        stopCore: pauseCore,
+        stopCore: pauseCoreToReplace,
         recover: async () => (await runArchive("recover")).outcome ?? "none",
         startCore: () =>
           resumeCore().catch(() => {
@@ -1460,7 +1500,7 @@ function registerIpc(): void {
       typeof options === "object" && options !== null && (options as { backups?: unknown }).backups === true;
     const release = await takeWorkspace();
     try {
-      await pauseCore();
+      await pauseCoreToReplace();
       let keysCleared = false;
       try {
         // A .wipe an earlier wipe left (a file in it was held) blocks a new one. Say so before the keys go.
