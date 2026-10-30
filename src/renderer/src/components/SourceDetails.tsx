@@ -20,6 +20,7 @@ import {
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
+import { useEngineNames } from "../lib/useEngineNames";
 import { invoke } from "../lib/ipc";
 import { pageRanges } from "../lib/pageRanges";
 import { usePlans, useSources } from "../lib/queries";
@@ -213,6 +214,7 @@ export function SourceDetails({
   onOpen?: (sourceId: string) => void;
 }) {
   const { t } = useTranslation();
+  const engineNames = useEngineNames();
   const client = useQueryClient();
   const titleId = useId();
   const open = sourceId != null;
@@ -445,7 +447,9 @@ export function SourceDetails({
         icon={<CheckCircle2 size={20} strokeWidth={1.75} />}
         title={
           extractor.path === "vision"
-            ? t("sources.readByVision", { model: extractor.model })
+            ? t("sources.readByVision", {
+                model: engineNames.label(extractor.provider, extractor.model),
+              })
             : extractor.after
               ? t("sources.readByOcrAfter")
               : t("sources.readByOcr")

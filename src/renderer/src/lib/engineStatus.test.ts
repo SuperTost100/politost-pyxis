@@ -110,6 +110,15 @@ describe("engineStatus", () => {
     });
   });
 
+  it("reads an engine whose subscription refused a model as ready with limits, not plain ready", () => {
+    expect(engineStatus(cli({ refusedModels: ["claude-opus-5-5"] }))).toEqual({
+      tone: "warn",
+      label: "engines.state.limited",
+      fix: null,
+    });
+    expect(engineStatus(cli({ refusedModels: [] })).label).toBe("engines.state.ready");
+  });
+
   it("never reads an engine whose sign-in was refused as ready, and offers sign-in", () => {
     expect(engineStatus(cli({ loggedIn: false, refused: true }))).toEqual({
       tone: "error",

@@ -23,10 +23,11 @@ import { PLAN_TITLE_MAX } from "@shared/plan-file";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
+import { useEngineNames } from "../../lib/useEngineNames";
 import { errorDetails } from "../../lib/errorDetails";
 import { goalFraction, goalInput, goalRange } from "../../lib/grade";
 import { invoke } from "../../lib/ipc";
-import { engineFeaturesQuery, enginesQuery, plannerQuery, usePlan } from "../../lib/queries";
+import { engineFeaturesQuery, plannerQuery, usePlan } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { decimalSeparator, formatHours, formatMinutes } from "../home/plannerFormat";
@@ -111,7 +112,7 @@ export function ExamSettingsPage() {
   const { message } = App.useApp();
   const plan = usePlan(planId);
   const planner = useQuery(plannerQuery);
-  const engines = useQuery(enginesQuery);
+  const engineNames = useEngineNames();
   const features = useQuery(engineFeaturesQuery);
   // Each edit is null until the student touches it, so an untouched value is saved back exactly as stored.
   const [title, setTitle] = useState<string | null>(null);
@@ -440,15 +441,14 @@ export function ExamSettingsPage() {
             <dl className="px-set-engines">
               {examFeatures.map((feature) => {
                 const selection = features.data?.[feature] ?? features.data?.default;
-                const name =
-                  engines.data?.find((row) => row.id === selection?.provider)?.name ?? selection?.provider;
+
                 return (
                   <div key={feature}>
                     <dt className="ink-muted">{t(`engines.feature.${feature}`)}</dt>
                     <dd>
                       {selection ? (
                         <>
-                          {name} · <span className="code ink-muted">{selection.model}</span>
+                          {engineNames.label(selection.provider, selection.model)}
                         </>
                       ) : features.isSuccess ? (
                         t("engines.auto.none")

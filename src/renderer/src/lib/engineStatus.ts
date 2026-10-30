@@ -5,6 +5,8 @@ export type EngineState = {
   loggedIn: boolean;
   refused: boolean;
   disabled: boolean;
+  /** Models the engine's subscription refused today. It still works on its other models. */
+  refusedModels?: readonly string[];
 };
 
 export type EngineStatus = {
@@ -17,8 +19,9 @@ export type EngineStatus = {
 };
 
 /**
- * One reading of an engine's state for setup and Settings: ready, signed out, sign-in refused (the CLI says signed in
- * but the provider turned a call away), not installed, or not offered by this build.
+ * One reading of an engine's state for setup and Settings: ready, ready without some models (its subscription refused
+ * one), signed out, sign-in refused (the CLI says signed in but the provider turned a call away), not installed, or not
+ * offered by this build.
  */
 export function engineStatus(row: EngineState): EngineStatus {
   if (row.disabled)
@@ -42,6 +45,9 @@ export function engineStatus(row: EngineState): EngineStatus {
       label: "engines.state.signedOut",
       fix: row.kind === "cli" ? "signIn" : null,
     };
+  // Signed in and working, but a call or a test was refused for its model: "Ready" alone would hide that.
+  if (row.refusedModels?.length)
+    return { tone: "warn", label: "engines.state.limited", fix: null };
   return { tone: "ok", label: "engines.state.ready", fix: null };
 }
 

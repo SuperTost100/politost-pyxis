@@ -489,3 +489,78 @@ esac`,
     rmSync(bin, { recursive: true, force: true });
   }
 });
+
+test("Settings: a model the subscription refuses keeps the engine, but the row says so and the plan moves to the model the refusal names", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-model-"));
+  const bin = mkdtempSync(join(tmpdir(), "pyxis-engine-bin-"));
+  const fake = (name: string, body: string) => {
+    const path = join(bin, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+    return path;
+  };
+  const env = {
+    HOME: bin,
+    PATH: "/usr/bin:/bin",
+    CLI_FUNNEL_NO_SHELL_PATH: "1",
+    // Cursor Agent signed in on a plan whose weekly usage covers only Grok, as in the walkthrough.
+    CLI_FUNNEL_AGENT_BIN: fake(
+      "agent",
+      `case "$1" in
+  --version) echo "2026.10.22-27dcf5f";;
+  status) echo '{"isAuthenticated":true}';;
+  about) echo '{}';;
+  --list-models) printf 'gemini-3.8-flash-low - Gemini 3.8 Flash Low\\ngemini-3.8-flash-high - Gemini 3.8 Flash High\\nclaude-opus-5-5-high - Claude Opus 5.5 1M High\\ngrok-4.7-low - Grok 4.7  Low\\ngrok-4.7-high - Grok 4.7  High\\n';;
+  *) echo "ActionRequiredError: Gemini 3.8 Flash is not included in your weekly usage Buy credits or switch to a Grok model to continue." >&2; exit 1;;
+esac`,
+    ),
+  };
+  const app = await launchPyxis({ userData, env });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.evaluate(async () => {
+      await window.pyxis.invoke("engines.acknowledge", { providers: ["agent"] });
+      localStorage.setItem("pyxis.lang", "en");
+      localStorage.removeItem("pyxis.engines.advanced");
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    const row = page.locator(".engines-list .px-engine", { hasText: "Cursor Agent" });
+    await expect(row).toContainText("Ready", { timeout: 30000 });
+    // The row names the models the plan gives the engine, never their ids.
+    await expect(row).toContainText("Claude Opus 5.5", { timeout: 30000 });
+    await expect(row).not.toContainText("claude-opus-5-5");
+
+    await page.getByRole("button", { name: "Test Cursor Agent" }).click();
+    await expect(
+      page.getByText("Your Cursor Agent subscription doesn't include the chosen model."),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(row).toContainText("Ready, with limits");
+    await expect(row).toContainText("Gemini 3.8 Flash isn't in your subscription");
+    // The refusal said to switch to a Grok model, so every task Pyxis chose moves there.
+    await expect
+      .poll(
+        async () => [
+          ...new Set(
+            Object.values(
+              await page.evaluate(() => window.pyxis.invoke("engines.features", {})),
+            ).map((selection) => selection.model),
+          ),
+        ],
+        { timeout: 30000 },
+      )
+      .toEqual(["grok-4.7"]);
+    await expect(row).toContainText("Grok 4.7");
+    await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
+    await saveShot(page, "engines-model-refused-en.png", { fullPage: true });
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});

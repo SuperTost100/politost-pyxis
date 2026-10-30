@@ -133,6 +133,15 @@ export function fallbackReason(
   return undefined;
 }
 
+/**
+ * The kind of model a refusal says to use instead, in lower case: Cursor's "Buy credits or switch to a Grok model to
+ * continue" gives "grok". Undefined when the refusal names none.
+ */
+export function suggestedModel(err: unknown): string | undefined {
+  const message = err instanceof Error ? err.message : String(err);
+  return /\bswitch to an? ([a-z][\w.]{2,}) model\b/i.exec(message)?.[1]?.toLowerCase();
+}
+
 /** Node error codes of a lost connection, which a CLI or API provider reports as a plain error with a `code`. */
 const networkCodes = new Set([
   "ECONNREFUSED",

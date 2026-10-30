@@ -2,7 +2,7 @@ import { IpcError } from "../../shared/ipc";
 import type Database from "better-sqlite3";
 import { automaticEffort, nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
-import { isBenched, isModelBenched } from "./bench";
+import { isBenched, isModelBenched, pointedModels } from "./bench";
 import { effortsOf } from "./efforts";
 import type { ProviderId } from "./funnel";
 import { LOCAL_PROVIDER, localData, readLocal } from "./local";
@@ -16,6 +16,12 @@ export type StoredSelection = {
   auto?: boolean;
   /** The effort the student picked for this task. Absent means the task's own level. */
   effortChoice?: string;
+  /**
+   * The task Pyxis chose this engine and model for, set by `selectionFor` on an automatic choice and never stored in
+   * `feature_engines`. It travels in a background job's saved parameters, so a job's call may move to another model or
+   * engine like any other automatic call. A model the student pinned has none.
+   */
+  chosenFor?: string;
 };
 
 function readRow(
@@ -68,9 +74,11 @@ export function selectionFor(
     : picked && listed.includes(picked)
       ? picked
       : automaticEffort(feature, listed);
-  const chosen = { ...selection, ...(effort ? { effort } : {}) };
-  if (auto) automatic.set(chosen, feature);
-  return chosen;
+  return {
+    ...selection,
+    ...(effort ? { effort } : {}),
+    ...(auto ? { chosenFor: feature } : {}),
+  };
 }
 
 /**
@@ -83,14 +91,9 @@ export function strongestSelection(db: Database.Database): StoredSelection {
   const listed = effortsOf(plan.provider, plan.model);
   const { effort: planEffort, ...rest } = plan;
   const effort = listed ? nearestEffort("high", listed) : planEffort;
-  const chosen = { ...rest, ...(effort ? { effort } : {}) };
-  const feature = automatic.get(plan);
-  if (feature) automatic.set(chosen, feature);
-  return chosen;
+  return { ...rest, ...(effort ? { effort } : {}) };
 }
 
-/** Selections Pyxis chose itself, with their task. Only these may switch engines when theirs fails. */
-const automatic = new WeakMap<object, string>();
 /** The engines the last automatic choice could use, with their models. */
 let ready: AutoProvider[] = [];
 
@@ -111,14 +114,14 @@ export function keepAllowed(allowed: readonly string[] | null): void {
 
 /**
  * The engine an automatic selection switches to when its own hit a usage limit, was signed out or refused the model:
- * the choice the automatic plan makes for the same task without that engine, or without that model for a refusal. The result is not automatic itself, so a task switches
- * at most once. A selection the student pinned, or one a background job saved when it was queued, gets none.
+ * the choice the automatic plan makes for the same task without that engine, or without the refused models for a
+ * refusal. The result is not automatic itself. A selection the student pinned gets none.
  */
 export function fallbackSelection(
-  selection: object & { provider: string },
+  selection: { provider: string; chosenFor?: string },
   reason?: "limit" | "signed-out" | "model",
-): Omit<StoredSelection, "auto" | "effortChoice"> | undefined {
-  const feature = automatic.get(selection);
+): Omit<StoredSelection, "auto" | "effortChoice" | "chosenFor"> | undefined {
+  const feature = selection.chosenFor;
   if (!feature) return undefined;
   // A refused model leaves its engine's other models usable; a limit or a sign-out takes the whole engine out.
   const choice = planAuto(
@@ -135,12 +138,19 @@ export function fallbackSelection(
     : undefined;
 }
 
-/** The providers with only the models their subscription has not refused today. */
+/**
+ * The providers with only the models their subscription has not refused today. When a refusal pointed to a kind of
+ * model ("switch to a Grok model"), only the provider's models of that kind stay, if it lists any.
+ */
 export function withoutRefusedModels(providers: AutoProvider[]): AutoProvider[] {
-  return providers.map((provider) => ({
-    ...provider,
-    models: provider.models.filter(
+  return providers.map((provider) => {
+    const open = provider.models.filter(
       (model) => !isModelBenched(provider.id, model.id),
-    ),
-  }));
+    );
+    const word = pointedModels(provider.id);
+    const pointed = word
+      ? open.filter((model) => model.id.toLowerCase().includes(word))
+      : [];
+    return { ...provider, models: pointed.length ? pointed : open };
+  });
 }

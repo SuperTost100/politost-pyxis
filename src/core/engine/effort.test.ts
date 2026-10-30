@@ -271,6 +271,7 @@ describe("the student's own effort", () => {
       provider: "claude",
       model: "big",
       effort: "max",
+      chosenFor: "plan",
     });
     handlers.setEffort({ feature: "plan" });
     expect(handlers.features().plan).toEqual({

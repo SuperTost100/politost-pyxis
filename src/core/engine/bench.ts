@@ -115,12 +115,55 @@ export const MODEL_REFUSED_MS = 24 * 60 * 60_000;
 
 const modelKey = (provider: string, model: string) => `${provider}\n${model}`;
 
+/**
+ * The kind of model a provider said to switch to when it refused one, by provider: Cursor says "Buy credits or switch to
+ * a Grok model", so its other models are out of the plan's included usage too.
+ */
+const pointedTo = new Map<string, { word: string; until: number }>();
+let onModelRefused: ((provider: string) => void) | undefined;
+
+/** `listener` hears every engine whose subscription refused one of its models, so the automatic plan can move. */
+export function setModelRefusalListener(
+  listener: ((provider: string) => void) | undefined,
+): void {
+  onModelRefused = listener;
+}
+
+/**
+ * The subscription refused this model. `switchTo` is the kind of model the provider said to use instead, such as
+ * "grok": until the same time is up, the automatic choice keeps to the engine's models of that kind.
+ */
 export function benchModel(
   provider: string,
   model: string,
   now = Date.now(),
+  switchTo?: string,
 ): void {
-  refusedModels.set(modelKey(provider, model), now + MODEL_REFUSED_MS);
+  const until = now + MODEL_REFUSED_MS;
+  refusedModels.set(modelKey(provider, model), until);
+  if (switchTo) pointedTo.set(provider, { word: switchTo.toLowerCase(), until });
+  onModelRefused?.(provider);
+}
+
+/** The kind of model the provider pointed to after a refusal, while it holds. */
+export function pointedModels(
+  provider: string,
+  now = Date.now(),
+): string | undefined {
+  const hint = pointedTo.get(provider);
+  if (!hint) return undefined;
+  if (hint.until > now) return hint.word;
+  pointedTo.delete(provider);
+  return undefined;
+}
+
+/** The models of this provider its subscription refused, while they stay out. */
+export function refusedModelsOf(provider: string, now = Date.now()): string[] {
+  const prefix = modelKey(provider, "");
+  return [...refusedModels.keys()]
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => key.slice(prefix.length))
+    .filter((model) => isModelBenched(provider, model, now));
 }
 
 export function isModelBenched(
@@ -141,6 +184,8 @@ export function clearBench(): void {
   limited.clear();
   signedOut.clear();
   refusedModels.clear();
+  pointedTo.clear();
+  onModelRefused = undefined;
   store = undefined;
   onChange = undefined;
 }

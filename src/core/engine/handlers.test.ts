@@ -25,6 +25,7 @@ describe("confirmed default engine", () => {
       expect(selectionFor(db, feature)).toEqual({
         provider: "codex",
         model: "gpt-test",
+        chosenFor: feature,
       });
     db.close();
   });

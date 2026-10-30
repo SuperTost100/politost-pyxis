@@ -41,6 +41,42 @@ test("route failure shows a plain recovery page without stack details", async ()
   }
 });
 
+test("a plan build the engine's subscription refused names the engine and offers another model", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-error-state-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    // What the walkthrough's build stopped with when Cursor Agent refused Claude Opus 5.5.
+    const reason =
+      "model-not-included [agent]: agent exited (1) without a result. ActionRequiredError: Claude Opus 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.";
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    const now = Date.now();
+    seedPlan(db, { id: "m", title: "Fisica 1", status: "building", language: "it" });
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,error,created_at,updated_at) VALUES('jm','plan-build',?,'failed',0.6,'wizard.stepIntroDiagnostic',?,?,?)",
+    ).run(JSON.stringify({ planId: "m" }), reason, now, now);
+    const step = db.prepare("INSERT INTO job_steps(id,job_id,name,position,label,state) VALUES(?,?,?,?,?,?)");
+    step.run("m0", "jm", "sources", 0, "wizard.stepSources", "succeeded");
+    step.run("m1", "jm", "intro", 1, "wizard.stepIntroDiagnostic", "failed");
+    db.close();
+
+    await page.evaluate(() => { window.location.hash = "/plans/new?build=m"; });
+    const state = page.getByRole("alert");
+    await expect(state).toContainText("Il tuo abbonamento a Cursor Agent non include il modello che serviva qui.");
+    await expect(state).not.toContainText("Un passaggio si \u00e8 fermato");
+    await expect(state.getByRole("button", { name: "Riprova", exact: true })).toBeVisible();
+    await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
+    await saveShot(page, "build-model-refused-it.png", { fullPage: true });
+    await state.getByRole("button", { name: "Scegli un altro modello" }).click();
+    await expect(page).toHaveURL(/#\/settings\/engines/);
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+  }
+});
+
 test("a failed plan build says so in the title and steps, shows its message under Details and retries", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-error-state-"));
   const app = await launchPyxis({ userData });

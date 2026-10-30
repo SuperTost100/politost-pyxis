@@ -139,12 +139,15 @@ function BuildScreen({ planId }: { planId: string }) {
   const failed = Boolean(
     build.data && ["failed", "cancelled", "interrupted"].includes(build.data.state),
   );
-  // A build that stopped on a refused sign-in names the engine and offers its sign-in.
+  // A build that stopped on the engine says what the engine said, with its name: a refused sign-in offers the sign-in
+  // and a model the subscription leaves out offers another model. Other failures keep the general message.
   const describeEngineError = useEngineError();
   const buildError = build.data?.error;
-  const buildFailure = buildError
-    ? describeEngineError(jobErrorKey(buildError), jobErrorEngine(buildError))
-    : undefined;
+  const buildErrorKey = buildError ? jobErrorKey(buildError) : undefined;
+  const buildFailure =
+    buildError && buildErrorKey?.startsWith("engines.errors.")
+      ? describeEngineError(buildErrorKey, jobErrorEngine(buildError))
+      : undefined;
   // The plan's topics exist once the path step has run. Each step that ends reads the plan again, so they appear then.
   const settledSteps = (build.data?.steps ?? [])
     .filter((step) => step.state === "succeeded")
@@ -275,8 +278,8 @@ function BuildScreen({ planId }: { planId: string }) {
                 secondary={buildFailure?.action}
                 details={build.data?.error}
               >
-                {buildFailure?.action
-                  ? `${t("wizard.buildFailed")} ${buildFailure.text}`
+                {buildFailure
+                  ? `${buildFailure.text} ${t("wizard.buildResume")}`
                   : t("wizard.buildFailed")}
               </ErrorState>
             )}

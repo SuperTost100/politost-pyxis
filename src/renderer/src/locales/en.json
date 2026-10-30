@@ -1552,6 +1552,7 @@
     "preparingFailed": "I couldn't prepare the exam",
     "cancelledTitle": "Exam build cancelled",
     "buildFailed": "A step stopped before the exam was ready. Try again to continue from the last saved step.",
+    "buildResume": "Retry to continue from the last saved step.",
     "stepSources": "Reading the sources",
     "stepSourcesFailed": "I couldn't read the sources",
     "stepTopicsFailed": "I couldn't create the topics",
@@ -2497,7 +2498,8 @@
       "engine-missing": "Choose and test an engine in Settings before continuing.",
       "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines.",
       "stream-truncated": "The engine stopped before the answer was finished.",
-      "signedOutNamed": "{{name}} refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again."
+      "signedOutNamed": "{{name}} refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
+      "modelNotIncludedNamed": "Your {{name}} subscription doesn't include the model this needed. Choose another model or engine in Settings."
     },
     "feature": {
       "default": "Default engine",
@@ -2588,6 +2590,7 @@
     },
     "state": {
       "ready": "Ready",
+      "limited": "Ready, with limits",
       "signedOut": "Needs sign-in",
       "refused": "Sign-in expired"
     },
@@ -2605,7 +2608,10 @@
       "modelNotIncluded": "Your {{name}} subscription doesn't include the chosen model. Pick another one in the engine's details.",
       "other": "{{name}} test: {{message}}"
     },
-    "signInTo": "Sign in to {{name}}"
+    "signInTo": "Sign in to {{name}}",
+    "chooseModel": "Choose another model",
+    "notIncluded_one": "{{models}} isn't in your subscription",
+    "notIncluded_other": "{{models}} aren't in your subscription"
   },
   "graph": {
     "title": "Graph",

@@ -492,6 +492,8 @@ export const requests = {
         acknowledged: z.boolean(),
         /** The student lets Pyxis use this engine (always true in automatic mode). */
         allowed: z.boolean(),
+        /** Models its subscription refused today. The engine still works on its other models. */
+        refusedModels: z.array(z.string()),
         capabilities: z.object({
           effort: z.boolean(),
           fast: z.boolean(),
@@ -569,6 +571,14 @@ export const requests = {
   "engines.features": {
     input: z.object({}),
     output: z.record(z.string(), engineSelection),
+  },
+  /** The names a student reads: each engine's, and each model's that Pyxis has listed, by engine. */
+  "engines.names": {
+    input: z.object({}),
+    output: z.object({
+      engines: z.record(z.string(), z.string()),
+      models: z.record(z.string(), z.record(z.string(), z.string())),
+    }),
   },
   // Tokens each engine used since a moment (the renderer sends the start of the student's week).
   "engines.usage": {

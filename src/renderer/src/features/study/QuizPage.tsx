@@ -19,6 +19,7 @@ import { openSourceViewer } from "../../components/SourceViewer";
 import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
 import { errorProvider, useEngineError } from "../../lib/engineError";
+import { useEngineNames } from "../../lib/useEngineNames";
 import { jobErrorEngine, jobErrorKey, requestJobError } from "../jobs/jobErrors";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
@@ -162,6 +163,7 @@ function SoftTimer({ running }: { running: boolean }) {
  */
 export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?: boolean; review?: boolean }) {
   const { t, i18n } = useTranslation();
+  const engineNames = useEngineNames();
   const { message } = App.useApp();
   const { planId, topicId } = useParams();
   useActiveTime(planId, topicId ?? null);
@@ -916,7 +918,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       expectedLabel: t(long ? "quiz.reference" : "quiz.expected"),
       explanation: row.explanation,
       citations: row.citations,
-      grader: graded?.model ?? row.model,
+      grader:
+        graded?.model || row.model
+          ? engineNames.label(
+              graded?.model ? graded.provider : row.provider,
+              graded?.model ?? row.model,
+            )
+          : undefined,
       onAsk: () => void ask(row),
       ...(finalResult
         ? {
@@ -1358,7 +1366,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           listNote={
             !finalResult && grading.data?.model
               ? t("results.gradingWith", {
-                  model: [grading.data.provider, grading.data.model].filter(Boolean).join(" · "),
+                  model: engineNames.label(grading.data.provider, grading.data.model),
                 })
               : undefined
           }
@@ -1619,6 +1627,7 @@ function Feedback({
   onWrong: (wrong: boolean) => void;
 }) {
   const { t } = useTranslation();
+  const engineNames = useEngineNames();
   const grade = useGradeScale();
   const state = verdict(result.score);
   const closed = kind === "mcq" || kind === "tf";
@@ -1674,7 +1683,7 @@ function Feedback({
       ) : null}
       {result.model ? (
         <p className="meta px-quiz-graded">
-          {t("quiz.gradedBy", { model: result.model })}
+          {t("quiz.gradedBy", { model: engineNames.label(result.provider, result.model) })}
         </p>
       ) : null}
       <div className="px-quiz-feedback-actions">
