@@ -206,7 +206,6 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     );
     const again = page.locator(".px-markdown p", { hasText: "Un punto" });
     await expect(again).toBeVisible();
-    await again.scrollIntoViewIfNeeded();
     const selectFromGlyphs = () =>
       again.evaluate((node) => {
         const glyphs = node.querySelector(".katex-html")!;
@@ -221,9 +220,11 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
         selection.removeAllRanges();
         selection.addRange(range);
       });
-    // The page has only just opened: a scroll or a re-render while it settles closes the menu by design, so a user
-    // selects again. Hosted Windows and macOS windows settle later than Linux.
+    // The page has only just opened: a scroll or a re-render while it settles closes the menu (by design, so a user
+    // selects again) or replaces the paragraph, so the scroll and the selection retry together. Hosted Windows and
+    // macOS windows settle later than Linux.
     await expect(async () => {
+      await again.scrollIntoViewIfNeeded({ timeout: 2000 });
       await selectFromGlyphs();
       await expect(menu).toBeVisible({ timeout: 2000 });
     }).toPass({ timeout: 30000 });
