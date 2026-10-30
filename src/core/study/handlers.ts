@@ -40,6 +40,7 @@ import {
   writeLesson,
   type Wording,
 } from "./openLesson";
+import { writeAgentLesson } from "./agentLesson";
 import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
 import { currentSelfRatings, rateExercise, type SelfRating } from "./selfRating";
 import type { Rating } from "./schedule";
@@ -113,7 +114,10 @@ export function studyHandlers(
   runner?: Runner,
   run: GenerateInput["run"] = runTurn,
   simulationRun: GenerateInput["run"] = runTurn,
+  /** `agentLesson`: write lessons with the agent loop prototype instead of the pipeline (developer builds only). */
+  options: { agentLesson?: boolean } = {},
 ) {
+  const write = options.agentLesson ? writeAgentLesson : writeLesson;
   if (runner) {
     registerQuizJobs(db, runner, run);
     registerExerciseJobs(db, runner, run);
@@ -172,7 +176,7 @@ export function studyHandlers(
           ? readLessonItem(db, input.planId, input.topicId, input.itemId)
           : null;
       if (saved) return Promise.resolve(withReading(saved));
-      return writeLesson(db, input.planId, input.topicId, run ?? runTurn, {
+      return write(db, input.planId, input.topicId, run ?? runTurn, {
         ...options,
         onPassages: onPassages && ((ids) => onPassages(ids, smartCitations(db, ids))),
         wording: input.wording,
