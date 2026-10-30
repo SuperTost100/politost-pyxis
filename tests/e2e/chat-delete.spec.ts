@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 for (const libraryCopy of [false, true]) {
   test(`chat deletion after a later document attachment keeps library copy: ${libraryCopy}`, async () => {
@@ -109,7 +110,7 @@ for (const libraryCopy of [false, true]) {
       db.close();
     } finally {
       await app.close();
-      rmSync(userData, { recursive: true, force: true });
+      removeTestFolder(userData);
     }
   });
 }

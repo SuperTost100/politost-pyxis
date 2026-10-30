@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -289,7 +290,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await shoot(page, `plan-path/chooser-narrow-it-light.png`);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -596,6 +597,6 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByRole("button", { name: "Inizia", exact: true })).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

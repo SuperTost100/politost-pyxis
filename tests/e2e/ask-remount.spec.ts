@@ -1,8 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-remount-"));
@@ -54,7 +55,7 @@ test("a reply sent before leaving Ask does not pull the student back to it", asy
     await expect(page).toHaveURL(/#\/exams$/);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -107,7 +108,7 @@ test("coming back while a reply is written shows it running, and core refuses a 
     await expect(page).toHaveURL(new RegExp(`#/ask/${chatId}$`));
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -145,7 +146,7 @@ test("a question sent again after Stop shows once while its reply is written", a
     await expect(bubbles).toHaveCount(1);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -172,6 +173,6 @@ test("a first question's chat opened from the list while its reply is written sh
     await expect(page.locator(".px-msg-bubble", { hasText: "Che cos'è un integrale?" })).toHaveCount(1);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

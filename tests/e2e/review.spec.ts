@@ -5,7 +5,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +14,7 @@ import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { removeTestFolder } from "./cleanup";
 
 // The built app can be pointed at another output folder so a test run never races a rebuild of out/.
 
@@ -186,7 +186,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     expect(events.every((row) => row.topic_id === plan.topics[0]!.id)).toBe(true);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -243,6 +243,6 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
     await expect(output).toHaveText("42\n");
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

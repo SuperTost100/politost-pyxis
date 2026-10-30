@@ -24,6 +24,7 @@ import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -3397,7 +3398,7 @@ test("M14 every application route in both languages, themes and supported widths
       ),
     );
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(importFolder, { recursive: true, force: true });
     rmSync(booksSite, { recursive: true, force: true });
     rmSync(updateFolder, { recursive: true, force: true });

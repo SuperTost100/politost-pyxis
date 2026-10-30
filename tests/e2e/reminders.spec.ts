@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { quitPyxis } from "./app-exit";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 test("study reminders are off by default; the switch and the time are saved", async () => {
   test.setTimeout(90_000);
@@ -53,6 +54,6 @@ test("study reminders are off by default; the switch and the time are saved", as
     await quitPyxis(app);
   } finally {
     await app.close().catch(() => undefined);
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

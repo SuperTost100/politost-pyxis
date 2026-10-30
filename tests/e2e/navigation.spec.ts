@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 test("the window stays on the app page and refuses device permissions", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-navigation-"));
@@ -51,7 +52,7 @@ test("the window stays on the app page and refuses device permissions", async ()
     expect(permissions).toEqual({ camera: "denied", geolocation: "denied" });
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -72,6 +73,6 @@ test("a page opened while the start page still redirects to Exams is not lost", 
     await expect(page).toHaveURL(/#\/settings$/);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

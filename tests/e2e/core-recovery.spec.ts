@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 test("slow core bootstrap beyond 3s still connects the renderer", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-core-slow-"));
@@ -29,7 +30,7 @@ test("slow core bootstrap beyond 3s still connects the renderer", async () => {
     ).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -62,7 +63,7 @@ test("failed core startup stops retrying and can recover after explicit retry", 
     ).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -89,7 +90,7 @@ test("a timed-out key handoff shows recovery and reconnects after retry", async 
     ).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -113,6 +114,6 @@ test("an undecryptable saved API key does not block startup", async () => {
     await expect(page.getByText(/Il motore interno non/)).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

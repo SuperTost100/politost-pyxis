@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +8,7 @@ import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { animationsSettled } from "./settled";
+import { removeTestFolder } from "./cleanup";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -290,6 +291,6 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     expect(errors).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { animationsSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 
 const PASSAGE =
@@ -223,6 +224,6 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
     }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

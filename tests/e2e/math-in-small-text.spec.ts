@@ -1,6 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 test("Ask: a suggested follow-up with math draws the formula, and sends its own text", async () => {
   test.setTimeout(120000);
@@ -40,7 +41,7 @@ test("Ask: a suggested follow-up with math draws the formula, and sends its own 
     await expect(page.locator(".px-mathtext-view .katex")).toHaveCount(1);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -168,6 +169,6 @@ test("Quiz: a matching question's menu draws math and picks with the keyboard", 
     await expectNoAxeViolations(page);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

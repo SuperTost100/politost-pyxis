@@ -3,7 +3,7 @@ import {
   test,
   type Page,
 } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -11,6 +11,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
+import { removeTestFolder } from "./cleanup";
 
 /** Two subjects, one exam with no subject, and cards that need the folding, the math and the cloze. */
 function seed(db: DatabaseSync) {
@@ -222,7 +223,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     db.close();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -244,6 +245,6 @@ test("the flashcard browser says when there are no cards", async () => {
     ).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

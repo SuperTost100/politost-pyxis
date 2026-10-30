@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -7,6 +7,7 @@ import { parseSmartText, smartQuestions } from "../../src/shared/smart-text";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { removeTestFolder } from "./cleanup";
 
 const mcq = (id: string, topicId: string, stem: string) => ({
   id,
@@ -340,6 +341,6 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     db.close();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

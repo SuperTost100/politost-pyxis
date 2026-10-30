@@ -1,7 +1,7 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
@@ -9,6 +9,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 // Seeded responses only: the app runs its real jobs against recorded replies, no model is called.
 
@@ -150,7 +151,7 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
     ).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -314,6 +315,6 @@ test("PLAN-13 rebuild is reviewed, durable across restart, and applies exactly w
     expect(after.topics[0]!.id).toBe(before.topics[0]!.id);
   } finally {
     await first.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -9,6 +9,7 @@ import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 /** Reads the workspace database next to the running app; WAL lets a second reader see committed rows. */
 function rows<T>(userData: string, sql: string, ...args: string[]): T[] {
@@ -121,6 +122,6 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
     await expectNoAxeViolations(page);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

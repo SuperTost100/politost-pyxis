@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
+import { removeTestFolder } from "./cleanup";
 
 // Stand-ins for the two engine CLIs. They report a version and a sign-in state, nothing more, so no model is called.
 function fakeBins(options: { claude: boolean | null; codex: boolean | null }) {
@@ -242,7 +243,7 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     ).toBeChecked();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });
@@ -311,7 +312,7 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
     rmSync(none.bin, { recursive: true, force: true });
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(out.bin, { recursive: true, force: true });
   }
 });
@@ -352,7 +353,7 @@ test("First setup: cancelling a sign-in before its page opens is not a failure, 
     await expect(setup.getByText(/Accesso non completato/)).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });
@@ -413,7 +414,7 @@ test("First setup: Install runs the installer, shows its output, then signs in b
     await noAxeViolations(page);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });
@@ -592,7 +593,7 @@ test("Run setup again: Settings reopens the profile and engine steps filled in, 
     await noAxeViolations(page);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });
@@ -663,7 +664,7 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
     await expect(notice(page)).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });
@@ -694,6 +695,6 @@ test("First setup: a new profile starts in the computer's language, and a choice
     await expect(page.locator("html")).toHaveAttribute("lang", "it");
     await app.close();
   } finally {
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 test("selected source text opens a scoped tutor context and Escape dismisses its actions", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-selection-"));
@@ -51,6 +52,6 @@ test("selected source text opens a scoped tutor context and Escape dismisses its
     expect(scope.context.body).toBe(excerpt);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

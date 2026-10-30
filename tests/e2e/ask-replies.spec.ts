@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedSource } from "./seed";
+import { removeTestFolder } from "./cleanup";
 
 const CONTINUATION = " ha un massimo e un minimo su un intervallo chiuso.";
 
@@ -97,7 +98,7 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
     await expect(week.getByText(/la cache dei prompt ha servito/)).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -161,6 +162,6 @@ test("Ask: Continue keeps the cut reply's citation chips while it waits for the 
     expect(await page.evaluate(() => (window as unknown as { seen: string[] }).seen)).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

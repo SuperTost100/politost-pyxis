@@ -2,13 +2,14 @@ import {
   expect,
   test,
 } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { removeTestFolder } from "./cleanup";
 
 const both = (it: string, en: string) => new RegExp(`^(${it}|${en})$`);
 
@@ -204,6 +205,6 @@ test("practice: rate two exercises, change one, finish, and mastery moves by two
     expect(errors).toEqual([]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
