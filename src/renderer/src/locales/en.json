@@ -2169,9 +2169,9 @@
     "tags": {
       "smartbook": "From the book",
       "ai": "AI generated",
-      "general": "general knowledge",
-      "mastered": "mastered",
-      "severe": "severe gap",
+      "general": "General knowledge",
+      "mastered": "Mastered",
+      "severe": "Severe gap",
       "recommended": "Recommended"
     },
     "chips": {

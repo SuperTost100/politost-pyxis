@@ -2169,9 +2169,9 @@
     "tags": {
       "smartbook": "Dal libro",
       "ai": "Generato da AI",
-      "general": "conoscenza generale",
-      "mastered": "padroneggiato",
-      "severe": "lacuna grave",
+      "general": "Conoscenza generale",
+      "mastered": "Padroneggiato",
+      "severe": "Lacuna grave",
       "recommended": "Consigliato"
     },
     "chips": {

@@ -1,4 +1,5 @@
 import { reachableTarget } from "../../../../shared/plan-file";
+import { rowTitle } from "../../../../shared/topic-title";
 
 /** The activities a topic row shows as its steps, in the order a student does them. */
 export const topicSteps = ["lesson", "practice", "quiz", "cards", "gaps"] as const;
@@ -42,15 +43,6 @@ type Step = {
   at: number;
   result: { correct: number; total: number } | null;
 };
-
-/**
- * A topic's name for its numbered row. Plans built from a book before 0.3 stored "1. Misure e vettori" and the row draws
- * its own number, so a leading "N. " that repeats the row's number goes. Any other number is part of the name.
- */
-export function rowTitle(title: string, index: number): string {
-  const match = /^(\d+)\.\s+(\S.*)$/s.exec(title.trim());
-  return match && Number(match[1]) === index ? match[2]! : title;
-}
 
 /**
  * Whether the path should say that expected dates need weekly hours: the planner has none (so the schedule has no days
