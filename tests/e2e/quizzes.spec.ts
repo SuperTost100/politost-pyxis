@@ -553,8 +553,11 @@ test("open answer: checked right away, the check can be cancelled and the answer
       topicId: topics[0]!.id,
       types: ["open"],
     });
+    // Ten questions are written in three calls, each with the recorded model's delay.
     await expect
-      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state)
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
+        timeout: 20000,
+      })
       .toBe("succeeded");
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
     const answer = page.getByRole("textbox", { name: "La tua risposta" });

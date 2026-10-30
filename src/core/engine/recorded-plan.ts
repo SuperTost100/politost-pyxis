@@ -44,16 +44,23 @@ export function recordedPlanRun(
       previousQuestions?: string[];
       count?: number;
     };
-    // A quiz is written a few questions per call: each call gets the first `count` recorded questions, numbered after
-    // the ones already written.
+    // A quiz is written a few questions per call: each call gets the next `count` recorded questions, after the ones
+    // already written. A recording too short for that hands every call its first `count` instead.
     const recorded = replies[key] as { questions?: unknown[] } | undefined;
-    const reply =
+    const written = context.previousQuestions?.length ?? 0;
+    const batch =
       key === "quizQuestions" &&
       context.count != null &&
       Array.isArray(recorded?.questions) &&
       recorded.questions.length > context.count
-        ? { ...recorded, questions: recorded.questions.slice(0, context.count) }
-        : recorded;
+        ? context.count
+        : undefined;
+    const from =
+      batch != null && recorded!.questions!.length >= written + batch ? written : 0;
+    const reply =
+      batch != null ? { ...recorded, questions: recorded!.questions!.slice(from, from + batch) } : recorded;
+    // `{{question:N}}` names a recorded question's place in the whole quiz.
+    const questionShift = written - from;
     const text = JSON.stringify(reply)
       .replaceAll(
         '"{{allPassages}}"',
@@ -68,7 +75,7 @@ export function recordedPlanRun(
         (_, kind: string, raw: string) => {
           const i = Number(raw);
           return kind === "question"
-            ? String((context.previousQuestions?.length ?? 0) + i)
+            ? String(questionShift + i)
             : kind === "passage"
               ? (context.passages?.[i]?.id ?? "missing")
               : kind === "source"
