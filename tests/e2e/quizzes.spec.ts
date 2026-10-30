@@ -564,6 +564,9 @@ test("open answer: checked right away, the check can be cancelled and the answer
     await answer.fill("È lo spostamento.");
     await page.getByRole("button", { name: "Verifica", exact: true }).click();
     await expect(page.getByText("Correggo…", { exact: true })).toBeVisible();
+    // While it checks, the button keeps its name and says it is busy. Its spinner is no part of the name: in a hidden
+    // window on a slow runner the spinner's exit can lag, and the button would be "loading Verifica" after the check.
+    await expect(page.getByRole("button", { name: "Verifica", exact: true })).toHaveAttribute("aria-busy", "true");
     await expect(answer).toBeDisabled();
     await page.locator(".px-quiz-checking").getByRole("button", { name: "Annulla" }).click();
     await expect(page.getByText("Correggo…", { exact: true })).toHaveCount(0);

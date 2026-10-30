@@ -4,7 +4,7 @@ import { App as AntApp, ConfigProvider } from "antd";
 import { ProConfigProvider } from "@ant-design/pro-components";
 import enUS from "antd/locale/en_US";
 import itIT from "antd/locale/it_IT";
-import { Calendar, ChevronDown } from "lucide-react";
+import { Calendar, ChevronDown, LoaderCircle } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RouterProvider } from "react-router";
@@ -45,6 +45,13 @@ const selectIcons = {
 };
 const dateIcons = {
   suffixIcon: <Calendar size={16} strokeWidth={1.75} aria-hidden />,
+};
+/**
+ * antd's own spinner is an image named "loading", so a busy button was called "loading Save", and kept that name until
+ * the spinner's exit motion ended, which a hidden or slow window can delay. This one is no part of the name.
+ */
+const buttonIcons = {
+  loadingIcon: <LoaderCircle size={16} strokeWidth={1.75} aria-hidden className="px-spin" />,
 };
 
 function StudyApp() {
@@ -116,6 +123,7 @@ function StudyApp() {
         locale={locale === "it" ? itIT : enUS}
         select={selectIcons}
         datePicker={dateIcons}
+        button={buttonIcons}
       >
         <ProConfigProvider dark={appearance.resolved === "dark"} hashed={false}>
           <AntApp>

@@ -1530,6 +1530,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               shape="round"
               size="large"
               loading={primary.loading}
+              aria-busy={primary.loading || undefined}
               disabled={primary.disabled}
               onClick={primary.onClick}
             >
