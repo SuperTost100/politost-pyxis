@@ -94,6 +94,32 @@ describe("mixed quiz", () => {
     expect(new Set(questions.map((question) => question.sourceId)).size).toBe(questions.length);
   });
 
+  it("asks an exercise with no plausible neighbour once, open, and never twice as free text", () => {
+    // Alone, a short answer has no wrong answer to stand beside it: a true or false would always be true.
+    expect(
+      mixQuestions([{ id: "solo", prompt: "Quanto vale g?", answer: "9,8 m/s²", topicId: "t", kind: "exercise" }], 8, 3).map(
+        (question) => question.grade.kind,
+      ),
+    ).toEqual(["open"]);
+    // With one or two neighbours, no exercise is asked both open and as a blank (a Review grades a blank as open).
+    const rows = ["massa", "forza", "peso"].map((name) => ({
+      id: name,
+      prompt: `Che cos'è ${name}?`,
+      answer: name,
+      topicId: "t",
+      kind: "exercise",
+    }));
+    for (let seed = 1; seed < 20; seed += 1) {
+      const free = mixQuestions(rows, 20, seed)
+        .filter((question) => question.grade.kind === "open" || question.grade.kind === "completion")
+        .map((question) => question.sourceId);
+      expect(new Set(free).size).toBe(free.length);
+      for (const question of mixQuestions(rows, 20, seed))
+        if (question.grade.kind === "tf" && question.grade.correct)
+          expect(question.stem.endsWith(` ${question.explanation}`)).toBe(true);
+    }
+  });
+
   it("draws distractors only from short answers of the same topic and kind", () => {
     const short = (topicId: string, kind: string, names: string[]) =>
       names.map((name) => ({ id: `${topicId}-${name}`, prompt: `Che cos'è ${name}?`, answer: name, topicId, kind }));

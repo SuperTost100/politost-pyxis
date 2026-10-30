@@ -83,10 +83,11 @@ export function mixQuestions(
   const random = mix(seed);
   const questions: MixedQuestion[] = [];
   const kinds = ["mcq", "tf", "completion", "matching", "open"] as const;
-  const askedOpen = new Set<string>();
+  // A blank becomes an open question in a Review, so an exercise is asked as free text (open or blank) once.
+  const askedFree = new Set<string>();
   const open = (row: Row) => {
-    if (askedOpen.has(row.id)) return;
-    askedOpen.add(row.id);
+    if (askedFree.has(row.id)) return;
+    askedFree.add(row.id);
     questions.push({
       id: `${row.id}-open-${questions.length}`,
       sourceId: row.id,
@@ -102,11 +103,12 @@ export function mixQuestions(
     const row = usable[cursor % usable.length];
     if (!row) break;
     cursor += 1;
-    if (kind === "open" || !shortAnswer(row.answer)) {
+    const neighbours = usable.filter((other) => alike(row, other));
+    // Without a plausible wrong answer beside it, a true or false would always be true: such an exercise is asked open.
+    if (kind === "open" || !shortAnswer(row.answer) || neighbours.length === 0) {
       open(row);
       continue;
     }
-    const neighbours = usable.filter((other) => alike(row, other));
     if (kind === "mcq") {
       const distractors = [...new Map(neighbours.map((other) => [same(other.answer), other.answer])).values()];
       if (distractors.length < 3) {
@@ -125,10 +127,9 @@ export function mixQuestions(
       continue;
     }
     if (kind === "tf") {
-      const other = neighbours[0];
-      // Every other statement is false, when a plausible wrong answer exists to show.
-      const truthful = !other || questions.filter((item) => item.grade.kind === "tf").length % 2 === 0;
-      const shown = truthful ? row.answer : other.answer;
+      // Every other statement is false, with a plausible wrong answer.
+      const truthful = questions.filter((item) => item.grade.kind === "tf").length % 2 === 0;
+      const shown = truthful ? row.answer : neighbours[0]!.answer;
       questions.push({
         id: `${row.id}-tf-${questions.length}`,
         sourceId: row.id,
@@ -166,6 +167,8 @@ export function mixQuestions(
       });
       continue;
     }
+    if (askedFree.has(row.id)) continue;
+    askedFree.add(row.id);
     questions.push({
       id: `${row.id}-blank-${questions.length}`,
       sourceId: row.id,
