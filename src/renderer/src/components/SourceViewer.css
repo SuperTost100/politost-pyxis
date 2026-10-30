@@ -88,4 +88,5 @@
 .source-viewer-title {
   grid-column: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }

@@ -32,6 +32,14 @@ function seed(db: DatabaseSync) {
     document: { id: "doc-a" },
     passages: [{ id: "pa-1", text: "La forza è il prodotto di massa e accelerazione.", section: "1. Forze" }],
   });
+  // A title with no spaces to break at, for the viewer's header.
+  seedSource(db, {
+    id: "src-long",
+    title: "Appunti_di_fisica_generale_per_il_corso_di_laurea_in_ingegneria_edile_e_dei_sistemi_territoriali_2026",
+    library: 1,
+    document: { id: "doc-long" },
+    passages: [{ id: "pa-long", text: "Una riga del capitolo lungo.", section: "1. Forze" }],
+  });
   seedPlan(db, {
     id: "plan-a",
     title: "Fisica 1",
@@ -181,6 +189,29 @@ test("LAYOUT-02 the source viewer has one way back and one close, side by side",
           expect(Math.abs(centre(backBox!) - centre(closeBox!))).toBeLessThan(8);
           expect(closeBox!.x).toBeGreaterThan(backBox!.x + backBox!.width);
           await saveShot(page, `layout-details/viewer-${key}.png`);
+          await close.click();
+          await expect(page.getByRole("dialog")).toHaveCount(0);
+
+          // Opened without a way back, a long unbroken title wraps inside its own column and leaves the close button clear.
+          await page.evaluate(() =>
+            window.dispatchEvent(new CustomEvent("pyxis:source-viewer", { detail: { passageId: "pa-long" } })),
+          );
+          await expect(viewer.getByText(/Una riga del capitolo lungo/)).toBeVisible();
+          const title = viewer.locator(".source-viewer-title");
+          const [titleBox, closeOnly] = [await title.boundingBox(), await viewer.locator(".source-viewer-close").boundingBox()];
+          expect(titleBox!.x + titleBox!.width).toBeLessThanOrEqual(closeOnly!.x);
+          const overflow = await title.evaluate((element) => element.scrollWidth > element.clientWidth);
+          expect(overflow).toBe(false);
+          await saveShot(page, `layout-details/viewer-long-${key}.png`);
+          await expectNoAxeViolations(page);
+          await viewer.getByRole("button", { name: /^(Chiudi|Close)$/ }).click();
+          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await page.evaluate(() =>
+            window.dispatchEvent(
+              new CustomEvent("pyxis:source-viewer", { detail: { passageId: "pa-1", back: () => undefined } }),
+            ),
+          );
+          await expect(viewer.getByText(/La forza è il prodotto/)).toBeVisible();
           await expectNoAxeViolations(page);
           await close.click();
           await expect(page.getByRole("dialog")).toHaveCount(0);
