@@ -119,7 +119,7 @@ export function PlanProgress({
   }, [requestedDrill]);
   // Bars run from 0 to 100; the chart and every number are on the profile's scale.
   const target = summary.target * 100;
-  const chartTarget = grade.value(summary.target);
+  const chartTarget = grade.masteryPoint(summary.target);
   // A topic row opens to the evidence behind its number. One request covers every topic, so rows open without a wait
   // after the first; it reloads when a shown number changes, so the evidence always matches the bar.
   const [openTopics, setOpenTopics] = useState<ReadonlySet<string>>(new Set());
