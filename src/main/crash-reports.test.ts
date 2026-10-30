@@ -765,6 +765,44 @@ describe("which core's switch counts", () => {
     expect(uploads.at(-1)).toBe(false);
   });
 
+  it("a switch turned off on the core being stopped applies at once, so errors raised after it never go", async () => {
+    const { h, uploads, reports, cores, old } = setup();
+    cores.suspend();
+    reports.capture("renderer", boom("before the switch went off"));
+    // A profile save on the old core lands while it stops: the student turned the switch off.
+    cores.report(old, false);
+    expect(uploads.at(-1)).toBe(false);
+    reports.capture("renderer", boom("after the switch went off"));
+    // The restored workspace has the switch on.
+    const restored = { name: "restored" };
+    cores.started(restored);
+    cores.report(restored, true);
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+    expect(readFileSync(h.file, "utf8")).not.toContain("switch went off");
+    h.tick(1_000);
+    reports.capture("renderer", boom("after the restored workspace said on"));
+    await reports.flush();
+    expect(h.sent.map((item) => item.body["message"])).toEqual(["after the restored workspace said on"]);
+  });
+
+  it("a core that would not stop, turned off and on again while it was asked to, counts again with on and sends nothing from the off time", async () => {
+    const { h, uploads, reports, cores, old } = setup();
+    cores.suspend();
+    cores.report(old, false);
+    reports.capture("renderer", boom("while the switch was off"));
+    // On again from a core that is not counted yet: noted, not applied.
+    cores.report(old, true);
+    expect(uploads.at(-1)).toBe(false);
+    reports.capture("renderer", boom("before core counted again"));
+    cores.reinstate(old);
+    expect(uploads.at(-1)).toBe(true);
+    h.tick(1_000);
+    reports.capture("renderer", boom("after core counted again"));
+    await reports.flush();
+    expect(h.sent.map((item) => item.body["message"])).toEqual(["after core counted again"]);
+  });
+
   it("a core that never reported the switch leaves sending stopped", async () => {
     const h = harness();
     const reports = h.make();

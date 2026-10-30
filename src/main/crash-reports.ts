@@ -514,7 +514,8 @@ export class CrashReports {
 /**
  * Decides, for main, which core's `crash-consent` counts: the one started last, and none while a workspace replacement
  * is under way. A core being stopped for a restore or a wipe could still report the switch of the workspace that is
- * about to go, so its reports are only noted.
+ * about to go. Its on is only noted, but its off applies at once: the student turned the switch off, and an error
+ * raised after that must not go even if the workspace that comes back says on.
  */
 export class CoreConsent<Core extends object> {
   private current: Core | null = null;
@@ -530,7 +531,9 @@ export class CoreConsent<Core extends object> {
 
   report(core: Core, enabled: boolean): void {
     this.last.set(core, enabled);
-    if (core === this.current) this.reports.setConsent(enabled);
+    // Off drops the queue and the held errors and turns uploads off, so an on from the next core starts a new consent
+    // period. Off counts as confirmed: with the switch off nothing is held or sent, whichever core speaks next.
+    if (core === this.current || !enabled) this.reports.setConsent(enabled);
   }
 
   /** The workspace is about to be replaced: nothing counts until a core started afterwards reports. */

@@ -65,7 +65,7 @@ While sending is stopped:
 - Crashpad's uploads are off (`setUploadToServer(false)`).
 - The JavaScript report on its way is aborted. It stays queued and does not count as a failed send.
 - New JavaScript errors follow the rules of step 4: held in memory while the saved copy says on, dropped while it says off.
-- Main ignores `crash-consent` from the core being stopped, so a profile save that lands during the stop cannot turn sending back on. Only the next core it starts counts (`CoreConsent`).
+- A profile save on the core being stopped can only turn sending off. Its off applies at once and drops the queue and the held errors, so an error raised after it never goes, even if the workspace that comes back says on. Its on is ignored: only the next core main starts can turn sending back on (`CoreConsent`).
 
 The first core that reports the switch on the new workspace decides. On, and sending resumes with the queue and the held errors. Off, and the queue and the held errors are dropped and uploads stay off.
 
