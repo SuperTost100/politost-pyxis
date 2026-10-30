@@ -2,6 +2,9 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { figureImages } from "../../shared/smart-text";
 
+/** The cache key version of a lesson that is the book text itself, shown when no model wrote one. */
+export const BOOK_VERSION = "book-1";
+
 export type CacheKeyInput = {
   kind: string;
   scopeId: string;

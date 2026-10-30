@@ -6,6 +6,7 @@ import { generate, type GenerateInput } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { aboutPlan } from "./jobAbout";
 import { putSetting } from "../settings";
 import { requireTopic } from "./openLesson";
 
@@ -312,6 +313,7 @@ export function registerCardJobs(
 ) {
   runner.register("cards-build", {
     jobClass: "model-cli",
+    about: (params) => aboutPlan(db, (params as Params).planId, (params as Params).topicId),
     retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "cards") }),
     steps: [
       {

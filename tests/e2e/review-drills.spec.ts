@@ -144,6 +144,9 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     page.setDefaultTimeout(30000);
     ({ planId } = await setupPlan(userData, page, app));
     await goto(page, `/plans/${planId}/review`);
+    // No flashcard is due, so the Review offers none.
+    await expect(page.getByText(/Oggi non hai flashcard da ripassare/)).toBeVisible();
+    await expect(page.getByRole("group", { name: "Flashcard in questo ripasso" })).toHaveCount(0);
     await page.getByRole("button", { name: "Inizia il ripasso" }).click();
     await expect(page.getByText(/Non sono riuscito a preparare le domande su/)).toHaveCount(2, { timeout: 60000 });
   } finally {
@@ -198,7 +201,8 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     const again = (await invoke<Session>(page, "study.review", { planId }))!;
     expect(again.questions.map((question) => question.id)).toEqual(adopted.questions.map((question) => question.id));
     await page.getByRole("button", { name: "Continua il ripasso" }).click();
-    await expect(page).toHaveURL(/\/diagnostic\?attempt=/);
+    await expect(page).toHaveURL(/\/review\/questions\?attempt=/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Ripasso");
     // LES-03: the adopted drill brings its short explanation, shown above the first question.
     expect(adopted.explanations.map((note) => note.text)).toEqual([EXPLANATION]);
     await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();

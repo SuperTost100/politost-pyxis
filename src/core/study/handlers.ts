@@ -34,6 +34,7 @@ import {
   registerExerciseJobs,
 } from "./exerciseJobs";
 import {
+  LESSON_SECTIONS,
   requireTopic,
   readLessonItem,
   rewriteLessonSection,
@@ -87,7 +88,8 @@ import {
 import { attemptOutcome } from "./outcome";
 import { startConfiguredQuiz, type QuizInput } from "./configuredQuiz";
 
-import type { Runner } from "../jobs/runner";
+import { trackedJob, type Runner, type Tracked } from "../jobs/runner";
+import { aboutPlan } from "./jobAbout";
 import { base64 } from "../sources/quality";
 import type { GenerateInput } from "../engine/generate";
 import {
@@ -96,6 +98,9 @@ import {
   registerQuizJobs,
   saveQuizDraft,
 } from "./quizJobs";
+
+/** Model calls a page makes itself, which the jobs list shows next to queued jobs. */
+const TRACKED = ["lesson-write", "lesson-section", "cards-propose"] as const;
 
 /** A lesson with what its reader shows besides the text: saved answers and the sources it was given. */
 function readingFor(db: Database.Database) {
@@ -128,8 +133,42 @@ export function studyHandlers(
     registerGapJobs(db, runner, run);
     registerGapInsightJobs(db, runner, run);
     registerWrongQuestionJobs(db, runner, run);
+    for (const kind of TRACKED) runner.register(kind, trackedJob);
   }
   const withReading = readingFor(db);
+  /**
+   * Lists a page's own model call in the jobs list while it runs, and as finished once it succeeds. `work` gets a
+   * `start` to call when the model call actually begins, so a saved lesson that opens at once lists nothing.
+   */
+  async function tracked<T>(
+    kind: (typeof TRACKED)[number],
+    about: { planId: string; topicId: string },
+    label: string,
+    work: (start: () => Tracked | undefined) => Promise<T>,
+    succeeded: (result: T) => boolean = () => true,
+  ): Promise<T> {
+    let entry: Tracked | undefined;
+    // The jobs list entry is a side note: if it cannot be made or saved, the student still gets the lesson or the
+    // cards, or the error the work itself ended with.
+    const noted = <R>(step: () => R): R | undefined => {
+      try {
+        return step();
+      } catch (error) {
+        console.error("pyxis: jobs list entry not saved", error);
+        return undefined;
+      }
+    };
+    try {
+      const result = await work(() =>
+        (entry ??= noted(() => runner?.track(kind, aboutPlan(db, about.planId, about.topicId), label))),
+      );
+      noted(() => entry?.finish(succeeded(result)));
+      return result;
+    } catch (error) {
+      noted(() => entry?.finish(false));
+      throw error;
+    }
+  }
   return {
     exercises(input: { topicId: string; planId?: string; generate?: boolean }) {
       const scope = input.planId
@@ -176,12 +215,34 @@ export function studyHandlers(
           ? readLessonItem(db, input.planId, input.topicId, input.itemId)
           : null;
       if (saved) return Promise.resolve(withReading(saved));
-      return write(db, input.planId, input.topicId, run ?? runTurn, {
-        ...options,
-        onPassages: onPassages && ((ids) => onPassages(ids, smartCitations(db, ids))),
-        wording: input.wording,
-        regenerate: input.regenerate,
-      }).then((lesson) => withReading(lesson));
+      const onDelta = options?.onDelta;
+      return tracked(
+        "lesson-write",
+        input,
+        "jobs.lessonWriting",
+        (start) => {
+          let entry: Tracked | undefined;
+          return write(db, input.planId, input.topicId, run ?? runTurn, {
+            ...options,
+            // The jobs list's bar follows the sections written so far; the last one ends with the lesson.
+            onDelta:
+              onDelta &&
+              ((text) => {
+                const sections = text.match(/^## /gm)?.length ?? 0;
+                entry?.progress(Math.min(0.95, Math.max(0, sections - 1) / LESSON_SECTIONS));
+                onDelta(text);
+              }),
+            onPassages: onPassages && ((ids) => onPassages(ids, smartCitations(db, ids))),
+            onWriting: () => {
+              entry = start();
+            },
+            wording: input.wording,
+            regenerate: input.regenerate,
+          });
+        },
+        // The book text shown when the engine failed is no lesson written.
+        (lesson) => !lesson.fallback,
+      ).then((lesson) => withReading(lesson));
     },
     lessonSection(
       input: {
@@ -193,11 +254,14 @@ export function studyHandlers(
       },
       signal?: AbortSignal,
     ) {
-      return rewriteLessonSection(db, input.planId, input.topicId, run ?? runTurn, {
-        section: input.section,
-        note: input.note,
-        wording: input.wording,
-        signal,
+      return tracked("lesson-section", input, "jobs.lessonSection", (start) => {
+        start();
+        return rewriteLessonSection(db, input.planId, input.topicId, run ?? runTurn, {
+          section: input.section,
+          note: input.note,
+          wording: input.wording,
+          signal,
+        });
       }).then((lesson) => withReading(lesson));
     },
     lessonAnswer(input: {
@@ -413,7 +477,10 @@ export function studyHandlers(
       input: Parameters<typeof proposeCards>[1],
       signal?: AbortSignal,
     ) {
-      return proposeCards(db, input, run, signal);
+      return tracked("cards-propose", input, "jobs.cards", (start) => {
+        start();
+        return proposeCards(db, input, run, signal);
+      });
     },
     cardsSaveProposed(input: Parameters<typeof saveProposedCards>[1]) {
       return saveProposedCards(db, input);

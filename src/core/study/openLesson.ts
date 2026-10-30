@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { generate } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
-import { cacheKey, loadLesson, loadLessonById, saveLesson } from "./lesson";
+import { BOOK_VERSION, cacheKey, loadLesson, loadLessonById, saveLesson } from "./lesson";
 import { IpcError } from "../../shared/ipc";
 import { replaceSection, smartSections } from "../../shared/smart-text";
 import {
@@ -14,7 +14,6 @@ import {
   type FigureRunner,
 } from "../math/figures";
 
-const BOOK_VERSION = "book-1";
 // Part of the lesson cache key; comes from the template front matter.
 const MODEL_VERSION = templateVersion("lesson.write");
 
@@ -335,6 +334,8 @@ export async function writeLesson(
     regenerate?: boolean;
     /** Runs figure code; null turns figures off. Defaults to the Pyodide sandbox when its runtime is downloaded. */
     python?: FigureRunner | null;
+    /** Called once a model starts writing, which a saved lesson or the book text never does. */
+    onWriting?: () => void;
   },
 ): Promise<LessonResult> {
   const context = modelContext(db, planId, topicId, options?.wording);
@@ -387,6 +388,7 @@ export async function writeLesson(
   const written: string[] = [];
   const models = new Set<string>();
   let drawn: Awaited<ReturnType<typeof withFigures>> | undefined;
+  options?.onWriting?.();
   try {
     const python = await figureRunner(options?.python);
     const batches = grounded ? parts : [[]];
@@ -454,7 +456,7 @@ export async function writeLesson(
 }
 
 /** Sections the whole lesson should have, split over its parts (the prompt asks a one-part lesson for the same). */
-const LESSON_SECTIONS = 6;
+export const LESSON_SECTIONS = 6;
 
 function partNote(index: number, count: number) {
   if (count === 1) return "Teach this material.";
