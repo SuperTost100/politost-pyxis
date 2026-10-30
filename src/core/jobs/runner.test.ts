@@ -598,6 +598,21 @@ describe("job runner", () => {
     ]);
   });
 
+  it("keeps a finished mistake analysis when it is cleared from the list, since its row stops a second analysis", () => {
+    const database = db();
+    const runner = createRunner(database, () => {});
+    const add = database.prepare(
+      `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES (?, 'gap-insight', '{}', ?, 1, ?, ?)`,
+    );
+    const now = Date.now();
+    add.run("done", "succeeded", now, now);
+    add.run("broken", "failed", now, now);
+    runner.dismiss("done");
+    runner.dismiss("broken");
+    expect(runner.finished().map((job) => job.id)).toEqual([]);
+    expect(database.prepare("SELECT id, dismissed FROM jobs ORDER BY id").all()).toEqual([{ id: "done", dismissed: 1 }]);
+  });
+
   it("drops a dismissed job from listeners", () => {
     const database = db();
     const seen: string[] = [];

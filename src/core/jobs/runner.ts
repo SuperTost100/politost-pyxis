@@ -515,7 +515,9 @@ export function createRunner(
           view?.kind === "quiz-grade" ||
           view?.kind === "simulation-build" ||
           view?.kind === "map-build" ||
-          view?.kind === "simulation-grade") &&
+          view?.kind === "simulation-grade" ||
+          // A finished analysis's row is what stops the same attempt and topic being analysed again.
+          (view?.kind === "gap-insight" && view.state === "succeeded")) &&
         ["failed", "cancelled", "succeeded", "interrupted"].includes(view.state)
       ) {
         db.prepare("UPDATE jobs SET dismissed = 1 WHERE id = ?").run(jobId);
