@@ -14,6 +14,7 @@ import {
 } from "./documents";
 import { onePagePdf, manyPagePdf, lockedPdf, blankPdf } from "./test-pdf";
 import { listSources } from "./smartbook";
+import { sourceDetails } from "./details";
 import { tempDir } from "../test-temp";
 import { sourceImports } from "./test-import";
 
@@ -238,6 +239,60 @@ describe("documents that are partly or wholly scanned", () => {
     });
     expect(pagesOf(db, stored.sourceId)).toEqual([{ page: 1 }]);
     expect(listSources(db)[0]?.status).toBe("needs-ocr");
+  });
+
+  it("lists the sections of the current version only, not of every saved version", () => {
+    const dir = workspace("pyxis-section-count-");
+    const db = openDatabase(":memory:");
+    const stored = storeExtracted(db, dir, {
+      title: "Dispensa", kind: "text", mime: "text/markdown", ext: ".md",
+      bytes: new Uint8Array([1]),
+      extracted: extractPlain(
+        [
+          "# Calore\nPrimo paragrafo sul calore e sul lavoro, abbastanza lungo.",
+          "# Energia\nSecondo paragrafo sull energia interna del sistema.",
+          "# Entropia\nTerzo paragrafo sull entropia e sul secondo principio.",
+        ].join("\n\n"),
+        true,
+      ),
+    });
+    expect(listSources(db)[0]?.sections).toBe(3);
+    addDocumentVersion(db, dir, stored.sourceId, {
+      title: "Dispensa", mime: "text/markdown", ext: ".md", bytes: new Uint8Array([2]),
+      extracted: extractPlain("# Calore\nUna versione più breve, con una sola sezione.", true),
+    });
+    expect(listSources(db)[0]?.sections).toBe(1);
+  });
+
+  it("lists distinct sections like the source panel, not passages, and one section as one", () => {
+    const dir = workspace("pyxis-section-figure-");
+    const db = openDatabase(":memory:");
+    const body = "Il calore passa dal corpo più caldo a quello più freddo finché le temperature si eguagliano.";
+    const page = (n: number, section: string) => ({ text: `${body} ${n}`, locator: { page: n }, section });
+    const stored = storeExtracted(db, dir, {
+      title: "Dispensa", kind: "pdf", mime: "application/pdf", ext: ".pdf", bytes: new Uint8Array([1]),
+      extracted: {
+        pages: [page(1, "Calore"), page(2, "Calore"), page(3, "Calore"), page(4, "Entropia")],
+        scanned: false,
+      },
+    });
+    const passages = db.prepare(`SELECT COUNT(*) AS n FROM passages WHERE source_id = ?`).get(stored.sourceId) as { n: number };
+    expect(passages.n).toBeGreaterThan(2);
+    expect(listSources(db)[0]?.sections).toBe(2);
+    expect(sourceDetails(db, stored.sourceId)?.sections).toBe(2);
+
+    // A version with one section: the label reads "1 sezione", from a count of 1.
+    addDocumentVersion(db, dir, stored.sourceId, {
+      title: "Dispensa", mime: "application/pdf", ext: ".pdf", bytes: new Uint8Array([2]),
+      extracted: { pages: [page(1, "Calore"), page(2, "Calore")], scanned: false },
+    });
+    expect(listSources(db)[0]?.sections).toBe(1);
+    expect(sourceDetails(db, stored.sourceId)?.sections).toBe(1);
+
+    // Passages with no section fall back to the pages they came from, in the list and the panel alike.
+    db.prepare(`UPDATE passages SET section_path = NULL WHERE source_id = ?`).run(stored.sourceId);
+    expect(listSources(db)[0]?.sections).toBe(2);
+    expect(sourceDetails(db, stored.sourceId)?.sections).toBe(2);
   });
 
   it("refuses a replacement with no text and keeps the version in use", () => {

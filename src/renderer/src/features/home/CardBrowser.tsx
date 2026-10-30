@@ -183,8 +183,6 @@ export function CardBrowser() {
         </>
       ),
       okText: t(card.handMade ? "cards.deleteConfirm" : "cards.delete"),
-      // The filled danger button fails contrast in the dark theme, so the destructive choice is outlined.
-      okType: "default",
       okButtonProps: { danger: true },
       cancelText: t("cardBrowser.cancel"),
       onOk: async () => {

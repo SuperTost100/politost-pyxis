@@ -50,6 +50,7 @@ const routes = [
   ["mistakes", "/exams/mistakes"],
   // Oggi's flashcards from every plan, and the session planner (the fixture's one plan has no exam date).
   ["cards-due", "/cards/due"],
+  ["cards-due-delete", "/cards/due"],
   ["planner", "/exams/planner"],
   ["library-vision", "/exams/library"],
   ["shared", "/exams/get"],
@@ -215,6 +216,8 @@ const routes = [
   ["ask-search-empty", "/ask/audit-chat"],
   ["ask-subject-menu", "/ask/audit-chat"],
   ["ask-sources-menu", "/ask/audit-chat"],
+  // The confirmations behind a solid danger button: delete a chat and delete a hand-made flashcard.
+  ["ask-delete", "/ask/audit-chat"],
   // The formula keyboard docked in the composer, with a formula already typed.
   ["ask-formula", "/ask/audit-chat"],
   // Help > Keyboard shortcuts, opened through the application menu.
@@ -1904,6 +1907,31 @@ async function openState(page: Page, name: string) {
           name: both("Aggiungi fonti", "Add sources"),
         }),
       ).toBeVisible();
+      break;
+    case "ask-delete":
+      await page
+        .getByRole("button", { name: both("Apri le chat", "Open chats") })
+        .click();
+      await page
+        .getByRole("button", {
+          name: /^(Azioni per|Actions for) Seconda legge di Newton/,
+        })
+        .click();
+      await page
+        .getByRole("menuitem", { name: both("Elimina", "Delete") })
+        .click();
+      await expect(dialog.last()).toHaveAccessibleName(
+        /^(Eliminare questa chat|Delete this chat)\?$/,
+      );
+      break;
+    case "cards-due-delete":
+      await page
+        .getByRole("button", { name: both("Azioni sulla flashcard", "Flashcard actions") })
+        .click();
+      await page
+        .getByRole("menuitem", { name: /^(Elimina|Delete)( D)?$/ })
+        .click();
+      await expect(dialog).toBeVisible();
       break;
     case "ask-formula": {
       await page

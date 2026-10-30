@@ -214,12 +214,6 @@
 .px-delete-footer-gap {
   flex: 1;
 }
-/* White on the dark theme's lighter red is too faint to read, so the label takes the ink that sits on bright fills. */
-.px-delete-footer .ant-btn.px-delete-confirm:not(:disabled),
-.px-delete-footer .ant-btn.px-delete-confirm:not(:disabled):hover,
-.px-delete-footer .ant-btn.px-delete-confirm:not(:disabled):active {
-  color: var(--on-ink);
-}
 
 @media (max-width: 720px) {
   .px-set-group {

@@ -379,8 +379,6 @@ export function CardsPage() {
       title: t("cardBrowser.deleteTitle"),
       content: t("cardBrowser.deleteHandMade"),
       okText: t("cards.deleteConfirm"),
-      // The filled danger button fails contrast in the dark theme, so the destructive choice is outlined.
-      okType: "default",
       okButtonProps: { danger: true },
       cancelText: t("cardBrowser.cancel"),
       onOk: run,

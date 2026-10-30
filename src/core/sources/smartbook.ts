@@ -7,6 +7,7 @@ import {
 } from "@politost/smartbook-parser";
 import { chunkText } from "./chunk";
 import { latestDocument } from "./documents";
+import { sectionCount } from "./details";
 import { uuidv7 } from "../../shared/ids";
 import type { PassageHit } from "./retrieve";
 import { suggestSourceRebuild } from "../plans/views";
@@ -357,10 +358,10 @@ function isEncrypted(bytes: Uint8Array): boolean {
 export type { PassageHit };
 
 export function listSources(db: Database.Database) {
-  return db
+  const rows = db
     .prepare(
       `SELECT id, title, kind, status, blob_sha AS blobSha, origin_url AS originUrl, fetched_at AS fetchedAt,
-         (SELECT count(*) FROM passages p WHERE p.source_id = sources.id) AS sections,
+         ${latestDocument("sources.id")} AS documentId,
          (SELECT count(*) FROM plan_sources ps WHERE ps.source_id = sources.id) AS planCount
        FROM sources
        WHERE status != 'removed' AND library = 1
@@ -374,9 +375,14 @@ export function listSources(db: Database.Database) {
     blobSha: string | null;
     originUrl: string | null;
     fetchedAt: number | null;
-    sections: number;
+    documentId: string | null;
     planCount: number;
   }>;
+  // The figure is the one the source panel shows for the current version, not a count of passages or of saved versions.
+  return rows.map(({ documentId, ...source }) => ({
+    ...source,
+    sections: documentId ? sectionCount(db, documentId) : 0,
+  }));
 }
 
 function mapPassages(
