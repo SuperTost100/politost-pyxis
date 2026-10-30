@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { generate } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
-import { cacheKey, loadLesson, loadLessonById, saveLesson } from "./lesson";
+import { BOOK_VERSION, cacheKey, loadLesson, loadLessonById, saveLesson } from "./lesson";
 import { IpcError } from "../../shared/ipc";
 import { replaceSection, smartSections } from "../../shared/smart-text";
 import {
@@ -14,7 +14,6 @@ import {
   type FigureRunner,
 } from "../math/figures";
 
-const BOOK_VERSION = "book-1";
 // Part of the lesson cache key; comes from the template front matter.
 const MODEL_VERSION = templateVersion("lesson.write");
 

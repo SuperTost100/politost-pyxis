@@ -103,15 +103,18 @@ describe("plan views and material", () => {
     const insert = db.prepare(
       "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,created_at) VALUES(?,'p','t',?,?,?,?)",
     );
-    // The engine failed first: the lesson page showed the book text, saved without an engine.
-    insert.run("book", "lesson", JSON.stringify({ cacheKey: "book", markdown: "Velocity" }), null, 1);
+    // The engine failed first: the lesson page showed the book text, saved without an engine under the book key.
+    const bookKey = JSON.stringify({ kind: "lesson", scopeId: "t", promptVersion: "book-1", passageIds: ["passage"] });
+    insert.run("book", "lesson", JSON.stringify({ cacheKey: bookKey, markdown: "Velocity" }), null, 1);
+    // A lesson from a shared plan file whose engine is unknown is the student's to open, whatever else exists.
+    insert.run("imported", "lesson", JSON.stringify({ cacheKey: "shared", markdown: "Their notes" }), null, 0);
     // A quiz whose build failed before writing any question.
     insert.run("empty-quiz", "quiz", JSON.stringify({ questions: [], complete: false }), null, 2);
-    expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["book"]);
+    expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["book", "imported"]);
     // The lesson written again by a model replaces the book text in the list.
     insert.run("model", "lesson", JSON.stringify({ cacheKey: "model", markdown: "Velocity [P1]" }), "claude", 3);
     insert.run("quiz", "quiz", JSON.stringify({ questions: [{ id: "q" }] }), "claude", 4);
-    expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["quiz", "model"]);
+    expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["quiz", "model", "imported"]);
     db.close();
   });
   it("marks real imports and opens an existing topic quiz without duplicating an unfinished attempt", () => {
