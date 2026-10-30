@@ -1,3 +1,5 @@
+import { repairLatexEscapes } from "./latex-repair";
+
 function fenceClose(input: string, from: number, tick: string, width: number): number {
   let at = from;
   while (at < input.length) {
@@ -105,11 +107,24 @@ function boldInMath(text: string): string {
 }
 
 /**
+ * Book text that names a formula or a place for a reader the app does not have: `{{formula:1.5}}` is the number the book
+ * prints, `(1.5)`, and `[text](ref:chapter/1#p2)` or `[text](ref:formula/1.2)` is its text. Code is left alone.
+ */
+export function resolveBookRefs(input: string): string {
+  if (!input.includes("{{formula:") && !input.includes("](ref:")) return input;
+  return mapOutsideCode(input, (text) =>
+    text
+      .replace(/\{\{formula:([\d.]+)\}\}/g, "($1)")
+      .replace(/\[([^\]]+)\]\(ref:(?:formula\/[\d.]+|chapter\/\d+(?:#p\d+)?)\)/g, "$1"),
+  );
+}
+
+/**
  * Turns \\( … \\) and \\[ … \\] into $ / $$ forms for remark-math, and Markdown bold inside a formula into \\mathbf.
  * Leaves $ and $$ untouched.
  */
 export function normalizeMathDelimiters(input: string): string {
-  return mapOutsideCode(input, (text) => {
+  return mapOutsideCode(resolveBookRefs(repairLatexEscapes(input)), (text) => {
     let out = text.replace(
       /\\\[([\s\S]*?)\\\]/g,
       (_, body: string) => `\n$$\n${body.trim()}\n$$\n`,

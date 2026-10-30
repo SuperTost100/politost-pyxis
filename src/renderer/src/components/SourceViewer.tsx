@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Drawer, Skeleton } from "antd";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { topicTitle } from "@shared/book-text";
+import { spokenText } from "@shared/spoken-math";
 import { invoke } from "../lib/ipc";
 import { LoadError } from "./LoadError";
 import { SelectionMenu } from "./SelectionMenu";
@@ -67,7 +69,7 @@ export function SourceViewer() {
         {source.data?.kind === "pdf" && source.data.blobSha ?
           <Suspense fallback={<Skeleton active />}><PdfSourcePage sha={source.data.blobSha} initialPage={current?.locator.page ?? 1} excerpt={source.data.excerpt ?? current?.text ?? ""} /></Suspense>
           : rows.map((row) => <section key={row.id} className={row.current ? "source-viewer-paragraph is-current" : "source-viewer-paragraph"}
-          aria-label={row.locator.paragraph}>
+          aria-label={spokenText(topicTitle(row.text, 70)) || undefined}>
           {markdownReady && markdown ? <markdown.MarkdownView>{row.text}</markdown.MarkdownView> : null}
         </section>)}
       </div>

@@ -1,10 +1,11 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { Fragment, useId, useMemo, useRef, useState } from "react";
 import { Button, Dropdown, Input } from "antd";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Icon, type IconName } from "../../components/Icon";
+import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MasteryBar } from "../../components/MasteryBar";
 import { Tag } from "../../components/Tag";
 import { formatGradeWhole } from "../../lib/grade";
@@ -564,7 +565,14 @@ export function PlanPath({
                   </div>
                   {topic.summary || topic.subtopics.length ? (
                     <p className="small ink-muted px-path-about">
-                      {[topic.summary, topic.subtopics.join(" · ")].filter(Boolean).join(" ")}
+                      {topic.summary}
+                      {topic.summary && topic.subtopics.length ? " " : null}
+                      {topic.subtopics.map((sub, index) => (
+                        <Fragment key={index}>
+                          {index ? " · " : null}
+                          <InlineMarkdown>{sub}</InlineMarkdown>
+                        </Fragment>
+                      ))}
                     </p>
                   ) : null}
                   {topic.items.length ? (

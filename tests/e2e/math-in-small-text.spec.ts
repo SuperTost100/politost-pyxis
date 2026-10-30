@@ -129,7 +129,7 @@ test("Quiz: a matching question's menu draws math and picks with the keyboard", 
     const rows = page.locator(".px-quiz-matching label");
     await expect(rows).toHaveCount(3);
     await expect(rows.first().locator(".katex")).not.toHaveCount(0);
-    const first = page.getByRole("combobox", { name: "Abbinamento per \\mathbb{N}" });
+    const first = page.getByRole("combobox", { name: "Abbinamento per N" });
     const menu = page.locator(".ant-select-dropdown:visible");
     const options = menu.locator(".ant-select-item-option");
     const active = () =>

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
+import { spokenText } from "@shared/spoken-math";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Icon } from "../../components/Icon";
 import { ErrorState } from "../../components/ErrorState";
@@ -1330,7 +1331,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
                   <InlineMarkdown>{left}</InlineMarkdown>
                   <Select
                     // A native <select> menu is plain text and cannot draw the math in an option.
-                    aria-label={t("quiz.matchFor", { item: left.replace(/\$/g, "") })}
+                    aria-label={t("quiz.matchFor", { item: spokenText(left) })}
                     className="px-quiz-match-select"
                     classNames={{ popup: { root: "px-quiz-match-popup" } }}
                     disabled={locked}
@@ -1341,7 +1342,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
                     // value is the position, so a screen reader never announces the raw TeX.
                     options={(question.right ?? []).map((right, rightIndex) => ({
                       value: rightIndex,
-                      label: right.replace(/\$/g, ""),
+                      label: spokenText(right),
                       // The default hover tooltip would show the label's raw TeX.
                       title: "",
                     }))}

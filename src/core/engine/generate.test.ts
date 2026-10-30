@@ -104,6 +104,35 @@ describe("generate engine failures", () => {
   });
 });
 
+describe("generate with LaTeX in the answer", () => {
+  const schema = z.object({ stem: z.string(), note: z.string() });
+  const wanted = { stem: "$m\\vec{g}\\sin\\theta$", note: "Riga uno\nriga due con $\\frac{a}{b}$" };
+
+  it("restores the backslashes a model's single-backslash JSON turned into control characters", async () => {
+    // Single backslashes: \v and \s are not JSON at all; \t, \n and \f are, and read as a tab, a line break and a form feed.
+    const text = '{"stem":"$m\\vec{g}\\sin\\theta$","note":"Riga uno\\nriga due con $\\frac{a}{b}$"}';
+    expect(() => JSON.parse(text)).toThrow();
+    const output = await generate({
+      selection,
+      prompt: "q",
+      schema,
+      run: async () => result({ text }),
+    });
+    expect(output.data).toEqual({ stem: "$m\\vec{g}\\sin\\theta$", note: wanted.note });
+  });
+
+  it("repairs the same damage in an answer the engine already parsed", async () => {
+    const output = await generate({
+      selection,
+      prompt: "q",
+      schema,
+      run: async () =>
+        result({ structured: { stem: "$m\vec{g}\\sin\theta$", note: "Riga uno\nriga due con $\frac{a}{b}$" }, text: "" }),
+    });
+    expect(output.data).toEqual(wanted);
+  });
+});
+
 describe("generate", () => {
   it("repairs one bad structured answer", async () => {
     const calls: string[] = [];

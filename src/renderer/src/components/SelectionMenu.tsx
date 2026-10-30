@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CHAT_SEED_BODY_MAX } from "@shared/limits";
 import { invoke } from "../lib/ipc";
+import { selectedText } from "../lib/selectionText";
 import { openMakeCards } from "./MakeCardsDialog";
 import "./SelectionMenu.css";
 
@@ -29,10 +30,13 @@ export function SelectionMenu({ children, sourceIds = [], planId, topicId, passa
     const update = () => {
       if (menu.current?.contains(document.activeElement)) return;
       const current = window.getSelection();
-      const text = current?.toString().trim();
-      if (!text || !current?.rangeCount || !root.current) return setSelection(null);
+      if (!current?.rangeCount || !current.toString().trim() || !root.current) return setSelection(null);
+      // A dialog open over the text (the flashcard maker) has the focus; the menu would float above it.
+      if ([...document.querySelectorAll(".ant-modal")].some((modal) => modal.getClientRects().length > 0)) return setSelection(null);
       const range = current.getRangeAt(0);
       if (!root.current.contains(range.startContainer) || !root.current.contains(range.endContainer)) return setSelection(null);
+      const text = selectedText(range);
+      if (!text) return setSelection(null);
       const rect = range.getBoundingClientRect();
       setFailed(null);
       setSelection({ text, x: Math.max(12, Math.min(rect.left, window.innerWidth - 392)), y: Math.max(12, Math.min(rect.top - 48, window.innerHeight - 60)) });

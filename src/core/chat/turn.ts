@@ -890,6 +890,26 @@ async function answer(
   if (!resume && result.text.trim().startsWith("NOT_COVERED")) {
     return { chatId, covered: false, message: null };
   }
+  // The engine ended the stream without finishing the answer: out of room, or no final event. What arrived is kept like
+  // a reply that failed mid-answer, marked cut off with Continue, instead of passing for a complete one.
+  if ((result.finishReason === "length" || result.finishReason === "error") && result.text.trim() !== "") {
+    return {
+      ...finishReply(db, chatId, resume + result.text, {
+        messageId,
+        provider: result.provider,
+        model: result.model,
+        selected,
+        attached: thisTurnFile,
+        mode,
+        template,
+        citations,
+        stopped: true,
+        error: "engines.errors.stream-truncated",
+        now,
+      }),
+      ...skippedImages,
+    };
+  }
   const parsed = splitFollowups(resume + result.text);
   if (profile?.followups === false) parsed.followups = [];
   // A figure that fails is left out. The math check runs after the reply is saved (startChecks), on the final text.

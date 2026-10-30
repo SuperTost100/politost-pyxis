@@ -28,6 +28,7 @@ import {
 import { embedWithModel } from "../sources/retrieve";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { shuffleChoices } from "../../shared/choices";
+import { topicTitle } from "../../shared/book-text";
 import { stripPassageRefs } from "../../shared/smart-text";
 import { saveSessions, sessionsFromInput } from "./sessions";
 
@@ -104,16 +105,16 @@ function passages(db: Database.Database, params: Params): Passage[] {
     (snapshot) => select.all(snapshot.documentId) as Passage[],
   );
 }
+/** One short, clean title per book paragraph: the title in its `## p1 | Title` line, else the first line of its text. */
 function paragraphTitles(rows: Passage[]): string[] {
   const titles = new Map<string, string>();
   for (const row of rows) {
-    const locator = JSON.parse(row.locator_json) as { paragraph?: string };
+    const locator = JSON.parse(row.locator_json) as { paragraph?: string; title?: string };
     const id = locator.paragraph ?? row.id;
-    if (!titles.has(id))
-      titles.set(
-        id,
-        `${locator.paragraph ?? ""} ${row.text.split("\n")[0] ?? ""}`.trim(),
-      );
+    if (!titles.has(id)) {
+      const title = topicTitle(locator.title ?? "") || topicTitle(row.text);
+      if (title) titles.set(id, title);
+    }
   }
   return [...titles.values()];
 }

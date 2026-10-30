@@ -45,7 +45,7 @@ describe("importSmartbook", () => {
     expect(hit.text.startsWith("Energia\nEnergia")).toBe(false);
     expect(hit.text).toContain("W = F");
     expect(hit.text, hit.text).toMatch(/\$\$[\s\S]*W = F[\s\S]*\$\$/);
-    expect(JSON.parse(hit.locator_json)).toEqual({ chapter: 1, paragraph: "p1" });
+    expect(JSON.parse(hit.locator_json)).toEqual({ chapter: 1, paragraph: "p1", title: "Energia" });
     expect(retrieve(db, "vettore").hits).toHaveLength(1);
   });
 

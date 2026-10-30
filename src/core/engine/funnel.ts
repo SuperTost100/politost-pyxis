@@ -30,6 +30,8 @@ export type EngineResult = {
   cacheWriteTokens?: number;
   structured?: unknown;
   structuredError?: string;
+  /** Why the engine stopped writing: "length" (out of room) and "error" (the stream ended without its final event) mean the text is cut short. */
+  finishReason?: string;
 };
 
 type Keys = { anthropic?: string; openai?: string };
@@ -330,6 +332,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
       cacheWriteTokens: result.usage?.cacheCreationInputTokens ?? 0,
       structured: result.structured,
       structuredError: result.structuredError,
+      finishReason: result.finishReason,
     };
   } finally {
     if (talk) {

@@ -153,6 +153,35 @@ describe("partial replies", () => {
     });
   });
 
+  it("marks a reply the engine reports as cut off, and offers to continue it", async () => {
+    for (const finishReason of ["length", "error"]) {
+      const db = chatDb();
+      const result = await askTurn(db, {
+        text: "Stima la quantità in due modi",
+        allowGeneral: true,
+        run: async (input) => {
+          input.onDelta?.("Si può stimare in due modi:\n1. il primo metodo");
+          return { ...reply("Si può stimare in due modi:\n1. il primo metodo"), finishReason };
+        },
+      });
+      expect(result.message, finishReason).toMatchObject({
+        body: "Si può stimare in due modi:\n1. il primo metodo",
+        stopped: true,
+        error: "engines.errors.stream-truncated",
+      });
+    }
+  });
+
+  it("keeps a reply that finished normally as finished", async () => {
+    const db = chatDb();
+    const result = await askTurn(db, {
+      text: "Spiega",
+      allowGeneral: true,
+      run: async () => ({ ...reply("Ecco."), finishReason: "stop" }),
+    });
+    expect(result.message).toMatchObject({ stopped: false, error: null });
+  });
+
   it("still fails without saving when nothing arrived", async () => {
     const db = chatDb();
     await expect(
