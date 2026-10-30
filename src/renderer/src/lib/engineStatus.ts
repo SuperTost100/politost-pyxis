@@ -70,8 +70,10 @@ export function keyStatus(query: {
   isError: boolean;
   data?: { configured: readonly string[] };
 }): KeyStatus {
+  // A failed refetch keeps the earlier keys as data, which may no longer be true, so the failure wins.
+  if (query.isError) return { status: "failed" };
   if (query.data) return { status: "loaded", configured: query.data.configured };
-  return { status: query.isError ? "failed" : "loading" };
+  return { status: "loading" };
 }
 
 /**

@@ -81,6 +81,16 @@ describe("whether the student can pick engines by hand", () => {
     ).toEqual({ status: "loaded", configured: [] });
   });
 
+  it("reads a failed refetch as failed, even with keys from an earlier read", () => {
+    expect(
+      keyStatus({
+        isPending: false,
+        isError: true,
+        data: { configured: ["openai"] },
+      }),
+    ).toEqual({ status: "failed" });
+  });
+
   it("offers the pick once the keys are read, with the keyed API engines in it", () => {
     const loaded = manualChoice(rows, {
       status: "loaded",

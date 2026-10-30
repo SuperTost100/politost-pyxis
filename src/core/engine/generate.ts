@@ -5,7 +5,8 @@ import { engineSeesImages } from "./capabilities";
 import {
   benchEngine,
   benchModel,
-  clearSignOut,
+  engineClock,
+  clearSignOutBefore,
   isBenched,
   isModelBenched,
   markSignedOut,
@@ -118,10 +119,12 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
       ? usableFallback(input, "model")
       : undefined;
   if (instead) return answerOn(input, instead);
+  // Where this call began among refusals: one that lands while it runs is newer, and its answer must not undo it.
+  const startedAt = engineClock();
   try {
     const output = await generateOnce(input);
-    // An engine that answers is signed in, whatever a refused call said before.
-    clearSignOut(input.selection.provider);
+    // An engine that answers is signed in, whatever a call refused before this one began said.
+    clearSignOutBefore(input.selection.provider, startedAt);
     return output;
   } catch (err) {
     const reason =

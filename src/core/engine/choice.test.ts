@@ -125,6 +125,50 @@ describe("an engine whose sign-in was refused", () => {
     db.close();
   });
 
+  it("keeps a refusal that lands while a test of the same engine is answering", async () => {
+    const db = openDatabase(":memory:");
+    useFunnel({ claude: true, codex: true });
+    vi.mocked(runTurn).mockImplementationOnce(async () => {
+      // Another call to Codex is refused while this test waits for its answer.
+      markSignedOut("codex");
+      return { text: "ok", model: "gpt-6-luna", provider: "codex", inputTokens: 2 };
+    });
+    await engineHandlers(db, () => undefined).test({ provider: "codex" });
+    expect(isSignedOut("codex")).toBe(true);
+    db.close();
+  });
+
+  it("keeps a refusal that lands while another call to the same engine is answering", async () => {
+    await generate({
+      selection: { provider: "codex", model: "gpt-6-luna" },
+      prompt: "hi",
+      run: async () => {
+        markSignedOut("codex");
+        return { text: "ok", model: "gpt-6-luna", provider: "codex", inputTokens: 2 };
+      },
+    });
+    expect(isSignedOut("codex")).toBe(true);
+  });
+
+  it("leaves out an engine refused while the plan was reading model lists", async () => {
+    const db = openDatabase(":memory:");
+    useFunnel({ claude: true, codex: true });
+    const funnel = getFunnel();
+    vi.mocked(getFunnel).mockImplementation(
+      () =>
+        ({
+          ...funnel,
+          models: async (id: "claude" | "codex") => {
+            if (id === "codex") markSignedOut("codex");
+            return funnel.models(id);
+          },
+        }) as unknown as ReturnType<typeof getFunnel>,
+    );
+    const result = await autoConfigureEngines(db);
+    expect(providersIn(result.features)).toEqual(["claude"]);
+    db.close();
+  });
+
   it("comes back after a test that answers", async () => {
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);

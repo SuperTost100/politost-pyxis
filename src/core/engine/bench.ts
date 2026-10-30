@@ -96,6 +96,15 @@ export function clearSignOut(provider: string): void {
 }
 
 /**
+ * A call that began at `startedAt` (on `engineClock`) answered: the engine is signed in again, unless a call refused
+ * after this one began, which is newer news about the sign-in than this answer.
+ */
+export function clearSignOutBefore(provider: string, startedAt: number): void {
+  const refusedAt = signedOut.get(provider);
+  if (refusedAt !== undefined && refusedAt < startedAt) clearSignOut(provider);
+}
+
+/**
  * Models a subscription does not include, by provider and model. The engine's other models stay usable, and the
  * automatic choice leaves these out until the time is up or Pyxis restarts.
  */

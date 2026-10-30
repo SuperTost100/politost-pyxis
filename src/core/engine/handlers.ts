@@ -29,6 +29,7 @@ import {
 } from "./funnel";
 import {
   clearSignOut,
+  clearSignOutBefore,
   engineClock,
   isSignedOut,
   markSignedOut,
@@ -283,12 +284,15 @@ export async function autoConfigureEngines(
   }
   const local = await localCandidate(db);
   if (local) listed.push(local);
-  // The student may have narrowed the choice while the model lists were read. A plan begun before must not bring an
-  // engine they left out back. The local model has its own switch and stays.
+  // The student may have narrowed the choice, or a call may have been refused, while the model lists were read. A plan
+  // begun before must not bring such an engine back. The local model has its own switch and stays.
   const allowedNow = readAllowed(db);
   for (let index = listed.length - 1; index >= 0; index -= 1) {
     const provider = listed[index]!;
-    if (provider.kind !== "local" && !isAllowed(allowedNow, provider.id))
+    if (
+      provider.kind !== "local" &&
+      (!isAllowed(allowedNow, provider.id) || isSignedOut(provider.id))
+    )
       listed.splice(index, 1);
   }
   // A failed model listing is not proof that the engine went away. Keep the
@@ -758,6 +762,8 @@ export function engineHandlers(
         throw new IpcError("unsupported", "engines.disabled");
       }
       const started = Date.now();
+      // Where this test began among refusals: one that lands while it runs is newer, and its answer must not undo it.
+      const startedAt = engineClock();
       // The student's cancel and the deadline both stop the turn; only the deadline reads as a timeout.
       const deadline = new AbortController();
       const timer = setTimeout(() => deadline.abort(), TEST_DEADLINE_MS);
@@ -784,7 +790,7 @@ export function engineHandlers(
             : deadline.signal,
         });
         // The engine answered, so a sign-in refused earlier works again.
-        clearSignOut(input.provider);
+        clearSignOutBefore(input.provider, startedAt);
         // The first successful confirmation becomes the default, unless the student left this engine out. INSERT OR
         // IGNORE preserves a choice made while this asynchronous test ran.
         if (isAllowed(readAllowed(db), input.provider))
