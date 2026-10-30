@@ -335,7 +335,10 @@ export function EnginesPanel() {
       setResult(
         t("engines.tested", {
           ms: value.latencyMs,
-          model: names.modelName(variables.provider, value.model),
+          // The list the drawer already read names the model even before the names query has refreshed.
+          model:
+            modelsByProvider[variables.provider]?.find((row) => row.id === value.model)?.name ??
+            names.modelName(variables.provider, value.model),
           tokens: value.inputTokens,
         }),
       );

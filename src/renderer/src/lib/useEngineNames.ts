@@ -11,20 +11,25 @@ export const engineNamesQuery = {
 };
 
 /**
- * The names for screens that show which engine and model did something. They are read again when core lists models
- * (`engine.auto`), so a name replaces the readable id as soon as core knows it.
+ * The names for screens that show which engine and model did something. They are read again whenever core learns new
+ * model names (`engine.names`, `engine.auto`), so a name replaces the readable id as soon as core knows it.
  */
 export function useEngineNames() {
   const { t } = useTranslation();
   const client = useQueryClient();
   const names = useQuery(engineNamesQuery).data;
-  useEffect(
-    () =>
-      onBroadcast("engine.auto", () => {
-        void client.invalidateQueries({ queryKey: engineNamesQuery.queryKey });
-      }),
-    [client],
-  );
+  useEffect(() => {
+    const reload = () => {
+      void client.invalidateQueries({ queryKey: engineNamesQuery.queryKey });
+    };
+    // `engine.names` comes after a test or a model listing; `engine.auto` after the automatic choice read the lists.
+    const offNames = onBroadcast("engine.names", reload);
+    const offAuto = onBroadcast("engine.auto", reload);
+    return () => {
+      offNames();
+      offAuto();
+    };
+  }, [client]);
   return {
     engineName: (provider: string) => engineName(names, provider),
     modelName: (provider: string | null | undefined, model: string) =>

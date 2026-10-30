@@ -22,14 +22,30 @@ export function rememberModels(
     provider,
     new Map(models.map((model) => [model.id, model.efforts.map((e) => e.id)])),
   );
-  names.set(
-    provider,
-    new Map(
-      models.flatMap((model) =>
-        model.name?.trim() ? [[model.id, model.name.trim()] as const] : [],
-      ),
+  const next = new Map(
+    models.flatMap((model) =>
+      model.name?.trim() ? [[model.id, model.name.trim()] as const] : [],
     ),
   );
+  const before = names.get(provider);
+  names.set(provider, next);
+  const changed =
+    !before ||
+    before.size !== next.size ||
+    [...next].some(([id, name]) => before.get(id) !== name);
+  if (changed && next.size) onNames?.(provider);
+}
+
+let onNames: ((provider: string) => void) | undefined;
+
+/**
+ * `listener` hears every engine whose model names changed. A test or a model listing reads a list outside the automatic
+ * choice, so without this the screens would keep showing readable ids for models core can now name.
+ */
+export function setModelNamesListener(
+  listener: ((provider: string) => void) | undefined,
+): void {
+  onNames = listener;
 }
 
 /** The name a student reads for a model: the engine's own when its list was read, else the id made readable. */

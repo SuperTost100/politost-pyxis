@@ -2826,6 +2826,8 @@ const broadcasts = {
   "engine.auto": z.object({}),
   // A provider refused an engine's sign-in, or the engine is signed in again: its row in Settings changes.
   "engine.status": z.object({ provider: z.string() }),
+  // Core read model names for an engine it could not name before: screens that show a model read `engines.names` again.
+  "engine.names": z.object({ provider: z.string() }),
   // A saved reply's math check ended: its badges, if any, are in the message now.
   "chats.checks": z.object({ chatId: z.string(), messageId: z.string() }),
   // The automatic engine hit a usage limit or was signed out, and another engine answered.

@@ -5,6 +5,7 @@ import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
 import { configureSignOuts, setModelRefusalListener } from "../engine/bench";
+import { setModelNamesListener } from "../engine/efforts";
 import { signOutStore } from "../engine/choice";
 import { setFallbackListener } from "../engine/generate";
 import { currentUsageScope, setUsageRecorder, storeUsage } from "../engine/usage";
@@ -667,6 +668,8 @@ export function bindEngines(
   });
   // A model the subscription refused leaves the automatic choice, so the tasks that used it move now, a job's retry
   // starts on the next model, and Settings shows the engine without it.
+  // Names read by a test or a model listing reach the screens at once, not only after the next automatic choice.
+  setModelNamesListener((provider) => broadcast("engine.names", { provider }));
   // A call can walk through several refused models in a row; one recomputation after the last is enough.
   let refusals: ReturnType<typeof setTimeout> | undefined;
   setModelRefusalListener((provider) => {

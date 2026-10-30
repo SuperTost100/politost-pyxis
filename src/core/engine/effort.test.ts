@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
-import { forgetModels, rememberModels } from "./efforts";
+import { forgetModels, modelName, rememberModels, setModelNamesListener } from "./efforts";
 import { generate } from "./generate";
 import { engineHandlers } from "./handlers";
 import { planAuto, type AutoProvider } from "./auto";
@@ -479,5 +479,26 @@ describe("automatic choice keeps the student's effort", () => {
     expect(handlers.features().plan?.effortChoice).toBeUndefined();
     expect(handlers.features().plan?.effort).toBe("high");
     db.close();
+  });
+});
+
+describe("model names core learns", () => {
+  afterEach(() => {
+    setModelNamesListener(undefined);
+    forgetModels();
+  });
+
+  it("tells the listener when a model list brings names it did not have, and only then", () => {
+    const heard: string[] = [];
+    setModelNamesListener((provider) => heard.push(provider));
+    const list = [{ id: "gpt-5.3-codex", name: "Codex 5.3", efforts: [] }];
+    // A test or a model listing reads the list outside the automatic choice, which broadcasts nothing of its own.
+    rememberModels("agent", list);
+    expect(heard).toEqual(["agent"]);
+    expect(modelName("agent", "gpt-5.3-codex")).toBe("Codex 5.3");
+    rememberModels("agent", list);
+    expect(heard).toEqual(["agent"]);
+    rememberModels("agent", [...list, { id: "grok-4.7", name: "Grok 4.7", efforts: [] }]);
+    expect(heard).toEqual(["agent", "agent"]);
   });
 });
