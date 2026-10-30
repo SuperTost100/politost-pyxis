@@ -33,7 +33,8 @@ export function rememberModels(
     !before ||
     before.size !== next.size ||
     [...next].some(([id, name]) => before.get(id) !== name);
-  if (changed && next.size) onNames?.(provider);
+  // Names that are gone matter too: the screens must stop showing them. A list that never had names changes nothing.
+  if (changed && (next.size > 0 || (before?.size ?? 0) > 0)) onNames?.(provider);
 }
 
 let onNames: ((provider: string) => void) | undefined;

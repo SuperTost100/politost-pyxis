@@ -501,4 +501,16 @@ describe("model names core learns", () => {
     rememberModels("agent", [...list, { id: "grok-4.7", name: "Grok 4.7", efforts: [] }]);
     expect(heard).toEqual(["agent", "agent"]);
   });
+
+  it("tells the listener when an engine's names are gone, so screens drop the old ones", () => {
+    const heard: string[] = [];
+    setModelNamesListener((provider) => heard.push(provider));
+    rememberModels("agent", [{ id: "gpt-5.3-codex", name: "Codex 5.3", efforts: [] }]);
+    rememberModels("agent", [{ id: "gpt-5.3-codex", efforts: [] }]);
+    expect(heard).toEqual(["agent", "agent"]);
+    expect(modelName("agent", "gpt-5.3-codex")).toBe("GPT-5.3 Codex");
+    // A list that had no names and still has none changes nothing a screen shows.
+    rememberModels("agent", []);
+    expect(heard).toEqual(["agent", "agent"]);
+  });
 });
