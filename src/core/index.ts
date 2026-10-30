@@ -216,6 +216,8 @@ if (!parent) {
             Number(process.env["PYXIS_E2E_SIMULATION_DELAY"] ?? 0),
           )
         : undefined,
+      // Prototype lessons written by the agent loop (docs/agent-lesson.md). An installed app ignores the switch.
+      { agentLesson: unpackaged && process.env["PYXIS_AGENT_LESSON"] === "1" },
     );
     runner.register("demo", demoJob);
     bindRunner(runner, dev);

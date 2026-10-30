@@ -112,6 +112,7 @@ describe("prompt templates", () => {
       "map.generate",
       "chat.solver",
       "chat.socratic",
+      "lesson.agent",
     ];
     const rule = partialText("citation");
     for (const id of ids) {
