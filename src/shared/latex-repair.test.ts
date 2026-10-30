@@ -19,6 +19,11 @@ describe("repairLatexEscapes", () => {
     expect(repairLatexEscapes("Riga uno\nnot a formula")).toBe("Riga uno\nnot a formula");
   });
 
+  it("repairs a command at the start of a line inside a display formula, and keeps indentation outside one", () => {
+    expect(repairLatexEscapes("$$\n\theta = \\text{x}\n$$")).toBe("$$\n\\theta = \\text{x}\n$$");
+    expect(repairLatexEscapes("Riga\n\ttext")).toBe("Riga\n\ttext");
+  });
+
   it("keeps real tabs, newlines and Windows line ends", () => {
     const text = "a\tb\nc\r\nd\n\ttext";
     expect(repairLatexEscapes(text)).toBe(text);

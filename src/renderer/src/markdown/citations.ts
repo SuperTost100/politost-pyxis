@@ -43,16 +43,16 @@ function thinCitationRuns(text: string): string {
  * reply never stored) stays plain text, since there is nothing to open. Without one, every marker links by its number.
  */
 export function linkCitations(markdown: string, resolver?: CitationResolver): string {
-  return mapOutsideCode(markdown, (text) =>
-    thinCitationRuns(
-      splitCitationGroups(text).replace(/\[P(\d+)\]/g, (_, raw: string) => {
-        const id = Number(raw);
-        if (!resolver) return `[P${id}](cite:p${id})`;
-        const label = resolver(id);
-        return label === undefined ? literal(`[P${id}]`) : `[${literal(label)}](cite:p${id})`;
-      }),
-    ),
-  );
+  return mapOutsideCode(markdown, (text) => {
+    const linked = splitCitationGroups(text).replace(/\[P(\d+)\]/g, (_, raw: string) => {
+      const id = Number(raw);
+      if (!resolver) return `[P${id}](cite:p${id})`;
+      const label = resolver(id);
+      return label === undefined ? literal(`[P${id}]`) : `[${literal(label)}](cite:p${id})`;
+    });
+    // Without a resolver the page owns the numbered list and every number must stay reachable.
+    return resolver ? thinCitationRuns(linked) : linked;
+  });
 }
 
 /**

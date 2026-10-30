@@ -19,14 +19,19 @@ const BY_LETTER: Record<string, string[]> = {
 const GUARDED = new Set(["to", "top", "tag", "tan", "tiny", "ne", "ni", "not", "notin", "nu", "neq", "nolimits", "nmid", "ngtr", "nless", "nleq", "ngeq", "nsim", "ncong", "nexists", "nrightarrow", "nleftarrow", "nparallel", "newline", "nonumber", "normalsize", "nabla"]);
 const CONTROL: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" };
 
-/** True when an odd number of unescaped dollar signs come before `index`: the position is inside a `$` span. */
+/** True when `index` is inside a `$…$` or `$$…$$` span: an unescaped dollar sign opened one that is not closed yet. */
 function insideMath(text: string, index: number): boolean {
-  let open = false;
+  let open: "$" | "$$" | null = null;
   for (let i = 0; i < index; i += 1) {
     if (text[i] === "\\") i += 1;
-    else if (text[i] === "$") open = !open;
+    else if (text[i] === "$") {
+      const mark = text[i + 1] === "$" ? "$$" : "$";
+      if (mark === "$$") i += 1;
+      if (open === null) open = mark;
+      else if (open === mark) open = null;
+    }
   }
-  return open;
+  return open !== null;
 }
 
 const PATTERNS = Object.entries(BY_LETTER).map(([letter, rest]) => ({
@@ -42,9 +47,10 @@ export function repairLatexEscapes(text: string): string {
     out = out.replace(pattern, (match, tail: string, offset: number, whole: string) => {
       const name = `${letter}${tail}`;
       // A tab that opens a line is indentation.
-      if (letter === "t" && (offset === 0 || whole[offset - 1] === "\n")) return match;
+      const inMath = insideMath(whole, offset);
+      if (letter === "t" && (offset === 0 || whole[offset - 1] === "\n") && !inMath) return match;
       const guarded = GUARDED.has(name) || letter === "n";
-      if (guarded && !insideMath(whole, offset)) return match;
+      if (guarded && !inMath) return match;
       return `\\${name}`;
     });
   }

@@ -17,6 +17,10 @@ describe("spokenText", () => {
     expect(spokenText("Il valore è $$E = mc^2$$ joule")).toBe("Il valore è E = mc^2 joule");
   });
 
+  it("reads a formula whose backslashes were lost to control characters as the student sees it", () => {
+    expect(spokenText("$m\vec{g}\\sin\theta + \frac{a}{b}$")).toBe("mg sin θ + a/b");
+  });
+
   it("leaves no backslash or brace behind", () => {
     expect(spokenText("$\\operatorname{rot}\\mathbf{B}_{\\perp}$")).not.toMatch(/[\\{}]/);
   });

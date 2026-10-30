@@ -1,3 +1,4 @@
+import { repairLatexEscapes } from "./latex-repair";
 import { mathSpans, resolveBookRefs } from "./math-delimiters";
 
 const SIGNS: Record<string, string> = {
@@ -39,7 +40,7 @@ function spokenFormula(latex: string): string {
 
 /** Markdown with `$…$` formulas as plain text for an accessible name, formulas spoken as signs and words. */
 export function spokenText(input: string): string {
-  const markdown = resolveBookRefs(input);
+  const markdown = resolveBookRefs(repairLatexEscapes(input));
   let out = "";
   let at = 0;
   for (const [start, end] of mathSpans(markdown)) {

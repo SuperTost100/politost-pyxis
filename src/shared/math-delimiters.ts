@@ -124,7 +124,9 @@ export function resolveBookRefs(input: string): string {
  * Leaves $ and $$ untouched.
  */
 export function normalizeMathDelimiters(input: string): string {
-  return mapOutsideCode(resolveBookRefs(repairLatexEscapes(input)), (text) => {
+  return mapOutsideCode(resolveBookRefs(input), (chunk) => {
+    // Per prose chunk, so code stays as written and the `$` count never reaches across a code block.
+    const text = repairLatexEscapes(chunk);
     let out = text.replace(
       /\\\[([\s\S]*?)\\\]/g,
       (_, body: string) => `\n$$\n${body.trim()}\n$$\n`,

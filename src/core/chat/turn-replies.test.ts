@@ -172,6 +172,57 @@ describe("partial replies", () => {
     }
   });
 
+  it("fails, saving nothing, when the engine reports a cut-off with no text at all", async () => {
+    const db = chatDb();
+    await expect(
+      askTurn(db, {
+        text: "Spiega",
+        allowGeneral: true,
+        run: async () => ({ ...reply(""), finishReason: "length" }),
+      }),
+    ).rejects.toMatchObject({ messageKey: "engines.errors.stream-truncated" });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM messages WHERE role = 'assistant'").get()).toEqual({ n: 0 });
+  });
+
+  it("keeps the earlier reply and reports the cut-off when answering again is cut off", async () => {
+    const db = chatDb();
+    const first = await askTurn(db, {
+      text: "Spiega",
+      allowGeneral: true,
+      run: async () => reply("Prima risposta."),
+    });
+    await expect(
+      regenerateTurn(db, {
+        chatId: first.chatId,
+        allowGeneral: true,
+        run: async (input) => {
+          input.onDelta?.("Seconda risposta a metà");
+          return { ...reply("Seconda risposta a metà"), finishReason: "length" };
+        },
+      }),
+    ).rejects.toMatchObject({ messageKey: "engines.errors.stream-truncated" });
+    expect(readChat(db, first.chatId).map((row) => row.body)).toEqual(["Spiega", "Prima risposta."]);
+  });
+
+  it("does not save a cut-off reply when an exam started while it was written", async () => {
+    const db = chatDb();
+    db.exec(`
+      INSERT INTO plans (id,title,status,created_at,updated_at) VALUES ('p','Physics','ready',1,1);
+      INSERT INTO items (id,plan_id,kind,body_json,created_at) VALUES ('exam','p','simulation','{"minutes":30,"questions":[]}',1);
+    `);
+    await expect(
+      askTurn(db, {
+        text: "Spiega",
+        allowGeneral: true,
+        run: async () => {
+          db.prepare("INSERT INTO attempts (id,plan_id,item_id,started_at) VALUES ('attempt','p','exam',1)").run();
+          return { ...reply("Risposta a metà"), finishReason: "length" };
+        },
+      }),
+    ).rejects.toMatchObject({ code: "exam-active" });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM messages WHERE role = 'assistant'").get()).toEqual({ n: 0 });
+  });
+
   it("keeps a reply that finished normally as finished", async () => {
     const db = chatDb();
     const result = await askTurn(db, {

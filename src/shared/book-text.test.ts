@@ -38,6 +38,11 @@ describe("topicTitle", () => {
     expect(topicTitle(`${"a".repeat(76)} $x^2$ fine`, 80)).toBe(`${"a".repeat(76)}…`);
   });
 
+  it("skips a whole display formula, not just its fence, to reach the prose after it", () => {
+    expect(topicTitle("$$\n\\frac{a}{b}\n$$\nLa frazione descrive un rapporto.")).toBe("La frazione descrive un rapporto.");
+    expect(topicTitle("$$x = 1$$\nPoi il testo.")).toBe("Poi il testo.");
+  });
+
   it("is stable when run on its own output", () => {
     const once = topicTitle("p1 **Misurare** significa confrontare [testo](ref:formula/1.2) una grandezza", 40);
     expect(topicTitle(once, 40)).toBe(once);

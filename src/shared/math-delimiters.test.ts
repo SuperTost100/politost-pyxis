@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { displayMathLines, normalizeMathDelimiters } from "./math-delimiters";
 
+describe("normalizeMathDelimiters and control characters", () => {
+  it("restores LaTeX commands in prose but leaves code as written", () => {
+    expect(normalizeMathDelimiters("Vale $\\theta\theta$ qui")).toBe("Vale $\\theta\\theta$ qui");
+    const code = "```\na\times b\nprice $ 5\nnot_found\n```";
+    expect(normalizeMathDelimiters(code)).toBe(code);
+    const inline = "uso `a\times b` e $\theta$";
+    expect(normalizeMathDelimiters(inline)).toBe("uso `a\times b` e $\\theta$");
+  });
+});
+
 describe("normalizeMathDelimiters", () => {
   it("converts inline \\( \\) to dollar math", () => {
     expect(normalizeMathDelimiters("a \\(x^2\\) b")).toBe("a $x^2$ b");

@@ -34,6 +34,12 @@ describe("linkCitations", () => {
     );
   });
 
+  it("leaves every marker when the page owns the numbered list", () => {
+    expect(linkCitations("Uno [P1][P2][P3][P4][P1].")).toBe(
+      "Uno [P1](cite:p1)[P2](cite:p2)[P3](cite:p3)[P4](cite:p4)[P1](cite:p1).",
+    );
+  });
+
   it("links every marker by number when there is no resolver", () => {
     expect(linkCitations("Uno [P1; P2].")).toBe("Uno [P1](cite:p1)[P2](cite:p2).");
   });
