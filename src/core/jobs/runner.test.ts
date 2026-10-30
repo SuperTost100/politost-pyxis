@@ -1,5 +1,18 @@
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+/** How many times the runner has waited for a free slot; the wait itself is unchanged. */
+const slotWaits = vi.hoisted(() => ({ count: 0 }));
+vi.mock("node:timers/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:timers/promises")>();
+  return {
+    ...actual,
+    setTimeout: ((...args: Parameters<typeof actual.setTimeout>) => {
+      slotWaits.count += 1;
+      return actual.setTimeout(...args);
+    }) as typeof actual.setTimeout,
+  };
+});
 import { uuidv7 } from "../../shared/ids";
 import { IpcError, type JobView } from "../../shared/ipc";
 import { openDatabase } from "../db/connection";
@@ -634,6 +647,63 @@ describe("job runner", () => {
       await new Promise((resolve) => setTimeout(resolve, 60));
       expect(rejections).toEqual([]);
       expect(seen).toHaveLength(published);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
+
+  it("starts nothing on a closed database: neither a job queued just before nor one waiting for a slot", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 1, demo: 1 });
+    let release!: () => void;
+    let waiterRan = false;
+    runner.register("holder", {
+      jobClass: "local",
+      steps: [{ name: "run", label: "run", run: () => new Promise<void>((resolve) => (release = resolve)) }],
+    });
+    // Starts on a free slot, then wants the local slot the holder keeps.
+    runner.register("waiter", {
+      jobClass: "model-cli",
+      steps: [
+        { name: "model", label: "model", run: async () => null },
+        {
+          name: "local",
+          label: "local",
+          jobClass: "local",
+          run: async () => {
+            waiterRan = true;
+            return null;
+          },
+        },
+      ],
+    });
+    runner.register("late", { jobClass: "model-api", steps: [{ name: "run", label: "run", run: async () => null }] });
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    try {
+      const holder = runner.start("holder");
+      const waiter = runner.start("waiter");
+      await until(database, holder, ["running"]);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(stateOf(database, waiter)).toBe("running");
+      // A job whose run is scheduled when the database closes: the close lands between the kick and the run.
+      runner.start("late");
+      await new Promise<void>((resolve) =>
+        queueMicrotask(() => {
+          database.close();
+          resolve();
+        }),
+      );
+      const polled = slotWaits.count;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(rejections).toEqual([]);
+      // The holder has not settled; the waiter stopped polling for its slot at the close (at most the wait under way ends).
+      expect(slotWaits.count - polled).toBeLessThanOrEqual(1);
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(waiterRan).toBe(false);
+      expect(rejections).toEqual([]);
     } finally {
       process.off("unhandledRejection", onRejection);
     }

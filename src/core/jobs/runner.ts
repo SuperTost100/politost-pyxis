@@ -224,6 +224,11 @@ export function createRunner(
   }
 
   async function execute(jobId: string): Promise<void> {
+    // Scheduled before the database closed: nothing to run, and nothing to read it from.
+    if (closed()) {
+      active.delete(jobId);
+      return;
+    }
     const entry = active.get(jobId);
     const job = jobStmt.get(jobId) as JobRow | undefined;
     const spec = job ? specs.get(job.kind) : undefined;
@@ -269,6 +274,8 @@ export function createRunner(
             full(desired, entry.interactive)
           ) {
             await wait(25, undefined, { signal: entry.controller.signal });
+            // A slot may never free up once the database is closed; stop asking.
+            if (closed()) return;
           }
           entry.jobClass = desired;
           queueMicrotask(kick);
