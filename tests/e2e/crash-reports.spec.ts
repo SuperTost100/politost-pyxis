@@ -229,8 +229,9 @@ test("crash reports: a restore that brings back the switch off sends nothing rai
   // Main names each core when the window connects to it.
   const cores: number[] = [];
   app.process().stderr?.on("data", (chunk) => {
-    // The pid may come wrapped in a terminal color code.
-    for (const match of String(chunk).matchAll(/pyxis-e2e: renderer connected\D*(\d+)/g)) cores.push(Number(match[1]));
+    // Electron prints the pid in a terminal color, whose code holds digits too, so the colors go first.
+    const text = String(chunk).replace(/\u001b\[[\d;]*m/g, "");
+    for (const match of text.matchAll(/pyxis-e2e: renderer connected (\d+)/g)) cores.push(Number(match[1]));
   });
   const messages = () =>
     received.map((item) => String((JSON.parse(item.body.toString("utf8")) as { message: unknown }).message));
@@ -254,7 +255,14 @@ test("crash reports: a restore that brings back the switch off sends nothing rai
     // A restore that brings back the switch off. Errors raised once the old core has stopped, before the restored
     // workspace has answered, are never sent: the workspace now open never agreed to them.
     copyFileSync(offBackup, zip);
-    await expect.poll(() => cores.length).toBeGreaterThan(0);
+    // The core the failed restore started is logged once it is ready, which can be after its switch arrived. Until
+    // then the last pid logged is a core that has already exited, and the wait below would end before the restore.
+    await expect
+      .poll(() => {
+        const pid = cores.at(-1);
+        return pid !== undefined && running(pid);
+      })
+      .toBe(true);
     const oldCore = cores.at(-1)!;
     const restoring = page.evaluate(() => window.pyxis.restoreWorkspace());
     await expect.poll(() => running(oldCore), { intervals: [25] }).toBe(false);
