@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MathCheck } from "../../src/shared/math-check";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 const manifest = JSON.parse(readFileSync(join(process.cwd(), "resources/pyodide-manifest.json"), "utf8")) as { version: string };
 
 test("MATH-02 MATH-06 Pyodide limits, network isolation and independent SymPy verification", async () => {
@@ -126,7 +127,7 @@ test("MATH-02 MATH-06 Pyodide limits, network isolation and independent SymPy ve
     expect(plot.images?.[0]).toMatch(/^data:image\/png;base64,/);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -188,6 +189,6 @@ test("MATH-02 MATH-06 complete solve sets, own-request queue clock and crashed-r
     expect(await solve("[-1, 1]")).toMatchObject({ state: "verified" });
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

@@ -13,6 +13,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const SPEED =
   "La velocità media è lo spazio percorso diviso il tempo impiegato.";
@@ -325,7 +326,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     await saveShot(page, "book-update-rebuilt-it.png", { animations: "disabled" });
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(books, { recursive: true, force: true });
   }
 });

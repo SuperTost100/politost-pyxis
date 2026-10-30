@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quizBack, quizBackLabel, retryPick, skipOrder, verdictLine } from "./quizText";
+import { questionPoints, quizBack, quizBackLabel, retryPick, skipOrder, verdict, verdictLine } from "./quizText";
 
 describe("where closing a quiz goes", () => {
   it("goes back to the Review page from a Review's questions, to the notebook from a redo, else to the exam", () => {
@@ -75,5 +75,22 @@ describe("verdictLine", () => {
     expect(verdictLine(50, true)).toBe("quiz.verdictGood");
     expect(verdictLine(54, false, 90)).toBe("quiz.verdictGood");
     expect(verdictLine(44, false)).toBe("quiz.verdictLow");
+  });
+});
+
+describe("one question's credit", () => {
+  it("is written as points of that question, one decimal, in the interface language", () => {
+    expect(questionPoints(0.55, "it")).toBe("0,6");
+    expect(questionPoints(0.5, "en")).toBe("0.5");
+    expect(questionPoints(1, "it")).toBe("1");
+  });
+
+  it("never shows a score under 1 as 1, which would sit beside a partial verdict", () => {
+    expect(questionPoints(0.95, "it")).toBe("0,9");
+    expect(questionPoints(0.96, "en")).toBe("0.9");
+  });
+
+  it("is right at full credit, partial in between, wrong at zero", () => {
+    expect([1, 0.5, 0].map(verdict)).toEqual(["correct", "partial", "wrong"]);
   });
 });

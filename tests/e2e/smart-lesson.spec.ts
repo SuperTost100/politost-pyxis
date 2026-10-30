@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -219,7 +220,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(status).toHaveCount(0);
     // Opening the lesson did not mark it done.
     expect(await done("lesson", learn.topicId)).toBe(false);
-    await expect(page.getByText("Rispondi al ripasso finale per completare la lezione.")).toBeVisible();
+    await expect(page.getByText("Rispondi al ripasso finale per completare la lezione, oppure segnala che hai finito.")).toBeVisible();
     // The end offers a primary "Done, continue" and a quieter "Done".
     await expect(page.getByRole("button", { name: "Fatto, continua" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Fatto", exact: true })).toBeVisible();
@@ -370,6 +371,6 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(page.getByText("Lezione completata")).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

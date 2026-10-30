@@ -4,13 +4,14 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 function smartbook() {
   return makeBook({
@@ -140,7 +141,7 @@ test("UI-01 the menu works while a plan builds, a wizard error goes away, and th
     }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -209,7 +210,7 @@ test("UI-02 a passage search says when nothing matches, ignores an empty query a
     await expect(none("moto rettilineo")).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -270,6 +271,6 @@ test("UI-03 the cards page announces the next card, names parked cards, and show
     await expect(progress).toHaveAttribute("aria-valuemax", "100");
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

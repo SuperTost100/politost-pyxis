@@ -1,6 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { faxScanPdf, manyPagePdf } from "../../src/core/sources/test-pdf";
@@ -9,6 +9,7 @@ import { animationsSettled } from "./settled";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
@@ -151,7 +152,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     await saveShot(page, "m4-pdf-it-light-960.png", { animations: "disabled" });
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -195,7 +196,7 @@ test("the PDF viewer draws a fax-encoded figure", async () => {
     expect(figure).toBeLessThan(64);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -262,6 +263,6 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
     expect(restored.some((hit) => hit.sourceId === source.sourceId)).toBe(true);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

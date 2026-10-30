@@ -29,6 +29,13 @@ import {
  */
 export const QUIZ_BATCH = 4;
 
+/**
+ * With this many ready, the first call of a quiz built in batches asks for `QUIZ_FIRST_BATCH` questions only: a short
+ * call comes back sooner, so the student is not left at the third question waiting for a full batch of four.
+ */
+export const QUIZ_FIRST_BATCH = 2;
+const FIRST_READY = 3;
+
 export const quizKinds = [
   "mcq",
   "tf",
@@ -252,14 +259,22 @@ export async function generateQuiz(
   signal?: AbortSignal,
   onBatch?: () => void,
   batch = 10,
+  firstBatch = 0,
 ) {
   const { config, questions, passages, selection } = snapshot;
   const plan = { language: snapshot.language };
   const known = new Set(passages.map((row) => row.id));
+  let firstCall = true;
   while (questions.length < config.count) {
-    // Batches split the rest evenly: ten in batches of four are four, three and three.
+    // Batches split the rest evenly: ten in batches of four are four, three and three. The first call of a split build
+    // is short when the student has hardly any question to start on.
     const remaining = config.count - questions.length;
-    const batchCount = Math.ceil(remaining / Math.ceil(remaining / Math.max(1, Math.min(10, batch))));
+    const size = Math.max(1, Math.min(10, batch));
+    const batchCount =
+      firstBatch > 0 && firstCall && remaining > size && questions.length < FIRST_READY
+        ? Math.min(firstBatch, size)
+        : Math.ceil(remaining / Math.ceil(remaining / size));
+    firstCall = false;
     const kindCounts = new Map(
       config.types.map((kind) => [
         kind,

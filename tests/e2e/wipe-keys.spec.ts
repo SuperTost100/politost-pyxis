@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 test("SET-05 deleting all data removes saved engine keys across a restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-wipe-keys-"));
@@ -29,6 +30,6 @@ test("SET-05 deleting all data removes saved engine keys across a restart", asyn
     await expect(page.getByRole("button", { name: "Salta" })).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

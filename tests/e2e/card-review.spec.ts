@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { removeTestFolder } from "./cleanup";
 
 /** One topic with three cards Pyxis wrote (one from a passage), one hand-made card, and a finished card build. */
 function seed(db: DatabaseSync) {
@@ -104,6 +105,8 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await expect(front).toHaveText("Unità della forza?");
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(front).toHaveText("Seconda legge di Newton?");
+    // The Undo button can keep focus while the bar is open, and the page's keys ignore a button as their target.
+    await expect(page.locator(".px-cards-undo")).toHaveCount(0);
     expect(count("SELECT COUNT(*) AS n FROM cards WHERE suspended = 1")).toBe(0);
 
     // D removes a card Pyxis wrote with Undo at hand.
@@ -180,7 +183,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     db.close();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -226,7 +229,7 @@ test("card build: cards show as each batch is stored, and Export waits for the f
     db.close();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -274,6 +277,6 @@ test("card browser: a card forgotten six times is tagged and filtered", async ()
     await expect(page.getByRole("dialog", { name: "Edit flashcard" })).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

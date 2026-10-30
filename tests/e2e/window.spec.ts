@@ -17,6 +17,7 @@ import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { removeTestFolder } from "./cleanup";
 
 async function clean(page: Page) {
   await expectNoAxeViolations(page);
@@ -81,7 +82,7 @@ test("window CSP: no string eval and no remote images in the main window", async
     expect.soft(requests).toBe(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -141,7 +142,7 @@ test("an update from the file:// window keeps what the renderer stored", async (
     }
     expect(JSON.parse(readFileSync(marker, "utf8"))).toEqual({ keys: 2 });
   } finally {
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -607,7 +608,7 @@ test("the packaged app reports the same GPU features as Electron's build", async
       return rest;
     } finally {
       await app.close();
-      rmSync(userData, { recursive: true, force: true });
+      removeTestFolder(userData);
     }
   }
   const electronBuild = await features();

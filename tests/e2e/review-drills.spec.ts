@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const dbPath = (userData: string) => join(userData, "workspace", "pyxis.db");
 
@@ -230,7 +231,7 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     expect(await invoke(page, "study.reviewSession", { planId })).toBeNull();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -269,7 +270,7 @@ test("LES-13 discarding an unfinished Review frees a new one, keeps the cards an
     expect(started.n).toBe(building.length);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -324,7 +325,7 @@ test("LES-13 a failed drill can be skipped for good, a closed gap stops being wa
     await expectNoAxeViolations(page);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -349,7 +350,7 @@ test("LES-03 a single gap drill started from the progress page opens its quiz wi
     await expectNoAxeViolations(page);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -382,6 +383,6 @@ test("a gap drill opened from the path is requested once: Back from its quiz doe
     expect(drills()).toBe(1);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

@@ -1,7 +1,7 @@
 import { setTimeout as wait } from "node:timers/promises";
 import type Database from "better-sqlite3";
 import { z } from "zod";
-import { checkRef } from "../../shared/quiz";
+import { checkRef, fullCredit } from "../../shared/quiz";
 import { uuidv7 } from "../../shared/ids";
 import { generate, type GenerateInput } from "../engine/generate";
 import { promptProvenance, systemPrompt } from "../engine/prompts";
@@ -145,6 +145,7 @@ async function gradeOpen(
   const data = result.data as { score: number; explanation: string };
   return {
     ...data,
+    score: fullCredit(data.score),
     provider: result.provider,
     model: result.model,
     prompt: promptProvenance("quiz.open-grade"),

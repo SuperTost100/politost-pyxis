@@ -22,7 +22,6 @@ import { errorProvider, useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { jobErrorEngine, jobErrorKey, requestJobError } from "../jobs/jobErrors";
 import { invoke } from "../../lib/ipc";
-import { useGradeScale } from "../../lib/useGradeScale";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
@@ -40,6 +39,7 @@ import {
   retryPick,
   skipOrder,
   stemText,
+  questionPoints,
   verdict,
   verdictLine,
   type QuizAnswer,
@@ -169,7 +169,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
   const describeEngineError = useEngineError();
-  const grade = useGradeScale();
   // Past questions: a quiz of the plan's past exam questions, opened at /plans/:planId/past.
   const past = useLocation().pathname.endsWith("/past");
   const diagnostic = !topicId && !redo && !past && !reviewRoute;
@@ -671,7 +670,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             }
           : {
               key: "wait",
-              label: t("quiz.waitingBatch"),
+              // How many are still being written, so the wait has an end the student can see.
+              label:
+                requestedCount > questions.length
+                  ? t("quiz.waitingMore", { count: requestedCount - questions.length })
+                  : t("quiz.waitingBatch"),
               onClick: () => undefined,
               disabled: true,
               loading: false,
@@ -866,9 +869,24 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const resultPoints = countedResults.reduce((sum, row) => sum + row.score, 0);
   const excludedResults = (finalResult?.results.length ?? 0) - countedResults.length;
   const hasMistakes = !review && !redo && countedResults.some((row) => row.score < 1);
+  // A finished Review goes on to the exam: its own page is where a review in progress is resumed, not where one ends.
+  const finishedReview = Boolean(finalResult) && reviewRoute;
   const backButton = (type: "primary" | "default") => (
-    <Button type={type} shape="round" size="large" onClick={() => navigate(back)}>
-      {t(reopened || redo ? quizBackLabel({ redo, review: reviewRoute }) : "quiz.continue")}
+    <Button
+      type={type}
+      shape="round"
+      size="large"
+      onClick={() => navigate(finishedReview ? quizBack({ planId, notebookExam }) : back)}
+    >
+      {t(
+        finishedReview
+          ? reopened
+            ? quizBackLabel({})
+            : "quiz.continue"
+          : reopened || redo
+            ? quizBackLabel({ redo, review: reviewRoute })
+            : "quiz.continue",
+      )}
     </Button>
   );
   // Only the saved session knows each question's topic; a quiz just started has not read it back yet.
@@ -911,7 +929,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       stem: item?.stem ?? "",
       topic: topicTitle(row.id),
       mark,
-      ...(mark === "partial" ? { score: grade.format(row.score) } : {}),
+      ...(mark === "partial" ? { score: t("quiz.questionPoints", { points: questionPoints(row.score, i18n.language) }) } : {}),
       answer: answerText(row.id),
       long,
       expected: expectedText(row),
@@ -1236,6 +1254,8 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                   excludedResults
                     ? `${t("quiz.excludedCount", { count: excludedResults })}.`
                     : "",
+                  // The grade is this test's, not the exam's preparation, which also counts topics not tried yet.
+                  diagnostic && !review ? t("results.diagnosticScope") : "",
                 ]
                   .filter(Boolean)
                   .join(" ")
@@ -1303,7 +1323,9 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                 type="primary"
                 shape="round"
                 size="large"
-                onClick={() => navigate(`/plans/${planId ?? ""}/review`)}
+                onClick={() =>
+                  navigate(`/plans/${planId ?? ""}/review?from=${encodeURIComponent(attemptId)}`)
+                }
               >
                 {t("quiz.reviewMistakes")}
               </Button>
@@ -1626,9 +1648,8 @@ function Feedback({
   onAsk: () => void;
   onWrong: (wrong: boolean) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const engineNames = useEngineNames();
-  const grade = useGradeScale();
   const state = verdict(result.score);
   const closed = kind === "mcq" || kind === "tf";
   return (
@@ -1657,7 +1678,7 @@ function Feedback({
           )}
         </span>
         {state === "partial" ? (
-          <span className="meta">{grade.format(result.score)}</span>
+          <span className="meta">{t("quiz.questionPoints", { points: questionPoints(result.score, i18n.language) })}</span>
         ) : null}
       </p>
       {dontKnow ? <p className="small px-quiz-dont-know">{t("quiz.dontKnowNote")}</p> : null}

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -7,6 +7,7 @@ import { parseSmartText, smartQuestions } from "../../src/shared/smart-text";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
+import { removeTestFolder } from "./cleanup";
 
 const mcq = (id: string, topicId: string, stem: string) => ({
   id,
@@ -263,14 +264,14 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     ]);
     const entry = (text: string) =>
       page.getByRole("listitem").filter({ hasText: text });
-    // The answer given and the right one; a partial answer shows its score; math is rendered.
+    // The answer given and the right one; a partial answer shows its points out of one; math is rendered.
     await expect(entry("Che cosa misura il newton?")).toContainText(
       "Your answerIl tempo",
     );
     await expect(entry("Che cosa misura il newton?")).toContainText(
       "Correct answerLa forza",
     );
-    await expect(entry("legge oraria")).toContainText("Your answer · 12/30");
+    await expect(entry("legge oraria")).toContainText("Your answer · 0.4 of 1");
     await expect(entry("legge oraria").locator(".katex").first()).toBeVisible();
     await expect(entry("Il numero atomico")).toContainText("Your answerTrue");
     await expect(entry("Il numero atomico")).toContainText(
@@ -340,6 +341,6 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     db.close();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

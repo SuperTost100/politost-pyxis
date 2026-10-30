@@ -146,6 +146,8 @@ const quizResultSchema = z.object({
 });
 const reviewSessionSchema = z.object({
   sessionId: z.string(),
+  // The quiz attempt whose wrong answers this review starts from, when the student asked to review its mistakes.
+  fromAttemptId: z.string().optional(),
   cards: z.array(dueCardSchema),
   attemptId: z.string(),
   questions: z.array(
@@ -260,6 +262,8 @@ export const JobView = z.object({
   title: z.string().optional(),
   /** The topic study work is about, such as the topic of a quiz being written. */
   topic: z.string().optional(),
+  /** The topics a Review asked about, in question order: a Review has no single topic. */
+  topics: z.array(z.string()).optional(),
   /** The exam the work belongs to. */
   exam: z.string().optional(),
   /** Work on a diagnostic test or a Review, which have no single topic. */
@@ -992,10 +996,12 @@ export const requests = {
     output: z.object({ ok: z.literal(true) }),
   },
   "study.review": {
-    // Starts a mixed review, or returns the unfinished one. `count` sizes a new review's cards.
+    // Starts a mixed review, or returns the unfinished one. `count` sizes a new review's cards. `fromAttemptId` starts it
+    // from that quiz's wrong answers instead (no cards), replacing an unfinished review of something else.
     input: z.object({
       planId: z.string(),
       count: z.number().int().min(1).max(20).optional(),
+      fromAttemptId: z.string().optional(),
     }),
     output: reviewSessionSchema,
   },

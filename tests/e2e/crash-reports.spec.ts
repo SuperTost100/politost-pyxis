@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 /** One request the stand-in for the crash Worker received. */
 type Received = { path: string; headers: Record<string, string | string[] | undefined>; body: Buffer };
@@ -125,7 +126,7 @@ test("crash reports: nothing is sent while the switch is off, and a scrubbed err
   } finally {
     await app.close().catch(() => {});
     server.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -195,7 +196,7 @@ test("crash reports: a native crash uploads a minidump only while the switch is 
   } finally {
     if (app) await app.close().catch(() => {});
     server.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 

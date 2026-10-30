@@ -3,13 +3,14 @@ import { uuidv7 } from "../../shared/ids";
 import type { Runner } from "../jobs/runner";
 import { readSteps } from "../plans/steps";
 import { planSeries } from "../plans/progress";
-import { saveQuiz, startAttempt, withoutAnswer, type QuizQuestion } from "./attempt";
+import { QUIZ_MAX_QUESTIONS, questionFlagged, saveQuiz, startAttempt, withoutAnswer, type QuizQuestion } from "./attempt";
 import { dueCards } from "./cards";
 import { topicExercises } from "./exercises";
 import { flaggedIds } from "./flags";
 import type { Grade } from "./grade";
 import { enqueueGapDrill, REVIEW_SESSION_TTL } from "./gapDrill";
 import { mixQuestions } from "./mix";
+import { redoQuestion, type AttemptQuestion } from "./notebook";
 import { quizDraft } from "./quizGrading";
 import { acrossTopics } from "./topicQuiz";
 
@@ -18,6 +19,8 @@ const SESSION_TTL = REVIEW_SESSION_TTL;
 const MAX_CARDS = 20;
 const GAP_QUESTIONS = 5;
 const NEW_QUESTIONS = 3;
+/** Questions a review asks in all: a review of one quiz's mistakes fills what they leave of this with extra practice. */
+const REVIEW_QUESTIONS = GAP_QUESTIONS + NEW_QUESTIONS;
 // ponytail: each drill is a model job (an explanation and five questions), so one review asks for at most this many; a later review picks up the rest.
 const MAX_DRILLS = 2;
 
@@ -43,7 +46,14 @@ type Drill = {
  * when it starts, apart from adopted drill questions; progress is derived from `card_reviews`
  * and the attempt, never stored.
  */
-type Session = { cardIds: string[]; attemptId: string; drills: Drill[]; discardedAt?: number };
+type Session = {
+  cardIds: string[];
+  attemptId: string;
+  drills: Drill[];
+  discardedAt?: number;
+  /** The quiz attempt whose wrong answers this review starts from. */
+  fromAttemptId?: string;
+};
 type Row = { id: string; created_at: number; body_json: string };
 /** Drill jobs in these states may still add questions, so the review cannot be submitted yet. */
 const WAITING = new Set(["queued", "running", "interrupted", "failed"]);
@@ -240,6 +250,7 @@ function view(db: Database.Database, planId: string, found: Row) {
   const done = cardsDone + Math.min(answered, stored.length);
   return {
     sessionId: row.id,
+    fromAttemptId: body.fromAttemptId,
     cards,
     attemptId: attempt ? body.attemptId : "",
     questions: stored.map(withoutAnswer),
@@ -295,6 +306,7 @@ export type ReviewSession = ReturnType<typeof view>;
 /** Nothing is due and nothing is weak: no session is stored. */
 const emptyReview: ReviewSession = {
   sessionId: "",
+  fromAttemptId: undefined,
   cards: [],
   attemptId: "",
   questions: [],
@@ -389,31 +401,72 @@ function latestScore(db: Database.Database, planId: string, topicId: string): nu
 }
 
 /**
+ * The questions the student got wrong (or left unanswered) in one finished quiz or simulation, as they were asked, in the quiz's own
+ * order. A question the student marked wrong ("Domanda sbagliata?") is not a mistake of theirs and stays out.
+ */
+function attemptMistakes(db: Database.Database, planId: string, attemptId: string) {
+  const row = db
+    .prepare(
+      `SELECT i.kind, i.topic_id, i.body_json, aa.payload_json
+       FROM attempts a JOIN items i ON i.id = a.item_id JOIN attempt_answers aa ON aa.attempt_id = a.id
+       WHERE a.id = ? AND a.plan_id = ? AND a.submitted_at IS NOT NULL AND i.kind IN ('quiz', 'diagnostic', 'simulation')
+         AND json_type(aa.payload_json, '$.results') = 'array'
+       ORDER BY aa.created_at DESC, aa.id DESC LIMIT 1`,
+    )
+    .get(attemptId, planId) as { kind: string; topic_id: string | null; body_json: string; payload_json: string } | undefined;
+  if (!row) return [];
+  const { questions = [] } = JSON.parse(row.body_json) as { questions?: AttemptQuestion[] };
+  const { results = [] } = JSON.parse(row.payload_json) as { results?: Array<{ id: string; score: number }> };
+  const missed = new Set(results.filter((result) => result.score < 1).map((result) => result.id));
+  const blocked = flaggedIds(db, "exercise");
+  return questions
+    .filter((question) => missed.has(question.id) && question.stem && question.answer && !questionFlagged(blocked, question))
+    .map((question) => redoQuestion(question, question.topicId ?? row.topic_id, row.kind === "simulation"));
+}
+
+/**
  * LES-13. Due cards (at most `count`), up to five questions from open gaps, and three unseen
  * items from the frontier topic. A gap with no questions asks for the durable gap drill.
  * Starting again while a review is unfinished returns that review instead of a new one.
+ *
+ * With `fromAttemptId` the review starts from that quiz's wrong answers: the same questions come first, then as much
+ * extra practice as fits in the eight questions a review asks (none when the mistakes fill them), and no cards.
+ * An unfinished review of something else is dropped, since the student asked for these mistakes now.
  */
 export function startReview(
   db: Database.Database,
   planId: string,
-  options: { count?: number; runner?: Runner } = {},
+  options: { count?: number; runner?: Runner; fromAttemptId?: string } = {},
   now = Date.now(),
 ): ReviewSession {
   const active = readReview(db, planId, now);
-  if (active) return active;
+  if (active && (!options.fromAttemptId || active.fromAttemptId === options.fromAttemptId)) return active;
+  if (active) discardReview(db, planId, now);
+  const mistakes = options.fromAttemptId
+    ? attemptMistakes(db, planId, options.fromAttemptId).slice(0, QUIZ_MAX_QUESTIONS)
+    : [];
+  const fromMistakes = mistakes.length > 0;
+  const room = Math.max(0, REVIEW_QUESTIONS - mistakes.length);
+  const gapWant = Math.min(GAP_QUESTIONS, room);
+  const newWant = Math.min(NEW_QUESTIONS, room - gapWant);
+  // An exercise the student just missed is not extra practice.
+  const missedSources = new Set(mistakes.flatMap((question) => [...(question.sourceIds ?? []), question.sourceId ?? ""]));
   const count = Math.max(1, Math.min(MAX_CARDS, Math.floor(options.count ?? MAX_CARDS)));
-  const cardIds = dueCards(db, planId, now).slice(0, count).map((card) => card.id);
+  const cardIds = fromMistakes ? [] : dueCards(db, planId, now).slice(0, count).map((card) => card.id);
   const used = usedSources(db, planId);
-  const buckets = gapBuckets(db, planId, now, used);
+  const buckets = gapBuckets(db, planId, now, used).map((bucket) => ({
+    ...bucket,
+    rows: bucket.rows.filter((row) => !missedSources.has(row.id)),
+  }));
   const gapRows = acrossTopics(
     buckets.map((bucket) => bucket.rows),
-    GAP_QUESTIONS,
+    gapWant,
   );
   const wanted = options.runner
-    ? buckets.filter((bucket) => bucket.available === 0).slice(0, MAX_DRILLS)
+    ? buckets.filter((bucket) => bucket.available === 0).slice(0, Math.min(MAX_DRILLS, gapWant))
     : [];
-  // Each drill owes a share of the five gap questions the open gaps could not supply, at least one.
-  const missing = Math.max(GAP_QUESTIONS - gapRows.length, wanted.length);
+  // Each drill owes a share of the gap questions the open gaps could not supply, at least one.
+  const missing = Math.max(gapWant - gapRows.length, wanted.length);
   const drills: Drill[] = wanted.flatMap((bucket, index) => {
     try {
       const { jobId } = enqueueGapDrill(db, options.runner!, { planId, topicId: bucket.topicId, gapId: bucket.gapId });
@@ -427,15 +480,15 @@ export function startReview(
   const frontier = frontierTopic(db, planId);
   const blocked = flaggedIds(db, "exercise");
   const unseen =
-    frontier && latestScore(db, planId, frontier) !== 1
+    frontier && newWant > 0 && latestScore(db, planId, frontier) !== 1
       ? topicExercises(db, frontier)
           .filter((item) => item.answer?.trim() && !blocked.has(item.id) && !used.has(item.id))
-          .filter((item) => !gapRows.some((row) => row.id === item.id))
-          .slice(0, NEW_QUESTIONS)
+          .filter((item) => !gapRows.some((row) => row.id === item.id) && !missedSources.has(item.id))
+          .slice(0, newWant)
           .map((item) => ({ ...item, topicId: frontier }))
       : [];
   const topicOf = new Map([...gapRows, ...unseen].map((row) => [row.id, row.topicId]));
-  const questions: QuizQuestion[] = mixQuestions(
+  const extra: QuizQuestion[] = mixQuestions(
     [...gapRows, ...unseen].map((row) => ({
       id: row.id,
       prompt: row.prompt,
@@ -443,7 +496,7 @@ export function startReview(
       topicId: row.topicId,
       kind: row.kind,
     })),
-    8,
+    room,
   ).map((question) => {
     // A matching question can mix exercises of two topics; it then counts toward neither.
     const topics = new Set((question.sourceIds ?? [question.sourceId]).map((id) => topicOf.get(id)));
@@ -455,6 +508,11 @@ export function startReview(
         : question.grade;
     return { ...question, topicId, grade };
   });
+  // The mistakes keep their own form and grade, as the quiz asked them.
+  const questions: QuizQuestion[] = [
+    ...mistakes.map(({ answer, ...question }) => ({ ...question, grade: answer })),
+    ...extra,
+  ];
   if (cardIds.length === 0 && questions.length === 0 && drills.length === 0)
     return emptyReview;
   db.transaction(() => {
@@ -466,10 +524,11 @@ export function startReview(
       attemptId = startAttempt(db, planId, itemId, now + 1).attemptId;
     }
     const sessionId = uuidv7(now + 2);
+    const session: Session = { cardIds, attemptId, drills, ...(options.fromAttemptId ? { fromAttemptId: options.fromAttemptId } : {}) };
     db.prepare(
       `INSERT INTO items (id, plan_id, kind, body_json, grounding, created_at)
        VALUES (?, ?, 'review_session', ?, 'sources', ?)`,
-    ).run(sessionId, planId, JSON.stringify({ cardIds, attemptId, drills } satisfies Session), now);
+    ).run(sessionId, planId, JSON.stringify(session), now);
     return sessionId;
   })();
   return view(db, planId, latestSession(db, planId)!);

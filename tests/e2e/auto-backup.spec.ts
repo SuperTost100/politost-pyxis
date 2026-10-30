@@ -9,7 +9,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,6 +20,7 @@ import { animationsSettled } from "./settled";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const automatic =
   /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}(?:-[0-9a-f]{8})?\.zip$/;
@@ -77,39 +77,6 @@ function backupsIn(folder: string): string[] {
         .filter((name) => automatic.test(name))
         .sort()
     : [];
-}
-
-/**
- * Removes a test folder once Pyxis has quit. Retries for a few seconds, since a virus scanner can still have a new file
- * open, then fails naming every file still held.
- */
-function removeTestFolder(root: string) {
-  try {
-    rmSync(root, {
-      recursive: true,
-      force: true,
-      maxRetries: 20,
-      retryDelay: 250,
-    });
-  } catch (error) {
-    const held: string[] = [];
-    const walk = (dir: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const path = join(dir, entry.name);
-        if (entry.isDirectory()) walk(path);
-        else
-          try {
-            rmSync(path, { force: true });
-          } catch {
-            held.push(path);
-          }
-      }
-    };
-    walk(root);
-    throw new Error(
-      `${(error as Error).message}; still held: ${held.join(", ") || "only folders"}`,
-    );
-  }
 }
 
 test("automatic backups: not while empty, then once a day with retention of this computer's files, and restore", async () => {

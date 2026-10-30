@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-drafts-"));
@@ -89,7 +90,7 @@ test("R14-3 a suggestion sends only its own text and leaves the draft and photos
     await expect(page.getByText("appunti.txt")).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -152,7 +153,7 @@ test("R14-4 deleting all data and restoring a backup clear the session before th
     await cleared(page);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(out, { recursive: true, force: true });
   }
 });
@@ -180,6 +181,6 @@ test("a paste longer than a message can hold says so instead of vanishing", asyn
     await expect(page.getByRole("status").filter({ hasText: "troppo lungo" })).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });

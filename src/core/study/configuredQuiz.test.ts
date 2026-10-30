@@ -221,8 +221,9 @@ describe("configured quizzes", () => {
     });
     attemptId = enqueueQuiz(db, runner, { planId: "plan", topicId: "topic", count: 10, types: ["tf"] }).attemptId;
     await until(db, attemptId, "succeeded");
-    // Ten questions in calls of four, three and three; each call finds the ones before it already saved.
-    expect(seen).toEqual([0, 4, 7]);
+    // Ten questions with nothing ready: a short first call of two so the student can start, then four and four. Each
+    // call finds the ones before it already saved.
+    expect(seen).toEqual([0, 2, 6]);
     expect(readQuiz(db, attemptId).questions).toHaveLength(10);
     db.close();
   });

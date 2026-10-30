@@ -4,11 +4,12 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
 
 /**
  * The native picker is answered by main's real handler, so grants for files and folders go through the same path
@@ -120,7 +121,7 @@ test("SRC-07 picking a folder lists its files, imports the ticked ones and says 
     await expect(dialog.getByRole("button", { name: /^(Importa|Aggiungi) \d+ file/ })).toHaveCount(0);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -151,7 +152,7 @@ test("SRC-07 the file picker takes several files and the result lists them", asy
     expect(titles.map((row) => row.title).sort()).toEqual(["cinematica", "dinamica"]);
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -218,6 +219,6 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await expect(page.getByRole("button", { name: "Crea l'esame", exact: true })).toBeEnabled();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
