@@ -72,6 +72,75 @@ describe("mixed quiz", () => {
     expect(places.size).toBeGreaterThan(1);
   });
 
+  it("never offers another exercise's worked solution as an option, and asks such an exercise open", () => {
+    const worked = (n: number) =>
+      `La media è\n\n$$\\bar{x} = ${n}$$\n\nGli scarti valgono ${n}, quindi la varianza è ${n * 2}.`;
+    const rows = [1, 2, 3, 4, 5].map((n) => ({
+      id: `w${n}`,
+      prompt: `Calcola la varianza delle misure ${n}.`,
+      answer: worked(n),
+      topicId: "stat",
+      kind: "exercise",
+    }));
+    const questions = mixQuestions(rows, 8, 7);
+    expect(questions.length).toBeGreaterThan(0);
+    // A worked solution is no option, no statement to judge, no blank and no matching column: it is asked open.
+    expect(questions.every((question) => question.grade.kind === "open")).toBe(true);
+    for (const question of questions) {
+      const row = rows.find((item) => item.id === question.sourceId)!;
+      expect(question.stem).toBe(row.prompt);
+    }
+    // Each exercise is asked once.
+    expect(new Set(questions.map((question) => question.sourceId)).size).toBe(questions.length);
+  });
+
+  it("draws distractors only from short answers of the same topic and kind", () => {
+    const short = (topicId: string, kind: string, names: string[]) =>
+      names.map((name) => ({ id: `${topicId}-${name}`, prompt: `Che cos'è ${name}?`, answer: name, topicId, kind }));
+    const rows = [
+      ...short("vettori", "exercise", ["modulo", "versore", "prodotto scalare", "componente"]),
+      // Another topic, with enough answers to fill options of its own.
+      ...short("misure", "exercise", ["media", "varianza", "errore standard", "incertezza"]),
+      // Same topic, another kind: a worked example's answer is not an option for an exercise.
+      ...short("vettori", "example", ["esempio uno"]),
+      // A long solution in the same topic is never a distractor.
+      {
+        id: "vettori-long",
+        prompt: "Calcola il prodotto vettoriale.",
+        answer: "Il prodotto vettoriale si calcola con il determinante\n\n$$\\vec a \\times \\vec b = (4,-2,-5)$$",
+        topicId: "vettori",
+        kind: "exercise",
+      },
+    ];
+    const byAnswer = new Map(rows.map((row) => [row.answer, row]));
+    for (let seed = 1; seed < 40; seed += 1) {
+      for (const question of mixQuestions(rows, 20, seed)) {
+        const row = rows.find((item) => item.id === question.sourceId)!;
+        if (question.grade.kind === "mcq")
+          for (const option of question.options!) {
+            const from = byAnswer.get(option)!;
+            expect(from.topicId).toBe(row.topicId);
+            expect(from.kind).toBe(row.kind);
+            expect(option.length).toBeLessThan(120);
+          }
+        if (question.grade.kind === "tf") {
+          const shown = question.stem.slice(row.prompt.length).trim();
+          expect(byAnswer.get(shown)?.topicId).toBe(row.topicId);
+          expect(byAnswer.get(shown)?.kind).toBe(row.kind);
+        }
+        if (question.grade.kind === "matching") {
+          const sources = question.sourceIds!.map((id) => rows.find((item) => item.id === id)!);
+          expect(new Set(sources.map((item) => `${item.topicId}/${item.kind}`)).size).toBe(1);
+        }
+        if (row.id === "vettori-long") expect(question.grade.kind).toBe("open");
+      }
+    }
+    // The lone worked example has no plausible distractors, so it is never a multiple choice.
+    for (let seed = 1; seed < 40; seed += 1)
+      for (const question of mixQuestions(rows, 20, seed))
+        if (question.sourceId === "vettori-esempio uno") expect(question.grade.kind).not.toBe("mcq");
+  });
+
   it("uses every closed type and grades a true or false item", () => {
     const questions = mixQuestions(
       ["forza", "energia", "lavoro", "potenza"].map((name, index) => ({

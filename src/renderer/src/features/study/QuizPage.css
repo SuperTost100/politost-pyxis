@@ -156,6 +156,12 @@
 .px-quiz-open textarea {
   font: 400 calc(17px * var(--text-scale, 1)) / 1.6 var(--font-sans);
 }
+.px-quiz-available {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .px-quiz-checking {
   display: flex;
   align-items: center;

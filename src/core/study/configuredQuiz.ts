@@ -22,6 +22,13 @@ import {
   type QuizQuestion,
 } from "./attempt";
 
+/**
+ * The most questions one call writes while the student is on the quiz screen: each batch is saved as it arrives, so
+ * the "ready" count moves while the first questions are answered. One call for ten took over three minutes with
+ * nothing new on screen.
+ */
+export const QUIZ_BATCH = 4;
+
 export const quizKinds = [
   "mcq",
   "tf",
@@ -235,17 +242,24 @@ function rejectedStems(
   return [...stems].slice(0, limit);
 }
 
+/**
+ * Writes the snapshot's missing questions, at most `batch` (up to ten) per engine call, and calls `onBatch` after
+ * each call so the caller can save what arrived.
+ */
 export async function generateQuiz(
   snapshot: QuizSnapshot,
   run?: GenerateInput["run"],
   signal?: AbortSignal,
   onBatch?: () => void,
+  batch = 10,
 ) {
   const { config, questions, passages, selection } = snapshot;
   const plan = { language: snapshot.language };
   const known = new Set(passages.map((row) => row.id));
   while (questions.length < config.count) {
-    const batchCount = Math.min(10, config.count - questions.length);
+    // Batches split the rest evenly: ten in batches of four are four, three and three.
+    const remaining = config.count - questions.length;
+    const batchCount = Math.ceil(remaining / Math.ceil(remaining / Math.max(1, Math.min(10, batch))));
     const kindCounts = new Map(
       config.types.map((kind) => [
         kind,

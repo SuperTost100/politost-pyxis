@@ -12,6 +12,7 @@ import {
 } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { aboutPlan } from "./jobAbout";
 import { topicExercises } from "./exercises";
 import { requireTopic } from "./openLesson";
 
@@ -171,6 +172,7 @@ export function registerExerciseJobs(
 ): void {
   runner.register("exercise-build", {
     jobClass: "model-cli",
+    about: (params) => aboutPlan(db, (params as Params).input.planId, (params as Params).input.topicId),
     retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "lesson") }),
     steps: [
       {

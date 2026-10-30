@@ -110,9 +110,16 @@ export function topicContent(
   const chapter = smartbook
     ? (JSON.parse(smartbook.locator_json) as { chapter?: number }).chapter
     : undefined;
+  // What the student can open again. A lesson saved without an engine is the book text shown while the engine failed;
+  // once a model lesson exists for the topic it is a leftover, not a second lesson. A quiz without a question is a
+  // build that failed or has not written anything yet.
   const items = db
     .prepare(
-      "SELECT id,kind,created_at AS createdAt FROM items WHERE plan_id=? AND topic_id=? ORDER BY created_at DESC,id",
+      `SELECT id,kind,created_at AS createdAt FROM items i WHERE plan_id=? AND topic_id=?
+         AND NOT (kind='lesson' AND engine_provider IS NULL AND EXISTS (
+           SELECT 1 FROM items m WHERE m.plan_id=i.plan_id AND m.topic_id=i.topic_id AND m.kind='lesson' AND m.engine_provider IS NOT NULL))
+         AND NOT (kind='quiz' AND coalesce(json_array_length(body_json,'$.questions'),0)=0)
+       ORDER BY created_at DESC,id`,
     )
     .all(planId, topicId) as Array<{
     id: string;

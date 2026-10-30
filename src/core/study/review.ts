@@ -436,7 +436,13 @@ export function startReview(
       : [];
   const topicOf = new Map([...gapRows, ...unseen].map((row) => [row.id, row.topicId]));
   const questions: QuizQuestion[] = mixQuestions(
-    [...gapRows, ...unseen].map((row) => ({ id: row.id, prompt: row.prompt, answer: row.answer ?? "" })),
+    [...gapRows, ...unseen].map((row) => ({
+      id: row.id,
+      prompt: row.prompt,
+      answer: row.answer ?? "",
+      topicId: row.topicId,
+      kind: row.kind,
+    })),
     8,
   ).map((question) => {
     // A matching question can mix exercises of two topics; it then counts toward neither.

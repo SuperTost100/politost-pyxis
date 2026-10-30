@@ -14,6 +14,7 @@ import {
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import { requireTopic } from "../study/openLesson";
 import type { Runner } from "../jobs/runner";
+import { aboutPlan } from "../study/jobAbout";
 import {
   applyOps,
   layoutGraph,
@@ -205,6 +206,7 @@ export function registerMapJobs(
   run?: GenerateInput["run"],
 ): void {
   runner.register("map-build", {
+    about: (params) => aboutPlan(db, (params as Params).input.planId, (params as Params).input.topicId),
     retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "map") }),
     jobClass: "model-cli",
     steps: [

@@ -98,6 +98,22 @@ describe("plan views and material", () => {
     expect(db.prepare("SELECT 1 FROM sources WHERE id='s'").get()).toBeTruthy();
     db.close();
   });
+  it("lists only what a student can open: no book text a model lesson replaced, no quiz that never got a question", () => {
+    const db = fixture();
+    const insert = db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,created_at) VALUES(?,'p','t',?,?,?,?)",
+    );
+    // The engine failed first: the lesson page showed the book text, saved without an engine.
+    insert.run("book", "lesson", JSON.stringify({ cacheKey: "book", markdown: "Velocity" }), null, 1);
+    // A quiz whose build failed before writing any question.
+    insert.run("empty-quiz", "quiz", JSON.stringify({ questions: [], complete: false }), null, 2);
+    expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["book"]);
+    // The lesson written again by a model replaces the book text in the list.
+    insert.run("model", "lesson", JSON.stringify({ cacheKey: "model", markdown: "Velocity [P1]" }), "claude", 3);
+    insert.run("quiz", "quiz", JSON.stringify({ questions: [{ id: "q" }] }), "claude", 4);
+    expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["quiz", "model"]);
+    db.close();
+  });
   it("marks real imports and opens an existing topic quiz without duplicating an unfinished attempt", () => {
     const db = fixture();
     markPlanImported(db, "p", 1);

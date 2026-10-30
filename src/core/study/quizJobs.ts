@@ -3,8 +3,10 @@ import { uuidv7 } from "../../shared/ids";
 import type Database from "better-sqlite3";
 import type { GenerateInput } from "../engine/generate";
 import type { Runner } from "../jobs/runner";
+import { aboutPlan } from "./jobAbout";
 import {
   generateQuiz,
+  QUIZ_BATCH,
   prepareQuiz,
   saveQuizSnapshot,
   type QuizInput,
@@ -25,6 +27,7 @@ export function registerQuizJobs(
   run?: GenerateInput["run"],
 ) {
   runner.register("quiz-build", {
+    about: (raw) => aboutPlan(db, (raw as Params).input.planId, (raw as Params).input.topicId),
     retryParams: (raw) => {
       const params = raw as Params;
       return {
@@ -39,17 +42,23 @@ export function registerQuizJobs(
         label: "quiz.generating",
         async run(ctx) {
           const params = ctx.params as Params;
-          await generateQuiz(params.snapshot, run, ctx.signal, () => {
-            db.transaction(() => {
-              saveQuizSnapshot(
-                db,
-                params.input,
-                params.snapshot,
-                params.itemId,
-              );
-              ctx.setParams(params);
-            })();
-          });
+          await generateQuiz(
+            params.snapshot,
+            run,
+            ctx.signal,
+            () => {
+              db.transaction(() => {
+                saveQuizSnapshot(
+                  db,
+                  params.input,
+                  params.snapshot,
+                  params.itemId,
+                );
+                ctx.setParams(params);
+              })();
+            },
+            QUIZ_BATCH,
+          );
           if (ctx.signal.aborted)
             throw new DOMException("Cancelled", "AbortError");
           saveQuizSnapshot(db, params.input, params.snapshot, params.itemId);

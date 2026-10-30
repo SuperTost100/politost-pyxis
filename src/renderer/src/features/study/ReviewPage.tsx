@@ -72,7 +72,7 @@ export function ReviewPage() {
     if (session.next === "cards") navigate(`/plans/${planId}/review/cards`);
     else if (session.next === "questions")
       navigate(
-        `/plans/${planId}/diagnostic?attempt=${encodeURIComponent(session.attemptId)}`,
+        `/plans/${planId}/review/questions?attempt=${encodeURIComponent(session.attemptId)}`,
       );
   }
   const active = saved.data ?? null;
@@ -108,10 +108,11 @@ export function ReviewPage() {
       <ActivityIntro
         eyebrow={plan.data?.title ?? t("cards.reviewTitle")}
         title={t("cards.reviewTitle")}
-        sentence={t("cards.reviewIntro")}
+        sentence={t(active || due || !guide.data ? "cards.reviewIntro" : "cards.reviewIntroNoCards")}
         facts={facts}
         options={
-          active ? undefined : (
+          // How many flashcards to take is a choice only when some are due.
+          active || !due ? undefined : (
             <ActivityChoice
               label={t("cards.reviewCount")}
               value={count}

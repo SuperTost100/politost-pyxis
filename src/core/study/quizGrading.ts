@@ -6,6 +6,7 @@ import { generate, type GenerateInput } from "../engine/generate";
 import { promptProvenance, systemPrompt } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { aboutAttempt } from "./jobAbout";
 import { recordStep, stepResult, topicActive } from "../plans/steps";
 import { syncGaps } from "../plans/progress";
 import { enqueueGapInsights } from "./gapInsight";
@@ -475,6 +476,9 @@ export function registerQuizGradingJobs(
       selection: selectionFor(db, "grading"),
     }),
     jobClass: "model-cli",
+    // The results screen waits for it.
+    interactive: true,
+    about: (params) => aboutAttempt(db, (params as GradeParams).attemptId),
     steps: [
       {
         name: "grading",
@@ -526,13 +530,16 @@ export function registerQuizGradingJobs(
       },
     ],
   });
-  // One interactive check still takes a model slot like any other model call.
+  // The student waits on the question for this check: it never queues behind a quiz being written or an analysis,
+  // and checks share the model slots only among themselves.
   runner.register("quiz-check", {
     retryParams: (params) => ({
       ...(params as CheckParams),
       selection: selectionFor(db, "grading"),
     }),
     jobClass: "model-cli",
+    interactive: true,
+    about: (params) => aboutAttempt(db, (params as CheckParams).attemptId),
     steps: [
       {
         name: "check",

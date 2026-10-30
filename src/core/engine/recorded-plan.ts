@@ -42,8 +42,19 @@ export function recordedPlanRun(
       passages?: Array<{ id: string }>;
       sources?: Array<{ sourceId: string; section: string; segmentId?: string }>;
       previousQuestions?: string[];
+      count?: number;
     };
-    const text = JSON.stringify(replies[key])
+    // A quiz is written a few questions per call: each call gets the first `count` recorded questions, numbered after
+    // the ones already written.
+    const recorded = replies[key] as { questions?: unknown[] } | undefined;
+    const reply =
+      key === "quizQuestions" &&
+      context.count != null &&
+      Array.isArray(recorded?.questions) &&
+      recorded.questions.length > context.count
+        ? { ...recorded, questions: recorded.questions.slice(0, context.count) }
+        : recorded;
+    const text = JSON.stringify(reply)
       .replaceAll(
         '"{{allPassages}}"',
         JSON.stringify(context.passages?.map((p) => p.id) ?? []),

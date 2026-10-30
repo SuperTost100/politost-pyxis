@@ -23,6 +23,7 @@ import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
 import { useReviewSession } from "./ReviewProgress";
+import { useJobs } from "../jobs/queries";
 import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
@@ -84,6 +85,36 @@ function QuizClock({
   );
 }
 
+/**
+ * An open answer being corrected: whether the correction waits for another one or is running, and for how long, so a
+ * long wait never looks stuck. The seconds stay out of the live region; only the state change is announced.
+ */
+function CheckStatus({ onCancel }: { onCancel: () => void }) {
+  const { t } = useTranslation();
+  const [since] = useState(() => Date.now());
+  const seconds = Math.floor((useNow(1000) - since) / 1000);
+  const job = useJobs().data?.find(
+    (row) => row.kind === "quiz-check" && (row.state === "queued" || row.state === "running"),
+  );
+  const queued = job?.state === "queued";
+  return (
+    <div className="px-quiz-checking">
+      <Icon name={queued ? "clock" : "loader-circle"} size={16} className={queued ? undefined : "px-spin"} />
+      <span className="body" role="status">
+        {t(queued ? "quiz.checkQueued" : "quiz.checking")}
+      </span>
+      {seconds >= 3 ? (
+        <span className="meta" aria-hidden>
+          {t("quiz.checkSeconds", { count: seconds })}
+        </span>
+      ) : null}
+      <Button type="text" shape="round" size="small" onClick={onCancel}>
+        {t("quiz.checkCancel")}
+      </Button>
+    </div>
+  );
+}
+
 const SOFT_SECONDS = 10;
 
 /**
@@ -113,8 +144,11 @@ function SoftTimer({ running }: { running: boolean }) {
   );
 }
 
-/** `redo`: notebook questions asked again; the attempt comes in the URL and closing goes back to the notebook. */
-export function QuizPage({ redo = false }: { redo?: boolean }) {
+/**
+ * `redo`: notebook questions asked again; the attempt comes in the URL and closing goes back to the notebook.
+ * `review`: the questions of a mixed Review, at /plans/:planId/review/questions; the Review page starts the attempt.
+ */
+export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?: boolean; review?: boolean }) {
   const { t, i18n } = useTranslation();
   const { message } = App.useApp();
   const { planId, topicId } = useParams();
@@ -123,7 +157,9 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
   const grade = useGradeScale();
   // Past questions: a quiz of the plan's past exam questions, opened at /plans/:planId/past.
   const past = useLocation().pathname.endsWith("/past");
-  const diagnostic = !topicId && !redo && !past;
+  const diagnostic = !topicId && !redo && !past && !reviewRoute;
+  // A diagnostic and a Review save every question when they start; a quiz is written by a build job meanwhile.
+  const fixed = diagnostic || reviewRoute;
   const [searchParams, setSearchParams] = useSearchParams();
   const paper = searchParams.get("paper") ?? undefined;
   const savedAttempt = searchParams.get("attempt");
@@ -200,7 +236,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
         ? false
         : 500,
   });
-  const review = Boolean(session.data?.review);
+  const review = reviewRoute || Boolean(session.data?.review);
   const reviewQueue = useReviewSession(planId, review);
   // A gap drill still owes this review questions; the core adds them to this attempt when it finishes.
   const owed = reviewQueue.data?.progress.questionsPending ?? 0;
@@ -214,7 +250,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     ...(reviewQueue.data?.explanations ?? []).map((note) => `**${note.title}.** ${note.text}`),
   ].filter((note): note is string => Boolean(note));
   const questions = session.data?.questions ?? start.data?.questions ?? [];
-  const requestedCount = diagnostic
+  const requestedCount = fixed
     ? questions.length
     : (session.data?.requestedCount ?? QUIZ_MAX_QUESTIONS);
   const generationFailed = Boolean(
@@ -222,15 +258,15 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
     ["failed", "cancelled", "interrupted"].includes(session.data.state),
   );
   const generating =
-    !diagnostic &&
+    !fixed &&
     Boolean(attemptId) &&
     !generationFailed &&
     session.data?.state !== "succeeded";
   // Until the queue answers, a review does not know yet how many drill questions it still owes.
   const queueLoading = review && reviewQueue.isLoading;
   const canFinish =
-    (diagnostic && !queueLoading && owed === 0) ||
-    (!diagnostic && session.data?.state === "succeeded" && questions.length >= requestedCount);
+    (fixed && !queueLoading && owed === 0) ||
+    (!fixed && session.data?.state === "succeeded" && questions.length >= requestedCount);
   const retry = useMutation({
     mutationFn: async () => {
       if (!session.data?.jobId) return;
@@ -889,9 +925,19 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
       });
   // A redo exists only as an attempt the notebook started; without one there is nothing to show.
   if (redo && !savedAttempt) return <Navigate to={back} replace />;
+  // A Review's questions belong to the attempt its page started; without one, that page starts or resumes it.
+  if (reviewRoute && !savedAttempt) return <Navigate to={`/plans/${planId ?? ""}/review`} replace />;
   return (
     <FocusLayout
-      title={t(redo ? "mistakes.redoTitle" : diagnostic ? "quiz.diagnosticTitle" : "quiz.title")}
+      title={t(
+        redo
+          ? "mistakes.redoTitle"
+          : review
+            ? "cards.reviewTitle"
+            : diagnostic
+              ? "quiz.diagnosticTitle"
+              : "quiz.title",
+      )}
       onClose={() => void close()}
       meta={
         question && !finalResult && !showIntro && !noAnswers && !gradingStarted
@@ -925,10 +971,11 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
           {t("quiz.drillOwed", { count: owed })}
         </Notice>
       ) : null}
-      {!diagnostic && attemptId && (generating || generationFailed) ? (
+      {!fixed && attemptId && (generating || generationFailed) ? (
         <div className="px-quiz-generation">
           {generating && questions.length ? (
-            <p className="meta" role="status">
+            <p className="meta px-quiz-available" role="status">
+              <Icon name="loader-circle" size={16} className="px-spin" />
               {t("quiz.available", {
                 available: questions.length,
                 total: requestedCount,
@@ -1068,7 +1115,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             )
           }
         />
-      ) : !questions.length && !diagnostic && attemptId ? (
+      ) : !questions.length && !fixed && attemptId ? (
         <section className="px-quiz-wait">
           <StepLines
             label={t("quiz.preparing")}
@@ -1401,13 +1448,7 @@ export function QuizPage({ redo = false }: { redo?: boolean }) {
             </div>
           )}
           {checking === question.id && kind === "open" ? (
-            <div className="px-quiz-checking" role="status">
-              <Icon name="loader-circle" size={16} className="px-spin" />
-              <span className="body">{t("quiz.checking")}</span>
-              <Button type="text" shape="round" size="small" onClick={stopCheck}>
-                {t("quiz.checkCancel")}
-              </Button>
-            </div>
+            <CheckStatus key={question.id} onCancel={stopCheck} />
           ) : null}
           {checkFailed ? (
             <Notice

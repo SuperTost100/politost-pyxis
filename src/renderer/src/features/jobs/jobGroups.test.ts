@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JobView } from "../../../../shared/ipc";
-import { finishedLabelKey, groupJobs } from "./jobGroups";
+import { finishedLabelKey, groupJobs, jobContext, runningLabelKey } from "./jobGroups";
 
 function job(id: string, over: Partial<JobView> = {}): JobView {
   return {
@@ -121,5 +121,25 @@ describe("jobs list groups", () => {
     expect(groups.finished.map((item) => item.id)).toEqual(["a"]);
     expect(finishedLabelKey("demo")).toBeUndefined();
     expect(finishedLabelKey("quiz-build")).toBe("jobs.done.quizBuild");
+  });
+
+  it("lists every long AI job, also the ones a page runs itself, and says what each is about", () => {
+    const groups = groupJobs(
+      [job("lesson", { state: "running", kind: "lesson-write", inPage: true, topic: "Vettori" })],
+      [
+        job("cards", { state: "succeeded", kind: "cards-propose", topic: "Vettori" }),
+        job("written", { state: "succeeded", kind: "lesson-write", topic: "Vettori" }),
+        job("mistakes", { state: "succeeded", kind: "gap-insight", topic: "Vettori" }),
+      ],
+    );
+    expect(groups.running.map((item) => item.id)).toEqual(["lesson"]);
+    expect(groups.finished.map((item) => item.id)).toEqual(["cards", "written", "mistakes"]);
+    expect(runningLabelKey("lesson-write")).toBe("jobs.doing.lessonWrite");
+    expect(runningLabelKey("source-import")).toBeUndefined();
+    // The wording picks the topic, or the diagnostic test or the Review a grading is for.
+    expect(jobContext(job("q", { topic: "Vettori" }))).toBe("topic");
+    expect(jobContext(job("d", { activity: "diagnostic" }))).toBe("diagnostic");
+    expect(jobContext(job("r", { activity: "review", topic: "Vettori" }))).toBe("review");
+    expect(jobContext(job("p"))).toBeUndefined();
   });
 });

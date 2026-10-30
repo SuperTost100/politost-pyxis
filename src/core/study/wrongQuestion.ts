@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { GenerateInput } from "../engine/generate";
 import { selectionFor } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { aboutPlan } from "./jobAbout";
 import { syncGaps } from "../plans/progress";
 import {
   attemptScore,
@@ -131,6 +132,7 @@ export function registerWrongQuestionJobs(
   run?: GenerateInput["run"],
 ) {
   runner.register("quiz-replace", {
+    about: (params) => aboutPlan(db, (params as ReplaceParams).planId, (params as ReplaceParams).topicId),
     retryParams: (params) => ({
       ...(params as ReplaceParams),
       selection: selectionFor(db, "lesson"),

@@ -47,17 +47,52 @@ const FINISHED_LABELS: Record<string, string> = {
   "simulation-build": "jobs.done.simulationBuild",
   "simulation-grade": "jobs.done.simulationGrade",
   "cards-build": "jobs.done.cardsBuild",
+  "cards-propose": "jobs.done.cardsPropose",
   "exercise-build": "jobs.done.exerciseBuild",
   "gap-drill": "jobs.done.gapDrill",
+  "gap-insight": "jobs.done.gapInsight",
+  "lesson-write": "jobs.done.lessonWrite",
+  "lesson-section": "jobs.done.lessonSection",
   "map-build": "jobs.done.mapBuild",
   "ocr-data-download": "jobs.done.ocrData",
   "embedding-download": "jobs.done.embedding",
   "local-runtime-download": "jobs.done.python",
 };
 
+/**
+ * The running wording of study work, which names its topic (or the diagnostic test or Review) when it has one. Other
+ * kinds, such as an import or an exam build, show the step they are at.
+ */
+const RUNNING_LABELS: Record<string, string> = {
+  "quiz-build": "jobs.doing.quizBuild",
+  "quiz-grade": "jobs.doing.quizGrade",
+  "quiz-check": "jobs.doing.quizCheck",
+  "quiz-replace": "jobs.doing.quizReplace",
+  "gap-drill": "jobs.doing.gapDrill",
+  "gap-insight": "jobs.doing.gapInsight",
+  "cards-build": "jobs.doing.cards",
+  "cards-propose": "jobs.doing.cards",
+  "exercise-build": "jobs.doing.exerciseBuild",
+  "lesson-write": "jobs.doing.lessonWrite",
+  "lesson-section": "jobs.doing.lessonSection",
+  "map-build": "jobs.doing.mapBuild",
+  "simulation-build": "jobs.doing.simulationBuild",
+  "simulation-grade": "jobs.doing.simulationGrade",
+};
+
 /** The message key for a finished job of this kind, or undefined for work the student never asked for by name. */
 export function finishedLabelKey(kind: string): string | undefined {
   return FINISHED_LABELS[kind];
+}
+
+/** The message key for running study work of this kind, or undefined when its step says what it does. */
+export function runningLabelKey(kind: string): string | undefined {
+  return RUNNING_LABELS[kind];
+}
+
+/** The i18next context a job's wording takes: a diagnostic test or a Review, else its topic when it has one. */
+export function jobContext(job: Pick<JobView, "topic" | "activity">): "diagnostic" | "review" | "topic" | undefined {
+  return job.activity ?? (job.topic ? "topic" : undefined);
 }
 
 function problemOf(job: JobView): Omit<Problem, "jobs"> {

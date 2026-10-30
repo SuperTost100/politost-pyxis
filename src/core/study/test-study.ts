@@ -26,6 +26,8 @@ export function startTopicQuiz(
       id: row.id,
       prompt: row.prompt,
       answer: row.answer ?? "",
+      topicId,
+      kind: row.kind,
     })),
     QUIZ_MAX_QUESTIONS,
   );

@@ -13,7 +13,38 @@ export type MixedQuestion = {
   grade: Grade;
 };
 
-type Row = { id: string; prompt: string; answer: string };
+/** One exercise. `topicId` and `kind` (book exercise, worked example, generated) decide which answers may stand beside it. */
+type Row = { id: string; prompt: string; answer: string; topicId?: string; kind?: string | null };
+
+/** The longest answer that can stand as an option, a statement to judge, a blank or a matching entry. */
+const SHORT_ANSWER = 120;
+
+/**
+ * Whether an exercise's answer is a short final answer rather than a worked solution: one line, no display math, no
+ * environment. A worked solution is never an option of another exercise, and its own exercise is asked open.
+ */
+export function shortAnswer(answer: string): boolean {
+  const text = answer.trim();
+  return (
+    text.length > 0 &&
+    text.length <= SHORT_ANSWER &&
+    !text.includes("\n") &&
+    !/\$\$|\\\[|\\begin\{/.test(text)
+  );
+}
+
+const same = (text: string) => text.trim().toLowerCase();
+
+/** Another exercise whose answer could pass for this one's: same topic, same kind, short, and a different answer. */
+function alike(row: Row, other: Row): boolean {
+  return (
+    other.id !== row.id &&
+    (other.topicId ?? null) === (row.topicId ?? null) &&
+    (other.kind ?? null) === (row.kind ?? null) &&
+    shortAnswer(other.answer) &&
+    same(other.answer) !== same(row.answer)
+  );
+}
 
 function mix(seed: number): () => number {
   let state = seed || 1;
@@ -38,6 +69,10 @@ function shuffle<T>(items: T[], random: () => number): T[] {
  * Build a mixed quiz from book exercises. No model call. The seed decides the option order and the matching
  * column; each call draws a new one unless the caller passes its own, so the same exercises are not laid out the
  * same way every attempt. The questions are saved with the attempt, so one attempt keeps its order.
+ *
+ * A closed form needs plausible wrong answers: short answers of other exercises on the same topic and of the same
+ * kind. An exercise whose answer is a worked solution, or that has too few such neighbours, is asked open instead,
+ * once.
  */
 export function mixQuestions(
   rows: Row[],
@@ -48,6 +83,18 @@ export function mixQuestions(
   const random = mix(seed);
   const questions: MixedQuestion[] = [];
   const kinds = ["mcq", "tf", "completion", "matching", "open"] as const;
+  const askedOpen = new Set<string>();
+  const open = (row: Row) => {
+    if (askedOpen.has(row.id)) return;
+    askedOpen.add(row.id);
+    questions.push({
+      id: `${row.id}-open-${questions.length}`,
+      sourceId: row.id,
+      stem: row.prompt,
+      explanation: row.answer,
+      grade: { kind: "open", answer: "", reference: row.answer },
+    });
+  };
   let cursor = 0;
   while (questions.length < limit && usable.length > 0) {
     if (cursor >= usable.length * kinds.length) break;
@@ -55,11 +102,17 @@ export function mixQuestions(
     const row = usable[cursor % usable.length];
     if (!row) break;
     cursor += 1;
+    if (kind === "open" || !shortAnswer(row.answer)) {
+      open(row);
+      continue;
+    }
+    const neighbours = usable.filter((other) => alike(row, other));
     if (kind === "mcq") {
-      const distractors = usable
-        .filter((other) => other.id !== row.id && other.answer !== row.answer)
-        .map((other) => other.answer);
-      if (distractors.length < 3) continue;
+      const distractors = [...new Map(neighbours.map((other) => [same(other.answer), other.answer])).values()];
+      if (distractors.length < 3) {
+        open(row);
+        continue;
+      }
       const options = shuffle([row.answer, ...distractors.slice(0, 3)], random);
       questions.push({
         id: `${row.id}-mcq-${questions.length}`,
@@ -72,22 +125,27 @@ export function mixQuestions(
       continue;
     }
     if (kind === "tf") {
-      const other = usable.find((item) => item.answer !== row.answer);
-      const truthful = questions.filter((item) => item.grade.kind === "tf").length % 2 === 0;
-      const shown = truthful ? row.answer : (other?.answer ?? row.answer);
+      const other = neighbours[0];
+      // Every other statement is false, when a plausible wrong answer exists to show.
+      const truthful = !other || questions.filter((item) => item.grade.kind === "tf").length % 2 === 0;
+      const shown = truthful ? row.answer : other.answer;
       questions.push({
         id: `${row.id}-tf-${questions.length}`,
         sourceId: row.id,
         stem: `${row.prompt} ${shown}`,
         explanation: row.answer,
-        grade: { kind: "tf", picked: false, correct: truthful || shown === row.answer },
+        grade: { kind: "tf", picked: false, correct: truthful },
       });
       continue;
     }
     if (kind === "matching") {
-      const group = usable.slice(cursor % usable.length, (cursor % usable.length) + 3);
-      const pairs = group.length >= 3 ? group : usable.slice(0, 3);
-      if (pairs.length < 3) continue;
+      const pairs = [row, ...neighbours.filter((other, index, all) =>
+        all.findIndex((item) => same(item.answer) === same(other.answer)) === index,
+      )].slice(0, 3);
+      if (pairs.length < 3) {
+        open(row);
+        continue;
+      }
       const right = shuffle(
         pairs.map((item) => item.answer),
         random,
@@ -105,16 +163,6 @@ export function mixQuestions(
           pairs: [],
           correct: pairs.map((item) => [item.prompt, item.answer]),
         },
-      });
-      continue;
-    }
-    if (kind === "open") {
-      questions.push({
-        id: `${row.id}-open-${questions.length}`,
-        sourceId: row.id,
-        stem: row.prompt,
-        explanation: row.answer,
-        grade: { kind: "open", answer: "", reference: row.answer },
       });
       continue;
     }

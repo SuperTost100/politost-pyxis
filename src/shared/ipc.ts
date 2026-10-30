@@ -258,6 +258,14 @@ export const JobView = z.object({
   kind: z.string(),
   /** What the job works on, such as the source being imported. */
   title: z.string().optional(),
+  /** The topic study work is about, such as the topic of a quiz being written. */
+  topic: z.string().optional(),
+  /** The exam the work belongs to. */
+  exam: z.string().optional(),
+  /** Work on a diagnostic test or a Review, which have no single topic. */
+  activity: z.enum(["diagnostic", "review"]).optional(),
+  /** Work a page does itself, such as a lesson being written: that page stops it, the jobs list cannot. */
+  inPage: z.literal(true).optional(),
   state: JobState,
   progress: z.number(),
   stepLabel: z.string().nullable(),
