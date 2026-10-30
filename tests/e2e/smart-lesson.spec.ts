@@ -363,7 +363,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.locator(".px-path-summary").click();
     await page
       .getByRole("list", { name: "Passi fatti" })
-      .getByRole("button", { name: /^Testo smart/ })
+      .getByRole("button", { name: /^Lezione/ })
       .click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${copyId}/lesson/[^/]+\\?item=`));
     await expect(quick.getByText("Non proprio.")).toBeVisible({ timeout: 20000 });

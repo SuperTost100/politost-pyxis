@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button, Drawer, Skeleton } from "antd";
 import { ArrowLeft } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { topicTitle } from "@shared/book-text";
 import { spokenText } from "@shared/spoken-math";
 import { invoke } from "../lib/ipc";
+import { IconButton } from "./IconButton";
 import { LoadError } from "./LoadError";
 import { SelectionMenu } from "./SelectionMenu";
 import "./SourceViewer.css";
@@ -28,6 +29,7 @@ export function SourceViewer() {
   const { t } = useTranslation();
   const [location, setLocation] = useState<SourceLocation | null>(null);
   const [back, setBack] = useState<(() => void) | null>(null);
+  const titleId = useId();
   const body = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLElement | null>(null);
   const [markdownReady, setMarkdownReady] = useState(markdown != null);
@@ -66,10 +68,11 @@ export function SourceViewer() {
     back?.();
   }
   return (
-    <Drawer open={location != null} onClose={close} placement="right" size="min(560px, calc(100vw - 80px))"
-      title={<div>
+    <Drawer open={location != null} onClose={close} placement="right" size="min(560px, calc(100vw - 80px))" closable={false} aria-labelledby={titleId}
+      title={<div className="source-viewer-head">
         {back ? <Button type="text" size="small" shape="round" className="source-viewer-back" icon={<ArrowLeft size={16} aria-hidden />} onClick={goBack}>{t("sources.viewerBack")}</Button> : null}
-        <span>{title}</span><div className="meta source-viewer-locator">{current?.sectionPath}</div></div>}
+        <span className="source-viewer-close"><IconButton icon="x" variant="ghost" label={t("nav.close")} onClick={close} /></span>
+        <div id={titleId} className="source-viewer-title"><span>{title}</span><div className="meta source-viewer-locator">{current?.sectionPath}</div></div></div>}
       afterOpenChange={(open) => { if (!open) trigger.current?.focus(); }}>
       {passages.isPending || (!markdownReady && source.data?.kind !== "pdf") ? <Skeleton active /> : null}
       {passages.isError || source.isError ? (

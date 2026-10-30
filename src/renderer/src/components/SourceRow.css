@@ -1,4 +1,5 @@
 .px-source-row {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
@@ -36,14 +37,35 @@
   color: var(--ink);
   text-align: left;
 }
-button.px-source-row-title {
+/* The title button opens the source and stretches over the whole row; the menu and any button in the notes sit above it. */
+.px-source-row-open {
+  max-width: 100%;
   padding: 0;
   border: 0;
   background: none;
   cursor: pointer;
 }
-button.px-source-row-title:hover {
+.px-source-row-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.px-source-row-open:focus-visible {
+  outline: none;
+}
+.px-source-row-open:focus-visible::after {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.px-source-row:not(.is-selected):has(.px-source-row-open:hover) {
+  background: var(--surface-raised);
+}
+.px-source-row-open:hover .px-source-row-title {
   color: var(--primary-text);
+}
+.px-source-row .ant-btn {
+  position: relative;
+  z-index: 1;
 }
 .px-source-row-meta {
   color: var(--ink-muted);

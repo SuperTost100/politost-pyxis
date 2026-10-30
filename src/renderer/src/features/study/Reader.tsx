@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { CitationChip } from "../../components/CitationChip";
 import { openSourceViewer } from "../../components/SourceViewer";
+import { JobsButton } from "../jobs/JobsButton";
 import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { recommendQuery } from "../../lib/queries";
@@ -56,7 +57,11 @@ export function ReaderLayout({
         <p className="title-3 px-reader-bar-title" aria-hidden>
           {title}
         </p>
-        <div className="px-reader-actions">{actions}</div>
+        {/* The shell's jobs entry, so work running while a student reads stays in sight. It shows only once a job has run today. */}
+        <div className="px-reader-actions">
+          <JobsButton />
+          {actions}
+        </div>
       </header>
       <main className="px-reader-main">
         <article className="px-reader-column passage">
