@@ -135,13 +135,21 @@
 }
 .px-quiz-matching label {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(200px, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(200px, 3fr);
   gap: var(--space-4);
   align-items: center;
 }
 .px-quiz-match-select {
   width: 100%;
   min-height: 48px;
+  height: auto;
+}
+/* A long answer wraps in the closed field too, instead of ending in an ellipsis: the student has to read it to pick. */
+.px-quiz-matching .px-quiz-match-select.ant-select .ant-select-content {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
 }
 /* The menu's options may hold math or a long description: they wrap instead of cutting at the edge. */
 .px-quiz-match-popup .ant-select-item-option-content {

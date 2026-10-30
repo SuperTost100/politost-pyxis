@@ -295,7 +295,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
           planId,
         })
       ).topics.map((topic) => topic.title);
-    expect(await titles()).toEqual(["1. Moti", "2. Forze"]);
+    expect(await titles()).toEqual(["Moti", "Forze"]);
     await page.evaluate((id) => {
       location.hash = `/plans/${id}/sources`;
     }, planId);
@@ -317,11 +317,11 @@ test("Book updates: a newer free book updates the same source in place, flags ch
       timeout: 60000,
     });
     await expect(
-      rebuild.getByText("3. Energia", { exact: true }),
+      rebuild.getByText("Energia", { exact: true }),
     ).toBeVisible();
     await rebuild.getByRole("button", { name: "Applica le modifiche" }).click();
     await expect(rebuild).toBeHidden();
-    expect(await titles()).toEqual(["1. Moti", "2. Forze", "3. Energia"]);
+    expect(await titles()).toEqual(["Moti", "Forze", "Energia"]);
     await saveShot(page, "book-update-rebuilt-it.png", { animations: "disabled" });
   } finally {
     await app.close();

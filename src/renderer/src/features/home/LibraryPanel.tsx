@@ -66,10 +66,13 @@ type ImportResult = {
 
 export function LibraryPanel({
   importOnly = false,
+  droppedFiles,
   onClose,
   onImported,
 }: {
   importOnly?: boolean;
+  /** Files dropped on a zone outside the panel: it imports them as soon as it opens. */
+  droppedFiles?: File[];
   onClose?: () => void;
   /** Called with the ids of the sources an import just created, so a caller can use them right away. */
   onImported?: (sourceIds: string[]) => void;
@@ -295,6 +298,13 @@ export function LibraryPanel({
     },
     onError: (err: unknown) => setError(messageKeyOf(err)),
   });
+  // Files dropped outside the panel are read once, as it opens.
+  const droppedRead = useRef(false);
+  useEffect(() => {
+    if (!droppedFiles?.length || droppedRead.current) return;
+    droppedRead.current = true;
+    add.mutate({ dropped: droppedFiles });
+  }, [droppedFiles, add]);
 
   function fail(
     err: unknown,
@@ -1117,6 +1127,10 @@ export function LibraryPanel({
         onClose={() => {
           setDetailsOpen(false);
           setRenameOnOpen(false);
+        }}
+        onOpen={(id) => {
+          setSourceId(id);
+          setDetailsOpen(true);
         }}
       />
     </div>

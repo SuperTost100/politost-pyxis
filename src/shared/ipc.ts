@@ -403,7 +403,7 @@ const PathActivity = z.enum([
   "simulation",
 ]);
 const StepResult = z.object({
-  correct: z.number().int().nonnegative(),
+  correct: z.number().nonnegative(),
   total: z.number().int().nonnegative(),
 });
 const LessonSources = z.array(
@@ -795,6 +795,8 @@ export const requests = {
       count: z.number(),
       answered: z.number(),
       minutes: z.number(),
+      /** How many topics the questions cover. */
+      topics: z.number(),
     }),
   },
   "study.diagnosticStart": {

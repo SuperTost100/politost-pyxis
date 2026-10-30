@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatGrade } from "../../lib/grade";
+import { formatGrade, formatGradeWhole } from "../../lib/grade";
 import { behindText, decimalSeparator, formatHours } from "./plannerFormat";
 
 describe("hours in the planner", () => {
@@ -24,12 +24,20 @@ describe("falling-behind warning", () => {
   const t = (key: string, params?: Record<string, unknown>) => `${key}:${JSON.stringify(params)}`;
   const on30 = (fraction: number) => formatGrade(fraction, 30, "it");
 
+  const whole30 = (fraction: number) => formatGradeWhole(fraction, 30);
+
   it("names the goal and the forecast on the profile's scale", () => {
     expect(
-      behindText(t, { title: "Analisi", target: 0.8, behind: { daysLate: 3, masteryAtExam: 0.6 } }, on30),
+      behindText(t, { title: "Analisi", target: 0.8, behind: { daysLate: 3, masteryAtExam: 0.6 } }, on30, whole30),
     ).toBe('planner.behind:{"title":"Analisi","target":"24/30","count":3,"atExam":"18/30"}');
-    expect(behindText(t, { title: "Analisi", target: 0.75, behind: { daysLate: null, masteryAtExam: 0 } }, on30)).toBe(
-      'planner.behindNoTime:{"title":"Analisi","target":"22,5/30"}',
-    );
+    expect(
+      behindText(t, { title: "Analisi", target: 0.75, behind: { daysLate: null, masteryAtExam: 0 } }, on30, whole30),
+    ).toBe('planner.behindNoTime:{"title":"Analisi","target":"22,5/30"}');
+  });
+
+  it("writes the forecast, a mastery, as a whole number", () => {
+    expect(
+      behindText(t, { title: "Analisi", target: 0.8, behind: { daysLate: 3, masteryAtExam: 0.77 } }, on30, whole30),
+    ).toContain('"atExam":"23/30"');
   });
 });

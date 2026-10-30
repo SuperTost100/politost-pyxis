@@ -26,8 +26,10 @@ function fixture() {
   db.prepare(
     "INSERT INTO sources(id,kind,title,status,created_at,updated_at) VALUES('s','file','Physics notes','ready',1,1),('unready','file','Preparing','indexing',1,1)",
   ).run();
+  // Sections are counted per document, as the Library does, so the passage belongs to one.
+  db.prepare("INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('doc','s',1,'{}',1)").run();
   db.prepare(
-    "INSERT INTO passages(id,source_id,text,locator_json,section_path,created_at) VALUES('passage','s','Velocity changes position','{}','Motion',1)",
+    "INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('passage','s','doc','Velocity changes position','{}','Motion',1)",
   ).run();
   return db;
 }

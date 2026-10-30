@@ -78,7 +78,7 @@ export function OggiBlock() {
           tone="warning"
           action={{ label: t("oggi.seePlanner"), onClick: () => navigate("/exams/planner") }}
         >
-          {behindText(t, behind[0]!, grade.format)}
+          {behindText(t, behind[0]!, grade.format, grade.mastery)}
           {behind.length > 1 ? ` ${t("oggi.moreBehind", { count: behind.length - 1 })}` : ""}
         </Notice>
       ) : null}

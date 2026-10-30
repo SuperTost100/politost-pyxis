@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Drawer, Skeleton } from "antd";
+import { Button, Drawer, Skeleton } from "antd";
+import { ArrowLeft } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../lib/ipc";
@@ -16,20 +17,24 @@ const loadMarkdown = async () => (markdown ??= await import("./MarkdownView"));
 
 type SourceLocation = { passageId?: string; sourceId?: string; chapter?: number; paragraph?: string };
 const eventName = "pyxis:source-viewer";
-export function openSourceViewer(location: SourceLocation): void {
-  window.dispatchEvent(new CustomEvent(eventName, { detail: location }));
+/** `back`, when the viewer was opened from another panel (the source details), adds a way back to it. */
+export function openSourceViewer(location: SourceLocation, back?: () => void): void {
+  window.dispatchEvent(new CustomEvent(eventName, { detail: back ? { ...location, back } : location }));
 }
 
 export function SourceViewer() {
   const { t } = useTranslation();
   const [location, setLocation] = useState<SourceLocation | null>(null);
+  const [back, setBack] = useState<(() => void) | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLElement | null>(null);
   const [markdownReady, setMarkdownReady] = useState(markdown != null);
   useEffect(() => {
     const open = (event: Event) => {
       trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setLocation((event as CustomEvent<SourceLocation>).detail);
+      const { back: backTo, ...place } = (event as CustomEvent<SourceLocation & { back?: () => void }>).detail;
+      setLocation(place);
+      setBack(backTo ? () => backTo : null);
       if (!markdown) void loadMarkdown().then(() => setMarkdownReady(true));
     };
     window.addEventListener(eventName, open);
@@ -52,9 +57,17 @@ export function SourceViewer() {
   function close(): void {
     setLocation(null);
   }
+  // Back to the panel that opened the viewer: it opens itself, so focus is not pulled to the row behind it.
+  function goBack(): void {
+    trigger.current = null;
+    setLocation(null);
+    back?.();
+  }
   return (
     <Drawer open={location != null} onClose={close} placement="right" size="min(560px, calc(100vw - 80px))"
-      title={<div><span>{title}</span><div className="meta source-viewer-locator">{current?.sectionPath}</div></div>}
+      title={<div>
+        {back ? <Button type="text" size="small" shape="round" className="source-viewer-back" icon={<ArrowLeft size={16} aria-hidden />} onClick={goBack}>{t("sources.viewerBack")}</Button> : null}
+        <span>{title}</span><div className="meta source-viewer-locator">{current?.sectionPath}</div></div>}
       afterOpenChange={(open) => { if (!open) trigger.current?.focus(); }}>
       {passages.isPending || (!markdownReady && source.data?.kind !== "pdf") ? <Skeleton active /> : null}
       {passages.isError || source.isError ? (

@@ -11,7 +11,19 @@ import {
   gradeScaleOf,
   gradeValue,
   gradeWhole,
+  scaledMastery,
 } from "./grade";
+
+describe("scaledMastery", () => {
+  it("keeps the exact position on the scale, so a chart point is never drawn under a goal it has passed", () => {
+    // 22.8 out of 30 is above a goal of 22.5; flooring it to 22 would draw it below.
+    expect(scaledMastery(0.76, 30)).toBeCloseTo(22.8, 9);
+    expect(scaledMastery(0.76, 30)).toBeGreaterThan(gradeValue(0.75, 30));
+    expect(scaledMastery(0.759, 100)).toBeCloseTo(75.9, 9);
+    expect(scaledMastery(1.2, 30)).toBe(30);
+    expect(scaledMastery(-0.1, 100)).toBe(0);
+  });
+});
 
 describe("grade scale", () => {
   it("defaults to 30 at university and 100 at every other level, and a picked scale wins", () => {

@@ -451,7 +451,7 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
   });
   try {
     await go(page, `/plans/${planId}/diagnostic`);
-    await expect(page.getByRole("heading", { name: "Diagnosi", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Test diagnostico", level: 2 })).toBeVisible();
     await expect(page.getByText("10 domande", { exact: true })).toBeVisible();
     await expect(page.getByText(/alla fine/)).toHaveCount(0);
     // Back and Start sit side by side; the focus bar's X is the only exit, so the intro has no Close of its own.
@@ -485,7 +485,7 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
       await expect(feedback).toContainText("Corretto");
       await page.keyboard.press("Enter");
     }
-    await expect(page.getByText("Diagnosi completata", { exact: true })).toBeVisible();
+    await expect(page.getByText("Test diagnostico completato", { exact: true })).toBeVisible();
     await expect(score(page)).toContainText("9 punti su 10.");
     const topics = page.locator(".px-res-topics li");
     await expect(topics).toHaveCount(2);

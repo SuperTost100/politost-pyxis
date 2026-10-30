@@ -752,7 +752,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         ? quizMinutes(Array.from({ length: QUIZ_MAX_QUESTIONS }, (_, i) => types[i % types.length]!))
         : undefined;
   const answeredBefore = diagnostic ? (preview.data?.answered ?? 0) : 0;
-  const introTopics = diagnostic ? (plan.data?.topics.length ?? 0) : 0;
+  const introTopics = diagnostic ? (preview.data?.topics ?? 0) : 0;
   const introFacts: ActivityFact[] = [
     ...(introCount
       ? [
@@ -1172,7 +1172,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           grade={finalResult?.score}
           headline={
             finalResult
-              ? t(verdictLine(Math.round(finalResult.score * 100), diagnostic && !review))
+              ? t(
+                  verdictLine(
+                    finalResult.score * 100,
+                    diagnostic && !review,
+                    plan.data ? plan.data.target * 100 : undefined,
+                  ),
+                )
               : t("results.gradingHeadline")
           }
           detail={
