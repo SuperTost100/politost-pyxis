@@ -190,6 +190,27 @@ if (crashReporterOn) {
 /** Which core's `crash-consent` counts. See CoreConsent and CrashReports.suspend. */
 const coreConsent = new CoreConsent<UtilityProcess>(crashReports);
 
+/**
+ * Tests only (PYXIS_E2E_CONSENT_HOLD=1): `crash-consent` from core waits while the test holds it, so the test can raise
+ * errors at a known point of a restore, after the old core has gone and before the new one's switch applies. The test
+ * calls these through app.evaluate (tests/e2e/crash-reports.spec.ts).
+ */
+const consentHold =
+  e2eSeam() && process.env["PYXIS_E2E"] === "1" && process.env["PYXIS_E2E_CONSENT_HOLD"] === "1"
+    ? { held: false, waiting: [] as Array<() => void> }
+    : null;
+if (consentHold)
+  Object.assign(globalThis, {
+    pyxisE2eHoldConsent: () => {
+      consentHold.held = true;
+    },
+    pyxisE2eConsentWaiting: () => consentHold.waiting.length,
+    pyxisE2eReleaseConsent: () => {
+      consentHold.held = false;
+      for (const apply of consentHold.waiting.splice(0)) apply();
+    },
+  });
+
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: appPrivileges },
   {
@@ -771,7 +792,9 @@ function startCore(strict = false): Promise<void> {
   // being replaced is still an error, so only the switch is tied to the current core. The switch takes effect at once.
   child.on("message", (data: { type?: string; enabled?: unknown }) => {
     if (data?.type === "crash-consent" && typeof data.enabled === "boolean") {
-      coreConsent.report(child, data.enabled);
+      const enabled = data.enabled;
+      if (consentHold?.held) consentHold.waiting.push(() => coreConsent.report(child, enabled));
+      else coreConsent.report(child, enabled);
     } else if (data?.type === "js-error") crashReports.capture("core", errorFields(data));
   });
   keysReadyFor = null;

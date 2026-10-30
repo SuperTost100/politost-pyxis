@@ -199,20 +199,12 @@ test("crash reports: a native crash uploads a minidump only while the switch is 
   }
 });
 
-/** Whether a process still runs. A zombie on Linux has exited and only waits to be reaped. */
-function running(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-  } catch {
-    return false;
-  }
-  if (process.platform !== "linux") return true;
-  try {
-    return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
-  } catch {
-    return false;
-  }
-}
+/** The hold on core's crash-consent that main installs for tests with PYXIS_E2E_CONSENT_HOLD=1 (src/main/index.ts). */
+type ConsentHold = {
+  pyxisE2eHoldConsent: () => void;
+  pyxisE2eConsentWaiting: () => number;
+  pyxisE2eReleaseConsent: () => void;
+};
 
 test("crash reports: a restore that brings back the switch off sends nothing raised during it, and a failed one resumes", async () => {
   test.setTimeout(120_000);
@@ -224,14 +216,13 @@ test("crash reports: a restore that brings back the switch off sends nothing rai
   const { server, endpoint, received } = await crashServer();
   const app = await launchPyxis({
     userData,
-    env: { PYXIS_E2E_CRASH_ENDPOINT: endpoint, PYXIS_CRASH_DIR: undefined, PYXIS_E2E_SAVE: zip, PYXIS_E2E_ZIP: zip },
-  });
-  // Main names each core when the window connects to it.
-  const cores: number[] = [];
-  app.process().stderr?.on("data", (chunk) => {
-    // Electron prints the pid in a terminal color, whose code holds digits too, so the colors go first.
-    const text = String(chunk).replace(/\u001b\[[\d;]*m/g, "");
-    for (const match of text.matchAll(/pyxis-e2e: renderer connected (\d+)/g)) cores.push(Number(match[1]));
+    env: {
+      PYXIS_E2E_CRASH_ENDPOINT: endpoint,
+      PYXIS_CRASH_DIR: undefined,
+      PYXIS_E2E_SAVE: zip,
+      PYXIS_E2E_ZIP: zip,
+      PYXIS_E2E_CONSENT_HOLD: "1",
+    },
   });
   const messages = () =>
     received.map((item) => String((JSON.parse(item.body.toString("utf8")) as { message: unknown }).message));
@@ -252,24 +243,23 @@ test("crash reports: a restore that brings back the switch off sends nothing rai
     await throwInWindow(page, "after the failed restore");
     await expect.poll(() => received.length).toBe(4);
 
-    // A restore that brings back the switch off. Errors raised once the old core has stopped, before the restored
-    // workspace has answered, are never sent: the workspace now open never agreed to them.
+    // A restore that brings back the switch off. Main holds core's switch here, so the errors below are raised at a
+    // known point: the old core has gone, and the restored core has read its switch but main has not applied it. Main
+    // still has the old workspace's on, and only the suspension for the restore keeps these errors from being sent.
     copyFileSync(offBackup, zip);
-    // The core the failed restore started is logged once it is ready, which can be after its switch arrived. Until
-    // then the last pid logged is a core that has already exited, and the wait below would end before the restore.
-    await expect
-      .poll(() => {
-        const pid = cores.at(-1);
-        return pid !== undefined && running(pid);
-      })
-      .toBe(true);
-    const oldCore = cores.at(-1)!;
+    await app.evaluate(() => (globalThis as unknown as ConsentHold).pyxisE2eHoldConsent());
     const restoring = page.evaluate(() => window.pyxis.restoreWorkspace());
-    await expect.poll(() => running(oldCore), { intervals: [25] }).toBe(false);
+    await expect
+      .poll(() => app.evaluate(() => (globalThis as unknown as ConsentHold).pyxisE2eConsentWaiting()))
+      .toBeGreaterThan(0);
     await throwInWindow(page, "during the restore");
     await app.evaluate(() => {
       void Promise.reject(new Error("main during the restore"));
     });
+    // Time for the errors to reach main, and the server too if main were still sending.
+    await page.waitForTimeout(1_500);
+    expect(received).toHaveLength(4);
+    await app.evaluate(() => (globalThis as unknown as ConsentHold).pyxisE2eReleaseConsent());
     await expect(restoring).resolves.toBe("restored");
     await expect.poll(() => consent(userData)).toBe(false);
     await throwInWindow(page, "after the restore");

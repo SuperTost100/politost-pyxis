@@ -90,7 +90,7 @@ A `4xx` answer other than `408` or `429` drops the report, since sending it agai
 
 Crashpad sends minidumps itself, gzip-compressed, as `POST /minidump` multipart uploads. On macOS and Windows it sends at most one an hour (`rateLimit`). Linux has no such limit, so the Worker's rate limit is the only one there.
 
-Development builds send nothing. End-to-end tests send only to a server on `127.0.0.1` named in `PYXIS_E2E_CRASH_ENDPOINT` (with `PYXIS_E2E=1`), and nothing when it is unset; `tests/e2e/crash-reports.spec.ts` uses it.
+Development builds send nothing. End-to-end tests send only to a server on `127.0.0.1` named in `PYXIS_E2E_CRASH_ENDPOINT` (with `PYXIS_E2E=1`), and nothing when it is unset; `tests/e2e/crash-reports.spec.ts` uses it. That spec also sets `PYXIS_E2E_CONSENT_HOLD=1`, which lets it hold core's `crash-consent` in main during a restore and raise errors before the restored workspace's switch applies.
 
 ## The Worker
 
