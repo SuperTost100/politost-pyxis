@@ -402,6 +402,24 @@ test("LAYOUT-05 a reading page keeps the jobs entry, and an empty Exams list say
           await page.keyboard.press("Escape");
           await expect(page.locator(".px-jobs")).toBeHidden();
         }
+
+    // No job at all: the entry stays out of sight. The reload gives React Query a fresh client, so it cannot reuse the cached jobs.
+    const empty = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    empty.exec("DELETE FROM jobs");
+    empty.close();
+    await look(page, "en", "light");
+    await page.setViewportSize(sizes[0]);
+    await page.evaluate(() => {
+      location.hash = "/plans/plan-a/intro";
+    });
+    await page.reload();
+    await expect(page).toHaveURL(/#\/plans\/plan-a\/intro$/);
+    // The introduction text is seeded Italian content, so it shows the page loaded in either interface language.
+    await expect(page.getByText("Benvenuto in")).toBeVisible();
+    await expect(page.locator(".px-reader-bar")).toBeVisible();
+    await expect(
+      page.locator(".px-reader-bar").getByRole("button", { name: /^(Attività|Background tasks)/ }),
+    ).toHaveCount(0);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
