@@ -22,7 +22,14 @@ export type GapMiss = {
 };
 
 /** One wrong answer with the evidence a model needs to read it: bounded, but not cut to a UI line. */
-export type GapEvidence = GapMiss & { id: string; topicId: string; score: number; open: boolean };
+export type GapEvidence = GapMiss & {
+  id: string;
+  topicId: string;
+  score: number;
+  open: boolean;
+  /** The student left it blank ("Non lo so"): it shows that they did not know, not what they misunderstand. */
+  dontKnow: boolean;
+};
 
 const FULL = { stem: 500, answer: 400, expected: 400, explanation: 900 };
 
@@ -44,6 +51,13 @@ function pickText(
   if (question.answer?.kind === "mcq" && /^\d+$/.test(pick.trim()))
     return clip(question.options?.[Number(pick)] ?? pick, FULL.answer);
   return clip(pick, FULL.answer);
+}
+
+/** A pick with nothing in it: no text, no chosen option, no blank filled and no pair made (those are saved as JSON). */
+function blankPick(pick: unknown): boolean {
+  if (pick == null) return true;
+  const text = typeof pick === "string" ? pick : JSON.stringify(pick);
+  return !/[^\s[\]",]/.test(text);
 }
 
 type Row = { topic_id: string | null; body_json: string; payload_json: string };
@@ -81,6 +95,7 @@ function wrongsIn(row: Row, blocked: Set<string>): GapEvidence[] {
       topicId,
       score: result.score,
       open: question.answer?.kind === "open",
+      dontKnow: blankPick(picks[result.id]),
       question: clip(question.stem, FULL.stem),
       answer: pickText(question, picks[result.id]),
       expected: clip(result.expected, FULL.expected),
@@ -159,7 +174,8 @@ const SLACK = 10_000;
 
 /**
  * One graded attempt's wrong answers, grouped by topic. A group qualifies for analysis (4.7) with two or more
- * wrong answers, or one wrong open answer scored under 0.3.
+ * wrong answers, or one wrong open answer scored under 0.3. Answers left blank do not count: "Non lo so" says the student
+ * did not know, and an analysis would have to invent what they misunderstand.
  */
 export function attemptGroups(db: Database.Database, attemptId: string) {
   const rows = db
@@ -175,11 +191,15 @@ export function attemptGroups(db: Database.Database, attemptId: string) {
   for (const row of rows)
     for (const wrong of wrongsIn(row, blocked))
       groups.set(wrong.topicId, [...(groups.get(wrong.topicId) ?? []), wrong]);
-  return [...groups].map(([topicId, wrongs]) => ({
-    topicId,
-    wrongs,
-    qualifies: wrongs.length >= 2 || wrongs.some((wrong) => wrong.open && wrong.score < 0.3),
-  }));
+  return [...groups].map(([topicId, wrongs]) => {
+    const tried = wrongs.filter((wrong) => !wrong.dontKnow);
+    return {
+      topicId,
+      wrongs,
+      tried,
+      qualifies: tried.length >= 2 || tried.some((wrong) => wrong.open && wrong.score < 0.3),
+    };
+  });
 }
 
 const analysisSchema = z.object({
@@ -335,11 +355,11 @@ export function registerGapInsightJobs(
             : undefined;
           const topicId = params.topicId ?? legacy?.topicId ?? undefined;
           if (!topicId || openOn(db, params.planId, topicId).length === 0) return true;
-          const wrongs = (
-            params.attemptId
-              ? (attemptGroups(db, params.attemptId).find((group) => group.topicId === topicId)?.wrongs ?? [])
-              : gapEvidence(db, params.gapId!, 5)
-          ).slice(0, 8);
+          // Every wrong answer of the attempt stays linked to the gap; the model reads only those the student tried.
+          const linkedWrongs = params.attemptId
+            ? (attemptGroups(db, params.attemptId).find((group) => group.topicId === topicId)?.wrongs ?? [])
+            : gapEvidence(db, params.gapId!, 5);
+          const wrongs = linkedWrongs.filter((wrong) => !wrong.dontKnow).slice(0, 8);
           if (wrongs.length === 0) return true;
           const cited = [...new Set(wrongs.flatMap((wrong) => wrong.passageIds))].slice(0, 6);
           const passages = cited.length
@@ -401,7 +421,7 @@ export function registerGapInsightJobs(
             }
             if (next.status === "unchecked") status = "unchecked";
           }
-          const questionIds = wrongs.map((wrong) => wrong.id);
+          const questionIds = linkedWrongs.slice(0, 8).map((wrong) => wrong.id);
           const landed = db.transaction(() => {
             const open = openOn(db, params.planId, topicId);
             if (open.length === 0) return undefined;

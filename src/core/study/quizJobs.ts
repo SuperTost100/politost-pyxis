@@ -7,6 +7,7 @@ import { aboutPlan } from "./jobAbout";
 import {
   generateQuiz,
   QUIZ_BATCH,
+  QUIZ_FIRST_BATCH,
   prepareQuiz,
   saveQuizSnapshot,
   type QuizInput,
@@ -58,6 +59,7 @@ export function registerQuizJobs(
               })();
             },
             QUIZ_BATCH,
+            QUIZ_FIRST_BATCH,
           );
           if (ctx.signal.aborted)
             throw new DOMException("Cancelled", "AbortError");

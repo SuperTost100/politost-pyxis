@@ -124,6 +124,8 @@ describe("PLAN-21 durable plan build", () => {
       sourceIds: [sourceId],
     });
     await until(db, built.planId, "failed");
+    // The jobs list names the exam being built.
+    expect(runner.list()).toMatchObject([{ kind: "plan-build", exam: "Fisica" }]);
     const topic = readPlan(db, built.planId)!.topics[0]!;
     expect(topic.subtopics).toEqual(["Velocità", "Tempo"]);
     expect(

@@ -13,6 +13,7 @@ import { invoke } from "../../lib/ipc";
 import {
   finishedLabelKey,
   jobContext,
+  jobTopicName,
   runningLabelKey,
   type JobGroups,
   type Problem,
@@ -38,11 +39,19 @@ const PROBLEM_ICONS = {
  */
 function useJobDoing() {
   const { t } = useTranslation();
+  const topicOf = useJobTopic();
   return (job: JobView) => {
     const key = runningLabelKey(job.kind);
-    if (key) return t(key, { context: jobContext(job), topic: job.topic });
+    if (key) return t(key, { context: jobContext(job), topic: topicOf(job) });
     return job.stepLabel ? t(job.stepLabel) : t(`jobs.state.${job.state}`);
   };
+}
+
+/** The topic a job's wording names, a Review's topics as a short list. */
+function useJobTopic() {
+  const { t, i18n } = useTranslation();
+  return (job: JobView) =>
+    jobTopicName(job, i18n.language, (first, others) => t("jobs.topicsMore", { first, count: others }));
 }
 
 /** Where a job belongs, under what it does: the file or exam it works on, and the exam of study work. */
@@ -244,9 +253,10 @@ function RunningRow({ job, act }: { job: JobView; act: Act }) {
 
 function FinishedRow({ job, act }: { job: JobView; act: Act }) {
   const { t, i18n } = useTranslation();
+  const topicOf = useJobTopic();
   const what = t(finishedLabelKey(job.kind) ?? "jobs.state.succeeded", {
     context: jobContext(job),
-    topic: job.topic,
+    topic: topicOf(job),
   });
   const where = jobWhere(job);
   const at = new Date(job.updatedAt);

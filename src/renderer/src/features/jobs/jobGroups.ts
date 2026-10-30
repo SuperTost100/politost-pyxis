@@ -101,9 +101,30 @@ export function checkJobFor(jobs: readonly JobView[], attemptId: string, questio
   );
 }
 
-/** The i18next context a job's wording takes: a diagnostic test or a Review, else its topic when it has one. */
-export function jobContext(job: Pick<JobView, "topic" | "activity">): "diagnostic" | "review" | "topic" | undefined {
+/**
+ * The i18next context a job's wording takes: a Review that names its topics, a diagnostic test or a Review without
+ * them, else the job's topic when it has one.
+ */
+export function jobContext(
+  job: Pick<JobView, "topic" | "topics" | "activity">,
+): "reviewTopic" | "diagnostic" | "review" | "topic" | undefined {
+  if (job.activity === "review" && job.topics?.length) return "reviewTopic";
   return job.activity ?? (job.topic ? "topic" : undefined);
+}
+
+/**
+ * The topic a job's wording names: its own, or a Review's topics as a short list: one, two joined, or the first and a
+ * count of the others (`more` words it).
+ */
+export function jobTopicName(
+  job: Pick<JobView, "topic" | "topics">,
+  locale: string,
+  more: (first: string, others: number) => string,
+): string | undefined {
+  const topics = job.topics ?? [];
+  if (topics.length === 0) return job.topic;
+  if (topics.length <= 2) return new Intl.ListFormat(locale, { type: "conjunction" }).format(topics);
+  return more(topics[0]!, topics.length - 1);
 }
 
 function problemOf(job: JobView): Omit<Problem, "jobs"> {

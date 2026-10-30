@@ -521,6 +521,22 @@ describe("quiz grading job", () => {
     db.close();
   });
 
+  it("counts a model grade of 0.9 or more as fully right, and keeps a lower one as partial credit", async () => {
+    for (const [given, stored] of [
+      [0.95, 1],
+      [0.9, 1],
+      [0.89, 0.89],
+    ] as const) {
+      const { db, attemptId } = fixture([open("a")], "diagnostic");
+      const runner = createRunner(db, () => {});
+      const run: GenerateInput["run"] = async () => reply(given);
+      registerQuizGradingJobs(db, runner, run);
+      const checked = await checkQuestion(db, runner, run, attemptId, "a", "una risposta");
+      expect(checked.score).toBe(stored);
+      db.close();
+    }
+  });
+
   it("checks a diagnostic open answer right away, and a cancelled check leaves it editable", async () => {
     const { db, attemptId } = fixture([open("a")], "diagnostic");
     let hang = true;

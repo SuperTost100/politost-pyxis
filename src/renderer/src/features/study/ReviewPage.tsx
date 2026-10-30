@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
@@ -44,11 +44,13 @@ export function ReviewPage() {
   const navigate = useNavigate();
   const client = useQueryClient();
   const [count, setCount] = useState(20);
+  // `?from=<attempt>`: the student came from a quiz's results to go over its mistakes.
+  const from = useSearchParams()[0].get("from") ?? undefined;
   const saved = useReviewSession(planId);
   const plan = usePlan(planId);
   const guide = useRecommend(planId);
   const start = useMutation({
-    mutationFn: () => invoke("study.review", { planId, count }),
+    mutationFn: () => invoke("study.review", { planId, count, fromAttemptId: from }),
     onSuccess: (session) => {
       void client.invalidateQueries({ queryKey: ["review-session", planId] });
       if (session.next !== "done") go(session);
@@ -76,7 +78,8 @@ export function ReviewPage() {
         `/plans/${planId}/review/questions?attempt=${encodeURIComponent(session.attemptId)}`,
       );
   }
-  const active = saved.data ?? null;
+  // An unfinished review of something else is not the one this quiz asked for; starting replaces it.
+  const active = saved.data && (!from || saved.data.fromAttemptId === from) ? saved.data : null;
   const shown = active ?? start.data;
   const empty =
     start.isSuccess && start.data.next === "done" && !start.data.drills.length;
@@ -91,7 +94,9 @@ export function ReviewPage() {
   const due = dueCards.data?.length ?? 0;
   const gapTopics = guide.data?.topics.filter((topic) => topic.gaps > 0).length ?? 0;
   const questions = active ? active.progress.questionsTotal + active.progress.questionsPending : 0;
-  const facts: ActivityFact[] = active
+  const facts: ActivityFact[] = from && !active
+    ? []
+    : active
     ? [
         ...(active.progress.cardsTotal
           ? [
@@ -116,11 +121,17 @@ export function ReviewPage() {
       <ActivityIntro
         eyebrow={plan.data?.title ?? t("cards.reviewTitle")}
         title={t("cards.reviewTitle")}
-        sentence={t(!active && offer.noneDue ? "cards.reviewIntroNoCards" : "cards.reviewIntro")}
+        sentence={t(
+          from && !active
+            ? "cards.reviewIntroMistakes"
+            : !active && offer.noneDue
+              ? "cards.reviewIntroNoCards"
+              : "cards.reviewIntro",
+        )}
         facts={facts}
         options={
           // How many flashcards to take is a choice unless the plan is known to have none due.
-          active || !offer.choice ? undefined : (
+          active || from || !offer.choice ? undefined : (
             <ActivityChoice
               label={t("cards.reviewCount")}
               value={count}

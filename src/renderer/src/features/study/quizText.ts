@@ -59,6 +59,14 @@ export function verdict(score: number): "correct" | "partial" | "wrong" {
 }
 
 /**
+ * One question's credit as points of that question: "0,6 su 1". Not on the exam's grade scale, where 28,5/30 on one
+ * question reads like an exam grade.
+ */
+export function questionPoints(score: number, locale: string): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(score);
+}
+
+/**
  * The line under a finished quiz's score, judged by the distance from the exam's goal (both as percentages): at the
  * goal, within ten points of it, over 60% of it. Under that, a diagnostic has done its job by showing where to start;
  * any other quiz points at what to review instead. `goal` is the default goal (75) when the exam has none.
