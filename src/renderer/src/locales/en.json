@@ -311,6 +311,7 @@
     "search": "Search passages",
     "searchGo": "Search",
     "viewerFailed": "This passage could not be loaded.",
+    "viewerBack": "Source details",
     "searchNone": "Nothing in your sources matches “{{query}}”.",
     "loadFailed": "The sources could not be loaded.",
     "encrypted": "This smartbook is protected. Pyxis opens plain packages only.",
@@ -369,7 +370,6 @@
       }
     },
     "version": "version {{version}}",
-    "spec": "spec {{spec}}",
     "specUnknown": "This smartbook spec is not recognized. The file was still opened.",
     "qualityTitle": "Material that works",
     "qualityBody": "Past exams with solutions, lecture slides, your notes, and formula sheets.",
@@ -549,7 +549,6 @@
       "readSoFarSub_one": "page so far",
       "readSoFarSub_other": "pages so far",
       "sections": "Sections",
-      "chapters": "Chapters",
       "allCited": "all cited",
       "neverCited_one": "{{count}} never cited",
       "neverCited_other": "{{count}} never cited",
@@ -1173,7 +1172,7 @@
     "false": "False",
     "types": "Question types",
     "tfOnly": "Only true or false",
-    "diagnostic": "Diagnostic",
+    "diagnostic": "Diagnostic test",
     "diagnosticTitle": "Diagnostic test",
     "preparing": "Preparing the questions…",
     "preparingFailed": "I couldn't prepare the questions",
@@ -1266,7 +1265,7 @@
     "options": "Customize",
     "continueAttempt": "Resume",
     "resultLabel": "Result",
-    "diagnosticDone": "Diagnostic complete",
+    "diagnosticDone": "Diagnostic test complete",
     "outOf": "out of {{total}}",
     "verdictGreat": "Great work.",
     "verdictGood": "A solid base.",
@@ -1327,7 +1326,7 @@
     "rebuild": "Rebuild topics",
     "delete": "Delete the exam",
     "intro": "Introduction",
-    "diagnostic": "Diagnostic",
+    "diagnostic": "Diagnostic test",
     "learn": "Study",
     "practice": "Practice",
     "cards": "Flashcards",
@@ -1418,8 +1417,11 @@
         "cards": "Flashcards",
         "gaps": "Targeted review"
       },
+      "hoursHint": "Set your weekly hours to see when you will study each topic.",
+      "hoursAction": "Set the hours",
       "stepNow": "{{step}}, now",
-      "stepScore": "{{step}}, {{correct}} of {{total}}",
+      "stepScore_one": "{{step}}, {{points}} point out of {{total}}",
+      "stepScore_other": "{{step}}, {{points}} points out of {{total}}",
       "state": {
         "done": "done",
         "missed": "below your goal",
@@ -1550,7 +1552,7 @@
     "stepTopicsFailed": "I couldn't create the topics",
     "stepPathFailed": "I couldn't build the path",
     "stepIntroFailed": "I couldn't write the introduction",
-    "stepDiagnosticFailed": "I couldn't prepare the diagnostic quiz",
+    "stepDiagnosticFailed": "I couldn't prepare the diagnostic test",
     "stepTopics": "Creating the topics",
     "stepPath": "Building the path",
     "failed": "The exam could not be prepared.",
@@ -1601,8 +1603,8 @@
     "practice": "Practicing",
     "decide": "You decide",
     "stepIntro": "Writing the introduction",
-    "stepIntroDiagnostic": "Writing the introduction and the diagnostic quiz",
-    "stepDiagnostic": "Preparing the diagnostic quiz",
+    "stepIntroDiagnostic": "Writing the introduction and the diagnostic test",
+    "stepDiagnostic": "Preparing the diagnostic test",
     "stepReady": "Exam ready",
     "sourceNotReady": "A source needs attention. Finish its import or OCR, then retry this build.",
     "cancelled": "Build cancelled. Retry to resume from the saved step.",
@@ -1623,6 +1625,7 @@
     "examSummaryMany_one": "{{count}} sessions, the first on {{date}}",
     "examSummaryMany_other": "{{count}} sessions, the first on {{date}}",
     "examRequired": "Pick the date, or I don't have the date yet, to continue.",
+    "dropHint": "Drop your files here, or pick where to add them from.",
     "sourcesInPlan_one": "{{count}} source in the exam",
     "sourcesInPlan_other": "{{count}} sources in the exam",
     "sourcesListLabel": "Exam sources",
@@ -1913,7 +1916,8 @@
     "crashWhy": "Pyxis runs on your computer, so the person who makes it can't see the errors that happen to you: these reports are the only way to find and fix them. They don't slow Pyxis down, and a report goes only after an error.",
     "crashContents": "A report holds the Pyxis and system versions, the error message and the place in the program where it started.",
     "crashNever": "Pyxis doesn't add your files, chats or API keys, and it removes folder paths and quoted text from the error message, keeping only code names such as readFile. If Pyxis closes suddenly, though, the report includes part of its memory, which can hold fragments of what was on your screen.",
-    "crashKept": "Reports are deleted after 90 days, and you can take your consent back at any time in Settings, under Privacy.",
+    "crashKept": "Reports are deleted after 90 days, and you can take your consent back at any time.",
+    "crashKeptSetup": "Reports are deleted after 90 days, and you can take your consent back at any time in Settings, under Privacy.",
     "flashcards": "Flashcards",
     "newPerDay": "New flashcards per day",
     "newPerDayHint": "For each exam. Flashcards you have started come back when they are due, whatever the limit. With 0 no new ones start.",
@@ -2077,6 +2081,10 @@
     "trueFalse": "True / false"
   },
   "components": {
+    "numberInput": {
+      "increase": "Increase",
+      "decrease": "Decrease"
+    },
     "citation": {
       "open": "Open source"
     },
@@ -2162,11 +2170,11 @@
       "disabled": "Disabled"
     },
     "tags": {
-      "smartbook": "smartbook",
+      "smartbook": "From the book",
       "ai": "AI generated",
-      "general": "general knowledge",
-      "mastered": "mastered",
-      "severe": "severe gap",
+      "general": "General knowledge",
+      "mastered": "Mastered",
+      "severe": "Severe gap",
       "recommended": "Recommended"
     },
     "chips": {
@@ -2224,7 +2232,7 @@
       "topics": "Building topics",
       "link": "Linking passages to topics",
       "path": "Building the path",
-      "lessons": "Preparing intro and initial check",
+      "lessons": "Preparing intro and diagnostic test",
       "metaRead": "3 sources · 212 passages"
     }
   },
@@ -2714,6 +2722,9 @@
     "hoursHelp": "These hours are for all your exams, and the session plan shares them out.",
     "hoursLabel": "Hours a week",
     "hoursUnit": "hours a week",
+    "hoursUse": "Use {{hours}} h",
+    "hoursTooMany": "This date and goal would need more than {{max}} hours a week. Move the date or lower the goal.",
+    "saved": "Changes saved",
     "hoursThisWeek": "This week the session plan gives this exam about {{time}}.",
     "openPlanner": "Open the session plan",
     "sourcesHeading": "Sources",

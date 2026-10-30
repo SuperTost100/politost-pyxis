@@ -6,15 +6,19 @@ import "./CrashReportsSwitch.css";
 /**
  * The crash-report choice as a labelled switch row. First setup and Settings > Privacy render this same component, so
  * both screens say the same thing: why the reports matter, what one holds and never holds, and how long it is kept.
- * The copy must match what src/main/crash-reports.ts and crash-worker/ really send and keep.
+ * The copy must match what src/main/crash-reports.ts and crash-worker/ really send and keep. In setup, the last line
+ * says where to change the choice later; on the Privacy page the switch is that place.
  */
 export function CrashReportsSwitch({
   checked,
   disabled,
+  setup = false,
   onChange,
 }: {
   checked: boolean;
   disabled?: boolean;
+  /** First setup: the last line points to Settings, Privacy. */
+  setup?: boolean;
   onChange: (value: boolean) => void;
 }) {
   const { t } = useTranslation();
@@ -44,7 +48,7 @@ export function CrashReportsSwitch({
       <ul className="small px-crash-detail px-crash-facts" id={`${id}-facts`}>
         <li>{t("settings.crashContents")}</li>
         <li>{t("settings.crashNever")}</li>
-        <li>{t("settings.crashKept")}</li>
+        <li>{t(setup ? "settings.crashKeptSetup" : "settings.crashKept")}</li>
       </ul>
     </div>
   );

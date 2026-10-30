@@ -147,6 +147,8 @@ test("First setup: about you, the engine with its notice and crash reports off, 
       name: "Consenti segnalazioni di crash",
     });
     await expect(crash).not.toBeChecked();
+    // Setup is the one place that says where to change the choice later.
+    await expect(page.getByText("da Impostazioni, alla voce Privacy", { exact: false })).toBeVisible();
     await noAxeViolations(page);
     await notice.getByRole("button", { name: "Ho capito" }).click();
     await expect(notice).toHaveCount(0);
@@ -167,7 +169,14 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     // No scan download is offered in setup: it comes up only when a scan is added.
     await expect(button(page, /^Scarica [\d.,]+ MB$/)).toHaveCount(0);
     await noAxeViolations(page);
+    // A new step opens at its top, not at the offset the last one was scrolled to.
+    await page.setViewportSize({ width: 1280, height: 420 });
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     await button(page, "Continua").click();
+    await expect(page.getByRole("heading", { name: "Quale esame prepari?" })).toBeVisible();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await page.setViewportSize({ width: 1280, height: 800 });
 
     // Step 3: the profile is saved when the engine step ends, with crash reports off.
     await expect(
@@ -205,6 +214,10 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     ).toBeVisible();
     await expect(currentStep(page)).toHaveText("Passo 4 di 4: Materiale");
     await expect(button(page, "Libri PoliTost gratuiti")).toBeVisible();
+    // The buttons sit in a drop zone, and the step's one primary button is Continue, not Add sources.
+    await expect(page.locator(".px-wizard-drop").getByRole("button", { name: "Aggiungi fonti" })).toBeVisible();
+    await expect(button(page, "Continua")).toHaveClass(/ant-btn-primary/);
+    await expect(button(page, "Aggiungi fonti")).not.toHaveClass(/ant-btn-primary/);
     await expect(page.getByText("Lezioni in italiano, ordine scelto da Pyxis")).toBeVisible();
     await button(page, "Cambia").click();
     await expect(button(page, "English")).toBeVisible();
@@ -230,6 +243,9 @@ test("First setup: about you, the engine with its notice and crash reports off, 
       name: "Consenti segnalazioni di crash",
     });
     await expect(saved).not.toBeChecked();
+    // Already on Privacy, the page does not send the student to Privacy.
+    await expect(page.getByText("I rapporti vengono cancellati dopo 90 giorni")).toBeVisible();
+    await expect(page.getByText("alla voce Privacy", { exact: false })).toHaveCount(0);
     await noAxeViolations(page);
     await saved.click();
     await expect(saved).toBeChecked();

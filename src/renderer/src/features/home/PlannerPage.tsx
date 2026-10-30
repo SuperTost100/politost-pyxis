@@ -123,7 +123,7 @@ export function PlannerPage() {
             .filter((exam) => exam.behind)
             .map((exam) => (
               <Notice key={exam.planId} tone="warning">
-                {behindText(t, exam, grade.format)}
+                {behindText(t, exam, grade.format, grade.mastery)}
               </Notice>
             ))}
           <section className="px-planner-section" aria-labelledby="planner-exams">

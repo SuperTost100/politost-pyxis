@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { latestDocument } from "./documents";
+import { rowTitle } from "../../shared/topic-title";
 
 /** One section of a source's current version, with how many lessons and quizzes cite it. */
 export type SectionCitations = {
@@ -179,18 +180,23 @@ function examsUsing(db: Database.Database, sourceId: string): SourceDetails["exa
        WHERE ps.source_id = ? ORDER BY p.created_at, p.id`,
     )
     .all(sourceId) as Array<{ planId: string; title: string; role: "material" | "past_paper"; archived: number }>;
+  // `place` is the topic's place among the exam's active topics, the number its path row draws.
   const topics = db.prepare(
-    `SELECT t.title FROM topics t
-     WHERE t.plan_id = ? AND t.archived_at IS NULL AND EXISTS (
+    `SELECT title, place FROM (
+       SELECT t.id AS tid, t.title, t.position, ROW_NUMBER() OVER (ORDER BY t.position, t.id) AS place FROM topics t
+       WHERE t.plan_id = ? AND t.archived_at IS NULL)
+     WHERE EXISTS (
        SELECT 1 FROM topic_passages tp JOIN passages p ON p.id = tp.passage_id
-       WHERE tp.topic_id = t.id AND p.source_id = ?)
-     ORDER BY t.position, t.id`,
+       WHERE tp.topic_id = tid AND p.source_id = ?)
+     ORDER BY position, tid`,
   );
   return plans.map((plan) => ({
     planId: plan.planId,
     title: plan.title,
     role: plan.role,
     archived: plan.archived === 1,
-    topics: (topics.all(plan.planId, sourceId) as Array<{ title: string }>).map((row) => row.title),
+    topics: (topics.all(plan.planId, sourceId) as Array<{ title: string; place: number }>).map((topic) =>
+      rowTitle(topic.title, topic.place),
+    ),
   }));
 }

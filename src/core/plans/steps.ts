@@ -134,10 +134,10 @@ export function readSteps(db: Database.Database, planId: string): Step[] {
   });
 }
 
-/** The score of a submitted attempt as right answers out of all; partial credit rounds to the nearest answer. */
+/** The score of a submitted attempt as points out of all answers, partial credit kept to one decimal as the results screen shows it. */
 export function stepResult(results: Array<{ score: number }>): StepResult {
   return {
-    correct: Math.round(results.reduce((sum, result) => sum + result.score, 0)),
+    correct: Math.round(results.reduce((sum, result) => sum + result.score, 0) * 10) / 10,
     total: results.length,
   };
 }

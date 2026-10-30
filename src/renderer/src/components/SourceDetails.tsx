@@ -200,6 +200,7 @@ export function SourceDetails({
   known,
   startRename = false,
   onClose,
+  onOpen,
 }: {
   /** The source shown; null keeps the panel closed. */
   sourceId: string | null;
@@ -208,6 +209,8 @@ export function SourceDetails({
   /** Opens with the title field ready, as the row menu's Rename asks. */
   startRename?: boolean;
   onClose: () => void;
+  /** Shows this panel again for a source: the way back from the viewer a chapter or citation opened. */
+  onOpen?: (sourceId: string) => void;
 }) {
   const { t } = useTranslation();
   const client = useQueryClient();
@@ -278,7 +281,8 @@ export function SourceDetails({
 
   function openSource(location: { passageId?: string; chapter?: number }): void {
     if (!id) return;
-    afterClose.current = () => openSourceViewer({ sourceId: id, ...location });
+    afterClose.current = () =>
+      openSourceViewer({ sourceId: id, ...location }, onOpen ? () => onOpen(id) : undefined);
     close();
   }
 
@@ -365,7 +369,8 @@ export function SourceDetails({
     });
   if (data && !data.pages && data.sections > 0)
     facts.push({
-      label: t(source?.kind === "smartbook" ? "sources.panel.chapters" : "sources.panel.sections"),
+      // One unit for the count, as the Library list and the lines below say it: sections, for a book too.
+      label: t("sources.panel.sections"),
       value: data.sections,
       sub:
         data.citations === 0
@@ -483,7 +488,6 @@ export function SourceDetails({
     ? [
         meta.data.authors.join(", "),
         meta.data.version ? t("sources.version", { version: meta.data.version }) : "",
-        meta.data.specVersion ? t("sources.spec", { spec: meta.data.specVersion }) : "",
       ]
         .filter(Boolean)
         .join(" · ")

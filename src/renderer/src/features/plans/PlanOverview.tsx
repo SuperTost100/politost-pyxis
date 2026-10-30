@@ -328,12 +328,12 @@ export function PlanPage() {
             ) : (
               <>
                 <dd className="px-plan-fact">
-                  {grade.number(progress.preparation.mastery)}
+                  {grade.masteryNumber(progress.preparation.mastery)}
                   <small>/{grade.scale}</small>
                 </dd>
                 <dd className="small ink-muted">
                   {schedule.data?.behind
-                    ? t("planOverview.atExam", { grade: grade.format(schedule.data.behind.masteryAtExam) })
+                    ? t("planOverview.atExam", { grade: grade.mastery(schedule.data.behind.masteryAtExam) })
                     : t("planOverview.planMastery")}
                 </dd>
               </>
@@ -488,6 +488,7 @@ export function PlanPage() {
             sourceId={detailSourceId}
             known={plan.data?.sources.find((source) => source.id === detailSourceId)}
             onClose={() => setDetailSourceId(null)}
+            onOpen={setDetailSourceId}
           />
         </section>
       )}

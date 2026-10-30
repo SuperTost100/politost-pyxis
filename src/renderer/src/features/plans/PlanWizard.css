@@ -109,6 +109,30 @@
 .px-wizard-fieldset p {
   margin: 0;
 }
+/* The material step: the buttons sit in a zone that takes dropped files. */
+.px-wizard-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-5);
+  border: 1px dashed var(--border-control);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+.px-wizard-drop > svg {
+  color: var(--ink-muted);
+}
+.px-wizard-drop > p {
+  margin: 0;
+}
+.px-wizard-drop.is-dragging {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.px-wizard-drop .px-wizard-material-actions {
+  justify-content: center;
+}
 .px-wizard-material-actions {
   display: flex;
   gap: var(--space-3);

@@ -413,10 +413,10 @@ export function MaterialPrimary({
   onCreated: (planId: string) => void;
 }) {
   const { t } = useTranslation();
-  // Adding material is the main action on that screen, so going on without any is a secondary button.
+  // The step's one primary button always moves on: Continue without material, Create once something is picked.
   if (draft.picked.length === 0)
     return (
-      <Button shape="round" onClick={draft.startGuided}>
+      <Button type="primary" shape="round" onClick={draft.startGuided}>
         {t("wizard.continue")}
       </Button>
     );

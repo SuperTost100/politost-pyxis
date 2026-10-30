@@ -49,6 +49,7 @@ function openDiagnostic(db: Database.Database, planId: string) {
     questions: Array<{
       id: string;
       sourceId?: string;
+      topicId?: string;
       stem: string;
       options?: string[];
       left?: string[];
@@ -59,10 +60,14 @@ function openDiagnostic(db: Database.Database, planId: string) {
   return {
     attemptId: row.id,
     questions: stored.questions.map(askedQuestion),
+    topics: new Set(stored.questions.map((question) => question.topicId).filter(Boolean)).size,
   };
 }
 
-/** What the diagnostic intro tells before anything starts: how many questions, how long, and how many are done. */
+/**
+ * What the diagnostic intro tells before anything starts: how many questions, how long, how many topics they cover,
+ * and how many are done.
+ */
 export function diagnosticPreview(db: Database.Database, planId: string) {
   const open = openDiagnostic(db, planId);
   if (open && open.questions.length <= QUIZ_MAX_QUESTIONS) {
@@ -75,28 +80,34 @@ export function diagnosticPreview(db: Database.Database, planId: string) {
       count: open.questions.length,
       answered: n,
       minutes: quizMinutes(open.questions.map((row) => row.grade.kind)),
+      topics: open.topics,
     };
   }
   const generated = latestGeneratedDiagnostic(db, planId);
   const blocked = flaggedIds(db, "exercise");
-  const kinds = generated
-    ? (JSON.parse(generated.body_json) as { questions: StoredQuestion[] }).questions
-        .filter((question) => !questionFlagged(blocked, question))
-        .map((question) => question.answer.kind)
-    : (
-        db
-          .prepare(`SELECT id FROM topics WHERE plan_id = ? AND archived_at IS NULL`)
-          .all(planId) as Array<{ id: string }>
-      ).flatMap((topic) =>
-        topicExercises(db, topic.id)
-          .filter((row) => row.answer?.trim() && !blocked.has(row.id))
-          .map(() => "open"),
+  // The questions a new attempt would ask, picked as `startDiagnostic` picks them, so the facts match the quiz.
+  const picked: Array<{ kind: string; topicId?: string }> = generated
+    ? pickDiagnostic(db, generated.body_json).map((question) => ({
+        kind: question.answer.kind,
+        topicId: question.topicId,
+      }))
+    : acrossTopics(
+        (
+          db
+            .prepare(`SELECT id FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position`)
+            .all(planId) as Array<{ id: string }>
+        ).map((topic) =>
+          topicExercises(db, topic.id)
+            .filter((row) => row.answer?.trim() && !blocked.has(row.id))
+            .map(() => ({ kind: "open", topicId: topic.id })),
+        ),
+        QUIZ_MAX_QUESTIONS,
       );
-  const picked = kinds.slice(0, QUIZ_MAX_QUESTIONS);
   return {
     count: picked.length,
     answered: 0,
-    minutes: picked.length ? quizMinutes(picked) : 0,
+    minutes: picked.length ? quizMinutes(picked.map((question) => question.kind)) : 0,
+    topics: new Set(picked.map((question) => question.topicId).filter(Boolean)).size,
   };
 }
 
@@ -194,20 +205,26 @@ export function deriveDiagnostic(
   return id;
 }
 
-/** The diagnostic a new attempt uses: without questions marked wrong, and at most QUIZ_MAX_QUESTIONS spread across topics. */
+/** The questions of a stored diagnostic a new attempt asks: none marked wrong, at most QUIZ_MAX_QUESTIONS spread across topics. */
+function pickDiagnostic(db: Database.Database, bodyJson: string): StoredQuestion[] {
+  const stored = (JSON.parse(bodyJson) as { questions: StoredQuestion[] }).questions;
+  const blocked = flaggedIds(db, "exercise");
+  const kept = stored.filter((question) => !questionFlagged(blocked, question));
+  const topics = [...new Set(kept.map((question) => question.topicId))];
+  return acrossTopics(
+    topics.map((topicId) => kept.filter((question) => question.topicId === topicId)),
+    QUIZ_MAX_QUESTIONS,
+  );
+}
+
+/** The diagnostic a new attempt uses: the item itself when every question stays, else a copy with the picked ones. */
 function usableDiagnostic(
   db: Database.Database,
   item: { id: string; body_json: string },
 ): string {
   const stored = (JSON.parse(item.body_json) as { questions: StoredQuestion[] })
     .questions;
-  const blocked = flaggedIds(db, "exercise");
-  const kept = stored.filter((question) => !questionFlagged(blocked, question));
-  const topics = [...new Set(kept.map((question) => question.topicId))];
-  const picked = acrossTopics(
-    topics.map((topicId) => kept.filter((question) => question.topicId === topicId)),
-    QUIZ_MAX_QUESTIONS,
-  );
+  const picked = pickDiagnostic(db, item.body_json);
   if (picked.length === stored.length || picked.length === 0) return item.id;
   // Keep the model's order for the questions that stay.
   const order = new Set(picked.map((question) => question.id));

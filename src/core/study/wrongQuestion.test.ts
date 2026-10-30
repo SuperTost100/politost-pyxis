@@ -172,4 +172,18 @@ describe("wrong question", () => {
     });
     db.close();
   });
+
+  it("counts the topics the diagnostic covers, not the topics of the exam", () => {
+    const db = fixture(18);
+    // A third topic with no question in the diagnostic.
+    db.prepare(
+      "INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t2', 'plan', 'Topic t2', 2, 1)",
+    ).run();
+    const study = studyHandlers(db);
+    expect(study.diagnosticPreview({ planId: "plan" })).toMatchObject({ count: 10, topics: 2 });
+    // Once it has started, the open attempt reports the same.
+    study.diagnosticStart({ planId: "plan" });
+    expect(study.diagnosticPreview({ planId: "plan" })).toMatchObject({ count: 10, topics: 2 });
+    db.close();
+  });
 });
