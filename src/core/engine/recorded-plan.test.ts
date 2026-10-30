@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { recordedPlanRun } from "./recorded-plan";
+import { generateQuiz, quizConfig, type QuizSnapshot } from "../study/configuredQuiz";
 
 const ask = (count: number, previousQuestions: string[]) => ({
   system: "Create distinct quiz questions.",
@@ -22,6 +23,31 @@ describe("recorded quiz replies", () => {
     const second = await stems(run, 3, first);
     expect(second).toEqual(["E", "F", "G"]);
     expect(await stems(run, 3, [...first, ...second])).toEqual(["H", "I", "J"]);
+  });
+
+  it("skips and repeats nothing when the quiz starts with a book exercise", async () => {
+    const recorded = Array.from({ length: 10 }, (_, i) => ({
+      kind: "tf",
+      stem: `S${i}`,
+      correct: true,
+      passageIds: ["{{passage:0}}"],
+      explanation: "Perché sì.",
+    }));
+    const run = recordedPlanRun(JSON.stringify({ quizQuestions: { questions: recorded } }));
+    // `prepareQuiz` puts the topic's book exercise first; the model writes the other nine, four at a time.
+    const snapshot = {
+      config: quizConfig.parse({ count: 10, types: ["tf"] }),
+      questions: [{ id: "book", stem: "Esercizio del libro", explanation: "", grade: { kind: "open", answer: "", reference: "r" } }],
+      passages: [{ id: "p", text: "La velocità." }],
+      language: "it",
+      selection: { provider: "claude", model: "m" },
+      grounding: "sources",
+    } as unknown as QuizSnapshot;
+    await generateQuiz(snapshot, run, undefined, undefined, 4);
+    expect(snapshot.questions.map((question) => question.stem)).toEqual([
+      "Esercizio del libro",
+      ...recorded.slice(0, 9).map((question) => question.stem),
+    ]);
   });
 
   it("numbers question placeholders by their place in the whole quiz", async () => {

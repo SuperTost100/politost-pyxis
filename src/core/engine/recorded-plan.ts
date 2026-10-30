@@ -2,6 +2,16 @@ import { existsSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import type { GenerateInput } from "./generate";
 
+/** A pattern per recorded question's stem, with its `{{…}}` placeholders matching whatever they were filled with. */
+function recordedStems(questions: unknown[]): RegExp[] {
+  return questions.flatMap((question) => {
+    const stem = (question as { stem?: unknown } | null)?.stem;
+    if (typeof stem !== "string") return [];
+    const parts = stem.split(/\{\{[^}]*\}\}/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    return [new RegExp(`^${parts.join(".*?")}$`, "s")];
+  });
+}
+
 /** Unpackaged integration fixture only; the caller must enforce the dev flag. */
 export function recordedPlanRun(
   fixture: string,
@@ -47,7 +57,8 @@ export function recordedPlanRun(
     // A quiz is written a few questions per call: each call gets the next `count` recorded questions, after the ones
     // already written. A recording too short for that hands every call its first `count` instead.
     const recorded = replies[key] as { questions?: unknown[] } | undefined;
-    const written = context.previousQuestions?.length ?? 0;
+    const previous = context.previousQuestions ?? [];
+    const written = previous.length;
     const batch =
       key === "quizQuestions" &&
       context.count != null &&
@@ -55,8 +66,12 @@ export function recordedPlanRun(
       recorded.questions.length > context.count
         ? context.count
         : undefined;
+    // Only questions earlier calls took from the recording move it on; a quiz can start with the topic's book
+    // exercises, which are not recorded.
+    const generated =
+      batch != null ? previous.filter((stem) => recordedStems(recorded!.questions!).some((re) => re.test(stem))).length : 0;
     const from =
-      batch != null && recorded!.questions!.length >= written + batch ? written : 0;
+      batch != null && recorded!.questions!.length >= generated + batch ? generated : 0;
     const reply =
       batch != null ? { ...recorded, questions: recorded!.questions!.slice(from, from + batch) } : recorded;
     // `{{question:N}}` names a recorded question's place in the whole quiz.
