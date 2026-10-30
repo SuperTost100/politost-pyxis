@@ -65,13 +65,13 @@ While sending is stopped:
 - Crashpad's uploads are off (`setUploadToServer(false)`).
 - The JavaScript report on its way is aborted. It stays queued and does not count as a failed send.
 - New JavaScript errors follow the rules of step 4: held in memory while the saved copy says on, dropped while it says off.
-- Main ignores `crash-consent` from the core being stopped, so a profile save that lands during the stop cannot turn sending back on. Only the next core it starts counts.
+- Main ignores `crash-consent` from the core being stopped, so a profile save that lands during the stop cannot turn sending back on. Only the next core it starts counts (`CoreConsent`).
 
 The first core that reports the switch on the new workspace decides. On, and sending resumes with the queue and the held errors. Off, and the queue and the held errors are dropped and uploads stay off.
 
 The queue belongs to the consent that created it. A report created under one workspace's switch goes out under another only if that switch is on too. Across a rollback that means the restored copy and the old workspace each confirm in turn. If the restored copy says off, the queue is dropped at that moment and does not come back when the old workspace returns with the switch on, which starts a new consent period. If both say on, the queue goes once the old workspace's core confirms.
 
-A move and a manual backup also stop core, but they reopen the same data, so they leave sending as it is. Neither do the launch paths need this: at launch main always waits for core, after `ensureWorkspace`, the recovery of an interrupted restore or wipe, and any failed bootstrap and its restarts. If core does not stop when asked, nothing is replaced and the running core can confirm the switch again at its next profile save.
+A move and a manual backup also stop core, but they reopen the same data, so they leave sending as it is. Neither do the launch paths need this: at launch main always waits for core, after `ensureWorkspace`, the recovery of an interrupted restore or wipe, and any failed bootstrap and its restarts. If core does not stop when asked, nothing is replaced, so that core counts again at once with the switch it last reported, including a change it reported while it was being stopped (`CoreConsent.reinstate`).
 
 ## Sending
 

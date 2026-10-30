@@ -512,6 +512,46 @@ export class CrashReports {
 }
 
 /**
+ * Decides, for main, which core's `crash-consent` counts: the one started last, and none while a workspace replacement
+ * is under way. A core being stopped for a restore or a wipe could still report the switch of the workspace that is
+ * about to go, so its reports are only noted.
+ */
+export class CoreConsent<Core extends object> {
+  private current: Core | null = null;
+  /** The switch each core last reported, counted or not. */
+  private readonly last = new WeakMap<Core, boolean>();
+
+  constructor(private readonly reports: Pick<CrashReports, "setConsent" | "suspend">) {}
+
+  /** A new core started on the open workspace: its reports count. */
+  started(core: Core): void {
+    this.current = core;
+  }
+
+  report(core: Core, enabled: boolean): void {
+    this.last.set(core, enabled);
+    if (core === this.current) this.reports.setConsent(enabled);
+  }
+
+  /** The workspace is about to be replaced: nothing counts until a core started afterwards reports. */
+  suspend(): void {
+    this.current = null;
+    this.reports.suspend();
+  }
+
+  /**
+   * The core would not stop, so nothing was replaced and it is still the core of the open workspace. It counts again at
+   * once, with the switch it last reported, including one it reported while it was being stopped. A core that never
+   * reported leaves sending stopped until it does.
+   */
+  reinstate(core: Core): void {
+    this.current = core;
+    const enabled = this.last.get(core);
+    if (enabled !== undefined) this.reports.setConsent(enabled);
+  }
+}
+
+/**
  * Deletes Crashpad minidumps that must never be sent: every one while the switch is off, and those written before the
  * switch last went on. Runs before the crash reporter starts, so Crashpad cannot pick an old dump up for upload.
  * Returns how many dumps went.

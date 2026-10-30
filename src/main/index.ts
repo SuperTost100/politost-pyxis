@@ -73,6 +73,7 @@ import { rendererCsp } from "./csp";
 import { APP_PAGE, APP_SCHEME, appPrivileges, registerAppProtocol } from "./app-protocol";
 import { carryStorage } from "./carried-storage";
 import {
+  CoreConsent,
   CRASH_ENDPOINT,
   CrashReports,
   discardUnconsentedDumps,
@@ -186,17 +187,8 @@ if (crashReporterOn) {
   });
 }
 
-/**
- * The core whose `crash-consent` counts: the one started last, and none while a workspace replacement is under way. A
- * core being stopped for a restore or a wipe could still report the switch of the workspace that is about to go.
- */
-let consentCore: UtilityProcess | null = null;
-
-/** Stops crash reports until a core started on the new workspace reports its switch. See CrashReports.suspend. */
-function suspendCrashReports(): void {
-  consentCore = null;
-  crashReports.suspend();
-}
+/** Which core's `crash-consent` counts. See CoreConsent and CrashReports.suspend. */
+const coreConsent = new CoreConsent<UtilityProcess>(crashReports);
 
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: appPrivileges },
@@ -724,7 +716,7 @@ function startCore(strict = false): Promise<void> {
     child.stderr?.on("data", (chunk) => process.stderr.write(chunk));
   }
   coreChild = child;
-  consentCore = child;
+  coreConsent.started(child);
   configurePythonRuntime(workspacePath);
   watchCoreExit(child);
   let childExited = false;
@@ -779,7 +771,7 @@ function startCore(strict = false): Promise<void> {
   // being replaced is still an error, so only the switch is tied to the current core. The switch takes effect at once.
   child.on("message", (data: { type?: string; enabled?: unknown }) => {
     if (data?.type === "crash-consent" && typeof data.enabled === "boolean") {
-      if (consentCore === child) crashReports.setConsent(data.enabled);
+      coreConsent.report(child, data.enabled);
     } else if (data?.type === "js-error") crashReports.capture("core", errorFields(data));
   });
   keysReadyFor = null;
@@ -951,12 +943,10 @@ function pauseCore(): Promise<void> {
  */
 function pauseCoreToReplace(): Promise<void> {
   const child = coreChild;
-  suspendCrashReports();
+  coreConsent.suspend();
   return pauseCore().catch((error: unknown) => {
     // Core did not stop, so nothing was replaced and it is still the core of the open workspace.
-    // shortcut: sending waits for that core's next profile save or the next launch, as core sends the switch only then;
-    // ask core for it again if a stop that fails turns out to be common.
-    if (child && coreChild === child && !coreExited(child)) consentCore = child;
+    if (child && coreChild === child && !coreExited(child)) coreConsent.reinstate(child);
     throw error;
   });
 }
@@ -1030,7 +1020,7 @@ function verifyArchives(zips: string[]): Promise<Array<boolean | null>> {
  */
 function holdForRestoreRecovery(): void {
   restoreRecoveryRequired = true;
-  suspendCrashReports();
+  coreConsent.suspend();
   holdCore = true;
   const child = coreChild;
   if (child?.pid && !coreExited(child)) {

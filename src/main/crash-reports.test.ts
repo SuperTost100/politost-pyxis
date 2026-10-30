@@ -5,6 +5,7 @@ import { tempDir } from "../core/test-temp";
 import { errorFields } from "../shared/error-fields";
 import {
   CRASH_LIMITS,
+  CoreConsent,
   CrashReports,
   discardUnconsentedDumps,
   fingerprint,
@@ -711,6 +712,73 @@ describe("queue", () => {
     await flushing;
     expect(reports.queued).toEqual([]);
     expect(readFileSync(join(dir, "crash-reports.json"), "utf8")).not.toContain("boom");
+  });
+});
+
+describe("which core's switch counts", () => {
+  function setup() {
+    const h = harness();
+    const uploads: boolean[] = [];
+    const reports = h.make({ setUploads: (on) => uploads.push(on) });
+    const cores = new CoreConsent<{ name: string }>(reports);
+    const old = { name: "old" };
+    cores.started(old);
+    cores.report(old, true);
+    return { h, uploads, reports, cores, old };
+  }
+
+  it("ignores the core being stopped for a replacement, and counts the next one", async () => {
+    const { h, uploads, reports, cores, old } = setup();
+    cores.suspend();
+    // A profile save that lands while the old core stops.
+    cores.report(old, true);
+    reports.capture("renderer", boom("during the restore"));
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+    expect(uploads.at(-1)).toBe(false);
+    const restored = { name: "restored" };
+    cores.started(restored);
+    cores.report(restored, false);
+    expect(reports.enabled).toBe(false);
+    expect(uploads.at(-1)).toBe(false);
+  });
+
+  it("a core that would not stop counts again at once, with the switch it last reported", async () => {
+    const { h, uploads, reports, cores, old } = setup();
+    cores.suspend();
+    reports.capture("renderer", boom("while core would not stop"));
+    cores.reinstate(old);
+    await reports.flush();
+    expect(uploads.at(-1)).toBe(true);
+    expect(h.sent.map((item) => item.body["message"])).toEqual(["while core would not stop"]);
+  });
+
+  it("a core that would not stop, turned off while it was asked to, stays off", async () => {
+    const { h, uploads, reports, cores, old } = setup();
+    cores.suspend();
+    reports.capture("renderer", boom("while core would not stop"));
+    cores.report(old, false);
+    cores.reinstate(old);
+    await reports.flush();
+    expect(h.sent).toEqual([]);
+    expect(reports.enabled).toBe(false);
+    expect(uploads.at(-1)).toBe(false);
+  });
+
+  it("a core that never reported the switch leaves sending stopped", async () => {
+    const h = harness();
+    const reports = h.make();
+    const cores = new CoreConsent<{ name: string }>(reports);
+    const silent = { name: "silent" };
+    cores.started(silent);
+    cores.suspend();
+    cores.reinstate(silent);
+    reports.setConsent(true);
+    reports.suspend();
+    cores.reinstate(silent);
+    reports.capture("renderer", boom("unconfirmed"));
+    await reports.flush();
+    expect(h.sent).toEqual([]);
   });
 });
 
