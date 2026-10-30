@@ -31,18 +31,28 @@ describe("retryPick", () => {
 });
 
 describe("verdictLine", () => {
-  it("tells a diagnostic under half where to start", () => {
+  it("tells a diagnostic far under the goal where to start", () => {
     expect(verdictLine(23, true)).toBe("quiz.verdictStart");
+    // 15 out of 30 against a goal of 27 is far from it, not "almost there".
+    expect(verdictLine(50, true, 90)).toBe("quiz.verdictStart");
   });
   it("never ends a topic quiz with the diagnostic's line", () => {
     expect(verdictLine(23, false)).toBe("quiz.verdictLow");
     expect(verdictLine(0, false)).toBe("quiz.verdictLow");
+    expect(verdictLine(50, false, 90)).toBe("quiz.verdictLow");
   });
-  it("uses the same lines from half up, whatever the quiz", () => {
+  it("says the goal is reached at the goal, and almost there within ten points of it", () => {
     for (const diagnostic of [true, false]) {
-      expect(verdictLine(50, diagnostic)).toBe("quiz.verdictClose");
-      expect(verdictLine(70, diagnostic)).toBe("quiz.verdictGood");
-      expect(verdictLine(90, diagnostic)).toBe("quiz.verdictGreat");
+      expect(verdictLine(75, diagnostic)).toBe("quiz.verdictGreat");
+      expect(verdictLine(90, diagnostic, 90)).toBe("quiz.verdictGreat");
+      expect(verdictLine(65, diagnostic)).toBe("quiz.verdictClose");
+      expect(verdictLine(80, diagnostic, 90)).toBe("quiz.verdictClose");
+      expect(verdictLine(79, diagnostic, 90)).toBe("quiz.verdictGood");
     }
+  });
+  it("calls a score over 60% of the goal a good base", () => {
+    expect(verdictLine(50, true)).toBe("quiz.verdictGood");
+    expect(verdictLine(54, false, 90)).toBe("quiz.verdictGood");
+    expect(verdictLine(44, false)).toBe("quiz.verdictLow");
   });
 });

@@ -135,7 +135,7 @@ export function PlanProgress({
   });
   const chart = progress.chart.map((point) => ({
     ...point,
-    value: grade.value(point.mastery),
+    value: grade.masteryValue(point.mastery),
   }));
   const tick = {
     fill: "var(--ink-muted)",
@@ -163,7 +163,7 @@ export function PlanProgress({
             compact
             label={t("progress.forecast")}
             value={summary.mastery * 100}
-            display={grade.number(summary.mastery)}
+            display={grade.masteryNumber(summary.mastery)}
             unit={`/${grade.scale}`}
             target={target}
             pills={[

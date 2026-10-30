@@ -78,7 +78,7 @@ describe("plan file", () => {
     const titles = db
       .prepare(`SELECT title FROM topics WHERE plan_id = ? ORDER BY position`)
       .all(copyId) as Array<{ title: string }>;
-    expect(titles.map((row) => row.title)).toEqual(["1. Moti"]);
+    expect(titles.map((row) => row.title)).toEqual(["Moti"]);
     const nodes = db
       .prepare(`SELECT COUNT(*) AS n FROM path_nodes WHERE plan_id = ?`)
       .get(copyId) as { n: number };

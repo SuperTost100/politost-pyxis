@@ -65,6 +65,7 @@
   background: var(--surface);
 }
 .px-set-goal-value {
+  color: var(--star-text);
   font: 600 calc(32px * var(--text-scale, 1)) / calc(36px * var(--text-scale, 1)) var(--font-sans);
   font-variant-numeric: tabular-nums;
 }
@@ -172,6 +173,13 @@
 }
 [data-theme="dark"] .px-savebar {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+/* Room under the last group, and under whatever takes focus, so the bar never hides the control being edited. */
+.px-exam-settings.has-savebar {
+  padding-bottom: calc(var(--space-16) + var(--space-8));
+}
+html:has(.px-savebar) {
+  scroll-padding-bottom: calc(var(--space-16) + var(--space-8));
 }
 .px-savebar > p {
   flex: 1 1 240px;

@@ -149,7 +149,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     const read = () =>
       page.evaluate((planId) => window.pyxis.invoke("plans.read", { planId }), planId) as Promise<Read>;
     const topics = (await read()).topics;
-    expect(topics.map((topic) => topic.title)).toEqual(chapters.map((c) => `${c.number}. ${c.title}`));
+    expect(topics.map((topic) => topic.title)).toEqual(chapters.map((c) => c.title));
 
     // A new plan: the introduction is suggested, every topic is a row with its mastery, nothing is locked.
     await page.evaluate((planId) => {

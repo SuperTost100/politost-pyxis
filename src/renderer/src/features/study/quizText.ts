@@ -59,13 +59,14 @@ export function verdict(score: number): "correct" | "partial" | "wrong" {
 }
 
 /**
- * The line under a finished quiz's score. Under half, a diagnostic has done its job by showing where to start; any other
- * quiz points at what to review instead.
+ * The line under a finished quiz's score, judged by the distance from the exam's goal (both as percentages): at the
+ * goal, within ten points of it, over 60% of it. Under that, a diagnostic has done its job by showing where to start;
+ * any other quiz points at what to review instead. `goal` is the default goal (75) when the exam has none.
  */
-export function verdictLine(percent: number, diagnostic: boolean): string {
-  if (percent >= 90) return "quiz.verdictGreat";
-  if (percent >= 70) return "quiz.verdictGood";
-  if (percent >= 50) return "quiz.verdictClose";
+export function verdictLine(percent: number, diagnostic: boolean, goal = 75): string {
+  if (percent >= goal) return "quiz.verdictGreat";
+  if (percent >= goal - 10) return "quiz.verdictClose";
+  if (percent >= goal * 0.6) return "quiz.verdictGood";
   return diagnostic ? "quiz.verdictStart" : "quiz.verdictLow";
 }
 

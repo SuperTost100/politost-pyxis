@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, InputNumber, Modal, Slider } from "antd";
+import { App, Button, Input, InputNumber, Modal, Slider } from "antd";
 import {
   Archive,
   ArchiveRestore,
@@ -26,10 +26,10 @@ import { Tag } from "../../components/Tag";
 import { errorDetails } from "../../lib/errorDetails";
 import { goalFraction, goalInput, goalRange } from "../../lib/grade";
 import { invoke } from "../../lib/ipc";
-import { engineFeaturesQuery, enginesQuery, usePlan } from "../../lib/queries";
+import { engineFeaturesQuery, enginesQuery, plannerQuery, usePlan } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { useGradeScale } from "../../lib/useGradeScale";
-import { decimalSeparator, formatMinutes } from "../home/plannerFormat";
+import { decimalSeparator, formatHours, formatMinutes } from "../home/plannerFormat";
 import { CalendarButton } from "../share/CalendarButton";
 import { ExportButton } from "../share/ExportButton";
 import { AttachSourcesDialog } from "./AttachSourcesDialog";
@@ -47,6 +47,7 @@ import {
   type SessionDraft,
 } from "./examSessions";
 import "./PlanPage.css";
+import "./PlanWizard.css";
 import "./ExamSettings.css";
 
 /** The engine tasks an exam uses, in the order Settings › AI engines lists them. */
@@ -107,11 +108,9 @@ export function ExamSettingsPage() {
   const { planId = "" } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
+  const { message } = App.useApp();
   const plan = usePlan(planId);
-  const planner = useQuery({
-    queryKey: ["plans", "planner"],
-    queryFn: () => invoke("plans.planner", {}),
-  });
+  const planner = useQuery(plannerQuery);
   const engines = useQuery(enginesQuery);
   const features = useQuery(engineFeaturesQuery);
   // Each edit is null until the student touches it, so an untouched value is saved back exactly as stored.
@@ -143,6 +142,8 @@ export function ExamSettingsPage() {
   const shownGoal = goal ?? savedGoal;
   const shownSessions = sessions ?? savedSessions;
   const shownHours = hours ? hours.value : savedHours;
+  // The planner's estimate, offered while the student has saved no weekly hours.
+  const suggestion = planner.isSuccess && savedHours === null && !hours ? planner.data.neededHours : null;
   const changed: Record<Change, boolean> = {
     name: title !== null && title.trim() !== data?.title,
     sessions: sessions !== null && !sameSessions(sessions, savedSessions),
@@ -203,6 +204,7 @@ export function ExamSettingsPage() {
       // If the hours fail after the settings were stored, the plan is read again, so only the hours stay unsaved.
       await saveThenRefresh(steps, () => refreshPlan(client, planId));
       discard();
+      void message.success(t("examSettings.saved"));
     });
   }
   function archive(archived: boolean) {
@@ -251,7 +253,7 @@ export function ExamSettingsPage() {
   const counts = footprint.data;
 
   return (
-    <div className="px-exam-settings">
+    <div className={dirty ? "px-exam-settings has-savebar" : "px-exam-settings"}>
       <Link to={`/plans/${planId}`} className="px-plan-back">
         <ArrowLeft size={16} aria-hidden />
         {data?.title ?? t("doors.exams")}
@@ -324,6 +326,7 @@ export function ExamSettingsPage() {
               </p>
               <div>
                 <Slider
+                  className="px-wizard-gold-slider"
                   min={range.min}
                   max={range.max}
                   step={range.step}
@@ -354,12 +357,19 @@ export function ExamSettingsPage() {
                 step={1}
                 decimalSeparator={decimalSeparator(i18n.language)}
                 value={shownHours}
+                // With no hours saved, the planner's estimate shows in the field as a suggestion.
+                placeholder={suggestion != null ? formatHours(i18n.language, suggestion) : undefined}
                 disabled={busy || !planner.isSuccess}
                 onChange={(value) => setHours({ value: typeof value === "number" ? value : null })}
               />
               <label htmlFor="set-hours" className="body">
                 {t("examSettings.hoursUnit")}
               </label>
+              {suggestion != null ? (
+                <Button shape="round" size="small" disabled={busy} onClick={() => setHours({ value: suggestion })}>
+                  {t("examSettings.hoursUse", { hours: formatHours(i18n.language, suggestion) })}
+                </Button>
+              ) : null}
             </div>
             {planner.data?.neededHours != null && !changed.hours ? (
               <p className="small ink-muted">

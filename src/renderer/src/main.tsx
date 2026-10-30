@@ -5,6 +5,7 @@ import { App } from "./app/App";
 import { watchWindowErrors } from "./lib/errorReports";
 import "./locales/i18n";
 import "./lib/focusSource";
+import "./lib/spinLabels";
 import "./design-system/tokens/tokens.css";
 import "./styles/global.css";
 

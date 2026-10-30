@@ -10,6 +10,8 @@ import { finishedLessons, gradedActivities, readSteps } from "./steps";
 import { countDueCards } from "../study/cards";
 import { gapSeverity, planMastery, syncGaps, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
+import { latestDocument } from "../sources/documents";
+import { sectionCount } from "../sources/details";
 import type { ExamSessionInput } from "../../shared/exam-sessions";
 import { hasSessions, readSessions, saveSessions, sessionsFromInput, syncExamDates } from "./sessions";
 
@@ -196,7 +198,7 @@ export function createPlan(
             insertTopic.run(
               topicId,
               planId,
-              `${chapter.number}. ${chapter.title}`,
+              chapter.title,
               topics,
               now,
             );
@@ -312,22 +314,27 @@ export function readPlan(db: Database.Database, planId: string, now = Date.now()
     ...planOrigin(db, planId),
     topics: topicViews,
     steps: readSteps(db, planId),
-    sources: db
-      .prepare(
-        `SELECT s.id, s.title, s.kind, s.status,
-         (SELECT count(*) FROM passages p WHERE p.source_id = s.id) AS sections
+    // The sections are the figure the Library and the source panel show, not a count of passages.
+    sources: (
+      db
+        .prepare(
+          `SELECT s.id, s.title, s.kind, s.status, ${latestDocument("s.id")} AS documentId
        FROM sources s
        JOIN plan_sources ps ON ps.source_id = s.id
        WHERE ps.plan_id = ? AND ps.role = 'material'
        ORDER BY s.title`,
-      )
-      .all(planId) as Array<{
-      id: string;
-      title: string;
-      kind: string;
-      status: string;
-      sections: number;
-    }>,
+        )
+        .all(planId) as Array<{
+        id: string;
+        title: string;
+        kind: string;
+        status: string;
+        documentId: string | null;
+      }>
+    ).map(({ documentId, ...source }) => ({
+      ...source,
+      sections: documentId ? sectionCount(db, documentId) : 0,
+    })),
   };
 }
 

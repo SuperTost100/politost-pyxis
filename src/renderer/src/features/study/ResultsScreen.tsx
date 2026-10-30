@@ -438,7 +438,7 @@ function Changes({
   if (!outcome) return null;
   // A step on the grade's scale is the smallest change the student can see; smaller moves are left out.
   const moved = outcome.topics.filter(
-    (topic) => scale.number(topic.before) !== scale.number(topic.after),
+    (topic) => scale.masteryNumber(topic.before) !== scale.masteryNumber(topic.after),
   );
   const gapTopics = new Set(
     outcome.gaps.filter((gap) => gap.open).map((gap) => gap.topicId),
@@ -456,7 +456,7 @@ function Changes({
   const values = (topicId: string) => {
     const topic = moved.find((row) => row.id === topicId);
     return topic
-      ? `${scale.number(topic.before)} → ${scale.format(topic.after)}`
+      ? `${scale.masteryNumber(topic.before)} → ${scale.mastery(topic.after)}`
       : undefined;
   };
   for (const gap of outcome.gaps) {
