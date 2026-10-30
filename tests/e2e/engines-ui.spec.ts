@@ -233,6 +233,10 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await page.getByRole("switch", { name: "Advanced options" }).click();
     await expect(page.locator(".engines-feature-row")).toHaveCount(8);
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(4);
+    // Advanced options add no second primary button: Add engine is a secondary one.
+    await expect(
+      page.getByRole("button", { name: "Add engine" }),
+    ).not.toHaveClass(/ant-btn-primary/);
     const chat = page
       .locator(".engines-feature-row")
       .filter({ has: page.locator('label[for="engine-chat"]') })
@@ -264,11 +268,11 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     expect(stored.plan).toMatchObject({ effort: "max", effortChoice: "max" });
     // Pin chat to a Claude model, then return everything to automatic.
     await page.getByRole("combobox", { name: "Chat", exact: true }).click();
-    await page
-      .locator(".ant-select-item-option")
-      .filter({ hasText: /claude · /i })
-      .first()
-      .click();
+    // Models are named with their engine as the student knows it, never with an internal id such as "claude".
+    const options = page.locator(".ant-select-item-option");
+    await expect(options.filter({ hasText: /^Claude Code · / }).first()).toBeVisible();
+    await expect(options.filter({ hasText: /^(claude|codex|agent) · / })).toHaveCount(0);
+    await options.filter({ hasText: /^Claude Code · / }).first().click();
     await expect(chat).not.toContainText("Automatic");
     const back = page.getByRole("button", {
       name: "Back to automatic choice",
@@ -358,6 +362,94 @@ esac`,
       "chat",
     );
     await saveShot(page, "engines-four-en.png");
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+test("Settings: a test the provider refuses turns the engine to an expired sign-in, names it, offers sign-in and takes it out of the plan", async () => {
+  // The stand-in CLIs are POSIX shell scripts. Windows still runs the readiness rules in the unit tests.
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-refused-"));
+  const bin = mkdtempSync(join(tmpdir(), "pyxis-engine-bin-"));
+  const fake = (name: string, body: string) => {
+    const path = join(bin, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+    return path;
+  };
+  const env = {
+    HOME: bin,
+    PATH: "/usr/bin:/bin",
+    CLI_FUNNEL_NO_SHELL_PATH: "1",
+    CLI_FUNNEL_CLAUDE_BIN: fake(
+      "claude",
+      `case "$1" in --version) echo "2.1.0";; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac`,
+    ),
+    // Cursor Agent's own check keeps saying "signed in" while its provider answers every call with 401.
+    CLI_FUNNEL_AGENT_BIN: fake(
+      "agent",
+      `case "$1" in
+  --version) echo "2026.09.28-64d2043";;
+  status) echo '{"isAuthenticated":true}';;
+  about) echo '{}';;
+  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\n';;
+  *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
+esac`,
+    ),
+  };
+  const app = await launchPyxis({ userData, env });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.evaluate(async () => {
+      await window.pyxis.invoke("engines.acknowledge", {
+        providers: ["claude", "agent"],
+      });
+      localStorage.setItem("pyxis.lang", "en");
+      localStorage.removeItem("pyxis.engines.advanced");
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    const row = (name: string) =>
+      page.locator(".engines-list .px-engine", { hasText: name });
+    await expect(row("Cursor Agent")).toContainText("Ready", { timeout: 30000 });
+    await expect(page.locator(".engines-summary")).toContainText("Cursor Agent", {
+      timeout: 30000,
+    });
+
+    await page.getByRole("button", { name: "Test Cursor Agent" }).click();
+    // The message names the engine and offers its sign-in here, instead of sending the student to the page they are on.
+    await expect(
+      page.getByText(
+        "Cursor Agent refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
+      ),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText(/Settings, AI engines/)).toHaveCount(0);
+    await expect(row("Cursor Agent")).toContainText("Sign-in expired");
+    await expect(row("Cursor Agent")).not.toContainText("Ready");
+    await expect(page.locator(".engines-summary")).not.toContainText(
+      "Cursor Agent",
+      { timeout: 30000 },
+    );
+    expect(
+      Object.values(
+        await page.evaluate(() => window.pyxis.invoke("engines.features", {})),
+      ).map((selection) => selection.provider),
+    ).not.toContain("agent");
+    await expectNoAxeViolations(page, {
+      tags: ["wcag2a", "wcag2aa", "wcag21aa"],
+    });
+    await saveShot(page, "engines-refused-en.png", { fullPage: true });
+    await page.getByRole("button", { name: "Sign in to Cursor Agent" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "Set up Cursor Agent" }),
+    ).toBeVisible();
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });

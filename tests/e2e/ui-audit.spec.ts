@@ -7,6 +7,7 @@ import {
 } from "@playwright/test";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
@@ -30,6 +31,10 @@ const routes = [
   ["root", "/"],
   ["onboarding", "/onboarding"],
   ["onboarding-again", "/onboarding?again=1"],
+  // Setup step 2 with engines in every state: ready, signed out, sign-in expired, not installed. Automatic, then with
+  // the student picking the engines.
+  ["onboarding-engines", "/onboarding"],
+  ["onboarding-engines-chosen", "/onboarding"],
   ["ask-new", "/ask"],
   ["ask-thread", "/ask/audit-chat"],
   ["exams", "/exams"],
@@ -1008,6 +1013,63 @@ function prepareBackupState(name: string) {
 }
 
 /** The empty Exams page: the plans move to a side table and come back for every other state. Foreign keys are off on this connection only, so nothing that belongs to a plan is deleted with it. */
+/**
+ * Stand-in CLIs for the whole audit. Claude Code and Cursor Agent report a sign-in only while the `on` file exists, so
+ * every state but setup step 2 sees installed engines that are signed out. Cursor Agent's provider refuses every call,
+ * Codex is always signed out and Antigravity is not installed. No model is ever called.
+ */
+let auditEngines = "";
+function fakeEngines(): Record<string, string> {
+  auditEngines = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-engines-"));
+  // The stand-ins are POSIX shell scripts. On Windows setup step 2 shows the computer with no engine instead.
+  if (process.platform === "win32") return {};
+  const on = join(auditEngines, "on");
+  const fake = (name: string, body: string) => {
+    const path = join(auditEngines, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+    return path;
+  };
+  return {
+    CLI_FUNNEL_NO_SHELL_PATH: "1",
+    CLI_FUNNEL_CLAUDE_BIN: fake(
+      "claude",
+      `case "$1" in --version) echo "2.1.0";; auth) if [ -f "${on}" ]; then echo '{"loggedIn":true,"authMethod":"claude.ai"}'; else echo '{"loggedIn":false}'; fi;; *) exit 1;; esac`,
+    ),
+    CLI_FUNNEL_CODEX_BIN: fake(
+      "codex",
+      `case "$1" in --version) echo "codex-cli 0.150.0";; login) echo "Not logged in"; exit 1;; *) exit 1;; esac`,
+    ),
+    CLI_FUNNEL_AGENT_BIN: fake(
+      "agent",
+      `case "$1" in
+  --version) echo "2026.09.28-64d2043";;
+  status) if [ -f "${on}" ]; then echo '{"isAuthenticated":true}'; else echo '{"isAuthenticated":false}'; fi;;
+  about) echo '{}';;
+  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\n';;
+  *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
+esac`,
+    ),
+    CLI_FUNNEL_AGY_BIN: join(auditEngines, "not-installed"),
+  };
+}
+
+/** Setup step 2 signs the stand-ins in; every other state finds them signed out and nothing chosen or confirmed. */
+function prepareEngines(name: string) {
+  const on = join(auditEngines, "on");
+  const engines = name.startsWith("onboarding-engines");
+  if (engines) writeFileSync(on, "");
+  else rmSync(on, { force: true });
+  withDb((db) => {
+    db.exec(`DELETE FROM feature_engines;
+      DELETE FROM settings WHERE key LIKE 'engine-disclosure:%' OR key LIKE 'engine-signed-out:%' OR key = 'engines.allowed';`);
+    if (name === "onboarding-engines-chosen")
+      db.prepare(
+        "INSERT INTO settings(key,value_json,updated_at) VALUES('engines.allowed',?,?)",
+      ).run(JSON.stringify(["claude", "codex"]), Date.now());
+  });
+}
+
 function prepareExamsEmpty(name: string) {
   withDb((db) => {
     db.exec("PRAGMA foreign_keys = OFF");
@@ -1140,6 +1202,7 @@ function preparePanelSources(name: string) {
 }
 
 function prepareState(name: string) {
+  prepareEngines(name);
   prepareExamsEmpty(name);
   preparePanelSources(name);
   prepareLibraryEmpty(name);
@@ -1615,6 +1678,37 @@ async function openState(page: Page, name: string) {
   const dialog = page.getByRole("dialog");
   const source = /^Appunti di fisica$/;
   switch (name) {
+    case "onboarding-engines":
+    case "onboarding-engines-chosen": {
+      await page
+        .getByRole("button", { name: both("Continua", "Continue") })
+        .click();
+      if (process.platform === "win32") break;
+      const rows = page
+        .getByRole("list", {
+          name: both("Motori su questo computer", "Engines on this computer"),
+        })
+        .getByRole("listitem");
+      await expect(rows).toHaveCount(4, { timeout: 30000 });
+      const agent = rows.filter({ hasText: "Cursor Agent" });
+      // Cursor Agent's provider refuses a call, so its row reads as an expired sign-in with Sign in.
+      await page.evaluate(async () => {
+        await window.pyxis.invoke("engines.acknowledge", {
+          providers: ["claude", "agent"],
+        });
+        await window.pyxis
+          .invoke("engines.test", { provider: "agent" })
+          .catch(() => undefined);
+      });
+      await expect(agent).toContainText(/Accesso scaduto|Sign-in expired/, {
+        timeout: 30000,
+      });
+      if (name === "onboarding-engines-chosen")
+        await expect(
+          page.getByRole("checkbox", { name: /^(Usa|Use) Codex$/ }),
+        ).toBeChecked();
+      break;
+    }
     // The download state lives in main and outlasts a reload, so the plain route starts from no download.
     case "settings-updates":
       await page.evaluate(() => window.pyxis.cancelUpdate());
@@ -3122,6 +3216,7 @@ test("M14 every application route in both languages, themes and supported widths
     }),
   );
   const env = {
+    ...fakeEngines(),
     PYXIS_E2E_BOOKS: booksSite,
     PYXIS_E2E_FILE: importFolder,
     ...updateEnv(),
@@ -3382,6 +3477,7 @@ test("M14 every application route in both languages, themes and supported widths
     rmSync(importFolder, { recursive: true, force: true });
     rmSync(booksSite, { recursive: true, force: true });
     rmSync(updateFolder, { recursive: true, force: true });
+    rmSync(auditEngines, { recursive: true, force: true });
   }
   expect(failures, failures.join("\n")).toEqual([]);
 });

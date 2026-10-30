@@ -4,6 +4,8 @@ import { basename, extname, join } from "node:path";
 import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
+import { configureSignOuts } from "../engine/bench";
+import { signOutStore } from "../engine/choice";
 import { setFallbackListener } from "../engine/generate";
 import { currentUsageScope, setUsageRecorder, storeUsage } from "../engine/usage";
 import type { z } from "zod";
@@ -223,6 +225,8 @@ const routes = {
   "jobs.dismiss": ["jobs", "dismiss"],
   "engines.overview": ["engines", "overview", "bare"],
   "engines.acknowledge": ["engines", "acknowledge"],
+  "engines.choice": ["engines", "choice", "bare"],
+  "engines.choose": ["engines", "choose"],
   "engines.setEffort": ["engines", "setEffort"],
   "engines.features": ["engines", "features", "bare"],
   "engines.usage": ["engines", "usage"],
@@ -655,6 +659,11 @@ export function bindEngines(
   installerFixture?: string,
 ): void {
   configureDisclosure(db);
+  // A refused sign-in outlasts a restart. When one starts or ends, Settings shows it and the automatic plan follows.
+  configureSignOuts(signOutStore(db), (provider) => {
+    broadcast("engine.status", { provider });
+    void engines?.signInChanged().catch(() => undefined);
+  });
   setFallbackListener((event) => {
     broadcast("engine.fallback", event);
     // A call a job made: the finished job tells which engine answered.

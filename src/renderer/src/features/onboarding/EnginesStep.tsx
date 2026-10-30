@@ -13,15 +13,12 @@ import {
   unacknowledged,
 } from "../../components/EngineNotice";
 import { EngineRow } from "../../components/EngineRow";
+import { EngineUseChoice, engineBox } from "../../components/EngineUseChoice";
 import { LocalModelCard, useLocalModel } from "../../components/LocalModel";
-import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { ProviderSetup } from "../../components/ProviderSetup";
+import { engineStatus } from "../../lib/engineStatus";
 import { invoke } from "../../lib/ipc";
-import {
-  engineSummaryLines,
-  engineSummaryText,
-} from "../settings/EnginesPanel";
 import { useEngineSetup } from "../settings/useEngineSetup";
 import "../settings/EnginesPanel.css";
 
@@ -38,11 +35,12 @@ const plans = [
 type Plan = (typeof plans)[number]["id"];
 
 /**
- * Asks which AI the student already pays for, then installs and signs in to the matching engine. It also says what
- * Pyxis found on this computer. It never calls a model: it reads the installed engines and lets core pick the models
- * (`engines.autoConfigure`). `onReady` tells the page whether to offer "Continue" or "I'll do it later". On a rerun
- * (`again`) the engines the student already set up stay as they are: Pyxis recomputes the automatic choices only if
- * the set of ready engines changes while the screen is open.
+ * The AI engines on this computer, one row each with its real state (ready, signed out, sign-in expired, not installed)
+ * and the model Pyxis gives it. The student lets Pyxis use them all (automatic) or ticks the ones it may use, and signs
+ * in or installs from the row. With no engine installed it asks which AI the student already pays for and sets that one
+ * up instead. It never calls a model: core picks the models (`engines.autoConfigure`). `onReady` tells the page
+ * whether to offer "Continue" or "I'll do it later". On a rerun (`again`) the engines the student already set up stay
+ * as they are: Pyxis recomputes the automatic choices only if the set of ready engines changes while the screen is open.
  */
 export function EnginesStep({
   onReady,
@@ -53,45 +51,48 @@ export function EnginesStep({
 }) {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
-  const { overview, features, refresh } = useEngineSetup();
+  const { overview, features, choice, choose, refresh } = useEngineSetup();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [picked, setPicked] = useState<InstallableProvider | null>(null);
-  const [adding, setAdding] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const local = useLocalModel();
   const localOn = local.data?.enabled === true;
+  const allowed = choice.data?.allowed ?? null;
   const rows = (overview.data ?? []).filter((row) => !row.disabled);
   const readyRows = rows.filter((row) => row.installed && row.loggedIn);
-  const nothingReady = overview.isSuccess && readyRows.length === 0;
+  // The engines Pyxis will really use: ready, and left in by the student.
+  const usable = readyRows.filter((row) => row.allowed);
   const cliRows = rows.filter(
     (row): row is Engine & { id: InstallableProvider } =>
       row.kind === "cli" && isInstallable(row.id),
   );
   const installedCli = cliRows.filter((row) => row.installed);
-  const readyKey = readyRows.map((row) => row.id).join(",");
-  // One notice for every engine found, shown here so no task ever has to ask.
-  const toAcknowledge = unacknowledged(readyRows);
-  // An engine that is installed but signed out is most likely the one the student uses, so it is offered first.
-  const signedOut = installedCli.find((row) => !row.loggedIn)?.id ?? null;
+  // With nothing installed the student first says what they pay for. Otherwise every engine gets its own row.
+  const noneInstalled =
+    overview.isSuccess && installedCli.length === 0 && readyRows.length === 0;
+  const usableKey = usable.map((row) => row.id).join(",");
+  // One notice for every engine Pyxis may use, shown here so no task ever has to ask.
+  const toAcknowledge = unacknowledged(rows);
+  // An installed engine that still needs a sign-in is most likely the one the student uses, so it is offered first.
+  const signedOut =
+    installedCli.find((row) => !row.loggedIn && row.allowed)?.id ?? null;
   const engine =
     picked ??
     (plan ? plans.find((item) => item.id === plan)!.engine : null) ??
-    (nothingReady ? signedOut : null);
-  // Once the student has picked something the choices stay, so the screen does not jump when the engine is ready.
-  const picking = nothingReady || adding || plan !== null || picked !== null;
+    (overview.isSuccess && usable.length === 0 ? signedOut : null);
 
   useEffect(() => {
     if (overview.isSuccess)
-      onReady((readyKey !== "" || localOn) && toAcknowledge.length === 0);
-  }, [overview.isSuccess, readyKey, localOn, toAcknowledge.length, onReady]);
+      onReady((usableKey !== "" || localOn) && toAcknowledge.length === 0);
+  }, [overview.isSuccess, usableKey, localOn, toAcknowledge.length, onReady]);
 
   const openedWith = useRef<string | null>(null);
-  // Let core choose the models once the set of ready engines is known, and again when it changes.
+  // Let core choose the models once the set of usable engines is known, and again when it changes.
   useEffect(() => {
     if (!overview.isSuccess) return;
     if (again) {
-      openedWith.current ??= readyKey;
-      if (readyKey === openedWith.current) return;
+      openedWith.current ??= usableKey;
+      if (usableKey === openedWith.current) return;
     }
     let live = true;
     void invoke("engines.autoConfigure", {})
@@ -103,7 +104,7 @@ export function EnginesStep({
     return () => {
       live = false;
     };
-  }, [overview.isSuccess, readyKey, again, client]);
+  }, [overview.isSuccess, usableKey, again, client]);
 
   const names = (list: Engine[]) =>
     new Intl.ListFormat(i18n.language.startsWith("it") ? "it" : "en-GB", {
@@ -112,17 +113,14 @@ export function EnginesStep({
     }).format(list.map((row) => row.name));
   const nameOf = (id: InstallableProvider) =>
     rows.find((row) => row.id === id)?.name ?? id;
-  const summaryInput = {
-    t,
-    language: i18n.language,
-    overview: overview.data,
-    features: features.data,
-    nothingReady,
-  };
-  const summary = engineSummaryText(summaryInput);
-  const summaryLines = engineSummaryLines(summaryInput);
-  // After a sign-in the notice belongs next to the setup card the student is looking at, not above the plan list.
-  const noticeBelowSetup = picking && engine !== null;
+  /** The models the automatic plan gives an engine, as on the Settings rows. */
+  function modelsOf(provider: string): string {
+    const ids: string[] = [];
+    for (const selection of Object.values(features.data ?? {}))
+      if (selection.provider === provider && !ids.includes(selection.model))
+        ids.push(selection.model);
+    return ids.join(" · ");
+  }
   const notice =
     toAcknowledge.length > 0 ? (
       <ScrollIntoView>
@@ -136,6 +134,14 @@ export function EnginesStep({
     ) : null;
   const openOffers = () =>
     void window.pyxis.openExternal(offersPage(i18n.language));
+  const setup = engine ? (
+    <ProviderSetup
+      key={engine}
+      provider={engine}
+      row={rows.find((row) => row.id === engine)}
+      onChanged={refresh}
+    />
+  ) : null;
 
   let found: string | null = null;
   if (overview.isSuccess) {
@@ -165,37 +171,60 @@ export function EnginesStep({
           {found}
         </p>
       ) : null}
-      {readyRows.length > 0 && summary ? (
-        <div className="px-card engines-summary">
-          <span className="px-engine-ico">
-            <Icon name="cpu" size={18} />
-          </span>
-          <div className="engines-summary-body">
-            <h2 className="engines-summary-title">{t("engines.auto.title")}</h2>
-            <p>{summary}</p>
-            {summaryLines.length ? (
-              <ul className="engines-summary-split">
-                {summaryLines.map((line) => (
-                  <li key={line.id}>
-                    <span className="body-strong">{line.name}</span>:{" "}
-                    {line.tasks}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            <p className="small engines-hint">{t("engines.auto.cheap")}</p>
+      {overview.isSuccess && !noneInstalled ? (
+        <>
+          <EngineUseChoice
+            allowed={allowed}
+            rows={cliRows}
+            disabled={choose.isPending || choice.isPending}
+            onChange={(next) => choose.mutate(next)}
+          />
+          <div
+            className="engines-list"
+            role="list"
+            aria-label={t("onboarding.engines.listLabel")}
+          >
+            {cliRows.map((row) => {
+              const status = engineStatus(row);
+              return (
+                <div role="listitem" key={row.id}>
+                  <EngineRow
+                    kind={row.kind}
+                    name={row.name}
+                    model={row.allowed ? modelsOf(row.id) : ""}
+                    status={status.tone}
+                    statusText={t(status.label)}
+                    use={engineBox(
+                      allowed,
+                      row.id,
+                      (next) => choose.mutate(next),
+                      choose.isPending,
+                    )}
+                    actionLabel={
+                      status.fix === "install"
+                        ? t("engines.install")
+                        : t("engines.signIn")
+                    }
+                    actionDisabled={engine === row.id}
+                    onAction={status.fix ? () => setPicked(row.id) : undefined}
+                  />
+                </div>
+              );
+            })}
           </div>
-        </div>
+          <p className="small engines-hint">
+            {t(
+              allowed === null
+                ? "onboarding.engines.autoHint"
+                : "onboarding.engines.chosenHint",
+            )}
+          </p>
+          {setup}
+          {notice}
+          {localOn ? <LocalModelCard place="onboarding" /> : null}
+        </>
       ) : null}
-      {noticeBelowSetup ? null : notice}
-      {overview.isSuccess && !picking ? (
-        <div className="px-onboarding-inline">
-          <Button shape="round" onClick={() => setAdding(true)}>
-            {t("onboarding.engines.addAnother")}
-          </Button>
-        </div>
-      ) : null}
-      {overview.isSuccess && picking ? (
+      {noneInstalled ? (
         <>
           <fieldset className="px-onboarding-plans">
             <legend className="title-3">
@@ -256,15 +285,8 @@ export function EnginesStep({
           {(plan === "none" && picked === null) || localOn ? (
             <LocalModelCard place="onboarding" />
           ) : null}
-          {engine ? (
-            <ProviderSetup
-              key={engine}
-              provider={engine}
-              row={rows.find((row) => row.id === engine)}
-              onChanged={refresh}
-            />
-          ) : null}
-          {noticeBelowSetup ? notice : null}
+          {setup}
+          {notice}
           <div className="px-onboarding-inline">
             <Button
               type="text"
@@ -281,32 +303,27 @@ export function EnginesStep({
           </div>
           {showAll ? (
             <div className="engines-list">
-              {cliRows.map((row) => (
-                <EngineRow
-                  key={row.id}
-                  kind={row.kind}
-                  name={row.name}
-                  model={row.version || row.id}
-                  status={
-                    row.installed && row.loggedIn
-                      ? "ok"
-                      : row.installed
-                        ? "warn"
-                        : "idle"
-                  }
-                  statusText={
-                    row.installed ? undefined : t("engines.notInstalled")
-                  }
-                  actionLabel={t("onboarding.engines.setUp")}
-                  actionDisabled={engine === row.id}
-                  onAction={() => setPicked(row.id)}
-                />
-              ))}
+              {cliRows.map((row) => {
+                const status = engineStatus(row);
+                return (
+                  <EngineRow
+                    key={row.id}
+                    kind={row.kind}
+                    name={row.name}
+                    model={row.version || ""}
+                    status={status.tone}
+                    statusText={t(status.label)}
+                    actionLabel={t("onboarding.engines.setUp")}
+                    actionDisabled={engine === row.id}
+                    onAction={() => setPicked(row.id)}
+                  />
+                );
+              })}
             </div>
           ) : null}
         </>
       ) : null}
-      {readyRows.length === 0 ? (
+      {usable.length === 0 ? (
         <p className="small engines-hint">
           {t("onboarding.engines.disclosure")}
         </p>

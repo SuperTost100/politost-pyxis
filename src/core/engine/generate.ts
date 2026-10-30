@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { IpcError, isAbort } from "../../shared/ipc";
 import { engineSeesImages } from "./capabilities";
-import { benchEngine, benchModel, isBenched, isModelBenched } from "./bench";
+import {
+  benchEngine,
+  benchModel,
+  clearSignOut,
+  isBenched,
+  isModelBenched,
+  markSignedOut,
+} from "./bench";
 import { engineIpcError, fallbackReason } from "./errors";
 import {
   endConversation,
@@ -112,7 +119,10 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
       : undefined;
   if (instead) return answerOn(input, instead);
   try {
-    return await generateOnce(input);
+    const output = await generateOnce(input);
+    // An engine that answers is signed in, whatever a refused call said before.
+    clearSignOut(input.selection.provider);
+    return output;
   } catch (err) {
     const reason =
       !input.signal?.aborted && !isAbort(err)
@@ -123,9 +133,12 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     // resets, it is signed in again or the refused model's day is over.
     if (reason === "model")
       benchModel(input.selection.provider, input.selection.model);
+    // A refused sign-in is marked even when no engine can answer instead, or a pinned engine would keep reading
+    // "Ready" in Settings while every call to it fails.
+    if (reason === "signed-out") markSignedOut(input.selection.provider);
     const next = reason ? usableFallback(input, reason) : undefined;
     if (!reason || !next) throw engineIpcError(err, input.selection.provider);
-    if (reason !== "model")
+    if (reason === "limit")
       benchEngine(
         input.selection.provider,
         reason,

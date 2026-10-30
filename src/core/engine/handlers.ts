@@ -1,7 +1,16 @@
 import type Database from "better-sqlite3";
-import { automaticEffort, studentEffort } from "../../shared/effort";
+import {
+  automaticEffort,
+  nearestEffort,
+  studentEffort,
+} from "../../shared/effort";
 import { engineProviders, IpcError } from "../../shared/ipc";
-import { autoFeatures, planAuto, type AutoProvider } from "./auto";
+import {
+  autoFeatures,
+  pickModel,
+  planAuto,
+  type AutoProvider,
+} from "./auto";
 import {
   capabilityWarning,
   providerSeesImages,
@@ -18,7 +27,8 @@ import {
   shellPathReady,
   type ProviderId,
 } from "./funnel";
-import { clearSignOut } from "./bench";
+import { clearSignOut, isSignedOut, markSignedOut } from "./bench";
+import { isAllowed, readAllowed, writeAllowed } from "./choice";
 import { effortsOf, rememberModels, resolveEffort } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
 import {
@@ -107,6 +117,8 @@ function textOnly(id: string, access: readonly string[] = []): boolean {
 
 /** How long Test waits for the one-word answer. A CLI that starts cold can take half a minute. */
 const TEST_DEADLINE_MS = 90_000;
+const TEST_SYSTEM = "Answer with one word.";
+const TEST_PROMPT = "Reply with the word ok";
 
 const invalidSelection = () => new IpcError("invalid-selection", "engines.errors.invalid-selection");
 
@@ -123,7 +135,10 @@ type OverviewRow = {
   name: string;
   kind: "cli" | "api";
   installed: boolean;
+  /** Signed in and not refused: the CLI says so and no call since was turned away. */
   loggedIn: boolean;
+  /** The CLI says it is signed in, but the provider refused a call (an expired sign-in). */
+  refused: boolean;
   disabled: boolean;
   version: string;
   path: string;
@@ -142,14 +157,23 @@ function overviewRows(): Promise<OverviewRow[]> {
   return scanning;
 }
 
+/** What each CLI's own sign-in check said at the last scan. */
+const reportedSignedIn = new Map<string, boolean>();
+
 async function scanProviders(): Promise<OverviewRow[]> {
   const rows = await readProviders();
-  // An engine skipped after a sign-out is back once a scan finds it signed in.
-  for (const row of rows) if (isReady(row)) clearSignOut(row.id);
-  return rows;
+  return rows.map((row) => {
+    // A CLI whose saved sign-in stopped working can go on reporting "signed in", so that alone does not undo a refused
+    // call. Seeing it signed out and then signed in does: the student signed in again, here or in a terminal.
+    if (row.loggedIn && reportedSignedIn.get(row.id) === false)
+      clearSignOut(row.id);
+    reportedSignedIn.set(row.id, row.loggedIn);
+    const refused = row.loggedIn && isSignedOut(row.id);
+    return { ...row, loggedIn: row.loggedIn && !refused, refused };
+  });
 }
 
-async function readProviders(): Promise<OverviewRow[]> {
+async function readProviders(): Promise<Omit<OverviewRow, "refused">[]> {
   // Detection looks for the CLIs on the login shell's PATH, which core reads in the background at launch.
   await shellPathReady();
   // CLI Funnel also lists providers Pyxis does not offer yet, such as Ollama.
@@ -213,7 +237,11 @@ export async function autoConfigureEngines(
   options: { reset?: boolean; features?: string[]; rows?: OverviewRow[] } = {},
 ): Promise<{ ready: string[]; features: Record<string, StoredSelection> }> {
   const rows = options.rows ?? (await overviewRows());
-  const ready = rows.filter(isReady);
+  // Only the engines the student lets Pyxis use, and only while they are ready.
+  const allowed = readAllowed(db);
+  const ready = rows.filter(
+    (row) => isReady(row) && isAllowed(allowed, row.id),
+  );
   const listed: AutoProvider[] = [];
   let failed = 0;
   for (const row of ready.filter((candidate) => candidate.acknowledged)) {
@@ -493,7 +521,52 @@ export function engineHandlers(
         lastAuto = Date.now();
         void reconfigure(rows);
       }
-      return rows;
+      const allowed = readAllowed(db);
+      return rows.map((row) => ({
+        ...row,
+        allowed: isAllowed(allowed, row.id),
+      }));
+    },
+    /** The engines the student lets Pyxis use: null means automatic, every engine that is ready. */
+    choice() {
+      return { allowed: readAllowed(db) };
+    },
+    /**
+     * Saves which engines Pyxis may use, or null for automatic. Tasks pinned to an engine left out lose the pin, since
+     * Pyxis must not send them there, and the automatic plan is worked out again without it.
+     */
+    choose(input: { allowed: string[] | null }) {
+      if (
+        input.allowed &&
+        (input.allowed.length === 0 ||
+          input.allowed.some((id) => !providers.has(id)))
+      )
+        throw invalidSelection();
+      writeAllowed(db, input.allowed);
+      if (input.allowed) {
+        const left = new Set(input.allowed);
+        const rows = db
+          .prepare("SELECT feature, selection_json FROM feature_engines")
+          .all() as StoredRow[];
+        for (const row of rows) {
+          const { provider } = JSON.parse(row.selection_json) as StoredSelection;
+          if (provider !== LOCAL_PROVIDER && !left.has(provider))
+            db.prepare("DELETE FROM feature_engines WHERE feature = ?").run(
+              row.feature,
+            );
+        }
+      }
+      endConversations();
+      hadEngines.delete(db);
+      lastAuto = Date.now();
+      void reconfigure();
+      return { ok: true as const };
+    },
+    /** An engine was marked signed out or signed in again: the automatic plan follows at once. */
+    signInChanged() {
+      hadEngines.delete(db);
+      lastAuto = Date.now();
+      return reconfigure();
     },
     /**
      * Records that the student has read what these providers receive, then lets them take part in the automatic
@@ -660,9 +733,12 @@ export function engineHandlers(
       const deadline = new AbortController();
       const timer = setTimeout(() => deadline.abort(), TEST_DEADLINE_MS);
       try {
-        const model = input.model || (await defaultModel(input.provider));
-        // The screen can hold a level the chosen model does not list; the model gets the nearest one it has.
-        const effort = resolveEffort(input.provider, model, input.effort);
+        // The cheapest model is looked up only when the student did not pick one.
+        const { model, effort } = input.model
+          ? testEffort(input.provider, input.model, input.effort)
+          : await cheapestTest(input.provider);
+        // Closed while the model list was read: no CLI starts.
+        signal?.throwIfAborted();
         const result = await runTurn({
           selection: {
             provider: input.provider,
@@ -670,25 +746,31 @@ export function engineHandlers(
             effort,
             fast: input.fast,
           },
-          prompt: "Reply with the word ok",
+          // Claude Code swaps its own long instructions for this line when tools are off, which takes a test from
+          // about 5,000 input tokens to under 2,000. Antigravity, Cursor Agent and Codex keep theirs whatever Pyxis sends.
+          system: TEST_SYSTEM,
+          prompt: TEST_PROMPT,
           signal: signal
             ? AbortSignal.any([signal, deadline.signal])
             : deadline.signal,
         });
-        // The first successful confirmation becomes the default. INSERT OR
+        // The engine answered, so a sign-in refused earlier works again.
+        clearSignOut(input.provider);
+        // The first successful confirmation becomes the default, unless the student left this engine out. INSERT OR
         // IGNORE preserves a choice made while this asynchronous test ran.
-        db.prepare(
-          "INSERT OR IGNORE INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, ?)",
-        ).run(
-          JSON.stringify({
-            provider: input.provider,
-            model: result.model,
-            ...(effort ? { effort } : {}),
-            ...(input.fast !== undefined ? { fast: input.fast } : {}),
-            auto: true,
-          }),
-          Date.now(),
-        );
+        if (isAllowed(readAllowed(db), input.provider))
+          db.prepare(
+            "INSERT OR IGNORE INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, ?)",
+          ).run(
+            JSON.stringify({
+              provider: input.provider,
+              model: result.model,
+              ...(effort ? { effort } : {}),
+              ...(input.fast !== undefined ? { fast: input.fast } : {}),
+              auto: true,
+            }),
+            Date.now(),
+          );
         return {
           ok: true as const,
           latencyMs: Date.now() - started,
@@ -700,6 +782,9 @@ export function engineHandlers(
         if (deadline.signal.aborted)
           throw new IpcError("timeout", "engines.errors.timeout");
         const translated = translateEngineError(err, input.provider);
+        // A refused sign-in or key: the engine reads signed out and leaves the automatic plan until it is back.
+        if (translated.code === "not-logged-in" || translated.code === "refused")
+          markSignedOut(input.provider);
         throw new IpcError(
           translated.code,
           translated.messageKey,
@@ -734,6 +819,9 @@ export function engineHandlers(
       }
       if (disabled(input.provider))
         throw new IpcError("unsupported", "engines.disabled");
+      // The student left this engine out of the ones Pyxis may use.
+      if (!local && !isAllowed(readAllowed(db), input.provider))
+        throw invalidSelection();
       if (!isProviderAcknowledged(input.provider))
         throw new IpcError(
           "disclosure-required",
@@ -864,6 +952,8 @@ export function engineHandlers(
           try {
             let next = await iterator.next();
             while (!next.done) {
+              // A sign-in Pyxis ran undoes one the provider refused before.
+              if (next.value.type === "done") clearSignOut(input.provider);
               if (next.value.type !== "log")
                 emit(notice(input.provider, next.value));
               // Signed in is shown at once; choosing models can take seconds and happens after.
@@ -877,7 +967,10 @@ export function engineHandlers(
               loginSessions.delete(input.provider);
           }
         })();
-        if (step.value?.type === "done") reconfigureSoon();
+        if (step.value?.type === "done") {
+          clearSignOut(input.provider);
+          reconfigureSoon();
+        }
         if (step.value) return notice(input.provider, step.value);
         return cancelled
           ? { provider: input.provider, type: "cancelled" }
@@ -948,7 +1041,39 @@ export function engineHandlers(
   };
 }
 
-async function defaultModel(provider: ProviderId): Promise<string> {
+/**
+ * The effort a test of the student's model runs at: the level they picked, or the nearest the model lists. With no
+ * pick, the lowest level, since a test only checks that the engine answers.
+ */
+function testEffort(
+  provider: ProviderId,
+  model: string,
+  wanted: string | undefined,
+): { model: string; effort?: string } {
+  // The screen can hold a level the chosen model does not list; the model gets the nearest one it has.
+  const effort = wanted
+    ? resolveEffort(provider, model, wanted)
+    : getFunnel().providers[provider]?.capabilities.effort
+      ? nearestEffort("low", effortsOf(provider, model) ?? [])
+      : undefined;
+  return { model, ...(effort ? { effort } : {}) };
+}
+
+/** Without the student's pick, a test runs on the provider's cheapest tier at its lowest effort. */
+async function cheapestTest(
+  provider: ProviderId,
+): Promise<{ model: string; effort?: string }> {
   const models = await getFunnel().models(provider);
-  return models[0]?.id ?? "";
+  rememberModels(provider, models);
+  const model =
+    pickModel(
+      {
+        id: provider,
+        kind: kindOf(provider),
+        effort: true,
+        models: models.map((row) => ({ id: row.id, efforts: row.efforts })),
+      },
+      "fast",
+    )?.id ?? "";
+  return testEffort(provider, model, undefined);
 }
