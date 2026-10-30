@@ -54,6 +54,16 @@ describe("plainTitle", () => {
     expect(plainTitle("dove $\\bar{x}$ vale e poi $\\sigma_{")).toBe("dove x̄ vale e poi");
   });
 
+  it("joins every subscript and exponent glyph to the symbol before it", () => {
+    expect(plainTitle("$\\sigma_i$, $\\alpha_j$, $\\omega_r$, $\\mu_u$, $\\nu_v$")).toBe("σᵢ, αⱼ, ωᵣ, μᵤ, νᵥ");
+    expect(plainTitle("$\\sigma^2$ e $\\theta^3$ e $\\pi^n$")).toBe("σ² e θ³ e πⁿ");
+  });
+
+  it("finds a dangling formula in the text it reads, after a book reference changed its length", () => {
+    expect(plainTitle("Leggi {{formula:1}} poi $x$ e $y")).toBe("Leggi eq. 1 poi x e");
+    expect(plainTitle("Leggi {{formula:1}} poi $x$")).toBe("Leggi eq. 1 poi x");
+  });
+
   it("keeps a price and plain text as they are", () => {
     expect(plainTitle("Costa $5 e poi $6.50 in tutto")).toBe("Costa $5 e poi $6.50 in tutto");
   });

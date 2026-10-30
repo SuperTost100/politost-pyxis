@@ -77,19 +77,3 @@ export function displayMathLines(input: string): string {
     );
   });
 }
-
-/**
- * Text a student typed, as pieces to draw: the `$…$` formulas their math field wrote are math, everything else is theirs
- * to the character. `*`, `_`, `#` and backticks are not Markdown there: `a.b = 1*3 + 2*4` stays that, not "1" and "3 + 2" in italics.
- */
-export function typedParts(text: string): Array<{ math: boolean; text: string }> {
-  const parts: Array<{ math: boolean; text: string }> = [];
-  let at = 0;
-  for (const [start, end] of mathSpans(text)) {
-    if (start > at) parts.push({ math: false, text: text.slice(at, start) });
-    parts.push({ math: true, text: text.slice(start, end) });
-    at = end;
-  }
-  if (at < text.length) parts.push({ math: false, text: text.slice(at) });
-  return parts;
-}

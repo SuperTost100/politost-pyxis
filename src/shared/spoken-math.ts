@@ -22,6 +22,9 @@ const SUBSCRIPT_GLYPHS = "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕ
 const SUPERSCRIPTS = "0123456789+-=()ni";
 const SUPERSCRIPT_GLYPHS = "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ";
 
+// A script glyph after the space a command left in front of it.
+const SCRIPT_AFTER_SPACE = new RegExp(` ([${SUBSCRIPT_GLYPHS}${SUPERSCRIPT_GLYPHS}])`, "gu");
+
 /** `text` with every character of it in `from` written as the one at the same place in `to`; `null` when one has no form. */
 function setScript(text: string, from: string, to: string): string | null {
   let out = "";
@@ -76,7 +79,7 @@ function spokenFormula(latex: string, glyphs = false): string {
     })
     .replace(/[{}\\]/g, "");
   // A sign written before a subscript or an exponent gave it a space of its own: "σ _x" is "σ_x".
-  return out.replace(/\s+/g, " ").replace(/ ([\^_])/g, "$1").replace(glyphs ? / ([₀-₎ₐ-ₜ⁰-⁾ⁿⁱ])/gu : /$^/, "$1").trim();
+  return out.replace(/\s+/g, " ").replace(/ ([\^_])/g, "$1").replace(glyphs ? SCRIPT_AFTER_SPACE : /$^/, "$1").trim();
 }
 
 /** Markdown with `$…$` formulas as plain text for an accessible name, formulas spoken as signs and words. */
@@ -98,8 +101,9 @@ export function spokenText(input: string, glyphs = false): string {
  * dropped, so no half a formula is left in the name.
  */
 export function plainTitle(input: string, max = 80): string {
-  const spans = mathSpans(resolveBookRefs(repairLatexOutsideCode(input)));
-  let text = input;
+  // Offsets are read in the text the spans were found in: a book reference changes the length of the text before it.
+  let text = resolveBookRefs(repairLatexOutsideCode(input));
+  const spans = mathSpans(text);
   const dangling = lastOpenDollar(text, spans);
   if (dangling >= 0) text = text.slice(0, dangling);
   const plain = spokenText(text, true);

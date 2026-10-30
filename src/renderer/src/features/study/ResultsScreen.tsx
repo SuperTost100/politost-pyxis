@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Icon, type IconName } from "../../components/Icon";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
-import { TypedText } from "../../components/TypedText";
+import { MathText } from "../../components/math/MathText";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { openSourceViewer } from "../../components/SourceViewer";
 import type { RequestOutput } from "@shared/ipc";
@@ -586,7 +586,7 @@ function Answer({ id, item }: { id: string; item: ResultItem }) {
   const text = (value: string, written = false) =>
     written ? (
       <p className="body">
-        <TypedText>{value}</TypedText>
+        <MathText text={value} />
       </p>
     ) : item.long ? (
       <MarkdownView variant="body">{value}</MarkdownView>

@@ -10,7 +10,7 @@ import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
-import { TypedText } from "../../components/TypedText";
+import { MathText } from "../../components/math/MathText";
 import { QUIZ_MAX_QUESTIONS } from "@shared/quiz";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
@@ -188,7 +188,7 @@ export function MistakesNotebook() {
             </p>
             {long || entry.kind === "completion" ? (
               <p className="body">
-                <TypedText>{answer}</TypedText>
+                <MathText text={answer} />
               </p>
             ) : (
               <p className="body">

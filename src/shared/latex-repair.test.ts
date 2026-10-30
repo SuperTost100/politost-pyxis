@@ -87,7 +87,7 @@ describe("a line break written as \\n", () => {
   });
 
   it("keeps the LaTeX commands that start with n", () => {
-    const text = "$\\nabla f \\neq 0$, $\\nu$ e $a \\ne b$ e $\\not\\in A$";
+    const text = "$\\nabla f \\neq 0$, $\\nu$ e $a \\ne b$ e $\\not\\in A$ e $\\neg p$ e $A \\nsubseteq B$";
     expect(repairLatexEscapes(text)).toBe(text);
   });
 
