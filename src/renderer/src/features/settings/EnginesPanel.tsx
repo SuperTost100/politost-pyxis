@@ -253,7 +253,13 @@ export function EnginesPanel() {
         ]
       : []),
   ];
-  const [result, setResult] = useState<string | null>(null);
+  // A Prova that answered is kept as data and worded when shown, so a model name core learns later, or a language
+  // change, reaches the message. Every other result is already a sentence.
+  const [result, setResult] = useState<
+    | string
+    | { provider: string; model: string; ms: number; tokens: number }
+    | null
+  >(null);
   const visionModel =
     features.data?.vision?.model ?? features.data?.default?.model;
   const visionCapability = useQuery({
@@ -332,16 +338,12 @@ export function EnginesPanel() {
     onError: refresh,
     onSuccess: (value, variables) => {
       refresh();
-      setResult(
-        t("engines.tested", {
-          ms: value.latencyMs,
-          // The list the drawer already read names the model even before the names query has refreshed.
-          model:
-            modelsByProvider[variables.provider]?.find((row) => row.id === value.model)?.name ??
-            names.modelName(variables.provider, value.model),
-          tokens: value.inputTokens,
-        }),
-      );
+      setResult({
+        provider: variables.provider,
+        model: value.model,
+        ms: value.latencyMs,
+        tokens: value.inputTokens,
+      });
     },
   });
   const configure = useMutation({
@@ -588,7 +590,16 @@ export function EnginesPanel() {
     <>
       {result ? (
         <p className="small engines-result" role="status">
-          {result}
+          {typeof result === "string"
+            ? result
+            : t("engines.tested", {
+                ms: result.ms,
+                // The list Settings already read names the model even before the names query has refreshed.
+                model:
+                  modelsByProvider[result.provider]?.find((row) => row.id === result.model)?.name ??
+                  names.modelName(result.provider, result.model),
+                tokens: result.tokens,
+              })}
         </p>
       ) : null}
       {test.error && tested ? (

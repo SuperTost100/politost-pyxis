@@ -513,7 +513,12 @@ test("Settings: a model the subscription refuses keeps the engine, but the row s
   status) echo '{"isAuthenticated":true}';;
   about) echo '{}';;
   --list-models) printf 'gemini-3.8-flash-low - Gemini 3.8 Flash Low\\ngemini-3.8-flash-high - Gemini 3.8 Flash High\\nclaude-opus-5-5-high - Claude Opus 5.5 1M High\\ngrok-4.7-low - Grok 4.7  Low\\ngrok-4.7-high - Grok 4.7  High\\n';;
-  *) echo "ActionRequiredError: Gemini 3.8 Flash is not included in your weekly usage Buy credits or switch to a Grok model to continue." >&2; exit 1;;
+  *)
+    # Grok answers; every other model is outside the plan.
+    case "$*" in
+      *grok-4.7*) cat >/dev/null; printf '%s\\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok"}';;
+      *) echo "ActionRequiredError: Gemini 3.8 Flash is not included in your weekly usage Buy credits or switch to a Grok model to continue." >&2; exit 1;;
+    esac;;
 esac`,
     ),
   };
@@ -558,6 +563,10 @@ esac`,
     await expect(row).toContainText("Grok 4.7");
     await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
     await saveShot(page, "engines-model-refused-en.png", { fullPage: true });
+    // The next Prova skips the refused model, answers on Grok and names it as the engine lists it.
+    await page.getByRole("button", { name: "Test Cursor Agent" }).click();
+    await expect(page.locator(".engines-result")).toContainText("Grok 4.7", { timeout: 30000 });
+    await expect(page.locator(".engines-result")).not.toContainText("grok-4.7");
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
