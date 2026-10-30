@@ -1,7 +1,7 @@
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { importSmartbook } from "../sources/smartbook";
+import { importSmartbook, listSources } from "../sources/smartbook";
 import {
   createPlan,
   deletePlan,
@@ -46,6 +46,12 @@ describe("createPlan", () => {
       sourceIds: [imported.sourceId],
     });
     expect(plan.topics).toBe(2);
+    // The row draws the chapter's number, so the title does not repeat it.
+    expect(
+      (db.prepare(`SELECT title FROM topics WHERE plan_id = ? ORDER BY position`).all(plan.planId) as Array<{ title: string }>).map(
+        (row) => row.title,
+      ),
+    ).toEqual(["Moti", "Forze"]);
     const stored = db
       .prepare(
         `SELECT target, style, content_language, exam_at FROM plans WHERE id = ?`,
@@ -91,6 +97,32 @@ describe("createPlan", () => {
     };
     expect(left.n).toBe(0);
     expect(() => deletePlan(db, plan.planId)).toThrow(/plan-missing/);
+  });
+
+  it("counts a source's sections as the Library does, not its passages", () => {
+    const db = openDatabase(":memory:");
+    const imported = importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "demo",
+          title: "Fisica",
+          access: "public",
+          chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+        }),
+        "chapters/01.md": "## p1 | Energia\nIl vettore posizione.\n\n## p2 | Lavoro\nLa forza compie lavoro.\n\n## p3 | Potenza\nIl lavoro nel tempo.\n",
+      }),
+    );
+    const plan = createPlan(db, { title: "Fisica 1", sourceIds: [imported.sourceId] });
+    const passages = db
+      .prepare(`SELECT COUNT(*) AS n FROM passages WHERE source_id = ?`)
+      .get(imported.sourceId) as { n: number };
+    expect(passages.n).toBeGreaterThan(1);
+    const shown = readPlan(db, plan.planId)!.sources;
+    expect(shown.map((source) => source.sections)).toEqual(
+      listSources(db).filter((source) => source.id === imported.sourceId).map((source) => source.sections),
+    );
+    expect(shown[0]!.sections).toBe(1);
   });
 
   it("stores the exam date, target, language and style", () => {

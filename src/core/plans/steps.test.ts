@@ -3,7 +3,7 @@ import { openDatabase } from "../db/connection";
 import { appendEvent } from "../events";
 import { saveQuiz, startAttempt, submitAttempt } from "../study/attempt";
 import { planGuide } from "./create";
-import { gradedActivities, readSteps, recordStep, requireActiveTopic } from "./steps";
+import { gradedActivities, readSteps, recordStep, requireActiveTopic, stepResult } from "./steps";
 
 type Db = ReturnType<typeof openDatabase>;
 
@@ -109,6 +109,19 @@ describe("path steps", () => {
     ]);
     expect(later).not.toBe(second);
     db.close();
+  });
+});
+
+describe("stepResult", () => {
+  it("keeps partial credit, so a step reads the same points as the results screen", () => {
+    expect(stepResult([{ score: 1 }, { score: 0.5 }, { score: 0 }])).toEqual({ correct: 1.5, total: 3 });
+    expect(stepResult([{ score: 0.25 }, { score: 0.25 }, { score: 0.5 }, { score: 0.5 }])).toEqual({
+      correct: 1.5,
+      total: 4,
+    });
+    // Floating point sums stop at one decimal.
+    expect(stepResult([{ score: 0.1 }, { score: 0.2 }])).toEqual({ correct: 0.3, total: 2 });
+    expect(stepResult([])).toEqual({ correct: 0, total: 0 });
   });
 });
 

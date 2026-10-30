@@ -1,4 +1,5 @@
 import { reachableTarget } from "../../../../shared/plan-file";
+import { rowTitle } from "../../../../shared/topic-title";
 
 /** The activities a topic row shows as its steps, in the order a student does them. */
 export const topicSteps = ["lesson", "practice", "quiz", "cards", "gaps"] as const;
@@ -44,6 +45,24 @@ type Step = {
 };
 
 /**
+ * Whether the path should say that expected dates need weekly hours: the planner has none (so the schedule has no days
+ * for the exam), the exam is on a later day, it is not archived, and some topic is still short of the goal. While the
+ * schedule or the planner is loading (undefined) nothing is said.
+ */
+export function needsWeeklyHours(input: {
+  schedule: object | null | undefined;
+  weeklyHours: number | null | undefined;
+  examAt: number | null;
+  archived: boolean;
+  open: number;
+  now: number;
+}): boolean {
+  if (input.schedule !== null || input.weeklyHours !== null || input.examAt == null) return false;
+  const day = (at: number) => new Date(at).setHours(0, 0, 0, 0);
+  return !input.archived && input.open > 0 && day(input.examAt) > day(input.now);
+}
+
+/**
  * The path's topic rows: each topic in the plan's order with its mastery against the goal, its open gaps, the day the
  * planner expects it done, and its steps. Lesson, exercises and quiz always show; flashcards only when some are due and
  * the gap drill only when a gap is open. The path's next step, when it is on this topic, is marked `now`.
@@ -84,7 +103,7 @@ export function topicRows(input: {
     const last = own.at(-1);
     return {
       id: topic.id,
-      title: topic.title,
+      title: rowTitle(topic.title, position + 1),
       index: position + 1,
       mastery,
       atGoal: mastery >= goal,

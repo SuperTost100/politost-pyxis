@@ -520,7 +520,7 @@ export function SimulationPage() {
           grade={run.submitted ? run.score : undefined}
           headline={
             run.submitted && run.score !== undefined
-              ? t(verdictLine(Math.round(run.score * 100), false))
+              ? t(verdictLine(run.score * 100, false, plan.data ? plan.data.target * 100 : undefined))
               : t("results.gradingHeadline")
           }
           detail={

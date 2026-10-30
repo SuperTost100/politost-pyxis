@@ -77,11 +77,16 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const id = steps[index]!;
 
-  // A new screen starts at its heading, so keyboard and screen reader users do not land in the old controls.
+  // A new screen starts at its top and its heading, so keyboard and screen reader users do not land in the old controls
+  // and the page does not open at the previous screen's scroll offset.
   const first = useRef(true);
   useEffect(() => {
-    if (first.current) first.current = false;
-    else heading.current?.focus();
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    heading.current?.focus({ preventScroll: true });
   }, [index]);
 
   /** Saves the profile. Skip saves an empty one and leaves setup. Resolves with whether it saved. */
@@ -226,6 +231,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
         <>
           <EnginesStep onReady={setEnginesReady} again={again} />
           <CrashReportsSwitch
+            setup
             checked={crashReports}
             disabled={busy}
             onChange={setCrashReports}

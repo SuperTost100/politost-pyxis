@@ -1,5 +1,5 @@
 import { Button, Input, Modal } from "antd";
-import { X } from "lucide-react";
+import { FileText, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ScanNotice, scanPending } from "../../components/ScanNotice";
@@ -59,6 +59,9 @@ export function WizardSources({
   const { t } = useTranslation();
   const [adding, setAdding] = useState(false);
   const [picking, setPicking] = useState(false);
+  // Files dropped on the zone go to the import panel, which opens on them and reads them at once.
+  const [dropped, setDropped] = useState<File[] | undefined>();
+  const [dragging, setDragging] = useState(false);
   const inPlan = picked
     .map((id) => library.find((source) => source.id === id))
     .filter((source): source is WizardSource => source != null);
@@ -89,20 +92,49 @@ export function WizardSources({
           ))}
         </ul>
       ) : null}
-      <div className="px-wizard-material-actions">
-        <Button
-          type={inPlan.length ? "default" : "primary"}
-          shape="round"
-          onClick={() => setAdding(true)}
-        >
-          {t("exams.addSources")}
-        </Button>
-        <Button shape="round" onClick={() => setPicking(true)}>
-          {t("wizard.fromLibrary")}
-        </Button>
-        <Button shape="round" onClick={onFreeBooks}>
-          {t("books.open")}
-        </Button>
+      <div
+        className={dragging ? "px-wizard-drop is-dragging" : "px-wizard-drop"}
+        onDragEnter={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          const files = Array.from(event.dataTransfer.files);
+          if (!files.length) return;
+          setDropped(files);
+          setAdding(true);
+        }}
+      >
+        <FileText size={28} strokeWidth={1.75} aria-hidden />
+        <p className="body">{dragging ? t("sources.dropActive") : t("wizard.dropHint")}</p>
+        <div className="px-wizard-material-actions">
+          <Button
+            shape="round"
+            onClick={() => {
+              setDropped(undefined);
+              setAdding(true);
+            }}
+          >
+            {t("exams.addSources")}
+          </Button>
+          <Button shape="round" onClick={() => setPicking(true)}>
+            {t("wizard.fromLibrary")}
+          </Button>
+          <Button shape="round" onClick={onFreeBooks}>
+            {t("books.open")}
+          </Button>
+        </div>
       </div>
       {inPlan.length === 0 ? (
         <p className="small">
@@ -124,6 +156,7 @@ export function WizardSources({
       {adding ? (
         <LibraryPanel
           importOnly
+          droppedFiles={dropped}
           onClose={() => setAdding(false)}
           onImported={onPick}
         />

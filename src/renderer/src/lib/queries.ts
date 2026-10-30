@@ -58,6 +58,12 @@ export const scheduleQuery = (planId: string) =>
     queryFn: () => invoke("plans.schedule", { planId }),
   });
 
+/** The session planner: the weekly hours, the hours the exams need, and the weeks. */
+export const plannerQuery = queryOptions({
+  queryKey: ["plans", "planner"],
+  queryFn: () => invoke("plans.planner", {}),
+});
+
 export const pastPapersQuery = (planId: string) =>
   queryOptions({
     queryKey: ["past-papers", planId],

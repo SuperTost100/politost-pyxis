@@ -90,9 +90,22 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     // The bar names what changed, and the calendar button waits for the sessions to be saved.
     await expect(saveBar).toContainText("1 change to save: the sessions.");
     await expect(settingsPage.getByRole("button", { name: "Add to calendar" })).toBeDisabled();
+    // The planner's estimate was made for the saved date, so it is not offered while the date is edited.
+    await expect(settingsPage.getByRole("button", { name: /^Use .+ h$/ })).toHaveCount(0);
     await snap("plan-settings-sessions", "en", "light");
     await saveBar.getByRole("button", { name: "Save changes" }).click();
     await expect(saveBar).toHaveCount(0);
+    // Saving says so, and the bar's room goes with the bar.
+    await expect(page.getByText("Changes saved")).toBeVisible();
+    // The spin buttons are in the interface language, not antd's English.
+    await expect(settingsPage.getByRole("button", { name: "Increase", exact: true })).toBeAttached();
+    await expect(settingsPage.getByRole("button", { name: "Increase Value" })).toHaveCount(0);
+    // With no weekly hours saved, the planner's estimate is offered in the field, not an empty box.
+    const useHours = settingsPage.getByRole("button", { name: /^Use .+ h$/ });
+    await expect(useHours).toBeVisible();
+    await expect(settingsPage.getByLabel("Hours a week")).toHaveAttribute("placeholder", /\d/);
+    // The goal slider is gold, as in setup.
+    await expect(settingsPage.locator(".px-wizard-gold-slider")).toHaveCount(1);
 
     const plan = await read("plan-a");
     expect(plan!.sessions.map((s) => [s.label, s.time, s.place])).toEqual([
@@ -102,6 +115,13 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     expect(plan!.examAt).toBe(written.getTime());
     // The untouched goal is saved back exactly as stored.
     expect(plan!.target).toBe(0.77);
+    await settingsPage.getByRole("link", { name: "Fisica 1" }).click();
+    await expect(page).toHaveURL(/#\/plans\/plan-a$/);
+    // No weekly hours yet, so the path has no expected dates and says how to get them.
+    const hoursHint = page.getByText("Set your weekly hours to see when you will study each topic.");
+    await expect(hoursHint).toBeVisible();
+    await page.getByRole("button", { name: "Set the hours" }).click();
+    await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);
     await settingsPage.getByRole("link", { name: "Fisica 1" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a$/);
     // The header lists them, and the calendar file has one timed event each with the place as its location.

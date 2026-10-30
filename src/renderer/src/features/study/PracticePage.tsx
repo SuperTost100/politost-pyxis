@@ -60,7 +60,7 @@ function SelfRating({
   const labelId = `rate-${exerciseId}`;
   return (
     <div className="px-rate">
-      <span id={labelId} className="meta">
+      <span id={labelId} className="label">
         {t("practice.rateLabel")}
       </span>
       <div className="px-rate-choices" role="group" aria-labelledby={labelId}>
@@ -77,9 +77,9 @@ function SelfRating({
           </button>
         ))}
       </div>
-      <span className="meta">{t("practice.rateHint")}</span>
+      <span className="small ink-muted">{t("practice.rateHint")}</span>
       {save.isError ? (
-        <p className="meta px-rate-error" role="alert">
+        <p className="small px-rate-error" role="alert">
           {t("practice.rateFailed")}
         </p>
       ) : null}
@@ -134,7 +134,7 @@ function ExerciseCard({
       ))}
       {allSteps && steps > 0 && exercise.answer ? (
         <>
-          <p className="meta">{t("practice.finalAnswer")}</p>
+          <p className="label">{t("practice.finalAnswer")}</p>
           <MarkdownView runnable>{exercise.answer}</MarkdownView>
         </>
       ) : null}

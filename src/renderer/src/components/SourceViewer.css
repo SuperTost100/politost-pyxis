@@ -67,3 +67,7 @@
 .source-pdf-text ::selection {
   background: var(--primary-soft);
 }
+.source-viewer-back {
+  display: flex;
+  margin: 0 0 var(--space-1) calc(var(--space-3) * -1);
+}
